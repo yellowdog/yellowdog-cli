@@ -5,7 +5,7 @@ Class to parse command line arguments for all commands.
 import argparse
 import sys
 
-from yellowdog_cli.__init__ import __version__
+from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.settings import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DEFAULT_URL,

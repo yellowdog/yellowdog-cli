@@ -76,8 +76,8 @@ _run git pull origin next-version
 # Determine new version
 # ---------------------------------------------------------------------------
 
-INIT_FILE="yellowdog_cli/__init__.py"
-CURRENT_VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' "$INIT_FILE" | head -1)
+VERSION_FILE="yellowdog_cli/_version.py"
+CURRENT_VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE" | head -1)
 echo
 echo "Current version: $CURRENT_VERSION"
 
@@ -101,14 +101,14 @@ echo "Releasing version $NEW_VERSION"
 echo
 
 # ---------------------------------------------------------------------------
-# Bump version in __init__.py
+# Bump version in _version.py
 # ---------------------------------------------------------------------------
 
 echo "--- Bumping version ---"
 if ! $DRY_RUN; then
-    sed -i.bak "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" "$INIT_FILE"
-    rm -f "${INIT_FILE}.bak"
-    grep "__version__" "$INIT_FILE"
+    sed -i.bak "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" "$VERSION_FILE"
+    rm -f "${VERSION_FILE}.bak"
+    grep "__version__" "$VERSION_FILE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ _run pytest -v
 
 echo
 echo "--- Committing version bump ---"
-_run git add "$INIT_FILE"
+_run git add "$VERSION_FILE"
 _run git commit -m "Bump version to v$NEW_VERSION"
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 YellowDog CLI (`yellowdog-cli`) is a Python CLI tool suite for managing distributed computing jobs and resources on the YellowDog platform. It provides ~25 `yd-*` commands (e.g., `yd-submit`, `yd-provision`, `yd-list`, `yd-upload`, `yd-download`) installable as a package.
 
-Current version: defined in `yellowdog_cli/__init__.py`.
+Current version: defined in `yellowdog_cli/_version.py`.
 
 ## Commands
 
