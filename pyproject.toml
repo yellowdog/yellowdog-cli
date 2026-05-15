@@ -45,6 +45,7 @@
     jsonnet = ["jsonnet"]
     cloudwizard = [
         "boto3",
+        "botocore",
         "google-cloud-compute",
         "google-cloud-storage",
         "azure-identity",
