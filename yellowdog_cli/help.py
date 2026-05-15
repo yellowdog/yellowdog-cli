@@ -4,7 +4,7 @@
 List all available yd-* commands and their purposes.
 """
 
-from yellowdog_cli.__init__ import __version__
+from yellowdog_cli._version import __version__
 
 # Ordered list of (command, one-line description) pairs.
 _COMMANDS: list[tuple[str, str]] = [

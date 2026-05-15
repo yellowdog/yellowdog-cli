@@ -41,7 +41,7 @@ git pull origin next-version
 
 ### 2. Bump the version
 
-Edit `yellowdog_cli/__init__.py`:
+Edit `yellowdog_cli/_version.py`:
 ```python
 __version__ = "X.Y.Z"
 ```
@@ -57,7 +57,7 @@ pytest -v
 ### 4. Commit the version bump
 
 ```shell
-git add yellowdog_cli/__init__.py
+git add yellowdog_cli/_version.py
 git commit -m "Bump version to X.Y.Z"
 ```
 
