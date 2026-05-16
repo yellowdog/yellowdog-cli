@@ -9,11 +9,11 @@ from copy import deepcopy
 from datetime import timedelta
 from gzip import compress
 from json import dumps as json_dumps
+from json import loads as json_loads
 from math import ceil
 from os.path import dirname, relpath
 from typing import cast
 
-import jsons
 import requests
 from yellowdog_client.model import (
     CloudProvider,
@@ -1364,7 +1364,7 @@ def submit_json_raw(wr_file: str):
     )
 
     if response.status_code == 200:
-        wr_id = jsons.loads(response.text)["id"]
+        wr_id = json_loads(response.text)["id"]
         print_info(
             f"Created Work Requirement '{wr_data['namespace']}/{wr_name}' ({wr_id})"
         )

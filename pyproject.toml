@@ -21,7 +21,6 @@
         "PyPAC >= 0.16.4",
         "dateparser",
         "python-dotenv",
-        "jsons",
         "requests",
         "rclone-api",
         "rich >= 13.9.4",
