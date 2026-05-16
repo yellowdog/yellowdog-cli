@@ -221,7 +221,7 @@ def remove_keyring(resource: dict):
         CLIENT.keyring_client.delete_keyring_by_name(name)
         print_info(f"Removed Keyring '{name}'")
     except HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response is not None and e.response.status_code == 404:
             print_warning(f"Cannot find Keyring '{name}'")
         else:
             print_error(f"Unable to remove Keyring '{name}': {e}")
@@ -252,7 +252,7 @@ def remove_credential(resource: dict):
             " it was present)"
         )
     except HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response is not None and e.response.status_code == 404:
             print_warning(
                 f"Cannot find Keyring '{keyring_name}'(possibly already deleted,"
                 " including its credentials?)"
@@ -283,7 +283,7 @@ def remove_image_family(resource: dict):
             )
         )
     except HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response is not None and e.response.status_code == 404:
             print_warning(f"Cannot find Machine Image Family '{fq_name}'")
             return
         else:

@@ -376,7 +376,7 @@ def follow_events(
 
         try:
             for event in response.iter_lines(decode_unicode=True):
-                if event:
+                if event and isinstance(event, str):
                     if on_event is not None:
                         on_event(event, ydid_type)
                     else:

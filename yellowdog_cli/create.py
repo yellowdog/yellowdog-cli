@@ -462,9 +462,10 @@ def create_credential(resource: dict):
         print_info(f"Added Credential '{name}' to Keyring '{keyring_name}'")
     except HTTPError as e:
         print_error(f"Failed to add Credential '{name}' to Keyring '{keyring_name}'")
-        if e.response.status_code == 400:
-            print_error(f"{e.response.text}")
-        elif e.response.status_code == 404:
+        resp = e.response
+        if resp is not None and resp.status_code == 400:
+            print_error(f"{resp.text}")
+        elif resp is not None and resp.status_code == 404:
             print_error(f"Keyring '{keyring_name}' not found")
         else:
             print_error(e)
@@ -514,7 +515,7 @@ def create_image_family(resource):
         if ARGS_PARSER.quiet:
             print(image_family.id)
     except HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response is not None and e.response.status_code == 404:
             # This will create the Image Family and all of its constituent
             # Image Group/Image resources
             image_family = _create_image_family(image_family, fq_name)
@@ -572,7 +573,7 @@ def _create_image_group(
         if ARGS_PARSER.quiet:
             print(image_group.id)
     except HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response is not None and e.response.status_code == 404:
             image_group = CLIENT.images_client.add_image_group(
                 image_family, image_group
             )

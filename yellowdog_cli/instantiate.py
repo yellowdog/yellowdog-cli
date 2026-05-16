@@ -156,13 +156,14 @@ def main():
                     )
                     print_compute_template_test_result(test_result)
                 except requests.HTTPError as http_error:
-                    if http_error.response.status_code == 404:
+                    resp = http_error.response
+                    if resp is not None and resp.status_code == 404:
                         raise RuntimeError(
-                            json_loads(http_error.response.text).get(
+                            json_loads(resp.text).get(
                                 "message", "Template ID not found"
                             )
                         )
-                    if "No sources" in http_error.response.text:
+                    if resp is not None and "No sources" in resp.text:
                         print_info(
                             "No Compute Sources match the Template's constraints"
                         )
