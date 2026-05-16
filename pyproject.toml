@@ -72,6 +72,7 @@
     yd-application = "yellowdog_cli.application:main"
     yd-boost = "yellowdog_cli.boost:main"
     yd-cancel = "yellowdog_cli.cancel:main"
+    yd-copy = "yellowdog_cli.copy:main"
     yd-cloudwizard = "yellowdog_cli.cloudwizard:main"
     yd-compare = "yellowdog_cli.compare:main"
     yd-create = "yellowdog_cli.create:main"

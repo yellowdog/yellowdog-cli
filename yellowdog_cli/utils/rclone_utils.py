@@ -72,6 +72,33 @@ def _find_rclone_conf() -> Path:
     raise FileNotFoundError(f"No rclone config file found at '{p}'")
 
 
+def make_rclone_for_copy(
+    src_remote_str: str, dst_remote_str: str
+) -> tuple[str, str, "Rclone"]:
+    """
+    Build an Rclone instance with both src and dst remotes configured.
+    Returns (src_remote_name, dst_remote_name, rclone).
+    """
+    src_name, src_ini = parse_rclone_config(src_remote_str)
+    dst_name, dst_ini = parse_rclone_config(dst_remote_str)
+
+    if src_ini is None and dst_ini is None:
+        return src_name, dst_name, make_rclone(None)
+
+    # At least one remote uses inline config; build a combined INI
+    sections: list[str] = []
+    if src_ini is None or dst_ini is None:
+        # Include the system conf so named remotes are accessible
+        sys_conf_path = _find_rclone_conf()
+        sections.append(sys_conf_path.read_text())
+    if src_ini is not None:
+        sections.append(src_ini)
+    if dst_ini is not None:
+        sections.append(dst_ini)
+
+    return src_name, dst_name, make_rclone(Config("\n\n".join(sections)))
+
+
 def make_rclone(config: Config | None) -> Rclone:
     """
     Instantiate Rclone, suppressing download output when --quiet is active.

@@ -1280,9 +1280,10 @@ class CLIParser:
                 ),
             )
 
-        # yd-upload / yd-download / yd-delete / yd-ls (data client commands)
+        # yd-upload / yd-download / yd-delete / yd-ls / yd-copy (data client commands)
         if any(
-            module in sys.argv[0] for module in ["upload", "download", "delete", "ls"]
+            module in sys.argv[0]
+            for module in ["upload", "download", "delete", "ls", "copy"]
         ):
             parser.add_argument(
                 "--remote",
@@ -1457,6 +1458,60 @@ class CLIParser:
                 action="store_true",
                 required=False,
                 help="list directories recursively",
+            )
+
+        # yd-copy
+        if "copy" in sys.argv[0]:
+            parser.add_argument(
+                "src_path",
+                metavar="<src-path>",
+                type=str,
+                nargs="?",
+                help="source path relative to the configured source remote/bucket/prefix",
+            )
+            parser.add_argument(
+                "dst_path",
+                metavar="<dst-path>",
+                type=str,
+                nargs="?",
+                help="destination path relative to the configured destination remote/bucket/prefix",
+            )
+            parser.add_argument(
+                "--dst-profile",
+                type=str,
+                required=False,
+                help=(
+                    "select a named [dataClient.<name>] profile for the destination; "
+                    "inherits unset fields from [dataClient]"
+                ),
+                metavar="<name>",
+            )
+            parser.add_argument(
+                "--dst-prefix",
+                type=str,
+                required=False,
+                help=(
+                    "override the destination path prefix; "
+                    "supports {{variable}} substitution; "
+                    "pass '' to place files at the bucket root"
+                ),
+                metavar="<prefix>",
+            )
+            parser.add_argument(
+                "--recursive",
+                "-R",
+                action="store_true",
+                required=False,
+                help="copy directories recursively (rclone copies recursively by default)",
+            )
+            parser.add_argument(
+                "--sync",
+                action="store_true",
+                required=False,
+                help=(
+                    "make the destination a mirror of the source, "
+                    "deleting destination files not present in the source"
+                ),
             )
 
         self.args = parser.parse_args()
@@ -2135,6 +2190,30 @@ class CLIParser:
     def remote_paths(self) -> list[str]:
         return self.args.remote_paths
 
+    # -----------------------------------------------------------------------
+    # yd-copy
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def src_path(self) -> str | None:
+        return self.args.src_path
+
+    @property
+    @allow_missing_attribute
+    def dst_path(self) -> str | None:
+        return self.args.dst_path
+
+    @property
+    @allow_missing_attribute
+    def dst_profile(self) -> str | None:
+        return self.args.dst_profile
+
+    @property
+    @allow_missing_attribute
+    def dst_prefix(self) -> str | None:
+        return self.args.dst_prefix
+
 
 def lookup_module_description(module_name: str) -> str | None:
     """
@@ -2157,6 +2236,8 @@ def lookup_module_description(module_name: str) -> str | None:
         suffix = "cancelling Work Requirements"
     elif "cloudwizard" in module_name:
         suffix = "setting up cloud accounts and YellowDog resources"
+    elif "copy" in module_name:
+        suffix = "copying files between remote data client locations"
     elif "compare" in module_name:
         suffix = (
             "comparing whether a work requirement or task group is matched by "

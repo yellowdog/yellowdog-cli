@@ -12,6 +12,7 @@ from cli_test_helpers import shell
         ("yd-abort --help", 0),
         ("yd-boost --help", 0),
         ("yd-cloudwizard --help", 0),
+        ("yd-copy --help", 0),
         ("yd-create --help", 0),
         ("yd-delete --help", 0),
         ("yd-download --help", 0),

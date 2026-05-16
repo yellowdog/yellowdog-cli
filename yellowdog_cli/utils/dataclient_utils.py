@@ -13,7 +13,11 @@ from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.printing import print_info, print_warning
-from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
+from yellowdog_cli.utils.rclone_utils import (
+    make_rclone,
+    make_rclone_for_copy,
+    parse_rclone_config,
+)
 from yellowdog_cli.utils.variables import process_variable_substitutions
 
 _GLOB_CHARS = frozenset("*?[")
@@ -74,7 +78,7 @@ def resolve_remote_path(
     if config.prefix:
         parts.append(config.prefix.strip("/"))
     if relative_path:
-        parts.append(relative_path.strip("/"))
+        parts.append(relative_path.lstrip("/"))
     elif filename:
         parts.append(filename)
 
@@ -515,3 +519,71 @@ def list_remote(
     _, rclone = _rclone_for_config(config)
     max_depth = -1 if recursive else 1
     return rclone.ls(src=remote_path, max_depth=max_depth)
+
+
+def _is_remote_file(rclone: Rclone, remote_path: str) -> bool:
+    """
+    Return True if remote_path resolves to a single file (not a directory).
+    Lists the parent directory and checks whether the final path component
+    appears as a non-directory entry.
+    """
+    path = remote_path.rstrip("/")
+    path_part = path.split(":", 1)[-1]  # strip remote: prefix for the check
+    if "/" not in path_part:
+        return False
+    parent, name = path.rsplit("/", 1)
+    check = rclone.impl._run(["lsjson", parent], capture=True)
+    if check.returncode != 0:
+        return False
+    entries = json.loads(check.stdout or "[]")
+    matching = [e for e in entries if e["Name"] == name]
+    return bool(matching) and not matching[0]["IsDir"]
+
+
+def copy_remote(
+    src_config: ConfigDataClient,
+    src_path: str,
+    dst_config: ConfigDataClient,
+    dst_path: str,
+    sync: bool = False,
+    dry_run: bool = False,
+) -> None:
+    """
+    Copy from src_path to dst_path across (potentially different) remotes.
+    With sync=True, the destination is made to mirror the source.
+    When the source is a single file and the destination does not end with
+    '/', uses rclone copyto so the destination filename is preserved
+    (enabling file-to-file rename).
+    """
+    if dry_run:
+        action = "sync" if sync else "copy"
+        print_info(f"Dry-run: Would {action} '{src_path}' → '{dst_path}'")
+        return
+
+    src_remote_str = _require_remote(src_config)
+    dst_remote_str = _require_remote(dst_config)
+
+    _, _, rclone = make_rclone_for_copy(src_remote_str, dst_remote_str)
+
+    action = "Syncing" if sync else "Copying"
+    print_info(f"{action} '{src_path}' → '{dst_path}'")
+
+    # Normalise shell tab-completion artefact: "dir/." → "dir/"
+    if dst_path.endswith("/."):
+        dst_path = dst_path[:-1]
+
+    if sync:
+        result = _rclone_sync(rclone, src=src_path, dst=dst_path)
+    elif _is_remote_file(rclone, src_path):
+        # Source is a single file: use copyto for precise destination naming.
+        # If dst ends with '/', treat it as a directory and append the source filename.
+        if dst_path.endswith("/"):
+            dst_file = dst_path + src_path.rsplit("/", 1)[-1]
+        else:
+            dst_file = dst_path
+        result = rclone.copy_to(src=src_path, dst=dst_file)
+    else:
+        result = rclone.copy(src=src_path, dst=dst_path)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Copy failed: {result.stderr}")
