@@ -261,7 +261,7 @@ class CLIParser:
                 metavar="<var1=v1>",
             )
 
-        # yd-* (all except yd-boost, yd-cloudwizard, yd-follow, yd-list, yd-compare)
+        # yd-* (all except yd-boost, yd-cloudwizard, yd-follow, yd-list, yd-compare, yd-wait)
         if not any(
             module in sys.argv[0]
             for module in [
@@ -270,6 +270,7 @@ class CLIParser:
                 "follow",
                 "list",
                 "compare",
+                "wait",
             ]
         ):
             self.namespace_required = True
@@ -881,9 +882,15 @@ class CLIParser:
                 help="remove resources using their YellowDog IDs (YDIDs)",
             )
 
-        # yd-follow / yd-show
-        if any(module in sys.argv[0] for module in ["follow", "show"]):
-            verb = "follow" if "follow" in sys.argv[0] else "show"
+        # yd-follow / yd-show / yd-wait
+        if any(module in sys.argv[0] for module in ["follow", "show", "wait"]):
+            verb = (
+                "follow"
+                if "follow" in sys.argv[0]
+                else "wait"
+                if "wait" in sys.argv[0]
+                else "show"
+            )
             parser.add_argument(
                 "yellowdog_ids",
                 nargs="*",
@@ -2193,6 +2200,11 @@ def lookup_module_description(module_name: str) -> str | None:
         suffix = "formatting JSON files using a compact encoder"
     elif "jsonnet" in module_name:
         suffix = "converting a Jsonnet file to JSON"
+    elif "wait" in module_name:
+        suffix = (
+            "waiting for Work Requirements, Worker Pools, or Compute Requirements"
+            " to reach a terminal state"
+        )
     elif "version" in module_name:
         suffix = "reporting version information"
     elif "help" in module_name:

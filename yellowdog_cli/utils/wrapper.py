@@ -76,6 +76,8 @@ def main_wrapper(func):
                 else:
                     print_error(e)
                 exit_code = 1
+            except SystemExit as e:
+                exit_code = e.code if isinstance(e.code, int) else 1
             except KeyboardInterrupt:
                 print("\r", end="")  # Overwrite the display of ^C
                 print_info("Keyboard interruption ... exiting")

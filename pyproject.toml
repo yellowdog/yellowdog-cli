@@ -97,6 +97,7 @@
     yd-terminate = "yellowdog_cli.terminate:main"
     yd-upload = "yellowdog_cli.upload:main"
     yd-version = "yellowdog_cli.version:main"
+    yd-wait = "yellowdog_cli.wait:main"
 
 [tool.setuptools]
     include-package-data = false

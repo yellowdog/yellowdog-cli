@@ -163,6 +163,7 @@
    * [yd-create](#yd-create)
    * [yd-remove](#yd-remove)
    * [yd-follow](#yd-follow)
+   * [yd-wait](#yd-wait)
    * [yd-start](#yd-start)
    * [yd-hold](#yd-hold)
    * [yd-boost](#yd-boost)
@@ -178,7 +179,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Apr 22 11:51:22 BST 2026 -->
+<!-- Added by: pwt, at: Sat May 16 16:04:14 BST 2026 -->
 
 <!--te-->
 
@@ -198,6 +199,7 @@ The commands provide the following capabilities:
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
+- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
@@ -3418,6 +3420,26 @@ yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
 ```
 
 The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+
+## yd-wait
+
+The `yd-wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome:
+
+- **Exit 0** — all entities concluded successfully
+- **Exit 1** — one or more Work Requirements ended in a `FAILED` or `CANCELLED` state, or an error occurred fetching the final status
+
+```shell
+yd-wait ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8
+```
+
+Multiple IDs can be supplied; `yd-wait` blocks until all of them have reached a terminal state. This makes it suitable for scripting pipelines:
+
+```shell
+WR_ID=$(yd-submit mywork.json --quiet)
+yd-wait "$WR_ID" && yd-download results/
+```
+
+Use `--quiet` / `-q` to suppress all output and rely solely on the exit code, which is useful in automated pipelines. For interactive observation of event streams, use `yd-follow` instead.
 
 ## yd-start
 

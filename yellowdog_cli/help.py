@@ -37,6 +37,7 @@ _COMMANDS: list[tuple[str, str]] = [
     ("yd-terminate", "Terminate Compute Requirements, Instances or Nodes"),
     ("yd-upload", "Upload files to a remote data client"),
     ("yd-version", "Report version information"),
+    ("yd-wait", "Wait for entities to reach a terminal state"),
 ]
 
 

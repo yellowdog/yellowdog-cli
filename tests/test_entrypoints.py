@@ -35,6 +35,7 @@ from cli_test_helpers import shell
         ("yd-terminate --help", 0),
         ("yd-upload --help", 0),
         ("yd-version", 0),
+        ("yd-wait --help", 0),
     ],
 )
 def test_entrypoint(cmd, expected):
