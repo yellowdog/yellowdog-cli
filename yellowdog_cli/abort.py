@@ -14,7 +14,10 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.entity_utils import (
     get_filtered_work_requirement_summaries,
+    get_task_group_by_id,
     get_task_group_name,
+    get_task_groups_from_wr_by_id,
+    get_work_requirement_summary_by_name_or_id,
 )
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import (
@@ -30,7 +33,25 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 def main():
 
     if ARGS_PARSER.task_id_list:
-        _abort_tasks_by_name_or_id(ARGS_PARSER.task_id_list)
+        task_ids = [
+            a for a in ARGS_PARSER.task_id_list if get_ydid_type(a) == YDIDType.TASK
+        ]
+        tg_ids = [
+            a
+            for a in ARGS_PARSER.task_id_list
+            if get_ydid_type(a) == YDIDType.TASK_GROUP
+        ]
+        wr_names = [
+            a
+            for a in ARGS_PARSER.task_id_list
+            if get_ydid_type(a) not in (YDIDType.TASK, YDIDType.TASK_GROUP)
+        ]
+        if task_ids:
+            _abort_tasks_by_name_or_id(task_ids)
+        if tg_ids:
+            _abort_tasks_in_tg_by_id(tg_ids)
+        if wr_names:
+            _abort_tasks_in_wrs_by_name(wr_names)
         return
 
     print_info(
@@ -78,20 +99,30 @@ def abort_tasks_selectively(
     With --yes, all executing tasks are aborted without prompting.
     """
     print_info(f"Aborting Tasks in Work Requirement '{wr_summary.name}'")
-
-    task_search = TaskSearch(
-        workRequirementId=wr_summary.id,
-        statuses=[TaskStatus.EXECUTING],
+    tasks: list[Task] = CLIENT.work_client.find_tasks(
+        TaskSearch(workRequirementId=wr_summary.id, statuses=[TaskStatus.EXECUTING])
     )
-    tasks: list[Task] = CLIENT.work_client.find_tasks(task_search)
-
     if not tasks:
         print_info(
             "No currently executing Tasks in this Work Requirement",
             override_quiet=True,
         )
         return
+    _do_abort_tasks(
+        tasks,
+        context=f"Work Requirement '{wr_summary.name}'",
+        wr_summary=wr_summary,
+    )
 
+
+def _do_abort_tasks(
+    tasks: list[Task],
+    context: str,
+    wr_summary: WorkRequirementSummary | None = None,
+) -> None:
+    """
+    Select (unless --yes), confirm (unless --yes), then abort the given tasks.
+    """
     if not ARGS_PARSER.yes:
         tasks = select(CLIENT, sorted_objects(tasks), override_quiet=True)
         if not tasks or not confirmed(f"Abort {len(tasks)} Task(s)?"):
@@ -102,11 +133,12 @@ def abort_tasks_selectively(
     for task in tasks:
         try:
             CLIENT.work_client.cancel_task(task, abort=True)
-            print_info(
-                f"Aborted Task '{task.name}' in Task Group"
-                f" '{get_task_group_name(CLIENT, wr_summary, task)}' in Work"
-                f" Requirement '{wr_summary.name}'"
+            tg_part = (
+                f" in Task Group '{get_task_group_name(CLIENT, wr_summary, task)}'"
+                if wr_summary is not None
+                else ""
             )
+            print_info(f"Aborted Task '{task.name}'{tg_part} in {context}")
             aborted_tasks += 1
         except Exception as e:
             print_error(f"Unable to abort Task '{task.name}': {e}")
@@ -115,6 +147,83 @@ def abort_tasks_selectively(
         print_info("No Tasks Aborted")
     elif aborted_tasks > 1:
         print_info(f"Aborted {aborted_tasks} Tasks")
+
+
+def _abort_tasks_in_tg_by_id(tg_ids: list[str]) -> None:
+    """
+    Abort executing tasks in Task Groups identified by YDID.
+    """
+    for tg_id in tg_ids:
+        try:
+            tg = get_task_group_by_id(CLIENT, tg_id)
+        except (KeyError, RuntimeError) as e:
+            print_error(str(e))
+            continue
+        print_info(f"Aborting Tasks in Task Group '{tg.name}'")
+        tasks: list[Task] = CLIENT.work_client.find_tasks(
+            TaskSearch(taskGroupId=tg_id, statuses=[TaskStatus.EXECUTING])
+        )
+        if not tasks:
+            print_info(
+                "No currently executing Tasks in this Task Group",
+                override_quiet=True,
+            )
+            continue
+        _do_abort_tasks(tasks, context=f"Task Group '{tg.name}'")
+
+
+def _abort_tasks_in_wrs_by_name(wr_names: list[str]) -> None:
+    """
+    Look up Work Requirements by name/ID, then abort their executing tasks.
+    If a name is not found as a WR and contains '/', the part before the last
+    '/' is tried as a WR name and the part after as a Task Group name within it.
+    """
+    for name in wr_names:
+        wr_summary = get_work_requirement_summary_by_name_or_id(
+            CLIENT, name, namespace=CONFIG_COMMON.namespace
+        )
+        if wr_summary is not None:
+            abort_tasks_selectively(wr_summary)
+            continue
+
+        if "/" not in name:
+            print_error(f"Work Requirement '{name}' not found")
+            continue
+
+        # Try wr-name/tg-name (rsplit handles namespace/wr-name/tg-name correctly)
+        wr_part, tg_part = name.rsplit("/", 1)
+        wr_summary = get_work_requirement_summary_by_name_or_id(
+            CLIENT, wr_part, namespace=CONFIG_COMMON.namespace
+        )
+        if wr_summary is None:
+            print_error(f"Work Requirement '{wr_part}' not found")
+            continue
+
+        tg_groups = get_task_groups_from_wr_by_id(CLIENT, wr_summary.id)  # type: ignore[arg-type]
+        tg = next((g for g in tg_groups if g.name == tg_part), None)
+        if tg is None:
+            print_error(
+                f"Task Group '{tg_part}' not found in Work Requirement '{wr_summary.name}'"
+            )
+            continue
+
+        print_info(
+            f"Aborting Tasks in Task Group '{tg.name}'"
+            f" in Work Requirement '{wr_summary.name}'"
+        )
+        tasks: list[Task] = CLIENT.work_client.find_tasks(
+            TaskSearch(taskGroupId=tg.id, statuses=[TaskStatus.EXECUTING])
+        )
+        if not tasks:
+            print_info(
+                "No currently executing Tasks in this Task Group",
+                override_quiet=True,
+            )
+            continue
+        _do_abort_tasks(
+            tasks,
+            context=f"Task Group '{tg.name}' in Work Requirement '{wr_summary.name}'",
+        )
 
 
 def _abort_tasks_by_name_or_id(task_id_list: list[str]):

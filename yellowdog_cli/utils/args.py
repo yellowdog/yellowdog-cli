@@ -1141,9 +1141,16 @@ class CLIParser:
                 "task_id_list",
                 nargs="*",
                 default="",
-                metavar="<task-id>",
+                metavar="<target>",
                 type=str,
-                help="the YellowDog ID(s) of the task(s) to abort",
+                help=(
+                    "items to target: task YDID(s) to abort directly; Work Requirement"
+                    " name(s) or YDID(s) to abort all executing tasks within; Task Group"
+                    " YDID(s) to abort executing tasks in a specific group; or"
+                    " 'wr-name/tg-name' to target a named Task Group within a named"
+                    " Work Requirement. Without arguments, selects interactively by"
+                    " namespace and tag."
+                ),
             )
 
         # yd-submit (positional arg)
@@ -2281,7 +2288,7 @@ def lookup_module_description(module_name: str) -> str | None:
     suffix = None
 
     if "abort" in module_name:
-        suffix = "aborting Tasks"
+        suffix = "aborting Tasks individually, or in Work Requirements or Task Groups"
     elif "delete" in module_name:
         suffix = "deleting remote data client files and directories"
     elif "download" in module_name:
