@@ -12,6 +12,7 @@ _COMMANDS: list[tuple[str, str]] = [
     ("yd-application", "Report details of the current Application"),
     ("yd-boost", "Boost Allowances"),
     ("yd-cancel", "Cancel Work Requirements"),
+    ("yd-copy", "Copy files between remote data client locations"),
     ("yd-cloudwizard", "Set up cloud accounts and YellowDog resources"),
     ("yd-compare", "Compare a Work Requirement or Task Group against Worker Pool(s)"),
     ("yd-create", "Create and update resources"),
@@ -37,6 +38,7 @@ _COMMANDS: list[tuple[str, str]] = [
     ("yd-terminate", "Terminate Compute Requirements, Instances or Nodes"),
     ("yd-upload", "Upload files to a remote data client"),
     ("yd-version", "Report version information"),
+    ("yd-wait", "Wait for entities to reach a terminal state"),
 ]
 
 

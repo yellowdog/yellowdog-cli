@@ -117,6 +117,7 @@
    * [yd-download](#yd-download)
    * [yd-delete](#yd-delete)
    * [yd-ls](#yd-ls)
+   * [yd-copy](#yd-copy)
 * [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources)
    * [Overview of Operation](#overview-of-operation)
       * [Resource Creation](#resource-creation)
@@ -163,6 +164,7 @@
    * [yd-create](#yd-create)
    * [yd-remove](#yd-remove)
    * [yd-follow](#yd-follow)
+   * [yd-wait](#yd-wait)
    * [yd-start](#yd-start)
    * [yd-hold](#yd-hold)
    * [yd-boost](#yd-boost)
@@ -178,7 +180,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Apr 22 11:51:22 BST 2026 -->
+<!-- Added by: pwt, at: Sat May 16 16:04:14 BST 2026 -->
 
 <!--te-->
 
@@ -198,6 +200,7 @@ The commands provide the following capabilities:
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
+- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
@@ -208,7 +211,7 @@ The commands provide the following capabilities:
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Submitting** Work Requirements with the **`yd-submit`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
-- **Uploading**, **Downloading**, **Deleting** and **Listing** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`** and **`yd-ls`** commands
+- **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 
@@ -446,7 +449,7 @@ The configuration file has four possible sections:
 1. A `common` section that contains required security properties for interacting with the YellowDog platform, sets the Namespace in which YellowDog assets and objects are created, and a Tag that is used for tagging and naming assets and objects.
 2. A `workRequirement` section that defines the properties of Work Requirements to be submitted to the YellowDog platform.
 3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required.)
-4. A `dataClient` section that configures the remote data store used by the `yd-upload`, `yd-download`, `yd-delete`, and `yd-ls` commands.
+4. A `dataClient` section that configures the remote data store used by the `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands.
 
 There is a documented template TOML file provided in [config-template.toml](config-template.toml), containing the main properties that can be configured.
 
@@ -2251,7 +2254,7 @@ yd-nodeaction --status --node ydid:node:D9C548:abc123... --follow
 
 # Data Client
 
-The `yd-upload`, `yd-download`, `yd-delete`, and `yd-ls` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
+The `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
 
 The `rclone` binary will be automatically downloaded if not already present.
 
@@ -2271,7 +2274,7 @@ The `remote` field accepts either:
 - An inline rclone connection string (e.g., `"S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"`)
 - An `rclone:` prefix can optionally be included
 
-The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, and `yd-ls` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
+The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
 
 > **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target.
 
@@ -2317,7 +2320,7 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
 | `{{dataClient.<name>.prefix}}` | Named profile's prefix |
 
-For `yd-upload`/`yd-download`/`yd-delete`/`yd-ls`, `{{dataClient.remote/bucket/prefix}}` reflects the fully-resolved active profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
+For `yd-upload`/`yd-download`/`yd-delete`/`yd-ls`/`yd-copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully-resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 
@@ -2411,6 +2414,44 @@ Key options:
 Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
 
 Example: `yd-ls -R 'results_*'` lists all items matching `results_*`, showing directory contents as trees.
+
+## yd-copy
+
+The `yd-copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
+
+```
+yd-copy [options] <src-path> <dst-path>
+```
+
+`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution.
+
+Key options:
+- `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`); defaults to the base `[dataClient]` config
+- `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
+- `--sync` — mirror the source to the destination, deleting destination files not present in the source
+- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
+- `--dry-run`/`-D` — show what would happen without performing any transfers
+
+The source remote is configured via the standard data client flags (`--remote`, `--bucket`, `--prefix`, `--no-prefix`, `--data-client-profile`, or TOML `[dataClient]` settings).
+
+Examples:
+
+```bash
+# Copy within the same remote (same prefix)
+yd-copy input/data.csv output/data.csv
+
+# Copy to a different prefix on the same remote
+yd-copy --dst-prefix staging input/data.csv input/data.csv
+
+# Copy to a different remote profile defined in config.toml
+yd-copy --dst-profile production results/ results/
+
+# Sync source to destination (delete extra files at destination)
+yd-copy --sync --dst-profile backup data/ data/
+
+# Dry-run to preview what would be copied
+yd-copy --dry-run input/ output/
+```
 
 # Creating, Updating and Removing YellowDog Resources
 
@@ -3418,6 +3459,26 @@ yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
 ```
 
 The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+
+## yd-wait
+
+The `yd-wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome:
+
+- **Exit 0** — all entities concluded successfully
+- **Exit 1** — one or more Work Requirements ended in a `FAILED` or `CANCELLED` state, or an error occurred fetching the final status
+
+```shell
+yd-wait ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8
+```
+
+Multiple IDs can be supplied; `yd-wait` blocks until all of them have reached a terminal state. This makes it suitable for scripting pipelines:
+
+```shell
+WR_ID=$(yd-submit mywork.json --quiet)
+yd-wait "$WR_ID" && yd-download results/
+```
+
+Use `--quiet` / `-q` to suppress all output and rely solely on the exit code, which is useful in automated pipelines. For interactive observation of event streams, use `yd-follow` instead.
 
 ## yd-start
 

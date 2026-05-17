@@ -519,6 +519,57 @@ def load_config_data_client() -> ConfigDataClient:
     return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
 
 
+def load_config_data_client_for_profile(
+    profile_name: str | None,
+    dst_prefix_override: str | None = None,
+) -> ConfigDataClient:
+    """
+    Load a destination data client config for yd-copy.
+
+    CLI source-side flags (--remote, --bucket, --prefix, --no-prefix,
+    --data-client-profile) are NOT applied; only TOML + env vars are used.
+    dst_prefix_override (from --dst-prefix) takes highest priority.
+    Pass an empty string to suppress the default prefix entirely.
+    """
+    _load_namespace_and_tag()
+    base_section = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
+
+    try:
+        dc_section = _select_dc_section(base_section, profile_name)
+    except ValueError as e:
+        print_error(e)
+        exit(1)
+
+    if profile_name is not None:
+        print_info(f"Using destination data client profile: '{profile_name}'")
+
+    for _ in range(TOML_VAR_NESTED_DEPTH):
+        process_variable_substitutions_insitu(dc_section)
+
+    def _resolve(env_var: str, toml_key: str) -> str | None:
+        env_value = os.environ.get(env_var)
+        if env_value is not None:
+            return cast(str | None, process_variable_substitutions(env_value))
+        toml_value = dc_section.get(toml_key)
+        if toml_value is not None:
+            return cast(str | None, process_variable_substitutions(str(toml_value)))
+        return None
+
+    remote = _resolve(YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE)
+    bucket = _resolve(YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET)
+
+    if dst_prefix_override is not None:
+        prefix = cast(str | None, process_variable_substitutions(dst_prefix_override))
+    else:
+        prefix = _resolve(YD_DATA_CLIENT_PREFIX, DATA_CLIENT_PREFIX)
+        if prefix is None:
+            prefix = cast(
+                str | None, process_variable_substitutions("{{namespace}}/{{tag}}")
+            )
+
+    return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
+
+
 def load_config_work_requirement() -> ConfigWorkRequirement:
     """
     Load the configuration data for a Work Requirement

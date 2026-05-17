@@ -75,6 +75,10 @@ GENERATED_ID = generate_id("wp" + "_" + CONFIG_COMMON.name_tag)
 @main_wrapper
 def main():
 
+    if ARGS_PARSER.target is not None:
+        CONFIG_WP.target_instance_count = ARGS_PARSER.target
+        CONFIG_WP.target_instance_count_set = True
+
     # Direct file > file supplied using '-p' > file supplied in config file
     wp_json_file = (
         (

@@ -261,7 +261,7 @@ class CLIParser:
                 metavar="<var1=v1>",
             )
 
-        # yd-* (all except yd-boost, yd-cloudwizard, yd-follow, yd-list, yd-compare)
+        # yd-* (all except yd-boost, yd-cloudwizard, yd-follow, yd-list, yd-compare, yd-wait)
         if not any(
             module in sys.argv[0]
             for module in [
@@ -270,6 +270,7 @@ class CLIParser:
                 "follow",
                 "list",
                 "compare",
+                "wait",
             ]
         ):
             self.namespace_required = True
@@ -326,12 +327,20 @@ class CLIParser:
                 help="the tag to search when listing entities",
                 metavar="<tag>",
             )
-            parser.add_argument(
+            _list_output = parser.add_mutually_exclusive_group()
+            _list_output.add_argument(
                 "--ids-only",
                 "-D",
                 action="store_true",
                 required=False,
                 help="list the YellowDog IDs only",
+            )
+            _list_output.add_argument(
+                "--json",
+                "-J",
+                action="store_true",
+                required=False,
+                help="emit results as a plain JSON array (suppresses table formatting)",
             )
 
         # yd-submit
@@ -605,6 +614,17 @@ class CLIParser:
                     "list only active compute requirements / worker pools / work"
                     " requirements"
                 ),
+            )
+            parser.add_argument(
+                "--status",
+                dest="status_filter",
+                action="append",
+                required=False,
+                help=(
+                    "include only entities whose status matches the given value "
+                    "(case-insensitive); may be repeated to allow multiple statuses"
+                ),
+                metavar="<status>",
             )
             parser.add_argument(
                 "--public-ips-only",
@@ -881,9 +901,15 @@ class CLIParser:
                 help="remove resources using their YellowDog IDs (YDIDs)",
             )
 
-        # yd-follow / yd-show
-        if any(module in sys.argv[0] for module in ["follow", "show"]):
-            verb = "follow" if "follow" in sys.argv[0] else "show"
+        # yd-follow / yd-show / yd-wait
+        if any(module in sys.argv[0] for module in ["follow", "show", "wait"]):
+            verb = (
+                "follow"
+                if "follow" in sys.argv[0]
+                else "wait"
+                if "wait" in sys.argv[0]
+                else "show"
+            )
             parser.add_argument(
                 "yellowdog_ids",
                 nargs="*",
@@ -930,6 +956,14 @@ class CLIParser:
                 action="store_true",
                 required=False,
                 help="follow progress after provisioning",
+            )
+            parser.add_argument(
+                "--target",
+                "-T",
+                type=int,
+                required=False,
+                help="override targetInstanceCount from the spec or config",
+                metavar="<n>",
             )
 
         # yd-resize
@@ -1107,9 +1141,16 @@ class CLIParser:
                 "task_id_list",
                 nargs="*",
                 default="",
-                metavar="<task-id>",
+                metavar="<target>",
                 type=str,
-                help="the YellowDog ID(s) of the task(s) to abort",
+                help=(
+                    "items to target: task YDID(s) to abort directly; Work Requirement"
+                    " name(s) or YDID(s) to abort all executing tasks within; Task Group"
+                    " YDID(s) to abort executing tasks in a specific group; or"
+                    " 'wr-name/tg-name' to target a named Task Group within a named"
+                    " Work Requirement. Without arguments, selects interactively by"
+                    " namespace and tag."
+                ),
             )
 
         # yd-submit (positional arg)
@@ -1273,9 +1314,10 @@ class CLIParser:
                 ),
             )
 
-        # yd-upload / yd-download / yd-delete / yd-ls (data client commands)
+        # yd-upload / yd-download / yd-delete / yd-ls / yd-copy (data client commands)
         if any(
-            module in sys.argv[0] for module in ["upload", "download", "delete", "ls"]
+            module in sys.argv[0]
+            for module in ["upload", "download", "delete", "ls", "copy"]
         ):
             parser.add_argument(
                 "--remote",
@@ -1451,6 +1493,67 @@ class CLIParser:
                 required=False,
                 help="list directories recursively",
             )
+            parser.add_argument(
+                "--long",
+                "-l",
+                action="store_true",
+                required=False,
+                help="long listing: show file sizes and modification timestamps",
+            )
+
+        # yd-copy
+        if "copy" in sys.argv[0]:
+            parser.add_argument(
+                "src_path",
+                metavar="<src-path>",
+                type=str,
+                nargs="?",
+                help="source path relative to the configured source remote/bucket/prefix",
+            )
+            parser.add_argument(
+                "dst_path",
+                metavar="<dst-path>",
+                type=str,
+                nargs="?",
+                help="destination path relative to the configured destination remote/bucket/prefix",
+            )
+            parser.add_argument(
+                "--dst-profile",
+                type=str,
+                required=False,
+                help=(
+                    "select a named [dataClient.<name>] profile for the destination; "
+                    "inherits unset fields from [dataClient]"
+                ),
+                metavar="<name>",
+            )
+            parser.add_argument(
+                "--dst-prefix",
+                type=str,
+                required=False,
+                help=(
+                    "override the destination path prefix; "
+                    "supports {{variable}} substitution; "
+                    "pass '' to place files at the bucket root"
+                ),
+                metavar="<prefix>",
+            )
+            parser.add_argument(
+                "--recursive",
+                "-R",
+                action="store_true",
+                required=False,
+                help="copy directories recursively (rclone copies recursively by default)",
+            )
+            parser.add_argument(
+                "--sync",
+                action="store_true",
+                required=False,
+                help=(
+                    "make the destination a mirror of the source, "
+                    "deleting destination files not present in the source"
+                ),
+            )
 
         self.args = parser.parse_args()
 
@@ -1501,6 +1604,10 @@ class CLIParser:
     @allow_missing_attribute
     def quiet(self) -> bool | None:
         return self.args.quiet
+
+    @quiet.setter
+    def quiet(self, value: bool) -> None:
+        self.args.quiet = value
 
     @property
     @allow_missing_attribute
@@ -1553,6 +1660,11 @@ class CLIParser:
     @allow_missing_attribute
     def ids_only(self) -> bool | None:
         return self.args.ids_only
+
+    @property
+    @allow_missing_attribute
+    def json_output(self) -> bool | None:
+        return self.args.json
 
     # -----------------------------------------------------------------------
     # yd-submit
@@ -1644,6 +1756,11 @@ class CLIParser:
     def worker_pool_file(self) -> str | None:
         return self.args.worker_pool
 
+    @property
+    @allow_missing_attribute
+    def target(self) -> int | None:
+        return self.args.target
+
     # -----------------------------------------------------------------------
     # yd-cancel
     # -----------------------------------------------------------------------
@@ -1695,6 +1812,11 @@ class CLIParser:
     @allow_missing_attribute
     def active_only(self) -> bool | None:
         return self.args.active_only
+
+    @property
+    @allow_missing_attribute
+    def status_filter(self) -> list[str] | None:
+        return self.args.status_filter
 
     @property
     @allow_missing_attribute
@@ -2128,6 +2250,35 @@ class CLIParser:
     def remote_paths(self) -> list[str]:
         return self.args.remote_paths
 
+    @property
+    @allow_missing_attribute
+    def long_listing(self) -> bool | None:
+        return self.args.long
+
+    # -----------------------------------------------------------------------
+    # yd-copy
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def src_path(self) -> str | None:
+        return self.args.src_path
+
+    @property
+    @allow_missing_attribute
+    def dst_path(self) -> str | None:
+        return self.args.dst_path
+
+    @property
+    @allow_missing_attribute
+    def dst_profile(self) -> str | None:
+        return self.args.dst_profile
+
+    @property
+    @allow_missing_attribute
+    def dst_prefix(self) -> str | None:
+        return self.args.dst_prefix
+
 
 def lookup_module_description(module_name: str) -> str | None:
     """
@@ -2137,7 +2288,7 @@ def lookup_module_description(module_name: str) -> str | None:
     suffix = None
 
     if "abort" in module_name:
-        suffix = "aborting Tasks"
+        suffix = "aborting Tasks individually, or in Work Requirements or Task Groups"
     elif "delete" in module_name:
         suffix = "deleting remote data client files and directories"
     elif "download" in module_name:
@@ -2150,6 +2301,8 @@ def lookup_module_description(module_name: str) -> str | None:
         suffix = "cancelling Work Requirements"
     elif "cloudwizard" in module_name:
         suffix = "setting up cloud accounts and YellowDog resources"
+    elif "copy" in module_name:
+        suffix = "copying files between remote data client locations"
     elif "compare" in module_name:
         suffix = (
             "comparing whether a work requirement or task group is matched by "
@@ -2193,6 +2346,11 @@ def lookup_module_description(module_name: str) -> str | None:
         suffix = "formatting JSON files using a compact encoder"
     elif "jsonnet" in module_name:
         suffix = "converting a Jsonnet file to JSON"
+    elif "wait" in module_name:
+        suffix = (
+            "waiting for Work Requirements, Worker Pools, or Compute Requirements"
+            " to reach a terminal state"
+        )
     elif "version" in module_name:
         suffix = "reporting version information"
     elif "help" in module_name:

@@ -28,9 +28,13 @@ def _file(
     return SimpleNamespace(name=name, path=rpath)
 
 
-def _printed_lines(listing, recursive: bool = False) -> list[str]:
+def _printed_lines(listing, recursive: bool = False, long: bool = False) -> list[str]:
     """Return every string passed as the first positional arg to print_simple."""
-    with patch("yellowdog_cli.ls.print_simple") as mock:
+    with (
+        patch("yellowdog_cli.ls.print_simple") as mock,
+        patch("yellowdog_cli.ls.ARGS_PARSER") as mock_args,
+    ):
+        mock_args.long_listing = long
         _print_listing(listing, recursive=recursive)
     return [c.args[0] for c in mock.call_args_list]
 
@@ -84,7 +88,7 @@ class TestPrintListingFlatDirectories:
         assert any("mydir/" in line for line in lines)
 
     def test_directory_uses_DIR_label(self):
-        lines = _printed_lines(_listing(dirs=[_dir("mydir")]))
+        lines = _printed_lines(_listing(dirs=[_dir("mydir")]), long=True)
         assert any("DIR" in line for line in lines)
 
     def test_multiple_directories(self):
@@ -99,18 +103,49 @@ class TestPrintListingFlatFiles:
         assert any("report.csv" in line for line in lines)
 
     def test_size_formatted_with_commas(self):
-        lines = _printed_lines(_listing(files=[_file("big.bin", size=1_234_567)]))
+        lines = _printed_lines(
+            _listing(files=[_file("big.bin", size=1_234_567)]), long=True
+        )
         assert any("1,234,567" in line for line in lines)
 
-    def test_none_size_shows_empty_field(self):
-        lines = _printed_lines(_listing(files=[_file("nosize.txt", size=None)]))
+    def test_none_size_shows_dash(self):
+        lines = _printed_lines(
+            _listing(files=[_file("nosize.txt", size=None)]), long=True
+        )
         assert any("nosize.txt" in line for line in lines)
+        assert any("-" in line for line in lines)
+
+    def test_negative_size_shows_dash(self):
+        lines = _printed_lines(_listing(files=[_file("unk.bin", size=-1)]), long=True)
+        assert any("-" in line for line in lines)
+        assert not any("-1" in line for line in lines)
 
     def test_mod_time_present_in_output(self):
         lines = _printed_lines(
-            _listing(files=[_file("f.txt", size=10, mod_time="2024-01-15")])
+            _listing(
+                files=[
+                    _file("f.txt", size=10, mod_time="2024-01-15T09:22:11.000000000Z")
+                ]
+            ),
+            long=True,
         )
-        assert any("2024-01-15" in line for line in lines)
+        assert any("2024-01-15T09:22:11" in line for line in lines)
+
+    def test_zero_mod_time_shows_dash(self):
+        lines = _printed_lines(
+            _listing(
+                files=[
+                    _file("f.txt", size=10, mod_time="0001-01-01T00:00:00.000000000Z")
+                ]
+            ),
+            long=True,
+        )
+        assert any("-" in line for line in lines)
+
+    def test_default_no_size_shown(self):
+        lines = _printed_lines(_listing(files=[_file("f.txt", size=12345)]))
+        assert not any("12,345" in line for line in lines)
+        assert any("f.txt" in line for line in lines)
 
 
 class TestPrintListingFlatMixed:
@@ -208,7 +243,7 @@ class TestPrintListingTree:
         assert any("├──" in line for line in lines)
 
     def test_file_size_appears_in_tree(self):
-        lines = _printed_lines(_tree_listing(), recursive=True)
+        lines = _printed_lines(_tree_listing(), recursive=True, long=True)
         assert any("100" in line for line in lines)
 
     def test_tree_dirs_before_files_at_each_level(self):

@@ -9,11 +9,11 @@ from copy import deepcopy
 from datetime import timedelta
 from gzip import compress
 from json import dumps as json_dumps
+from json import loads as json_loads
 from math import ceil
 from os.path import dirname, relpath
 from typing import cast
 
-import jsons
 import requests
 from yellowdog_client.model import (
     CloudProvider,
@@ -357,7 +357,7 @@ def submit_work_requirement(
     task_group_count = check_float_or_int(
         wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count)
     )
-    if task_group_count > 1:
+    if task_group_count is not None and task_group_count > 1:
         if len(wr_data[TASK_GROUPS]) == 1:
             print_info(
                 f"Expanding number of Task Groups to '{TASK_GROUP_COUNT}="
@@ -481,11 +481,13 @@ def create_task_group(
     effective_tg_number = tg_number + tg_number_offset
     num_tasks = len(task_group_data[TASKS])
     if num_tasks == 1:  # Account for Task expansion
-        num_tasks = check_int(
+        _task_count = check_int(
             task_group_data.get(
                 TASK_COUNT, wr_data.get(TASK_COUNT, CONFIG_WR.task_count)
             )
         )
+        if _task_count is not None:
+            num_tasks = _task_count
 
     # The following handles possible CSV substitution at the config.toml level
     try:
@@ -536,7 +538,7 @@ def create_task_group(
         task_template_data is not None and task_template_data.get(TASK_TYPE) is not None
     )
     if template_provides_type and not task_types:
-        task_types.append(task_template_data.get(TASK_TYPE))
+        task_types.append(task_template_data.get(TASK_TYPE))  # type: ignore[union-attr]
     if not task_types and not template_provides_type and num_tasks > 0:
         raise ValueError(
             f"No Task Type(s) specified in Task Group '{task_group_name}': "
@@ -595,7 +597,7 @@ def create_task_group(
         taskTypes=task_types,
         maximumTaskRetries=check_int(
             task_group_data.get(
-                MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries)
+                MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries or 0)
             )
         ),
         workerTags=check_list(
@@ -660,18 +662,19 @@ def create_task_group(
         task_template = None
 
     # Create the Task Group
+    _finish_all = check_bool(
+        task_group_data.get(
+            FINISH_IF_ALL_TASKS_FINISHED,
+            wr_data.get(
+                FINISH_IF_ALL_TASKS_FINISHED, config_wr.finish_if_all_tasks_finished
+            ),
+        )
+    )
     task_group = TaskGroup(
         name=task_group_name,
         runSpecification=run_specification,
         dependencies=generate_dependencies(task_group_data),
-        finishIfAllTasksFinished=check_bool(
-            task_group_data.get(
-                FINISH_IF_ALL_TASKS_FINISHED,
-                wr_data.get(
-                    FINISH_IF_ALL_TASKS_FINISHED, config_wr.finish_if_all_tasks_finished
-                ),
-            )
-        ),
+        finishIfAllTasksFinished=_finish_all if _finish_all is not None else True,
         finishIfAnyTaskFailed=check_bool(
             task_group_data.get(
                 FINISH_IF_ANY_TASK_FAILED,
@@ -679,9 +682,12 @@ def create_task_group(
                     FINISH_IF_ANY_TASK_FAILED, config_wr.finish_if_any_task_failed
                 ),
             )
-        ),
+        )
+        or False,
         priority=check_float_or_int(
-            task_group_data.get(PRIORITY, wr_data.get(PRIORITY, config_wr.priority))
+            task_group_data.get(
+                PRIORITY, wr_data.get(PRIORITY, config_wr.priority or 0)
+            )
         ),
         completedTaskTtl=completed_task_ttl,
         tag=task_group_data.get(TASK_GROUP_TAG),
@@ -894,14 +900,17 @@ def generate_batch_of_tasks_for_task_group(
         task_group_data = wr_data[TASK_GROUPS][spec_tg_index]
         task = tasks[task_number] if task_count is None else tasks[0]
 
-        set_task_names = check_bool(
-            task.get(
-                SET_TASK_NAMES,
-                task_group_data.get(
+        set_task_names = (
+            check_bool(
+                task.get(
                     SET_TASK_NAMES,
-                    wr_data.get(SET_TASK_NAMES, CONFIG_WR.set_task_names),
-                ),
+                    task_group_data.get(
+                        SET_TASK_NAMES,
+                        wr_data.get(SET_TASK_NAMES, CONFIG_WR.set_task_names),
+                    ),
+                )
             )
+            or False
         )
 
         display_task_number = task_number + task_number_offset
@@ -958,14 +967,17 @@ def generate_batch_of_tasks_for_task_group(
         )
         env = merge_environment(env, add_env)
 
-        add_yd_env_vars = check_bool(
-            task.get(
-                ADD_YD_ENV_VARS,
-                task_group_data.get(
+        add_yd_env_vars = (
+            check_bool(
+                task.get(
                     ADD_YD_ENV_VARS,
-                    wr_data.get(ADD_YD_ENV_VARS, config_wr.add_yd_env_vars),
-                ),
+                    task_group_data.get(
+                        ADD_YD_ENV_VARS,
+                        wr_data.get(ADD_YD_ENV_VARS, config_wr.add_yd_env_vars),
+                    ),
+                )
             )
+            or False
         )
 
         # Task timeout is automatically inherited from the Task Group level
@@ -1220,7 +1232,7 @@ def add_to_existing_work_requirement(
     task_group_count = check_float_or_int(
         wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count)
     )
-    if task_group_count > 1:
+    if task_group_count is not None and task_group_count > 1:
         if len(wr_data[TASK_GROUPS]) == 1:
             print_info(
                 f"Expanding number of Task Groups to '{TASK_GROUP_COUNT}="
@@ -1364,7 +1376,7 @@ def submit_json_raw(wr_file: str):
     )
 
     if response.status_code == 200:
-        wr_id = jsons.loads(response.text)["id"]
+        wr_id = json_loads(response.text)["id"]
         print_info(
             f"Created Work Requirement '{wr_data['namespace']}/{wr_name}' ({wr_id})"
         )

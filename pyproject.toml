@@ -21,7 +21,6 @@
         "PyPAC >= 0.16.4",
         "dateparser",
         "python-dotenv",
-        "jsons",
         "requests",
         "rclone-api",
         "rich >= 13.9.4",
@@ -45,6 +44,7 @@
     jsonnet = ["jsonnet"]
     cloudwizard = [
         "boto3",
+        "botocore",
         "google-cloud-compute",
         "google-cloud-storage",
         "azure-identity",
@@ -72,6 +72,7 @@
     yd-application = "yellowdog_cli.application:main"
     yd-boost = "yellowdog_cli.boost:main"
     yd-cancel = "yellowdog_cli.cancel:main"
+    yd-copy = "yellowdog_cli.copy:main"
     yd-cloudwizard = "yellowdog_cli.cloudwizard:main"
     yd-compare = "yellowdog_cli.compare:main"
     yd-create = "yellowdog_cli.create:main"
@@ -97,6 +98,7 @@
     yd-terminate = "yellowdog_cli.terminate:main"
     yd-upload = "yellowdog_cli.upload:main"
     yd-version = "yellowdog_cli.version:main"
+    yd-wait = "yellowdog_cli.wait:main"
 
 [tool.setuptools]
     include-package-data = false

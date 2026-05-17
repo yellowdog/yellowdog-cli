@@ -3,6 +3,10 @@ Check that configuration values are the types we expect.
 If not, raise an Exception.
 """
 
+from typing import TypeVar
+
+_T = TypeVar("_T")
+
 
 def _type(type_) -> str:
     if "int" in f"{type_}":
@@ -20,7 +24,7 @@ def _type(type_) -> str:
     raise TypeError(f"Unhandled type '{type_}'")
 
 
-def _check(thing, type_):
+def _check(thing: _T, type_) -> _T:
     """
     If None is passed in, just return None.
     """
@@ -36,15 +40,15 @@ def _check(thing, type_):
     return thing
 
 
-def check_int(thing):
+def check_int(thing: _T) -> _T:
     return _check(thing, int)
 
 
-def check_float(thing):
+def check_float(thing: _T) -> _T:
     return _check(thing, float)
 
 
-def check_float_or_int(thing):
+def check_float_or_int(thing: _T) -> _T:
     """
     For values that should be Floats but for which an Integer is acceptable.
     """
@@ -61,17 +65,17 @@ def check_float_or_int(thing):
             )
 
 
-def check_bool(thing):
+def check_bool(thing: _T) -> _T:
     return _check(thing, bool)
 
 
-def check_str(thing):
+def check_str(thing: _T) -> _T:
     return _check(thing, str)
 
 
-def check_list(thing):
+def check_list(thing: _T) -> _T:
     return _check(thing, list)
 
 
-def check_dict(thing):
+def check_dict(thing: _T) -> _T:
     return _check(thing, dict)

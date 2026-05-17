@@ -246,17 +246,29 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
         print_warning(f"Work Requirement finished with {' · '.join(parts)} task(s)")
 
 
-def follow_ids(ydids: list[str], auto_cr: bool = False):
+_FOLLOWABLE = frozenset(
+    [YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT]
+)
+
+
+def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
     """
     Creates an event thread for each YDID passed on the command line.
+
+    Returns the deduplicated list of valid original IDs (WR/WP/CR only, before
+    any auto-CR expansion) — callers that need to inspect final status after
+    the streams conclude can use this list directly.
     """
     if not ydids:
-        return
+        return []
 
     ydids_set = set(ydids)  # Eliminate duplicates
     num_duplicates = len(ydids) - len(ydids_set)
     if num_duplicates > 0:
         print_warning(f"Ignoring {num_duplicates} duplicate YellowDog ID(s)")
+
+    # Capture valid original IDs before auto-CR expansion
+    valid_original = [ydid for ydid in ydids_set if get_ydid_type(ydid) in _FOLLOWABLE]
 
     if auto_cr:
         # Automatically add Compute Requirement IDs for
@@ -278,11 +290,7 @@ def follow_ids(ydids: list[str], auto_cr: bool = False):
 
     for ydid in ydids_set:
         ydid_type = get_ydid_type(ydid)
-        if ydid_type not in [
-            YDIDType.WORK_REQUIREMENT,
-            YDIDType.WORKER_POOL,
-            YDIDType.COMPUTE_REQUIREMENT,
-        ]:
+        if ydid_type not in _FOLLOWABLE:
             print_error(
                 f"Invalid YellowDog ID '{ydid}' (Must be valid YDID for Work"
                 " Requirement, Worker Pool or Compute Requirement)"
@@ -331,6 +339,8 @@ def follow_ids(ydids: list[str], auto_cr: bool = False):
     if len(threads) > 1 and not ARGS_PARSER.print_pid:
         print_info("All event streams have concluded")
 
+    return valid_original
+
 
 def follow_events(
     ydid: str,
@@ -366,7 +376,7 @@ def follow_events(
 
         try:
             for event in response.iter_lines(decode_unicode=True):
-                if event:
+                if event and isinstance(event, str):
                     if on_event is not None:
                         on_event(event, ydid_type)
                     else:

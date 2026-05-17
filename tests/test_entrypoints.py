@@ -12,6 +12,7 @@ from cli_test_helpers import shell
         ("yd-abort --help", 0),
         ("yd-boost --help", 0),
         ("yd-cloudwizard --help", 0),
+        ("yd-copy --help", 0),
         ("yd-create --help", 0),
         ("yd-delete --help", 0),
         ("yd-download --help", 0),
@@ -35,6 +36,7 @@ from cli_test_helpers import shell
         ("yd-terminate --help", 0),
         ("yd-upload --help", 0),
         ("yd-version", 0),
+        ("yd-wait --help", 0),
     ],
 )
 def test_entrypoint(cmd, expected):

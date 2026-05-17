@@ -11,10 +11,12 @@ The commands support:
 - **Cancelling** Work Requirements with the **`yd-cancel`** command
 - **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
 - **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands
+- **Copying** files between remote data stores with the **`yd-copy`** command
 - **Deleting** files from a remote data store with the **`yd-delete`** command
 - **Downloading** files from a remote data store with the **`yd-download`** command
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
+- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Listing** remote data store contents with the **`yd-ls`** command
@@ -30,7 +32,7 @@ The commands support:
 - **Uploading** files to a remote data store with the **`yd-upload`** command
 - **Cloud provider setup** (AWS, Azure, GCP) with the **`yd-cloudwizard`** command
 
-Utility commands are also provided: **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**.
+Utility commands are also provided: **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
 
 ## Installation
 
