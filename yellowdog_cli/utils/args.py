@@ -957,6 +957,14 @@ class CLIParser:
                 required=False,
                 help="follow progress after provisioning",
             )
+            parser.add_argument(
+                "--target",
+                "-T",
+                type=int,
+                required=False,
+                help="override targetInstanceCount from the spec or config",
+                metavar="<n>",
+            )
 
         # yd-resize
         if any(module in sys.argv[0] for module in ["resize"]):
@@ -1733,6 +1741,11 @@ class CLIParser:
     @allow_missing_attribute
     def worker_pool_file(self) -> str | None:
         return self.args.worker_pool
+
+    @property
+    @allow_missing_attribute
+    def target(self) -> int | None:
+        return self.args.target
 
     # -----------------------------------------------------------------------
     # yd-cancel
