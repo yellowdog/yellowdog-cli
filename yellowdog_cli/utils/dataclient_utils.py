@@ -43,7 +43,12 @@ def _rclone_for_config(config: ConfigDataClient):
     """
     remote_str = _require_remote(config)
     remote_name, config_section = parse_rclone_config(remote_str)
-    rclone = make_rclone(Config(config_section) if config_section is not None else None)
+    try:
+        rclone = make_rclone(
+            Config(config_section) if config_section is not None else None
+        )
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Remote '{remote_name}': {e}") from e
     return remote_name, rclone
 
 
@@ -78,7 +83,7 @@ def resolve_remote_path(
     if config.prefix:
         parts.append(config.prefix.strip("/"))
     if relative_path:
-        parts.append(relative_path.lstrip("/"))
+        parts.append(relative_path.strip("/"))
     elif filename:
         parts.append(filename)
 

@@ -55,25 +55,27 @@ def main():
         )
     )
 
-    if selected_work_requirement_summaries:
+    if not selected_work_requirement_summaries:
+        print_info("No matching Work Requirements found")
+        return
+
+    if not ARGS_PARSER.yes:
         selected_work_requirement_summaries = select(
             CLIENT,
             selected_work_requirement_summaries,
-            single_result=True,
             override_quiet=True,
         )
-    else:
-        print_info("No matching Work Requirements found")
 
-    if len(selected_work_requirement_summaries) == 1:
-        abort_tasks_selectively(selected_work_requirement_summaries[0])
+    for wr_summary in selected_work_requirement_summaries:
+        abort_tasks_selectively(wr_summary)
 
 
 def abort_tasks_selectively(
     wr_summary: WorkRequirementSummary,
 ) -> None:
     """
-    Abort selected Tasks in a Work Requirements
+    Abort selected Tasks in a Work Requirement.
+    With --yes, all executing tasks are aborted without prompting.
     """
     print_info(f"Aborting Tasks in Work Requirement '{wr_summary.name}'")
 
@@ -83,27 +85,31 @@ def abort_tasks_selectively(
     )
     tasks: list[Task] = CLIENT.work_client.find_tasks(task_search)
 
-    if tasks:
-        tasks = select(CLIENT, sorted_objects(tasks), override_quiet=True)
-    else:
+    if not tasks:
         print_info(
             "No currently executing Tasks in this Work Requirement",
             override_quiet=True,
         )
+        return
+
+    if not ARGS_PARSER.yes:
+        tasks = select(CLIENT, sorted_objects(tasks), override_quiet=True)
+        if not tasks or not confirmed(f"Abort {len(tasks)} Task(s)?"):
+            print_info("No Tasks Aborted")
+            return
 
     aborted_tasks = 0
-    if tasks and confirmed(f"Abort {len(tasks)} Task(s)?"):
-        for task in tasks:
-            try:
-                CLIENT.work_client.cancel_task(task, abort=True)
-                print_info(
-                    f"Aborted Task '{task.name}' in Task Group"
-                    f" '{get_task_group_name(CLIENT, wr_summary, task)}' in Work"
-                    f" Requirement '{wr_summary.name}'"
-                )
-                aborted_tasks += 1
-            except Exception as e:
-                print_error(f"Unable to abort Task '{task.name}': {e}")
+    for task in tasks:
+        try:
+            CLIENT.work_client.cancel_task(task, abort=True)
+            print_info(
+                f"Aborted Task '{task.name}' in Task Group"
+                f" '{get_task_group_name(CLIENT, wr_summary, task)}' in Work"
+                f" Requirement '{wr_summary.name}'"
+            )
+            aborted_tasks += 1
+        except Exception as e:
+            print_error(f"Unable to abort Task '{task.name}': {e}")
 
     if aborted_tasks == 0:
         print_info("No Tasks Aborted")

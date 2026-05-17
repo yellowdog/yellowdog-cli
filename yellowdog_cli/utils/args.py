@@ -1486,6 +1486,13 @@ class CLIParser:
                 required=False,
                 help="list directories recursively",
             )
+            parser.add_argument(
+                "--long",
+                "-l",
+                action="store_true",
+                required=False,
+                help="long listing: show file sizes and modification timestamps",
+            )
 
         # yd-copy
         if "copy" in sys.argv[0]:
@@ -2235,6 +2242,11 @@ class CLIParser:
     @allow_missing_attribute
     def remote_paths(self) -> list[str]:
         return self.args.remote_paths
+
+    @property
+    @allow_missing_attribute
+    def long_listing(self) -> bool | None:
+        return self.args.long
 
     # -----------------------------------------------------------------------
     # yd-copy

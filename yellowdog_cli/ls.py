@@ -21,6 +21,21 @@ from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
 
+_ZERO_MODTIME_PREFIX = "0001-"
+
+
+def _fmt_size(size: int | None) -> str:
+    if size is None or size < 0:
+        return "-"
+    return f"{size:,}"
+
+
+def _fmt_modtime(mod_time: str | None) -> str:
+    if not mod_time or mod_time.startswith(_ZERO_MODTIME_PREFIX):
+        return "-"
+    # Strip sub-second precision and trailing Z
+    return mod_time.split(".")[0].rstrip("Z")
+
 
 def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> None:
     """
@@ -36,19 +51,28 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
 
     base = remote_dir.rstrip("/")
 
+    long = ARGS_PARSER.long_listing or False
     if not recursive:
         entries = []
         for e in matches:
             if e["IsDir"]:
                 entries.append(("DIR", e["Name"] + "/", ""))
             else:
-                size = f"{e['Size']:,}" if e.get("Size") is not None else ""
-                entries.append((size, e["Name"], e.get("ModTime", "")))
-        max_size_w = max(len(e[0]) for e in entries)
-        max_name_w = max(len(e[1]) for e in entries)
-        for size, name, mod_time in entries:
-            line = f"  {size:>{max_size_w}}  {name:<{max_name_w}}  {mod_time}".rstrip()
-            print_simple(line, override_quiet=True)
+                size = _fmt_size(e.get("Size")) if long else ""
+                entries.append(
+                    (size, e["Name"], _fmt_modtime(e.get("ModTime")) if long else "")
+                )
+        if long:
+            max_size_w = max(len(e[0]) for e in entries)
+            max_name_w = max(len(e[1]) for e in entries)
+            for size, name, mod_time in entries:
+                line = (
+                    f"  {size:>{max_size_w}}  {name:<{max_name_w}}  {mod_time}".rstrip()
+                )
+                print_simple(line, override_quiet=True)
+        else:
+            for _, name, _ in entries:
+                print_simple(f"  {name}", override_quiet=True)
     else:
         for e in matches:
             entry_path = f"{base}/{e['Name']}"
@@ -58,9 +82,10 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
                 if sub_listing.dirs or sub_listing.files:
                     _print_tree(sub_listing)
             else:
-                size_str = f"{e['Size']:,}" if e.get("Size") is not None else ""
-                mod_time = e.get("ModTime", "")
-                line = f"{e['Name']}  {size_str}  {mod_time}".rstrip()
+                if long:
+                    line = f"{e['Name']}  {_fmt_size(e.get('Size'))}  {_fmt_modtime(e.get('ModTime'))}".rstrip()
+                else:
+                    line = e["Name"]
                 print_simple(line, override_quiet=True)
 
 
@@ -107,20 +132,24 @@ def _print_listing(listing, recursive: bool = False) -> None:
 
 def _print_flat(listing) -> None:
 
+    long = ARGS_PARSER.long_listing or False
     entries = []
     for d in listing.dirs:
         entries.append(("DIR", d.name + "/", ""))
     for f in listing.files:
-        size = f"{f.path.size:,}" if f.path.size is not None else ""
-        mod_time = f.path.mod_time or ""
+        size = _fmt_size(f.path.size) if long else ""
+        mod_time = _fmt_modtime(f.path.mod_time) if long else ""
         entries.append((size, f.name, mod_time))
 
-    max_size_w = max(len(e[0]) for e in entries)
-    max_name_w = max(len(e[1]) for e in entries)
-
-    for size, name, mod_time in entries:
-        line = f"  {size:>{max_size_w}}  {name:<{max_name_w}}  {mod_time}".rstrip()
-        print_simple(line, override_quiet=True)
+    if long:
+        max_size_w = max(len(e[0]) for e in entries)
+        max_name_w = max(len(e[1]) for e in entries)
+        for size, name, mod_time in entries:
+            line = f"  {size:>{max_size_w}}  {name:<{max_name_w}}  {mod_time}".rstrip()
+            print_simple(line, override_quiet=True)
+    else:
+        for _, name, _ in entries:
+            print_simple(f"  {name}", override_quiet=True)
 
 
 def _find_base_prefix(listing) -> str:
@@ -177,9 +206,12 @@ def _print_tree(listing) -> None:
                 print_simple(f"{prefix}{connector}{name}/", override_quiet=True)
                 _render(rel_path, child_prefix)
             else:
-                size_str = f"{size:,}" if size is not None else ""
-                mod_time_str = f"  {mod_time}" if mod_time else ""
-                line = f"{prefix}{connector}{name}  {size_str}{mod_time_str}".rstrip()
+                if ARGS_PARSER.long_listing:
+                    size_str = _fmt_size(size)
+                    mod_time_str = _fmt_modtime(mod_time)
+                    line = f"{prefix}{connector}{name}  {size_str}  {mod_time_str}".rstrip()
+                else:
+                    line = f"{prefix}{connector}{name}"
                 print_simple(line, override_quiet=True)
 
     _render("", "")

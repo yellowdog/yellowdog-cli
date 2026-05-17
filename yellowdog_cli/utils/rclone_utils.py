@@ -69,7 +69,7 @@ def _find_rclone_conf() -> Path:
 
     if p.exists():
         return p
-    raise FileNotFoundError(f"No rclone config file found at '{p}'")
+    raise FileNotFoundError("not configured (no rclone.conf found)")
 
 
 def make_rclone_for_copy(
