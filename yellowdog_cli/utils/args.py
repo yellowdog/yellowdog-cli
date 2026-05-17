@@ -616,6 +616,17 @@ class CLIParser:
                 ),
             )
             parser.add_argument(
+                "--status",
+                dest="status_filter",
+                action="append",
+                required=False,
+                help=(
+                    "include only entities whose status matches the given value "
+                    "(case-insensitive); may be repeated to allow multiple statuses"
+                ),
+                metavar="<status>",
+            )
+            parser.add_argument(
                 "--public-ips-only",
                 action="store_true",
                 required=False,
@@ -1774,6 +1785,11 @@ class CLIParser:
     @allow_missing_attribute
     def active_only(self) -> bool | None:
         return self.args.active_only
+
+    @property
+    @allow_missing_attribute
+    def status_filter(self) -> list[str] | None:
+        return self.args.status_filter
 
     @property
     @allow_missing_attribute

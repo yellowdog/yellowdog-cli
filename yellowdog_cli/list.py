@@ -35,6 +35,8 @@ from yellowdog_client.model import (
     Role,
     Task,
     TaskGroup,
+    TaskGroupStatus,
+    TaskStatus,
     User,
     Worker,
     WorkerPoolStatus,
@@ -111,6 +113,37 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 
+_KNOWN_STATUSES: dict[str, frozenset[str]] = {
+    ET_WORK_REQUIREMENTS: frozenset(e.value for e in WorkRequirementStatus),
+    ET_TASK_GROUPS: frozenset(e.value for e in TaskGroupStatus),
+    ET_TASKS: frozenset(e.value for e in TaskStatus),
+    ET_WORKER_POOLS: frozenset(e.value for e in WorkerPoolStatus),
+    ET_NODES: frozenset(e.value for e in NodeStatus),
+    ET_WORKERS: frozenset(e.value for e in WorkerStatus),
+    ET_COMPUTE_REQUIREMENTS: frozenset(e.value for e in ComputeRequirementStatus),
+}
+
+
+def _apply_status_filter(objects: list) -> list:
+    """Filter a list of objects to those whose status matches ARGS_PARSER.status_filter."""
+    sf = ARGS_PARSER.status_filter
+    if not sf:
+        return objects
+    upper = {s.upper() for s in sf}
+    result = []
+    for obj in objects:
+        status = getattr(obj, "status", None)
+        if status is None:
+            result.append(obj)
+            continue
+        try:
+            status_str = status.value.upper()
+        except AttributeError:
+            status_str = str(status).upper()
+        if status_str in upper:
+            result.append(obj)
+    return result
+
 
 @main_wrapper
 def main():
@@ -137,6 +170,16 @@ def main():
                 return
 
     entity_type = ARGS_PARSER.entity_type
+
+    if sf := ARGS_PARSER.status_filter:
+        known = _KNOWN_STATUSES.get(entity_type or "", frozenset())
+        if known:
+            unknown = [s for s in sf if s.upper() not in known]
+            if unknown:
+                print_warning(
+                    f"Unrecognised status value(s): {', '.join(repr(s) for s in unknown)}. "
+                    f"Known values: {', '.join(sorted(known))}"
+                )
 
     if entity_type in (ET_WORK_REQUIREMENTS, ET_TASK_GROUPS, ET_TASKS):
         list_work_requirements()
@@ -210,6 +253,10 @@ def list_work_requirements():
 
     work_requirement_summaries = sorted_objects(work_requirement_summaries)
     if ARGS_PARSER.entity_type == ET_WORK_REQUIREMENTS:
+        work_requirement_summaries = _apply_status_filter(work_requirement_summaries)
+        if not work_requirement_summaries:
+            print_info("No matching Work Requirements")
+            return
         if ARGS_PARSER.json_output:
             if ARGS_PARSER.details:
                 print_objects_as_json(
@@ -240,11 +287,13 @@ def list_work_requirements():
                 get_task_groups_from_wr_by_id(CLIENT, cast(str, work_summary.id))
             )
             if ARGS_PARSER.entity_type == ET_TASK_GROUPS:
-                all_objects.extend(tgs)
+                all_objects.extend(_apply_status_filter(tgs))
             else:
                 for tg in tgs:
                     all_objects.extend(
-                        get_all_tasks_in_task_group(CLIENT, cast(str, tg.id))
+                        _apply_status_filter(
+                            get_all_tasks_in_task_group(CLIENT, cast(str, tg.id))
+                        )
                     )
         print_objects_as_json(all_objects)
     else:
@@ -260,7 +309,7 @@ def list_task_groups(work_summary: WorkRequirementSummary):
     task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
         CLIENT, cast(str, work_summary.id)
     )
-    task_groups = sorted_objects(task_groups)
+    task_groups = _apply_status_filter(sorted_objects(task_groups))
     if ARGS_PARSER.entity_type != ET_TASKS:
         if ARGS_PARSER.details:
             print_yd_object_list(
@@ -279,7 +328,7 @@ def list_task_groups(work_summary: WorkRequirementSummary):
 
 def list_tasks(task_group: TaskGroup, _work_summary: WorkRequirementSummary):
     tasks: list[Task] = get_all_tasks_in_task_group(CLIENT, cast(str, task_group.id))
-    tasks = sorted_objects(tasks)
+    tasks = _apply_status_filter(sorted_objects(tasks))
     if ARGS_PARSER.details:
         print_yd_object_list([(task, None) for task in select(CLIENT, tasks)])
     elif ARGS_PARSER.ids_only:
@@ -311,12 +360,14 @@ def list_worker_pools():
     if ARGS_PARSER.active_only:
         print_info("Displaying active Worker Pools only")
 
-    worker_pool_summaries = [
-        wp_summary
-        for wp_summary in worker_pool_summaries
-        if wp_summary.status not in excluded_states
-        and CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
-    ]
+    worker_pool_summaries = _apply_status_filter(
+        [
+            wp_summary
+            for wp_summary in worker_pool_summaries
+            if wp_summary.status not in excluded_states
+            and CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
+        ]
+    )
 
     if not worker_pool_summaries:
         print_info("No Worker Pools to display")
@@ -396,7 +447,12 @@ def list_compute_requirements():
         print_info("No matching Compute Requirements")
         return
 
-    compute_requirement_summaries = sorted_objects(compute_requirement_summaries)
+    compute_requirement_summaries = _apply_status_filter(
+        sorted_objects(compute_requirement_summaries)
+    )
+    if not compute_requirement_summaries:
+        print_info("No matching Compute Requirements")
+        return
 
     if ARGS_PARSER.entity_type == ET_INSTANCES:
         if ARGS_PARSER.json_output:
@@ -480,6 +536,7 @@ def list_nodes(worker_pool_summaries: list[WorkerPoolSummary]):
             node.workerPoolName = worker_pool_summary.name  # type: ignore[attr-defined]
         nodes_all += nodes
 
+    nodes_all = _apply_status_filter(nodes_all)
     if not nodes_all:
         print_info("No Nodes to display")
         return
@@ -523,6 +580,7 @@ def list_workers(nodes: list[Node]):
                 )  # This property is added by the caller
                 workers_all.append(worker)
 
+    workers_all = _apply_status_filter(workers_all)
     if not workers_all:
         print_info("No Workers to display")
         return
