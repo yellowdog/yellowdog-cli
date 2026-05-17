@@ -207,7 +207,7 @@ def print_info(
     Placeholder for logging.
     Set 'override_quiet' to print when '-q' is set.
     """
-    if ARGS_PARSER.quiet and override_quiet is False:
+    if (ARGS_PARSER.quiet or ARGS_PARSER.json_output) and override_quiet is False:
         return
 
     if ARGS_PARSER.no_format:
@@ -256,7 +256,7 @@ def print_warning(
     """
     Print a warning.
     """
-    if ARGS_PARSER.quiet and override_quiet is False:
+    if (ARGS_PARSER.quiet or ARGS_PARSER.json_output) and override_quiet is False:
         return
 
     if ARGS_PARSER.no_format:
@@ -1089,6 +1089,54 @@ def indent(txt: str, indent_width: int = 4) -> str:
     return text_indent(txt, prefix=" " * indent_width)
 
 
+def _strip_id_props(d):
+    """
+    Remove ID and read-only metadata fields from a deserialized dict, recursively.
+    Shared by print_yd_object (--strip-ids path) and print_objects_as_json.
+    """
+    if isinstance(d, dict):
+        return {
+            k: _strip_id_props(v)
+            for k, v in d.items()
+            if k
+            not in [
+                PROP_ID,
+                PROP_ACCESS_DELEGATES,
+                PROP_ADMIN_GROUP,
+                PROP_CREATED_BY_ID,
+                PROP_CREATED_BY_USER_ID,
+                PROP_CREATED_TIME,
+                PROP_DELETABLE,
+                PROP_INSTANCE_PRICING,
+                PROP_REMAINING_HOURS,
+                PROP_SUPPORTING_RESOURCE_CREATED,
+                PROP_TRAITS,
+            ]
+        }
+    elif isinstance(d, list):
+        return [_strip_id_props(item) for item in d]
+    return d
+
+
+def print_objects_as_json(objects: list) -> None:
+    """
+    Serialise a list of SDK model objects (or plain dicts) as a JSON array
+    and print to stdout with no Rich formatting.  Used by --json mode.
+    """
+    data = [Json.dump(obj) if not isinstance(obj, dict) else obj for obj in objects]
+    if ARGS_PARSER.strip_ids:
+        stripped = []
+        for item in data:
+            item = _strip_id_props(item)
+            try:
+                item.get(PROP_SOURCE).pop(PROP_PROVIDER)  # type: ignore[union-attr]
+            except (AttributeError, KeyError):
+                pass
+            stripped.append(item)
+        data = stripped
+    print_json(data)
+
+
 def print_json(
     data: Any,
     initial_indent: int = 0,
@@ -1139,40 +1187,8 @@ def print_yd_object(
     """
     object_data: Any = Json.dump(yd_object)
 
-    def remove_unused_props(d):
-        """
-        Helper function to remove the 'id' and other properties
-        not required for 'yd-create' and 'yd-remove', recursively.
-        """
-        if isinstance(d, dict):
-            # Create a new dictionary omitting redundant properties
-            return {
-                k: remove_unused_props(v)
-                for k, v in d.items()
-                if k
-                not in [
-                    PROP_ID,
-                    PROP_ACCESS_DELEGATES,
-                    PROP_ADMIN_GROUP,
-                    PROP_CREATED_BY_ID,
-                    PROP_CREATED_BY_USER_ID,
-                    PROP_CREATED_TIME,
-                    PROP_DELETABLE,
-                    PROP_INSTANCE_PRICING,
-                    PROP_REMAINING_HOURS,
-                    PROP_SUPPORTING_RESOURCE_CREATED,
-                    PROP_TRAITS,
-                ]
-            }
-        elif isinstance(d, list):
-            # Recursively process each item in the list
-            return [remove_unused_props(item) for item in d]
-        else:
-            # Return non-dict/list values unchanged
-            return d
-
     if ARGS_PARSER.strip_ids:
-        object_data = remove_unused_props(object_data)
+        object_data = _strip_id_props(object_data)
         # Remove the 'provider' property from CST/source data only
         # 'object_data' is always a dict in practice
         try:

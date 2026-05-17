@@ -67,6 +67,7 @@ from yellowdog_cli.utils.printing import (
     print_info,
     print_json,
     print_numbered_object_list,
+    print_objects_as_json,
     print_warning,
     print_yd_object,
     print_yd_object_list,
@@ -113,8 +114,8 @@ from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main
 
 @main_wrapper
 def main():
-    # Always use interactive mode for selections
-    ARGS_PARSER.interactive = True
+    if not ARGS_PARSER.json_output:
+        ARGS_PARSER.interactive = True
 
     if (
         ARGS_PARSER.auto_select_all
@@ -209,7 +210,17 @@ def list_work_requirements():
 
     work_requirement_summaries = sorted_objects(work_requirement_summaries)
     if ARGS_PARSER.entity_type == ET_WORK_REQUIREMENTS:
-        if ARGS_PARSER.details:
+        if ARGS_PARSER.json_output:
+            if ARGS_PARSER.details:
+                print_objects_as_json(
+                    [
+                        CLIENT.work_client.get_work_requirement_by_id(cast(str, wr.id))
+                        for wr in work_requirement_summaries
+                    ]
+                )
+            else:
+                print_objects_as_json(work_requirement_summaries)
+        elif ARGS_PARSER.details:
             print_yd_object_list(
                 [
                     (CLIENT.work_client.get_work_requirement_by_id(wr_summary.id), None)  # type: ignore[arg-type]
@@ -221,6 +232,21 @@ def list_work_requirements():
                 print(wr_summary.id)
         else:
             print_numbered_object_list(CLIENT, work_requirement_summaries)
+    elif ARGS_PARSER.json_output:
+        # Collect all task groups / tasks across all work requirements
+        all_objects: list = []
+        for work_summary in work_requirement_summaries:
+            tgs = sorted_objects(
+                get_task_groups_from_wr_by_id(CLIENT, cast(str, work_summary.id))
+            )
+            if ARGS_PARSER.entity_type == ET_TASK_GROUPS:
+                all_objects.extend(tgs)
+            else:
+                for tg in tgs:
+                    all_objects.extend(
+                        get_all_tasks_in_task_group(CLIENT, cast(str, tg.id))
+                    )
+        print_objects_as_json(all_objects)
     else:
         selected_work_summaries = select(
             CLIENT, work_requirement_summaries, single_result=True
@@ -251,7 +277,7 @@ def list_task_groups(work_summary: WorkRequirementSummary):
             list_tasks(task_group, work_summary)
 
 
-def list_tasks(task_group: TaskGroup, work_summary: WorkRequirementSummary):
+def list_tasks(task_group: TaskGroup, _work_summary: WorkRequirementSummary):
     tasks: list[Task] = get_all_tasks_in_task_group(CLIENT, cast(str, task_group.id))
     tasks = sorted_objects(tasks)
     if ARGS_PARSER.details:
@@ -297,6 +323,9 @@ def list_worker_pools():
         return
 
     if ARGS_PARSER.entity_type in (ET_NODES, ET_WORKERS):
+        if ARGS_PARSER.json_output:
+            list_nodes(worker_pool_summaries)
+            return
         print_info(
             "Please select the Worker Pool(s) for which to list "
             f"{'Nodes' if ARGS_PARSER.entity_type == ET_NODES else 'Workers'}"
@@ -308,7 +337,17 @@ def list_worker_pools():
         list_nodes(worker_pool_summaries)
         return
 
-    if ARGS_PARSER.details:
+    if ARGS_PARSER.json_output:
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    CLIENT.worker_pool_client.get_worker_pool_by_id(wp.id)  # type: ignore[arg-type]
+                    for wp in sorted_objects(worker_pool_summaries)
+                ]
+            )
+        else:
+            print_objects_as_json(sorted_objects(worker_pool_summaries))
+    elif ARGS_PARSER.details:
         print_yd_object_list(
             [
                 (
@@ -360,13 +399,24 @@ def list_compute_requirements():
     compute_requirement_summaries = sorted_objects(compute_requirement_summaries)
 
     if ARGS_PARSER.entity_type == ET_INSTANCES:
+        if ARGS_PARSER.json_output:
+            all_instances: list = []
+            for cr_summary in compute_requirement_summaries:
+                sc: SearchClient = CLIENT.compute_client.get_instances(
+                    instance_search=InstanceSearch(computeRequirementId=cr_summary.id)
+                )
+                all_instances.extend(sc.list_all())
+            print_objects_as_json(all_instances)
+            return
         for compute_requirement_summary in select(
             CLIENT, compute_requirement_summaries, single_result=True
         ):
             list_instances(compute_requirement_summary.id)  # type: ignore[arg-type]
         return
 
-    if ARGS_PARSER.details:
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(compute_requirement_summaries)
+    elif ARGS_PARSER.details:
         print_yd_object_list(
             [
                 (compute_requirement, None)
@@ -438,7 +488,9 @@ def list_nodes(worker_pool_summaries: list[WorkerPoolSummary]):
         list_workers(nodes_all)
         return
 
-    if ARGS_PARSER.details:
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(nodes_all)
+    elif ARGS_PARSER.details:
         print_yd_object_list([(node, None) for node in select(CLIENT, nodes_all)])
     elif ARGS_PARSER.ids_only:
         for node in nodes_all:
@@ -475,17 +527,15 @@ def list_workers(nodes: list[Node]):
         print_info("No Workers to display")
         return
 
-    if not ARGS_PARSER.details:
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(workers_all)
+    elif not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, workers_all)
-        return
-
-    if ARGS_PARSER.ids_only:
+    elif ARGS_PARSER.ids_only:
         for worker in workers_all:
             print(worker.id)
-        return
-
-    # Details
-    print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
+    else:
+        print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
 
 
 def list_compute_requirement_templates():
@@ -510,6 +560,21 @@ def list_compute_requirement_templates():
 
     if not cr_templates:
         print_info("No matching Compute Requirement Templates found")
+        return
+
+    if ARGS_PARSER.json_output:
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    substitute_ids_for_names_in_crt(
+                        CLIENT,
+                        CLIENT.compute_client.get_compute_requirement_template(crt.id),  # type: ignore[arg-type]
+                    )
+                    for crt in sorted_objects(cr_templates)
+                ]
+            )
+        else:
+            print_objects_as_json(sorted_objects(cr_templates))
         return
 
     if ARGS_PARSER.ids_only:
@@ -562,6 +627,21 @@ def list_compute_source_templates():
         print_info("No matching Compute Source Templates found")
         return
 
+    if ARGS_PARSER.json_output:
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    substitute_image_family_id_for_name_in_cst(
+                        CLIENT,
+                        CLIENT.compute_client.get_compute_source_template(cst.id),  # type: ignore[arg-type]
+                    )
+                    for cst in sorted_objects(cs_templates)
+                ]
+            )
+        else:
+            print_objects_as_json(sorted_objects(cs_templates))
+        return
+
     if ARGS_PARSER.ids_only:
         for cst in cs_templates:
             print(cst.id)
@@ -595,6 +675,10 @@ def list_keyrings():
     keyrings: list[KeyringSummary] = CLIENT.keyring_client.find_all_keyrings()
     if not keyrings:
         print_info("No Keyrings found")
+        return
+
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(sorted_objects(keyrings))
         return
 
     if ARGS_PARSER.ids_only:
@@ -646,6 +730,18 @@ def list_image_families():
         )
         return
 
+    if ARGS_PARSER.json_output:
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    CLIENT.images_client.get_image_family_by_id(ifs.id)  # type: ignore[arg-type]
+                    for ifs in sorted_objects(image_family_summaries)
+                ]
+            )
+        else:
+            print_objects_as_json(sorted_objects(image_family_summaries))
+        return
+
     if ARGS_PARSER.ids_only:
         for image_family in image_family_summaries:
             print(image_family.id)
@@ -680,6 +776,18 @@ def list_allowances():
     allowances: list[Allowance] = search_client.list_all()
     if not allowances:
         print_info("No Allowances to display")
+        return
+
+    if ARGS_PARSER.json_output:
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    substitute_id_for_name_in_allowance(CLIENT, a)  # type: ignore[arg-type]
+                    for a in allowances
+                ]
+            )
+        else:
+            print_objects_as_json(allowances)
         return
 
     if ARGS_PARSER.ids_only:
@@ -725,6 +833,10 @@ def list_attribute_definitions():
     attribute_definition_list = json_loads(response.text)
     attribute_definition_list.sort(key=lambda x: x["name"])
 
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(attribute_definition_list)
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(
             CLIENT, attribute_definition_list, object_type_name="Attribute Definition"
@@ -766,6 +878,10 @@ def list_namespaces():
         print_info("No Namespaces found")
         return
 
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(namespaces)
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, namespaces)
         return
@@ -790,6 +906,10 @@ def list_namespace_policies():
     namespace_policies: list[NamespacePolicy] = search_client.list_all()
     if not namespace_policies:
         print_info("No Namespace Policies to display")
+        return
+
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(namespace_policies)
         return
 
     if not ARGS_PARSER.details:
@@ -820,6 +940,10 @@ def list_users():
         return
 
     users.sort(key=lambda user: user.name)
+
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(users)
+        return
 
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, users, object_type_name="User")
@@ -854,6 +978,10 @@ def list_applications():
         return
 
     applications.sort(key=lambda app: app.name)
+
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(applications)
+        return
 
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, applications, object_type_name="Application")
@@ -896,6 +1024,10 @@ def list_groups():
         for group in group_summaries
     ]
 
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(groups)
+        return
+
     if ARGS_PARSER.ids_only:
         for group in groups:
             print(group.id)
@@ -932,6 +1064,10 @@ def list_roles():
         role.permissions = list(role.permissions)
         role.permissions.sort(key=lambda permission: permission.name)
 
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(roles)
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, roles, object_type_name="Role")
         return
@@ -947,6 +1083,10 @@ def list_permissions():
     """
     permissions: list[PermissionDetail] = CLIENT.account_client.list_permissions()
     permissions.sort(key=lambda permission_: permission_.name)  # type: ignore[arg-type]
+
+    if ARGS_PARSER.json_output:
+        print_objects_as_json(permissions)
+        return
 
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, permissions, object_type_name="Permission")

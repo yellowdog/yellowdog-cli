@@ -327,12 +327,20 @@ class CLIParser:
                 help="the tag to search when listing entities",
                 metavar="<tag>",
             )
-            parser.add_argument(
+            _list_output = parser.add_mutually_exclusive_group()
+            _list_output.add_argument(
                 "--ids-only",
                 "-D",
                 action="store_true",
                 required=False,
                 help="list the YellowDog IDs only",
+            )
+            _list_output.add_argument(
+                "--json",
+                "-J",
+                action="store_true",
+                required=False,
+                help="emit results as a plain JSON array (suppresses table formatting)",
             )
 
         # yd-submit
@@ -1564,6 +1572,10 @@ class CLIParser:
     def quiet(self) -> bool | None:
         return self.args.quiet
 
+    @quiet.setter
+    def quiet(self, value: bool) -> None:
+        self.args.quiet = value
+
     @property
     @allow_missing_attribute
     def env_override(self) -> bool | None:
@@ -1615,6 +1627,11 @@ class CLIParser:
     @allow_missing_attribute
     def ids_only(self) -> bool | None:
         return self.args.ids_only
+
+    @property
+    @allow_missing_attribute
+    def json_output(self) -> bool | None:
+        return self.args.json
 
     # -----------------------------------------------------------------------
     # yd-submit
