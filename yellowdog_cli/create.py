@@ -21,7 +21,6 @@ from yellowdog_client.model import (
     AddGroupRequest,
     ApiKey,
     Application,
-    CloudProvider,
     CreateNamespaceRequest,
     Group,
     GroupRole,
@@ -532,7 +531,7 @@ def create_image_family(resource):
 
     # Delete Image Groups that have been removed from
     # the new resource specification
-    updated_image_group_names = [image_group[PROP_NAME] for image_group in image_groups]  # type: ignore[index]
+    updated_image_group_names = [image_group.name for image_group in image_groups]
     for existing_image_group in existing_image_family.imageGroups or []:
         if existing_image_group.name not in updated_image_group_names:
             if confirmed(f"Remove existing Image Group '{existing_image_group.name}'?"):
@@ -541,9 +540,6 @@ def create_image_family(resource):
 
     # Update Image Groups
     for image_group in image_groups:
-        # Ensure well-formed MachineImageGroup object
-        image_group = _get_model_object("MachineImageGroup", image_group)  # type: ignore[arg-type]
-        image_group.osType = ImageOsType[str(image_group.osType)]  # Replace with Enum
         _create_image_group(namespace, image_family, image_group)
 
     global CLEAR_IMAGE_FAMILY_CACHE
@@ -592,7 +588,7 @@ def _create_image_group(
 
     # Delete Images that have been removed from
     # the new resource specification
-    updated_image_names = [image[PROP_NAME] for image in images]  # type: ignore[index]
+    updated_image_names = [image.name for image in images]
     for existing_image in existing_image_group.images or []:
         if existing_image.name not in updated_image_names:
             if confirmed(f"Remove existing Image '{existing_image.name}'?"):
@@ -601,10 +597,6 @@ def _create_image_group(
 
     # Update Images
     for image in images:
-        # Ensure well-formed MachineImage object
-        image = _get_model_object("MachineImage", image)  # type: ignore[arg-type]
-        image.osType = ImageOsType[str(image.osType)]  # Replace with Enum
-        image.provider = CloudProvider[str(image.provider)]  # Replace with Enum
         # Populate the Image ID (this could be made more efficient)
         for existing_image in existing_image_group.images or []:
             if image.name == existing_image.name:

@@ -2437,19 +2437,25 @@ The source remote is configured via the standard data client flags (`--remote`, 
 Examples:
 
 ```bash
-# Copy within the same remote (same prefix)
+# Copy a file to a new location within the same prefix
 yd-copy input/data.csv output/data.csv
 
-# Copy to a different prefix on the same remote
-yd-copy --dst-prefix staging input/data.csv input/data.csv
+# Rename a file while copying (destination path does not end with '/')
+yd-copy results/output.csv archive/output-{{date}}.csv
 
-# Copy to a different remote profile defined in config.toml
+# Copy a directory to a different prefix on the same remote
+yd-copy --dst-prefix staging input/ input/
+
+# Copy results to a named profile (e.g. a separate bucket defined in config.toml)
 yd-copy --dst-profile production results/ results/
 
-# Sync source to destination (delete extra files at destination)
+# Sync a directory to a backup profile (deletes destination files not in source)
 yd-copy --sync --dst-profile backup data/ data/
 
-# Dry-run to preview what would be copied
+# Copy from outside the configured prefix using --no-prefix
+yd-copy --no-prefix shared/configs/base.json configs/base.json
+
+# Dry-run to preview what would be copied without transferring anything
 yd-copy --dry-run input/ output/
 ```
 
