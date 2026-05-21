@@ -26,7 +26,7 @@
         "rich >= 13.9.4",
         "tabulate >= 0.9.0",
         "tomli >= 2.4.1",
-        "yellowdog-sdk >= 15.2.0",
+        "yellowdog-sdk >= 15.2.1",
     ]
 
 [[project.authors]]
