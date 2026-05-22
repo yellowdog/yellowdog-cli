@@ -70,7 +70,8 @@ def link_entity(base_url: str, entity: _EntityType) -> str:
 
 def link(base_url: str, url_suffix: str = "", text: str | None = None) -> str:
     url_parts = urlparse(base_url)
-    base_url = url_parts.scheme + "://" + url_parts.netloc
+    netloc = url_parts.netloc.replace("api", "portal")
+    base_url = url_parts.scheme + "://" + netloc
     url = base_url + "/" + url_suffix
     if not text:
         text = url

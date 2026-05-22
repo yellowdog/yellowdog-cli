@@ -227,23 +227,23 @@ class TestEntities:
 class TestLink:
     def test_url_and_suffix(self):
         result = link("https://api.example.com", "path/to/thing")
-        assert result == "https://api.example.com/path/to/thing"
+        assert result == "https://portal.example.com/path/to/thing"
 
     def test_with_display_text(self):
         result = link("https://api.example.com", "path", "My Link")
-        assert result == "My Link (https://api.example.com/path)"
+        assert result == "My Link (https://portal.example.com/path)"
 
     def test_no_suffix(self):
         result = link("https://api.example.com")
-        assert result == "https://api.example.com/"
+        assert result == "https://portal.example.com/"
 
     def test_path_stripped_from_base_url(self):
-        # link() extracts only scheme + netloc from base_url
+        # link() extracts only scheme + netloc from base_url, replacing api→portal
         result = link("https://api.example.com/ignored/path", "newpath")
-        assert result == "https://api.example.com/newpath"
+        assert result == "https://portal.example.com/newpath"
 
     def test_text_same_as_url_returns_url_only(self):
-        url = "https://api.example.com/path"
+        url = "https://portal.example.com/path"
         result = link("https://api.example.com", "path", url)
         assert result == url  # text == url → no parens
 
