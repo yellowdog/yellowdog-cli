@@ -6,6 +6,7 @@ tested in test_variable_processing.py; this file covers the rest.
 """
 
 import re
+from unittest.mock import MagicMock, patch
 
 import pytest
 from yellowdog_client.model import (
@@ -25,9 +26,11 @@ from yellowdog_cli.utils.misc_utils import (
     get_delimited_string_boundaries,
     link,
     link_entity,
+    load_dotenv_file,
     pathname_relative_to_config_file,
     split_delimited_string,
 )
+from yellowdog_cli.utils.settings import YD_ENV_OVERRIDE
 
 
 class TestAddBatchNumberPostfix:
@@ -257,3 +260,65 @@ class TestPathnameRelativeToConfigFile:
     def test_returns_string(self):
         result = pathname_relative_to_config_file("/some/dir", "file.json")
         assert isinstance(result, str)
+
+
+class TestLoadDotenvFile:
+    """Tests for load_dotenv_file() — focusing on env-override behaviour."""
+
+    _FAKE_DOTENV = "/fake/.env"
+
+    def _run(self, monkeypatch, env_override_set: bool, args_override: bool = False):
+        """Patch dependencies and call load_dotenv_file(); return the load_dotenv mock."""
+        if env_override_set:
+            monkeypatch.setenv(YD_ENV_OVERRIDE, "1")
+        else:
+            monkeypatch.delenv(YD_ENV_OVERRIDE, raising=False)
+
+        mock_args = MagicMock()
+        mock_args.env_override = args_override
+
+        load_dotenv_mock = MagicMock()
+
+        with (
+            patch(
+                "yellowdog_cli.utils.misc_utils.find_dotenv",
+                return_value=self._FAKE_DOTENV,
+            ),
+            patch(
+                "yellowdog_cli.utils.misc_utils.dotenv_values",
+                return_value={},
+            ),
+            patch(
+                "yellowdog_cli.utils.misc_utils.load_dotenv",
+                load_dotenv_mock,
+            ),
+            patch(
+                "yellowdog_cli.utils.misc_utils.ARGS_PARSER",
+                mock_args,
+            ),
+        ):
+            load_dotenv_file()
+
+        return load_dotenv_mock
+
+    def test_env_var_set_calls_load_dotenv_with_override_true(self, monkeypatch):
+        mock = self._run(monkeypatch, env_override_set=True)
+        mock.assert_called_once_with(self._FAKE_DOTENV, override=True)
+
+    def test_env_var_unset_calls_load_dotenv_with_override_false(self, monkeypatch):
+        mock = self._run(monkeypatch, env_override_set=False)
+        mock.assert_called_once_with(self._FAKE_DOTENV, override=False)
+
+    def test_args_flag_calls_load_dotenv_with_override_true(self, monkeypatch):
+        mock = self._run(monkeypatch, env_override_set=False, args_override=True)
+        mock.assert_called_once_with(self._FAKE_DOTENV, override=True)
+
+    def test_no_dotenv_file_skips_load(self, monkeypatch):
+        monkeypatch.delenv(YD_ENV_OVERRIDE, raising=False)
+        load_dotenv_mock = MagicMock()
+        with (
+            patch("yellowdog_cli.utils.misc_utils.find_dotenv", return_value=""),
+            patch("yellowdog_cli.utils.misc_utils.load_dotenv", load_dotenv_mock),
+        ):
+            load_dotenv_file()
+        load_dotenv_mock.assert_not_called()
