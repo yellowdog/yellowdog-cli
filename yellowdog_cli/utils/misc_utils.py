@@ -20,6 +20,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.settings import YD_ENV_OVERRIDE
 
 UTCNOW = datetime.now(timezone.utc)
 
@@ -239,23 +240,26 @@ def load_dotenv_file():
     """
     Load extra environment variables from a .env file if it exists.
     Do not override existing variables (environment takes precedence)
-    unless --env-override option is set.
+    unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
     Report on YD vars that are taken from .env.
     """
     dotenv_file = find_dotenv(usecwd=True)
     if dotenv_file == "":
         return
 
+    env_override = bool(ARGS_PARSER.env_override) or bool(
+        os.environ.get(YD_ENV_OVERRIDE)
+    )
+
     print_info(
         f"Loading environment variables from '{dotenv_file}' ("
-        f"{'' if ARGS_PARSER.env_override else 'NOT '}OVERRIDING existing variables)"
+        f"{'OVERRIDING' if env_override else 'NOT OVERRIDING'} existing variables)"
     )
 
     dotenv_yd_substitutions = [  # Find 'YD' variables
         f"'{key}'"
         for key in dotenv_values(dotenv_file)
-        if key.startswith("YD")
-        and (os.environ.get(key) is None or ARGS_PARSER.env_override)
+        if key.startswith("YD") and (os.environ.get(key) is None or env_override)
     ]
 
     if dotenv_yd_substitutions:
@@ -264,4 +268,4 @@ def load_dotenv_file():
         )
 
     # Actually load the variables (including non-'YD' variables)
-    load_dotenv(dotenv_file, override=bool(ARGS_PARSER.env_override))
+    load_dotenv(dotenv_file, override=env_override)

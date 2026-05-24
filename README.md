@@ -394,7 +394,7 @@ options:
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
-  --env-override        values in '.env' file override values in the environment
+  --env-override        values in '.env' file override values in the environment (also set permanently via YD_ENV_OVERRIDE)
   --print-pid, --pp     include the process ID of this CLI invocation alongside timestamp in logging messages
   --no-config, --nc     ignore the contents of any TOML configuration file (even if specified on the command line)
   --property <section.key=value>
@@ -599,7 +599,7 @@ yd-submit --property 'workRequirement.priority=2.0' --dry-run --quiet
 
 Environment variables can also be set in a `.env` file, typically in the user's home directory or the current working directory.
 
-Entries in the `.env` file will not overwrite existing environment variables -- i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option.
+Entries in the `.env` file will not overwrite existing environment variables -- i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g., in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
 
 Environment variables sourced from a `.env` file whose names start with `YD` will be reported on the command line. Variables whose names do not start with `YD` will not be reported, but they will still be applied.
 

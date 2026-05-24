@@ -214,7 +214,7 @@ class CLIParser:
             "--env-override",
             action="store_true",
             required=False,
-            help="values in '.env' file override values in the environment",
+            help="values in '.env' file override values in the environment (also set via YD_ENV_OVERRIDE)",
         )
         parser.add_argument(
             "--print-pid",
