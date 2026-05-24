@@ -2381,7 +2381,7 @@ Example: `yd-download 'results_*'` downloads everything whose name starts with `
 
 ## yd-delete
 
-The `yd-delete` command deletes files or directories from a remote data store.
+The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym.
 
 ```
 yd-delete [options] [<remote_path> ...]
@@ -3578,9 +3578,9 @@ yd-jsonnet2json my_spec.jsonnet
 
 This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
 
-## yd-delete
+## yd-delete / yd-rm
 
-The `yd-delete` command deletes files or directories from a remote data store. See [Data Client](#data-client) for full documentation.
+The `yd-delete` command (synonym: `yd-rm`) deletes files or directories from a remote data store. See [Data Client](#data-client) for full documentation.
 
 ## yd-download
 

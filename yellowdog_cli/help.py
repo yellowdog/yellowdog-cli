@@ -16,7 +16,7 @@ _COMMANDS: list[tuple[str, str]] = [
     ("yd-cloudwizard", "Set up cloud accounts and YellowDog resources"),
     ("yd-compare", "Compare a Work Requirement or Task Group against Worker Pool(s)"),
     ("yd-create", "Create and update resources"),
-    ("yd-delete", "Delete remote data client files and directories"),
+    ("yd-delete", "Delete remote data client files and directories (synonym: yd-rm)"),
     ("yd-download", "Download files from a remote data client"),
     ("yd-finish", "Finish Work Requirements"),
     ("yd-follow", "Follow event streams"),
