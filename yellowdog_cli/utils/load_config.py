@@ -115,6 +115,8 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         target[path[-1]] = value
         display_section = ".".join([section, *path[:-1]])
         print_info(f"Property override: [{display_section}] {path[-1]} = {value!r}")
+        if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
+            add_or_update_substitution(path[1], str(value))
 
 
 # Support for alternative common env. vars; written into the normal vars.
