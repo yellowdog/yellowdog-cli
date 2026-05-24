@@ -19,6 +19,7 @@ from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.misc_utils import (
     UTCNOW,
     format_yd_name,
+    load_dotenv_file,
     remove_outer_delimiters,
     split_delimited_string,
 )
@@ -69,6 +70,10 @@ VARIABLE_SUBSTITUTIONS = {
         .zfill(len(hex(RAND_VAR_SIZE)) - 2)
     ),
 }
+
+# Load .env file before scanning os.environ so YD_VAR_* variables defined
+# there are picked up regardless of import order.
+load_dotenv_file()
 
 # Substitutions from environment variables
 subs_list = []

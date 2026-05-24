@@ -20,20 +20,15 @@ from yellowdog_cli.utils.config_types import (
     ConfigWorkRequirement,
 )
 from yellowdog_cli.utils.misc_utils import (
-    load_dotenv_file,
     pathname_relative_to_config_file,
 )
-
-# Load additional environment variables as early as possible
-load_dotenv_file()
-
-from yellowdog_cli.utils.printing import (  # noqa: E402
+from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_warning,
 )
-from yellowdog_cli.utils.property_names import *  # noqa: E402
-from yellowdog_cli.utils.settings import (  # noqa: E402
+from yellowdog_cli.utils.property_names import *
+from yellowdog_cli.utils.settings import (
     CR_MAX_INSTANCES,
     DEFAULT_URL,
     TASK_BATCH_SIZE_DEFAULT,
@@ -51,9 +46,9 @@ from yellowdog_cli.utils.settings import (  # noqa: E402
     YD_URL,
     YD_URL_ALT,
 )
-from yellowdog_cli.utils.type_check import check_list, check_str  # noqa: E402
-from yellowdog_cli.utils.validate_properties import validate_properties  # noqa: E402
-from yellowdog_cli.utils.variables import (  # noqa: E402
+from yellowdog_cli.utils.type_check import check_list, check_str
+from yellowdog_cli.utils.validate_properties import validate_properties
+from yellowdog_cli.utils.variables import (
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,
     add_substitutions_without_overwriting,
