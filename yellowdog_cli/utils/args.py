@@ -557,13 +557,14 @@ class CLIParser:
 
         # yd-abort / yd-cancel / yd-shutdown / yd-terminate /
         # yd-resize / yd-cloudwizard / yd-boost / yd-hold / yd-start / yd-list /
-        # yd-finish / yd-delete (data client) / yd-nodeaction
+        # yd-finish / yd-delete / yd-rm (data client) / yd-nodeaction
         if any(
             module in sys.argv[0]
             for module in [
                 "abort",
                 "cancel",
                 "delete",
+                "-rm",
                 "nodeaction",
                 "shutdown",
                 "terminate",
@@ -1314,10 +1315,10 @@ class CLIParser:
                 ),
             )
 
-        # yd-upload / yd-download / yd-delete / yd-ls / yd-copy (data client commands)
+        # yd-upload / yd-download / yd-delete / yd-rm / yd-ls / yd-copy (data client commands)
         if any(
             module in sys.argv[0]
-            for module in ["upload", "download", "delete", "ls", "copy"]
+            for module in ["upload", "download", "delete", "-rm", "ls", "copy"]
         ):
             parser.add_argument(
                 "--remote",
@@ -1457,8 +1458,8 @@ class CLIParser:
                 help="strip remote directory structure; download all files flat",
             )
 
-        # yd-delete (data client)
-        if "delete" in sys.argv[0]:
+        # yd-delete / yd-rm (data client)
+        if "delete" in sys.argv[0] or "-rm" in sys.argv[0]:
             parser.add_argument(
                 "remote_paths",
                 metavar="<remote-path>",
@@ -2289,7 +2290,7 @@ def lookup_module_description(module_name: str) -> str | None:
 
     if "abort" in module_name:
         suffix = "aborting Tasks individually, or in Work Requirements or Task Groups"
-    elif "delete" in module_name:
+    elif "delete" in module_name or "-rm" in module_name:
         suffix = "deleting remote data client files and directories"
     elif "download" in module_name:
         suffix = "downloading files from a remote data client"
