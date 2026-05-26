@@ -597,9 +597,14 @@ yd-submit --property 'workRequirement.priority=2.0' --dry-run --quiet
 
 ## Support for `.env` Files
 
-Environment variables can also be set in a `.env` file, typically in the user's home directory or the current working directory.
+Environment variables can also be set in a `.env` file.
 
-Entries in the `.env` file will not overwrite existing environment variables -- i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g., in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
+The `.env` file is located by checking the following locations in order:
+
+1. The directory containing the active `config.toml` file (as specified by `--config`, `YD_CONF`, or the default `config.toml` in the current directory). This allows a `.env` file to live alongside its `config.toml` and be found even when commands are run from a different directory.
+2. Searching upward from the current working directory (standard `python-dotenv` behaviour).
+
+Entries in the `.env` file will not overwrite existing environment variables — i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g., in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
 
 Environment variables sourced from a `.env` file whose names start with `YD` will be reported on the command line. Variables whose names do not start with `YD` will not be reported, but they will still be applied.
 

@@ -6,7 +6,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from os.path import join, normpath, relpath
+from os.path import abspath, dirname, isfile, join, normpath, relpath
 from typing import TypeAlias
 from urllib.parse import urlparse
 
@@ -243,8 +243,17 @@ def load_dotenv_file():
     unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
     Report on YD vars that are taken from .env.
     """
-    dotenv_file = find_dotenv(usecwd=True)
-    if dotenv_file == "":
+    # Check the config file's directory first (covers the case where the user
+    # runs from a different directory than where config.toml lives), then
+    # fall back to searching upward from CWD.
+    config_path = ARGS_PARSER.config_file or os.environ.get("YD_CONF", "config.toml")
+    config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
+    if isfile(config_dir_dotenv):
+        dotenv_file = config_dir_dotenv
+    else:
+        dotenv_file = find_dotenv(usecwd=True)
+
+    if not dotenv_file:
         return
 
     env_override = bool(ARGS_PARSER.env_override) or bool(
