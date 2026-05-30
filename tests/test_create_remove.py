@@ -26,6 +26,10 @@ R = "tests/resource-examples"
         (f"-y {R}/group.json", f"-y {R}/group.json"),
         (f"-y {R}/application.json", f"-y {R}/application.json"),
         (f"-y {R}/user.json", f"-y {R}/user.json"),
+        (
+            f"-y {R}/application-with-keyring.json",
+            f"-y {R}/application-with-keyring.json",
+        ),
     ],
     ids=[
         "source_template",
@@ -41,6 +45,7 @@ R = "tests/resource-examples"
         "group",
         "application",
         "user",
+        "application_with_keyring_grant",
     ],
 )
 def test_create_remove(create_args, remove_args):

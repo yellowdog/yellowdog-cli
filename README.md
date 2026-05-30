@@ -141,6 +141,7 @@
    * [Namespace Policies](#namespace-policies)
    * [Groups](#groups)
    * [Applications](#applications)
+      * [Granting Keyring Access](#granting-keyring-access)
       * [Creating and Regenerating Application Keys](#creating-and-regenerating-application-keys)
    * [Users](#users)
    * [Namespaces](#namespaces)
@@ -2989,6 +2990,22 @@ Example:
     "groups" : ["administrators"]
 }
 ```
+
+### Granting Keyring Access
+
+An optional `keyrings` list can be supplied to grant the Application access to one or more Keyrings. Keyring names are used to identify the Keyrings.
+
+```json
+{
+    "resource": "Application",
+    "name": "my-app",
+    "keyrings": ["my-keyring-1", "my-keyring-2"]
+}
+```
+
+When an Application is **created**, the full API key returned at creation time is used to perform the grant — no additional options are required.
+
+When an Application is **updated**, the grant is attempted without an API key secret. If the platform requires the key secret (e.g., for initial access setup), re-run the update with `--regenerate-app-keys`; the newly generated key will be used to perform the grant.
 
 ### Creating and Regenerating Application Keys
 
