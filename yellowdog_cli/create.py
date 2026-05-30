@@ -79,6 +79,7 @@ from yellowdog_cli.utils.settings import (
     PROP_IMAGE_ID,
     PROP_IMAGES_ID,
     PROP_KEYRING_NAME,
+    PROP_KEYRINGS,
     PROP_NAME,
     PROP_NAMESPACE,
     PROP_NAMESPACES,
@@ -1093,6 +1094,7 @@ def create_application(resource: dict):
         raise KeyError(f"Expected property to be defined ({e})")
 
     groups: list[str] = resource.pop(PROP_GROUPS, [])
+    keyrings: list[str] = resource.pop(PROP_KEYRINGS, [])
     # Convert group names to IDs
     new_group_ids = set()
     for group_name in groups:
@@ -1101,6 +1103,22 @@ def create_application(resource: dict):
             print_warning(f"Group '{group_name}' not found ... ignoring")
         else:
             new_group_ids.add(app_id)
+
+    def grant_keyrings(app_id: str, api_key: ApiKey):
+        for keyring_name in keyrings:
+            try:
+                CLIENT.keyring_client.grant_application_access_to_keyring(
+                    keyring_name, app_id, api_key
+                )
+                print_info(f"Granted Application access to Keyring '{keyring_name}'")
+            except Exception as e:
+                print_error(
+                    f"Failed to grant Application access to Keyring '{keyring_name}': {e}"
+                )
+                if api_key.id is None:
+                    print_warning(
+                        "Re-run with '--regenerate-app-keys' to supply a valid API key"
+                    )
 
     def update_groups(app: Application):
         """
@@ -1150,6 +1168,13 @@ def create_application(resource: dict):
         show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
         clear_application_caches()
         update_groups(app)  # type: ignore[arg-type]
+        if (
+            keyrings
+            and app_response.apiKey is not None
+            and app is not None
+            and app.id is not None
+        ):
+            grant_keyrings(app.id, app_response.apiKey)
 
     def update_application(app_id: str):
         """
@@ -1165,6 +1190,7 @@ def create_application(resource: dict):
         print_info(f"Updated Application '{app.name}' ({app.id})")
         update_groups(app)
 
+        api_key: ApiKey | None = None
         if ARGS_PARSER.regenerate_app_keys:
             print_info("Regenerating Application key and secret")
             api_key = CLIENT.account_client.regenerate_application_api_key(app_id)
@@ -1172,6 +1198,9 @@ def create_application(resource: dict):
                 print_error("New API key/secret not returned")
             else:
                 show_key_and_secret(api_key)
+
+        if keyrings:
+            grant_keyrings(app_id, api_key if api_key is not None else ApiKey())
 
     # Main logic
     app_id = get_application_id_by_name(CLIENT, name)
