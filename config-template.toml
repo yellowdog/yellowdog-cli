@@ -308,6 +308,10 @@
 # Can be set via YD_DATA_CLIENT_REMOTE / YD_DATA_CLIENT_BUCKET /
 # YD_DATA_CLIENT_PREFIX or with --remote / --bucket / --prefix flags.
 #
+# Named profiles — [dataClient.<name>] sub-tables — inherit the base
+# [dataClient] fields and may override any of them.  Select at runtime
+# with --profile <name> or YD_DATA_CLIENT=<name>.
+#
 
     # rclone remote to use.
     # Required for data-client commands
@@ -321,6 +325,16 @@
     # Defaults to "{{namespace}}/{{tag}}" if not set (and --no-prefix not used).
     # Optional
     # prefix = "{{namespace}}/{{tag}}"
+
+    # Named profile example: inherits 'remote' from above, overrides bucket/prefix.
+    # Select with: --profile prod   or   YD_DATA_CLIENT=prod
+    # [dataClient.prod]
+    #     bucket = "prod-bucket"
+    #     prefix = "{{namespace}}/{{tag}}"
+
+    # [dataClient.dev]
+    #     remote = "dev-remote"
+    #     bucket = "dev-bucket"
 
 [workerPool]  #################################################################
 #
