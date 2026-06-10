@@ -35,6 +35,7 @@ VALID_TERMINATION_STATUSES = [
     ComputeRequirementStatus.STARTING,
     ComputeRequirementStatus.RUNNING,
     ComputeRequirementStatus.STOPPING,
+    ComputeRequirementStatus.STOPPED,
 ]  # Excludes TERMINATED, TERMINATING
 
 
