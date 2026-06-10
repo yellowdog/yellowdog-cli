@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
 """
-A script to terminate Compute Requirements and Nodes.
+Core functionality for stopping, starting and restarting Compute
+Requirements and Instances.
 """
 
+from dataclasses import dataclass
 from typing import cast
 
 from yellowdog_client.model import (
-    ComputeRequirement,
     ComputeRequirementStatus,
     ComputeRequirementSummary,
     Instance,
     InstanceStatus,
     Node,
-    NodeStatus,
 )
 
 from yellowdog_cli.utils.entity_utils import (
@@ -26,27 +26,71 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-VALID_TERMINATION_STATUSES = [
-    ComputeRequirementStatus.NEW,
-    ComputeRequirementStatus.PROVISIONING,
-    ComputeRequirementStatus.STARTING,
-    ComputeRequirementStatus.RUNNING,
-    ComputeRequirementStatus.STOPPING,
-    ComputeRequirementStatus.STOPPED,
-]  # Excludes TERMINATED, TERMINATING
+
+@dataclass(frozen=True)
+class ComputeAction:
+    name: str  # E.g.: "Stop"
+    gerund: str  # E.g.: "Stopping"
+    past_tense: str  # E.g.: "Stopped"
+    cr_method_name: str | None  # ComputeClient method for CRs (None if N/A)
+    instance_method_name: str  # ComputeClient method for instances
+    valid_cr_statuses: list[ComputeRequirementStatus]
+    valid_instance_statuses: list[InstanceStatus]
 
 
-@main_wrapper
-def main():
+COMPUTE_STOP = ComputeAction(
+    name="Stop",
+    gerund="Stopping",
+    past_tense="Stopped",
+    cr_method_name="stop_compute_requirement_by_id",
+    instance_method_name="stop_instances",
+    valid_cr_statuses=[ComputeRequirementStatus.RUNNING],
+    valid_instance_statuses=[InstanceStatus.RUNNING],
+)
+
+COMPUTE_START = ComputeAction(
+    name="Start",
+    gerund="Starting",
+    past_tense="Started",
+    cr_method_name="start_compute_requirement_by_id",
+    instance_method_name="start_instances",
+    valid_cr_statuses=[ComputeRequirementStatus.STOPPED],
+    valid_instance_statuses=[InstanceStatus.STOPPED],
+)
+
+COMPUTE_RESTART = ComputeAction(
+    name="Restart",
+    gerund="Restarting",
+    past_tense="Restarted",
+    cr_method_name=None,  # The platform has no CR-level restart
+    instance_method_name="restart_instances",
+    valid_cr_statuses=[],
+    valid_instance_statuses=[InstanceStatus.RUNNING],
+)
+
+
+def apply_compute_action(action: ComputeAction):
+    """
+    Entry point for the yd-compute-stop/start/restart commands.
+    """
     if ARGS_PARSER.compute_requirements_instances_or_nodes:
-        terminate_by_name_or_id(ARGS_PARSER.compute_requirements_instances_or_nodes)
+        _apply_action_by_name_or_id(
+            action, ARGS_PARSER.compute_requirements_instances_or_nodes
+        )
+        return
+
+    if action.cr_method_name is None:
+        print_error(
+            f"Please supply one or more Instances ('cr_id.instance_id') or "
+            f"Node IDs to {action.name.lower()}"
+        )
         return
 
     print_info(
-        "Terminating Compute Requirements in "
+        f"{action.gerund} Compute Requirements in "
         f"namespace '{CONFIG_COMMON.namespace}' with tags "
         f"including '{CONFIG_COMMON.name_tag}'"
     )
@@ -56,51 +100,54 @@ def main():
             CLIENT,
             CONFIG_COMMON.namespace,
             CONFIG_COMMON.name_tag,
-            VALID_TERMINATION_STATUSES,
+            action.valid_cr_statuses,
         )
     )
 
-    terminated_count = 0
+    actioned_count = 0
     selected_compute_requirement_summaries: list[ComputeRequirementSummary] = select(
         CLIENT, compute_requirement_summaries
     )
 
     if selected_compute_requirement_summaries and confirmed(
-        f"Terminate {len(selected_compute_requirement_summaries)} Compute Requirement(s)?"
+        f"{action.name} {len(selected_compute_requirement_summaries)} "
+        "Compute Requirement(s)?"
     ):
-        for compute_requirement_summary in selected_compute_requirement_summaries:  # type: ignore[assignment]
+        for compute_requirement_summary in selected_compute_requirement_summaries:
             try:
-                CLIENT.compute_client.terminate_compute_requirement_by_id(
-                    compute_requirement_summary.id  # type: ignore[arg-type]
+                getattr(CLIENT.compute_client, action.cr_method_name)(
+                    compute_requirement_summary.id
                 )
-                compute_requirement_summary: ComputeRequirement = (  # type: ignore[assignment]
+                compute_requirement = (
                     CLIENT.compute_client.get_compute_requirement_by_id(
                         compute_requirement_summary.id  # type: ignore[arg-type]
                     )
                 )
-                terminated_count += 1
+                actioned_count += 1
                 print_info(
-                    f"Terminated {link_entity(CONFIG_COMMON.url, compute_requirement_summary)}"
+                    f"{action.past_tense} "
+                    f"{link_entity(CONFIG_COMMON.url, compute_requirement)}"
                 )
             except Exception as e:
                 print_error(
-                    f"Failed to terminate '{compute_requirement_summary.name}': {e}"
+                    f"Failed to {action.name.lower()} "
+                    f"'{compute_requirement_summary.name}': {e}"
                 )
 
-    if terminated_count > 0:
-        print_info(f"Terminated {terminated_count} Compute Requirement(s)")
+    if actioned_count > 0:
+        print_info(f"{action.past_tense} {actioned_count} Compute Requirement(s)")
         if ARGS_PARSER.follow:
             follow_ids(
                 [cast(str, cr.id) for cr in selected_compute_requirement_summaries]
             )
     else:
-        print_info("No Compute Requirements terminated")
+        print_info(f"No Compute Requirements {action.past_tense.lower()}")
 
 
-def terminate_by_name_or_id(names_or_ids: list[str]):
+def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
     """
-    Terminate Compute Requirements by their names or IDs, or
-    node IDs by their ID, or instances by 'cr_id.instance_id'.
+    Apply the action to Compute Requirements by their names or IDs, to
+    nodes' instances by node ID, or to instances by 'cr_id.instance_id'.
     """
     compute_requirement_ids: list[str] = []
     node_or_instance_cr_ids: list[str] = []
@@ -109,12 +156,20 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
         # Is this a cr_id.instance_id specification?
         if len(cr_id_instance_id := name_or_id.split(".")) == 2:
             if (
-                cr_id := _terminate_instance(cr_id_instance_id[0], cr_id_instance_id[1])
+                cr_id := _apply_action_to_instance(
+                    action, cr_id_instance_id[0], cr_id_instance_id[1]
+                )
             ) is not None:
                 node_or_instance_cr_ids.append(cr_id)
 
         # Compute requirement ID?
         elif (ydid_type := get_ydid_type(name_or_id)) == YDIDType.COMPUTE_REQUIREMENT:
+            if action.cr_method_name is None:
+                print_error(
+                    f"Compute Requirements cannot be {action.past_tense.lower()}; "
+                    "please supply Instance or Node IDs"
+                )
+                continue
             try:
                 compute_requirement = (
                     CLIENT.compute_client.get_compute_requirement_by_id(name_or_id)
@@ -125,23 +180,31 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
                 else:
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}: {e}")
                 continue
-            if compute_requirement.status not in VALID_TERMINATION_STATUSES:
+            if compute_requirement.status not in action.valid_cr_statuses:
                 print_error(
                     f"Compute Requirement status {compute_requirement.status} "
-                    "is not a valid state for termination"
+                    f"is not a valid state for action '{action.name}'"
                 )
                 continue
             compute_requirement_ids.append(name_or_id)
 
         # Node ID?
         elif ydid_type == YDIDType.NODE:
-            if (cr_id := _terminate_node_instance_by_id(name_or_id)) is not None:
+            if (
+                cr_id := _apply_action_to_node_instance_by_id(action, name_or_id)
+            ) is not None:
                 node_or_instance_cr_ids.append(cr_id)
 
         # Compute requirement name?
         else:
+            if action.cr_method_name is None:
+                print_error(
+                    f"Compute Requirements cannot be {action.past_tense.lower()}; "
+                    "please supply Instance or Node IDs"
+                )
+                continue
             compute_requirement_id = get_compute_requirement_id_by_name(
-                CLIENT, name_or_id, CONFIG_COMMON.namespace, VALID_TERMINATION_STATUSES
+                CLIENT, name_or_id, CONFIG_COMMON.namespace, action.valid_cr_statuses
             )
             if compute_requirement_id is None:
                 print_warning(
@@ -152,30 +215,34 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
                 print_info(f"Found Compute Requirement ID: {compute_requirement_id}")
                 compute_requirement_ids.append(compute_requirement_id)
 
-    # Handle termination of accumulated compute requirement IDs
+    # Handle the action for accumulated compute requirement IDs
     if compute_requirement_ids:
         if not confirmed(
-            f"Terminate {len(compute_requirement_ids)} Compute Requirement(s)?"
+            f"{action.name} {len(compute_requirement_ids)} Compute Requirement(s)?"
             f": ({', '.join(compute_requirement_ids)})"
         ):
             return
         for compute_requirement_id in compute_requirement_ids:
             try:
-                CLIENT.compute_client.terminate_compute_requirement_by_id(
+                getattr(CLIENT.compute_client, cast(str, action.cr_method_name))(
                     compute_requirement_id
                 )
-                print_info(f"Terminated '{compute_requirement_id}'")
+                print_info(f"{action.past_tense} '{compute_requirement_id}'")
             except Exception as e:
-                print_error(f"Failed to terminate '{compute_requirement_id}': ({e})")
+                print_error(
+                    f"Failed to {action.name.lower()} '{compute_requirement_id}': ({e})"
+                )
 
-    # Follow all the CR IDs from CR terminations and node, instance terminations
+    # Follow all the CR IDs from CR actions and node, instance actions
     if ARGS_PARSER.follow:
         follow_ids(compute_requirement_ids + node_or_instance_cr_ids)
 
 
-def _terminate_node_instance_by_id(node_id: str) -> str | None:
+def _apply_action_to_node_instance_by_id(
+    action: ComputeAction, node_id: str
+) -> str | None:
     """
-    Terminate a node's instance by its ID.
+    Apply the action to a node's instance by its node ID.
     Returns the compute requirement ID or None.
     """
     try:
@@ -187,10 +254,6 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
         else:
             print_error(f"Error for Node ID {node_id}: {e}")
             return None
-
-    if node.status == NodeStatus.TERMINATED:
-        print_info(f"Node {node_id} is already {node.status}")
-        return None
 
     if (
         cr_id := get_compute_requirement_id_by_worker_pool_id(
@@ -212,14 +275,19 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
         )
         return None
 
-    return _terminate_instance(cr_id, instance.id.instanceId, node_id)  # type: ignore[union-attr]
+    return _apply_action_to_instance(
+        action,
+        cr_id,
+        instance.id.instanceId,  # type: ignore[union-attr]
+        node_id,
+    )
 
 
-def _terminate_instance(
-    cr_id: str, instance_id: str, node_id: str | None = None
+def _apply_action_to_instance(
+    action: ComputeAction, cr_id: str, instance_id: str, node_id: str | None = None
 ) -> str | None:
     """
-    Terminate instance_id within cr_id.
+    Apply the action to instance_id within cr_id.
     Returns the compute requirement ID or None.
     """
 
@@ -240,37 +308,39 @@ def _terminate_instance(
         )
         return None
 
-    if instance.status in [InstanceStatus.TERMINATING, InstanceStatus.TERMINATED]:
-        print_info(f"Instance ID '{cr_id}.{instance_id}' is already {instance.status}")
+    if instance.status not in action.valid_instance_statuses:
+        print_error(
+            f"Instance ID '{cr_id}.{instance_id}' status {instance.status} "
+            f"is not a valid state for action '{action.name}'"
+        )
         return None
 
     node_id_msg = "" if node_id is None else f" (Node ID {node_id})"
     if not confirmed(
-        f"Immediately terminate {instance.status} Instance ID '{instance_id}' "
+        f"{action.name} {instance.status} Instance ID '{instance_id}' "
         f"in Compute Requirement {cr_id}{node_id_msg}?"
     ):
         return None
 
     try:
-        CLIENT.compute_client.terminate_instances(compute_requirement, [instance])
+        getattr(CLIENT.compute_client, action.instance_method_name)(
+            compute_requirement, [instance]
+        )
     except Exception as e:
         if "InvalidComputeRequirementStatusException" in str(e):
             print_error(
-                f"Unable to terminate Instance ID '{instance_id}': "
+                f"Unable to {action.name.lower()} Instance ID '{instance_id}': "
                 f"Compute Requirement {cr_id} is in invalid status"
                 f" '{compute_requirement.status}'"
             )
         else:
             print_error(
-                f"Failed to terminate Instance '{instance_id}' in "
+                f"Failed to {action.name.lower()} Instance '{instance_id}' in "
                 f"Compute Requirement {cr_id}: {e}"
             )
         return None
 
-    print_info(f"Terminated Instance '{instance_id}' in Compute Requirement {cr_id}")
+    print_info(
+        f"{action.past_tense} Instance '{instance_id}' in Compute Requirement {cr_id}"
+    )
     return cr_id
-
-
-# Entry point
-if __name__ == "__main__":
-    main()

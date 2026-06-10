@@ -160,6 +160,9 @@
    * [yd-instantiate](#yd-instantiate)
       * [Test-Running a Dynamic Template](#test-running-a-dynamic-template)
    * [yd-terminate](#yd-terminate)
+   * [yd-compute-stop](#yd-compute-stop)
+   * [yd-compute-start](#yd-compute-start)
+   * [yd-compute-restart](#yd-compute-restart)
    * [yd-list](#yd-list)
    * [yd-resize](#yd-resize)
    * [yd-create](#yd-create)
@@ -175,13 +178,13 @@
    * [yd-application](#yd-application)
    * [yd-help](#yd-help)
    * [yd-jsonnet2json](#yd-jsonnet2json)
-   * [yd-delete](#yd-delete-1)
+   * [yd-delete / yd-rm](#yd-delete--yd-rm)
    * [yd-download](#yd-download-1)
    * [yd-ls](#yd-ls-1)
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat May 16 16:04:14 BST 2026 -->
+<!-- Added by: pwt, at: Wed Jun 10 16:21:35 BST 2026 -->
 
 <!--te-->
 
@@ -212,6 +215,7 @@ The commands provide the following capabilities:
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Submitting** Work Requirements with the **`yd-submit`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
+- **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
 - **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
@@ -3412,6 +3416,38 @@ For example:
 ## yd-terminate
 
 The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down.
+
+## yd-compute-stop
+
+The `yd-compute-stop` command stops `RUNNING` Compute Requirements and Instances. Stopped Compute Requirements and Instances can subsequently be started again using `yd-compute-start`.
+
+If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of any of the following:
+
+- Compute Requirement names or YDIDs, to stop whole Compute Requirements
+- Instances in `<compute-requirement-ydid>.<instance-id>` form, to stop individual Instances
+- Node YDIDs, to stop the Instances on which Worker Pool Nodes are running
+
+Usage examples:
+
+```shell
+yd-compute-stop
+yd-compute-stop my-compute-requirement
+yd-compute-stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
+yd-compute-stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+yd-compute-stop ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+```
+
+The `--follow`/`-f` option follows the event stream(s) of the affected Compute Requirement(s).
+
+## yd-compute-start
+
+The `yd-compute-start` command starts `STOPPED` Compute Requirements and Instances. It accepts the same arguments as `yd-compute-stop`: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
+
+## yd-compute-restart
+
+The `yd-compute-restart` command restarts (reboots) `RUNNING` Instances. Restarting applies to Instances only; whole Compute Requirements cannot be restarted.
+
+Instances to restart are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs.
 
 ## yd-list
 
