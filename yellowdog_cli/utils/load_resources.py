@@ -2,6 +2,7 @@
 Load data for resource creation/update/removal requests.
 """
 
+from os.path import abspath, dirname
 from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
@@ -30,6 +31,10 @@ from yellowdog_cli.utils.variables import (
     process_variable_substitutions_insitu,
 )
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+# Internal key stamped onto each resource dict to record the directory of the
+# spec file it came from. Consumed by create.py; never reaches _get_model_object.
+RESOURCE_SOURCE_DIR = "_sourceDir"
 
 
 def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
@@ -66,9 +71,12 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         if isinstance(resources_loaded, dict):
             resources_loaded = [resources_loaded]
 
-        # Secondary variable processing pass
+        spec_dir = dirname(abspath(resource_spec))
+
+        # Secondary variable processing pass + source-dir stamp
         for resource in resources_loaded:
             process_variable_substitutions_insitu(resource)
+            resource[RESOURCE_SOURCE_DIR] = spec_dir
 
         print_info(
             f"Including {len(resources_loaded)} resource(s) from '{resource_spec}'"

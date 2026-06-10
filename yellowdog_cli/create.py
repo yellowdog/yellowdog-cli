@@ -56,7 +56,10 @@ from yellowdog_cli.utils.entity_utils import (
     remove_allowances_matching_description,
 )
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.load_resources import load_resource_specifications
+from yellowdog_cli.utils.load_resources import (
+    RESOURCE_SOURCE_DIR,
+    load_resource_specifications,
+)
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
@@ -152,6 +155,9 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
     for resource in cast(list[dict], resources):  # Keep typing happy
         try:
             resource_type = resource.pop(PROP_RESOURCE)
+            # Strip the internal source-dir stamp before any further processing
+            # so it never reaches _get_model_object or appears in dry-run output.
+            source_dir: str | None = resource.pop(RESOURCE_SOURCE_DIR, None)
             # There is potential additional processing for CRTs, CSTs and
             # Allowances; print JSON from within their creation functions
             if ARGS_PARSER.dry_run and resource_type not in [
@@ -170,9 +176,9 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
             continue
         try:
             if resource_type == RN_SOURCE_TEMPLATE:
-                create_compute_source_template(resource)
+                create_compute_source_template(resource, source_dir)
             elif resource_type == RN_REQUIREMENT_TEMPLATE:
-                create_compute_requirement_template(resource)
+                create_compute_requirement_template(resource, source_dir)
             elif resource_type == RN_KEYRING:
                 create_keyring(resource, show_secrets)
             elif resource_type == RN_CREDENTIAL:
@@ -213,7 +219,7 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
         raise RuntimeError(f"{failed} resource(s) failed to create")
 
 
-def create_compute_source_template(resource: dict):
+def create_compute_source_template(resource: dict, source_dir: str | None = None):
     """
     Create or update a Compute Source Template using a resource specification.
     Handles all Source types.
@@ -250,7 +256,7 @@ def create_compute_source_template(resource: dict):
         source[image_property_name] = image_id
 
     # Resolve userDataFile / userDataFiles -> userData
-    resolve_user_data_in_spec(source)
+    resolve_user_data_in_spec(source, base_dir=source_dir)
 
     if ARGS_PARSER.dry_run:
         resource[PROP_SOURCE] = source
@@ -294,7 +300,7 @@ def create_compute_source_template(resource: dict):
         print(compute_source.id)
 
 
-def create_compute_requirement_template(resource: dict):
+def create_compute_requirement_template(resource: dict, source_dir: str | None = None):
     """
     Create or update a Compute Requirement Template. Handles all
     Compute Requirement types.
@@ -366,7 +372,7 @@ def create_compute_requirement_template(resource: dict):
         _get_images_id(cast(str, images_id), resource, PROP_IMAGES_ID)
 
     # Resolve userDataFile / userDataFiles -> userData
-    resolve_user_data_in_spec(resource)
+    resolve_user_data_in_spec(resource, base_dir=source_dir)
 
     if ARGS_PARSER.dry_run:
         _get_model_object(type, resource)  # Report omissions, extras, errors
