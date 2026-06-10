@@ -2706,7 +2706,7 @@ An example Compute Source resource specification is found below:
 }
 ```
 
-The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the active `config.toml`. Variable substitutions using the `__variable__` syntax are applied to the file contents.
+The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the resource specification file. Variable substitutions using the `__variable__` syntax are applied to the file contents.
 
 In the Compute Source Template `imageId` property, an Image Family name **namespace/family-name** or Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imageId": "yellowdog/yd-agent-docker"`. The `yd-create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
 
