@@ -20,65 +20,105 @@ from yellowdog_cli.utils.variables import (
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
+_MUTEX_ERROR = (
+    f"Only one of '{USERDATA}', '{USERDATAFILE}' or '{USERDATAFILES}' should be set"
+)
+
+
+def _read_user_data(
+    user_data: str | None,
+    user_data_file: str | None,
+    user_data_files: list[str] | None,
+    source_dir: str,
+) -> str | None:
+    """
+    Core implementation shared by get_user_data_property and
+    resolve_user_data_in_spec.  Reads and returns user-data content from one
+    of three sources, applying variable substitutions.  Mutual exclusivity is
+    assumed to have been validated by the caller.
+    """
+    original_directory = getcwd()
+    try:
+        if source_dir:
+            try:
+                chdir(source_dir)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Unable to switch to content directory '{source_dir}': {e}"
+                )
+
+        if user_data is not None:
+            content = user_data
+        elif user_data_file is not None:
+            with open(user_data_file) as f:
+                content = f.read()
+        elif user_data_files is not None:
+            content = ""
+            for path in user_data_files:
+                with open(path) as f:
+                    content += f.read()
+                    content += "\n"
+        else:
+            return None
+    finally:
+        chdir(original_directory)
+
+    try:
+        return process_variable_substitutions_in_file_contents(
+            content, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+        )
+    except Exception as e:
+        raise RuntimeError(f"Error processing variable substitutions: {e}")
+
 
 def get_user_data_property(
     config: ConfigWorkerPool, content_path: str | None = None
 ) -> str | None:
     """
-    Get the 'userData' property, either using the string specified in
-    'userData', the file specified in 'userDataFile', or a concatenation
-    of the files listed in 'userDataFiles'.
-    Raise exception if more than one of these properties is set.
+    Get the 'userData' property from a worker pool config, reading from
+    'userDataFile' or concatenating 'userDataFiles' as needed.
+    Raises ValueError if more than one of the three properties is set.
     """
-    options = [config.user_data, config.user_data_file, config.user_data_files]
-    if options.count(None) < 2:
-        raise ValueError(
-            f"Only one of '{USERDATA}', '{USERDATAFILE}' or '{USERDATAFILES}' "
-            "should be set"
-        )
+    if [config.user_data, config.user_data_file, config.user_data_files].count(
+        None
+    ) < 2:
+        raise ValueError(_MUTEX_ERROR)
 
-    # Switch to the directory containing the config file; will use the current
-    # directory if the config file is absent
-    source_directory = (
+    source_dir = (
         CONFIG_FILE_DIR if content_path is None or content_path == "" else content_path
     )
-    original_directory = getcwd()
-    try:
-        if source_directory != "":
-            try:
-                chdir(source_directory)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Unable to switch to content directory '{source_directory}': {e}"
-                )
+    return _read_user_data(
+        config.user_data, config.user_data_file, config.user_data_files, source_dir
+    )
 
-        user_data = None
 
-        if config.user_data:
-            user_data = config.user_data
+def resolve_user_data_in_spec(spec: dict, base_dir: str | None = None) -> None:
+    """
+    Resolve 'userDataFile' / 'userDataFiles' in a resource specification dict
+    in-place, reading the file(s) and collapsing them into a single 'userData'
+    string.  Mutually exclusive with an inline 'userData' value.  No-op when
+    none of the three keys are present in the spec.
 
-        elif config.user_data_file:
-            with open(config.user_data_file) as f:
-                user_data = f.read()
+    Relative file paths are resolved from base_dir when provided, otherwise
+    from CONFIG_FILE_DIR (the directory containing the active config.toml).
+    """
+    user_data = spec.get(USERDATA)
+    user_data_file = spec.get(USERDATAFILE)
+    user_data_files = spec.get(USERDATAFILES)
 
-        elif config.user_data_files:
-            user_data = ""
-            for user_data_file in config.user_data_files:
-                with open(user_data_file) as f:
-                    user_data += f.read()
-                    user_data += "\n"
-    finally:
-        chdir(original_directory)
+    if [user_data, user_data_file, user_data_files].count(None) < 2:
+        raise ValueError(_MUTEX_ERROR)
 
-    if user_data is not None:
-        try:
-            return process_variable_substitutions_in_file_contents(
-                user_data, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
-            )
-        except Exception as e:
-            raise RuntimeError(f"Error processing variable substitutions: {e}")
+    if user_data_file is None and user_data_files is None:
+        return
 
-    return None
+    source_dir = base_dir if base_dir else CONFIG_FILE_DIR
+    content = _read_user_data(None, user_data_file, user_data_files, source_dir)
+
+    spec.pop(USERDATAFILE, None)
+    spec.pop(USERDATAFILES, None)
+    if content is not None:
+        spec[USERDATA] = content
 
 
 def get_template_id(client: PlatformClient, template_id_or_name: str) -> str:

@@ -63,6 +63,7 @@ from yellowdog_cli.utils.printing import (
     print_json,
     print_warning,
 )
+from yellowdog_cli.utils.provision_utils import resolve_user_data_in_spec
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
     PROP_AUTOSCALING_MAX_NODES,
@@ -248,6 +249,9 @@ def create_compute_source_template(resource: dict):
     if image_id is not None:
         source[image_property_name] = image_id
 
+    # Resolve userDataFile / userDataFiles -> userData
+    resolve_user_data_in_spec(source)
+
     if ARGS_PARSER.dry_run:
         resource[PROP_SOURCE] = source
         _get_model_object(source_type, source)  # Report extras and omissions
@@ -360,6 +364,9 @@ def create_compute_requirement_template(resource: dict):
     images_id = resource.get(PROP_IMAGES_ID)
     if images_id is not None:
         _get_images_id(cast(str, images_id), resource, PROP_IMAGES_ID)
+
+    # Resolve userDataFile / userDataFiles -> userData
+    resolve_user_data_in_spec(resource)
 
     if ARGS_PARSER.dry_run:
         _get_model_object(type, resource)  # Report omissions, extras, errors
