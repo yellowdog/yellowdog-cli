@@ -519,13 +519,18 @@ class CLIParser:
             )
 
         # yd-start / yd-hold / yd-finish
-        if any(
-            module in sys.argv[0]
-            for module in [
-                "start",
-                "hold",
-                "finish",
-            ]
+        # Note: 'compute' is excluded because 'start' is a substring of
+        # 'compute-start' and 'compute-restart'
+        if (
+            any(
+                module in sys.argv[0]
+                for module in [
+                    "start",
+                    "hold",
+                    "finish",
+                ]
+            )
+            and "compute" not in sys.argv[0]
         ):
             parser.add_argument(
                 "--follow",
@@ -535,7 +540,8 @@ class CLIParser:
                 help="follow work requirement events after applying action",
             )
 
-        # yd-cancel / yd-shutdown / yd-terminate / yd-start / yd-hold / yd-finish
+        # yd-cancel / yd-shutdown / yd-terminate / yd-start / yd-hold /
+        # yd-finish / yd-compute-stop / yd-compute-start
         if any(
             module in sys.argv[0]
             for module in [
@@ -545,6 +551,7 @@ class CLIParser:
                 "start",
                 "hold",
                 "finish",
+                "compute",
             ]
         ):
             parser.add_argument(
@@ -557,7 +564,8 @@ class CLIParser:
 
         # yd-abort / yd-cancel / yd-shutdown / yd-terminate /
         # yd-resize / yd-cloudwizard / yd-boost / yd-hold / yd-start / yd-list /
-        # yd-finish / yd-delete / yd-rm (data client) / yd-nodeaction
+        # yd-finish / yd-delete / yd-rm (data client) / yd-nodeaction /
+        # yd-compute-stop / yd-compute-start / yd-compute-restart
         if any(
             module in sys.argv[0]
             for module in [
@@ -575,6 +583,7 @@ class CLIParser:
                 "start",
                 "list",
                 "finish",
+                "compute",
             ]
         ):
             parser.add_argument(
@@ -770,8 +779,8 @@ class CLIParser:
                 help="also immediately terminate associated compute requirement(s)",
             )
 
-        # yd-terminate
-        if "terminate" in sys.argv[0]:
+        # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
+        if "terminate" in sys.argv[0] or "compute" in sys.argv[0]:
             parser.add_argument(
                 "compute_reqs_instances_or_nodes",
                 nargs="*",
@@ -788,7 +797,7 @@ class CLIParser:
                 "-f",
                 action="store_true",
                 required=False,
-                help="follow termination to completion",
+                help="follow compute requirement events after applying action",
             )
 
         # yd-cancel
@@ -805,8 +814,8 @@ class CLIParser:
                 ),
             )
 
-        # yd-start
-        if "start" in sys.argv[0]:
+        # yd-start (but not yd-compute-start / yd-compute-restart)
+        if "start" in sys.argv[0] and "compute" not in sys.argv[0]:
             parser.add_argument(
                 "work_requirements",
                 nargs="*",
@@ -994,7 +1003,8 @@ class CLIParser:
             )
 
         # yd-follow / yd-provision / yd-instantiate / yd-resize / yd-shutdown /
-        # yd-terminate / yd-submit / yd-cancel / yd-start / yd-hold / yd-finish
+        # yd-terminate / yd-submit / yd-cancel / yd-start / yd-hold / yd-finish /
+        # yd-compute-stop / yd-compute-start / yd-compute-restart
         if any(
             module in sys.argv[0]
             for module in [
@@ -1009,6 +1019,7 @@ class CLIParser:
                 "start",
                 "hold",
                 "finish",
+                "compute",
             ]
         ):
             parser.add_argument(
@@ -1927,7 +1938,7 @@ class CLIParser:
         return self.args.terminate
 
     # -----------------------------------------------------------------------
-    # yd-terminate
+    # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
     # -----------------------------------------------------------------------
 
     @property
@@ -2288,7 +2299,15 @@ def lookup_module_description(module_name: str) -> str | None:
     prefix = "YellowDog command line utility for "
     suffix = None
 
-    if "abort" in module_name:
+    # The compute-* checks must precede the 'start' check, since 'start' is a
+    # substring of 'compute-start' and 'compute-restart'
+    if "compute-stop" in module_name or "compute_stop" in module_name:
+        suffix = "stopping Compute Requirements and Instances"
+    elif "compute-restart" in module_name or "compute_restart" in module_name:
+        suffix = "restarting Instances"
+    elif "compute-start" in module_name or "compute_start" in module_name:
+        suffix = "starting stopped Compute Requirements and Instances"
+    elif "abort" in module_name:
         suffix = "aborting Tasks individually, or in Work Requirements or Task Groups"
     elif "delete" in module_name or "-rm" in module_name:
         suffix = "deleting remote data client files and directories"
