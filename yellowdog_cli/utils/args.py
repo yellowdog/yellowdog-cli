@@ -37,7 +37,7 @@ from yellowdog_cli.version import DOCS_URL
 
 def docs():
     print(
-        f"Online documentation for Python Examples v{__version__}: {DOCS_URL}",
+        f"Online documentation for YellowDog CLI v{__version__}: {DOCS_URL}",
         flush=True,
     )
 
@@ -793,8 +793,12 @@ class CLIParser:
                 metavar="<name-or-ID>",
                 type=str,
                 help=(
-                    "the name(s) or YellowDog ID(s) of the compute requirement(s), "
-                    "ID(s) of nodes, or instances in 'cr_id.instance_id' format"
+                    "the ID(s) of nodes, or instances in 'cr_id.instance_id' format"
+                    if "restart" in module_name
+                    # Restart is instance-level only: no CR names/IDs
+                    else "the name(s) or YellowDog ID(s) of the compute "
+                    "requirement(s), ID(s) of nodes, or instances in "
+                    "'cr_id.instance_id' format"
                 ),
             )
             parser.add_argument(

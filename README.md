@@ -178,6 +178,9 @@
    * [yd-application](#yd-application)
    * [yd-help](#yd-help)
    * [yd-jsonnet2json](#yd-jsonnet2json)
+   * [yd-format-json](#yd-format-json)
+   * [yd-version](#yd-version)
+   * [yd-copy](#yd-copy-1)
    * [yd-delete / yd-rm](#yd-delete--yd-rm)
    * [yd-download](#yd-download-1)
    * [yd-ls](#yd-ls-1)
@@ -494,6 +497,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `url`       | The **URL** of the YellowDog Platform API endpoint. Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
 | `variables` | A table containing **variable substitutions** (see the Variables section below)             |
+| `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |
 
 An example `common` section is shown below:
 
@@ -561,6 +565,8 @@ The **environment variables** are as follows:
 When setting the value of the above properties, a property set on the command line takes precedence over one set via the configuration file, and both take precedence over a value set in an environment variable.
 
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
+
+In addition, setting the `YD_YES` environment variable (to any non-empty value) suppresses user confirmation prompts for all commands, equivalent to supplying `--yes`/`-y` on every invocation.
 
 ## Overriding Arbitrary TOML Properties on the Command Line
 
@@ -646,9 +652,9 @@ The following substitutions are automatically created and can be used in any sec
 | Directive             | Description                                                    | Example of Substitution |
 |:----------------------|:---------------------------------------------------------------|:------------------------|
 | `{{username}}`        | The current user's login username, lower case, spaces replaced | jane_smith              |
-| `{{date}}`            | The current date (UTC): YYYYMMDD                               | 20221027                |
+| `{{date}}`            | The current date (UTC): YYMMDD                                 | 221027                  |
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
-| `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 20221027-163026         |
+| `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
 | `{{random}}`          | A random, three digit hexadecimal number (lower case)          | a1c                     |
 | `{{namespace}}`       | The `namespace` property.                                      | my_namespace            |
 | `{{tag}}`             | The `tag` property.                                            | my_tag                  |
@@ -710,11 +716,12 @@ User-defined variable names must not start with a reserved prefix. The implement
 
 The precedence order for setting variables is:
 
-1. Command line
-2. TOML configuration file
-3. `YD_VAR` environment variables
-4. General environment variables
-5. Variables in a `.env` file
+1. Command line (`--variable`/`-v`)
+2. `YD_VAR_` environment variables
+3. `YD_VAR_` variables defined in a `.env` file
+4. TOML configuration file (`[common.variables]`)
+
+(Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 
 This method can also be used to override some default variables, e.g., setting `-v username="other-user"` will override the default `{{username}}` variable.
 
@@ -909,7 +916,7 @@ The following table outlines all the properties available for defining Work Requ
 | `retryableErrors`           | A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
 | `setTaskNames`              | Set this to `false` to suppress automatic generation of Task names. Defaults to `true`. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.                  | Yes  | Yes | Yes  | Yes  |
 | `tag`                       | A tag that can be associated with a Work Requirement, Task Group or Task. Note there is **no property inheritance** for these tags.                                                                                                 | Yes  | Yes | Yes  | Yes  |
-| `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 2,000.                                                                                                                                                       | Yes  |     |      |      |
+| `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 1,000.                                                                                                                                                       | Yes  |     |      |      |
 | `taskCount`                 | The number of times to execute the Task.                                                                                                                                                                                            | Yes  | Yes | Yes  |      |
 | `taskData`                  | The data to be passed to the Worker when the Task is started. E.g., `"mydata"`. Becomes file `taskdata.txt` in the Task's working directory when the task executes.                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskDataFile`              | Populate the `taskData` property above with the contents of the specified file. E.g., `"my_task_data_file.txt"`.                                                                                                                    | Yes  | Yes | Yes  | Yes  |
@@ -1840,6 +1847,7 @@ The following properties are available:
 | Property                | Description                                                                                                                                       | Default                 |
 |:------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------|
 | `computeRequirementBatchSize` | The maximum number of instances per Compute Requirement batch (see [Large-Scale Provisioning](#large-scale-provisioning)). Values above 10,000 are clamped to 10,000. | `10000` |
+| `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd-instantiate` (see [yd-instantiate](#yd-instantiate)).  |                         |
 | `idleNodeTimeout`       | The timeout in minutes after which an idle node will be shut down. Set this to `0` to disable the timeout.                                        | `5.0`                   |
 | `idlePoolTimeout`       | The timeout in minutes after which an idle Worker Pool will be shut down. Set this to `0` to disable the timeout.                                 | `30.0`                  |
 | `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances.                                              |                         |
@@ -2593,9 +2601,9 @@ In the following usage scenario, we want to move a set of resources from one nam
 **Step 1: Capture the target resources in JSON files**
 
 ```shell
-yd-list -q --compute-source-templates --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file csts.json
-yd-list -q --compute-requirement-templates --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file crts.json
-yd-list -q --image-families --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file ifs.json
+yd-list compute-source-templates -q --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file csts.json
+yd-list compute-requirement-templates -q --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file crts.json
+yd-list image-families -q --namespace ns-1 --substitute-ids --strip-ids --auto-select-all --output-file ifs.json
 ```
 
 **Step 2: Remove all target resources** if moving resources
@@ -3073,7 +3081,7 @@ Note that namespaces cannot currently be removed if they have been populated at 
 
 # Jsonnet Support
 
-In all circumstances where JSON files are used by the Python Examples commands,  **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc.
+In all circumstances where JSON files are used by the YellowDog CLI commands, **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc.
 
 A simple usage example might be:
 
@@ -3128,7 +3136,7 @@ Variable substitution is performed before Jsonnet expansion into JSON, **and** a
 
 There are three possibilities for verifying that a Jsonnet specification is doing what is intended:
 
-1. To inspect the basic conversion of Jsonnet into JSON, without any additional processing by the Python Examples commands, the `yd-jsonnet2json` command can be used. This takes a single command line argument which is the name of the jsonnet file to be processed:
+1. To inspect the basic conversion of Jsonnet into JSON, without any additional processing by the YellowDog CLI commands, the `yd-jsonnet2json` command can be used. This takes the name(s) of the Jsonnet file(s) to be processed:
 
 ```shell
 yd-jsonnet2json my_file.jsonnet
@@ -3292,6 +3300,8 @@ WR_ID=$(yd-submit --quiet)
 yd-follow "$WR_ID"
 ```
 
+To submit a Work Requirement in the `HELD` (paused) state, use `--hold` (`-H`); it can later be started with `yd-start`.
+
 To submit a Work Requirement with no Task Groups (to be populated later), use `--empty` (`-e`). To add Task Groups or Tasks to an existing Work Requirement, use `--add-to` (`-A`). See [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement) for details.
 
 To explicitly download or upgrade the rclone binary used by the Data Client, run `yd-submit --upgrade-rclone`.
@@ -3302,13 +3312,15 @@ The `yd-provision` command provisions a new Worker Pool according to the specifi
 
 Use the `--dry-run` option to inspect the details of the Worker Pool specification that will be submitted, in JSON format.
 
+The `--target <n>`/`-T <n>` option overrides the `targetInstanceCount` from the specification or configuration. (The same option is available for `yd-instantiate`.)
+
 Once provisioned, the Worker Pool will appear in the **Workers** tab in the YellowDog Portal, and its associated Compute Requirement will appear in the **Compute** tab.
 
 ## yd-cancel
 
 The `yd-cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain. 
 
-The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel.
+The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
 
 By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. Tasks can be instructed to abort immediately by supplying the `--abort` or `-a` option to `yd-cancel`.
 
@@ -3318,11 +3330,21 @@ The `yd-abort` command is used to abort Tasks that are currently running. The us
 
 Aborting a Task sends `SIGTERM` to the Task's subprocess, giving it an opportunity to clean up. The Task is then reported as `FAILED`. If the Task Type has an `abort` clause configured in the Agent's `application.yaml`, that script takes over abort handling entirely.
 
-The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to list for selection.
+The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to list for selection. Alternatively, targets can be supplied as positional arguments, each of which can be:
+
+- a Task YDID, to abort that Task directly
+- a Work Requirement name or YDID, to abort all executing Tasks within it
+- a Task Group YDID, or `<wr-name>/<tg-name>`, to abort executing Tasks in a specific Task Group
+
+With `--yes`/`-y`, all executing Tasks in all selected Work Requirements are aborted without prompting.
 
 ## yd-shutdown
 
 The `yd-shutdown` command shuts down Worker Pools that match the `namespace` and `tag` found in the configuration file. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which the Compute Requirement will be terminated.
+
+Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
+
+The `--terminate`/`-T` option also immediately terminates the associated Compute Requirement(s) rather than waiting for executing Tasks to complete, and `--follow`/`-f` follows the shutdown to completion.
 
 ## yd-nodeaction
 
@@ -3415,7 +3437,15 @@ For example:
 
 ## yd-terminate
 
-The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down.
+The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. Compute Requirements in either `RUNNING` or `STOPPED` states can be terminated.
+
+Specific targets can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. Each target can be:
+
+- a Compute Requirement name or YDID (the whole requirement is terminated)
+- a single instance, in `<compute-requirement-ydid>.<instance-id>` form
+- a Node YDID (the node's instance is terminated)
+
+The `--follow`/`-f` option follows the affected Compute Requirements' event streams after the action is applied.
 
 ## yd-compute-stop
 
@@ -3487,13 +3517,19 @@ Valid entity types are:
 
 Unambiguous prefix matching is supported — for example `yd-list work-r` resolves to `yd-list work-requirements`, and `yd-list key` resolves to `yd-list keyrings`. Single uppercase synonyms also work, e.g. `yd-list W` and `yd-list K`.
 
-Please use `yd-list --help` to inspect the full list of options.
+Please use `yd-list --help` to inspect the full list of options. Commonly used options include:
 
-In some cases a `--details/-d` option can be supplied to drill down into additional detail on selected resources. For example `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings.
+| Option | Description |
+|---|---|
+| `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
+| `--active-only`/`-l` | List only entities in a non-terminated state, where applicable (e.g. Work Requirements, Worker Pools) |
+| `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
+| `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
+| `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
+| `--reverse` | List items in reverse-sorted name order |
+| `--public-ips-only` | With `instances`, list public IP addresses only |
 
-The `--active-only/-l` flag can be used to list only entities that are in a non-terminated state, if applicable, for example Work Requirements and Worker Pools.
-
-For convenience, `namespace` and `tag` are set to empty strings unless explicitly set on the command line.
+For convenience, `tag` is set to the empty string unless explicitly set on the command line; `namespace` falls back to the configured value as usual.
 
 ## yd-resize
 
@@ -3527,6 +3563,12 @@ yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
 ```
 
 The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+
+Additional options:
+
+- `--progress`: display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)
+- `--auto-follow-compute-requirements`/`-a`: automatically follow the associated Compute Requirements when following Worker Pools
+- `--raw-events`: print the raw JSON event stream
 
 ## yd-wait
 
@@ -3564,11 +3606,11 @@ It can optionally be supplied with a list of the names and/or YDIDs of the speci
 
 The `yd-boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
 
-The allowance name or YDID and the number of hours to add are supplied as arguments:
+The number of hours to add is supplied first, followed by the YDID(s) of one or more Allowances to boost (Allowance names are not accepted):
 
 ```shell
-yd-boost my-allowance 10
-yd-boost ydid:allowance:D9C548:... 10
+yd-boost 10 ydid:allowance:D9C548:...
+yd-boost 10 ydid:allowance:D9C548:... ydid:allowance:D9C548:...
 ```
 
 ## yd-show
@@ -3592,6 +3634,10 @@ The `yd-show` command will show the details (in JSON) of any YellowDog entity th
 - Applications
 - Groups
 - Roles
+
+When showing the details of a Configured Worker Pool, the `--show-token` option includes the Worker Pool token in the output.
+
+The `--report-variable <var>`/`-r <var>` option reports the processed value of the specified variable substitution and exits; it can be supplied multiple times, or use `--report-variable all` to report all variables. Combine with `--quiet` to emit the report as JSON. This is useful for debugging variable substitution setups.
 
 ## yd-compare
 
@@ -3632,13 +3678,38 @@ yd-help
 
 ## yd-jsonnet2json
 
-The `yd-jsonnet2json` command converts a Jsonnet file to JSON without any additional processing by the CLI (no variable substitution, no property expansion). It takes a single argument — the Jsonnet filename — and writes the resulting JSON to stdout:
+The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source:
 
 ```shell
-yd-jsonnet2json my_spec.jsonnet
+yd-jsonnet2json my_spec.jsonnet            # JSON to stdout
+yd-jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
+yd-jsonnet2json 'specs/*.jsonnet'          # writes a .json file per match
 ```
 
 This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
+
+## yd-format-json
+
+The `yd-format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored:
+
+```shell
+yd-format-json my_file.json my_other_file.json
+```
+
+## yd-version
+
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet. Each of the mutually exclusive options `--cli`, `--sdk`, `--python` and `--jsonnet` prints just that bare version number, for use in scripts:
+
+```shell
+yd-version           # report all versions
+yd-version --cli     # print the CLI version number only
+```
+
+Neither `yd-version`, `yd-format-json`, `yd-help` nor `yd-jsonnet2json` requires a configuration file or YellowDog credentials.
+
+## yd-copy
+
+The `yd-copy` command copies files or directories between remote data client locations. See [Data Client](#data-client) for full documentation.
 
 ## yd-delete / yd-rm
 
