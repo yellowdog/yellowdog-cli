@@ -532,3 +532,25 @@ class TestProcessVariableSubstitutionsInFileContents:
         content = "{{myvar}} has {{num_var}} items"
         result = var_module.process_variable_substitutions_in_file_contents(content)
         assert result == "hello has 42 items"
+
+    def test_array_type_tag_emits_valid_json(self):
+        var_module.VARIABLE_SUBSTITUTIONS["arr"] = '["Alpha", "Beta"]'
+        content = '{"items": "{{array:arr}}"}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        import json
+
+        assert json.loads(result) == {"items": ["Alpha", "Beta"]}
+
+    def test_table_type_tag_emits_valid_json(self):
+        var_module.VARIABLE_SUBSTITUTIONS["tbl"] = '{"Key": "Value", "flag": true}'
+        content = '{"table": "{{table:tbl}}"}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        import json
+
+        assert json.loads(result) == {"table": {"Key": "Value", "flag": True}}
+
+    def test_array_type_tag_single_quotes_jsonnet(self):
+        var_module.VARIABLE_SUBSTITUTIONS["arr"] = '["Alpha", "Beta"]'
+        content = "'{{array:arr}}'"
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert result == '["Alpha", "Beta"]'

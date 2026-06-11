@@ -587,13 +587,13 @@ def list_workers(nodes: list[Node]):
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(workers_all)
-    elif not ARGS_PARSER.details:
-        print_numbered_object_list(CLIENT, workers_all)
+    elif ARGS_PARSER.details:
+        print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
     elif ARGS_PARSER.ids_only:
         for worker in workers_all:
             print(worker.id)
     else:
-        print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
+        print_numbered_object_list(CLIENT, workers_all)
 
 
 def list_compute_requirement_templates():

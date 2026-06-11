@@ -79,9 +79,19 @@ class TestResolveRemotePath:
         result = resolve_remote_path(config, relative_path="r2:other/path")
         assert result == "r1:b/r2:other/path"
 
-    def test_strips_leading_and_trailing_slashes(self):
+    def test_strips_leading_slashes_keeps_directory_intent(self):
+        # Leading slashes are stripped; a trailing '/' is preserved because it
+        # denotes directory-destination intent (yd-copy / yd-upload)
         config = self._config(bucket="/b/", prefix="/p/")
-        assert resolve_remote_path(config, relative_path="/sub/") == "myremote:b/p/sub"
+        assert resolve_remote_path(config, relative_path="/sub/") == "myremote:b/p/sub/"
+
+    def test_no_trailing_slash_unchanged(self):
+        config = self._config(bucket="b")
+        assert resolve_remote_path(config, relative_path="sub") == "myremote:b/sub"
+
+    def test_slash_only_relative_path_ignored(self):
+        config = self._config(bucket="b", prefix="p")
+        assert resolve_remote_path(config, relative_path="/") == "myremote:b/p"
 
     def test_inline_remote_name_extracted(self):
         # Inline config string: "NAME,type=s3,..." → remote_name = "NAME"

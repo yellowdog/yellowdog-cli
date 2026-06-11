@@ -8,6 +8,7 @@ import sys
 import tempfile
 from copy import deepcopy
 from getpass import getuser
+from json import dumps as json_dumps
 from json import loads as json_loads
 from random import randint
 from typing import cast
@@ -646,15 +647,13 @@ def process_variable_substitutions_in_file_contents(
             file_contents = file_contents.replace(v_expression, replacement_expression)
         else:
             # If the replacement is a number, a boolean, a table, or an array,
-            # we need to remove the enclosing quotes when we substitute, and
-            # also ensure that lower case 'false' & 'true' are used.
+            # we need to remove the enclosing quotes when we substitute.
+            # json.dumps() emits valid JSON/Jsonnet ('true'/'false', double
+            # quotes) and preserves the case of string values.
             # Account for both double and single quotes (for Jsonnet support).
-            file_contents = file_contents.replace(
-                f'"{v_expression}"', str(replacement_expression).lower()
-            )
-            file_contents = file_contents.replace(
-                f"'{v_expression}'", str(replacement_expression).lower()
-            )
+            replacement = json_dumps(replacement_expression)
+            file_contents = file_contents.replace(f'"{v_expression}"', replacement)
+            file_contents = file_contents.replace(f"'{v_expression}'", replacement)
 
     return file_contents
 

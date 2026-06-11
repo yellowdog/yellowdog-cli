@@ -83,7 +83,11 @@ def resolve_remote_path(
     if config.prefix:
         parts.append(config.prefix.strip("/"))
     if relative_path:
-        parts.append(relative_path.strip("/"))
+        stripped = relative_path.strip("/")
+        if stripped:
+            # Preserve a trailing '/' — it denotes directory-destination intent
+            # (e.g. for yd-copy / yd-upload)
+            parts.append(stripped + ("/" if relative_path.endswith("/") else ""))
     elif filename:
         parts.append(filename)
 
@@ -248,7 +252,7 @@ def _download_with_glob(
         print_warning(f"Cannot access '{remote_dir}'")
         return
     entries = json.loads(check.stdout or "[]")
-    matches = [e for e in entries if fnmatch.fnmatch(e["Name"], pattern)]
+    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
     if not matches:
         print_info(f"No matches for wildcard '{remote_path}'")
         return
@@ -382,7 +386,7 @@ def _delete_with_glob(
         print_warning(f"Cannot access '{remote_dir}'")
         return
     entries = json.loads(check.stdout or "[]")
-    matches = [e for e in entries if fnmatch.fnmatch(e["Name"], pattern)]
+    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
     if not matches:
         print_info(f"No matches for wildcard '{remote_path}'")
         return
@@ -507,7 +511,7 @@ def list_remote_glob(
     if check.returncode != 0:
         return remote_dir, []
     entries = json.loads(check.stdout or "[]")
-    return remote_dir, [e for e in entries if fnmatch.fnmatch(e["Name"], pattern)]
+    return remote_dir, [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
 
 
 def list_remote(
@@ -568,7 +572,16 @@ def copy_remote(
     src_remote_str = _require_remote(src_config)
     dst_remote_str = _require_remote(dst_config)
 
-    _, _, rclone = make_rclone_for_copy(src_remote_str, dst_remote_str)
+    src_orig_name, _ = parse_rclone_config(src_remote_str)
+    dst_orig_name, _ = parse_rclone_config(dst_remote_str)
+    src_name, dst_name, rclone = make_rclone_for_copy(src_remote_str, dst_remote_str)
+
+    # Colliding remote names are renamed by make_rclone_for_copy; the paths
+    # were resolved with the original names, so rewrite their prefixes
+    if src_name != src_orig_name and src_path.startswith(f"{src_orig_name}:"):
+        src_path = f"{src_name}:{src_path[len(src_orig_name) + 1 :]}"
+    if dst_name != dst_orig_name and dst_path.startswith(f"{dst_orig_name}:"):
+        dst_path = f"{dst_name}:{dst_path[len(dst_orig_name) + 1 :]}"
 
     action = "Syncing" if sync else "Copying"
     print_info(f"{action} '{src_path}' → '{dst_path}'")

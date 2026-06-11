@@ -63,11 +63,22 @@ def main():
                 dry_run=dry_run,
             )
         else:
-            remote_path = (
-                resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=destination)
-                if destination
-                else resolve_remote_path(CONFIG_DATA_CLIENT, filename=local_path.name)
-            )
+            if destination is None:
+                remote_path = resolve_remote_path(
+                    CONFIG_DATA_CLIENT, filename=local_path.name
+                )
+            elif destination.endswith("/") or len(ARGS_PARSER.local_paths) > 1:
+                # The destination is a directory: retain each file's own name
+                # (a single-object destination would make every uploaded file
+                # overwrite the previous one)
+                remote_path = resolve_remote_path(
+                    CONFIG_DATA_CLIENT,
+                    relative_path=f"{destination.rstrip('/')}/{local_path.name}",
+                )
+            else:
+                remote_path = resolve_remote_path(
+                    CONFIG_DATA_CLIENT, relative_path=destination
+                )
             upload_file(CONFIG_DATA_CLIENT, local_path, remote_path, dry_run=dry_run)
 
     print_info("Upload complete")

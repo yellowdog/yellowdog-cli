@@ -72,11 +72,27 @@ def _find_rclone_conf() -> Path:
     raise FileNotFoundError("not configured (no rclone.conf found)")
 
 
+def _unique_remote_name(name: str, suffix: str, taken: set[str]) -> str:
+    candidate = f"{name}-{suffix}"
+    count = 2
+    while candidate in taken:
+        candidate = f"{name}-{suffix}{count}"
+        count += 1
+    return candidate
+
+
 def make_rclone_for_copy(
     src_remote_str: str, dst_remote_str: str
 ) -> tuple[str, str, "Rclone"]:
     """
     Build an Rclone instance with both src and dst remotes configured.
+
+    Remote names must be unique in the combined config: an inline remote that
+    shares its name with the other inline remote (or with a remote in the
+    system rclone.conf) would otherwise silently resolve both endpoints to a
+    single backend. Colliding inline remotes are renamed, so callers must use
+    the returned names when building paths.
+
     Returns (src_remote_name, dst_remote_name, rclone).
     """
     src_name, src_ini = parse_rclone_config(src_remote_str)
@@ -85,15 +101,33 @@ def make_rclone_for_copy(
     if src_ini is None and dst_ini is None:
         return src_name, dst_name, make_rclone(None)
 
+    # Identical inline configs on both sides: one shared section suffices
+    if src_ini is not None and src_ini == dst_ini:
+        return src_name, dst_name, make_rclone(Config(src_ini))
+
     # At least one remote uses inline config; build a combined INI
     sections: list[str] = []
+    taken: set[str] = set()
     if src_ini is None or dst_ini is None:
         # Include the system conf so named remotes are accessible
-        sys_conf_path = _find_rclone_conf()
-        sections.append(sys_conf_path.read_text())
+        sys_conf = _find_rclone_conf().read_text()
+        sections.append(sys_conf)
+        taken.update(re.findall(r"^\[(.+)\]", sys_conf, flags=re.MULTILINE))
+
     if src_ini is not None:
+        if src_name in taken:
+            new_name = _unique_remote_name(src_name, "src", taken)
+            src_ini = src_ini.replace(f"[{src_name}]", f"[{new_name}]", 1)
+            src_name = new_name
+        taken.add(src_name)
         sections.append(src_ini)
+
     if dst_ini is not None:
+        if dst_name in taken:
+            new_name = _unique_remote_name(dst_name, "dst", taken)
+            dst_ini = dst_ini.replace(f"[{dst_name}]", f"[{new_name}]", 1)
+            dst_name = new_name
+        taken.add(dst_name)
         sections.append(dst_ini)
 
     return src_name, dst_name, make_rclone(Config("\n\n".join(sections)))
