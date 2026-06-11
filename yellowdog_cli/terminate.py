@@ -20,7 +20,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_id_by_name,
     get_compute_requirement_id_by_worker_pool_id,
     get_compute_requirement_summaries,
-    get_instance_id_by_id,
+    get_instance_by_id,
 )
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -207,7 +207,7 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
     ) is None:
         return None
 
-    instance: Instance | None = get_instance_id_by_id(
+    instance: Instance | None = get_instance_by_id(
         CLIENT,
         cr_id,
         node.details.instanceId,  # type: ignore[union-attr]
@@ -241,7 +241,7 @@ def _terminate_instance(
         print_error(f"Cannot find Compute Requirement {cr_id}")
         return None
 
-    instance: Instance | None = get_instance_id_by_id(CLIENT, cr_id, instance_id)
+    instance: Instance | None = get_instance_by_id(CLIENT, cr_id, instance_id)
     if instance is None:
         print_error(
             f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"

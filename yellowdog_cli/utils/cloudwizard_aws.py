@@ -377,8 +377,9 @@ class AWSConfig(CommonCloudConfig):
                 if "default" in name.lower():
                     aws_sec_grp = AWSSecurityGroup(name=name, id=sec_grp["GroupId"])
                     break
-                else:
-                    print_warning(f"No default security group found for {region}")
+            else:
+                # No security group matched (or the list was empty)
+                print_warning(f"No default security group found for {region}")
 
             # Collect the default subnets for each AZ in the region
             response = ec2_client.describe_subnets(

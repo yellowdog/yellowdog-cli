@@ -18,6 +18,7 @@ from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_json,
+    print_simple,
     print_to_file,
     print_yd_object,
 )
@@ -310,10 +311,14 @@ def _report_variables(variable_names: list[str]):
         print_json(variables_sorted)
         return
 
+    if not variables_sorted:
+        print_info("No variables to report")
+        return
+
     print_info("Reporting selected variable values:")
     max_var_name = max(len(name) for name in variables_sorted)
     for name, value in variables_sorted.items():
-        print(
+        print_simple(
             f"                      {name}{' ' * (max_var_name - len(name))} = {value}"
         )
     return

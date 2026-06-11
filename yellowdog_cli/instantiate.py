@@ -126,7 +126,7 @@ def main():
             if num_batches > 1:
                 print_info(
                     f"Provisioning Compute Requirement {batch_number + 1} '{CONFIG_COMMON.namespace}/{id}'"
-                    f"with {batches[batch_number].target_instances:,d} instance(s)"
+                    f" with {batches[batch_number].target_instances:,d} instance(s)"
                 )
             else:
                 print_info(

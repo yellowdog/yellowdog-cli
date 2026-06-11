@@ -66,9 +66,7 @@ VARIABLE_SUBSTITUTIONS = {
     "time": UTCNOW.strftime("%H%M%S%f")[:-4],
     "datetime": UTCNOW.strftime("%y%m%d-%H%M%S"),
     "random": (
-        hex(randint(0, RAND_VAR_SIZE + 1))[2:]
-        .lower()
-        .zfill(len(hex(RAND_VAR_SIZE)) - 2)
+        hex(randint(0, RAND_VAR_SIZE))[2:].lower().zfill(len(hex(RAND_VAR_SIZE)) - 2)
     ),
 }
 
@@ -375,7 +373,10 @@ def process_untyped_variable_substitutions(
     # substitution loop so the bare variable name can be looked up cleanly.
     # Syntax: "{{varname::}}" — if varname is defined, use its value;
     # if not, return _UNSET to signal the caller to remove the property.
-    unset_marker = f"{opening_delimiter}.*{VAR_UNSET_SUFFIX}{closing_delimiter}"
+    unset_marker = (
+        f"{re.escape(opening_delimiter)}.*"
+        f"{re.escape(VAR_UNSET_SUFFIX)}{re.escape(closing_delimiter)}"
+    )
     if re.fullmatch(unset_marker, s):
         bare_name = remove_outer_delimiters(s, opening_delimiter, closing_delimiter)[
             : -len(VAR_UNSET_SUFFIX)
@@ -434,7 +435,8 @@ def process_untyped_variable_substitutions(
 
     # Create list of variable substitutions with their default values
     substitutions_with_defaults = re.findall(
-        f"{opening_delimiter}.*" + VAR_DEFAULT_SEPARATOR + f".*{closing_delimiter}",
+        f"{re.escape(opening_delimiter)}.*{re.escape(VAR_DEFAULT_SEPARATOR)}"
+        f".*{re.escape(closing_delimiter)}",
         s,
     )
     default_value_substitutions = []  # List of (variable_name, default_value)
@@ -636,7 +638,8 @@ def process_variable_substitutions_in_file_contents(
     """
     v_expressions = set(
         re.findall(
-            prefix + f"{VAR_OPENING_DELIMITER}.*{VAR_CLOSING_DELIMITER}" + postfix,
+            f"{re.escape(prefix)}{re.escape(VAR_OPENING_DELIMITER)}"
+            f".*{re.escape(VAR_CLOSING_DELIMITER)}{re.escape(postfix)}",
             file_contents,
         )
     )

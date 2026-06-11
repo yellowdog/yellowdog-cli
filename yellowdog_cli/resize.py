@@ -63,6 +63,10 @@ def _resize_worker_pool():
         worker_pool=worker_pool,  # type: ignore[arg-type]
         size=ARGS_PARSER.worker_pool_size,  # type: ignore[arg-type]
     )
+    print_info(
+        f"Resized Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
+        f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
+    )
 
     if ARGS_PARSER.follow:
         print_info("Following event stream(s)")

@@ -603,7 +603,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         # Check for properties set on the command line
         task_type = (
-            wr_section.get(TASK_TYPE, wr_section.get(TASK_TYPE))
+            wr_section.get(TASK_TYPE)
             if ARGS_PARSER.task_type is None
             else ARGS_PARSER.task_type
         )

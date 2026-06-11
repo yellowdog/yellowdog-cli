@@ -695,16 +695,6 @@ class CLIParser:
                 help="report on a dynamic template test run",
             )
 
-        # yd-admin
-        if "admin" in module_name:
-            parser.add_argument(
-                "work_requirement_id",
-                metavar="<work_requirement_id>",
-                type=str,
-                nargs="*",
-                help="work requirement to be refreshed",
-            )
-
         # yd-submit / yd-provision / yd-instantiate / yd-create / yd-remove
         if any(
             module in module_name
@@ -1310,6 +1300,12 @@ class CLIParser:
                 nargs="+",
                 help="the YellowDog ID(s) of the provisioned worker pool(s) to compare",
             )
+            parser.add_argument(
+                "--running-nodes-only",
+                action="store_true",
+                required=False,
+                help="only compare against nodes in the RUNNING state",
+            )
 
         # yd-submit
         if any(module in module_name for module in ["submit"]):
@@ -1880,15 +1876,6 @@ class CLIParser:
     @allow_missing_attribute
     def report(self) -> bool | None:
         return self.args.report
-
-    # -----------------------------------------------------------------------
-    # yd-admin
-    # -----------------------------------------------------------------------
-
-    @property
-    @allow_missing_attribute
-    def wr_ids(self) -> list[str] | None:
-        return self.args.work_requirement_id
 
     # -----------------------------------------------------------------------
     # yd-submit / yd-provision / yd-instantiate / yd-create / yd-remove

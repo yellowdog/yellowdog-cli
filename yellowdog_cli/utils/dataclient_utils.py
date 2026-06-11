@@ -23,6 +23,14 @@ from yellowdog_cli.utils.variables import process_variable_substitutions
 _GLOB_CHARS = frozenset("*?[")
 
 
+def _rclone_error_detail(result) -> str:
+    """
+    Error detail for a failed rclone invocation: stderr is None when rclone
+    ran uncaptured (output went to the terminal), so fall back to the code.
+    """
+    return result.stderr or f"rclone exit code {result.returncode}"
+
+
 def _require_remote(config: ConfigDataClient) -> str:
     """
     Return config.remote, raising a clear error if it is not set.
@@ -111,7 +119,7 @@ def upload_file(
     print_info(f"Uploading '{local_path}' → '{remote_path}'")
     result = rclone.copy_to(src=str(local_path.resolve()), dst=remote_path)
     if result.returncode != 0:
-        raise RuntimeError(f"Upload failed: {result.stderr}")
+        raise RuntimeError(f"Upload failed: {_rclone_error_detail(result)}")
 
 
 def _rclone_sync(rclone: Rclone, src: str, dst: str):
@@ -170,7 +178,7 @@ def upload_directory(
     else:
         result = rclone.copy(src=str(local_path.resolve()), dst=remote_path)
     if result.returncode != 0:
-        raise RuntimeError(f"Directory upload failed: {result.stderr}")
+        raise RuntimeError(f"Directory upload failed: {_rclone_error_detail(result)}")
 
 
 def _upload_directory_flat(
@@ -187,6 +195,18 @@ def _upload_directory_flat(
     if not files:
         print_info(f"No files found under '{local_path}'")
         return
+
+    # Flattening collapses subdirectories, so same-named files in different
+    # subdirectories would silently overwrite each other at the remote
+    seen: dict[str, Path] = {}
+    for local_file in files:
+        if (first := seen.get(local_file.name)) is not None:
+            print_warning(
+                f"'{local_file}' will overwrite '{first}' at the remote"
+                f" (same filename, flattened upload)"
+            )
+        else:
+            seen[local_file.name] = local_file
 
     for local_file in files:
         dest = f"{remote_path.rstrip('/')}/{local_file.name}"
@@ -281,7 +301,9 @@ def _download_with_glob(
         else:
             result = rclone.copy_to(src=src, dst=dst)
         if result.returncode != 0:
-            raise RuntimeError(f"Download failed for '{src}': {result.stderr}")
+            raise RuntimeError(
+                f"Download failed for '{src}': {_rclone_error_detail(result)}"
+            )
 
 
 def download_files(
@@ -354,7 +376,7 @@ def download_files(
                 )
                 if result.returncode != 0:
                     raise RuntimeError(
-                        f"Download failed for '{f.path.path}': {result.stderr}"
+                        f"Download failed for '{f.path.path}': {_rclone_error_detail(result)}"
                     )
     else:
         action = "Syncing" if sync else "Downloading"
@@ -364,7 +386,7 @@ def download_files(
         else:
             result = rclone.copy(src=remote_path, dst=dst)
         if result.returncode != 0:
-            raise RuntimeError(f"Download failed: {result.stderr}")
+            raise RuntimeError(f"Download failed: {_rclone_error_detail(result)}")
 
 
 def _delete_with_glob(
@@ -407,7 +429,7 @@ def _delete_with_glob(
             print_info(f"Deleting '{entry_path}'")
             result = rclone.delete_files(entry_path)
         if result.returncode != 0:
-            raise RuntimeError(f"Delete failed: {result.stderr}")
+            raise RuntimeError(f"Delete failed: {_rclone_error_detail(result)}")
 
 
 def delete_remote(
@@ -483,7 +505,7 @@ def delete_remote(
         return
 
     if result.returncode != 0:
-        raise RuntimeError(f"Delete failed: {result.stderr}")
+        raise RuntimeError(f"Delete failed: {_rclone_error_detail(result)}")
 
 
 def list_remote_glob(
@@ -595,4 +617,4 @@ def copy_remote(
         result = rclone.copy(src=src_path, dst=dst_path)
 
     if result.returncode != 0:
-        raise RuntimeError(f"Copy failed: {result.stderr}")
+        raise RuntimeError(f"Copy failed: {_rclone_error_detail(result)}")

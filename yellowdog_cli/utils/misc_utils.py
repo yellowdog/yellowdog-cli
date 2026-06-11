@@ -123,8 +123,15 @@ def get_delimited_string_boundaries(
     Opening and closing delimiters must be balanced across the entire
     input_string, otherwise an exception will be raised.
     """
-    openings = [(x.span()[0], 1) for x in re.finditer(opening_delimiter, input_string)]
-    closings = [(x.span()[0], -1) for x in re.finditer(closing_delimiter, input_string)]
+    # Escape the delimiters: they are literal strings, not regex patterns
+    openings = [
+        (x.span()[0], 1)
+        for x in re.finditer(re.escape(opening_delimiter), input_string)
+    ]
+    closings = [
+        (x.span()[0], -1)
+        for x in re.finditer(re.escape(closing_delimiter), input_string)
+    ]
 
     mismatched_delimiters_exception = ValueError(
         f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"

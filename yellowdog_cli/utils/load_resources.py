@@ -131,12 +131,24 @@ def _resequence_resources(
             raise KeyError(
                 "Property 'resource' is not specified for one or more resource specifications"
             )
-        if r["resource"] not in resource_creation_order:
-            raise ValueError(f"Unknown resource type: '{r['resource']}'")
 
-    resources.sort(
-        key=lambda resource: resource_creation_order.index(resource["resource"]),
-        reverse=not creation_or_update,
-    )
+    # Don't fail the whole batch for unknown resource types here: they're
+    # reported (and counted as failures) during per-resource processing
+    unknown_types = {
+        r["resource"] for r in resources if r["resource"] not in resource_creation_order
+    }
+    if unknown_types:
+        print_warning(
+            "Unknown resource type(s) in resource list: "
+            f"{', '.join(sorted(unknown_types))}"
+        )
+
+    def _sequence(resource: dict) -> int:
+        try:
+            return resource_creation_order.index(resource["resource"])
+        except ValueError:
+            return len(resource_creation_order)  # Unknown types sequence last
+
+    resources.sort(key=_sequence, reverse=not creation_or_update)
 
     return resources

@@ -387,7 +387,7 @@ class TestApplyActionToInstance:
 
         with (
             patch.object(cac_module, "CLIENT", mock_client),
-            patch.object(cac_module, "get_instance_id_by_id", return_value=instance),
+            patch.object(cac_module, "get_instance_by_id", return_value=instance),
             patch.object(cac_module, "confirmed", return_value=confirm_result),
             patch.object(cac_module, "print_error") as mock_error,
             patch.object(cac_module, "print_info"),
@@ -489,7 +489,7 @@ class TestApplyActionToNodeInstance:
                 "get_compute_requirement_id_by_worker_pool_id",
                 return_value=worker_pool_cr_id,
             ),
-            patch.object(cac_module, "get_instance_id_by_id", return_value=instance),
+            patch.object(cac_module, "get_instance_by_id", return_value=instance),
             patch.object(
                 cac_module, "_apply_action_to_instance", return_value=CR_ID
             ) as mock_instance_action,

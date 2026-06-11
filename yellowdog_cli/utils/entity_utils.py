@@ -1138,12 +1138,12 @@ def clear_image_caches():
 
 
 @lru_cache
-def get_instance_id_by_id(
+def get_instance_by_id(
     client: PlatformClient, cr_id: str, instance_id: str
 ) -> Instance | None:
     """
     Given a compute requirement ID and an instance ID string,
-    find the Instance ID object.
+    find the Instance object.
     """
     for instance in _get_instances(client, cr_id):
         if instance.id.instanceId == instance_id:  # type: ignore[union-attr]
