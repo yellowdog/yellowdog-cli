@@ -187,7 +187,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Jun 10 16:21:35 BST 2026 -->
+<!-- Added by: pwt, at: Thu Jun 11 10:28:33 BST 2026 -->
 
 <!--te-->
 
@@ -562,7 +562,7 @@ The **environment variables** are as follows:
 - `YD_NAMESPACE`
 - `YD_TAG`
 
-When setting the value of the above properties, a property set on the command line takes precedence over one set via the configuration file, and both take precedence over a value set in an environment variable.
+When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
 
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
 

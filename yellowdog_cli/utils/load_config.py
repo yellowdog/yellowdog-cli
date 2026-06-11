@@ -212,7 +212,7 @@ def load_config_common() -> ConfigCommon:
 
         # Replace common section properties with command line or
         # environment variable overrides. Precedence is:
-        # command line > config file > environment variable
+        # command line > environment variable > config file
         for key_name, args_parser_value, env_var_name in [
             (KEY, ARGS_PARSER.key, YD_KEY),
             (SECRET, ARGS_PARSER.secret, YD_SECRET),
@@ -226,10 +226,7 @@ def load_config_common() -> ConfigCommon:
                     f"Using '{key_name}' provided on command line "
                     "(or automatically set)"
                 )
-            elif (
-                common_section.get(key_name) is None
-                and os.environ.get(env_var_name) is not None
-            ):
+            elif os.environ.get(env_var_name) is not None:
                 common_section[key_name] = os.environ[env_var_name]
                 print_info(f"Using '{key_name}' provided via the environment")
 
@@ -335,20 +332,20 @@ def _load_namespace_and_tag() -> None:
 
     if ARGS_PARSER.namespace is not None:
         namespace = ARGS_PARSER.namespace
-    elif common_section.get(NAMESPACE) is not None:
-        namespace = str(common_section[NAMESPACE])
     elif os.environ.get(YD_NAMESPACE) is not None:
         namespace = os.environ[YD_NAMESPACE]
+    elif common_section.get(NAMESPACE) is not None:
+        namespace = str(common_section[NAMESPACE])
     else:
         namespace = "default"
     namespace = process_variable_substitutions(namespace)
 
     if ARGS_PARSER.tag is not None:
         name_tag = ARGS_PARSER.tag
-    elif common_section.get(NAME_TAG) is not None:
-        name_tag = str(common_section[NAME_TAG])
     elif os.environ.get(YD_TAG) is not None:
         name_tag = os.environ[YD_TAG]
+    elif common_section.get(NAME_TAG) is not None:
+        name_tag = str(common_section[NAME_TAG])
     else:
         name_tag = "{{username}}"
     name_tag = process_variable_substitutions(name_tag)
