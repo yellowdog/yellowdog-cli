@@ -6,7 +6,7 @@ import json
 from time import sleep
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from yellowdog_client import PlatformClient
 
 from yellowdog_cli.create import create_resources
@@ -96,11 +96,12 @@ class AWSConfig(CommonCloudConfig):
         super().__init__(client=client, cloud_provider="AWS")
         try:  # Check for valid credentials
             boto3.client("iam").list_users(MaxItems=1)
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
+            # BotoCoreError covers NoCredentialsError (no credentials at all)
             raise RuntimeError(
                 "Invalid or missing AWS credentials. Did you remember to set/export"
-                " the AWS account credentials?"
-            )
+                f" the AWS account credentials? ({e})"
+            ) from e
 
         # Establish the region to use
         if region_name is None:  # Use the default region from the SDK
@@ -306,17 +307,23 @@ class AWSConfig(CommonCloudConfig):
 
         # Create Credential; assume use of the first (probably only) access key
         try:
-            if self._wait_until_access_key_is_valid_for_ec2(
-                access_key=self._access_keys[0]
-            ):
+            access_key = self._access_keys[0]
+        except IndexError:
+            print_error("No access keys loaded; can't create Credential")
+        else:
+            if access_key.secret_access_key is None:
+                # E.g., the user declined to regenerate an existing key
+                print_warning(
+                    "Secret access key is not available; AWS Credential not"
+                    " added to YellowDog Keyring"
+                )
+            elif self._wait_until_access_key_is_valid_for_ec2(access_key=access_key):
                 credential_resource = self._generate_yd_aws_credential(
-                    YD_KEYRING_NAME, YD_CREDENTIAL_NAME, self._access_keys[0]
+                    YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
                 )
                 create_resources([credential_resource])
             else:
                 print_warning("AWS Credential not added to YellowDog Keyring")
-        except IndexError:
-            print_error("No access keys loaded; can't create Credential")
 
         # Sequence the Compute Requirement Templates before the Compute Source
         # Templates for subsequent removals.

@@ -57,5 +57,10 @@ class ConsoleWithInputBackspaceFixed(Console):
             else:
                 self.file.write(prompt_str)
                 self.file.flush()
-                result = sys.stdin.readline().rstrip("\n")
+                raw_line = sys.stdin.readline()
+                if raw_line == "":
+                    # Match builtin input(): EOF must raise, not return "",
+                    # otherwise callers' retry loops spin forever
+                    raise EOFError("EOF when reading a line")
+                result = raw_line.rstrip("\n")
         return result

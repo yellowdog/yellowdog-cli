@@ -208,6 +208,8 @@ def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
 
     'S3:bucket/prefix/xxx*' → ('S3:bucket/prefix/', 'xxx*')
     'S3:bucket/xxx*'        → ('S3:bucket/', 'xxx*')
+
+    Wildcards are supported in the final path component only.
     """
     colon_idx = remote_path.find(":")
     remote_prefix = remote_path[: colon_idx + 1] if colon_idx >= 0 else ""
@@ -215,6 +217,11 @@ def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
 
     if "/" in path_part:
         dir_part, pattern = path_part.rsplit("/", 1)
+        if _GLOB_CHARS.intersection(dir_part):
+            raise ValueError(
+                f"Wildcards are only supported in the final path component:"
+                f" '{remote_path}'"
+            )
         return f"{remote_prefix}{dir_part}/", pattern
     return f"{remote_prefix}", path_part
 
@@ -261,27 +268,20 @@ def _download_with_glob(
     action = "Syncing" if sync else "Downloading"
     print_info(f"{action} '{remote_path}' → '{local_destination}'")
     local_destination.mkdir(parents=True, exist_ok=True)
-    cmd = "sync" if sync else "copy"
-    result = rclone.impl._run(
-        [
-            cmd,
-            remote_dir,
-            str(local_destination),
-            "--include",
-            pattern,
-            "--include",
-            f"{pattern}/**",
-            "--checkers",
-            "1000",
-            "--transfers",
-            "32",
-            "--low-level-retries",
-            "10",
-        ],
-        capture=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Download failed: {result.stderr}")
+
+    # Drive the transfer from the matched entries, so that the reported
+    # matches and the transferred files always agree (rclone's '--include'
+    # filter syntax differs subtly from the fnmatch syntax used above)
+    base = remote_dir.rstrip("/")
+    for entry in matches:
+        src = f"{base}/{entry['Name']}"
+        dst = str(local_destination / entry["Name"])
+        if entry["IsDir"]:
+            result = _rclone_sync(rclone, src, dst) if sync else rclone.copy(src, dst)
+        else:
+            result = rclone.copy_to(src=src, dst=dst)
+        if result.returncode != 0:
+            raise RuntimeError(f"Download failed for '{src}': {result.stderr}")
 
 
 def download_files(
@@ -436,12 +436,8 @@ def delete_remote(
             if not listing.dirs and not listing.files:
                 print_warning(f"'{remote_path}' does not exist")
                 return
-            basename = remote_path.rstrip("/").rsplit("/", 1)[-1].split(":")[-1]
-            is_file = (
-                not listing.dirs
-                and len(listing.files) == 1
-                and listing.files[0].name == basename
-            )
+            _, rclone = _rclone_for_config(config)
+            is_file = _is_remote_file(rclone, remote_path)
             if not is_file and not recursive:
                 print_warning(
                     f"'{remote_path}' is a directory; use --recursive to delete it"
@@ -471,15 +467,10 @@ def delete_remote(
         print_warning(f"'{remote_path}' does not exist")
         return
 
-    # When rclone lists a single file, it returns that file itself in the
-    # listing (name == basename of the path).  Distinguish this from a
-    # directory whose *contents* are listed (names differ from the path).
-    basename = remote_path.rstrip("/").rsplit("/", 1)[-1].split(":")[-1]
-    is_file = (
-        not listing.dirs
-        and len(listing.files) == 1
-        and listing.files[0].name == basename
-    )
+    # Classify by listing the parent directory: a basename comparison against
+    # the path's own listing misclassifies a directory containing a single
+    # same-named file (e.g. 'foo/foo')
+    is_file = _is_remote_file(rclone, remote_path)
 
     if is_file:
         print_info(f"Deleting '{remote_path}'")

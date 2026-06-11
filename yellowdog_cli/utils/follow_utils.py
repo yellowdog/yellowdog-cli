@@ -31,7 +31,11 @@ from yellowdog_cli.utils.printing import (
     print_info,
     print_warning,
 )
-from yellowdog_cli.utils.settings import EVENT_STREAM_RETRY_INTERVAL
+from yellowdog_cli.utils.settings import (
+    EVENT_STREAM_CONNECT_TIMEOUT,
+    EVENT_STREAM_READ_TIMEOUT,
+    EVENT_STREAM_RETRY_INTERVAL,
+)
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -286,6 +290,22 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
 
     print_info(f"Following the event stream(s) for {len(ydids_set)} YellowDog ID(s)")
 
+    # Rich only supports one live display at a time, so the progress bar can
+    # only be used when following a single Work Requirement
+    use_progress = bool(ARGS_PARSER.progress)
+    if (
+        use_progress
+        and sum(
+            1 for ydid in ydids_set if get_ydid_type(ydid) == YDIDType.WORK_REQUIREMENT
+        )
+        > 1
+    ):
+        print_warning(
+            "'--progress' supports a single Work Requirement only; "
+            "using plain event following instead"
+        )
+        use_progress = False
+
     threads: list[Thread] = []
 
     for ydid in ydids_set:
@@ -297,7 +317,7 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
             )
             continue
 
-        if ARGS_PARSER.progress and ydid_type == YDIDType.WORK_REQUIREMENT:
+        if use_progress and ydid_type == YDIDType.WORK_REQUIREMENT:
             target, args = follow_work_requirement_with_progress, (ydid,)
         else:
             target, args = follow_events, (ydid, ydid_type)
@@ -355,43 +375,58 @@ def follow_events(
     update a progress bar).
     """
     while True:
-        response = requests.get(
-            headers={
-                "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"
-            },
-            url=get_event_url(ydid, ydid_type),
-            stream=True,
-        )
-
-        if response.status_code != 200:
-            try:
-                error_text = response.json()["message"]
-            except Exception:
-                error_text = "(JSON error cannot be decoded)"
-            print_error(f"'{ydid}': {error_text}")
-            break
-
-        if response.encoding is None:
-            response.encoding = "utf-8"
-
         try:
-            for event in response.iter_lines(decode_unicode=True):
-                if event and isinstance(event, str):
-                    if on_event is not None:
-                        on_event(event, ydid_type)
-                    else:
-                        print_event(event, ydid_type)
+            response = requests.get(
+                headers={
+                    "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"
+                },
+                url=get_event_url(ydid, ydid_type),
+                stream=True,
+                timeout=(EVENT_STREAM_CONNECT_TIMEOUT, EVENT_STREAM_READ_TIMEOUT),
+            )
+        except requests.exceptions.RequestException as e:
+            print_error(f"Unable to connect to event stream for '{ydid}': {e}")
             break
 
-        except Exception as e:
-            if "Connection broken" in str(e):
+        with response:
+            if response.status_code != 200:
+                try:
+                    error_text = response.json()["message"]
+                except Exception:
+                    error_text = "(JSON error cannot be decoded)"
+                print_error(f"'{ydid}': {error_text}")
+                break
+
+            if response.encoding is None:
+                response.encoding = "utf-8"
+
+            try:
+                for event in response.iter_lines(decode_unicode=True):
+                    if event and isinstance(event, str):
+                        if on_event is not None:
+                            on_event(event, ydid_type)
+                        else:
+                            print_event(event, ydid_type)
+                break
+
+            except requests.exceptions.Timeout:
+                # A read timeout just means a quiet (or silently dropped)
+                # connection; reconnect without alarming the user
+                continue
+
+            except (
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+                ConnectionResetError,
+            ):
                 print_warning(
                     f"Event stream interruption for '{ydid}' "
                     f"(retrying in {EVENT_STREAM_RETRY_INTERVAL}s)"
                 )
                 sleep(EVENT_STREAM_RETRY_INTERVAL)
                 continue
-            else:
+
+            except Exception as e:
                 print_error(f"Event stream error: {e}")
                 break
 

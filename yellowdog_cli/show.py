@@ -13,6 +13,7 @@ from yellowdog_cli.utils.entity_utils import (
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
@@ -286,7 +287,7 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             return
 
     except Exception as e:
-        if "404" in str(e):
+        if is_http_not_found(e):
             print_error(f"{ydid_type.value} ID '{ydid}' not found")  # type: ignore[union-attr]
         else:
             print_error(f"Unable to show details for '{ydid}': {e}")

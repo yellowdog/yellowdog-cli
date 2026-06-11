@@ -895,6 +895,13 @@ def list_attribute_definitions():
         print_objects_as_json(attribute_definition_list)
         return
 
+    if ARGS_PARSER.ids_only:
+        print_warning(
+            "'--ids-only' is not supported for Attribute Definitions"
+            " (they have no YellowDog IDs)"
+        )
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(
             CLIENT, attribute_definition_list, object_type_name="Attribute Definition"
@@ -940,6 +947,11 @@ def list_namespaces():
         print_objects_as_json(namespaces)
         return
 
+    if ARGS_PARSER.ids_only:
+        for namespace in namespaces:
+            print(namespace.id)
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, namespaces)
         return
@@ -968,6 +980,13 @@ def list_namespace_policies():
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(namespace_policies)
+        return
+
+    if ARGS_PARSER.ids_only:
+        print_warning(
+            "'--ids-only' is not supported for Namespace Policies"
+            " (they have no YellowDog IDs)"
+        )
         return
 
     if not ARGS_PARSER.details:
@@ -1001,6 +1020,11 @@ def list_users():
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(users)
+        return
+
+    if ARGS_PARSER.ids_only:
+        for user in users:
+            print(user.id)
         return
 
     if not ARGS_PARSER.details:
@@ -1039,6 +1063,11 @@ def list_applications():
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(applications)
+        return
+
+    if ARGS_PARSER.ids_only:
+        for application in applications:
+            print(application.id)
         return
 
     if not ARGS_PARSER.details:
@@ -1126,6 +1155,11 @@ def list_roles():
         print_objects_as_json(roles)
         return
 
+    if ARGS_PARSER.ids_only:
+        for role in roles:
+            print(role.id)
+        return
+
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, roles, object_type_name="Role")
         return
@@ -1144,6 +1178,12 @@ def list_permissions():
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(permissions)
+        return
+
+    if ARGS_PARSER.ids_only:
+        print_warning(
+            "'--ids-only' is not supported for Permissions (they have no YellowDog IDs)"
+        )
         return
 
     if not ARGS_PARSER.details:

@@ -335,34 +335,34 @@ class RcloneUploadedFiles:
         the same location.
         """
         chdir(self._files_directory)
-
-        if not exists(local_file):
-            raise FileNotFoundError(
-                f"File '{Path(self._files_directory) / local_file}' does not exist "
-                "and cannot be uploaded"
-            )
-
-        rclone_uploaded_file = RcloneUploadedFile(local_file, rclone_upload_path)
-        if rclone_uploaded_file in self._rcloned_files:
-            # Duplicate
-            return
-
-        if not ARGS_PARSER.dry_run:
-            try:
-                self._upload_rclone_file_core(rclone_uploaded_file)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Unable to upload '{local_file}' -> '{rclone_upload_path}': {e}"
+        try:
+            if not exists(local_file):
+                raise FileNotFoundError(
+                    f"File '{Path(self._files_directory) / local_file}' does not exist "
+                    "and cannot be uploaded"
                 )
-        else:
-            print_info(
-                f"Dry-run: Would upload '{local_file}' -> "
-                f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
-            )
 
-        self._rcloned_files.append(rclone_uploaded_file)
+            rclone_uploaded_file = RcloneUploadedFile(local_file, rclone_upload_path)
+            if rclone_uploaded_file in self._rcloned_files:
+                # Duplicate
+                return
 
-        chdir(self._working_directory)
+            if not ARGS_PARSER.dry_run:
+                try:
+                    self._upload_rclone_file_core(rclone_uploaded_file)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Unable to upload '{local_file}' -> '{rclone_upload_path}': {e}"
+                    )
+            else:
+                print_info(
+                    f"Dry-run: Would upload '{local_file}' -> "
+                    f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
+                )
+
+            self._rcloned_files.append(rclone_uploaded_file)
+        finally:
+            chdir(self._working_directory)
 
     def _upload_rclone_file_core(self, rclone_upload_file: RcloneUploadedFile):
         """

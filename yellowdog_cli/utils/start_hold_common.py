@@ -79,23 +79,32 @@ def _start_or_hold_work_requirements(
         f"{action} {len(selected_work_requirement_summaries)} Work Requirement(s)?"
     ):
         for work_summary in selected_work_requirement_summaries:
-            if work_summary.status == required_state:
-                try:
-                    action_function(work_summary.id)  # type: ignore[arg-type]
-                    work_requirement: WorkRequirement = (
-                        CLIENT.work_client.get_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
-                    )
-                    count += 1
-                    print_info(
-                        f"Applied {action} to "
-                        f"{link_entity(CONFIG_COMMON.url, work_requirement)} "
-                        f"('{work_summary.name}')"
-                    )
-                except Exception as e:
-                    print_error(
-                        f"Failed to {action} Work Requirement '{work_summary.name}': {e}"
-                    )
+            if work_summary.status != required_state:
+                continue
+            try:
+                action_function(work_summary.id)  # type: ignore[arg-type]
+            except Exception as e:
+                print_error(
+                    f"Failed to {action} Work Requirement '{work_summary.name}': {e}"
+                )
+                continue  # Don't follow Work Requirements that weren't actioned
+            count += 1
             work_requirement_ids.append(cast(str, work_summary.id))
+            # The refetch is only needed to generate the link; the
+            # action has already succeeded
+            try:
+                work_requirement: WorkRequirement = (
+                    CLIENT.work_client.get_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
+                )
+                print_info(
+                    f"Applied {action} to "
+                    f"{link_entity(CONFIG_COMMON.url, work_requirement)} "
+                    f"('{work_summary.name}')"
+                )
+            except Exception:
+                print_info(
+                    f"Applied {action} to Work Requirement '{work_summary.name}'"
+                )
 
         if count > 0:
             print_info(f"{action} applied to {count} Work Requirement(s)")

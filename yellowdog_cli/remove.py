@@ -69,8 +69,12 @@ def remove_resources(resources: list[dict] | None = None):
     or loaded from files, or by ID.
     """
     if ARGS_PARSER.ids:
+        failed = 0
         for resource_id in ARGS_PARSER.resource_specifications:
-            remove_resource_by_id(resource_id)
+            if not remove_resource_by_id(resource_id):
+                failed += 1
+        if failed:
+            raise RuntimeError(f"{failed} resource(s) failed to remove")
         return
 
     if resources is None:
@@ -151,8 +155,7 @@ def remove_compute_source_template(resource: dict):
         source = resource.pop(PROP_SOURCE)  # Extract the Source properties
         name = source[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -168,7 +171,7 @@ def remove_compute_source_template(resource: dict):
         CLIENT.compute_client.delete_compute_source_template_by_id(source_id)
         print_info(f"Removed Compute Source Template '{name}' ({source_id})")
     except Exception as e:
-        print_error(
+        raise RuntimeError(
             f"Unable to remove Compute Source Template '{name}' ({source_id}): {e}"
         )
 
@@ -181,8 +184,7 @@ def remove_compute_requirement_template(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -198,7 +200,7 @@ def remove_compute_requirement_template(resource: dict):
         CLIENT.compute_client.delete_compute_requirement_template_by_id(template_id)
         print_info(f"Removed Compute Requirement Template '{name}' ({template_id})")
     except Exception as e:
-        print_error(
+        raise RuntimeError(
             f"Unable to remove Compute Requirement Template '{name}'"
             f" ({template_id}): {e}"
         )
@@ -211,8 +213,7 @@ def remove_keyring(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     if not confirmed(f"Remove Keyring '{name}'?"):
         return
@@ -237,8 +238,7 @@ def remove_credential(resource: dict):
         credential_data = resource[PROP_CREDENTIAL]
         credential_name = credential_data[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     if not confirmed(
         f"Remove Credential '{credential_name}' from Keyring '{keyring_name}'?"
@@ -270,8 +270,7 @@ def remove_image_family(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -308,8 +307,7 @@ def remove_configured_worker_pool(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -366,14 +364,14 @@ def remove_allowance(resource: dict):
             print_info(f"Removed {num_removed} Allowance(s)")
 
 
-def remove_resource_by_id(resource_id: str):
+def remove_resource_by_id(resource_id: str) -> bool:
     """
-    Remove a resource by its YDID.
+    Remove a resource by its YDID. Returns False on failure.
     """
     try:
         if (ydid_type := get_ydid_type(resource_id)) is None:
             print_error(f"Invalid YellowDog ID '{resource_id}'")
-            return
+            return False
         if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
             if confirmed(f"Remove Compute Source Template {resource_id}?"):
                 CLIENT.compute_client.delete_compute_source_template_by_id(resource_id)
@@ -404,7 +402,7 @@ def remove_resource_by_id(resource_id: str):
                     resource_id
                 )
                 CLIENT.images_client.delete_image_group(group)
-                print_info(f"Removed Image Family {resource_id} (if present)")
+                print_info(f"Removed Image Group {resource_id} (if present)")
 
         elif ydid_type == YDIDType.IMAGE:
             if confirmed(f"Remove Image '{resource_id}'?"):
@@ -419,7 +417,7 @@ def remove_resource_by_id(resource_id: str):
                     if keyring.id == resource_id:
                         CLIENT.keyring_client.delete_keyring_by_name(keyring.name)  # type: ignore[arg-type]
                         print_info(f"Removed Keyring {resource_id}")
-                        return
+                        return True
                 print_warning(f"Cannot find Keyring {resource_id}")
 
         elif ydid_type == YDIDType.WORKER_POOL:
@@ -444,9 +442,13 @@ def remove_resource_by_id(resource_id: str):
 
         else:
             print_error(f"Resource ID type is unknown/unsupported: {resource_id}")
+            return False
 
     except Exception as e:
         print_error(f"Unable to remove resource with ID {resource_id}: {e}")
+        return False
+
+    return True
 
 
 def remove_attribute_definition(resource: dict):
@@ -479,8 +481,7 @@ def remove_namespace_policy(resource: dict):
     try:
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     # Test for existing policy
     try:
@@ -508,8 +509,7 @@ def remove_group(resource: dict):
     try:
         group_name = resource[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     group_id = get_group_id_by_name(CLIENT, group_name)
     if group_id is None:
@@ -535,8 +535,7 @@ def remove_application(resource: dict):
     try:
         app_name = resource[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     app_id = get_application_id_by_name(CLIENT, app_name)
     if app_id is None:
@@ -562,8 +561,7 @@ def remove_namespace(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        print_error(f"Expected property to be defined ({e})")
-        return
+        raise KeyError(f"Expected property to be defined ({e})")
 
     namespace_id = get_namespace_id_by_name(CLIENT, name)
     if namespace_id is None:

@@ -95,13 +95,14 @@ if subs_list:
 subs_list = []
 if ARGS_PARSER.variables is not None:
     for variable in ARGS_PARSER.variables:
-        key_value: list = variable.split("=")
-        if len(key_value) == 2:
+        # Split on the first '=' only: values may themselves contain '='
+        key_value: list = variable.split("=", 1)
+        if len(key_value) == 2 and key_value[0] != "":
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
             subs_list.append(f"'{key_value[0]}'")
         else:
             print_error(
-                f"Error in variable substitution '{key_value[0]}'",
+                f"Error in variable substitution '{variable}'",
             )
             exit(1)  # Note: exception trap not yet in place
 
@@ -356,12 +357,15 @@ def process_untyped_variable_substitutions(
         for element in split_delimited_string(
             undelimited_input_string, opening_delimiter, closing_delimiter
         ):
-            processed_string += (
-                process_untyped_variable_substitutions(
-                    element, opening_delimiter, closing_delimiter
-                )
-                or ""
+            result = process_untyped_variable_substitutions(
+                element, opening_delimiter, closing_delimiter
             )
+            if result is _UNSET:
+                # An unset inner variable: leave its token intact so the
+                # caller's dict-level processing can remove the property
+                processed_string += element
+            else:
+                processed_string += result or ""
         input_string = opening_delimiter + processed_string + closing_delimiter
 
     assert isinstance(input_string, str)  # narrow: None already returned above

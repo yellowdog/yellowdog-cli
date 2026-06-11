@@ -351,10 +351,9 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
                 client=CLIENT, name=template_name_or_id, namespace=namespace
             )
             if template_id is None:
-                print_error(
+                raise ValueError(
                     f"Compute Source Template name '{template_name_or_id}' not found"
                 )
-                return
             source[PROP_CST_ID] = template_id
             source_template_substitutions += 1
 

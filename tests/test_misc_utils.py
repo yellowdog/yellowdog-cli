@@ -83,6 +83,11 @@ class TestFormatYdName:
         result = format_yd_name("weird @#$% chars!!", add_prefix=False)
         assert re.match(r"^[a-z0-9_-]*$", result)
 
+    @pytest.mark.parametrize("s", ["@#$%", "", "ñé"])
+    def test_no_usable_characters_raises(self, s):
+        with pytest.raises(ValueError, match="no characters usable"):
+            format_yd_name(s)
+
 
 class TestCamelCaseSplit:
     @pytest.mark.parametrize(

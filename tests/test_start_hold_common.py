@@ -259,11 +259,11 @@ class TestTagBasedPath:
         assert "ydid:wrkrq:test:abc" in result
         action_fn.assert_called_once_with("ydid:wrkrq:test:abc")
 
-    def test_status_changed_since_filter_skips_action_but_returns_id(self):
+    def test_status_changed_since_filter_skips_action_and_id_not_returned(self):
         """
         If a WR's status changed between the initial filter and the action loop
-        (e.g. HELD → RUNNING), the action is skipped but the ID is still
-        returned (for follow purposes).
+        (e.g. HELD → RUNNING), the action is skipped and the ID is not
+        returned (it must not be followed).
         """
         summary = _make_wr_summary(
             id_="ydid:wrkrq:test:abc", status=WorkRequirementStatus.RUNNING
@@ -272,10 +272,10 @@ class TestTagBasedPath:
             filtered_summaries=[summary],
             required_state=WorkRequirementStatus.HELD,
         )
-        assert "ydid:wrkrq:test:abc" in result
+        assert "ydid:wrkrq:test:abc" not in result
         action_fn.assert_not_called()
 
-    def test_action_exception_prints_error_id_still_returned(self):
+    def test_action_exception_prints_error_id_not_returned(self):
         summary = _make_wr_summary(
             id_="ydid:wrkrq:test:abc", status=WorkRequirementStatus.HELD
         )
@@ -283,7 +283,7 @@ class TestTagBasedPath:
             filtered_summaries=[summary],
             action_raises=RuntimeError("fail"),
         )
-        assert "ydid:wrkrq:test:abc" in result
+        assert "ydid:wrkrq:test:abc" not in result
         mock_error.assert_called_once()
 
     def test_multiple_wrs_all_actioned(self):

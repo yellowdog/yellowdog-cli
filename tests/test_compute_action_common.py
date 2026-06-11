@@ -311,6 +311,17 @@ class TestByNameOrId:
             CR_ID
         )
 
+    def test_cr_name_containing_dot_routes_to_name_lookup(self):
+        # A CR *name* with one dot must not be misclassified as an
+        # instance spec ('cr_id.instance_id')
+        mock_client, _, _, _, mock_name_lookup = self._call(
+            COMPUTE_STOP, ["my.cr-name"], name_lookup_result=CR_ID
+        )
+        assert mock_name_lookup.call_args.args[1] == "my.cr-name"
+        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
+            CR_ID
+        )
+
     def test_instance_spec_routes_to_instance_action(self):
         with (
             patch.object(cac_module, "ARGS_PARSER", _make_args(follow=True)),

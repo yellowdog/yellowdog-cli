@@ -11,6 +11,7 @@ from typing import TypeAlias
 from urllib.parse import urlparse
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
+from requests.exceptions import HTTPError
 from yellowdog_client.model import (
     ComputeRequirement,
     ConfiguredWorkerPool,
@@ -228,6 +229,11 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     # Enforce acceptable regex
     new_yd_name = re.sub("[^a-z0-9_-]", "", new_yd_name)
 
+    if new_yd_name == "":
+        raise ValueError(
+            f"'{yd_name}' contains no characters usable in a YellowDog name"
+        )
+
     # Must start with an alphabetic character
     if add_prefix and not new_yd_name[0].isalpha():
         new_yd_name = f"y{new_yd_name}"
@@ -278,3 +284,15 @@ def load_dotenv_file():
 
     # Actually load the variables (including non-'YD' variables)
     load_dotenv(dotenv_file, override=env_override)
+
+
+def is_http_not_found(e: Exception) -> bool:
+    """
+    Return True if the exception is an HTTP 404 (not found) error from the
+    platform API. Use this instead of matching on exception message text.
+    """
+    return (
+        isinstance(e, HTTPError)
+        and e.response is not None
+        and e.response.status_code == 404
+    )

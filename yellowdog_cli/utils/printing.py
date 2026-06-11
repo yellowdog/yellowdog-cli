@@ -1434,7 +1434,8 @@ def print_event(event: str, id_type: YDIDType):
     if not event.startswith(data_prefix):
         return
 
-    event_data: dict = json_loads(event.replace(data_prefix, ""))
+    # Strip only the leading prefix: the payload itself may contain 'data:'
+    event_data: dict = json_loads(event[len(data_prefix) :])
 
     if ARGS_PARSER.raw_events:
         print_json(event_data)
