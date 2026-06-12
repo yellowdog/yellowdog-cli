@@ -191,8 +191,16 @@ else:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
 
     except FileNotFoundError as e:
+        # An explicitly selected config file ('--config'/'-c' or YD_CONF)
+        # must exist
         if ARGS_PARSER.config_file is not None:
             print_error(e)
+            exit(1)
+        if getenv(YD_CONF) is not None:
+            print_error(
+                f"Configuration file '{CONFIG_FILE}', selected by the '{YD_CONF}' "
+                "environment variable, was not found"
+            )
             exit(1)
         # No config file, so create a stub config dictionary
         print_info(
