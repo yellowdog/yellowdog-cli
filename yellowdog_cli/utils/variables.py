@@ -19,6 +19,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.misc_utils import (
     UTCNOW,
+    config_file_explicitly_selected,
     format_yd_name,
     load_dotenv_file,
     remove_outer_delimiters,
@@ -159,12 +160,12 @@ def add_substitutions_from_config_file(subs: dict):
     Add variable substitutions from a TOML configuration file's
     [common.variables] section.
 
-    If the config file was explicitly selected using '--config'/'-c', its
-    variables override environment-defined variables (but never variables
-    set on the command line); otherwise existing definitions take
-    precedence as usual.
+    If the config file was explicitly selected (using '--config'/'-c' or
+    the YD_CONF environment variable), its variables override
+    environment-defined variables (but never variables set on the command
+    line); otherwise existing definitions take precedence as usual.
     """
-    if ARGS_PARSER.config_file is None:
+    if not config_file_explicitly_selected(ARGS_PARSER):
         add_substitutions_without_overwriting(subs)
         return
 

@@ -20,6 +20,9 @@ from yellowdog_cli.utils.config_types import (
     ConfigWorkRequirement,
 )
 from yellowdog_cli.utils.misc_utils import (
+    config_file_explicitly_selected as _config_file_explicitly_selected,
+)
+from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
 from yellowdog_cli.utils.printing import (
@@ -33,6 +36,7 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_URL,
     TASK_BATCH_SIZE_DEFAULT,
     TOML_VAR_NESTED_DEPTH,
+    YD_CONF,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
     YD_DATA_CLIENT_PREFIX,
@@ -61,11 +65,12 @@ from yellowdog_cli.utils.variables import (
 
 def config_file_explicitly_selected() -> bool:
     """
-    True if the configuration file was explicitly selected using the
-    '--config'/'-c' option. An explicitly selected config file takes
-    precedence over environment variables (but not over the command line).
+    True if the configuration file was explicitly selected, using either the
+    '--config'/'-c' option or the YD_CONF environment variable. An explicitly
+    selected config file takes precedence over environment variables (but
+    not over the command line).
     """
-    return ARGS_PARSER.config_file is not None
+    return _config_file_explicitly_selected(ARGS_PARSER)
 
 
 def _parse_property_value(value_str: str):
@@ -144,7 +149,7 @@ for norm, alt in [
 
 # CLI > YD_CONF > 'config.toml'
 CONFIG_FILE = relpath(
-    getenv("YD_CONF", "config.toml")
+    getenv(YD_CONF, "config.toml")
     if ARGS_PARSER.config_file is None
     else ARGS_PARSER.config_file
 )

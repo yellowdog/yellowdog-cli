@@ -502,6 +502,7 @@ class TestAddSubstitutionsFromConfigFile:
     def reset_state(self, monkeypatch):
         monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
         monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
+        monkeypatch.delenv("YD_CONF", raising=False)
 
     def _set_config_file(self, monkeypatch, value):
         monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(config_file=value))
@@ -529,6 +530,12 @@ class TestAddSubstitutionsFromConfigFile:
         self._set_config_file(monkeypatch, "my-config.toml")
         var_module.add_substitutions_from_config_file({"newvar": "world"})
         assert var_module.VARIABLE_SUBSTITUTIONS["newvar"] == "world"
+
+    def test_yd_conf_counts_as_explicit_selection(self, monkeypatch):
+        self._set_config_file(monkeypatch, None)
+        monkeypatch.setenv("YD_CONF", "my-config.toml")
+        var_module.add_substitutions_from_config_file({"myvar": "from-toml"})
+        assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "from-toml"
 
 
 # ---------------------------------------------------------------------------
