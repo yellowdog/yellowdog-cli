@@ -564,6 +564,8 @@ The **environment variables** are as follows:
 
 When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
 
+**Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its contents take precedence over environment variables (but not over properties set on the command line). This makes it easy to direct a command at a specific configuration without first having to unset environment variables.
+
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
 
 In addition, setting the `YD_YES` environment variable (to any non-empty value) suppresses user confirmation prompts for all commands, equivalent to supplying `--yes`/`-y` on every invocation.
@@ -720,6 +722,8 @@ The precedence order for setting variables is:
 2. `YD_VAR_` environment variables
 3. `YD_VAR_` variables defined in a `.env` file
 4. TOML configuration file (`[common.variables]`)
+
+**Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 

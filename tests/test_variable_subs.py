@@ -6,6 +6,8 @@ and process_variable_substitutions / process_variable_substitutions_in_file_cont
 (require patching the VARIABLE_SUBSTITUTIONS global).
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
 import yellowdog_cli.utils.variables as var_module
@@ -482,6 +484,51 @@ class TestAddSubstitutionsWithoutOverwriting:
         # zzz = "{{myvar::}}" — 'myvar' IS defined → zzz should be kept with its value
         var_module.add_substitutions_without_overwriting({"zzz": "{{myvar::}}"})
         assert var_module.VARIABLE_SUBSTITUTIONS["zzz"] == "hello"
+
+
+# ---------------------------------------------------------------------------
+# add_substitutions_from_config_file
+# ---------------------------------------------------------------------------
+
+
+class TestAddSubstitutionsFromConfigFile:
+    """
+    TOML [common.variables] merging. With an explicitly selected config file
+    ('--config'/'-c'), TOML variables override env-derived definitions but
+    never command-line-defined ones.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self, monkeypatch):
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
+        monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
+
+    def _set_config_file(self, monkeypatch, value):
+        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(config_file=value))
+
+    def test_default_existing_value_wins(self, monkeypatch):
+        self._set_config_file(monkeypatch, None)
+        var_module.add_substitutions_from_config_file({"myvar": "from-toml"})
+        assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "hello"
+
+    def test_explicit_config_toml_overrides_existing(self, monkeypatch):
+        self._set_config_file(monkeypatch, "my-config.toml")
+        var_module.add_substitutions_from_config_file({"myvar": "from-toml"})
+        assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "from-toml"
+
+    def test_explicit_config_never_overrides_cli_variable(self, monkeypatch):
+        self._set_config_file(monkeypatch, "my-config.toml")
+        var_module.CLI_DEFINED_VARIABLES.add("myvar")
+        var_module.add_substitutions_from_config_file(
+            {"myvar": "from-toml", "other": "value"}
+        )
+        assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "hello"
+        assert var_module.VARIABLE_SUBSTITUTIONS["other"] == "value"
+
+    def test_explicit_config_new_vars_added(self, monkeypatch):
+        self._set_config_file(monkeypatch, "my-config.toml")
+        var_module.add_substitutions_from_config_file({"newvar": "world"})
+        assert var_module.VARIABLE_SUBSTITUTIONS["newvar"] == "world"
 
 
 # ---------------------------------------------------------------------------

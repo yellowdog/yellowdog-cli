@@ -90,6 +90,11 @@ if subs_list:
 
 # Substitutions from the command line, which take precedence over
 # environment variables
+# Names of variables defined on the command line ('-v', or '--property'
+# overrides of 'common.variables'); these always take precedence, including
+# over the contents of an explicitly selected config file
+CLI_DEFINED_VARIABLES: set[str] = set()
+
 subs_list = []
 if ARGS_PARSER.variables is not None:
     for variable in ARGS_PARSER.variables:
@@ -97,6 +102,7 @@ if ARGS_PARSER.variables is not None:
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
+            CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
         else:
             print_error(
@@ -113,16 +119,13 @@ if subs_list:
 del subs_list
 
 
-def add_substitutions_without_overwriting(subs: dict):
+def _update_and_resolve_substitutions(merged: dict):
     """
-    Add a dictionary of substitutions. Do not overwrite existing values, but
-    resolve remaining variables if possible.
+    Replace the substitutions dictionary with 'merged' and re-resolve
+    variables. The dict is updated in-place so that all callers holding a
+    reference to it see the change (rebinding the name would silently
+    break imported references).
     """
-    # Merge: existing entries (CLI / env vars) take priority over incoming
-    # TOML ones. Update the dict in-place so that all callers holding a
-    # reference to it see the change (rebinding the name would silently
-    # break imported references).
-    merged = {**subs, **VARIABLE_SUBSTITUTIONS}
     VARIABLE_SUBSTITUTIONS.clear()
     VARIABLE_SUBSTITUTIONS.update(merged)
 
@@ -139,6 +142,34 @@ def add_substitutions_without_overwriting(subs: dict):
             VARIABLE_SUBSTITUTIONS[key_] = cast(str, result)
     for key_ in keys_to_unset:
         del VARIABLE_SUBSTITUTIONS[key_]
+
+
+def add_substitutions_without_overwriting(subs: dict):
+    """
+    Add a dictionary of substitutions. Do not overwrite existing values, but
+    resolve remaining variables if possible.
+    """
+    # Merge: existing entries (CLI / env vars) take priority over incoming
+    # ones
+    _update_and_resolve_substitutions({**subs, **VARIABLE_SUBSTITUTIONS})
+
+
+def add_substitutions_from_config_file(subs: dict):
+    """
+    Add variable substitutions from a TOML configuration file's
+    [common.variables] section.
+
+    If the config file was explicitly selected using '--config'/'-c', its
+    variables override environment-defined variables (but never variables
+    set on the command line); otherwise existing definitions take
+    precedence as usual.
+    """
+    if ARGS_PARSER.config_file is None:
+        add_substitutions_without_overwriting(subs)
+        return
+
+    subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
+    _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
 def add_or_update_substitution(key: str, value: str):
@@ -614,7 +645,7 @@ def load_toml_file_with_variable_substitutions(
     # file as a whole
     try:
         # Convert all values to strings before adding
-        add_substitutions_without_overwriting(
+        add_substitutions_from_config_file(
             {
                 var_name: str(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()

@@ -59,6 +59,7 @@ def _mock_args(
     task_batch_size=None,
     task_count=None,
     task_group_count=None,
+    config_file=None,
 ):
     args = MagicMock()
     args.namespace = namespace
@@ -67,6 +68,7 @@ def _mock_args(
     args.task_batch_size = task_batch_size
     args.task_count = task_count
     args.task_group_count = task_group_count
+    args.config_file = config_file
     return args
 
 
@@ -197,6 +199,34 @@ class TestLoadNamespaceAndTag:
         assert subs[NAMESPACE] == "my-ns"
         assert subs[NAME_TAG] == "my-tag"
 
+    # --- explicitly selected config file ('--config'/'-c') ---
+
+    def test_explicit_config_file_toml_beats_env(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns", NAME_TAG: "toml-tag"},
+            args=_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert subs[NAMESPACE] == "toml-ns"
+        assert subs[NAME_TAG] == "toml-tag"
+
+    def test_cli_beats_explicit_config_file(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns"},
+            args=_mock_args(namespace="cli-ns", config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert subs[NAMESPACE] == "cli-ns"
+
+    def test_explicit_config_file_env_fills_gaps(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns"},
+            args=_mock_args(config_file="my-config.toml"),
+            env={YD_TAG: "env-tag"},
+        )
+        assert subs[NAMESPACE] == "toml-ns"
+        assert subs[NAME_TAG] == "env-tag"
+
 
 # ---------------------------------------------------------------------------
 # load_config_common
@@ -265,8 +295,35 @@ class TestLoadConfigCommonPrecedence:
         assert config.key == "env-key"
         assert config.secret == "env-secret"
 
+    # --- explicitly selected config file ('--config'/'-c') ---
 
-def _common_mock_args(namespace=None, tag=None):
+    def test_explicit_config_file_beats_env(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "toml-ns"
+
+    def test_cli_beats_explicit_config_file(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            args=_common_mock_args(namespace="cli-ns", config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "cli-ns"
+
+    def test_explicit_config_file_env_fills_gaps(self):
+        # The explicit config file only wins for values it defines
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s"},
+            args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "env-ns"
+
+
+def _common_mock_args(namespace=None, tag=None, config_file=None):
     args = MagicMock()
     args.key = None
     args.secret = None
@@ -276,6 +333,7 @@ def _common_mock_args(namespace=None, tag=None):
     args.use_pac = None
     args.namespace_required = False
     args.tag_required = False
+    args.config_file = config_file
     return args
 
 
