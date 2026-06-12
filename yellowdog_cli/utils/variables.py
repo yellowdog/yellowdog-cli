@@ -160,10 +160,10 @@ def add_substitutions_from_config_file(subs: dict):
     Add variable substitutions from a TOML configuration file's
     [common.variables] section.
 
-    If the config file was explicitly selected (using '--config'/'-c' or
-    the YD_CONF environment variable), its variables override
-    environment-defined variables (but never variables set on the command
-    line); otherwise existing definitions take precedence as usual.
+    If the config file was explicitly selected using '--config'/'-c', its
+    variables override environment-defined variables (but never variables
+    set on the command line); otherwise existing definitions take
+    precedence as usual.
     """
     if not config_file_explicitly_selected(ARGS_PARSER):
         add_substitutions_without_overwriting(subs)

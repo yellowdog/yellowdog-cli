@@ -65,10 +65,9 @@ from yellowdog_cli.utils.variables import (
 
 def config_file_explicitly_selected() -> bool:
     """
-    True if the configuration file was explicitly selected, using either the
-    '--config'/'-c' option or the YD_CONF environment variable. An explicitly
-    selected config file takes precedence over environment variables (but
-    not over the command line).
+    True if the configuration file was explicitly selected using the
+    '--config'/'-c' option. An explicitly selected config file takes
+    precedence over environment variables (but not over the command line).
     """
     return _config_file_explicitly_selected(ARGS_PARSER)
 
@@ -147,11 +146,19 @@ for norm, alt in [
     if os.getenv(norm) is None and alt_value is not None:
         os.environ[norm] = alt_value
 
-# CLI > YD_CONF > 'config.toml'
+# The YD_CONF environment variable is no longer supported; error out (rather
+# than silently ignoring it) so that any remaining usage fails loudly instead
+# of quietly loading a different configuration file
+if getenv(YD_CONF) is not None:
+    print_error(
+        f"The '{YD_CONF}' environment variable is no longer supported; "
+        "please use the '--config'/'-c' option to select a configuration file"
+    )
+    exit(1)
+
+# CLI > 'config.toml'
 CONFIG_FILE = relpath(
-    getenv(YD_CONF, "config.toml")
-    if ARGS_PARSER.config_file is None
-    else ARGS_PARSER.config_file
+    "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
 )
 
 if ARGS_PARSER.no_config:
@@ -191,16 +198,9 @@ else:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
 
     except FileNotFoundError as e:
-        # An explicitly selected config file ('--config'/'-c' or YD_CONF)
-        # must exist
+        # An explicitly selected config file ('--config'/'-c') must exist
         if ARGS_PARSER.config_file is not None:
             print_error(e)
-            exit(1)
-        if getenv(YD_CONF) is not None:
-            print_error(
-                f"Configuration file '{CONFIG_FILE}', selected by the '{YD_CONF}' "
-                "environment variable, was not found"
-            )
             exit(1)
         # No config file, so create a stub config dictionary
         print_info(

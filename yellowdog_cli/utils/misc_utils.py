@@ -21,7 +21,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_info
-from yellowdog_cli.utils.settings import YD_CONF, YD_ENV_OVERRIDE
+from yellowdog_cli.utils.settings import YD_ENV_OVERRIDE
 
 UTCNOW = datetime.now(timezone.utc)
 
@@ -259,7 +259,7 @@ def load_dotenv_file():
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
     # fall back to searching upward from CWD.
-    config_path = ARGS_PARSER.config_file or os.environ.get(YD_CONF, "config.toml")
+    config_path = ARGS_PARSER.config_file or "config.toml"
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
     if isfile(config_dir_dotenv):
         dotenv_file = config_dir_dotenv
@@ -307,12 +307,11 @@ def is_http_not_found(e: Exception) -> bool:
 
 def config_file_explicitly_selected(args_parser) -> bool:
     """
-    True if the configuration file was explicitly selected, using either the
-    '--config'/'-c' option or the YD_CONF environment variable. An explicitly
-    selected config file takes precedence over environment variables (but not
-    over the command line).
+    True if the configuration file was explicitly selected using the
+    '--config'/'-c' option. An explicitly selected config file takes
+    precedence over environment variables (but not over the command line).
 
     The caller's ARGS_PARSER is passed in (rather than using this module's
     import) so that tests can patch it per-module.
     """
-    return args_parser.config_file is not None or os.environ.get(YD_CONF) is not None
+    return args_parser.config_file is not None

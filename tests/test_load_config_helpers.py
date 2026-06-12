@@ -227,13 +227,6 @@ class TestLoadNamespaceAndTag:
         assert subs[NAMESPACE] == "toml-ns"
         assert subs[NAME_TAG] == "env-tag"
 
-    def test_yd_conf_counts_as_explicit_selection(self):
-        subs = self._call(
-            toml_common={NAMESPACE: "toml-ns"},
-            env={"YD_CONF": "my-config.toml", YD_NAMESPACE: "env-ns"},
-        )
-        assert subs[NAMESPACE] == "toml-ns"
-
 
 # ---------------------------------------------------------------------------
 # load_config_common
@@ -328,13 +321,6 @@ class TestLoadConfigCommonPrecedence:
             env={YD_NAMESPACE: "env-ns"},
         )
         assert config.namespace == "env-ns"
-
-    def test_yd_conf_counts_as_explicit_selection(self):
-        config = self._call(
-            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
-            env={"YD_CONF": "my-config.toml", YD_NAMESPACE: "env-ns"},
-        )
-        assert config.namespace == "toml-ns"
 
 
 def _common_mock_args(namespace=None, tag=None, config_file=None):

@@ -461,13 +461,12 @@ The configuration file has four possible sections:
 
 There is a documented template TOML file provided in [config-template.toml](config-template.toml), containing the main properties that can be configured.
 
-The name of the configuration file can be supplied in three different ways:
+The name of the configuration file can be supplied in two different ways:
 
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd-submit -c jobs/config_1.toml`
-2. Using the `YD_CONF` environment variable, e.g.: <br>`export YD_CONF="jobs/config_1.toml"`
-3. If neither of the above is supplied, the commands look for a `config.toml` file in the current directory
+2. If not supplied, the commands look for a `config.toml` file in the current directory
 
-The options above are shown in order of precedence: a filename supplied on the command line supersedes one set in `YD_CONF`, which supersedes the default.
+(The `YD_CONF` environment variable is no longer supported for selecting the configuration file; commands will exit with an error if it is set.)
 
 # Naming Rules
 
@@ -564,7 +563,7 @@ The **environment variables** are as follows:
 
 When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
 
-**Exception**: if the configuration file is explicitly selected — using the `--config`/`-c` option or the `YD_CONF` environment variable — its contents take precedence over environment variables (but not over properties set on the command line). This makes it easy to direct a command at a specific configuration without first having to unset environment variables.
+**Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its contents take precedence over environment variables (but not over properties set on the command line). This makes it easy to direct a command at a specific configuration without first having to unset environment variables.
 
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
 
@@ -614,7 +613,7 @@ Environment variables can also be set in a `.env` file.
 
 The `.env` file is located by checking the following locations in order:
 
-1. The directory containing the active `config.toml` file (as specified by `--config`, `YD_CONF`, or the default `config.toml` in the current directory). This allows a `.env` file to live alongside its `config.toml` and be found even when commands are run from a different directory.
+1. The directory containing the active `config.toml` file (as specified by `--config`, or the default `config.toml` in the current directory). This allows a `.env` file to live alongside its `config.toml` and be found even when commands are run from a different directory.
 2. Searching upward from the current working directory (standard `python-dotenv` behaviour).
 
 Entries in the `.env` file will not overwrite existing environment variables — i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g., in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
@@ -723,7 +722,7 @@ The precedence order for setting variables is:
 3. `YD_VAR_` variables defined in a `.env` file
 4. TOML configuration file (`[common.variables]`)
 
-**Exception**: if the configuration file is explicitly selected — using the `--config`/`-c` option or the `YD_CONF` environment variable — its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
+**Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 
