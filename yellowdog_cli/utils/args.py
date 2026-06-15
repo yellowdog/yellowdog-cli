@@ -661,17 +661,17 @@ class CLIParser:
                 help="automatically select all listed objects (implies '--details')",
             )
 
-        # yd-submit / yd-provision / yd-instantiate / yd-create
+        # yd-submit / yd-provision / yd-instantiate / yd-create / yd-resize
         if any(
             module in module_name
-            for module in ["submit", "provision", "instantiate", "create"]
+            for module in ["submit", "provision", "instantiate", "create", "resize"]
         ):
             parser.add_argument(
                 "--dry-run",
                 "-D",
                 action="store_true",
                 required=False,
-                help="dry-run the action and print the JSON that would be submitted",
+                help="dry-run the action without applying any changes",
             )
 
         # yd-instantiate
