@@ -252,7 +252,8 @@ class CommonCloudConfig(ABC):
                 return True
         except Exception as e:
             print_error(
-                f"Unable to save YellowDog resources definition file '{resources_file}'"
+                f"Unable to save YellowDog resources definition file"
+                f" '{resources_file}': {e}"
             )
             return False
 

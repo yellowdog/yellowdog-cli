@@ -7,7 +7,8 @@ Already covered elsewhere:
   - _select_dc_section                               → test_select_dc_section.py
 
 Covers here:
-  - _load_namespace_and_tag: CLI > TOML [common] > env var > default priority chain
+  - _load_namespace_and_tag: CLI > env var > TOML [common] > default priority chain
+  - load_config_common: CLI > env var > TOML precedence
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv conflict
 """
 
@@ -20,22 +21,31 @@ import yellowdog_cli.utils.load_config as lc_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,
+    load_config_common,
     load_config_work_requirement,
 )
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
     CSV_FILE,
     CSV_FILES,
+    KEY,
     NAME_TAG,
     NAMESPACE,
     PRIORITY,
+    SECRET,
     TASK_BATCH_SIZE,
     TASK_COUNT,
     TASK_GROUP_COUNT,
     TASK_TYPE,
     WORK_REQUIREMENT_SECTION,
 )
-from yellowdog_cli.utils.settings import TASK_BATCH_SIZE_DEFAULT, YD_NAMESPACE, YD_TAG
+from yellowdog_cli.utils.settings import (
+    TASK_BATCH_SIZE_DEFAULT,
+    YD_KEY,
+    YD_NAMESPACE,
+    YD_SECRET,
+    YD_TAG,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,6 +59,7 @@ def _mock_args(
     task_batch_size=None,
     task_count=None,
     task_group_count=None,
+    config_file=None,
 ):
     args = MagicMock()
     args.namespace = namespace
@@ -57,6 +68,7 @@ def _mock_args(
     args.task_batch_size = task_batch_size
     args.task_count = task_count
     args.task_group_count = task_group_count
+    args.config_file = config_file
     return args
 
 
@@ -68,7 +80,7 @@ def _mock_args(
 class TestLoadNamespaceAndTag:
     """
     Tests for the namespace/tag priority chain in _load_namespace_and_tag.
-    Priority: CLI flag > TOML [common] section > env var > default.
+    Priority: CLI flag > env var > TOML [common] section > default.
     """
 
     def _call(self, toml_common=None, args=None, env=None):
@@ -128,11 +140,15 @@ class TestLoadNamespaceAndTag:
         )
         assert subs[NAMESPACE] == "cli-ns"
 
-    def test_toml_namespace_beats_env_var(self):
+    def test_env_var_namespace_beats_toml(self):
         subs = self._call(
             toml_common={NAMESPACE: "toml-ns"},
             env={YD_NAMESPACE: "env-ns"},
         )
+        assert subs[NAMESPACE] == "env-ns"
+
+    def test_toml_namespace_beats_default(self):
+        subs = self._call(toml_common={NAMESPACE: "toml-ns"})
         assert subs[NAMESPACE] == "toml-ns"
 
     def test_env_var_namespace_beats_default(self):
@@ -159,11 +175,15 @@ class TestLoadNamespaceAndTag:
         )
         assert subs[NAME_TAG] == "cli-tag"
 
-    def test_toml_tag_beats_env_var(self):
+    def test_env_var_tag_beats_toml(self):
         subs = self._call(
             toml_common={NAME_TAG: "toml-tag"},
             env={YD_TAG: "env-tag"},
         )
+        assert subs[NAME_TAG] == "env-tag"
+
+    def test_toml_tag_beats_default(self):
+        subs = self._call(toml_common={NAME_TAG: "toml-tag"})
         assert subs[NAME_TAG] == "toml-tag"
 
     def test_env_var_tag_beats_default(self):
@@ -178,6 +198,143 @@ class TestLoadNamespaceAndTag:
         subs = self._call(args=_mock_args(namespace="my-ns", tag="my-tag"))
         assert subs[NAMESPACE] == "my-ns"
         assert subs[NAME_TAG] == "my-tag"
+
+    # --- explicitly selected config file ('--config'/'-c') ---
+
+    def test_explicit_config_file_toml_beats_env(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns", NAME_TAG: "toml-tag"},
+            args=_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert subs[NAMESPACE] == "toml-ns"
+        assert subs[NAME_TAG] == "toml-tag"
+
+    def test_cli_beats_explicit_config_file(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns"},
+            args=_mock_args(namespace="cli-ns", config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert subs[NAMESPACE] == "cli-ns"
+
+    def test_explicit_config_file_env_fills_gaps(self):
+        subs = self._call(
+            toml_common={NAMESPACE: "toml-ns"},
+            args=_mock_args(config_file="my-config.toml"),
+            env={YD_TAG: "env-tag"},
+        )
+        assert subs[NAMESPACE] == "toml-ns"
+        assert subs[NAME_TAG] == "env-tag"
+
+
+# ---------------------------------------------------------------------------
+# load_config_common
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfigCommonPrecedence:
+    """
+    load_config_common applies CLI > env var > TOML precedence for
+    key/secret/namespace/tag/url.
+    """
+
+    def _call(self, toml_common=None, args=None, env=None):
+        if toml_common is None:
+            toml_common = {KEY: "toml-key", SECRET: "toml-secret"}
+        if args is None:
+            args = _common_mock_args()
+        if env is None:
+            env = {}
+
+        with (
+            patch.object(lc_module, "CONFIG_TOML", {COMMON_SECTION: toml_common}),
+            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.dict(os.environ, env, clear=True),
+            patch.object(
+                lc_module,
+                "process_variable_substitutions",
+                side_effect=lambda x: x,
+            ),
+            patch.object(lc_module, "add_substitutions_without_overwriting"),
+            patch.object(lc_module, "register_dc_substitutions"),
+        ):
+            return load_config_common()
+
+    def test_env_namespace_beats_toml(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "env-ns"
+
+    def test_cli_namespace_beats_env_and_toml(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            args=_common_mock_args(namespace="cli-ns"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "cli-ns"
+
+    def test_toml_namespace_used_when_no_env_or_cli(self):
+        config = self._call(toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"})
+        assert config.namespace == "toml-ns"
+
+    def test_env_tag_beats_toml(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAME_TAG: "toml-tag"},
+            env={YD_TAG: "env-tag"},
+        )
+        assert config.name_tag == "env-tag"
+
+    def test_env_key_and_secret_beat_toml(self):
+        config = self._call(
+            toml_common={KEY: "toml-key", SECRET: "toml-secret"},
+            env={YD_KEY: "env-key", YD_SECRET: "env-secret"},
+        )
+        assert config.key == "env-key"
+        assert config.secret == "env-secret"
+
+    # --- explicitly selected config file ('--config'/'-c') ---
+
+    def test_explicit_config_file_beats_env(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "toml-ns"
+
+    def test_cli_beats_explicit_config_file(self):
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "toml-ns"},
+            args=_common_mock_args(namespace="cli-ns", config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "cli-ns"
+
+    def test_explicit_config_file_env_fills_gaps(self):
+        # The explicit config file only wins for values it defines
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s"},
+            args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "env-ns"
+
+
+def _common_mock_args(namespace=None, tag=None, config_file=None):
+    args = MagicMock()
+    args.key = None
+    args.secret = None
+    args.namespace = namespace
+    args.tag = tag
+    args.url = None
+    args.use_pac = None
+    args.namespace_required = False
+    args.tag_required = False
+    args.config_file = config_file
+    return args
 
 
 # ---------------------------------------------------------------------------

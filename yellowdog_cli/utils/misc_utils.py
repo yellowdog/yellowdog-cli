@@ -11,6 +11,7 @@ from typing import TypeAlias
 from urllib.parse import urlparse
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
+from requests.exceptions import HTTPError
 from yellowdog_client.model import (
     ComputeRequirement,
     ConfiguredWorkerPool,
@@ -122,8 +123,15 @@ def get_delimited_string_boundaries(
     Opening and closing delimiters must be balanced across the entire
     input_string, otherwise an exception will be raised.
     """
-    openings = [(x.span()[0], 1) for x in re.finditer(opening_delimiter, input_string)]
-    closings = [(x.span()[0], -1) for x in re.finditer(closing_delimiter, input_string)]
+    # Escape the delimiters: they are literal strings, not regex patterns
+    openings = [
+        (x.span()[0], 1)
+        for x in re.finditer(re.escape(opening_delimiter), input_string)
+    ]
+    closings = [
+        (x.span()[0], -1)
+        for x in re.finditer(re.escape(closing_delimiter), input_string)
+    ]
 
     mismatched_delimiters_exception = ValueError(
         f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
@@ -228,6 +236,11 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     # Enforce acceptable regex
     new_yd_name = re.sub("[^a-z0-9_-]", "", new_yd_name)
 
+    if new_yd_name == "":
+        raise ValueError(
+            f"'{yd_name}' contains no characters usable in a YellowDog name"
+        )
+
     # Must start with an alphabetic character
     if add_prefix and not new_yd_name[0].isalpha():
         new_yd_name = f"y{new_yd_name}"
@@ -246,7 +259,7 @@ def load_dotenv_file():
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
     # fall back to searching upward from CWD.
-    config_path = ARGS_PARSER.config_file or os.environ.get("YD_CONF", "config.toml")
+    config_path = ARGS_PARSER.config_file or "config.toml"
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
     if isfile(config_dir_dotenv):
         dotenv_file = config_dir_dotenv
@@ -278,3 +291,27 @@ def load_dotenv_file():
 
     # Actually load the variables (including non-'YD' variables)
     load_dotenv(dotenv_file, override=env_override)
+
+
+def is_http_not_found(e: Exception) -> bool:
+    """
+    Return True if the exception is an HTTP 404 (not found) error from the
+    platform API. Use this instead of matching on exception message text.
+    """
+    return (
+        isinstance(e, HTTPError)
+        and e.response is not None
+        and e.response.status_code == 404
+    )
+
+
+def config_file_explicitly_selected(args_parser) -> bool:
+    """
+    True if the configuration file was explicitly selected using the
+    '--config'/'-c' option. An explicitly selected config file takes
+    precedence over environment variables (but not over the command line).
+
+    The caller's ARGS_PARSER is passed in (rather than using this module's
+    import) so that tests can patch it per-module.
+    """
+    return args_parser.config_file is not None

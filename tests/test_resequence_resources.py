@@ -125,10 +125,13 @@ class TestResequenceResources:
         with pytest.raises(Exception, match="'resource' is not specified"):
             _resequence_resources(resources)
 
-    def test_unknown_resource_type_raises(self):
+    def test_unknown_resource_type_warns_and_sequences_last(self):
+        # Unknown types must not abort the batch: they're warned about here
+        # and reported per-resource (counting as failures) in create/remove
         resources = [{"resource": "UnknownResourceType"}, {"resource": RN_NAMESPACE}]
-        with pytest.raises(Exception, match="Unknown resource type"):
-            _resequence_resources(resources)
+        result = _resequence_resources(resources, creation_or_update=True)
+        types = [r["resource"] for r in result]
+        assert types == [RN_NAMESPACE, "UnknownResourceType"]
 
     def test_image_family_ordered_correctly(self):
         resources = [

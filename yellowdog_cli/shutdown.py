@@ -138,7 +138,7 @@ def shutdown_by_names_or_ids(names_or_ids: list[str]):
             CLIENT.worker_pool_client.shutdown_node_by_id(node_id)
             print_info(f"Shut down Node '{node_id}'")
         except Exception as e:
-            print_error(f"Failed to to shut down Node '{node_id}': ({e})")
+            print_error(f"Failed to shut down Node '{node_id}': ({e})")
 
     if ARGS_PARSER.follow:
         follow_ids(worker_pool_ids, auto_cr=ARGS_PARSER.auto_cr)

@@ -74,7 +74,9 @@ def main_wrapper(func):
                         f"Your Application Key ID and SECRET are not recognised: {e}"
                     )
                 else:
-                    print_error(e)
+                    # Include the exception type when there's no message,
+                    # to avoid printing a blank error
+                    print_error(str(e) or f"{type(e).__name__} (no error message)")
                 exit_code = 1
             except SystemExit as e:
                 exit_code = e.code if isinstance(e.code, int) else 1

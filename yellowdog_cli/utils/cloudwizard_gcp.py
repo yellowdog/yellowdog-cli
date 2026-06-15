@@ -161,7 +161,9 @@ class GCPConfig(CommonCloudConfig):
         for network in networks:
             if network.name == "default":
                 for subnet in network.subnetworks:
-                    if "default" in subnet:
+                    # Exact-match the final path component: a substring test
+                    # would also match e.g. '/subnetworks/my-default'
+                    if subnet.endswith("/subnetworks/default"):
                         region = subnet.replace(
                             "https://www.googleapis.com/compute/v1/projects/"
                             f"{self._credentials.project_id}/regions/",

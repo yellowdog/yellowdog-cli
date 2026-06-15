@@ -20,11 +20,11 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_id_by_name,
     get_compute_requirement_id_by_worker_pool_id,
     get_compute_requirement_summaries,
-    get_instance_id_by_id,
+    get_instance_by_id,
 )
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.misc_utils import link_entity
+from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -60,7 +60,7 @@ def main():
         )
     )
 
-    terminated_count = 0
+    terminated_ids: list[str] = []
     selected_compute_requirement_summaries: list[ComputeRequirementSummary] = select(
         CLIENT, compute_requirement_summaries
     )
@@ -68,31 +68,35 @@ def main():
     if selected_compute_requirement_summaries and confirmed(
         f"Terminate {len(selected_compute_requirement_summaries)} Compute Requirement(s)?"
     ):
-        for compute_requirement_summary in selected_compute_requirement_summaries:  # type: ignore[assignment]
+        for compute_requirement_summary in selected_compute_requirement_summaries:
             try:
                 CLIENT.compute_client.terminate_compute_requirement_by_id(
                     compute_requirement_summary.id  # type: ignore[arg-type]
-                )
-                compute_requirement_summary: ComputeRequirement = (  # type: ignore[assignment]
-                    CLIENT.compute_client.get_compute_requirement_by_id(
-                        compute_requirement_summary.id  # type: ignore[arg-type]
-                    )
-                )
-                terminated_count += 1
-                print_info(
-                    f"Terminated {link_entity(CONFIG_COMMON.url, compute_requirement_summary)}"
                 )
             except Exception as e:
                 print_error(
                     f"Failed to terminate '{compute_requirement_summary.name}': {e}"
                 )
+                continue  # Don't follow Compute Requirements that weren't terminated
+            terminated_ids.append(cast(str, compute_requirement_summary.id))
+            # The refetch is only needed to generate the link; the
+            # termination has already succeeded
+            try:
+                compute_requirement: ComputeRequirement = (
+                    CLIENT.compute_client.get_compute_requirement_by_id(
+                        compute_requirement_summary.id  # type: ignore[arg-type]
+                    )
+                )
+                print_info(
+                    f"Terminated {link_entity(CONFIG_COMMON.url, compute_requirement)}"
+                )
+            except Exception:
+                print_info(f"Terminated '{compute_requirement_summary.name}'")
 
-    if terminated_count > 0:
-        print_info(f"Terminated {terminated_count} Compute Requirement(s)")
+    if terminated_ids:
+        print_info(f"Terminated {len(terminated_ids)} Compute Requirement(s)")
         if ARGS_PARSER.follow:
-            follow_ids(
-                [cast(str, cr.id) for cr in selected_compute_requirement_summaries]
-            )
+            follow_ids(terminated_ids)
     else:
         print_info("No Compute Requirements terminated")
 
@@ -106,8 +110,12 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
     node_or_instance_cr_ids: list[str] = []
 
     for name_or_id in set(names_or_ids):  # Remove duplicates
-        # Is this a cr_id.instance_id specification?
-        if len(cr_id_instance_id := name_or_id.split(".")) == 2:
+        # Is this a cr_id.instance_id specification? The prefix must be a CR
+        # YDID, otherwise a CR *name* containing a '.' would be misclassified
+        if (
+            len(cr_id_instance_id := name_or_id.split(".")) == 2
+            and get_ydid_type(cr_id_instance_id[0]) == YDIDType.COMPUTE_REQUIREMENT
+        ):
             if (
                 cr_id := _terminate_instance(cr_id_instance_id[0], cr_id_instance_id[1])
             ) is not None:
@@ -120,7 +128,7 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
                     CLIENT.compute_client.get_compute_requirement_by_id(name_or_id)
                 )
             except Exception as e:
-                if "404" in str(e):
+                if is_http_not_found(e):
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}")
                 else:
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}: {e}")
@@ -181,7 +189,7 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
     try:
         node: Node = CLIENT.worker_pool_client.get_node_by_id(node_id)
     except Exception as e:
-        if "404" in str(e):
+        if is_http_not_found(e):
             print_error(f"Cannot find Node with ID {node_id}")
             return None
         else:
@@ -199,7 +207,7 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
     ) is None:
         return None
 
-    instance: Instance | None = get_instance_id_by_id(
+    instance: Instance | None = get_instance_by_id(
         CLIENT,
         cr_id,
         node.details.instanceId,  # type: ignore[union-attr]
@@ -233,7 +241,7 @@ def _terminate_instance(
         print_error(f"Cannot find Compute Requirement {cr_id}")
         return None
 
-    instance: Instance | None = get_instance_id_by_id(CLIENT, cr_id, instance_id)
+    instance: Instance | None = get_instance_by_id(CLIENT, cr_id, instance_id)
     if instance is None:
         print_error(
             f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"

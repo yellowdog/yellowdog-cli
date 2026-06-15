@@ -326,7 +326,7 @@ def get_csv_file_index(
     split_name = csv_filename.split(":")
     if len(split_name) > 1:
         print_info(
-            f"Warning: Possible invalid Task Group name/number '{split_name[-1:]}'?"
+            f"Warning: Possible invalid Task Group name/number '{split_name[-1]}'?"
         )
 
     return csv_filename, None

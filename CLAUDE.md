@@ -121,7 +121,7 @@ The `@main_wrapper` decorator handles: PAC proxy setup, exception catching (perm
 
 ### Configuration
 
-Config is loaded from (in priority order): CLI args → environment variables → TOML file. Key env vars: `YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`. Variables prefixed `YD_VAR_` are available for substitution in specs.
+Config is loaded from (in priority order): CLI args → environment variables → TOML file. Exception: if the config file is explicitly selected with `--config`/`-c`, its contents (including `[common.variables]`) take precedence over environment variables, but not over CLI args (see `config_file_explicitly_selected()` in `misc_utils.py` and `add_substitutions_from_config_file()` in `variables.py`). The `YD_CONF` env var is no longer supported (commands error if it is set). Key env vars: `YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`. Variables prefixed `YD_VAR_` are available for substitution in specs.
 
 Any TOML property can be overridden on the command line with `--property 'section.key=value'` (repeatable). Valid sections: `common`, `dataClient`, `workRequirement`, `workerPool`, `computeRequirement`. Values are JSON-parsed first (handles bool, int, float, list, dict), falling back to plain string. Overrides are applied after TOML validation in `load_config.py` via `_apply_property_overrides()`.
 

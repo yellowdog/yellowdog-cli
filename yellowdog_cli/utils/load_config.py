@@ -20,6 +20,9 @@ from yellowdog_cli.utils.config_types import (
     ConfigWorkRequirement,
 )
 from yellowdog_cli.utils.misc_utils import (
+    config_file_explicitly_selected as _config_file_explicitly_selected,
+)
+from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
 from yellowdog_cli.utils.printing import (
@@ -33,6 +36,7 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_URL,
     TASK_BATCH_SIZE_DEFAULT,
     TOML_VAR_NESTED_DEPTH,
+    YD_CONF,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
     YD_DATA_CLIENT_PREFIX,
@@ -49,6 +53,7 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variables import (
+    CLI_DEFINED_VARIABLES,
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,
     add_substitutions_without_overwriting,
@@ -56,6 +61,15 @@ from yellowdog_cli.utils.variables import (
     process_variable_substitutions,
     process_variable_substitutions_insitu,
 )
+
+
+def config_file_explicitly_selected() -> bool:
+    """
+    True if the configuration file was explicitly selected using the
+    '--config'/'-c' option. An explicitly selected config file takes
+    precedence over environment variables (but not over the command line).
+    """
+    return _config_file_explicitly_selected(ARGS_PARSER)
 
 
 def _parse_property_value(value_str: str):
@@ -117,6 +131,9 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         print_info(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
             add_or_update_substitution(path[1], str(value))
+            # Command-line-defined variables always take precedence,
+            # including over an explicitly selected config file
+            CLI_DEFINED_VARIABLES.add(path[1])
 
 
 # Support for alternative common env. vars; written into the normal vars.
@@ -129,11 +146,19 @@ for norm, alt in [
     if os.getenv(norm) is None and alt_value is not None:
         os.environ[norm] = alt_value
 
-# CLI > YD_CONF > 'config.toml'
+# The YD_CONF environment variable is no longer supported; error out (rather
+# than silently ignoring it) so that any remaining usage fails loudly instead
+# of quietly loading a different configuration file
+if getenv(YD_CONF) is not None:
+    print_error(
+        f"The '{YD_CONF}' environment variable is no longer supported; "
+        "please use the '--config'/'-c' option to select a configuration file"
+    )
+    exit(1)
+
+# CLI > 'config.toml'
 CONFIG_FILE = relpath(
-    getenv("YD_CONF", "config.toml")
-    if ARGS_PARSER.config_file is None
-    else ARGS_PARSER.config_file
+    "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
 )
 
 if ARGS_PARSER.no_config:
@@ -173,6 +198,7 @@ else:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
 
     except FileNotFoundError as e:
+        # An explicitly selected config file ('--config'/'-c') must exist
         if ARGS_PARSER.config_file is not None:
             print_error(e)
             exit(1)
@@ -212,6 +238,10 @@ def load_config_common() -> ConfigCommon:
 
         # Replace common section properties with command line or
         # environment variable overrides. Precedence is:
+        # command line > environment variable > config file
+        # ... unless the config file was explicitly selected using
+        # '--config'/'-c', in which case its contents take precedence
+        # over the environment:
         # command line > config file > environment variable
         for key_name, args_parser_value, env_var_name in [
             (KEY, ARGS_PARSER.key, YD_KEY),
@@ -226,10 +256,11 @@ def load_config_common() -> ConfigCommon:
                     f"Using '{key_name}' provided on command line "
                     "(or automatically set)"
                 )
-            elif (
-                common_section.get(key_name) is None
-                and os.environ.get(env_var_name) is not None
+            elif config_file_explicitly_selected() and (
+                common_section.get(key_name) is not None
             ):
+                pass  # Retain the value from the explicitly selected config file
+            elif os.environ.get(env_var_name) is not None:
                 common_section[key_name] = os.environ[env_var_name]
                 print_info(f"Using '{key_name}' provided via the environment")
 
@@ -333,22 +364,28 @@ def _load_namespace_and_tag() -> None:
         # Imported values are baseline; local section takes precedence
         common_section = {**imported, **common_section}
 
+    explicit_config = config_file_explicitly_selected()
+
     if ARGS_PARSER.namespace is not None:
         namespace = ARGS_PARSER.namespace
-    elif common_section.get(NAMESPACE) is not None:
+    elif explicit_config and common_section.get(NAMESPACE) is not None:
         namespace = str(common_section[NAMESPACE])
     elif os.environ.get(YD_NAMESPACE) is not None:
         namespace = os.environ[YD_NAMESPACE]
+    elif common_section.get(NAMESPACE) is not None:
+        namespace = str(common_section[NAMESPACE])
     else:
         namespace = "default"
     namespace = process_variable_substitutions(namespace)
 
     if ARGS_PARSER.tag is not None:
         name_tag = ARGS_PARSER.tag
-    elif common_section.get(NAME_TAG) is not None:
+    elif explicit_config and common_section.get(NAME_TAG) is not None:
         name_tag = str(common_section[NAME_TAG])
     elif os.environ.get(YD_TAG) is not None:
         name_tag = os.environ[YD_TAG]
+    elif common_section.get(NAME_TAG) is not None:
+        name_tag = str(common_section[NAME_TAG])
     else:
         name_tag = "{{username}}"
     name_tag = process_variable_substitutions(name_tag)
@@ -461,10 +498,12 @@ def load_config_data_client() -> ConfigDataClient:
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
         if cli_value is not None:
             return cast(str | None, process_variable_substitutions(cli_value))
+        toml_value = dc_section.get(toml_key)
+        if config_file_explicitly_selected() and toml_value is not None:
+            return cast(str | None, process_variable_substitutions(str(toml_value)))
         env_value = os.environ.get(env_var)
         if env_value is not None:
             return cast(str | None, process_variable_substitutions(env_value))
-        toml_value = dc_section.get(toml_key)
         if toml_value is not None:
             return cast(str | None, process_variable_substitutions(str(toml_value)))
         return None
@@ -544,10 +583,12 @@ def load_config_data_client_for_profile(
         process_variable_substitutions_insitu(dc_section)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
+        toml_value = dc_section.get(toml_key)
+        if config_file_explicitly_selected() and toml_value is not None:
+            return cast(str | None, process_variable_substitutions(str(toml_value)))
         env_value = os.environ.get(env_var)
         if env_value is not None:
             return cast(str | None, process_variable_substitutions(env_value))
-        toml_value = dc_section.get(toml_key)
         if toml_value is not None:
             return cast(str | None, process_variable_substitutions(str(toml_value)))
         return None
@@ -606,7 +647,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         # Check for properties set on the command line
         task_type = (
-            wr_section.get(TASK_TYPE, wr_section.get(TASK_TYPE))
+            wr_section.get(TASK_TYPE)
             if ARGS_PARSER.task_type is None
             else ARGS_PARSER.task_type
         )

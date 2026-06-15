@@ -55,7 +55,8 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.printing import print_error, print_info
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
@@ -160,7 +161,9 @@ def get_worker_pool_id_by_name(
             name,  # type: ignore[arg-type]
         )
         return worker_pool.id
-    except Exception:  # Not found (404)
+    except Exception as e:
+        if not is_http_not_found(e):
+            print_error(f"Unable to look up Worker Pool '{worker_pool_name}': {e}")
         return None
 
 
@@ -370,7 +373,9 @@ def get_compute_requirement_id_by_worker_pool_id(
         worker_pool: WorkerPool = client.worker_pool_client.get_worker_pool_by_id(
             worker_pool_id
         )
-    except Exception:
+    except Exception as e:
+        if not is_http_not_found(e):
+            print_error(f"Unable to look up Worker Pool '{worker_pool_id}': {e}")
         return None
 
     if isinstance(worker_pool, ProvisionedWorkerPool):
@@ -1105,6 +1110,8 @@ def get_image_family_summaries(
                 "Warning: Possible 'IMAGE_READ' permission missing if "
                 f"'{namespace}' is meant as an Image namespace?"
             )
+        else:
+            print_error(f"Unable to list Image Families: {e}")
 
     return []
 
@@ -1131,12 +1138,12 @@ def clear_image_caches():
 
 
 @lru_cache
-def get_instance_id_by_id(
+def get_instance_by_id(
     client: PlatformClient, cr_id: str, instance_id: str
 ) -> Instance | None:
     """
     Given a compute requirement ID and an instance ID string,
-    find the Instance ID object.
+    find the Instance object.
     """
     for instance in _get_instances(client, cr_id):
         if instance.id.instanceId == instance_id:  # type: ignore[union-attr]
@@ -1165,7 +1172,7 @@ def get_task_group_by_id(client: PlatformClient, task_group_id: str) -> TaskGrou
     try:
         task_groups = get_task_groups_from_wr_by_id(client, work_requirement_id)
     except Exception as e:
-        if "404" in str(e):
+        if is_http_not_found(e):
             raise KeyError(f"Task Group ID '{task_group_id}' not found")
         raise RuntimeError(
             f"Unable to obtain Task Group details for '{task_group_id}': {e}"

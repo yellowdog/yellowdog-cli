@@ -3,6 +3,7 @@ Class to parse command line arguments for all commands.
 """
 
 import argparse
+import os
 import sys
 
 from yellowdog_cli._version import __version__
@@ -36,7 +37,7 @@ from yellowdog_cli.version import DOCS_URL
 
 def docs():
     print(
-        f"Online documentation for Python Examples v{__version__}: {DOCS_URL}",
+        f"Online documentation for YellowDog CLI v{__version__}: {DOCS_URL}",
         flush=True,
     )
 
@@ -137,6 +138,10 @@ class CLIParser:
         Create the argument parser, and parse the command
         line arguments. Argument availability depends on module.
         """
+        # Match on the command name only; matching on the full path would
+        # mis-register arguments when the install path contains a command name
+        module_name = os.path.basename(sys.argv[0])
+
         self.tag_required = False
         self.namespace_required = False
 
@@ -247,7 +252,7 @@ class CLIParser:
         # Module-specific arguments
 
         # yd-* (all except yd-compare)
-        if not any(module in sys.argv[0] for module in ["compare"]):
+        if not any(module in module_name for module in ["compare"]):
             parser.add_argument(
                 "--variable",
                 "-v",
@@ -263,7 +268,7 @@ class CLIParser:
 
         # yd-* (all except yd-boost, yd-cloudwizard, yd-follow, yd-list, yd-compare, yd-wait)
         if not any(
-            module in sys.argv[0]
+            module in module_name
             for module in [
                 "boost",
                 "cloudwizard",
@@ -303,7 +308,7 @@ class CLIParser:
             )
 
         # yd-list
-        if any(module in sys.argv[0] for module in ["list"]):
+        if any(module in module_name for module in ["list"]):
             parser.add_argument(
                 "--namespace",
                 "-n",
@@ -344,7 +349,7 @@ class CLIParser:
             )
 
         # yd-submit
-        if any(module in sys.argv[0] for module in ["submit"]):
+        if any(module in module_name for module in ["submit"]):
             parser.add_argument(
                 "--work-requirement",
                 "-r",
@@ -488,7 +493,7 @@ class CLIParser:
             )
 
         # yd-provision / yd-instantiate
-        if any(module in sys.argv[0] for module in ["provision", "instantiate"]):
+        if any(module in module_name for module in ["provision", "instantiate"]):
             parser.add_argument(
                 "--worker-pool",
                 "-p",
@@ -502,7 +507,7 @@ class CLIParser:
             )
 
         # yd-cancel
-        if any(module in sys.argv[0] for module in ["cancel"]):
+        if any(module in module_name for module in ["cancel"]):
             parser.add_argument(
                 "--abort",
                 "-a",
@@ -523,14 +528,14 @@ class CLIParser:
         # 'compute-start' and 'compute-restart'
         if (
             any(
-                module in sys.argv[0]
+                module in module_name
                 for module in [
                     "start",
                     "hold",
                     "finish",
                 ]
             )
-            and "compute" not in sys.argv[0]
+            and "compute" not in module_name
         ):
             parser.add_argument(
                 "--follow",
@@ -543,7 +548,7 @@ class CLIParser:
         # yd-cancel / yd-shutdown / yd-terminate / yd-start / yd-hold /
         # yd-finish / yd-compute-stop / yd-compute-start
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in [
                 "cancel",
                 "shutdown",
@@ -567,7 +572,7 @@ class CLIParser:
         # yd-finish / yd-delete / yd-rm (data client) / yd-nodeaction /
         # yd-compute-stop / yd-compute-start / yd-compute-restart
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in [
                 "abort",
                 "cancel",
@@ -598,7 +603,7 @@ class CLIParser:
             )
 
         # yd-list
-        if "list" in sys.argv[0]:
+        if "list" in module_name:
             parser.add_argument(
                 "entity_type",
                 type=resolve_entity_type,
@@ -658,7 +663,7 @@ class CLIParser:
 
         # yd-submit / yd-provision / yd-instantiate / yd-create
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in ["submit", "provision", "instantiate", "create"]
         ):
             parser.add_argument(
@@ -670,7 +675,7 @@ class CLIParser:
             )
 
         # yd-instantiate
-        if any(module in sys.argv[0] for module in ["instantiate"]):
+        if any(module in module_name for module in ["instantiate"]):
             parser.add_argument(
                 "--compute-requirement",
                 "-C",
@@ -690,19 +695,9 @@ class CLIParser:
                 help="report on a dynamic template test run",
             )
 
-        # yd-admin
-        if "admin" in sys.argv[0]:
-            parser.add_argument(
-                "work_requirement_id",
-                metavar="<work_requirement_id>",
-                type=str,
-                nargs="*",
-                help="work requirement to be refreshed",
-            )
-
         # yd-submit / yd-provision / yd-instantiate / yd-create / yd-remove
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in ["submit", "provision", "instantiate", "create", "remove"]
         ):
             parser.add_argument(
@@ -714,7 +709,7 @@ class CLIParser:
             )
 
         # yd-resize
-        if "resize" in sys.argv[0]:
+        if "resize" in module_name:
             parser.add_argument(
                 "worker_pool",
                 metavar="<worker-pool-or-compute-requirement-name-or-ID>",
@@ -739,7 +734,7 @@ class CLIParser:
             )
 
         # yd-boost
-        if "boost" in sys.argv[0]:
+        if "boost" in module_name:
             parser.add_argument(
                 "boost_hours",
                 metavar="<boost hours>",
@@ -755,7 +750,7 @@ class CLIParser:
             )
 
         # yd-shutdown
-        if "shutdown" in sys.argv[0]:
+        if "shutdown" in module_name:
             parser.add_argument(
                 "worker_pool_nodes_list",
                 nargs="*",
@@ -780,7 +775,7 @@ class CLIParser:
             )
 
         # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
-        if "terminate" in sys.argv[0] or "compute" in sys.argv[0]:
+        if "terminate" in module_name or "compute" in module_name:
             parser.add_argument(
                 "compute_reqs_instances_or_nodes",
                 nargs="*",
@@ -788,8 +783,12 @@ class CLIParser:
                 metavar="<name-or-ID>",
                 type=str,
                 help=(
-                    "the name(s) or YellowDog ID(s) of the compute requirement(s), "
-                    "ID(s) of nodes, or instances in 'cr_id.instance_id' format"
+                    "the ID(s) of nodes, or instances in 'cr_id.instance_id' format"
+                    if "restart" in module_name
+                    # Restart is instance-level only: no CR names/IDs
+                    else "the name(s) or YellowDog ID(s) of the compute "
+                    "requirement(s), ID(s) of nodes, or instances in "
+                    "'cr_id.instance_id' format"
                 ),
             )
             parser.add_argument(
@@ -801,7 +800,7 @@ class CLIParser:
             )
 
         # yd-cancel
-        if "cancel" in sys.argv[0]:
+        if "cancel" in module_name:
             parser.add_argument(
                 "work_requirements",
                 nargs="*",
@@ -815,7 +814,7 @@ class CLIParser:
             )
 
         # yd-start (but not yd-compute-start / yd-compute-restart)
-        if "start" in sys.argv[0] and "compute" not in sys.argv[0]:
+        if "start" in module_name and "compute" not in module_name:
             parser.add_argument(
                 "work_requirements",
                 nargs="*",
@@ -829,7 +828,7 @@ class CLIParser:
             )
 
         # yd-hold
-        if "hold" in sys.argv[0]:
+        if "hold" in module_name:
             parser.add_argument(
                 "work_requirements",
                 nargs="*",
@@ -843,7 +842,7 @@ class CLIParser:
             )
 
         # yd-finish
-        if "finish" in sys.argv[0]:
+        if "finish" in module_name:
             parser.add_argument(
                 "work_requirements",
                 nargs="*",
@@ -857,7 +856,7 @@ class CLIParser:
             )
 
         # yd-create / yd-remove
-        if any(module in sys.argv[0] for module in ["create", "remove"]):
+        if any(module in module_name for module in ["create", "remove"]):
             parser.add_argument(
                 "resource_specifications",
                 nargs="+",
@@ -888,7 +887,7 @@ class CLIParser:
             )
 
         # yd-create
-        if "create" in sys.argv[0]:
+        if "create" in module_name:
             parser.add_argument(
                 "--show-keyring-passwords",
                 action="store_true",
@@ -903,7 +902,7 @@ class CLIParser:
             )
 
         # yd-remove
-        if "remove" in sys.argv[0]:
+        if "remove" in module_name:
             parser.add_argument(
                 "--ids",
                 action="store_true",
@@ -912,12 +911,12 @@ class CLIParser:
             )
 
         # yd-follow / yd-show / yd-wait
-        if any(module in sys.argv[0] for module in ["follow", "show", "wait"]):
+        if any(module in module_name for module in ["follow", "show", "wait"]):
             verb = (
                 "follow"
-                if "follow" in sys.argv[0]
+                if "follow" in module_name
                 else "wait"
-                if "wait" in sys.argv[0]
+                if "wait" in module_name
                 else "show"
             )
             parser.add_argument(
@@ -930,7 +929,7 @@ class CLIParser:
             )
 
         # yd-follow
-        if "follow" in sys.argv[0]:
+        if "follow" in module_name:
             parser.add_argument(
                 "--progress",
                 action="store_true",
@@ -943,7 +942,7 @@ class CLIParser:
 
         # yd-submit / yd-provision / yd-instantiate / yd-nodeaction
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in ["submit", "provision", "instantiate", "nodeaction"]
         ):
             parser.add_argument(
@@ -959,7 +958,7 @@ class CLIParser:
             )
 
         # yd-provision / yd-instantiate
-        if any(module in sys.argv[0] for module in ["provision", "instantiate"]):
+        if any(module in module_name for module in ["provision", "instantiate"]):
             parser.add_argument(
                 "--follow",
                 "-f",
@@ -977,7 +976,7 @@ class CLIParser:
             )
 
         # yd-resize
-        if any(module in sys.argv[0] for module in ["resize"]):
+        if any(module in module_name for module in ["resize"]):
             parser.add_argument(
                 "--follow",
                 "-f",
@@ -988,7 +987,7 @@ class CLIParser:
 
         # yd-follow / yd-shutdown / yd-provision / yd-resize
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in ["follow", "shutdown", "provision", "resize"]
         ):
             parser.add_argument(
@@ -1006,7 +1005,7 @@ class CLIParser:
         # yd-terminate / yd-submit / yd-cancel / yd-start / yd-hold / yd-finish /
         # yd-compute-stop / yd-compute-start / yd-compute-restart
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in [
                 "follow",
                 "provision",
@@ -1030,7 +1029,7 @@ class CLIParser:
             )
 
         # yd-cloudwizard
-        if "cloudwizard" in sys.argv[0]:
+        if "cloudwizard" in module_name:
             parser.add_argument(
                 "operation",
                 metavar="'setup', 'teardown', 'add-ssh' or 'remove-ssh'",
@@ -1088,7 +1087,7 @@ class CLIParser:
             )
 
         # yd-nodeaction
-        if "nodeaction" in sys.argv[0]:
+        if "nodeaction" in module_name:
             parser.add_argument(
                 "--follow",
                 "-f",
@@ -1148,7 +1147,7 @@ class CLIParser:
             )
 
         # yd-abort
-        if "abort" in sys.argv[0]:
+        if "abort" in module_name:
             parser.add_argument(
                 "task_id_list",
                 nargs="*",
@@ -1166,7 +1165,7 @@ class CLIParser:
             )
 
         # yd-submit (positional arg)
-        if any(module in sys.argv[0] for module in ["submit"]):
+        if any(module in module_name for module in ["submit"]):
             # Note: removes the need for the '-r' option
             parser.add_argument(
                 "work_requirement_file_positional",
@@ -1181,7 +1180,7 @@ class CLIParser:
             )
 
         # yd-provision (positional arg)
-        if any(module in sys.argv[0] for module in ["provision"]):
+        if any(module in module_name for module in ["provision"]):
             # Note: removes the need for the '-p' option
             parser.add_argument(
                 "worker_pool_file_positional",
@@ -1196,7 +1195,7 @@ class CLIParser:
             )
 
         # yd-instantiate (positional arg)
-        if any(module in sys.argv[0] for module in ["instantiate"]):
+        if any(module in module_name for module in ["instantiate"]):
             # Note: removes the need for the '-C' option
             parser.add_argument(
                 "compute_requirement_file_positional",
@@ -1211,7 +1210,7 @@ class CLIParser:
             )
 
         # yd-create
-        if any(module in sys.argv[0] for module in ["create"]):
+        if any(module in module_name for module in ["create"]):
             parser.add_argument(
                 "--no-resequence",
                 action="store_true",
@@ -1223,7 +1222,7 @@ class CLIParser:
             )
 
         # yd-show
-        if any(module in sys.argv[0] for module in ["show"]):
+        if any(module in module_name for module in ["show"]):
             parser.add_argument(
                 "--show-token",
                 action="store_true",
@@ -1249,7 +1248,7 @@ class CLIParser:
             )
 
         # yd-list / yd-show
-        if any(module in sys.argv[0] for module in ["list", "show"]):
+        if any(module in module_name for module in ["list", "show"]):
             parser.add_argument(
                 "--substitute-ids",
                 "-U",
@@ -1285,7 +1284,7 @@ class CLIParser:
             )
 
         # yd-compare
-        if "compare" in sys.argv[0]:
+        if "compare" in module_name:
             parser.add_argument(
                 "wr_or_tg_id",
                 metavar="<work-requirement-or-task-group-ID>",
@@ -1301,9 +1300,15 @@ class CLIParser:
                 nargs="+",
                 help="the YellowDog ID(s) of the provisioned worker pool(s) to compare",
             )
+            parser.add_argument(
+                "--running-nodes-only",
+                action="store_true",
+                required=False,
+                help="only compare against nodes in the RUNNING state",
+            )
 
         # yd-submit
-        if any(module in sys.argv[0] for module in ["submit"]):
+        if any(module in module_name for module in ["submit"]):
             parser.add_argument(
                 "--upgrade-rclone",
                 action="store_true",
@@ -1328,7 +1333,7 @@ class CLIParser:
 
         # yd-upload / yd-download / yd-delete / yd-rm / yd-ls / yd-copy (data client commands)
         if any(
-            module in sys.argv[0]
+            module in module_name
             for module in ["upload", "download", "delete", "-rm", "ls", "copy"]
         ):
             parser.add_argument(
@@ -1396,7 +1401,7 @@ class CLIParser:
             )
 
         # yd-upload
-        if "upload" in sys.argv[0]:
+        if "upload" in module_name:
             parser.add_argument(
                 "local_paths",
                 metavar="<local-path>",
@@ -1436,7 +1441,7 @@ class CLIParser:
             )
 
         # yd-download
-        if "download" in sys.argv[0]:
+        if "download" in module_name:
             parser.add_argument(
                 "remote_paths",
                 metavar="<remote-path>",
@@ -1470,7 +1475,7 @@ class CLIParser:
             )
 
         # yd-delete / yd-rm (data client)
-        if "delete" in sys.argv[0] or "-rm" in sys.argv[0]:
+        if "delete" in module_name or "-rm" in module_name:
             parser.add_argument(
                 "remote_paths",
                 metavar="<remote-path>",
@@ -1490,7 +1495,7 @@ class CLIParser:
             )
 
         # yd-ls
-        if "ls" in sys.argv[0]:
+        if "ls" in module_name:
             parser.add_argument(
                 "remote_paths",
                 metavar="<remote-path>",
@@ -1514,7 +1519,7 @@ class CLIParser:
             )
 
         # yd-copy
-        if "copy" in sys.argv[0]:
+        if "copy" in module_name:
             parser.add_argument(
                 "src_path",
                 metavar="<src-path>",
@@ -1871,15 +1876,6 @@ class CLIParser:
     @allow_missing_attribute
     def report(self) -> bool | None:
         return self.args.report
-
-    # -----------------------------------------------------------------------
-    # yd-admin
-    # -----------------------------------------------------------------------
-
-    @property
-    @allow_missing_attribute
-    def wr_ids(self) -> list[str] | None:
-        return self.args.work_requirement_id
 
     # -----------------------------------------------------------------------
     # yd-submit / yd-provision / yd-instantiate / yd-create / yd-remove
@@ -2379,4 +2375,6 @@ def lookup_module_description(module_name: str) -> str | None:
     return None if suffix is None else prefix + suffix
 
 
-ARGS_PARSER = CLIParser(description=lookup_module_description(sys.argv[0]))
+ARGS_PARSER = CLIParser(
+    description=lookup_module_description(os.path.basename(sys.argv[0]))
+)

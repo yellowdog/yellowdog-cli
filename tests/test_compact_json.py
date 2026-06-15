@@ -110,27 +110,25 @@ class TestNestedContainers:
 
 class TestFloatFormatting:
     """
-    `g` format: drops trailing zeros, uses scientific notation when needed.
+    Floats are serialized at full precision, identically to json.dumps.
     """
 
     def test_regular_float(self):
         assert _enc(3.14) == "3.14"
 
-    def test_whole_float_no_trailing_zero(self):
-        # format(1.0, 'g') == '1', not '1.0'
-        assert _enc(1.0) == "1"
+    def test_whole_float_keeps_decimal_point(self):
+        assert _enc(1.0) == "1.0"
 
-    def test_large_float_scientific(self):
-        result = _enc(1e15)
-        assert "e" in result.lower()
+    @pytest.mark.parametrize("value", [1234567.89, 0.123456789, 1e15, 1.23e-7])
+    def test_full_precision_round_trip(self, value):
+        assert json.loads(_enc(value)) == value
+        assert json.loads(_enc({"v": [value]})) == {"v": [value]}
 
     def test_float_in_list_formatted(self):
-        result = _enc([1.0, 2.0])
-        assert result == "[1, 2]"
+        assert _enc([1.0, 2.5]) == "[1.0, 2.5]"
 
     def test_float_in_dict_formatted(self):
-        result = _enc({"v": 3.0})
-        assert result == '{"v": 3}'
+        assert _enc({"v": 3.0}) == '{"v": 3.0}'
 
 
 class TestDefaultIndent:

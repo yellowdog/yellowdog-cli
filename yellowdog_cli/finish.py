@@ -65,19 +65,24 @@ def main():
             if work_summary.status != WorkRequirementStatus.FINISHING:
                 try:
                     CLIENT.work_client.finish_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
-                    work_requirement: WorkRequirement = (
-                        CLIENT.work_client.get_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
-                    )
-                    finished_count += 1
-                    print_info(
-                        f"Finished {link_entity(CONFIG_COMMON.url, work_requirement)} "
-                        f"('{work_summary.name}')"
-                    )
-
                 except Exception as e:
                     print_error(
                         f"Failed to finish Work Requirement '{work_summary.name}': {e}"
                     )
+                    continue  # Don't follow Work Requirements that failed to finish
+                finished_count += 1
+                # The refetch is only needed to generate the link; the
+                # action has already succeeded
+                try:
+                    work_requirement: WorkRequirement = (
+                        CLIENT.work_client.get_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
+                    )
+                    print_info(
+                        f"Finished {link_entity(CONFIG_COMMON.url, work_requirement)} "
+                        f"('{work_summary.name}')"
+                    )
+                except Exception:
+                    print_info(f"Finished Work Requirement '{work_summary.name}'")
 
             elif work_summary.status == WorkRequirementStatus.FINISHING:
                 print_info(
@@ -117,6 +122,7 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
         if work_requirement_summary.status not in [
             WorkRequirementStatus.RUNNING,
             WorkRequirementStatus.HELD,
+            WorkRequirementStatus.FINISHING,
         ]:
             print_warning(
                 f"Work Requirement '{name_or_id}' is not in a valid state"
@@ -124,7 +130,6 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
             )
             continue
 
-        work_requirement_summaries.append(work_requirement_summary)
         fq_name = (
             f"{work_requirement_summary.namespace}/{work_requirement_summary.name}"
         )
@@ -150,6 +155,10 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
                     f"Failed to finish Work Requirement '{fq_name}' "
                     f"({work_requirement_summary.id}): {e}"
                 )
+                continue  # Don't follow Work Requirements that failed to finish
+
+        # Only follow Work Requirements that are actually finishing
+        work_requirement_summaries.append(work_requirement_summary)
 
     if ARGS_PARSER.follow:
         follow_ids([cast(str, wrs.id) for wrs in work_requirement_summaries])

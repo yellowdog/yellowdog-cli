@@ -29,8 +29,11 @@ def main():
     if not valid_ydids:
         raise Exception("No valid YellowDog IDs to wait for")
 
-    # Check final status of each entity and determine exit code
+    # Check final status of each entity and determine exit code.
+    # Errors and failure warnings are always printed, including with
+    # '--quiet': exiting 1 silently is unhelpful.
     any_failed = False
+    any_fetch_errors = False
     for ydid in valid_ydids:
         ydid_type = get_ydid_type(ydid)
         try:
@@ -38,10 +41,10 @@ def main():
                 wr = CLIENT.work_client.get_work_requirement_by_id(ydid)
                 status = wr.status.value if wr.status else "UNKNOWN"
                 if status in _WR_FAILURE_VALUES:
-                    if not ARGS_PARSER.quiet:
-                        print_warning(
-                            f"Work Requirement '{ydid}' ended with status '{status}'"
-                        )
+                    print_warning(
+                        f"Work Requirement '{ydid}' ended with status '{status}'",
+                        override_quiet=True,
+                    )
                     any_failed = True
                 else:
                     print_info(
@@ -58,13 +61,12 @@ def main():
                     f"Compute Requirement '{ydid}' reached terminal status '{status}'"
                 )
         except Exception as e:
-            if not ARGS_PARSER.quiet:
-                print_error(f"Could not fetch final status for '{ydid}': {e}")
-            any_failed = True
+            print_error(f"Could not fetch final status for '{ydid}': {e}")
+            any_fetch_errors = True
 
     if any_failed:
-        if not ARGS_PARSER.quiet:
-            print_error("One or more Work Requirements did not complete successfully")
+        print_error("One or more Work Requirements did not complete successfully")
+    if any_failed or any_fetch_errors:
         sys.exit(1)
 
 

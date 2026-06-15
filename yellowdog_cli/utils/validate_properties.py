@@ -2,7 +2,6 @@
 Validate property dictionaries.
 """
 
-from copy import deepcopy
 from dataclasses import dataclass
 
 from yellowdog_cli.utils.printing import print_error
@@ -43,15 +42,13 @@ def _get_keys(data: dict | list) -> list[str]:
     """
     Recursively walk a dictionary or list collecting keys.
     Exclude dictionaries with user-specified keys.
-    Replace deprecated keys and issue warnings.
+    Raise an error for deprecated keys.
     """
     keys: list[str] = []
-    errors = False
 
     if isinstance(data, dict):
-        data_copy = deepcopy(data)
-        for key, value in data_copy.items():
-            key_to_add = key
+        errors = False
+        for key, value in data.items():
             for d_key in DEPRECATED_KEYS:
                 if key == d_key.old_key:
                     print_error(
@@ -59,13 +56,13 @@ def _get_keys(data: dict | list) -> list[str]:
                         f" supported; please replace with '{d_key.new_key}'"
                     )
                     errors = True
-            keys.append(key_to_add)
+            keys.append(key)
 
             if isinstance(value, (dict, list)) and key not in EXCLUDED_KEYS:
                 keys += _get_keys(value)
 
-    if errors:
-        raise ValueError("Please update your property names")
+        if errors:
+            raise ValueError("Please update your property names")
 
     elif isinstance(data, list):
         for element in data:

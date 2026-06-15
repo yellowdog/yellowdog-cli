@@ -17,6 +17,7 @@ YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
 YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
+YD_CONF = "YD_CONF"
 ENV_VAR_SUB_PREFIX = "env:"
 RAND_VAR_SIZE = 0xFFF
 
@@ -34,6 +35,10 @@ CR_MAX_INSTANCES = (
 )
 
 EVENT_STREAM_RETRY_INTERVAL = 5.0  # Seconds
+EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
+# Generous read timeout: a silently dropped connection must not block the
+# event stream forever; a timeout during a quiet period just reconnects
+EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
 
 NAMESPACE_PREFIX_SEPARATOR = "/"

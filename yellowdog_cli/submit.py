@@ -1392,6 +1392,9 @@ def submit_json_raw(wr_file: str):
 
     # Submit Tasks in batches
     for task_group_name, task_list in task_lists.items():
+        if not task_list:
+            print_info(f"No Tasks to add to Task Group '{task_group_name}'")
+            continue
         num_batches = ceil(len(task_list) / TASK_BATCH_SIZE)
         max_workers = min(
             num_batches,
@@ -1420,6 +1423,7 @@ def submit_json_raw(wr_file: str):
                         num_batches,
                         task_group_name,
                         wr_name,
+                        wr_data["namespace"],
                     )
                 )
 
@@ -1439,6 +1443,7 @@ def submit_json_task_batch(
     num_batches: int,
     task_group_name: str,
     wr_name: str,
+    namespace: str,
 ) -> int:
     """
     Submit a batch of tasks using the REST API. Return the number of tasks submitted.
@@ -1447,7 +1452,7 @@ def submit_json_task_batch(
 
     response = requests.post(
         url=(
-            f"{CONFIG_COMMON.url}/work/namespaces/{CONFIG_COMMON.namespace}"
+            f"{CONFIG_COMMON.url}/work/namespaces/{namespace}"
             f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
         ),
         headers={

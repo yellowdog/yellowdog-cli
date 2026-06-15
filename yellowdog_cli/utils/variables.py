@@ -8,6 +8,7 @@ import sys
 import tempfile
 from copy import deepcopy
 from getpass import getuser
+from json import dumps as json_dumps
 from json import loads as json_loads
 from random import randint
 from typing import cast
@@ -18,6 +19,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.misc_utils import (
     UTCNOW,
+    config_file_explicitly_selected,
     format_yd_name,
     load_dotenv_file,
     remove_outer_delimiters,
@@ -65,9 +67,7 @@ VARIABLE_SUBSTITUTIONS = {
     "time": UTCNOW.strftime("%H%M%S%f")[:-4],
     "datetime": UTCNOW.strftime("%y%m%d-%H%M%S"),
     "random": (
-        hex(randint(0, RAND_VAR_SIZE + 1))[2:]
-        .lower()
-        .zfill(len(hex(RAND_VAR_SIZE)) - 2)
+        hex(randint(0, RAND_VAR_SIZE))[2:].lower().zfill(len(hex(RAND_VAR_SIZE)) - 2)
     ),
 }
 
@@ -91,16 +91,23 @@ if subs_list:
 
 # Substitutions from the command line, which take precedence over
 # environment variables
+# Names of variables defined on the command line ('-v', or '--property'
+# overrides of 'common.variables'); these always take precedence, including
+# over the contents of an explicitly selected config file
+CLI_DEFINED_VARIABLES: set[str] = set()
+
 subs_list = []
 if ARGS_PARSER.variables is not None:
     for variable in ARGS_PARSER.variables:
-        key_value: list = variable.split("=")
-        if len(key_value) == 2:
+        # Split on the first '=' only: values may themselves contain '='
+        key_value: list = variable.split("=", 1)
+        if len(key_value) == 2 and key_value[0] != "":
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
+            CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
         else:
             print_error(
-                f"Error in variable substitution '{key_value[0]}'",
+                f"Error in variable substitution '{variable}'",
             )
             exit(1)  # Note: exception trap not yet in place
 
@@ -113,16 +120,13 @@ if subs_list:
 del subs_list
 
 
-def add_substitutions_without_overwriting(subs: dict):
+def _update_and_resolve_substitutions(merged: dict):
     """
-    Add a dictionary of substitutions. Do not overwrite existing values, but
-    resolve remaining variables if possible.
+    Replace the substitutions dictionary with 'merged' and re-resolve
+    variables. The dict is updated in-place so that all callers holding a
+    reference to it see the change (rebinding the name would silently
+    break imported references).
     """
-    # Merge: existing entries (CLI / env vars) take priority over incoming
-    # TOML ones. Update the dict in-place so that all callers holding a
-    # reference to it see the change (rebinding the name would silently
-    # break imported references).
-    merged = {**subs, **VARIABLE_SUBSTITUTIONS}
     VARIABLE_SUBSTITUTIONS.clear()
     VARIABLE_SUBSTITUTIONS.update(merged)
 
@@ -139,6 +143,34 @@ def add_substitutions_without_overwriting(subs: dict):
             VARIABLE_SUBSTITUTIONS[key_] = cast(str, result)
     for key_ in keys_to_unset:
         del VARIABLE_SUBSTITUTIONS[key_]
+
+
+def add_substitutions_without_overwriting(subs: dict):
+    """
+    Add a dictionary of substitutions. Do not overwrite existing values, but
+    resolve remaining variables if possible.
+    """
+    # Merge: existing entries (CLI / env vars) take priority over incoming
+    # ones
+    _update_and_resolve_substitutions({**subs, **VARIABLE_SUBSTITUTIONS})
+
+
+def add_substitutions_from_config_file(subs: dict):
+    """
+    Add variable substitutions from a TOML configuration file's
+    [common.variables] section.
+
+    If the config file was explicitly selected using '--config'/'-c', its
+    variables override environment-defined variables (but never variables
+    set on the command line); otherwise existing definitions take
+    precedence as usual.
+    """
+    if not config_file_explicitly_selected(ARGS_PARSER):
+        add_substitutions_without_overwriting(subs)
+        return
+
+    subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
+    _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
 def add_or_update_substitution(key: str, value: str):
@@ -355,12 +387,15 @@ def process_untyped_variable_substitutions(
         for element in split_delimited_string(
             undelimited_input_string, opening_delimiter, closing_delimiter
         ):
-            processed_string += (
-                process_untyped_variable_substitutions(
-                    element, opening_delimiter, closing_delimiter
-                )
-                or ""
+            result = process_untyped_variable_substitutions(
+                element, opening_delimiter, closing_delimiter
             )
+            if result is _UNSET:
+                # An unset inner variable: leave its token intact so the
+                # caller's dict-level processing can remove the property
+                processed_string += element
+            else:
+                processed_string += result or ""
         input_string = opening_delimiter + processed_string + closing_delimiter
 
     assert isinstance(input_string, str)  # narrow: None already returned above
@@ -370,7 +405,10 @@ def process_untyped_variable_substitutions(
     # substitution loop so the bare variable name can be looked up cleanly.
     # Syntax: "{{varname::}}" — if varname is defined, use its value;
     # if not, return _UNSET to signal the caller to remove the property.
-    unset_marker = f"{opening_delimiter}.*{VAR_UNSET_SUFFIX}{closing_delimiter}"
+    unset_marker = (
+        f"{re.escape(opening_delimiter)}.*"
+        f"{re.escape(VAR_UNSET_SUFFIX)}{re.escape(closing_delimiter)}"
+    )
     if re.fullmatch(unset_marker, s):
         bare_name = remove_outer_delimiters(s, opening_delimiter, closing_delimiter)[
             : -len(VAR_UNSET_SUFFIX)
@@ -429,7 +467,8 @@ def process_untyped_variable_substitutions(
 
     # Create list of variable substitutions with their default values
     substitutions_with_defaults = re.findall(
-        f"{opening_delimiter}.*" + VAR_DEFAULT_SEPARATOR + f".*{closing_delimiter}",
+        f"{re.escape(opening_delimiter)}.*{re.escape(VAR_DEFAULT_SEPARATOR)}"
+        f".*{re.escape(closing_delimiter)}",
         s,
     )
     default_value_substitutions = []  # List of (variable_name, default_value)
@@ -607,7 +646,7 @@ def load_toml_file_with_variable_substitutions(
     # file as a whole
     try:
         # Convert all values to strings before adding
-        add_substitutions_without_overwriting(
+        add_substitutions_from_config_file(
             {
                 var_name: str(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
@@ -631,7 +670,8 @@ def process_variable_substitutions_in_file_contents(
     """
     v_expressions = set(
         re.findall(
-            prefix + f"{VAR_OPENING_DELIMITER}.*{VAR_CLOSING_DELIMITER}" + postfix,
+            f"{re.escape(prefix)}{re.escape(VAR_OPENING_DELIMITER)}"
+            f".*{re.escape(VAR_CLOSING_DELIMITER)}{re.escape(postfix)}",
             file_contents,
         )
     )
@@ -646,15 +686,13 @@ def process_variable_substitutions_in_file_contents(
             file_contents = file_contents.replace(v_expression, replacement_expression)
         else:
             # If the replacement is a number, a boolean, a table, or an array,
-            # we need to remove the enclosing quotes when we substitute, and
-            # also ensure that lower case 'false' & 'true' are used.
+            # we need to remove the enclosing quotes when we substitute.
+            # json.dumps() emits valid JSON/Jsonnet ('true'/'false', double
+            # quotes) and preserves the case of string values.
             # Account for both double and single quotes (for Jsonnet support).
-            file_contents = file_contents.replace(
-                f'"{v_expression}"', str(replacement_expression).lower()
-            )
-            file_contents = file_contents.replace(
-                f"'{v_expression}'", str(replacement_expression).lower()
-            )
+            replacement = json_dumps(replacement_expression)
+            file_contents = file_contents.replace(f'"{v_expression}"', replacement)
+            file_contents = file_contents.replace(f"'{v_expression}'", replacement)
 
     return file_contents
 

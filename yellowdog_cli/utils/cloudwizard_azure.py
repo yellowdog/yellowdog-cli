@@ -157,7 +157,12 @@ class AzureConfig(CommonCloudConfig):
                     ):
                         self._created_regions.append(region)
                     else:
-                        self._remove_resource_group_by_name(rg_name)
+                        # Never auto-delete a pre-existing resource group:
+                        # it (and its contents) wasn't created by this run
+                        print_warning(
+                            f"Network resource creation failed; pre-existing"
+                            f" resource group '{rg_name}' has been left in place"
+                        )
                     continue
             except Exception as e:
                 print_warning(

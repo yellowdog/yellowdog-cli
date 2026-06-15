@@ -24,6 +24,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import get_task_group_by_id, get_worker_pool_by_id
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     indent,
     print_info,
@@ -605,7 +606,7 @@ def _get_work_requirement_by_id(work_requirement_id: str) -> WorkRequirement:
     try:
         return CLIENT.work_client.get_work_requirement_by_id(work_requirement_id)
     except Exception as e:
-        if "404" in str(e):
+        if is_http_not_found(e):
             raise KeyError(f"Work Requirement ID '{work_requirement_id}' not found")
         else:
             raise RuntimeError(
@@ -617,8 +618,8 @@ def _get_provisioned_worker_pool_by_id(worker_pool_id: str) -> ProvisionedWorker
     try:
         worker_pool = get_worker_pool_by_id(CLIENT, worker_pool_id)
     except Exception as e:
-        if "404" in str(e):
-            raise KeyError(f"Work Pool ID '{worker_pool_id}' not found")
+        if is_http_not_found(e):
+            raise KeyError(f"Worker Pool ID '{worker_pool_id}' not found")
         else:
             raise RuntimeError(
                 f"Unable to obtain Worker Pool details for '{worker_pool_id}': {e}"
@@ -688,9 +689,7 @@ def main():
     wp_list: list[ProvisionedWorkerPool] = []
     for wp_id in ARGS_PARSER.worker_pool_ids or []:
         if get_ydid_type(wp_id) != YDIDType.WORKER_POOL:
-            raise ValueError(
-                f"Not a YellowDog Worker Pool ID: '{ARGS_PARSER.wr_or_tg_id}'"
-            )
+            raise ValueError(f"Not a YellowDog Worker Pool ID: '{wp_id}'")
         wp_list.append(_get_provisioned_worker_pool_by_id(wp_id))
     worker_pools = WorkerPools(wp_list)
 

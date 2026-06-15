@@ -13,7 +13,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_application_details,
     get_application_group_summaries,
 )
-from yellowdog_cli.utils.printing import print_simple
+from yellowdog_cli.utils.printing import print_simple, print_warning
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON, main_wrapper
 
 
@@ -104,5 +104,5 @@ def main():
                 override_quiet=True,
             )
         else:
-            pass
+            print_warning(f"Unable to determine groups and roles: {e}")
     print()

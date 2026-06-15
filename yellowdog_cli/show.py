@@ -13,10 +13,12 @@ from yellowdog_cli.utils.entity_utils import (
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_json,
+    print_simple,
     print_to_file,
     print_yd_object,
 )
@@ -286,7 +288,7 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             return
 
     except Exception as e:
-        if "404" in str(e):
+        if is_http_not_found(e):
             print_error(f"{ydid_type.value} ID '{ydid}' not found")  # type: ignore[union-attr]
         else:
             print_error(f"Unable to show details for '{ydid}': {e}")
@@ -309,10 +311,14 @@ def _report_variables(variable_names: list[str]):
         print_json(variables_sorted)
         return
 
+    if not variables_sorted:
+        print_info("No variables to report")
+        return
+
     print_info("Reporting selected variable values:")
     max_var_name = max(len(name) for name in variables_sorted)
     for name, value in variables_sorted.items():
-        print(
+        print_simple(
             f"                      {name}{' ' * (max_var_name - len(name))} = {value}"
         )
     return
