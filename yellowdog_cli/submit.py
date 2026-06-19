@@ -1281,6 +1281,25 @@ def add_to_existing_work_requirement(
         else:
             new_tgs.append((spec_idx, spec_tg))
 
+    # For matched (existing) Task Groups, the platform does not allow
+    # mutating a Task Group's taskTypes after creation. Detect any spec
+    # Tasks whose taskType is not in the existing Task Group's allowlist
+    # and fail fast with a clear error, rather than letting the platform
+    # reject those Tasks downstream.
+    for _, spec_tg, existing_tg in matched:
+        existing_types = set(existing_tg.runSpecification.taskTypes)
+        spec_types = set(spec_tg.runSpecification.taskTypes)
+        missing_types = spec_types - existing_types
+        if missing_types:
+            raise ValueError(
+                f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
+                f" their task type(s) {sorted(missing_types)} are not in the"
+                f" Task Group's taskTypes allowlist {sorted(existing_types)}."
+                " A Task Group's taskTypes cannot be modified after creation;"
+                " either change the Tasks to use a supported task type, or"
+                " add them under a new Task Group name."
+            )
+
     # If there are new TGs, update the Work Requirement with the full TG list
     if new_tgs:
         work_requirement.taskGroups = existing_tgs + [tg for _, tg in new_tgs]

@@ -27,12 +27,17 @@ _TGC = f"{VAR_OPENING_DELIMITER}{su.L_TASK_GROUP_COUNT}{VAR_CLOSING_DELIMITER}"
 # ---------------------------------------------------------------------------
 
 
-def _make_tg(name: str, task_count: int = 0) -> TaskGroup:
+def _make_tg(
+    name: str, task_count: int = 0, task_types: list[str] | None = None
+) -> TaskGroup:
     tg = MagicMock(spec=TaskGroup)
     tg.name = name
     summary = MagicMock()
     summary.taskCount = task_count
     tg.taskSummary = summary
+    run_spec = MagicMock()
+    run_spec.taskTypes = list(task_types) if task_types is not None else ["bash"]
+    tg.runSpecification = run_spec
     return tg
 
 
@@ -244,9 +249,18 @@ class TestAddToPartitioning:
         existing_tg_names: list[str],
         spec_tg_names: list[str],
         existing_task_count: int = 2,
+        existing_task_types: dict[str, list[str]] | None = None,
+        spec_task_types: dict[str, list[str]] | None = None,
     ) -> dict[str, Any]:
+        existing_task_types = existing_task_types or {}
+        spec_task_types = spec_task_types or {}
         existing_tgs = [
-            _make_tg(n, task_count=existing_task_count) for n in existing_tg_names
+            _make_tg(
+                n,
+                task_count=existing_task_count,
+                task_types=existing_task_types.get(n),
+            )
+            for n in existing_tg_names
         ]
         existing_wr = _make_wr("my-wr", WorkRequirementStatus.RUNNING, existing_tgs)
         updated_wr = _make_wr("my-wr", WorkRequirementStatus.RUNNING, existing_tgs)
@@ -293,7 +307,10 @@ class TestAddToPartitioning:
             total_num_task_groups,
             files_directory="",
         ):
-            return _make_tg(task_group_data[NAME])
+            return _make_tg(
+                task_group_data[NAME],
+                task_types=spec_task_types.get(task_group_data[NAME]),
+            )
 
         with (
             patch.object(
@@ -420,3 +437,37 @@ class TestAddToPartitioning:
         tg_names_in_update = [tg.name for tg in result["update_wr_calls"][0]]
         assert "existing" in tg_names_in_update
         assert "new-one" in tg_names_in_update
+
+    # --- taskTypes validation on matched existing Task Groups ---
+
+    def test_matched_tg_spec_introduces_new_type_raises(self):
+        # Existing TG has taskTypes=["bash"]; spec adds "docker".
+        # Mutating taskTypes post-creation is not supported by the platform,
+        # so the CLI must fail fast with a clear error.
+        with pytest.raises(ValueError, match=r"task type\(s\) \['docker'\] are not in"):
+            self._run(
+                existing_tg_names=["grp"],
+                spec_tg_names=["grp"],
+                existing_task_types={"grp": ["bash"]},
+                spec_task_types={"grp": ["docker"]},
+            )
+
+    def test_matched_tg_spec_subset_of_existing_does_not_raise(self):
+        # Spec types are a subset of existing → safe to proceed; no
+        # update_work_requirement call is needed
+        result = self._run(
+            existing_tg_names=["grp"],
+            spec_tg_names=["grp"],
+            existing_task_types={"grp": ["bash", "docker", "powershell"]},
+            spec_task_types={"grp": ["bash"]},
+        )
+        assert len(result["update_wr_calls"]) == 0
+
+    def test_matched_tg_spec_equal_to_existing_does_not_raise(self):
+        result = self._run(
+            existing_tg_names=["grp"],
+            spec_tg_names=["grp"],
+            existing_task_types={"grp": ["bash", "docker"]},
+            spec_task_types={"grp": ["bash", "docker"]},
+        )
+        assert len(result["update_wr_calls"]) == 0

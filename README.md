@@ -45,6 +45,7 @@
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
    * [Property Inheritance](#property-inheritance)
    * [Work Requirement Property Dictionary](#work-requirement-property-dictionary)
+   * [Automatic `taskTypes` Population](#automatic-tasktypes-population)
    * [Retryable Errors](#retryable-errors)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
@@ -933,11 +934,44 @@ The following table outlines all the properties available for defining Work Requ
 | `taskTimeout`               | The timeout in minutes after which an executing Task will be terminated and reported as `FAILED`. E.g. `120.0`. The default is no timeout.                                                                                          | Yes  | Yes | Yes  |      |
 | `timeout`                   | As above, but set at the individual Task level, which overrides the group level `taskTimeout` property (if present).                                                                                                                | Yes  |     |      | Yes  |
 | `taskType`                  | The Task Type of a Task. E.g., `"docker"`.                                                                                                                                                                                          | Yes  |     |      | Yes  |
-| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g., `["docker", "bash"]`.                                                                                                                                  |      | Yes | Yes  |      |
+| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g., `["docker", "bash"]`. If omitted, the value is auto-derived from the `taskType` of the constituent Tasks (see [Automatic `taskTypes` Population](#automatic-tasktypes-population) below).             |      | Yes | Yes  |      |
 | `tasksPerWorker`            | Determines the number of Worker claims based on splitting the number of unfinished Tasks across Workers. E.g., `1`.                                                                                                                 | Yes  | Yes | Yes  |      |
 | `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g., `[2.0, 4.0]`.                                                                                                                                          | Yes  | Yes | Yes  |      |
 | `workerTags`                | The list of Worker Tags that will be used to match against the Worker Tag of a candidate Worker. E.g., `["tag_x", "tag_y"]`.                                                                                                        | Yes  | Yes | Yes  |      |
 | `workRequirementData`       | The name of the file containing the JSON document in which the Work Requirement is defined. E.g., `"test_workreq.json"`.                                                                                                            | Yes  |     |      |      |
+
+## Automatic `taskTypes` Population
+
+A Task Group's `taskTypes` list (which determines which Workers can pick up Tasks in the group) can be omitted: it will be populated from the `taskType` of the constituent Tasks. When both are supplied, the resulting list is the **union** of the explicit `taskTypes` and every `taskType` set on the Tasks in the group.
+
+For example, this Task Group has no explicit `taskTypes` — the group's allowlist becomes `["bash"]` automatically:
+
+```json
+{
+  "name": "my-tasks",
+  "tasks": [
+    {"name": "task-1", "taskType": "bash", "arguments": ["echo", "hello"]},
+    {"name": "task-2", "taskType": "bash", "arguments": ["echo", "world"]}
+  ]
+}
+```
+
+And in this example, the group's allowlist becomes `["bash", "docker"]` (the union):
+
+```json
+{
+  "name": "mixed-tasks",
+  "taskTypes": ["bash"],
+  "tasks": [
+    {"name": "shell-task", "taskType": "bash", "arguments": ["echo", "hi"]},
+    {"name": "container-task", "taskType": "docker", "taskData": "..."}
+  ]
+}
+```
+
+If `taskTypes` is still empty after this union, the CLI falls back (in order) to the `[workRequirement] taskType` config property and to `taskTemplate.taskType`. If none of these provide a value and the Task Group contains Tasks, submission fails with a clear error.
+
+When using `yd-submit --add-to <wr>` to add Tasks to an **existing** Task Group, the existing group's `taskTypes` allowlist cannot be modified (the platform does not support mutating `taskTypes` after the Task Group is created). The CLI detects this case before submitting anything and fails with a clear error if the incoming Tasks introduce a `taskType` that the existing group does not already allow. The remedy is to use a different Task Group name (so a new Task Group is created with the union of `taskTypes`) or change the offending Tasks to use a supported `taskType`.
 
 ## Retryable Errors
 
