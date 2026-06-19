@@ -61,7 +61,7 @@ def main():
     if selected_work_requirement_summaries and confirmed(
         f"Cancel {len(selected_work_requirement_summaries)} "
         f"Work Requirement(s)"
-        f"{'' if not ARGS_PARSER.abort else ' and abort all allocated tasks'}?"
+        f"{'' if not ARGS_PARSER.abort else ' and abort all executing tasks'}?"
     ):
         for work_summary in selected_work_requirement_summaries:
             if work_summary.status != WorkRequirementStatus.CANCELLING:
@@ -77,7 +77,7 @@ def main():
                     continue  # Don't follow Work Requirements that failed to cancel
                 cancelled_count += 1
                 cancel_msg_postfix = (
-                    "" if not ARGS_PARSER.abort else " and aborted all allocated tasks"
+                    "" if not ARGS_PARSER.abort else " and aborted all executing tasks"
                 )
                 # The refetch is only needed to generate the link; the
                 # cancellation has already succeeded
@@ -97,9 +97,28 @@ def main():
                     )
 
             elif work_summary.status == WorkRequirementStatus.CANCELLING:
-                print_info(
-                    f"Work Requirement '{work_summary.name}' is already cancelling"
-                )
+                # Re-issue the cancel with abort=True so the platform aborts
+                # the still-executing Tasks; the user already confirmed the
+                # cancel-and-abort intent at the batch prompt
+                if ARGS_PARSER.abort:
+                    try:
+                        CLIENT.work_client.cancel_work_requirement_by_id(
+                            work_summary.id,  # type: ignore[arg-type]
+                            True,
+                        )
+                        print_info(
+                            f"Aborted executing Tasks in already-cancelling"
+                            f" Work Requirement '{work_summary.name}'"
+                        )
+                    except Exception as e:
+                        print_error(
+                            f"Failed to abort Tasks in '{work_summary.name}': {e}"
+                        )
+                        continue
+                else:
+                    print_info(
+                        f"Work Requirement '{work_summary.name}' is already cancelling"
+                    )
                 cancelling_count += 1
             work_requirement_ids.append(work_summary.id)  # type: ignore[arg-type]
 
@@ -164,14 +183,39 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
             f"{work_requirement_summary.namespace}/{work_requirement_summary.name}"
         )
         if work_requirement_summary.status == WorkRequirementStatus.CANCELLING:
-            print_info(
-                f"Work Requirement '{fq_name}' ({work_requirement_summary.id}) "
-                "is already cancelling"
-            )
+            # The user explicitly asked for Tasks to be aborted via '-a'; the
+            # WR cancel is already in flight, so re-issue with abort=True to
+            # promote it to also abort the still-executing Tasks
+            if ARGS_PARSER.abort:
+                if not confirmed(
+                    f"Abort executing Tasks in already-cancelling Work"
+                    f" Requirement '{fq_name}' ({work_requirement_summary.id})?"
+                ):
+                    continue
+                try:
+                    CLIENT.work_client.cancel_work_requirement_by_id(
+                        work_requirement_summary.id,  # type: ignore[arg-type]
+                        True,
+                    )
+                    print_info(
+                        f"Aborted executing Tasks in already-cancelling Work"
+                        f" Requirement '{fq_name}' ({work_requirement_summary.id})"
+                    )
+                except Exception as e:
+                    print_error(
+                        f"Failed to abort Tasks in '{fq_name}'"
+                        f" ({work_requirement_summary.id}): {e}"
+                    )
+                    continue
+            else:
+                print_info(
+                    f"Work Requirement '{fq_name}' ({work_requirement_summary.id}) "
+                    "is already cancelling"
+                )
         else:
             if not confirmed(
                 f"Cancel Work Requirement '{fq_name}' ({work_requirement_summary.id})"
-                f"{'' if not ARGS_PARSER.abort else ' and abort all allocated tasks'}?"
+                f"{'' if not ARGS_PARSER.abort else ' and abort all executing tasks'}?"
             ):
                 continue
             try:
@@ -181,7 +225,7 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 )
                 print_info(
                     f"Cancelled Work Requirement '{fq_name}' ({work_requirement_summary.id})"
-                    f"{'' if not ARGS_PARSER.abort else ' and aborted all allocated tasks'}"
+                    f"{'' if not ARGS_PARSER.abort else ' and aborted all executing tasks'}"
                 )
             except Exception as e:
                 print_error(

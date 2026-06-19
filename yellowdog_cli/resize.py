@@ -36,8 +36,9 @@ def _resize_worker_pool():
     """
     Resize a Worker Pool
     """
+    action = "Dry-run: Would resize" if ARGS_PARSER.dry_run else "Resizing"
     print_info(
-        f"Resizing Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
+        f"{action} Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
         f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
     )
     if get_ydid_type(ARGS_PARSER.worker_pool_name) == YDIDType.WORKER_POOL:
@@ -54,6 +55,12 @@ def _resize_worker_pool():
     worker_pool: WorkerPool = CLIENT.worker_pool_client.get_worker_pool_by_id(
         worker_pool_id=worker_pool_id  # type: ignore[arg-type]
     )
+
+    if ARGS_PARSER.dry_run:
+        print_info(f"Dry-run: Found Worker Pool '{worker_pool.id}'")
+        print_info("Dry-run: Complete")
+        return
+
     if not confirmed(
         f"Confirm resize Worker Pool to {ARGS_PARSER.worker_pool_size} node(s)?"
     ):
@@ -77,8 +84,9 @@ def _resize_compute_requirement():
     """
     Resize a Compute Requirement
     """
+    action = "Dry-run: Would resize" if ARGS_PARSER.dry_run else "Attempting to resize"
     print_info(
-        f"Attempting to resize Compute Requirement '{ARGS_PARSER.worker_pool_name}' "
+        f"{action} Compute Requirement '{ARGS_PARSER.worker_pool_name}' "
         f"to {ARGS_PARSER.worker_pool_size:,d} instance(s)"
     )
     print_info(
@@ -105,6 +113,11 @@ def _resize_compute_requirement():
 
         if cr_summary.targetInstanceCount == ARGS_PARSER.worker_pool_size:
             print_info("No resize attempted: target instance count would be unchanged")
+            return
+
+        if ARGS_PARSER.dry_run:
+            print_info(f"Dry-run: Found Compute Requirement '{cr_summary.id}'")
+            print_info("Dry-run: Complete")
             return
 
         if not confirmed(
