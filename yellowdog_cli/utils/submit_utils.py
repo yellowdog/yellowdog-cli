@@ -14,11 +14,16 @@ from typing import cast
 from rclone_api import Config
 from yellowdog_client.model import (
     DoubleRange,
+    FailurePolicy,
+    ResubmissionDestination,
+    RetryPolicy,
+    Selection,
     Task,
     TaskData,
     TaskDataInput,
     TaskDataOutput,
     TaskErrorMatcher,
+    TaskErrorSelector,
     TaskStatus,
 )
 
@@ -29,9 +34,18 @@ from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_UPLOAD_PATH,
     DEPENDENCIES,
     DEPENDENT_ON,
+    DESTINATION_TASK_GROUP,
     ERROR_TYPES,
+    FAILURE_POLICY,
     PROCESS_EXIT_CODES,
+    RESUBMISSION_DESTINATIONS,
+    RESUBMIT_ERRORS,
+    RETRY_ERRORS,
+    RETRY_MAX_RETRIES,
+    RETRY_POLICY,
     RETRYABLE_ERRORS,
+    SELECTION_EXCLUDES,
+    SELECTION_INCLUDES,
     STATUSES_AT_FAILURE,
     TASK_DATA,
     TASK_DATA_FILE,
@@ -52,7 +66,7 @@ from yellowdog_cli.utils.settings import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
-from yellowdog_cli.utils.type_check import check_list, check_str
+from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variables import (
     process_variable_substitutions_in_file_contents,
     process_variable_substitutions_insitu,
@@ -317,6 +331,222 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
         raise RuntimeError(
             f"Unable to process task retry error matcher data '{task_error_matcher_data}': {e}"
         )
+
+
+# ---------------------------------------------------------------------------
+# RetryPolicy / FailurePolicy / Selection<TaskErrorSelector> builders
+#
+# Selection<T> is rendered in JSON/TOML with explicit `includes` and (optional)
+# `excludes` lists; a bare list is rejected with a clear error pointing to the
+# expected shape, so the spec format is unambiguous on read.
+# ---------------------------------------------------------------------------
+
+
+def _generate_selection(
+    value: dict | None,
+    item_converter,
+    *,
+    field_name: str,
+) -> Selection | None:
+    """
+    Build a Selection[T] from a dict of shape
+    {"includes": [...], "excludes": [...]} (excludes is optional). Returns
+    None when value is None. Bare lists are rejected with guidance pointing
+    at the expected shape. Each list item is run through item_converter to
+    produce the final element type (str, int, TaskStatus, TaskErrorSelector).
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        raise ValueError(
+            f"'{field_name}' must be a dict of shape "
+            f'{{"{SELECTION_INCLUDES}": [...], "{SELECTION_EXCLUDES}": [...]}}, '
+            f"not a bare list. Wrap the list as "
+            f'{{"{SELECTION_INCLUDES}": [...]}}.'
+        )
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"'{field_name}' must be a dict with '{SELECTION_INCLUDES}' "
+            f"and optional '{SELECTION_EXCLUDES}'; got {type(value).__name__}"
+        )
+
+    extra = set(value) - {SELECTION_INCLUDES, SELECTION_EXCLUDES}
+    if extra:
+        raise ValueError(
+            f"Unknown key(s) {sorted(extra)} in '{field_name}'; "
+            f"expected '{SELECTION_INCLUDES}' and optional '{SELECTION_EXCLUDES}'"
+        )
+
+    includes_raw = check_list(value.get(SELECTION_INCLUDES))
+    excludes_raw = check_list(value.get(SELECTION_EXCLUDES))
+    if includes_raw is None and excludes_raw is None:
+        raise ValueError(
+            f"'{field_name}' must define at least one of "
+            f"'{SELECTION_INCLUDES}' or '{SELECTION_EXCLUDES}'"
+        )
+
+    includes = (
+        None if includes_raw is None else [item_converter(s) for s in includes_raw]
+    )
+    excludes = (
+        None if excludes_raw is None else [item_converter(s) for s in excludes_raw]
+    )
+    return Selection(includes=includes, excludes=excludes)
+
+
+def _to_task_status(s) -> TaskStatus:
+    return TaskStatus(s)
+
+
+def _to_int(c) -> int:
+    return int(c)
+
+
+def _to_str(s) -> str:
+    if not isinstance(s, str):
+        raise ValueError(f"Expected a string; got {type(s).__name__}: {s!r}")
+    return s
+
+
+def _generate_task_error_selector(d: dict) -> TaskErrorSelector:
+    """
+    Build a TaskErrorSelector from a dict with optional fields, each of
+    which is itself a Selection: errorTypes (Selection<String>),
+    statusesAtFailure (Selection<TaskStatus>), processExitCodes
+    (Selection<Integer>).
+    """
+    if not isinstance(d, dict):
+        raise ValueError(
+            f"Task error selector must be a dict with optional "
+            f"'{ERROR_TYPES}'/'{STATUSES_AT_FAILURE}'/'{PROCESS_EXIT_CODES}' "
+            f"fields; got {type(d).__name__}: {d!r}"
+        )
+
+    extra = set(d) - {ERROR_TYPES, STATUSES_AT_FAILURE, PROCESS_EXIT_CODES}
+    if extra:
+        raise ValueError(
+            f"Unknown key(s) {sorted(extra)} in task error selector; "
+            f"expected any of '{ERROR_TYPES}', '{STATUSES_AT_FAILURE}', "
+            f"'{PROCESS_EXIT_CODES}'"
+        )
+
+    return TaskErrorSelector(
+        errorTypes=_generate_selection(
+            d.get(ERROR_TYPES), _to_str, field_name=ERROR_TYPES
+        ),
+        statusesAtFailure=_generate_selection(
+            d.get(STATUSES_AT_FAILURE), _to_task_status, field_name=STATUSES_AT_FAILURE
+        ),
+        processExitCodes=_generate_selection(
+            d.get(PROCESS_EXIT_CODES), _to_int, field_name=PROCESS_EXIT_CODES
+        ),
+    )
+
+
+def generate_retry_policy(
+    config_wr: ConfigWorkRequirement, wr_data: dict, tg_data: dict
+) -> RetryPolicy | None:
+    """
+    Build a RetryPolicy from TG > WR > config inheritance. Returns None when
+    no retryPolicy is defined at any level.
+    """
+    policy_data = check_dict(
+        tg_data.get(RETRY_POLICY, wr_data.get(RETRY_POLICY, config_wr.retry_policy))
+    )
+    if policy_data is None:
+        return None
+
+    extra = set(policy_data) - {RETRY_MAX_RETRIES, RETRY_ERRORS}
+    if extra:
+        raise ValueError(
+            f"Unknown key(s) {sorted(extra)} in '{RETRY_POLICY}'; "
+            f"expected '{RETRY_MAX_RETRIES}' and optional '{RETRY_ERRORS}'"
+        )
+
+    max_retries = check_int(policy_data.get(RETRY_MAX_RETRIES))
+    if max_retries is None:
+        raise ValueError(f"'{RETRY_POLICY}.{RETRY_MAX_RETRIES}' is required")
+    if max_retries < 0:
+        raise ValueError(
+            f"'{RETRY_POLICY}.{RETRY_MAX_RETRIES}' must be >= 0 (got {max_retries})"
+        )
+
+    retry_errors = _generate_selection(
+        policy_data.get(RETRY_ERRORS),
+        _generate_task_error_selector,
+        field_name=f"{RETRY_POLICY}.{RETRY_ERRORS}",
+    )
+    return RetryPolicy(maxRetries=max_retries, retryErrors=retry_errors)
+
+
+def generate_failure_policy(
+    config_wr: ConfigWorkRequirement, wr_data: dict, tg_data: dict
+) -> FailurePolicy | None:
+    """
+    Build a FailurePolicy from TG > WR > config inheritance. Returns None
+    when no failurePolicy is defined at any level.
+    """
+    policy_data = check_dict(
+        tg_data.get(
+            FAILURE_POLICY, wr_data.get(FAILURE_POLICY, config_wr.failure_policy)
+        )
+    )
+    if policy_data is None:
+        return None
+
+    extra = set(policy_data) - {RESUBMISSION_DESTINATIONS}
+    if extra:
+        raise ValueError(
+            f"Unknown key(s) {sorted(extra)} in '{FAILURE_POLICY}'; "
+            f"expected '{RESUBMISSION_DESTINATIONS}'"
+        )
+
+    destinations_raw = check_list(policy_data.get(RESUBMISSION_DESTINATIONS))
+    if not destinations_raw:
+        raise ValueError(
+            f"'{FAILURE_POLICY}.{RESUBMISSION_DESTINATIONS}' must contain at "
+            f"least one entry"
+        )
+
+    destinations = [_generate_resubmission_destination(d) for d in destinations_raw]
+    return FailurePolicy(resubmissionDestinations=destinations)
+
+
+def _generate_resubmission_destination(d: dict) -> ResubmissionDestination:
+    """
+    Build one ResubmissionDestination from a dict with required
+    'destinationTaskGroup' (string) and optional 'resubmitErrors' (Selection).
+    """
+    if not isinstance(d, dict):
+        raise ValueError(
+            f"Each '{RESUBMISSION_DESTINATIONS}' entry must be a dict; "
+            f"got {type(d).__name__}: {d!r}"
+        )
+
+    extra = set(d) - {DESTINATION_TASK_GROUP, RESUBMIT_ERRORS}
+    if extra:
+        raise ValueError(
+            f"Unknown key(s) {sorted(extra)} in '{RESUBMISSION_DESTINATIONS}' "
+            f"entry; expected '{DESTINATION_TASK_GROUP}' and optional "
+            f"'{RESUBMIT_ERRORS}'"
+        )
+
+    dest = check_str(d.get(DESTINATION_TASK_GROUP))
+    if not dest:
+        raise ValueError(
+            f"Each '{RESUBMISSION_DESTINATIONS}' entry must define a "
+            f"non-empty '{DESTINATION_TASK_GROUP}'"
+        )
+
+    resubmit_errors = _generate_selection(
+        d.get(RESUBMIT_ERRORS),
+        _generate_task_error_selector,
+        field_name=f"{RESUBMISSION_DESTINATIONS}[].{RESUBMIT_ERRORS}",
+    )
+    return ResubmissionDestination(
+        destinationTaskGroup=dest,
+        resubmitErrors=resubmit_errors,
+    )
 
 
 @dataclass

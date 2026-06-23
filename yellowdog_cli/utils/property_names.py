@@ -29,12 +29,14 @@ DATA_CLIENT_PREFIX = "prefix"  # String
 DATA_CLIENT_REMOTE = "remote"  # String
 DATA_CLIENT_SECTION = "dataClient"  # No value
 DATA_CLIENT_UPLOAD_PATH = "uploadPath"  # String
-DISABLE_PREALLOCATION = "disablePreallocation"
 DEPENDENCIES = "dependencies"  # List of Strings
 DEPENDENT_ON = "dependentOn"  # String (Deprecated)
+DESTINATION_TASK_GROUP = "destinationTaskGroup"  # String (for ResubmissionDestination)
 DIRECTORY_NAME = "directoryName"  # String
+DISABLE_PREALLOCATION = "disablePreallocation"
 ENV = "environment"  # Dictionary
 ERROR_TYPES = "errorTypes"  # List of Strings
+FAILURE_POLICY = "failurePolicy"  # Dict
 FINISH_IF_ALL_TASKS_FINISHED = "finishIfAllTasksFinished"  # Boolean
 FINISH_IF_ANY_TASK_FAILED = "finishIfAnyTaskFailed"  # Boolean
 IDLE_NODE_TIMEOUT = "idleNodeTimeout"  # Float
@@ -47,7 +49,7 @@ INSTANCE_TYPES = "instanceTypes"  # List of Strings
 KEY = "key"  # String
 MAINTAIN_INSTANCE_COUNT = "maintainInstanceCount"  # Bool
 MAX_NODES = "maxNodes"  # Integer
-MAX_RETRIES = "maximumTaskRetries"  # Integer
+MAX_RETRIES = "maximumTaskRetries"  # Integer (Deprecated: use RETRY_POLICY)
 MAX_WORKERS = "maxWorkers"  # Integer
 METRICS_ENABLED = "metricsEnabled"  # Boolean
 MIN_NODES = "minNodes"  # Integer
@@ -72,8 +74,15 @@ PROVIDERS = "providers"  # List of Strings
 RAM = "ram"  # List of two Floats
 REGIONS = "regions"  # List of Strings
 REQUIRED = "required"  # Boolean
-RETRYABLE_ERRORS = "retryableErrors"  # List of Dicts
+RESUBMISSION_DESTINATIONS = "resubmissionDestinations"  # List of Dicts
+RESUBMIT_ERRORS = "resubmitErrors"  # Dict (Selection<TaskErrorSelector>)
+RETRY_ERRORS = "retryErrors"  # Dict (Selection<TaskErrorSelector>)
+RETRY_MAX_RETRIES = "maxRetries"  # Integer (RetryPolicy field)
+RETRY_POLICY = "retryPolicy"  # Dict
+RETRYABLE_ERRORS = "retryableErrors"  # List of Dicts (Deprecated: use RETRY_POLICY)
 SECRET = "secret"  # String
+SELECTION_EXCLUDES = "excludes"  # List (within a Selection<T>)
+SELECTION_INCLUDES = "includes"  # List (within a Selection<T>)
 SET_TASK_NAMES = "setTaskNames"  # Set to False to suppress task naming
 STATUSES_AT_FAILURE = "statusesAtFailure"  # List of Strings
 TARGET_INSTANCE_COUNT = "targetInstanceCount"  # Integer
@@ -152,9 +161,11 @@ ALL_KEYS = [
     DISABLE_PREALLOCATION,
     DEPENDENCIES,
     DEPENDENT_ON,
+    DESTINATION_TASK_GROUP,
     DIRECTORY_NAME,
     ENV,
     ERROR_TYPES,
+    FAILURE_POLICY,
     FINISH_IF_ALL_TASKS_FINISHED,
     FINISH_IF_ANY_TASK_FAILED,
     IDLE_NODE_TIMEOUT,
@@ -189,8 +200,15 @@ ALL_KEYS = [
     RAM,
     REGIONS,
     REQUIRED,
+    RESUBMISSION_DESTINATIONS,
+    RESUBMIT_ERRORS,
+    RETRY_ERRORS,
+    RETRY_MAX_RETRIES,
+    RETRY_POLICY,
     RETRYABLE_ERRORS,
     SECRET,
+    SELECTION_EXCLUDES,
+    SELECTION_INCLUDES,
     SET_TASK_NAMES,
     STATUSES_AT_FAILURE,
     TARGET_INSTANCE_COUNT,

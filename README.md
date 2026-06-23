@@ -46,7 +46,7 @@
    * [Property Inheritance](#property-inheritance)
    * [Work Requirement Property Dictionary](#work-requirement-property-dictionary)
    * [Automatic `taskTypes` Population](#automatic-tasktypes-population)
-   * [Retryable Errors](#retryable-errors)
+   * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
       * [Example — JSON](#example--json)
@@ -907,7 +907,8 @@ The following table outlines all the properties available for defining Work Requ
 | `finishIfAnyTaskFailed`     | If true, the Task Group will be failed automatically if any contained tasks fail. Default:`false`.                                                                                                                                  | Yes  | Yes | Yes  |      |
 | `instancePricingPreference` | The preferred instance pricing type for Tasks. One of: `SPOT_ONLY`, `ON_DEMAND_ONLY`, `SPOT_THEN_ON_DEMAND`, `ON_DEMAND_THEN_SPOT`. Default: no preference.                                                                         | Yes  | Yes | Yes  |      |
 | `instanceTypes`             | The machine instance types that can be used to execute Tasks. E.g., `["t3.micro", "t3a.micro"]`.                                                                                                                                    | Yes  | Yes | Yes  |      |
-| `maximumTaskRetries`        | The maximum number of times a Task can be retried after it has failed. E.g.: `5`.                                                                                                                                                   | Yes  | Yes | Yes  |      |
+| `failurePolicy`             | A policy for resubmitting a Task to a different Task Group when it would otherwise be `FAILED`. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                       | Yes  | Yes | Yes  |      |
+| `maximumTaskRetries`        | (Deprecated — see `retryPolicy`.) The maximum number of times a Task can be retried after it has failed. E.g.: `5`.                                                                                                                  | Yes  | Yes | Yes  |      |
 | `maxWorkers`                | The maximum number of Workers that can be claimed for the associated Task Group. E.g., `10`.                                                                                                                                        | Yes  | Yes | Yes  |      |
 | `minWorkers`                | The minimum number of Workers that the associated Task Group will retain even if this exceeds the current number of Tasks. E.g., `1`.                                                                                               | Yes  | Yes | Yes  |      |
 | `name`                      | The name of the Work Requirement, Task Group or Task. E.g., `"wr_name"`. Note that the `name` property is not inherited.                                                                                                            | Yes  | Yes | Yes  | Yes  |
@@ -917,7 +918,8 @@ The following table outlines all the properties available for defining Work Requ
 | `providers`                 | Constrains the YellowDog Scheduler only to execute tasks from the associated Task Group on the specified providers. E.g., `["AWS", "GOOGLE"]`.                                                                                      | Yes  | Yes | Yes  |      |
 | `ram`                       | Range constraint on GB of RAM that are required to execute Tasks. E.g., `[2.5, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.5, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                           | Yes  | Yes | Yes  |      |
 | `regions`                   | Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g., `["eu-west-2]`.                                                                                             | Yes  | Yes | Yes  |      |
-| `retryableErrors`           | A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
+| `retryPolicy`               | A policy controlling Task retries on error. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                                                                            | Yes  | Yes | Yes  |      |
+| `retryableErrors`           | (Deprecated — see `retryPolicy`.) A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
 | `setTaskNames`              | Set this to `false` to suppress automatic generation of Task names. Defaults to `true`. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.                  | Yes  | Yes | Yes  | Yes  |
 | `tag`                       | A tag that can be associated with a Work Requirement, Task Group or Task. Note there is **no property inheritance** for these tags.                                                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 1,000.                                                                                                                                                       | Yes  |     |      |      |
@@ -973,29 +975,130 @@ If `taskTypes` is still empty after this union, the CLI falls back (in order) to
 
 When using `yd-submit --add-to <wr>` to add Tasks to an **existing** Task Group, the existing group's `taskTypes` allowlist cannot be modified (the platform does not support mutating `taskTypes` after the Task Group is created). The CLI detects this case before submitting anything and fails with a clear error if the incoming Tasks introduce a `taskType` that the existing group does not already allow. The remedy is to use a different Task Group name (so a new Task Group is created with the union of `taskTypes`) or change the offending Tasks to use a supported `taskType`.
 
-## Retryable Errors
+## Task Retries and Failure Policies
 
-The `retryableErrors` property controls which failure conditions trigger a retry (up to `maximumTaskRetries`). It is a list of error condition objects; a Task is retried if it matches **any** entry in the list. If the list is empty (the default), **all** failures are retried.
+A Task Group's `runSpecification` can carry one **`retryPolicy`** and one **`failurePolicy`**. The retry policy is evaluated after each errored attempt; if retries are exhausted (or excluded by the policy), the failure policy can re-issue the Task in a different Task Group rather than letting it terminate as `FAILED`.
 
-Each entry is an object with one or more of the following fields. Within an entry, all specified fields must match (AND logic). Fields omitted from an entry match any value.
+### Selecting errors (`Selection<TaskErrorSelector>`)
 
-| Field               | Type             | Description                                                                 |
-|:--------------------|:-----------------|:----------------------------------------------------------------------------|
-| `processExitCodes`  | list of integers | The process exit code(s) at which the Task failed. E.g., `[1, 143]`.        |
-| `statusesAtFailure` | list of strings  | The Task status(es) at the time of failure. E.g., `["FAILED"]`.             |
-| `errorTypes`        | list of strings  | The error type(s) associated with the failure. E.g., `["ALLOCATION_LOST"]`. |
+Both policies select Tasks by their most-recent `TaskError` using a **`Selection`** of one or more `TaskErrorSelector` entries. Every `Selection` in the spec is a dict of the form:
 
-The `ALLOCATION_LOST` error type indicates that the Worker or node was lost before the Task could complete — for example, a spot instance being reclaimed. This is a common case for retry: exit code `143` (SIGTERM) combined with `ALLOCATION_LOST` indicates an involuntary preemption rather than a Task logic failure.
+```json
+{
+  "includes": [ ... ],
+  "excludes": [ ... ]
+}
+```
 
-Example — retry only on spot preemption, not on Task logic failures:
+Either `includes` or `excludes` (or both) must be present. A Task matches the selection if at least one entry under `includes` matches **and** no entry under `excludes` matches. Bare lists are rejected — wrap them as `{"includes": [...]}` to be explicit.
+
+Each `TaskErrorSelector` has three optional fields, each itself a Selection of primitive values; an entry matches a Task error when **every** specified field's Selection matches (AND logic across the fields):
+
+| Field               | Selection of      | Description                                                                                                |
+|:--------------------|:------------------|:-----------------------------------------------------------------------------------------------------------|
+| `errorTypes`        | strings           | Task error types — e.g. `"ALLOCATION_LOST"`, `"PROCESS_NON_ZERO_EXIT"`, `"TIMED_OUT"`.                     |
+| `statusesAtFailure` | TaskStatus names  | Task status at the time of the error — e.g. `"FAILED"`.                                                    |
+| `processExitCodes`  | integers          | The Task process exit code — e.g. `137` (OOM), `143` (SIGTERM). Implies `errorType = PROCESS_NON_ZERO_EXIT`. |
+
+### `retryPolicy`
+
+```json
+{
+  "retryPolicy": {
+    "maxRetries": 3,
+    "retryErrors": {
+      "includes": [
+        {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
+        {"processExitCodes": {"includes": [143]}}
+      ]
+    }
+  }
+}
+```
+
+`maxRetries` is required and must be `>= 0` (set it to `0` to define the policy but disable retries). `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
+
+### `failurePolicy`
+
+When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`), a `failurePolicy` can resubmit the Task in another Task Group within the same Work Requirement:
+
+```json
+{
+  "failurePolicy": {
+    "resubmissionDestinations": [
+      {
+        "destinationTaskGroup": "on-demand-tg",
+        "resubmitErrors": {
+          "includes": [{"errorTypes": {"includes": ["ALLOCATION_LOST"]}}]
+        }
+      },
+      {
+        "destinationTaskGroup": "high-memory-tg",
+        "resubmitErrors": {
+          "includes": [{"processExitCodes": {"includes": [137]}}]
+        }
+      }
+    ]
+  }
+}
+```
+
+Destinations are evaluated **in order**; the first matching entry wins. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+
+Common use cases:
+
+- **Spot → on-demand fallback**: retry preemptions a few times in a spot-priced Task Group, then resubmit to an on-demand Task Group.
+- **Out-of-memory → larger instance**: exit code 137 in a default-sized group resubmits to a Task Group with more `ram` or `vcpus`.
+
+### Deprecated: `maximumTaskRetries` / `retryableErrors`
+
+The legacy retry mechanism is still accepted but **cannot be combined** with `retryPolicy` / `failurePolicy` on the same Task Group — `yd-submit` will reject the spec with a clear error. Using the legacy fields emits a one-time deprecation warning per invocation.
+
+#### Migration
+
+The minimal replacement for `maximumTaskRetries = N` (with no error filtering) is a `retryPolicy` with only `maxRetries` set — every error is eligible for retry, matching the legacy behaviour.
+
+**TOML** — under `[workRequirement]`:
 
 ```toml
+# Before (deprecated)
 [workRequirement]
     maximumTaskRetries = 3
-    retryableErrors = [
-        {processExitCodes = [143], statusesAtFailure = ["FAILED"], errorTypes = ["ALLOCATION_LOST"]},
+
+# After (equivalent — retries on any error)
+[workRequirement]
+    retryPolicy.maxRetries = 3
+
+# After (with error filtering)
+[workRequirement.retryPolicy]
+    maxRetries = 3
+    retryErrors.includes = [
+        { errorTypes = { includes = ["ALLOCATION_LOST"] } },
+        { processExitCodes = { includes = [143] } },
     ]
 ```
+
+**JSON / Jsonnet** — inside a Task Group:
+
+```json
+{
+  "retryPolicy": {
+    "maxRetries": 3,
+    "retryErrors": {
+      "includes": [
+        {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
+        {"processExitCodes": {"includes": [143]}}
+      ]
+    }
+  }
+}
+```
+
+A legacy `retryableErrors` entry's three fields (`errorTypes`, `statusesAtFailure`, `processExitCodes`) all migrate to the corresponding fields on a `TaskErrorSelector`, with each wrapped in a `{"includes": [...]}` Selection. Legacy semantics — a Task retried if **any** entry matched — translate to a single `includes` list of `TaskErrorSelector` entries.
+
+### Caveat — agent version
+
+The retry/failure selection by `errorTypes`/`processExitCodes` depends on the YellowDog Agent recording which error caused the Task to fail. Older Agent versions don't populate that field, so Selection precision is reduced when running against older Workers — `maxRetries` and unconditional resubmission still work, but error-typed selectors won't match precisely. Upgrade Workers to the current Agent release for full behaviour.
 
 ## Merging Additional Environment Variables into Tasks
 

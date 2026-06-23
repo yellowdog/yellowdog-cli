@@ -61,6 +61,7 @@ from yellowdog_cli.utils.property_names import (
     COMPLETED_TASK_TTL,
     DISABLE_PREALLOCATION,
     ENV,
+    FAILURE_POLICY,
     FINISH_IF_ALL_TASKS_FINISHED,
     FINISH_IF_ANY_TASK_FAILED,
     INSTANCE_PRICING_PREFERENCE,
@@ -74,6 +75,8 @@ from yellowdog_cli.utils.property_names import (
     PROVIDERS,
     RAM,
     REGIONS,
+    RETRY_POLICY,
+    RETRYABLE_ERRORS,
     SET_TASK_NAMES,
     TASK_COUNT,
     TASK_DATA,
@@ -117,6 +120,8 @@ from yellowdog_cli.utils.submit_utils import (
     double_range_from_list,
     formatted_number_str,
     generate_dependencies,
+    generate_failure_policy,
+    generate_retry_policy,
     generate_task_error_matchers_list,
     generate_taskdata_object,
     get_task_data_property,
@@ -441,6 +446,23 @@ def submit_work_requirement(
         follow_progress(work_requirement)
 
 
+# Per-invocation flag so the deprecation warning fires once even when many
+# Task Groups use the legacy retry mechanism
+_LEGACY_RETRY_WARNED = False
+
+
+def _warn_legacy_retry_mechanism_once() -> None:
+    global _LEGACY_RETRY_WARNED
+    if _LEGACY_RETRY_WARNED:
+        return
+    _LEGACY_RETRY_WARNED = True
+    print_warning(
+        f"'{MAX_RETRIES}' and '{RETRYABLE_ERRORS}' are deprecated; "
+        f"please use '{RETRY_POLICY}' and (optionally) '{FAILURE_POLICY}' "
+        "instead. See the README's 'Task Retries and Failure Policies' section."
+    )
+
+
 def create_task_group(
     tg_number: int,
     wr_data: dict,
@@ -583,13 +605,48 @@ def create_task_group(
         else timedelta(minutes=task_timeout_minutes)
     )
 
+    # Resolve retry/failure policies (new mechanism) and detect any conflict
+    # with the deprecated maximumTaskRetries / retryableErrors fields. The
+    # legacy and new mechanisms are mutually exclusive on the same Task Group.
+    retry_policy = generate_retry_policy(config_wr, wr_data, task_group_data)
+    failure_policy = generate_failure_policy(config_wr, wr_data, task_group_data)
+
+    legacy_retries_set = (
+        task_group_data.get(MAX_RETRIES) is not None
+        or wr_data.get(MAX_RETRIES) is not None
+        or config_wr.max_retries is not None
+    )
+    legacy_errors_set = (
+        task_group_data.get(RETRYABLE_ERRORS) is not None
+        or wr_data.get(RETRYABLE_ERRORS) is not None
+        or config_wr.retryable_errors is not None
+    )
+    legacy_in_use = legacy_retries_set or legacy_errors_set
+
+    if (retry_policy is not None or failure_policy is not None) and legacy_in_use:
+        raise ValueError(
+            f"'{RETRY_POLICY}'/'{FAILURE_POLICY}' cannot be combined with the "
+            f"deprecated '{MAX_RETRIES}' or '{RETRYABLE_ERRORS}'. Pick one "
+            f"mechanism per Task Group; '{RETRY_POLICY}'/'{FAILURE_POLICY}' "
+            f"are the supported choice."
+        )
+
+    if legacy_in_use:
+        _warn_legacy_retry_mechanism_once()
+
     run_specification = RunSpecification(
         taskTypes=task_types,
-        maximumTaskRetries=check_int(
-            task_group_data.get(
-                MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries or 0)
+        maximumTaskRetries=(
+            None
+            if retry_policy is not None
+            else check_int(
+                task_group_data.get(
+                    MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries or 0)
+                )
             )
         ),
+        retryPolicy=retry_policy,
+        failurePolicy=failure_policy,
         workerTags=check_list(
             task_group_data.get(
                 WORKER_TAGS, wr_data.get(WORKER_TAGS, config_wr.worker_tags)
@@ -618,8 +675,10 @@ def create_task_group(
                 NAMESPACES, wr_data.get(NAMESPACES, config_wr.namespaces)
             )
         ),
-        retryableErrors=generate_task_error_matchers_list(
-            config_wr, wr_data, task_group_data
+        retryableErrors=(
+            None
+            if retry_policy is not None
+            else generate_task_error_matchers_list(config_wr, wr_data, task_group_data)
         ),
         disablePreallocation=check_bool(
             task_group_data.get(

@@ -1348,6 +1348,7 @@ STATUS_COUNTS_TASKS = [
     StatusCount(TaskStatus.CANCELLED.value),
     StatusCount(TaskStatus.ABORTED.value),
     StatusCount(TaskStatus.FAILED.value),
+    StatusCount(TaskStatus.RESUBMITTED.value),
 ]
 
 STATUS_COUNTS_INSTANCES = [
