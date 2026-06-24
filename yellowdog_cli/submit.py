@@ -17,7 +17,6 @@ from typing import cast
 import requests
 from yellowdog_client.model import (
     CloudProvider,
-    DoubleRange,
     RunSpecification,
     Task,
     TaskGroup,
@@ -115,6 +114,7 @@ from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
     assemble_arguments,
     create_task,
+    double_range_from_list,
     formatted_number_str,
     generate_dependencies,
     generate_task_error_matchers_list,
@@ -545,22 +545,12 @@ def create_task_group(
             "is a valid Work Requirement defined?"
         )
 
-    vcpus_data: list[float] | None = check_list(
-        task_group_data.get(VCPUS, wr_data.get(VCPUS, config_wr.vcpus))
-    )
-    vcpus = (
-        None
-        if vcpus_data is None
-        else DoubleRange(float(vcpus_data[0]), float(vcpus_data[1]))
+    vcpus = double_range_from_list(
+        task_group_data.get(VCPUS, wr_data.get(VCPUS, config_wr.vcpus)), VCPUS
     )
 
-    ram_data: list[float] | None = check_list(
-        task_group_data.get(RAM, wr_data.get(RAM, config_wr.ram))
-    )
-    ram = (
-        None
-        if ram_data is None
-        else DoubleRange(float(ram_data[0]), float(ram_data[1]))
+    ram = double_range_from_list(
+        task_group_data.get(RAM, wr_data.get(RAM, config_wr.ram)), RAM
     )
 
     providers_data: list[str] | None = check_list(
@@ -1280,6 +1270,25 @@ def add_to_existing_work_requirement(
             matched.append((spec_idx, spec_tg, matched_existing))
         else:
             new_tgs.append((spec_idx, spec_tg))
+
+    # For matched (existing) Task Groups, the platform does not allow
+    # mutating a Task Group's taskTypes after creation. Detect any spec
+    # Tasks whose taskType is not in the existing Task Group's allowlist
+    # and fail fast with a clear error, rather than letting the platform
+    # reject those Tasks downstream.
+    for _, spec_tg, existing_tg in matched:
+        existing_types = set(existing_tg.runSpecification.taskTypes)
+        spec_types = set(spec_tg.runSpecification.taskTypes)
+        missing_types = spec_types - existing_types
+        if missing_types:
+            raise ValueError(
+                f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
+                f" their task type(s) {sorted(missing_types)} are not in the"
+                f" Task Group's taskTypes allowlist {sorted(existing_types)}."
+                " A Task Group's taskTypes cannot be modified after creation;"
+                " either change the Tasks to use a supported task type, or"
+                " add them under a new Task Group name."
+            )
 
     # If there are new TGs, update the Work Requirement with the full TG list
     if new_tgs:

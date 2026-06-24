@@ -94,11 +94,25 @@ class TestCheckInRange:
     def test_none_value_returns_false(self):
         assert WorkerPools._check_in_range(None, _dr(1.0, 10.0)) is False
 
-    def test_none_min_returns_false(self):
-        assert WorkerPools._check_in_range(5.0, _dr(None, 10.0)) is False
+    def test_none_min_is_unbounded_below(self):
+        # No lower limit: any value at/below the max matches
+        assert WorkerPools._check_in_range(5.0, _dr(None, 10.0)) is True
 
-    def test_none_max_returns_false(self):
-        assert WorkerPools._check_in_range(5.0, _dr(1.0, None)) is False
+    def test_none_min_above_max_fails(self):
+        assert WorkerPools._check_in_range(11.0, _dr(None, 10.0)) is False
+
+    def test_none_max_is_unbounded_above(self):
+        # No upper limit: any value at/above the min matches
+        assert WorkerPools._check_in_range(5.0, _dr(1.0, None)) is True
+
+    def test_none_max_below_min_fails(self):
+        assert WorkerPools._check_in_range(0.5, _dr(1.0, None)) is False
+
+    def test_both_none_matches_any_value(self):
+        assert WorkerPools._check_in_range(123.0, _dr(None, None)) is True
+
+    def test_none_value_with_one_sided_range_returns_false(self):
+        assert WorkerPools._check_in_range(None, _dr(1.0, None)) is False
 
     def test_exact_match_single_value_range(self):
         assert WorkerPools._check_in_range(4.0, _dr(4.0, 4.0)) is True
@@ -124,6 +138,15 @@ class TestDoublerangeStr:
 
     def test_asymmetric_range(self):
         assert WorkerPools._doublerange_str(_dr(0.5, 3.5)) == "0.5 to 3.5"
+
+    def test_no_upper_limit(self):
+        assert WorkerPools._doublerange_str(_dr(2.0, None)) == "2.0 or more"
+
+    def test_no_lower_limit(self):
+        assert WorkerPools._doublerange_str(_dr(None, 4.0)) == "up to 4.0"
+
+    def test_both_unset(self):
+        assert WorkerPools._doublerange_str(_dr(None, None)) == "any"
 
 
 # ---------------------------------------------------------------------------

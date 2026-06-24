@@ -114,6 +114,88 @@ class TestGetTaskName:
 
 
 # ---------------------------------------------------------------------------
+# double_range_from_list
+# ---------------------------------------------------------------------------
+
+
+class TestDoubleRangeFromList:
+    def test_none_returns_none(self):
+        assert su.double_range_from_list(None, "vcpus") is None
+
+    def test_both_bounds_set(self):
+        result = su.double_range_from_list([2.0, 4.0], "vcpus")
+        assert result is not None
+        assert result.min == 2.0
+        assert result.max == 4.0
+
+    def test_integers_coerced_to_float(self):
+        result = su.double_range_from_list([2, 4], "vcpus")
+        assert result is not None
+        assert result.min == 2.0
+        assert result.max == 4.0
+        assert isinstance(result.min, float)
+        assert isinstance(result.max, float)
+
+    def test_no_upper_limit(self):
+        result = su.double_range_from_list([2.0, None], "vcpus")
+        assert result is not None
+        assert result.min == 2.0
+        assert result.max is None
+
+    def test_no_lower_limit(self):
+        result = su.double_range_from_list([None, 4.0], "ram")
+        assert result is not None
+        assert result.min is None
+        assert result.max == 4.0
+
+    def test_both_bounds_none_returns_none(self):
+        # Both bounds unset means no constraint, equivalent to omitting it
+        assert su.double_range_from_list([None, None], "ram") is None
+
+    def test_both_bounds_none_string_returns_none(self):
+        assert su.double_range_from_list(["none", "null"], "ram") is None
+
+    def test_none_string_sentinel_no_upper_limit(self):
+        # TOML has no null literal, so "none" stands in for an unset bound
+        result = su.double_range_from_list([2.0, "none"], "vcpus")
+        assert result is not None
+        assert result.min == 2.0
+        assert result.max is None
+
+    def test_none_string_sentinel_no_lower_limit(self):
+        result = su.double_range_from_list(["none", 4.0], "ram")
+        assert result is not None
+        assert result.min is None
+        assert result.max == 4.0
+
+    def test_none_string_case_insensitive(self):
+        result = su.double_range_from_list([" NONE ", 4.0], "vcpus")
+        assert result is not None
+        assert result.min is None
+        assert result.max == 4.0
+
+    def test_wrong_length_raises(self):
+        with pytest.raises(ValueError, match="list of two values"):
+            su.double_range_from_list([2.0], "vcpus")
+
+    def test_too_many_values_raises(self):
+        with pytest.raises(ValueError, match="list of two values"):
+            su.double_range_from_list([1.0, 2.0, 3.0], "vcpus")
+
+    def test_non_numeric_bound_raises(self):
+        with pytest.raises(ValueError, match="must be a number"):
+            su.double_range_from_list(["x", 4.0], "vcpus")
+
+    def test_bool_bound_rejected(self):
+        with pytest.raises(ValueError, match="must be a number"):
+            su.double_range_from_list([True, 4.0], "vcpus")
+
+    def test_non_list_raises(self):
+        with pytest.raises(TypeError):
+            su.double_range_from_list("2.0,4.0", "vcpus")
+
+
+# ---------------------------------------------------------------------------
 # get_task_group_name
 # ---------------------------------------------------------------------------
 
