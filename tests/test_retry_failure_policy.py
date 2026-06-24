@@ -312,8 +312,9 @@ class TestGenerateFailurePolicy:
 
 class TestRetryConflictDetection:
     """
-    The new retryPolicy/failurePolicy mechanism is mutually exclusive with the
-    legacy maximumTaskRetries/retryableErrors fields on the same Task Group.
+    'retryPolicy' is mutually exclusive with the legacy maximumTaskRetries /
+    retryableErrors fields on the same Task Group; 'failurePolicy' may coexist
+    with either retry mechanism (it only governs post-retry resubmission).
     """
 
     def _run_conflict_check(self, wr_data: dict, tg_data: dict, config_wr=None):
@@ -337,7 +338,7 @@ class TestRetryConflictDetection:
         )
         legacy_in_use = legacy_retries_set or legacy_errors_set
 
-        if (retry_policy is not None or failure_policy is not None) and legacy_in_use:
+        if retry_policy is not None and legacy_in_use:
             raise ValueError("conflict")
         return retry_policy, failure_policy, legacy_in_use
 
@@ -369,7 +370,7 @@ class TestRetryConflictDetection:
                 {"retryPolicy": {"maxRetries": 3}},
             )
 
-    def test_legacy_retryable_errors_with_new_conflicts(self):
+    def test_legacy_retryable_errors_with_new_retry_policy_conflicts(self):
         with pytest.raises(ValueError, match="conflict"):
             self._run_conflict_check(
                 {},
@@ -379,21 +380,39 @@ class TestRetryConflictDetection:
                 },
             )
 
-    def test_failure_policy_alone_with_legacy_retries_conflicts(self):
-        with pytest.raises(ValueError, match="conflict"):
-            self._run_conflict_check(
-                {},
-                {
-                    "maximumTaskRetries": 5,
-                    "failurePolicy": {
-                        "resubmissionDestinations": [
-                            {"destinationTaskGroup": "tg-on-demand"}
-                        ]
-                    },
+    def test_failure_policy_with_legacy_max_retries_allowed(self):
+        # failurePolicy adds resubmission on top of retry behaviour; the legacy
+        # retry mechanism and failurePolicy must be allowed to coexist
+        _, failure_policy, legacy = self._run_conflict_check(
+            {},
+            {
+                "maximumTaskRetries": 5,
+                "failurePolicy": {
+                    "resubmissionDestinations": [
+                        {"destinationTaskGroup": "tg-on-demand"}
+                    ]
                 },
-            )
+            },
+        )
+        assert failure_policy is not None
+        assert legacy is True
 
-    def test_config_level_legacy_with_new_at_tg_conflicts(self):
+    def test_failure_policy_with_legacy_retryable_errors_allowed(self):
+        _, failure_policy, legacy = self._run_conflict_check(
+            {},
+            {
+                "retryableErrors": [{"errorTypes": ["ALLOCATION_LOST"]}],
+                "failurePolicy": {
+                    "resubmissionDestinations": [
+                        {"destinationTaskGroup": "tg-on-demand"}
+                    ]
+                },
+            },
+        )
+        assert failure_policy is not None
+        assert legacy is True
+
+    def test_config_level_legacy_with_new_retry_policy_at_tg_conflicts(self):
         with pytest.raises(ValueError, match="conflict"):
             self._run_conflict_check(
                 {},

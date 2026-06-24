@@ -606,8 +606,9 @@ def create_task_group(
     )
 
     # Resolve retry/failure policies (new mechanism) and detect any conflict
-    # with the deprecated maximumTaskRetries / retryableErrors fields. The
-    # legacy and new mechanisms are mutually exclusive on the same Task Group.
+    # with the deprecated maximumTaskRetries / retryableErrors fields. Only
+    # 'retryPolicy' overlaps with the legacy retry mechanism; 'failurePolicy'
+    # adds resubmission on top of either retry mechanism and may coexist.
     retry_policy = generate_retry_policy(config_wr, wr_data, task_group_data)
     failure_policy = generate_failure_policy(config_wr, wr_data, task_group_data)
 
@@ -623,12 +624,12 @@ def create_task_group(
     )
     legacy_in_use = legacy_retries_set or legacy_errors_set
 
-    if (retry_policy is not None or failure_policy is not None) and legacy_in_use:
+    if retry_policy is not None and legacy_in_use:
         raise ValueError(
-            f"'{RETRY_POLICY}'/'{FAILURE_POLICY}' cannot be combined with the "
-            f"deprecated '{MAX_RETRIES}' or '{RETRYABLE_ERRORS}'. Pick one "
-            f"mechanism per Task Group; '{RETRY_POLICY}'/'{FAILURE_POLICY}' "
-            f"are the supported choice."
+            f"'{RETRY_POLICY}' cannot be combined with the deprecated "
+            f"'{MAX_RETRIES}' or '{RETRYABLE_ERRORS}'. Pick one mechanism per "
+            f"Task Group; '{RETRY_POLICY}' is the supported choice. "
+            f"'{FAILURE_POLICY}' may be used alongside either."
         )
 
     if legacy_in_use:

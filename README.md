@@ -1052,7 +1052,9 @@ Common use cases:
 
 ### Deprecated: `maximumTaskRetries` / `retryableErrors`
 
-The legacy retry mechanism is still accepted but **cannot be combined** with `retryPolicy` / `failurePolicy` on the same Task Group — `yd-submit` will reject the spec with a clear error. Using the legacy fields emits a one-time deprecation warning per invocation.
+The legacy retry mechanism is still accepted but **cannot be combined with `retryPolicy`** on the same Task Group — `yd-submit` will reject the spec with a clear error, because both control how many times and on which errors a Task is retried. Using the legacy fields emits a one-time deprecation warning per invocation.
+
+`failurePolicy` *can* be used alongside `maximumTaskRetries` / `retryableErrors`: the legacy retry mechanism runs first, and if retries are exhausted, the `failurePolicy` is consulted for resubmission. This lets you adopt failure-based resubmission without simultaneously migrating your existing retry configuration.
 
 #### Migration
 
