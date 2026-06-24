@@ -17,7 +17,6 @@ from typing import cast
 import requests
 from yellowdog_client.model import (
     CloudProvider,
-    DoubleRange,
     RunSpecification,
     Task,
     TaskGroup,
@@ -115,6 +114,7 @@ from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
     assemble_arguments,
     create_task,
+    double_range_from_list,
     formatted_number_str,
     generate_dependencies,
     generate_task_error_matchers_list,
@@ -545,22 +545,12 @@ def create_task_group(
             "is a valid Work Requirement defined?"
         )
 
-    vcpus_data: list[float] | None = check_list(
-        task_group_data.get(VCPUS, wr_data.get(VCPUS, config_wr.vcpus))
-    )
-    vcpus = (
-        None
-        if vcpus_data is None
-        else DoubleRange(float(vcpus_data[0]), float(vcpus_data[1]))
+    vcpus = double_range_from_list(
+        task_group_data.get(VCPUS, wr_data.get(VCPUS, config_wr.vcpus)), VCPUS
     )
 
-    ram_data: list[float] | None = check_list(
-        task_group_data.get(RAM, wr_data.get(RAM, config_wr.ram))
-    )
-    ram = (
-        None
-        if ram_data is None
-        else DoubleRange(float(ram_data[0]), float(ram_data[1]))
+    ram = double_range_from_list(
+        task_group_data.get(RAM, wr_data.get(RAM, config_wr.ram)), RAM
     )
 
     providers_data: list[str] | None = check_list(

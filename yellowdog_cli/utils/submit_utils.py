@@ -13,6 +13,7 @@ from typing import cast
 
 from rclone_api import Config
 from yellowdog_client.model import (
+    DoubleRange,
     Task,
     TaskData,
     TaskDataInput,
@@ -205,6 +206,42 @@ def generate_task_error_matchers_list(
             for task_error_matcher_data in error_matchers
         ]
     )
+
+
+def double_range_from_list(value: object, property_name: str) -> DoubleRange | None:
+    """
+    Build a DoubleRange from a two-element list of numbers, e.g. [2.0, 4.0].
+    Either element may be left unset to allow one-sided constraints such as
+    [2.0, null] (no upper limit) or [null, 4.0] (no lower limit). An unset
+    bound is expressed as 'null' (JSON/Jsonnet) or the string "none" (which
+    TOML requires, as it has no null literal). Returns None if 'value' is None,
+    or if both bounds are unset (equivalent to omitting the property).
+    """
+    value_list = cast("list | None", check_list(value))
+    if value_list is None:
+        return None
+
+    if len(value_list) != 2:
+        raise ValueError(
+            f"The '{property_name}' property must be a list of two values "
+            '(either of which may be null/"none"), e.g. [2.0, 4.0]'
+        )
+
+    def _bound(bound: object) -> float | None:
+        if bound is None:
+            return None
+        if isinstance(bound, str) and bound.strip().lower() in ("none", "null"):
+            return None
+        if isinstance(bound, bool) or not isinstance(bound, (int, float)):
+            raise ValueError(
+                f"Each '{property_name}' value must be a number, null, or \"none\""
+            )
+        return float(bound)
+
+    minimum, maximum = _bound(value_list[0]), _bound(value_list[1])
+    if minimum is None and maximum is None:
+        return None  # No constraint; equivalent to omitting the property
+    return DoubleRange(minimum, maximum)
 
 
 def generate_dependencies(task_group_data: dict) -> list[str] | None:
