@@ -45,8 +45,14 @@
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
    * [Property Inheritance](#property-inheritance)
    * [Work Requirement Property Dictionary](#work-requirement-property-dictionary)
-   * [Automatic `taskTypes` Population](#automatic-tasktypes-population)
+   * [Automatic taskTypes Population](#automatic-tasktypes-population)
    * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
+      * [Selecting errors (Selection&lt;TaskErrorSelector&gt;)](#selecting-errors-selectiontaskerrorselector)
+      * [retryPolicy](#retrypolicy)
+      * [failurePolicy](#failurepolicy)
+      * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
+         * [Migration](#migration)
+      * [Caveat — agent version](#caveat--agent-version)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
       * [Example — JSON](#example--json)
@@ -188,7 +194,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Jun 11 10:28:33 BST 2026 -->
+<!-- Added by: pwt, at: Wed Jun 24 10:42:27 BST 2026 -->
 
 <!--te-->
 
