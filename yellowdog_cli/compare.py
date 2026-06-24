@@ -561,21 +561,32 @@ class WorkerPools:
     @staticmethod
     def _check_in_range(value: float | None, range_: DoubleRange) -> bool:
         """
-        Check whether a value is within a DoubleRange.
+        Check whether a value is within a DoubleRange. An unset (None) bound is
+        treated as unbounded on that side, supporting one-sided constraints.
         """
-        if value is None or range_.min is None or range_.max is None:
+        if value is None:
             return False
-        return range_.min <= value <= range_.max
+        if range_.min is not None and value < range_.min:
+            return False
+        if range_.max is not None and value > range_.max:
+            return False
+        return True
 
     @staticmethod
     def _doublerange_str(dr: DoubleRange) -> str:
         """
-        Convert a DoubleRange into a tidy string.
+        Convert a DoubleRange into a tidy string. An unset (None) bound is shown
+        as an open-ended one-sided constraint.
         """
+        if dr.min is None and dr.max is None:
+            return "any"
+        if dr.min is None:
+            return f"up to {dr.max}"
+        if dr.max is None:
+            return f"{dr.min} or more"
         if dr.min == dr.max:
             return str(dr.min)
-        else:
-            return f"{dr.min} to {dr.max}"
+        return f"{dr.min} to {dr.max}"
 
     def _get_all_nodes_in_worker_pool(self, worker_pool: WorkerPool) -> list[Node]:
         """
