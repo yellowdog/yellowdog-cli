@@ -58,14 +58,16 @@ def _progress_desc(
     failed: int,
     aborted: int,
     cancelled: int,
+    resubmitted: int = 0,
 ) -> str:
     """
     Build the progress-bar description string.
 
     Shows WR status and done/total counts, then a breakdown of each terminal
-    state (omitting any that are zero).
+    state (omitting any that are zero). RESUBMITTED counts as done — those
+    Tasks have been re-issued in another Task Group per a FailurePolicy.
     """
-    done = completed + failed + aborted + cancelled
+    done = completed + failed + aborted + cancelled + resubmitted
     desc = f"{wr_status}  {done:,}/{total:,}"
     parts = []
     if completed:
@@ -76,6 +78,8 @@ def _progress_desc(
         parts.append(f"{aborted:,} aborted")
     if cancelled:
         parts.append(f"{cancelled:,} cancelled")
+    if resubmitted:
+        parts.append(f"{resubmitted:,} resubmitted")
     if parts:
         desc += "  " + " · ".join(parts)
     return desc
@@ -88,7 +92,9 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
     Safe to call from either the main thread or a daemon thread; signal
     handling is skipped automatically when not in the main thread.
     """
-    total_tasks = completed_tasks = failed_tasks = aborted_tasks = cancelled_tasks = 0
+    total_tasks = completed_tasks = failed_tasks = aborted_tasks = cancelled_tasks = (
+        resubmitted_tasks
+    ) = 0
 
     wr = None
     wr_name = ""
@@ -145,6 +151,7 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
                     failed_tasks += counts.get(TaskStatus.FAILED, 0)
                     aborted_tasks += counts.get(TaskStatus.ABORTED, 0)
                     cancelled_tasks += counts.get(TaskStatus.CANCELLED, 0)
+                    resubmitted_tasks += counts.get(TaskStatus.RESUBMITTED, 0)
             wr_status = wr.status.value if wr.status else ""
             progress.update(
                 bar_task,
@@ -157,6 +164,7 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
                     failed_tasks,
                     aborted_tasks,
                     cancelled_tasks,
+                    resubmitted_tasks,
                 ),
             )
         except Exception:
@@ -168,7 +176,8 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
             completed_tasks, \
             failed_tasks, \
             aborted_tasks, \
-            cancelled_tasks
+            cancelled_tasks, \
+            resubmitted_tasks
         if not event.startswith("data:"):
             return
         try:
@@ -178,7 +187,9 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
         if ydid_type is not YDIDType.WORK_REQUIREMENT:
             return
 
-        new_total = new_completed = new_failed = new_aborted = new_cancelled = 0
+        new_total = new_completed = new_failed = new_aborted = new_cancelled = (
+            new_resubmitted
+        ) = 0
         for tg in event_data.get("taskGroups", []):
             summary = tg.get("taskSummary", {})
             new_total += summary.get("taskCount", 0)
@@ -187,12 +198,14 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
             new_failed += counts.get("FAILED", 0)
             new_aborted += counts.get("ABORTED", 0)
             new_cancelled += counts.get("CANCELLED", 0)
+            new_resubmitted += counts.get("RESUBMITTED", 0)
 
         total_tasks = new_total
         completed_tasks = new_completed
         failed_tasks = new_failed
         aborted_tasks = new_aborted
         cancelled_tasks = new_cancelled
+        resubmitted_tasks = new_resubmitted
 
         wr_status = event_data.get("status", "")
         progress.update(
@@ -206,6 +219,7 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
                 failed_tasks,
                 aborted_tasks,
                 cancelled_tasks,
+                resubmitted_tasks,
             ),
         )
 
