@@ -7,7 +7,7 @@ from os import environ
 from azure.identity import EnvironmentCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.network.models import NetworkSecurityGroup
-from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_client import PlatformClient
 
