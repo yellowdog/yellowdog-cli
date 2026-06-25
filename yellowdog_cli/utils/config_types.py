@@ -35,6 +35,7 @@ class ConfigWorkRequirement:
     csv_files: list[str] | None = None
     disable_preallocation: bool | None = None
     env: dict = field(default_factory=dict)
+    failure_policy: dict | None = None
     finish_if_all_tasks_finished: bool = True
     finish_if_any_task_failed: bool = False
     instance_pricing_preference: str | None = None
@@ -48,6 +49,7 @@ class ConfigWorkRequirement:
     providers: list[str] | None = None
     ram: list[float] | None = None
     regions: list[str] | None = None
+    retry_policy: dict | None = None
     retryable_errors: list[dict] | None = None
     set_task_names: bool = True
     task_batch_size: int = TASK_BATCH_SIZE_DEFAULT
