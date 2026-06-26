@@ -14,6 +14,11 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.load_config import load_config_common
 from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.user_agent import set_user_agent
+
+# Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and direct)
+# before any client is created or request is made.
+set_user_agent()
 
 CONFIG_COMMON: ConfigCommon = load_config_common()
 CLIENT = PlatformClient.create(
