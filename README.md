@@ -3675,7 +3675,8 @@ Please use `yd-list --help` to inspect the full list of options. Commonly used o
 | `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
-| `--reverse` | List items in reverse-sorted name order |
+| `--sort <name\|created\|status\|namespace>` | Order listed (and interactively-selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
+| `--reverse` | List items in reverse (descending) order of the active `--sort` key |
 | `--public-ips-only` | With `instances`, list public IP addresses only |
 
 For convenience, `tag` is set to the empty string unless explicitly set on the command line; `namespace` falls back to the configured value as usual.
