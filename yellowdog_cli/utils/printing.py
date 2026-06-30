@@ -1050,6 +1050,42 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
     if ARGS_PARSER.reverse is not None:
         reverse = ARGS_PARSER.reverse
 
+    # '--sort created' orders any entity exposing a 'createdTime' (e.g. Work
+    # Requirement / Compute Requirement / Worker Pool summaries) by creation
+    # time, earliest first (latest first with --reverse). Entities without a
+    # 'createdTime', or a None value that breaks comparison, fall through to
+    # the name-based sorting below.
+    if ARGS_PARSER.sort == "created" and hasattr(objects[0], "createdTime"):
+        try:
+            return sorted(objects, key=lambda x: x.createdTime, reverse=reverse)  # type: ignore[union-attr]
+        except TypeError:
+            pass
+
+    # '--sort status' orders any entity exposing a 'status' by its status name
+    # (statuses are enums, so sort on their string form), with the entity name
+    # as a secondary key so same-status entities stay name-ordered.
+    if ARGS_PARSER.sort == "status" and hasattr(objects[0], "status"):
+        try:
+            return sorted(
+                objects,
+                key=lambda x: (str(x.status), str(getattr(x, "name", "") or "")),  # type: ignore[union-attr]
+                reverse=reverse,
+            )
+        except TypeError:
+            pass
+
+    # '--sort namespace' groups entities by namespace, with the entity name as
+    # a secondary key so same-namespace entities stay name-ordered.
+    if ARGS_PARSER.sort == "namespace" and hasattr(objects[0], "namespace"):
+        try:
+            return sorted(
+                objects,
+                key=lambda x: (str(x.namespace), str(getattr(x, "name", "") or "")),  # type: ignore[union-attr]
+                reverse=reverse,
+            )
+        except TypeError:
+            pass
+
     if isinstance(objects[0], str):
         return sorted(objects, reverse=reverse)  # type: ignore[type-var]
 

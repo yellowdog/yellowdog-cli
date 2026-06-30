@@ -251,6 +251,47 @@ class CLIParser:
 
         # Module-specific arguments
 
+        # Commands that list or interactively select entities support sorting.
+        # yd-list / yd-abort / yd-cancel / yd-finish / yd-shutdown /
+        # yd-terminate / yd-nodeaction / yd-hold / yd-start /
+        # yd-compute-{restart,start,stop}
+        if any(
+            module in module_name
+            for module in [
+                "list",
+                "abort",
+                "cancel",
+                "finish",
+                "shutdown",
+                "terminate",
+                "nodeaction",
+                "hold",
+                "start",
+                "compute",
+            ]
+        ):
+            parser.add_argument(
+                "--sort",
+                type=str,
+                required=False,
+                choices=["name", "created", "status", "namespace"],
+                default="name",
+                help=(
+                    "order in which listed and interactively-selected entities "
+                    "are sorted: 'name' (default), 'created' (creation time, "
+                    "earliest first), 'status' (status name, then name), or "
+                    "'namespace' (namespace, then name); combine with --reverse "
+                    "to invert the order"
+                ),
+                metavar="<name|created|status|namespace>",
+            )
+            parser.add_argument(
+                "--reverse",
+                action="store_true",
+                required=False,
+                help="reverse (descending) order of the active --sort key",
+            )
+
         # yd-* (all except yd-compare)
         if not any(module in module_name for module in ["compare"]):
             parser.add_argument(
@@ -613,12 +654,6 @@ class CLIParser:
                     "prefix (e.g. 'work-r'), or a single uppercase synonym "
                     "(e.g. 'W'). Valid types: " + _ENTITY_TYPE_HELP
                 ),
-            )
-            parser.add_argument(
-                "--reverse",
-                action="store_true",
-                required=False,
-                help="list items in reverse-sorted name order",
             )
             parser.add_argument(
                 "--active-only",
@@ -1819,6 +1854,11 @@ class CLIParser:
     @allow_missing_attribute
     def reverse(self) -> bool | None:
         return self.args.reverse
+
+    @property
+    @allow_missing_attribute
+    def sort(self) -> str | None:
+        return self.args.sort
 
     @property
     @allow_missing_attribute
