@@ -3848,12 +3848,15 @@ yd-format-json my_file.json my_other_file.json
 
 ## yd-version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet. Each of the mutually exclusive options `--cli`, `--sdk`, `--python` and `--jsonnet` prints just that bare version number, for use in scripts:
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet and the rclone binary. Each of the mutually exclusive options `--cli`, `--sdk`, `--python`, `--jsonnet` and `--rclone` prints just that bare version number, for use in scripts:
 
 ```shell
 yd-version           # report all versions
 yd-version --cli     # print the CLI version number only
+yd-version --rclone  # print the rclone binary version only
 ```
+
+The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet` and `--rclone` exit with a non-zero status if the respective component is not installed.
 
 Neither `yd-version`, `yd-format-json`, `yd-help` nor `yd-jsonnet2json` requires a configuration file or YellowDog credentials.
 
