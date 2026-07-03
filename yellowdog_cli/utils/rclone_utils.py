@@ -2,6 +2,11 @@
 Shared rclone utilities: instantiation, config parsing, and binary management.
 """
 
+# rclone_api is heavy to import (~90 ms). It is imported lazily inside the
+# functions that actually use it so that commands importing this module for
+# other helpers (e.g. parse_rclone_config, find_rclone) don't pay that cost.
+from __future__ import annotations
+
 import logging
 import os
 import platform
@@ -10,8 +15,10 @@ import sys
 from contextlib import contextmanager, nullcontext
 from functools import cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from rclone_api import Config, Rclone
+if TYPE_CHECKING:
+    from rclone_api import Config, Rclone
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_info, print_simple
@@ -82,7 +89,7 @@ def _unique_remote_name(name: str, suffix: str, taken: set[str]) -> str:
 
 def make_rclone_for_copy(
     src_remote_str: str, dst_remote_str: str
-) -> tuple[str, str, "Rclone"]:
+) -> tuple[str, str, Rclone]:
     """
     Build an Rclone instance with both src and dst remotes configured.
 
@@ -94,6 +101,8 @@ def make_rclone_for_copy(
 
     Returns (src_remote_name, dst_remote_name, rclone).
     """
+    from rclone_api import Config
+
     src_name, src_ini = parse_rclone_config(src_remote_str)
     dst_name, dst_ini = parse_rclone_config(dst_remote_str)
 
@@ -138,6 +147,8 @@ def make_rclone(config: Config | None) -> Rclone:
     Passing None causes rclone to use the system rclone.conf (for locally
     configured remotes).
     """
+    from rclone_api import Rclone
+
     rclone_conf: Config | Path = _find_rclone_conf() if config is None else config
     ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
     with ctx:
@@ -191,6 +202,8 @@ def upgrade_rclone():
     """
     Upgrade the rclone binary.
     """
+    from rclone_api import Rclone
+
     print_info("Downloading / upgrading the rclone binary")
     ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
     with ctx:
