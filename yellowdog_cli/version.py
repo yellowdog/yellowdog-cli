@@ -13,6 +13,7 @@ from yellowdog_client._version import __version__ as yd_sdk_version
 
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
 
 DOCS_URL = f"https://github.com/yellowdog/yellowdog-cli/blob/v{__version__}/README.md"
 
@@ -45,6 +46,9 @@ def main():
     group.add_argument(
         "--jsonnet", action="store_true", help="print Jsonnet version number only"
     )
+    group.add_argument(
+        "--rclone", action="store_true", help="print rclone version number only"
+    )
     parser.add_argument(
         "--debug", action="store_true", help="print Python path and executable details"
     )
@@ -65,10 +69,17 @@ def main():
             exit(1)
         print(version)
         return
+    if args.rclone:
+        version = _rclone_version()
+        if version == "Not installed":
+            exit(1)
+        print(version)
+        return
 
     print(f"  YellowDog CLI Version:   {__version__} (Docs: {DOCS_URL})")
     print(f"  YellowDog SDK Version:   {yd_sdk_version}")
     print(f"  Jsonnet Version:         {_jsonnet_version()}")
+    print(f"  rclone Version:          {_rclone_version()}")
     print(f"  Python Version:          {py_version.split()[0]} ")
     print(f"  Author:                  {__author__} ({__email__}) ")
     if args.debug:

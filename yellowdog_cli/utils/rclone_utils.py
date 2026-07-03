@@ -6,8 +6,6 @@ import logging
 import os
 import platform
 import re
-import shutil
-import subprocess
 import sys
 from contextlib import contextmanager, nullcontext
 from functools import cache
@@ -17,6 +15,7 @@ from rclone_api import Config, Rclone
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_info, print_simple
+from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version_line
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
 
 
@@ -204,24 +203,15 @@ def which_rclone() -> None:
     Mirrors rclone_api's lookup order (system PATH first, then its download cache)
     without triggering a download if no binary is present.
     """
-    from rclone_api.util import _RCLONE_EXE
-
-    system_path = shutil.which("rclone")
-    if system_path is not None:
-        rclone_path = system_path
-        source = "system PATH"
-    elif _RCLONE_EXE.exists():
-        rclone_path = str(_RCLONE_EXE)
-        source = "rclone_api cache"
-    else:
+    found = find_rclone()
+    if found is None:
         print_info("rclone binary not found; run --upgrade-rclone to download it")
         return
 
+    rclone_path, source = found
     if ARGS_PARSER.quiet:
         print_simple(rclone_path, override_quiet=True)
         return
 
-    result = subprocess.run([rclone_path, "--version"], capture_output=True, text=True)
-    version = result.stdout.splitlines()[0] if result.stdout else "unknown"
     print_info(f"rclone: {rclone_path} ({source})")
-    print_info(f"Version: {version}")
+    print_info(f"Version: {rclone_version_line(rclone_path)}")
