@@ -13,6 +13,7 @@ from yellowdog_client._version import __version__ as yd_sdk_version
 
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.rclone_version import find_rclone
 from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
 
 DOCS_URL = f"https://github.com/yellowdog/yellowdog-cli/blob/v{__version__}/README.md"
@@ -84,6 +85,9 @@ def main():
     print(f"  Author:                  {__author__} ({__email__}) ")
     if args.debug:
         print(f"  Command:                 {abspath(__file__)}")
+        rclone = find_rclone()
+        rclone_str = f"{rclone[0]} ({rclone[1]})" if rclone else "Not found"
+        print(f"  rclone Binary:           {rclone_str}")
         print(f"  Python Executable:       {executable}")
         for i, p in enumerate(path, start=1):
             print(f"    Path-{str(i).zfill(2)}:               {p}")
