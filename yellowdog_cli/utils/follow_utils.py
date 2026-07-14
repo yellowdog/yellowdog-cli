@@ -39,6 +39,31 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
+# Work Requirement terminal states that indicate failure. Shared by yd-wait
+# and yd-submit so both agree on what constitutes an unsuccessful WR.
+WR_FAILURE_STATUS_VALUES = frozenset({"FAILED", "CANCELLED"})
+
+
+def work_requirement_failed(wr_id: str) -> bool:
+    """
+    Fetch a Work Requirement and report whether it ended in a failure state
+    (FAILED or CANCELLED). A fetch error is treated as failure. Prints a
+    warning (or error) describing the outcome; success is left to the caller.
+    """
+    try:
+        wr = CLIENT.work_client.get_work_requirement_by_id(wr_id)
+        status = wr.status.value if wr.status else "UNKNOWN"
+    except Exception as e:
+        print_error(f"Could not fetch final status for '{wr_id}': {e}")
+        return True
+    if status in WR_FAILURE_STATUS_VALUES:
+        print_warning(
+            f"Work Requirement '{wr_id}' ended with status '{status}'",
+            override_quiet=True,
+        )
+        return True
+    return False
+
 
 class _WRNameColumn(ProgressColumn):
     """

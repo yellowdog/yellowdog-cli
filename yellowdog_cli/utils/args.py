@@ -418,6 +418,17 @@ class CLIParser:
                 help="follow the work requirement's progress to completion",
             )
             parser.add_argument(
+                "--exit-on-failure",
+                "-E",
+                action="store_true",
+                required=False,
+                help=(
+                    "when following (--follow/--progress), exit with a non-zero"
+                    " code if the work requirement ends in a FAILED or CANCELLED"
+                    " state"
+                ),
+            )
+            parser.add_argument(
                 "--task-type",
                 "-T",
                 type=str,
@@ -1738,6 +1749,11 @@ class CLIParser:
     @allow_missing_attribute
     def follow(self) -> bool:
         return self.args.follow
+
+    @property
+    @allow_missing_attribute
+    def exit_on_failure(self) -> bool:
+        return self.args.exit_on_failure
 
     @property
     @allow_missing_attribute

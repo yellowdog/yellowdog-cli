@@ -12,6 +12,7 @@ from json import dumps as json_dumps
 from json import loads as json_loads
 from math import ceil
 from os.path import dirname, relpath
+from sys import exit as sys_exit
 from typing import cast
 
 import requests
@@ -39,6 +40,7 @@ from yellowdog_cli.utils.entity_utils import get_work_requirement_summary_by_nam
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
+    work_requirement_failed,
 )
 from yellowdog_cli.utils.load_config import (
     CONFIG_FILE_DIR,
@@ -1196,19 +1198,33 @@ def submit_batch_of_tasks_to_task_group(
 def follow_progress(work_requirement: WorkRequirement) -> None:
     """
     Follow and report the progress of a Work Requirement.
+
+    With --exit-on-failure, exits with code 1 if the Work Requirement ends in
+    a failure state (FAILED/CANCELLED), so that a following submission reflects
+    the outcome.
     """
     if not ARGS_PARSER.dry_run:
         print_info("Following Work Requirement event stream")
-        follow_events(cast(str, work_requirement.id), YDIDType.WORK_REQUIREMENT)
+        wr_id = cast(str, work_requirement.id)
+        follow_events(wr_id, YDIDType.WORK_REQUIREMENT)
+        if ARGS_PARSER.exit_on_failure and work_requirement_failed(wr_id):
+            sys_exit(1)
 
 
 def follow_progress_bar(work_requirement: WorkRequirement) -> None:
     """
     Follow a Work Requirement and display a live progress bar.
+
+    With --exit-on-failure, exits with code 1 if the Work Requirement ends in
+    a failure state (FAILED/CANCELLED), so that a following submission reflects
+    the outcome.
     """
     if ARGS_PARSER.dry_run:
         return
-    follow_work_requirement_with_progress(cast(str, work_requirement.id))
+    wr_id = cast(str, work_requirement.id)
+    follow_work_requirement_with_progress(wr_id)
+    if ARGS_PARSER.exit_on_failure and work_requirement_failed(wr_id):
+        sys_exit(1)
 
 
 def cleanup_on_failure(work_requirement: WorkRequirement) -> None:
