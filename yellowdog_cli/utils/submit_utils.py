@@ -11,7 +11,6 @@ from pathlib import Path
 from time import sleep
 from typing import cast
 
-from rclone_api import Config
 from yellowdog_client.model import (
     DoubleRange,
     FailurePolicy,
@@ -635,6 +634,8 @@ class RcloneUploadedFiles:
         """
         Core upload method for a single file.
         """
+        from rclone_api import Config
+
         remote_name, config_section, remote_path = self._parse_rclone_connection_string(
             rclone_upload_file.upload_file_path
         )
@@ -690,6 +691,8 @@ class RcloneUploadedFiles:
                         tech.yellowdog.devsandbox.dev-platform/yd-demo/pwt/file.txt"
             delete_single_s3_object(conn_str)
         """
+        from rclone_api import Config
+
         remote_name, config_section, remote_path = self._parse_rclone_connection_string(
             conn_str
         )
