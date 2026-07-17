@@ -3714,6 +3714,8 @@ yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
 
 The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
 
+The command exits with code 1 if any of the supplied IDs could not be followed (invalid ID, entity not found, or a connection/stream error), and 0 otherwise. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
+
 Additional options:
 
 - `--progress`: display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)

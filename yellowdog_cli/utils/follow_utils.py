@@ -5,7 +5,7 @@ Utility function to follow event streams.
 import signal
 from collections.abc import Callable
 from json import loads as json_loads
-from threading import Thread
+from threading import Event, Thread
 from time import monotonic, sleep, time
 
 import requests
@@ -24,6 +24,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_id_by_worker_pool_id,
 )
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     CONSOLE,
     print_error,
@@ -42,6 +43,30 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 # Work Requirement terminal states that indicate failure. Shared by yd-wait
 # and yd-submit so both agree on what constitutes an unsuccessful WR.
 WR_FAILURE_STATUS_VALUES = frozenset({"FAILED", "CANCELLED"})
+
+# Set when any event stream cannot be followed (invalid YDID, entity not
+# found, connection or stream error). An Event because following runs in
+# daemon threads. Consulted by yd-follow to set a non-zero exit code; other
+# commands that follow after their primary action ignore it.
+_FOLLOW_ERRORS = Event()
+
+
+def _flag_follow_error() -> None:
+    _FOLLOW_ERRORS.set()
+
+
+def follow_errors_occurred() -> bool:
+    """
+    True if any error occurred while setting up or following event streams.
+    """
+    return _FOLLOW_ERRORS.is_set()
+
+
+def reset_follow_errors() -> None:
+    """
+    Clear the follow-error flag (used by tests).
+    """
+    _FOLLOW_ERRORS.clear()
 
 
 def work_requirement_failed(wr_id: str) -> bool:
@@ -141,8 +166,14 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
             )
         elif wr.createdTime is not None:
             wr_age_seconds = max(0.0, time() - wr.createdTime.timestamp())
-    except Exception:
-        pass
+    except Exception as e:
+        if is_http_not_found(e):
+            # Fail fast with a plain error rather than starting the live
+            # progress display around an event stream that will just 404
+            print_error(f"Work Requirement '{ydid}' not found")
+            _flag_follow_error()
+            return
+        # Other fetch errors may be transient; leave them to the event stream
 
     progress = Progress(
         TextColumn("{task.description}"),
@@ -354,6 +385,7 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
                 f"Invalid YellowDog ID '{ydid}' (Must be valid YDID for Work"
                 " Requirement, Worker Pool or Compute Requirement)"
             )
+            _flag_follow_error()
             continue
 
         if use_progress and ydid_type == YDIDType.WORK_REQUIREMENT:
@@ -365,6 +397,7 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
             thread.start()
         except RuntimeError as e:
             print_error(f"Unable to start event thread for '{ydid}': ({e})")
+            _flag_follow_error()
             continue
         threads.append(thread)
 
@@ -425,6 +458,7 @@ def follow_events(
             )
         except requests.exceptions.RequestException as e:
             print_error(f"Unable to connect to event stream for '{ydid}': {e}")
+            _flag_follow_error()
             break
 
         with response:
@@ -434,6 +468,7 @@ def follow_events(
                 except Exception:
                     error_text = "(JSON error cannot be decoded)"
                 print_error(f"'{ydid}': {error_text}")
+                _flag_follow_error()
                 break
 
             if response.encoding is None:
@@ -467,6 +502,7 @@ def follow_events(
 
             except Exception as e:
                 print_error(f"Event stream error: {e}")
+                _flag_follow_error()
                 break
 
     print_info(f"Event stream concluded for '{ydid}'")
