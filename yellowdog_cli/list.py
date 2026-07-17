@@ -124,6 +124,41 @@ _KNOWN_STATUSES: dict[str, frozenset[str]] = {
 }
 
 
+def _apply_count_option() -> None:
+    """
+    The '--count' option implies '--quiet' and prints only the number of
+    matching items, overriding the '--details', '--json' and '--ids-only'
+    output options.
+    """
+    if not ARGS_PARSER.count_only:
+        return
+    ARGS_PARSER.quiet = True
+    ARGS_PARSER.json_output = False
+    ARGS_PARSER.details = False
+    ARGS_PARSER.ids_only = False
+
+
+def _print_json_or_count(objects: list) -> None:
+    """
+    Final output for the non-interactive aggregate modes: the item count
+    for '--count', otherwise a JSON array for '--json'.
+    """
+    if ARGS_PARSER.count_only:
+        print(len(objects))
+    else:
+        print_objects_as_json(objects)
+
+
+def _print_empty(message: str) -> None:
+    """
+    Report an empty result: '0' in count mode, otherwise an info message.
+    """
+    if ARGS_PARSER.count_only:
+        print(0)
+    else:
+        print_info(message)
+
+
 def _apply_status_filter(objects: list) -> list:
     """Filter a list of objects to those whose status matches ARGS_PARSER.status_filter."""
     sf = ARGS_PARSER.status_filter
@@ -147,15 +182,21 @@ def _apply_status_filter(objects: list) -> list:
 
 @main_wrapper
 def main():
-    if not ARGS_PARSER.json_output:
+    _apply_count_option()
+
+    if not (ARGS_PARSER.json_output or ARGS_PARSER.count_only):
         ARGS_PARSER.interactive = True
 
     if (
-        ARGS_PARSER.auto_select_all
-        or ARGS_PARSER.strip_ids
-        or ARGS_PARSER.substitute_ids
-        or ARGS_PARSER.output_file
-    ) and not ARGS_PARSER.details:
+        (
+            ARGS_PARSER.auto_select_all
+            or ARGS_PARSER.strip_ids
+            or ARGS_PARSER.substitute_ids
+            or ARGS_PARSER.output_file
+        )
+        and not ARGS_PARSER.details
+        and not ARGS_PARSER.count_only
+    ):
         print_info("Automatically setting the '--details' option")
         ARGS_PARSER.details = True
 
@@ -248,16 +289,16 @@ def list_work_requirements():
         )
     )
     if not work_requirement_summaries:
-        print_info("No matching Work Requirements")
+        _print_empty("No matching Work Requirements")
         return
 
     work_requirement_summaries = sorted_objects(work_requirement_summaries)
     if ARGS_PARSER.entity_type == ET_WORK_REQUIREMENTS:
         work_requirement_summaries = _apply_status_filter(work_requirement_summaries)
         if not work_requirement_summaries:
-            print_info("No matching Work Requirements")
+            _print_empty("No matching Work Requirements")
             return
-        if ARGS_PARSER.json_output:
+        if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
             if ARGS_PARSER.details:
                 print_objects_as_json(
                     [
@@ -266,7 +307,7 @@ def list_work_requirements():
                     ]
                 )
             else:
-                print_objects_as_json(work_requirement_summaries)
+                _print_json_or_count(work_requirement_summaries)
         elif ARGS_PARSER.details:
             print_yd_object_list(
                 [
@@ -279,7 +320,7 @@ def list_work_requirements():
                 print(wr_summary.id)
         else:
             print_numbered_object_list(CLIENT, work_requirement_summaries)
-    elif ARGS_PARSER.json_output:
+    elif ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         # Collect all task groups / tasks across all work requirements
         all_objects: list = []
         for work_summary in work_requirement_summaries:
@@ -295,7 +336,7 @@ def list_work_requirements():
                             get_all_tasks_in_task_group(CLIENT, cast(str, tg.id))
                         )
                     )
-        print_objects_as_json(all_objects)
+        _print_json_or_count(all_objects)
     else:
         selected_work_summaries = select(
             CLIENT, work_requirement_summaries, single_result=True
@@ -370,11 +411,11 @@ def list_worker_pools():
     )
 
     if not worker_pool_summaries:
-        print_info("No Worker Pools to display")
+        _print_empty("No Worker Pools to display")
         return
 
     if ARGS_PARSER.entity_type in (ET_NODES, ET_WORKERS):
-        if ARGS_PARSER.json_output:
+        if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
             list_nodes(worker_pool_summaries)
             return
         print_info(
@@ -388,7 +429,7 @@ def list_worker_pools():
         list_nodes(worker_pool_summaries)
         return
 
-    if ARGS_PARSER.json_output:
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
             print_objects_as_json(
                 [
@@ -397,7 +438,7 @@ def list_worker_pools():
                 ]
             )
         else:
-            print_objects_as_json(sorted_objects(worker_pool_summaries))
+            _print_json_or_count(sorted_objects(worker_pool_summaries))
     elif ARGS_PARSER.details:
         print_yd_object_list(
             [
@@ -444,25 +485,25 @@ def list_compute_requirements():
     )
 
     if not compute_requirement_summaries:
-        print_info("No matching Compute Requirements")
+        _print_empty("No matching Compute Requirements")
         return
 
     compute_requirement_summaries = _apply_status_filter(
         sorted_objects(compute_requirement_summaries)
     )
     if not compute_requirement_summaries:
-        print_info("No matching Compute Requirements")
+        _print_empty("No matching Compute Requirements")
         return
 
     if ARGS_PARSER.entity_type == ET_INSTANCES:
-        if ARGS_PARSER.json_output:
+        if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
             all_instances: list = []
             for cr_summary in compute_requirement_summaries:
                 sc: SearchClient = CLIENT.compute_client.get_instances(
                     instance_search=InstanceSearch(computeRequirementId=cr_summary.id)
                 )
                 all_instances.extend(sc.list_all())
-            print_objects_as_json(all_instances)
+            _print_json_or_count(all_instances)
             return
         for compute_requirement_summary in select(
             CLIENT, compute_requirement_summaries, single_result=True
@@ -470,8 +511,8 @@ def list_compute_requirements():
             list_instances(compute_requirement_summary.id)  # type: ignore[arg-type]
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(compute_requirement_summaries)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(compute_requirement_summaries)
     elif ARGS_PARSER.details:
         print_yd_object_list(
             [
@@ -538,15 +579,15 @@ def list_nodes(worker_pool_summaries: list[WorkerPoolSummary]):
 
     nodes_all = _apply_status_filter(nodes_all)
     if not nodes_all:
-        print_info("No Nodes to display")
+        _print_empty("No Nodes to display")
         return
 
     if ARGS_PARSER.entity_type == ET_WORKERS:
         list_workers(nodes_all)
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(nodes_all)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(nodes_all)
     elif ARGS_PARSER.details:
         print_yd_object_list([(node, None) for node in select(CLIENT, nodes_all)])
     elif ARGS_PARSER.ids_only:
@@ -582,11 +623,11 @@ def list_workers(nodes: list[Node]):
 
     workers_all = _apply_status_filter(workers_all)
     if not workers_all:
-        print_info("No Workers to display")
+        _print_empty("No Workers to display")
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(workers_all)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(workers_all)
     elif ARGS_PARSER.details:
         print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
     elif ARGS_PARSER.ids_only:
@@ -617,10 +658,10 @@ def list_compute_requirement_templates():
     )
 
     if not cr_templates:
-        print_info("No matching Compute Requirement Templates found")
+        _print_empty("No matching Compute Requirement Templates found")
         return
 
-    if ARGS_PARSER.json_output:
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
             print_objects_as_json(
                 [
@@ -632,7 +673,7 @@ def list_compute_requirement_templates():
                 ]
             )
         else:
-            print_objects_as_json(sorted_objects(cr_templates))
+            _print_json_or_count(sorted_objects(cr_templates))
         return
 
     if ARGS_PARSER.ids_only:
@@ -682,10 +723,10 @@ def list_compute_source_templates():
     )
 
     if not cs_templates:
-        print_info("No matching Compute Source Templates found")
+        _print_empty("No matching Compute Source Templates found")
         return
 
-    if ARGS_PARSER.json_output:
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
             print_objects_as_json(
                 [
@@ -697,7 +738,7 @@ def list_compute_source_templates():
                 ]
             )
         else:
-            print_objects_as_json(sorted_objects(cs_templates))
+            _print_json_or_count(sorted_objects(cs_templates))
         return
 
     if ARGS_PARSER.ids_only:
@@ -732,11 +773,11 @@ def list_keyrings():
     """
     keyrings: list[KeyringSummary] = CLIENT.keyring_client.find_all_keyrings()
     if not keyrings:
-        print_info("No Keyrings found")
+        _print_empty("No Keyrings found")
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(sorted_objects(keyrings))
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(sorted_objects(keyrings))
         return
 
     if ARGS_PARSER.ids_only:
@@ -782,13 +823,13 @@ def list_image_families():
     search_client: SearchClient = CLIENT.images_client.get_image_families(image_search)
     image_family_summaries: list[MachineImageFamilySummary] = search_client.list_all()
     if not image_family_summaries:
-        print_info(
+        _print_empty(
             f"No matching Machine Image Families found in namespace "
             f"'{CONFIG_COMMON.namespace}' with tag including '{CONFIG_COMMON.name_tag}'"
         )
         return
 
-    if ARGS_PARSER.json_output:
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
             print_objects_as_json(
                 [
@@ -797,7 +838,7 @@ def list_image_families():
                 ]
             )
         else:
-            print_objects_as_json(sorted_objects(image_family_summaries))
+            _print_json_or_count(sorted_objects(image_family_summaries))
         return
 
     if ARGS_PARSER.ids_only:
@@ -833,10 +874,10 @@ def list_allowances():
     )
     allowances: list[Allowance] = search_client.list_all()
     if not allowances:
-        print_info("No Allowances to display")
+        _print_empty("No Allowances to display")
         return
 
-    if ARGS_PARSER.json_output:
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
             print_objects_as_json(
                 [
@@ -845,7 +886,7 @@ def list_allowances():
                 ]
             )
         else:
-            print_objects_as_json(allowances)
+            _print_json_or_count(allowances)
         return
 
     if ARGS_PARSER.ids_only:
@@ -891,8 +932,8 @@ def list_attribute_definitions():
     attribute_definition_list = json_loads(response.text)
     attribute_definition_list.sort(key=lambda x: x["name"])
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(attribute_definition_list)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(attribute_definition_list)
         return
 
     if ARGS_PARSER.ids_only:
@@ -940,11 +981,11 @@ def list_namespaces():
     ).list_all()
 
     if not namespaces:
-        print_info("No Namespaces found")
+        _print_empty("No Namespaces found")
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(namespaces)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(namespaces)
         return
 
     if ARGS_PARSER.ids_only:
@@ -975,11 +1016,11 @@ def list_namespace_policies():
     )
     namespace_policies: list[NamespacePolicy] = search_client.list_all()
     if not namespace_policies:
-        print_info("No Namespace Policies to display")
+        _print_empty("No Namespace Policies to display")
         return
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(namespace_policies)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(namespace_policies)
         return
 
     if ARGS_PARSER.ids_only:
@@ -1013,13 +1054,13 @@ def list_users():
     users: list[User] = get_all_users(CLIENT)
 
     if not users:
-        print_info("No Users to display")
+        _print_empty("No Users to display")
         return
 
     users.sort(key=lambda user: user.name)
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(users)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(users)
         return
 
     if ARGS_PARSER.ids_only:
@@ -1056,13 +1097,13 @@ def list_applications():
     applications = get_all_applications(CLIENT)
 
     if not applications:
-        print_info("No Applications to display")
+        _print_empty("No Applications to display")
         return
 
     applications.sort(key=lambda app: app.name)
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(applications)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(applications)
         return
 
     if ARGS_PARSER.ids_only:
@@ -1101,10 +1142,15 @@ def list_groups():
     group_summaries = get_all_groups(CLIENT)
 
     if not group_summaries:
-        print_info("No Groups to display")
+        _print_empty("No Groups to display")
         return
 
     group_summaries.sort(key=lambda group: group.name if group.name is not None else "")  # type: ignore[arg-type]
+
+    if ARGS_PARSER.count_only:
+        # Avoid the per-group detail fetches below just to count them
+        print(len(group_summaries))
+        return
 
     groups: list[Group] = [
         CLIENT.account_client.get_group(group.id)  # type: ignore[arg-type]
@@ -1138,10 +1184,15 @@ def list_roles():
     role_summaries = get_all_roles(CLIENT)
 
     if not role_summaries:
-        print_info("No Roles to display")
+        _print_empty("No Roles to display")
         return
 
     role_summaries.sort(key=lambda role_: role_.name if role_.name is not None else "")
+
+    if ARGS_PARSER.count_only:
+        # Avoid the per-role permission fetches below just to count them
+        print(len(role_summaries))
+        return
 
     print_info("Obtaining permissions for each role ...")
     roles: list[Role] = [CLIENT.account_client.get_role(x.id) for x in role_summaries]  # type: ignore[arg-type]
@@ -1176,8 +1227,8 @@ def list_permissions():
     permissions: list[PermissionDetail] = CLIENT.account_client.list_permissions()
     permissions.sort(key=lambda permission_: permission_.name)  # type: ignore[arg-type]
 
-    if ARGS_PARSER.json_output:
-        print_objects_as_json(permissions)
+    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        _print_json_or_count(permissions)
         return
 
     if ARGS_PARSER.ids_only:

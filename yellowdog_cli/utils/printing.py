@@ -207,7 +207,9 @@ def print_info(
     Placeholder for logging.
     Set 'override_quiet' to print when '-q' is set.
     """
-    if (ARGS_PARSER.quiet or ARGS_PARSER.json_output) and override_quiet is False:
+    if (
+        ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
+    ) and override_quiet is False:
         return
 
     if ARGS_PARSER.no_format:
@@ -256,7 +258,9 @@ def print_warning(
     """
     Print a warning.
     """
-    if (ARGS_PARSER.quiet or ARGS_PARSER.json_output) and override_quiet is False:
+    if (
+        ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
+    ) and override_quiet is False:
         return
 
     if ARGS_PARSER.no_format:
