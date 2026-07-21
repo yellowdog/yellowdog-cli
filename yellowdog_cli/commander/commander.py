@@ -329,9 +329,6 @@ class YellowDogApp(QMainWindow):
         Parse the configuration file to obtain the CLI-processed values of the
         namespace and tag variables, used to populate placeholder text.
         """
-        if not self._check_config_file(quiet=False):
-            return False
-
         if not self._config_parse_invalid:
             return True
 
@@ -340,22 +337,24 @@ class YellowDogApp(QMainWindow):
 
         env = QProcessEnvironment.systemEnvironment()
         yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._config_dir())
+        yd_process.setWorkingDirectory(self._working_dir())
 
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
         cmd = "yd-show"
-        args = [
-            "-c",
-            self._config_basename(),
-            "--nf",
-            "-q",
-            "-r",
-            NAMESPACE,
-            "-r",
-            TAG,
-        ] + self._namespace_tag_and_user_vars()
+        args = (
+            self._config_source_args()
+            + [
+                "--nf",
+                "-q",
+                "-r",
+                NAMESPACE,
+                "-r",
+                TAG,
+            ]
+            + self._namespace_tag_and_user_vars()
+        )
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
@@ -419,7 +418,11 @@ class YellowDogApp(QMainWindow):
             self.select_config_label.setText(
                 f"{SELECTED_CONFIG_PREFIX}{NO_SELECTED_CONFIG}"
             )
-            self._set_placeholders("", "")
+            self._config_parse_invalid = True
+            if self._parse_yd_config(quiet=True):
+                self._set_placeholders(self._namespace or "", self._tag or "")
+            else:
+                self._set_placeholders("", "")
             return
 
         if not exists(config_file):
@@ -465,6 +468,24 @@ class YellowDogApp(QMainWindow):
         Callers must ensure a config file is selected (see _check_config_file).
         """
         return basename(cast(str, self._config_file))
+
+    def _working_dir(self) -> str:
+        """
+        Directory to run commands in: the selected config file's directory if
+        one is selected, otherwise the launch directory (cwd).
+        """
+        return self._config_dir() if self._config_file is not None else os.getcwd()
+
+    def _config_source_args(self) -> list[str]:
+        """
+        CLI flags selecting the config source: the selected config file, or
+        '--nc' (--no-config) to force environment-variable / CLI-argument mode.
+        """
+        return (
+            ["-c", self._config_basename()]
+            if self._config_file is not None
+            else ["--nc"]
+        )
 
     @staticmethod
     def _color_scheme() -> Qt.ColorScheme:
@@ -527,7 +548,7 @@ class YellowDogApp(QMainWindow):
         """
         Download matching objects from remote storage into the results directory.
         """
-        dst = join(self._config_dir(), RESULTS_DIR)
+        dst = join(self._working_dir(), RESULTS_DIR)
         args = ["-d", dst, self._object_path()]
         if self.dry_run_objects.isChecked():
             args += ["-D"]
@@ -599,6 +620,37 @@ class YellowDogApp(QMainWindow):
 
         return namespace_tag_user_vars
 
+    def _build_command_args(
+        self, command: str, args: list[str], yd_command: bool
+    ) -> list[str]:
+        """
+        Decorate a command's arguments for execution. For 'yd-' commands this
+        injects the config source ('-c <file>' or '--nc'), the namespace / tag /
+        user variables, and the '--nf'/'--pp' flags. Non-yd commands are
+        returned unchanged.
+        """
+        if yd_command:
+            return (
+                self._config_source_args()
+                + ["--nf", "--pp"]
+                + self._namespace_tag_and_user_vars()
+                + args
+            )
+
+        if command.startswith("yd-"):
+            args = list(args)
+            # Use the selected config source unless one is set explicitly
+            # (or config use is explicitly disabled) on the command line.
+            if not ({"-c", "--config", "--no-config", "--nc"} & set(args)):
+                args = self._config_source_args() + args
+            # Ensure user-defined variables can be overridden by commands
+            # by specifying them first.
+            for index, var in enumerate(self._namespace_tag_and_user_vars()):
+                args.insert(index, var)
+            args += ["--nf", "--pp"]
+
+        return args
+
     def _run_command_in_subprocess(
         self,
         command: str,
@@ -610,26 +662,7 @@ class YellowDogApp(QMainWindow):
         Run a command in a subprocess, with adaptations for 'yd-'
         commands.
         """
-        if not self._check_config_file():
-            return
-
-        if yd_command:
-            args = (
-                ["-c", self._config_basename(), "--nf", "--pp"]
-                + self._namespace_tag_and_user_vars()
-                + args
-            )
-        else:
-            if command.startswith("yd-"):
-                # Use the selected config file unless one is set explicitly
-                # (or config use is explicitly disabled)
-                if not ({"-c", "--config", "--no-config", "--nc"} & set(args)):
-                    args = ["-c", self._config_basename()] + args
-                # Ensure user-defined variables can be overridden
-                # by commands by specifying them first
-                for index, var in enumerate(self._namespace_tag_and_user_vars()):
-                    args.insert(index, var)
-                args += ["--nf", "--pp"]
+        args = self._build_command_args(command, args, yd_command)
 
         process = QProcess(self)
         process_env: QProcessEnvironment = process.processEnvironment()
@@ -655,11 +688,10 @@ class YellowDogApp(QMainWindow):
 
         command_line_text = (command + " " + " ".join(args)).rstrip()
         self._log(
-            f"Executing: '{command_line_text}' in directory"
-            f" '{dirname(cast(str, self._config_file))}'"
+            f"Executing: '{command_line_text}' in directory '{self._working_dir()}'"
         )
 
-        process.setWorkingDirectory(self._config_dir())
+        process.setWorkingDirectory(self._working_dir())
         process.start(command, args)
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
@@ -686,14 +718,10 @@ class YellowDogApp(QMainWindow):
         self.stdin_input.setPlainText("")
 
     def _view_results_action(self):
-        if not self._check_config_file():
-            return
-        self._open_file_viewer(join(self._config_dir(), RESULTS_DIR))
+        self._open_file_viewer(join(self._working_dir(), RESULTS_DIR))
 
     def _view_config_directory_action(self):
-        if not self._check_config_file():
-            return
-        self._open_file_viewer(self._config_dir())
+        self._open_file_viewer(self._working_dir())
 
     def _open_file_viewer(self, directory: str):
         if not exists(directory):

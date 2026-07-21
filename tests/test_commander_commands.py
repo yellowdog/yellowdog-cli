@@ -5,6 +5,7 @@ offscreen and _run_command_in_subprocess is stubbed to capture the command
 instead of spawning a process, so no yd-* command is actually run.
 """
 
+import os
 from os.path import abspath, dirname, join
 
 import pytest
@@ -29,6 +30,31 @@ def captured(window, monkeypatch):
         lambda command, args, **kwargs: calls.append((command, args)),
     )
     return calls
+
+
+# --- Config-source helpers ---------------------------------------------------
+
+
+def test_config_source_args_no_config(window):
+    window._config_file = None
+    assert window._config_source_args() == ["--nc"]
+
+
+def test_config_source_args_with_config(window):
+    window._config_file = "some/dir/config.toml"
+    assert window._config_source_args() == ["-c", "config.toml"]
+
+
+def test_working_dir_no_config(window):
+    window._config_file = None
+    assert window._working_dir() == os.getcwd()
+
+
+def test_working_dir_with_config(window):
+    window._config_file = "some/dir/config.toml"
+    assert window._working_dir() == os.path.dirname(
+        os.path.abspath("some/dir/config.toml")
+    )
 
 
 # --- Submit Work Requirement -------------------------------------------------
@@ -138,6 +164,18 @@ def test_delete_with_path_override_and_dry_run(window, captured):
     assert captured == [("yd-delete", ["-Ry", "prefix/*", "-D"])]
 
 
+# --- Results / view actions work without a config file -----------------------
+
+
+def test_download_results_no_config_uses_cwd(window, captured):
+    window._config_file = None
+    expected_path = window._object_path()
+    window._download_results_action()
+    assert captured == [
+        ("yd-download", ["-d", os.path.join(os.getcwd(), RESULTS_DIR), expected_path])
+    ]
+
+
 # --- Namespace / tag / user-variable assembly --------------------------------
 
 
@@ -201,3 +239,43 @@ def test_follow_and_dry_run_are_mutually_exclusive_worker_pool(window):
     assert window.follow_worker_pool.isChecked() is False
     window.follow_worker_pool.setChecked(True)
     assert window.dry_run_worker_pool.isChecked() is False
+
+
+# --- Command-arg construction (config source injection) ----------------------
+
+
+def test_build_args_yd_command_no_config(window):
+    window._config_file = None
+    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    assert args == ["--nc", "--nf", "--pp", "-r", "wr.json"]
+
+
+def test_build_args_yd_command_with_config(window):
+    window._config_file = "d/config.toml"
+    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    assert args == ["-c", "config.toml", "--nf", "--pp", "-r", "wr.json"]
+
+
+def test_build_args_any_yd_command_no_config(window):
+    window._config_file = None
+    args = window._build_command_args("yd-list", ["-w"], yd_command=False)
+    assert args == ["--nc", "-w", "--nf", "--pp"]
+
+
+def test_build_args_any_yd_command_with_config(window):
+    window._config_file = "d/config.toml"
+    args = window._build_command_args("yd-list", ["-w"], yd_command=False)
+    assert args == ["-c", "config.toml", "-w", "--nf", "--pp"]
+
+
+def test_build_args_any_yd_command_respects_user_config_flag(window):
+    window._config_file = None
+    # User already supplied a config flag: do not inject another.
+    args = window._build_command_args("yd-list", ["--nc", "-w"], yd_command=False)
+    assert args == ["--nc", "-w", "--nf", "--pp"]
+
+
+def test_build_args_shell_command_unchanged(window):
+    window._config_file = None
+    args = window._build_command_args("sh", ["-c", "ls"], yd_command=False)
+    assert args == ["-c", "ls"]

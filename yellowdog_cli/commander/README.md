@@ -30,11 +30,11 @@ Multiple instances can run simultaneously.
 
 ## How It Works
 
-Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess, in the directory containing the selected configuration file, and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
+Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess, in the directory containing the selected configuration file (or the launch directory if none is selected), and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
 
 The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd-*` command and arguments were used.
 
-Note that Commander currently requires a configuration file to be selected before any operations can be run, even though the `yd-*` commands themselves can be used without one (drawing their settings from environment variables and defaults).
+A configuration file is optional: if none is selected, Commander runs the `yd-*` commands with `--no-config`, sourcing settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below, and results/downloads are written under the launch directory. Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
 ## Selecting a Configuration (Panel 1)
 
