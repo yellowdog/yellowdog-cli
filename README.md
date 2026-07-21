@@ -20,6 +20,7 @@
       * [Install the YellowDog CLI](#install-the-yellowdog-cli-2)
       * [Update](#update-2)
       * [With Jsonnet support](#with-jsonnet-support-2)
+* [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [Usage](#usage)
 * [Typical Workflow](#typical-workflow)
 * [Configuration](#configuration)
@@ -194,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Jun 24 10:42:27 BST 2026 -->
+<!-- Added by: pwt, at: Tue Jul 21 14:13:49 BST 2026 -->
 
 <!--te-->
 
@@ -373,6 +374,17 @@ pip install -U "yellowdog-cli[jsonnet]"
 ```
 
 > **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
+
+# YellowDog Commander (GUI)
+
+Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra and launch it with `yd-commander`:
+
+```commandline
+pip install -U "yellowdog-cli[commander]"
+yd-commander
+```
+
+It works by invoking the `yd-*` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
 # Usage
 

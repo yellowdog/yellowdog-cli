@@ -27,3 +27,16 @@ def check_cloudwizard_imports():
             " by default. They can be installed by adding the option to pip:"
             ' pip install -U "yellowdog-cli[cloudwizard]"'
         )
+
+
+def check_commander_imports():
+    # PyQt6 is not installed by default (heavy Qt binaries). It is only needed
+    # for the yd-commander GUI.
+    try:
+        import PyQt6  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "The Commander GUI is not installed by default. It can be installed"
+            " by adding the option to pip:"
+            ' pip install -U "yellowdog-cli[commander]"'
+        )

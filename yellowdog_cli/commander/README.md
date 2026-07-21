@@ -1,0 +1,104 @@
+# YellowDog Commander
+
+Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
+
+Commander is offered as a useful adjunct to the CLI, but is not formally supported.
+
+![YellowDog Commander on macOS](screenshots/screenshot_macos.png)
+
+## Installation
+
+Commander requires the optional `commander` extra (it pulls in PyQt6):
+
+```commandline
+pip install -U "yellowdog-cli[commander]"
+```
+
+## Running
+
+```commandline
+yd-commander
+```
+
+Optionally pass a configuration file as the first argument:
+
+```commandline
+yd-commander path/to/config.toml
+```
+
+Multiple instances can run simultaneously.
+
+## How It Works
+
+Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess, in the directory containing the selected configuration file, and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
+
+The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd-*` command and arguments were used.
+
+Note that Commander currently requires a configuration file to be selected before any operations can be run, even though the `yd-*` commands themselves can be used without one (drawing their settings from environment variables and defaults).
+
+## Selecting a Configuration (Panel 1)
+
+Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
+
+## Submitting and Managing Work (Panel 2)
+
+- **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
+- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit.
+- **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
+- **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
+- **Extra Options** — free-text command-line options appended to the `yd-submit` command.
+- **Cancel Work Requirements** — cancels all matching Work Requirements.
+- **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
+
+## Provisioning and Managing Compute (Panel 3)
+
+- **Create New Cloud Worker Pool** — runs `yd-provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
+- **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision.
+- **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
+- **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
+- **Extra Options** — free-text command-line options appended to the `yd-provision` command.
+- **Shutdown Worker Pools** — shuts down all matching Worker Pools.
+- **Terminate Compute Requirements** — terminates all matching Compute Requirements.
+
+## Collecting and Managing Results (Panel 4)
+
+- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used.
+- **Download Matching Objects** — downloads all matching objects into a `results` directory alongside the configuration file.
+- **Delete Matching Objects** — deletes all matching objects from remote storage.
+- **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything.
+- **View Results Directory** — opens the `results` directory in the system file viewer.
+
+## Namespace and Tag Overrides
+
+The **Namespace** and **Tag** fields override the values from the configuration file for every command. The default values discovered from the configuration are shown as placeholder text, so you can see what will be used if you leave a field blank.
+
+## User-Defined Variables
+
+The **User-Defined Variables** field passes variables to the commands for substitution in specifications. Enter them as `name=value` pairs separated by spaces, for example:
+
+```text
+instances=2 template=my_template
+```
+
+Each pair is passed to the command as a `-v` option (`-v instances=2 -v template=my_template`).
+
+## Utility Actions
+
+- **View Config Directory** — opens the configuration file's directory in the system file viewer.
+- **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
+- **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
+- **Deselect Files** — clears any explicitly selected Work Requirement and Worker Pool definition files, reverting to the definitions in the configuration file.
+- **Clear Command Output** / **Copy Command Output** — clear the output window, or copy its full contents to the clipboard.
+- **Dark Mode** — toggle between light and dark appearance.
+
+## Running Arbitrary Commands
+
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, and the user-defined variables are added to it automatically (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
+
+## Sending Input to a Running Command
+
+If a running command prompts for input, type into the **Command Input** field and press Enter to send a line to the process's standard input.
+
+## A Note on Confirmations
+
+Cancellation, object download and deletion, Worker Pool shutdown, and Compute Requirement termination all operate **without asking for confirmation**, and act on **all** matching entities. Check the namespace, tag, and path you have set before using them.
