@@ -1,0 +1,56 @@
+# Byte-compiled / optimized / C extensions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+sdist/
+wheels/
+*.egg
+*.egg-info/
+.eggs/
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+
+# Test, coverage, type and lint caches
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.hypothesis/
+.cache/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# README table-of-contents backups (created by `make toc`)
+README.md.*
+README_CLOUDWIZARD.md.*
+
+# Superpowers subagent-driven-development scratch (ledger, briefs, reports, review packages)
+.superpowers/

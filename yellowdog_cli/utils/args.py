@@ -388,6 +388,16 @@ class CLIParser:
                 required=False,
                 help="emit results as a plain JSON array (suppresses table formatting)",
             )
+            parser.add_argument(
+                "--count",
+                "-C",
+                action="store_true",
+                required=False,
+                help=(
+                    "print only the number of matching items (implies '--quiet';"
+                    " overrides '--details', '--json' and '--ids-only')"
+                ),
+            )
 
         # yd-submit
         if any(module in module_name for module in ["submit"]):
@@ -1724,10 +1734,23 @@ class CLIParser:
     def ids_only(self) -> bool | None:
         return self.args.ids_only
 
+    @ids_only.setter
+    def ids_only(self, value: bool) -> None:
+        self.args.ids_only = value
+
     @property
     @allow_missing_attribute
     def json_output(self) -> bool | None:
         return self.args.json
+
+    @json_output.setter
+    def json_output(self, value: bool) -> None:
+        self.args.json = value
+
+    @property
+    @allow_missing_attribute
+    def count_only(self) -> bool | None:
+        return self.args.count
 
     # -----------------------------------------------------------------------
     # yd-submit

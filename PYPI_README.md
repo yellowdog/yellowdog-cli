@@ -64,6 +64,15 @@ uv tool install "yellowdog-cli[jsonnet]"   # uv
 pip install "yellowdog-cli[jsonnet]"       # pip
 ```
 
+### Commander GUI
+
+An optional desktop GUI is available. Install it with the `commander` extra and launch it with `yd-commander`:
+
+```commandline
+pip install -U "yellowdog-cli[commander]"
+yd-commander
+```
+
 ## Documentation
 
 Please see the documentation in the [GitHub repository](https://github.com/yellowdog/yellowdog-cli) for full details.

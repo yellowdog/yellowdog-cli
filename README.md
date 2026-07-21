@@ -20,6 +20,7 @@
       * [Install the YellowDog CLI](#install-the-yellowdog-cli-2)
       * [Update](#update-2)
       * [With Jsonnet support](#with-jsonnet-support-2)
+* [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [Usage](#usage)
 * [Typical Workflow](#typical-workflow)
 * [Configuration](#configuration)
@@ -194,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Jun 24 10:42:27 BST 2026 -->
+<!-- Added by: pwt, at: Tue Jul 21 14:13:49 BST 2026 -->
 
 <!--te-->
 
@@ -373,6 +374,17 @@ pip install -U "yellowdog-cli[jsonnet]"
 ```
 
 > **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
+
+# YellowDog Commander (GUI)
+
+Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra and launch it with `yd-commander`:
+
+```commandline
+pip install -U "yellowdog-cli[commander]"
+yd-commander
+```
+
+It works by invoking the `yd-*` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
 # Usage
 
@@ -3675,6 +3687,7 @@ Please use `yd-list --help` to inspect the full list of options. Commonly used o
 | `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
+| `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd-list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
 | `--sort <name\|created\|status\|namespace>` | Order listed (and interactively-selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
 | `--reverse` | List items in reverse (descending) order of the active `--sort` key |
 | `--public-ips-only` | With `instances`, list public IP addresses only |
@@ -3713,6 +3726,8 @@ yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
 ```
 
 The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+
+The command exits with code 1 if any of the supplied IDs could not be followed (invalid ID, entity not found, or a connection/stream error), and 0 otherwise. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
 
 Additional options:
 

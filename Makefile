@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
@@ -14,7 +14,7 @@ clean:
 	rm -rf $(BUILD_DIST) $(PYCACHE) $(TOC_BACKUP)
 
 install: build
-	uv pip install -U -e ".[jsonnet,cloudwizard]"
+	uv pip install -U -e ".[commander,jsonnet,cloudwizard]"
 
 uninstall:
 	uv pip uninstall yellowdog-cli
@@ -51,7 +51,7 @@ tox:
 	tox
 
 update:
-	uv pip install -U -e ".[dev,jsonnet,cloudwizard]"
+	uv pip install -U -e ".[dev,commander,jsonnet,cloudwizard]"
 
 no_op:
 	# Available targets are: build, clean, format, install, test, tox, uninstall, update, pypi_upload, pypi_check

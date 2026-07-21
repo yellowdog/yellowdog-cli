@@ -89,6 +89,32 @@ def cleanup():
 
 
 @pytest.fixture(scope="session")
+def qapp():
+    """
+    A single offscreen QApplication for Commander GUI tests. Skips (never
+    errors) when the GUI cannot be initialised:
+    - PyQt6 (the optional 'commander' extra) is not installed, or
+    - PyQt6 is installed but its Qt runtime libraries are missing (e.g. a
+      minimal headless node without libGL/xcb) so QtWidgets/QApplication fail.
+    Offscreen mode means no window is shown and no display is required.
+    """
+    import os
+
+    # QtWidgets is the submodule that pulls in the graphical runtime libs;
+    # importorskip on the top-level 'PyQt6' package would not catch a missing
+    # libGL/xcb, so guard on QtWidgets directly.
+    pytest.importorskip("PyQt6.QtWidgets")
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    try:
+        return QApplication.instance() or QApplication([])
+    except Exception as exc:  # Qt platform plugin / runtime libs unavailable
+        pytest.skip(f"Qt platform unavailable: {exc}")
+
+
+@pytest.fixture(scope="session")
 def system_tag() -> str:
     """
     Session-unique tag for compute tests (e.g. 'pytest-1741880400').

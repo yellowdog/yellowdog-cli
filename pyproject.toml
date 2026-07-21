@@ -42,6 +42,7 @@
 
 [project.optional-dependencies]
     jsonnet = ["jsonnet"]
+    commander = ["PyQt6"]
     cloudwizard = [
         "boto3",
         "botocore",
@@ -56,7 +57,6 @@
     dev = [
         "cli-test-helpers",
         "pre-commit",
-        "pyqt6",
         "pytest",
         "pytest-xdist",
         "python-dispatch",
@@ -74,6 +74,7 @@
     yd-cancel = "yellowdog_cli.cancel:main"
     yd-copy = "yellowdog_cli.copy:main"
     yd-cloudwizard = "yellowdog_cli.cloudwizard:main"
+    yd-commander = "yellowdog_cli.commander.launcher:main"
     yd-compare = "yellowdog_cli.compare:main"
     yd-compute-restart = "yellowdog_cli.compute_restart:main"
     yd-compute-start = "yellowdog_cli.compute_start:main"
@@ -106,7 +107,10 @@
 
 [tool.setuptools]
     include-package-data = false
-    packages = ["yellowdog_cli", "yellowdog_cli.utils"]
+    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander"]
+
+[tool.setuptools.package-data]
+    "yellowdog_cli.commander" = ["*.ui", "images/*"]
 
 [tool.setuptools.dynamic.version]
     attr = "yellowdog_cli._version.__version__"
@@ -118,6 +122,13 @@
 [tool.ruff.lint]
     select = ["E", "F401", "I", "RUF", "UP", "W"]
     ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+    # commander.py is lifted from the standalone yellow-gui demo (a separate
+    # repo); these are pre-existing findings in the original, not introduced
+    # by the relocation. Suppressed here rather than reformatted, to keep the
+    # diff against the source limited to the documented path decoupling.
+    "yellowdog_cli/commander/commander.py" = ["E402", "RUF005"]
 
 [tool.pytest.ini_options]
     filterwarnings = [
@@ -133,5 +144,5 @@
 
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
-    extras = ["dev"]
+    extras = ["dev", "commander"]
     commands = [["pytest", "{posargs}"]]
