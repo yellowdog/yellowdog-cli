@@ -720,6 +720,8 @@ class YellowDogApp(QMainWindow):
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
             return
 
+        self._log(f"Checking which objects match '{path}'...")
+        self.log_output.repaint()
         names = self._capture_dry_run_entities("yd-delete", ["-R", path])
 
         if not names and names is not None:
@@ -765,6 +767,8 @@ class YellowDogApp(QMainWindow):
             self._run_command_in_subprocess(command, run_args)
             return
 
+        self._log(f"Checking which {plural} would be affected...")
+        self.log_output.repaint()
         names = self._capture_dry_run_entities(command)
 
         if not names and names is not None:

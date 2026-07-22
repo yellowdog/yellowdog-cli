@@ -161,6 +161,24 @@ def test_destructive_empty_set_logs_and_skips(window, captured, monkeypatch):
     assert "No matching Compute Requirements" in window.log_output.toPlainText()
 
 
+def test_destructive_logs_status_before_lookup(window, captured, monkeypatch):
+    # A status line is logged before the (blocking) enumeration so the GUI does
+    # not read as frozen during the lookup.
+    logged: list[str] = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command: logged.append("looked-up") or ["cr-1"],
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window.log_output.setPlainText("")
+    window._terminate_all_compute_requirements_action()
+    assert "Checking which Compute Requirements would be affected" in (
+        window.log_output.toPlainText()
+    )
+    assert logged == ["looked-up"]  # enumeration did run
+
+
 def test_destructive_passes_names_to_dialog(window, captured, monkeypatch):
     monkeypatch.setattr(
         window, "_capture_dry_run_entities", lambda command: ["cr-1", "cr-2"]
