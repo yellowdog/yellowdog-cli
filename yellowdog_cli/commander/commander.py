@@ -652,7 +652,9 @@ class YellowDogApp(QMainWindow):
 
         return dialog, cast(QPushButton, yes_btn), cast(QPushButton, skip_btn)
 
-    def _capture_dry_run_entities(self, command: str) -> list[str] | None:
+    def _capture_dry_run_entities(
+        self, command: str, extra_args: list[str] | None = None
+    ) -> list[str] | None:
         """
         Run '<command> -D --json' (quiet, no formatting) with the current config
         source and namespace/tag/user variables, and return the affected entity
@@ -674,6 +676,7 @@ class YellowDogApp(QMainWindow):
             self._config_source_args()
             + ["--nf", "-q", "-D", "--json"]
             + self._namespace_tag_and_user_vars()
+            + (extra_args or [])
         )
         yd_process.start(command, args)
         event_loop.exec()
@@ -702,20 +705,33 @@ class YellowDogApp(QMainWindow):
 
     def _delete_objects_action(self):
         """
-        Delete matching objects from remote storage.
+        Delete matching objects from remote storage. Unless it is a dry-run
+        preview, list the matched objects/directories in the confirmation
+        dialog (or report that nothing matches and do nothing).
         """
-        dry_run = self.dry_run_objects.isChecked()
-        if not dry_run and not self._confirm_destructive(
-            "delete",
-            "Delete Objects",
-            f"Delete objects matching '{self._object_path()}'?"
-            "\n\nThis cannot be undone.",
-        ):
+        path = self._object_path()
+
+        if self.dry_run_objects.isChecked():
+            # Harmless preview: run directly, no enumeration or confirmation.
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path, "-D"])
             return
-        args = ["-Ry", self._object_path()]
-        if dry_run:
-            args += ["-D"]
-        self._run_command_in_subprocess("yd-delete", args)
+
+        if self._confirmations_disabled or "delete" in self._skip_confirmations:
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path])
+            return
+
+        names = self._capture_dry_run_entities("yd-delete", ["-R", path])
+
+        if not names and names is not None:
+            self._log(f"No objects match '{path}'")
+            return
+
+        if names is None:
+            self._log("Could not list affected entities; confirming by scope instead")
+
+        body = f"Deleting objects matching '{path}'?\n\nThis cannot be undone."
+        if self._confirm_destructive("delete", "Delete Objects", body, names=names):
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path])
 
     def _clear_output_action(self):
         self.log_output.setPlainText("")

@@ -232,6 +232,9 @@ def test_bypass_skips_enumeration(window, captured, monkeypatch):
 
 
 def test_delete_runs_when_confirmed(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+    )
     monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
     window._tag = "my-tag"
     window._delete_objects_action()
@@ -239,9 +242,60 @@ def test_delete_runs_when_confirmed(window, captured, monkeypatch):
 
 
 def test_delete_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+    )
     monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
     window._delete_objects_action()
     assert captured == []
+
+
+def test_delete_lists_matched_objects(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: ["a.txt", "sub/"],
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    body, names = calls[0]
+    assert "my-tag*" in body
+    assert names == ["a.txt", "sub/"]
+
+
+def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: []
+    )
+    window._tag = "my-tag"
+    window.log_output.setPlainText("")
+    window._delete_objects_action()
+    assert captured == []
+    assert "No objects match 'my-tag*'" in window.log_output.toPlainText()
+
+
+def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: None
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    _body, names = calls[0]
+    assert names is None
 
 
 def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
