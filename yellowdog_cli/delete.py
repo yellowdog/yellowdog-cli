@@ -99,11 +99,13 @@ def _emit_matched_json(remote_paths: list[str]) -> None:
         ]
     )
     for remote_path in resolved:
-        if is_glob(remote_path):
-            _, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
-            names.extend(entries_to_names(matches))
-        else:
-            names.append(remote_path)
+        # list_remote_glob handles a literal (non-glob) final component too: it
+        # lists the parent and exact-matches the name, so a path that matches
+        # nothing yields no entries (rather than echoing the input). This gives
+        # consistent basenames (with '/' on dirs) and reflects what a real
+        # delete would actually remove.
+        _, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
+        names.extend(entries_to_names(matches))
     print_objects_as_json([{"name": name} for name in names])
 
 
