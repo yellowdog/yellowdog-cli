@@ -47,3 +47,13 @@ def test_json_array(capsys):
 def test_json_empty(capsys):
     report_dry_run(MagicMock(), [], "Work Requirement", "cancelled", as_json=True)
     assert json.loads(capsys.readouterr().out) == []
+
+
+def test_entries_to_names_marks_dirs():
+    from yellowdog_cli.utils.dataclient_utils import entries_to_names
+
+    entries = [
+        {"Name": "file.txt", "IsDir": False},
+        {"Name": "subdir", "IsDir": True},
+    ]
+    assert entries_to_names(entries) == ["file.txt", "subdir/"]

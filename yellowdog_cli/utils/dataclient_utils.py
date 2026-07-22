@@ -222,6 +222,13 @@ def is_glob(path: str) -> bool:
     return bool(_GLOB_CHARS.intersection(path_part))
 
 
+def entries_to_names(entries: list[dict]) -> list[str]:
+    """
+    Map rclone lsjson entries to display names, appending '/' to directories.
+    """
+    return [entry["Name"] + ("/" if entry["IsDir"] else "") for entry in entries]
+
+
 def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
     """
     Split a glob remote path into (parent_dir, pattern).

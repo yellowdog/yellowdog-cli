@@ -29,10 +29,13 @@ def test_dry_run_with_explicit_names_errors(cmd):
     assert "not supported with explicit names" in (result.stderr + result.stdout)
 
 
-@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+@pytest.mark.parametrize(
+    "cmd", ["yd-cancel", "yd-shutdown", "yd-terminate", "yd-delete"]
+)
 def test_json_without_dry_run_errors(cmd):
     # --json only shapes the --dry-run output; on its own it must error at parse
-    # time rather than be silently ignored.
+    # time rather than be silently ignored (or, for delete, fall through to a
+    # real deletion).
     result = shell(f"{cmd} --json")
     assert result.exit_code == 2
     assert "only valid with --dry-run" in (result.stderr + result.stdout)

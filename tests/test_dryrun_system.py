@@ -22,3 +22,10 @@ def test_dry_run_json_is_valid(cmd):
     result = shell(f"{cmd} -D --json -n='' -t=''")
     assert result.exit_code == 0
     json.loads(result.stdout)  # a JSON array (possibly empty)
+
+
+@pytest.mark.system
+def test_delete_dry_run_json_is_valid():
+    result = shell("yd-delete -D --json -n='' -t=''")
+    assert result.exit_code == 0
+    json.loads(result.stdout)  # a JSON array (possibly empty)

@@ -1567,6 +1567,12 @@ class CLIParser:
                 required=False,
                 help="delete directories recursively",
             )
+            parser.add_argument(
+                "--json",
+                action="store_true",
+                required=False,
+                help="with --dry-run, list the matched items as JSON instead of deleting",
+            )
 
         # yd-ls
         if "ls" in module_name:
@@ -1657,14 +1663,15 @@ class CLIParser:
         ):
             parser.error("--dry-run is not supported with explicit names/IDs")
 
-        # For yd-cancel / yd-shutdown / yd-terminate, '--json' only shapes the
-        # '--dry-run' output; reject it on its own rather than silently ignoring.
+        # On the destructive dry-run commands (cancel / shutdown / terminate /
+        # delete / rm) '--json' only shapes the '--dry-run' output; reject it on
+        # its own rather than silently ignoring it (or, for delete, falling
+        # through to a real deletion). Commands with '--json' but no '--dry-run'
+        # (e.g. yd-list) are unaffected.
         if (
-            (any(m in module_name for m in ["cancel", "shutdown"]))
-            or "terminate" in module_name
-        ) and (
             getattr(self.args, "json", False)
-            and not getattr(self.args, "dry_run", False)
+            and hasattr(self.args, "dry_run")
+            and not self.args.dry_run
         ):
             parser.error("--json is only valid with --dry-run")
 
