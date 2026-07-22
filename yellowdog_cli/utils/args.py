@@ -585,6 +585,24 @@ class CLIParser:
                 help="follow progress after cancelling the work requirement(s)",
             )
 
+        # yd-cancel / yd-shutdown / yd-terminate: dry-run enumeration
+        if any(m in module_name for m in ["cancel", "shutdown"]) or (
+            "terminate" in module_name
+        ):
+            parser.add_argument(
+                "--dry-run",
+                "-D",
+                action="store_true",
+                required=False,
+                help="list the entities that would be affected, without acting",
+            )
+            parser.add_argument(
+                "--json",
+                action="store_true",
+                required=False,
+                help="with --dry-run, emit the affected entities as a JSON array",
+            )
+
         # yd-start / yd-hold / yd-finish
         # Note: 'compute' is excluded because 'start' is a substring of
         # 'compute-start' and 'compute-restart'
@@ -1549,6 +1567,12 @@ class CLIParser:
                 required=False,
                 help="delete directories recursively",
             )
+            parser.add_argument(
+                "--json",
+                action="store_true",
+                required=False,
+                help="with --dry-run, list the matched items as JSON instead of deleting",
+            )
 
         # yd-ls
         if "ls" in module_name:
@@ -1629,6 +1653,27 @@ class CLIParser:
             )
 
         self.args = parser.parse_args()
+
+        # The faithful by-name/ID dry-run is not yet implemented; refuse it
+        # rather than silently falling through to the acting path.
+        if getattr(self.args, "dry_run", False) and (
+            getattr(self.args, "work_requirements", None)
+            or getattr(self.args, "worker_pool_nodes_list", None)
+            or getattr(self.args, "compute_reqs_instances_or_nodes", None)
+        ):
+            parser.error("--dry-run is not supported with explicit names/IDs")
+
+        # On the destructive dry-run commands (cancel / shutdown / terminate /
+        # delete / rm) '--json' only shapes the '--dry-run' output; reject it on
+        # its own rather than silently ignoring it (or, for delete, falling
+        # through to a real deletion). Commands with '--json' but no '--dry-run'
+        # (e.g. yd-list) are unaffected.
+        if (
+            getattr(self.args, "json", False)
+            and hasattr(self.args, "dry_run")
+            and not self.args.dry_run
+        ):
+            parser.error("--json is only valid with --dry-run")
 
         if self.args.docs:
             docs()

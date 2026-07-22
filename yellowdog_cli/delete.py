@@ -8,6 +8,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
     delete_remote,
+    entries_to_names,
     is_glob,
     list_remote_glob,
     resolve_remote_path,
@@ -15,7 +16,7 @@ from yellowdog_cli.utils.dataclient_utils import (
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import print_info, print_objects_as_json
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
@@ -34,6 +35,10 @@ def main():
     recursive = ARGS_PARSER.recursive or False
     dry_run = ARGS_PARSER.dry_run or False
     remote_paths = ARGS_PARSER.remote_paths or []
+
+    if dry_run and ARGS_PARSER.json_output:
+        _emit_matched_json(remote_paths)
+        return
 
     if not remote_paths:
         # No paths supplied: operate on the entire default prefix
@@ -77,6 +82,31 @@ def _delete_one(remote_path: str, recursive: bool, dry_run: bool) -> None:
     action = "Recursively delete" if recursive else "Delete"
     if confirmed(f"{action} '{remote_path}'?"):
         delete_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
+
+
+def _emit_matched_json(remote_paths: list[str]) -> None:
+    """
+    Print the top-level items a delete would match, as a JSON array of
+    {"name": ...} (directories carry a trailing '/'), without deleting.
+    """
+    names: list[str] = []
+    resolved = (
+        [resolve_remote_path(CONFIG_DATA_CLIENT)]
+        if not remote_paths
+        else [
+            resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=p)
+            for p in remote_paths
+        ]
+    )
+    for remote_path in resolved:
+        # list_remote_glob handles a literal (non-glob) final component too: it
+        # lists the parent and exact-matches the name, so a path that matches
+        # nothing yields no entries (rather than echoing the input). This gives
+        # consistent basenames (with '/' on dirs) and reflects what a real
+        # delete would actually remove.
+        _, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
+        names.extend(entries_to_names(matches))
+    print_objects_as_json([{"name": name} for name in names])
 
 
 if __name__ == "__main__":

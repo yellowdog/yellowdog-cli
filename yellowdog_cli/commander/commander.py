@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-GUI application for driving YellowDog applications & demos.
+YellowDog Commander: GUI application for driving the YellowDog CLI
 """
 
 import os
@@ -57,19 +57,24 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QLayout,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QStyle,
+    QVBoxLayout,
     QWidget,
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
-DEMO_ROOT = os.getcwd()  # default dir for file dialogs when no config selected
+CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
@@ -177,8 +182,11 @@ class YellowDogApp(QMainWindow):
     next_command: QPushButton
     prev_command: QPushButton
 
-    def __init__(self, config_file: str | None = None):
+    def __init__(
+        self, config_file: str | None = None, disable_confirmations: bool = False
+    ):
         super().__init__()
+        self._confirmations_disabled = disable_confirmations
 
         # Dynamically loads the QT UI definition
         loadUi(join(_PKG_DIR, "commander.ui"), self)
@@ -266,6 +274,7 @@ class YellowDogApp(QMainWindow):
         self._config_file: str | None = None
         self._wr_file: str | None = None
         self._wp_file: str | None = None
+        self._skip_confirmations: set[str] = set()
 
         self._namespace: str | None = None
         self._tag: str | None = None
@@ -329,9 +338,6 @@ class YellowDogApp(QMainWindow):
         Parse the configuration file to obtain the CLI-processed values of the
         namespace and tag variables, used to populate placeholder text.
         """
-        if not self._check_config_file(quiet=False):
-            return False
-
         if not self._config_parse_invalid:
             return True
 
@@ -340,22 +346,24 @@ class YellowDogApp(QMainWindow):
 
         env = QProcessEnvironment.systemEnvironment()
         yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._config_dir())
+        yd_process.setWorkingDirectory(self._working_dir())
 
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
         cmd = "yd-show"
-        args = [
-            "-c",
-            self._config_basename(),
-            "--nf",
-            "-q",
-            "-r",
-            NAMESPACE,
-            "-r",
-            TAG,
-        ] + self._namespace_tag_and_user_vars()
+        args = (
+            self._config_source_args()
+            + [
+                "--nf",
+                "-q",
+                "-r",
+                NAMESPACE,
+                "-r",
+                TAG,
+            ]
+            + self._namespace_tag_and_user_vars()
+        )
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
@@ -419,7 +427,11 @@ class YellowDogApp(QMainWindow):
             self.select_config_label.setText(
                 f"{SELECTED_CONFIG_PREFIX}{NO_SELECTED_CONFIG}"
             )
-            self._set_placeholders("", "")
+            self._config_parse_invalid = True
+            if self._parse_yd_config(quiet=True):
+                self._set_placeholders(self._namespace or "", self._tag or "")
+            else:
+                self._set_placeholders("", "")
             return
 
         if not exists(config_file):
@@ -437,7 +449,7 @@ class YellowDogApp(QMainWindow):
     def _select_config_file_action(self):
         file = self._select_file(
             caption="Please select a configuration file",
-            directory=(self._config_dir() if self._config_file else DEMO_ROOT),
+            directory=(self._config_dir() if self._config_file else CWD),
             file_pattern="*.toml",
         )
         if file is None:
@@ -466,12 +478,30 @@ class YellowDogApp(QMainWindow):
         """
         return basename(cast(str, self._config_file))
 
+    def _working_dir(self) -> str:
+        """
+        Directory to run commands in: the selected config file's directory if
+        one is selected, otherwise the launch directory (cwd).
+        """
+        return self._config_dir() if self._config_file is not None else os.getcwd()
+
+    def _config_source_args(self) -> list[str]:
+        """
+        CLI flags selecting the config source: the selected config file, or
+        '--nc' (--no-config) to force environment-variable / CLI-argument mode.
+        """
+        return (
+            ["-c", self._config_basename()]
+            if self._config_file is not None
+            else ["--nc"]
+        )
+
     @staticmethod
     def _color_scheme() -> Qt.ColorScheme:
         return cast(QStyleHints, QApplication.styleHints()).colorScheme()
 
     def _select_work_requirement_action(self):
-        directory = DEMO_ROOT if self._config_file is None else self._config_dir()
+        directory = CWD if self._config_file is None else self._config_dir()
         file = self._select_file(
             caption="Please select a Work Requirement definition file",
             directory=directory,
@@ -484,7 +514,7 @@ class YellowDogApp(QMainWindow):
             self._log(f"Selected Work Requirement definition '{self._wr_file}'")
 
     def _select_worker_pool_action(self):
-        directory = DEMO_ROOT if self._config_file is None else self._config_dir()
+        directory = CWD if self._config_file is None else self._config_dir()
         file = self._select_file(
             caption="Please select a Worker Pool definition file",
             directory=directory,
@@ -523,11 +553,151 @@ class YellowDogApp(QMainWindow):
         override = self.object_path_override.toPlainText().strip()
         return override if override else f"{self._tag}*"
 
+    def _scope_phrase(self, match_word: str) -> str:
+        """
+        A human-readable ' in namespace X with <match_word> including Y' phrase
+        describing how the CLI selects entities: Work Requirements and Compute
+        Requirements are matched by tag ('tags'), Worker Pools by name ('names').
+        Uses the discovered namespace/tag, degrading gracefully when unknown.
+        """
+        if self._namespace and self._tag:
+            return (
+                f" in namespace '{self._namespace}'"
+                f" with {match_word} including '{self._tag}'"
+            )
+        if self._namespace:
+            return f" in namespace '{self._namespace}'"
+        if self._tag:
+            return f" with {match_word} including '{self._tag}'"
+        return " in the current namespace and tag"
+
+    def _confirm_destructive(
+        self,
+        action_key: str,
+        title: str,
+        body: str,
+        names: list[str] | None = None,
+    ) -> bool:
+        """
+        Show a warning confirmation dialog for a destructive action. Returns
+        True if the action should proceed. 'Yes (Don't Ask Again)' confirms and
+        suppresses future confirmations for this same action (identified by
+        action_key) for the rest of the session; the suppression is per-action,
+        not global.
+        """
+        if self._confirmations_disabled or action_key in self._skip_confirmations:
+            return True
+        dialog, yes_btn, skip_btn = self._build_destructive_dialog(title, body, names)
+        buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))
+        clicked: dict[str, object] = {}
+        buttons.clicked.connect(
+            lambda button: (clicked.__setitem__("button", button), dialog.accept())
+        )
+        dialog.exec()
+        if clicked.get("button") is skip_btn:
+            self._skip_confirmations.add(action_key)
+            return True
+        return clicked.get("button") is yes_btn
+
+    def _build_destructive_dialog(
+        self, title: str, message: str, names: list[str] | None
+    ) -> tuple[QDialog, QPushButton, QPushButton]:
+        """
+        Build (but do not show) the destructive-action confirmation dialog: a
+        warning icon and message, an optional read-only, monospaced, non-wrapping
+        (scrollable) list of affected entity names, and No / Yes / Yes (Don't Ask
+        Again) buttons (default No). Returns the dialog and the Yes / skip buttons
+        so the caller can identify which was clicked. A plain QDialog is used
+        rather than QMessageBox so the entity list has full formatting control
+        (no ugly wrapping) and no native-alert 'detailed text' limitations.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        layout = QVBoxLayout(dialog)
+
+        header = QHBoxLayout()
+        icon_label = QLabel()
+        icon_label.setPixmap(
+            cast(QStyle, self.style())
+            .standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+            .pixmap(QSize(48, 48))
+        )
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header.addWidget(icon_label)
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        header.addWidget(message_label, stretch=1)
+        layout.addLayout(header)
+
+        if names:
+            listing = QPlainTextEdit()
+            listing.setObjectName("entity_listing")
+            listing.setReadOnly(True)
+            listing.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+            listing.setFont(self._font)
+            listing.setPlainText("\n".join(names))
+            layout.addWidget(listing)
+
+        button_box = QDialogButtonBox()
+        no_btn = cast(
+            QPushButton,
+            button_box.addButton("No", QDialogButtonBox.ButtonRole.RejectRole),
+        )
+        yes_btn = button_box.addButton("Yes", QDialogButtonBox.ButtonRole.AcceptRole)
+        skip_btn = button_box.addButton(
+            "Yes (Don't Ask Again)", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        no_btn.setDefault(True)
+        layout.addWidget(button_box)
+
+        return dialog, cast(QPushButton, yes_btn), cast(QPushButton, skip_btn)
+
+    def _capture_dry_run_entities(
+        self, command: str, extra_args: list[str] | None = None
+    ) -> list[str] | None:
+        """
+        Run '<command> -D --json' (quiet, no formatting) with the current config
+        source and namespace/tag/user variables, and return the affected entity
+        names parsed from the JSON array. Return None on any failure (process
+        error, non-zero exit, or unparseable output) so the caller can fall back
+        to a scope-level confirmation.
+        """
+        yd_process = QProcess()
+        event_loop = QEventLoop()
+
+        env = QProcessEnvironment.systemEnvironment()
+        yd_process.setProcessEnvironment(env)
+        yd_process.setWorkingDirectory(self._working_dir())
+
+        yd_process.finished.connect(event_loop.quit)
+        yd_process.errorOccurred.connect(event_loop.quit)
+
+        args = (
+            self._config_source_args()
+            + ["--nf", "-q", "-D", "--json"]
+            + self._namespace_tag_and_user_vars()
+            + (extra_args or [])
+        )
+        yd_process.start(command, args)
+        event_loop.exec()
+
+        if yd_process.error() != QProcess.ProcessError.UnknownError:
+            return None
+        if yd_process.exitCode() != 0:
+            return None
+
+        output = yd_process.readAllStandardOutput().data().decode().strip()
+        try:
+            parsed = loads(output)
+            return [obj.get("name") for obj in parsed if obj.get("name")]
+        except Exception:
+            return None
+
     def _download_results_action(self):
         """
         Download matching objects from remote storage into the results directory.
         """
-        dst = join(self._config_dir(), RESULTS_DIR)
+        dst = join(self._working_dir(), RESULTS_DIR)
         args = ["-d", dst, self._object_path()]
         if self.dry_run_objects.isChecked():
             args += ["-D"]
@@ -535,12 +705,33 @@ class YellowDogApp(QMainWindow):
 
     def _delete_objects_action(self):
         """
-        Delete matching objects from remote storage.
+        Delete matching objects from remote storage. Unless it is a dry-run
+        preview, list the matched objects/directories in the confirmation
+        dialog (or report that nothing matches and do nothing).
         """
-        args = ["-Ry", self._object_path()]
+        path = self._object_path()
+
         if self.dry_run_objects.isChecked():
-            args += ["-D"]
-        self._run_command_in_subprocess("yd-delete", args)
+            # Harmless preview: run directly, no enumeration or confirmation.
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path, "-D"])
+            return
+
+        if self._confirmations_disabled or "delete" in self._skip_confirmations:
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path])
+            return
+
+        names = self._capture_dry_run_entities("yd-delete", ["-R", path])
+
+        if not names and names is not None:
+            self._log(f"No objects match '{path}'")
+            return
+
+        if names is None:
+            self._log("Could not list affected entities; confirming by scope instead")
+
+        body = f"Deleting objects matching '{path}'?\n\nThis cannot be undone."
+        if self._confirm_destructive("delete", "Delete Objects", body, names=names):
+            self._run_command_in_subprocess("yd-delete", ["-Ry", path])
 
     def _clear_output_action(self):
         self.log_output.setPlainText("")
@@ -550,11 +741,69 @@ class YellowDogApp(QMainWindow):
             self.log_output.toPlainText()
         )
 
+    def _run_destructive_with_listing(
+        self,
+        action_key: str,
+        command: str,
+        run_args: list[str],
+        title: str,
+        gerund: str,
+        plural: str,
+        match_word: str,
+        and_abort: bool = False,
+    ) -> None:
+        """
+        Confirm and run a destructive action, listing the affected entities.
+        Enumerates via '<command> -D --json' first: with no affected entities,
+        log a message and do nothing; on enumeration failure, confirm at the
+        scope level (without a list). The '-y'/per-action-skip bypasses run the
+        command directly without enumerating. 'gerund'/'plural' describe the
+        action (e.g. 'Cancelling'/'Work Requirements') and 'match_word' is how
+        the CLI selects entities ('tags' or 'names').
+        """
+        if self._confirmations_disabled or action_key in self._skip_confirmations:
+            self._run_command_in_subprocess(command, run_args)
+            return
+
+        names = self._capture_dry_run_entities(command)
+
+        if not names and names is not None:
+            self._log(f"No matching {plural}{self._scope_phrase(match_word)}")
+            return
+
+        abort_clause = ", and aborting their running tasks" if and_abort else ""
+        body = (
+            f"{gerund} {plural}{self._scope_phrase(match_word)}{abort_clause}."
+            "\n\nThis cannot be undone."
+        )
+        if names is None:
+            self._log("Could not list affected entities; confirming by scope instead")
+
+        if self._confirm_destructive(action_key, title, body, names=names):
+            self._run_command_in_subprocess(command, run_args)
+
     def _cancel_work_requirements_action(self):
-        self._run_command_in_subprocess("yd-cancel", ["-y"])
+        self._run_destructive_with_listing(
+            action_key="cancel",
+            command="yd-cancel",
+            run_args=["-y"],
+            title="Cancel Work Requirements",
+            gerund="Cancelling",
+            plural="Work Requirements",
+            match_word="tags",
+        )
 
     def _cancel_work_requirements_and_abort_action(self):
-        self._run_command_in_subprocess("yd-cancel", ["-ay"])
+        self._run_destructive_with_listing(
+            action_key="cancel_abort",
+            command="yd-cancel",
+            run_args=["-ay"],
+            title="Cancel and Abort Work Requirements",
+            gerund="Cancelling",
+            plural="Work Requirements",
+            match_word="tags",
+            and_abort=True,
+        )
 
     def _create_worker_pool_action(self):
         if self._wp_file is None:
@@ -569,10 +818,26 @@ class YellowDogApp(QMainWindow):
         self._run_command_in_subprocess("yd-provision", args)
 
     def _shutdown_all_worker_pools_action(self):
-        self._run_command_in_subprocess("yd-shutdown", ["-y"])
+        self._run_destructive_with_listing(
+            action_key="shutdown",
+            command="yd-shutdown",
+            run_args=["-y"],
+            title="Shut Down Worker Pools",
+            gerund="Shutting down",
+            plural="Worker Pools",
+            match_word="names",
+        )
 
     def _terminate_all_compute_requirements_action(self):
-        self._run_command_in_subprocess("yd-terminate", ["-y"])
+        self._run_destructive_with_listing(
+            action_key="terminate",
+            command="yd-terminate",
+            run_args=["-y"],
+            title="Terminate Compute Requirements",
+            gerund="Terminating",
+            plural="Compute Requirements",
+            match_word="tags",
+        )
 
     def _namespace_tag_and_user_vars(self) -> list[str]:
         # Split out a list of variables of the form "x=y",
@@ -599,6 +864,37 @@ class YellowDogApp(QMainWindow):
 
         return namespace_tag_user_vars
 
+    def _build_command_args(
+        self, command: str, args: list[str], yd_command: bool
+    ) -> list[str]:
+        """
+        Decorate a command's arguments for execution. For 'yd-' commands this
+        injects the config source ('-c <file>' or '--nc'), the namespace / tag /
+        user variables, and the '--nf'/'--pp' flags. Non-yd commands are
+        returned unchanged.
+        """
+        if yd_command:
+            return (
+                self._config_source_args()
+                + ["--nf", "--pp"]
+                + self._namespace_tag_and_user_vars()
+                + args
+            )
+
+        if command.startswith("yd-"):
+            args = list(args)
+            # Use the selected config source unless one is set explicitly
+            # (or config use is explicitly disabled) on the command line.
+            if not ({"-c", "--config", "--no-config", "--nc"} & set(args)):
+                args = self._config_source_args() + args
+            # Ensure user-defined variables can be overridden by commands
+            # by specifying them first.
+            for index, var in enumerate(self._namespace_tag_and_user_vars()):
+                args.insert(index, var)
+            args += ["--nf", "--pp"]
+
+        return args
+
     def _run_command_in_subprocess(
         self,
         command: str,
@@ -610,26 +906,7 @@ class YellowDogApp(QMainWindow):
         Run a command in a subprocess, with adaptations for 'yd-'
         commands.
         """
-        if not self._check_config_file():
-            return
-
-        if yd_command:
-            args = (
-                ["-c", self._config_basename(), "--nf", "--pp"]
-                + self._namespace_tag_and_user_vars()
-                + args
-            )
-        else:
-            if command.startswith("yd-"):
-                # Use the selected config file unless one is set explicitly
-                # (or config use is explicitly disabled)
-                if not ({"-c", "--config", "--no-config", "--nc"} & set(args)):
-                    args = ["-c", self._config_basename()] + args
-                # Ensure user-defined variables can be overridden
-                # by commands by specifying them first
-                for index, var in enumerate(self._namespace_tag_and_user_vars()):
-                    args.insert(index, var)
-                args += ["--nf", "--pp"]
+        args = self._build_command_args(command, args, yd_command)
 
         process = QProcess(self)
         process_env: QProcessEnvironment = process.processEnvironment()
@@ -655,11 +932,10 @@ class YellowDogApp(QMainWindow):
 
         command_line_text = (command + " " + " ".join(args)).rstrip()
         self._log(
-            f"Executing: '{command_line_text}' in directory"
-            f" '{dirname(cast(str, self._config_file))}'"
+            f"Executing: '{command_line_text}' in directory '{self._working_dir()}'"
         )
 
-        process.setWorkingDirectory(self._config_dir())
+        process.setWorkingDirectory(self._working_dir())
         process.start(command, args)
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
@@ -686,14 +962,10 @@ class YellowDogApp(QMainWindow):
         self.stdin_input.setPlainText("")
 
     def _view_results_action(self):
-        if not self._check_config_file():
-            return
-        self._open_file_viewer(join(self._config_dir(), RESULTS_DIR))
+        self._open_file_viewer(join(self._working_dir(), RESULTS_DIR))
 
     def _view_config_directory_action(self):
-        if not self._check_config_file():
-            return
-        self._open_file_viewer(self._config_dir())
+        self._open_file_viewer(self._working_dir())
 
     def _open_file_viewer(self, directory: str):
         if not exists(directory):
@@ -986,7 +1258,7 @@ class YellowDogApp(QMainWindow):
         return None if file_name[0] == "" else file_name[0]
 
 
-def run_app(config_file: str | None = None):
+def run_app(config_file: str | None = None, disable_confirmations: bool = False):
     try:
         if WINDOWS:
             # noinspection PyUnresolvedReferences
@@ -996,7 +1268,7 @@ def run_app(config_file: str | None = None):
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
-        win = YellowDogApp(config_file)
+        win = YellowDogApp(config_file, disable_confirmations)
         win.setWindowIcon(icon)
 
         cast(QLayout, win.layout()).activate()

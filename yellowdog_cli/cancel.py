@@ -12,6 +12,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
     get_filtered_work_requirement_summaries,
     get_work_requirement_summary_by_name_or_id,
@@ -48,6 +49,16 @@ def main():
             ],
         )
     )
+
+    if ARGS_PARSER.dry_run:
+        report_dry_run(
+            CLIENT,
+            selected_work_requirement_summaries,
+            "Work Requirement",
+            "cancelled",
+            bool(ARGS_PARSER.json_output),
+        )
+        return
 
     cancelled_count = 0
     cancelling_count = 0

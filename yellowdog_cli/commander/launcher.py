@@ -22,6 +22,12 @@ def main():
         metavar="<config_file.toml>",
         help="optional TOML configuration file to pre-select on startup",
     )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="disable destructive-action confirmation dialogs",
+    )
     args = parser.parse_args()
 
     try:
@@ -33,7 +39,7 @@ def main():
     # Imported only after the guard passes (this import pulls in PyQt6).
     from yellowdog_cli.commander.commander import run_app
 
-    run_app(args.config_file)
+    run_app(args.config_file, args.yes)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ offscreen and _run_command_in_subprocess is stubbed to capture the command
 instead of spawning a process, so no yd-* command is actually run.
 """
 
+import os
 from os.path import abspath, dirname, join
 
 import pytest
@@ -29,6 +30,31 @@ def captured(window, monkeypatch):
         lambda command, args, **kwargs: calls.append((command, args)),
     )
     return calls
+
+
+# --- Config-source helpers ---------------------------------------------------
+
+
+def test_config_source_args_no_config(window):
+    window._config_file = None
+    assert window._config_source_args() == ["--nc"]
+
+
+def test_config_source_args_with_config(window):
+    window._config_file = "some/dir/config.toml"
+    assert window._config_source_args() == ["-c", "config.toml"]
+
+
+def test_working_dir_no_config(window):
+    window._config_file = None
+    assert window._working_dir() == os.getcwd()
+
+
+def test_working_dir_with_config(window):
+    window._config_file = "some/dir/config.toml"
+    assert window._working_dir() == os.path.dirname(
+        os.path.abspath("some/dir/config.toml")
+    )
 
 
 # --- Submit Work Requirement -------------------------------------------------
@@ -97,27 +123,232 @@ def test_provision_dry_run(window, captured):
     assert captured == [("yd-provision", ["-D"])]
 
 
-# --- Cancel / Shutdown / Terminate -------------------------------------------
+# --- Destructive-action confirmations ----------------------------------------
 
 
-def test_cancel(window, captured):
-    window._cancel_work_requirements_action()
-    assert captured == [("yd-cancel", ["-y"])]
+def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    for method, command, args in [
+        ("_cancel_work_requirements_action", "yd-cancel", ["-y"]),
+        ("_cancel_work_requirements_and_abort_action", "yd-cancel", ["-ay"]),
+        ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y"]),
+        ("_terminate_all_compute_requirements_action", "yd-terminate", ["-y"]),
+    ]:
+        captured.clear()
+        getattr(window, method)()
+        assert captured == [(command, args)]
 
 
-def test_cancel_and_abort(window, captured):
-    window._cancel_work_requirements_and_abort_action()
-    assert captured == [("yd-cancel", ["-ay"])]
+def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    for method in (
+        "_cancel_work_requirements_action",
+        "_cancel_work_requirements_and_abort_action",
+        "_shutdown_all_worker_pools_action",
+        "_terminate_all_compute_requirements_action",
+    ):
+        getattr(window, method)()
+    assert captured == []
 
 
-def test_shutdown(window, captured):
-    window._shutdown_all_worker_pools_action()
-    assert captured == [("yd-shutdown", ["-y"])]
+def test_destructive_empty_set_logs_and_skips(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: [])
+    window.log_output.setPlainText("")
+    window._terminate_all_compute_requirements_action()
+    assert captured == []
+    assert "No matching Compute Requirements" in window.log_output.toPlainText()
 
 
-def test_terminate(window, captured):
+def test_destructive_passes_names_to_dialog(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command: ["cr-1", "cr-2"]
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._namespace, window._tag = "yd-demo", "pyex"
     window._terminate_all_compute_requirements_action()
     assert captured == [("yd-terminate", ["-y"])]
+    body, names = calls[0]
+    assert (
+        "Terminating Compute Requirements in namespace 'yd-demo'"
+        " with tags including 'pyex'" in body
+    )
+    assert names == ["cr-1", "cr-2"]
+
+
+def test_destructive_enumeration_failure_falls_back_to_scope(
+    window, captured, monkeypatch
+):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: None)
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
+    body, names = calls[0]
+    assert "Terminating Compute Requirements" in body
+    assert names is None  # scope-level fallback lists no names
+
+
+def test_build_destructive_dialog_lists_names(window):
+    from PyQt6.QtWidgets import QDialogButtonBox, QPlainTextEdit
+
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Terminate", "Terminate 2?", ["cr-1", "cr-2"]
+    )
+    listing = dialog.findChild(QPlainTextEdit, "entity_listing")
+    assert listing is not None
+    assert listing.toPlainText() == "cr-1\ncr-2"
+    assert listing.lineWrapMode() == QPlainTextEdit.LineWrapMode.NoWrap
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+    assert {b.text() for b in box.buttons()} == {"No", "Yes", "Yes (Don't Ask Again)"}
+
+
+def test_build_destructive_dialog_without_names_has_no_listing(window):
+    from PyQt6.QtWidgets import QPlainTextEdit
+
+    dialog, _yes, _skip = window._build_destructive_dialog("Delete", "Delete?", None)
+    assert dialog.findChild(QPlainTextEdit, "entity_listing") is None
+
+
+def test_bypass_skips_enumeration(window, captured, monkeypatch):
+    def _fail(command):
+        raise AssertionError("enumeration must not run when confirmations are skipped")
+
+    monkeypatch.setattr(window, "_capture_dry_run_entities", _fail)
+    window._skip_confirmations = {"terminate"}
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
+
+
+def test_delete_runs_when_confirmed(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+
+
+def test_delete_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    window._delete_objects_action()
+    assert captured == []
+
+
+def test_delete_lists_matched_objects(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: ["a.txt", "sub/"],
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    body, names = calls[0]
+    assert "my-tag*" in body
+    assert names == ["a.txt", "sub/"]
+
+
+def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: []
+    )
+    window._tag = "my-tag"
+    window.log_output.setPlainText("")
+    window._delete_objects_action()
+    assert captured == []
+    assert "No objects match 'my-tag*'" in window.log_output.toPlainText()
+
+
+def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: None
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    _body, names = calls[0]
+    assert names is None
+
+
+def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
+    # Dry run is a harmless preview: it must run even when confirmation is denied.
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    window._tag = "my-tag"
+    window.dry_run_objects.setChecked(True)
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*", "-D"])]
+
+
+def test_skip_confirmations_key_short_circuits(window, captured):
+    # With this action's key in the bypass set, no dialog is created (exec would
+    # block offscreen) and the command runs directly.
+    window._skip_confirmations = {"terminate"}
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
+
+
+def test_yes_flag_disables_all_confirmations(qapp):
+    # Launching with disable_confirmations=True (the -y/--yes flag) makes every
+    # destructive action auto-confirm with no dialog, across all action keys.
+    win = YellowDogApp(disable_confirmations=True)
+    assert win._confirm_destructive("terminate", "t", "b") is True
+    assert win._confirm_destructive("delete", "t", "b") is True
+
+
+def test_confirmations_enabled_by_default(window):
+    # Default construction leaves confirmations enabled.
+    assert window._confirmations_disabled is False
+
+
+def test_skip_confirmations_is_per_action(window):
+    # The bypass is per-action: a key present short-circuits its own action, but
+    # a different action's key is unaffected. Assert directly on the helper's
+    # short-circuit (no dialog is created when the key is present).
+    window._skip_confirmations = {"terminate"}
+    assert window._confirm_destructive("terminate", "t", "b") is True
+    assert "shutdown" not in window._skip_confirmations
+
+
+def test_scope_phrase_tags_and_names(window):
+    window._namespace, window._tag = "ns", "tg"
+    assert window._scope_phrase("tags") == " in namespace 'ns' with tags including 'tg'"
+    assert (
+        window._scope_phrase("names") == " in namespace 'ns' with names including 'tg'"
+    )
+
+
+def test_scope_phrase_generic_when_unknown(window):
+    window._namespace = None
+    window._tag = None
+    assert window._scope_phrase("tags") == " in the current namespace and tag"
 
 
 # --- Download / Delete -------------------------------------------------------
@@ -136,6 +367,18 @@ def test_delete_with_path_override_and_dry_run(window, captured):
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "prefix/*", "-D"])]
+
+
+# --- Results / view actions work without a config file -----------------------
+
+
+def test_download_results_no_config_uses_cwd(window, captured):
+    window._config_file = None
+    expected_path = window._object_path()
+    window._download_results_action()
+    assert captured == [
+        ("yd-download", ["-d", os.path.join(os.getcwd(), RESULTS_DIR), expected_path])
+    ]
 
 
 # --- Namespace / tag / user-variable assembly --------------------------------
@@ -201,3 +444,43 @@ def test_follow_and_dry_run_are_mutually_exclusive_worker_pool(window):
     assert window.follow_worker_pool.isChecked() is False
     window.follow_worker_pool.setChecked(True)
     assert window.dry_run_worker_pool.isChecked() is False
+
+
+# --- Command-arg construction (config source injection) ----------------------
+
+
+def test_build_args_yd_command_no_config(window):
+    window._config_file = None
+    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    assert args == ["--nc", "--nf", "--pp", "-r", "wr.json"]
+
+
+def test_build_args_yd_command_with_config(window):
+    window._config_file = "d/config.toml"
+    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    assert args == ["-c", "config.toml", "--nf", "--pp", "-r", "wr.json"]
+
+
+def test_build_args_any_yd_command_no_config(window):
+    window._config_file = None
+    args = window._build_command_args("yd-list", ["-w"], yd_command=False)
+    assert args == ["--nc", "-w", "--nf", "--pp"]
+
+
+def test_build_args_any_yd_command_with_config(window):
+    window._config_file = "d/config.toml"
+    args = window._build_command_args("yd-list", ["-w"], yd_command=False)
+    assert args == ["-c", "config.toml", "-w", "--nf", "--pp"]
+
+
+def test_build_args_any_yd_command_respects_user_config_flag(window):
+    window._config_file = None
+    # User already supplied a config flag: do not inject another.
+    args = window._build_command_args("yd-list", ["--nc", "-w"], yd_command=False)
+    assert args == ["--nc", "-w", "--nf", "--pp"]
+
+
+def test_build_args_shell_command_unchanged(window):
+    window._config_file = None
+    args = window._build_command_args("sh", ["-c", "ls"], yd_command=False)
+    assert args == ["-c", "ls"]
