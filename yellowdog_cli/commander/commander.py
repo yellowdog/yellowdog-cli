@@ -57,13 +57,17 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QLayout,
     QMainWindow,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QStyle,
+    QVBoxLayout,
     QWidget,
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
@@ -549,22 +553,31 @@ class YellowDogApp(QMainWindow):
         override = self.object_path_override.toPlainText().strip()
         return override if override else f"{self._tag}*"
 
-    def _scope_suffix(self) -> str:
+    def _scope_phrase(self, match_word: str) -> str:
         """
-        A human-readable ' in namespace X with tag Y' suffix for confirmation
-        messages, using the discovered namespace/tag. Returns a generic phrase
-        when neither is known.
+        A human-readable ' in namespace X with <match_word> including Y' phrase
+        describing how the CLI selects entities: Work Requirements and Compute
+        Requirements are matched by tag ('tags'), Worker Pools by name ('names').
+        Uses the discovered namespace/tag, degrading gracefully when unknown.
         """
-        parts = []
+        if self._namespace and self._tag:
+            return (
+                f" in namespace '{self._namespace}'"
+                f" with {match_word} including '{self._tag}'"
+            )
         if self._namespace:
-            parts.append(f"namespace '{self._namespace}'")
+            return f" in namespace '{self._namespace}'"
         if self._tag:
-            parts.append(f"tag '{self._tag}'")
-        if not parts:
-            return " in the current namespace and tag"
-        return " in " + " with ".join(parts)
+            return f" with {match_word} including '{self._tag}'"
+        return " in the current namespace and tag"
 
-    def _confirm_destructive(self, action_key: str, title: str, body: str) -> bool:
+    def _confirm_destructive(
+        self,
+        action_key: str,
+        title: str,
+        body: str,
+        names: list[str] | None = None,
+    ) -> bool:
         """
         Show a warning confirmation dialog for a destructive action. Returns
         True if the action should proceed. 'Yes (Don't Ask Again)' confirms and
@@ -574,22 +587,108 @@ class YellowDogApp(QMainWindow):
         """
         if self._confirmations_disabled or action_key in self._skip_confirmations:
             return True
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(title)
-        box.setText(body)
-        no_btn = box.addButton("No", QMessageBox.ButtonRole.NoRole)
-        yes_btn = box.addButton("Yes", QMessageBox.ButtonRole.YesRole)
-        skip_btn = box.addButton(
-            "Yes (Don't Ask Again)", QMessageBox.ButtonRole.YesRole
+        dialog, yes_btn, skip_btn = self._build_destructive_dialog(title, body, names)
+        buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))
+        clicked: dict[str, object] = {}
+        buttons.clicked.connect(
+            lambda button: (clicked.__setitem__("button", button), dialog.accept())
         )
-        box.setDefaultButton(no_btn)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is skip_btn:
+        dialog.exec()
+        if clicked.get("button") is skip_btn:
             self._skip_confirmations.add(action_key)
             return True
-        return clicked is yes_btn
+        return clicked.get("button") is yes_btn
+
+    def _build_destructive_dialog(
+        self, title: str, message: str, names: list[str] | None
+    ) -> tuple[QDialog, QPushButton, QPushButton]:
+        """
+        Build (but do not show) the destructive-action confirmation dialog: a
+        warning icon and message, an optional read-only, monospaced, non-wrapping
+        (scrollable) list of affected entity names, and No / Yes / Yes (Don't Ask
+        Again) buttons (default No). Returns the dialog and the Yes / skip buttons
+        so the caller can identify which was clicked. A plain QDialog is used
+        rather than QMessageBox so the entity list has full formatting control
+        (no ugly wrapping) and no native-alert 'detailed text' limitations.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        layout = QVBoxLayout(dialog)
+
+        header = QHBoxLayout()
+        icon_label = QLabel()
+        icon_label.setPixmap(
+            cast(QStyle, self.style())
+            .standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+            .pixmap(QSize(48, 48))
+        )
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header.addWidget(icon_label)
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        header.addWidget(message_label, stretch=1)
+        layout.addLayout(header)
+
+        if names:
+            listing = QPlainTextEdit()
+            listing.setObjectName("entity_listing")
+            listing.setReadOnly(True)
+            listing.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+            listing.setFont(self._font)
+            listing.setPlainText("\n".join(names))
+            layout.addWidget(listing)
+
+        button_box = QDialogButtonBox()
+        no_btn = cast(
+            QPushButton,
+            button_box.addButton("No", QDialogButtonBox.ButtonRole.RejectRole),
+        )
+        yes_btn = button_box.addButton("Yes", QDialogButtonBox.ButtonRole.AcceptRole)
+        skip_btn = button_box.addButton(
+            "Yes (Don't Ask Again)", QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        no_btn.setDefault(True)
+        layout.addWidget(button_box)
+
+        return dialog, cast(QPushButton, yes_btn), cast(QPushButton, skip_btn)
+
+    def _capture_dry_run_entities(self, command: str) -> list[str] | None:
+        """
+        Run '<command> -D --json' (quiet, no formatting) with the current config
+        source and namespace/tag/user variables, and return the affected entity
+        names parsed from the JSON array. Return None on any failure (process
+        error, non-zero exit, or unparseable output) so the caller can fall back
+        to a scope-level confirmation.
+        """
+        yd_process = QProcess()
+        event_loop = QEventLoop()
+
+        env = QProcessEnvironment.systemEnvironment()
+        yd_process.setProcessEnvironment(env)
+        yd_process.setWorkingDirectory(self._working_dir())
+
+        yd_process.finished.connect(event_loop.quit)
+        yd_process.errorOccurred.connect(event_loop.quit)
+
+        args = (
+            self._config_source_args()
+            + ["--nf", "-q", "-D", "--json"]
+            + self._namespace_tag_and_user_vars()
+        )
+        yd_process.start(command, args)
+        event_loop.exec()
+
+        if yd_process.error() != QProcess.ProcessError.UnknownError:
+            return None
+        if yd_process.exitCode() != 0:
+            return None
+
+        output = yd_process.readAllStandardOutput().data().decode().strip()
+        try:
+            parsed = loads(output)
+            return [obj.get("name") for obj in parsed if obj.get("name")]
+        except Exception:
+            return None
 
     def _download_results_action(self):
         """
@@ -626,25 +725,69 @@ class YellowDogApp(QMainWindow):
             self.log_output.toPlainText()
         )
 
-    def _cancel_work_requirements_action(self):
-        if not self._confirm_destructive(
-            "cancel",
-            "Cancel Work Requirements",
-            f"Cancel ALL work requirements{self._scope_suffix()}?"
-            "\n\nThis cannot be undone.",
-        ):
+    def _run_destructive_with_listing(
+        self,
+        action_key: str,
+        command: str,
+        run_args: list[str],
+        title: str,
+        gerund: str,
+        plural: str,
+        match_word: str,
+        and_abort: bool = False,
+    ) -> None:
+        """
+        Confirm and run a destructive action, listing the affected entities.
+        Enumerates via '<command> -D --json' first: with no affected entities,
+        log a message and do nothing; on enumeration failure, confirm at the
+        scope level (without a list). The '-y'/per-action-skip bypasses run the
+        command directly without enumerating. 'gerund'/'plural' describe the
+        action (e.g. 'Cancelling'/'Work Requirements') and 'match_word' is how
+        the CLI selects entities ('tags' or 'names').
+        """
+        if self._confirmations_disabled or action_key in self._skip_confirmations:
+            self._run_command_in_subprocess(command, run_args)
             return
-        self._run_command_in_subprocess("yd-cancel", ["-y"])
+
+        names = self._capture_dry_run_entities(command)
+
+        if not names and names is not None:
+            self._log(f"No matching {plural}{self._scope_phrase(match_word)}")
+            return
+
+        abort_clause = ", and aborting their running tasks" if and_abort else ""
+        body = (
+            f"{gerund} {plural}{self._scope_phrase(match_word)}{abort_clause}."
+            "\n\nThis cannot be undone."
+        )
+        if names is None:
+            self._log("Could not list affected entities; confirming by scope instead")
+
+        if self._confirm_destructive(action_key, title, body, names=names):
+            self._run_command_in_subprocess(command, run_args)
+
+    def _cancel_work_requirements_action(self):
+        self._run_destructive_with_listing(
+            action_key="cancel",
+            command="yd-cancel",
+            run_args=["-y"],
+            title="Cancel Work Requirements",
+            gerund="Cancelling",
+            plural="Work Requirements",
+            match_word="tags",
+        )
 
     def _cancel_work_requirements_and_abort_action(self):
-        if not self._confirm_destructive(
-            "cancel_abort",
-            "Cancel and Abort Work Requirements",
-            f"Cancel ALL work requirements{self._scope_suffix()} and abort their"
-            " running tasks?\n\nThis cannot be undone.",
-        ):
-            return
-        self._run_command_in_subprocess("yd-cancel", ["-ay"])
+        self._run_destructive_with_listing(
+            action_key="cancel_abort",
+            command="yd-cancel",
+            run_args=["-ay"],
+            title="Cancel and Abort Work Requirements",
+            gerund="Cancelling",
+            plural="Work Requirements",
+            match_word="tags",
+            and_abort=True,
+        )
 
     def _create_worker_pool_action(self):
         if self._wp_file is None:
@@ -659,24 +802,26 @@ class YellowDogApp(QMainWindow):
         self._run_command_in_subprocess("yd-provision", args)
 
     def _shutdown_all_worker_pools_action(self):
-        if not self._confirm_destructive(
-            "shutdown",
-            "Shut Down Worker Pools",
-            f"Shut down ALL worker pools{self._scope_suffix()}?"
-            "\n\nThis cannot be undone.",
-        ):
-            return
-        self._run_command_in_subprocess("yd-shutdown", ["-y"])
+        self._run_destructive_with_listing(
+            action_key="shutdown",
+            command="yd-shutdown",
+            run_args=["-y"],
+            title="Shut Down Worker Pools",
+            gerund="Shutting down",
+            plural="Worker Pools",
+            match_word="names",
+        )
 
     def _terminate_all_compute_requirements_action(self):
-        if not self._confirm_destructive(
-            "terminate",
-            "Terminate Compute Requirements",
-            f"Terminate ALL compute requirements{self._scope_suffix()}?"
-            "\n\nThis cannot be undone.",
-        ):
-            return
-        self._run_command_in_subprocess("yd-terminate", ["-y"])
+        self._run_destructive_with_listing(
+            action_key="terminate",
+            command="yd-terminate",
+            run_args=["-y"],
+            title="Terminate Compute Requirements",
+            gerund="Terminating",
+            plural="Compute Requirements",
+            match_word="tags",
+        )
 
     def _namespace_tag_and_user_vars(self) -> list[str]:
         # Split out a list of variables of the form "x=y",

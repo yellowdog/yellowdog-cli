@@ -126,24 +126,22 @@ def test_provision_dry_run(window, captured):
 # --- Destructive-action confirmations ----------------------------------------
 
 
-@pytest.mark.parametrize(
-    "method,command,args",
-    [
+def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    for method, command, args in [
         ("_cancel_work_requirements_action", "yd-cancel", ["-y"]),
         ("_cancel_work_requirements_and_abort_action", "yd-cancel", ["-ay"]),
         ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y"]),
         ("_terminate_all_compute_requirements_action", "yd-terminate", ["-y"]),
-    ],
-)
-def test_destructive_action_runs_when_confirmed(
-    window, captured, monkeypatch, method, command, args
-):
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
-    getattr(window, method)()
-    assert captured == [(command, args)]
+    ]:
+        captured.clear()
+        getattr(window, method)()
+        assert captured == [(command, args)]
 
 
 def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
     monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
     for method in (
         "_cancel_work_requirements_action",
@@ -153,6 +151,84 @@ def test_destructive_action_declined_does_not_run(window, captured, monkeypatch)
     ):
         getattr(window, method)()
     assert captured == []
+
+
+def test_destructive_empty_set_logs_and_skips(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: [])
+    window.log_output.setPlainText("")
+    window._terminate_all_compute_requirements_action()
+    assert captured == []
+    assert "No matching Compute Requirements" in window.log_output.toPlainText()
+
+
+def test_destructive_passes_names_to_dialog(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command: ["cr-1", "cr-2"]
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._namespace, window._tag = "yd-demo", "pyex"
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
+    body, names = calls[0]
+    assert (
+        "Terminating Compute Requirements in namespace 'yd-demo'"
+        " with tags including 'pyex'" in body
+    )
+    assert names == ["cr-1", "cr-2"]
+
+
+def test_destructive_enumeration_failure_falls_back_to_scope(
+    window, captured, monkeypatch
+):
+    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: None)
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append((body, names)) or True,
+    )
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
+    body, names = calls[0]
+    assert "Terminating Compute Requirements" in body
+    assert names is None  # scope-level fallback lists no names
+
+
+def test_build_destructive_dialog_lists_names(window):
+    from PyQt6.QtWidgets import QDialogButtonBox, QPlainTextEdit
+
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Terminate", "Terminate 2?", ["cr-1", "cr-2"]
+    )
+    listing = dialog.findChild(QPlainTextEdit, "entity_listing")
+    assert listing is not None
+    assert listing.toPlainText() == "cr-1\ncr-2"
+    assert listing.lineWrapMode() == QPlainTextEdit.LineWrapMode.NoWrap
+    box = dialog.findChild(QDialogButtonBox)
+    assert box is not None
+    assert {b.text() for b in box.buttons()} == {"No", "Yes", "Yes (Don't Ask Again)"}
+
+
+def test_build_destructive_dialog_without_names_has_no_listing(window):
+    from PyQt6.QtWidgets import QPlainTextEdit
+
+    dialog, _yes, _skip = window._build_destructive_dialog("Delete", "Delete?", None)
+    assert dialog.findChild(QPlainTextEdit, "entity_listing") is None
+
+
+def test_bypass_skips_enumeration(window, captured, monkeypatch):
+    def _fail(command):
+        raise AssertionError("enumeration must not run when confirmations are skipped")
+
+    monkeypatch.setattr(window, "_capture_dry_run_entities", _fail)
+    window._skip_confirmations = {"terminate"}
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y"])]
 
 
 def test_delete_runs_when_confirmed(window, captured, monkeypatch):
@@ -207,15 +283,18 @@ def test_skip_confirmations_is_per_action(window):
     assert "shutdown" not in window._skip_confirmations
 
 
-def test_scope_suffix_with_namespace_and_tag(window):
+def test_scope_phrase_tags_and_names(window):
     window._namespace, window._tag = "ns", "tg"
-    assert window._scope_suffix() == " in namespace 'ns' with tag 'tg'"
+    assert window._scope_phrase("tags") == " in namespace 'ns' with tags including 'tg'"
+    assert (
+        window._scope_phrase("names") == " in namespace 'ns' with names including 'tg'"
+    )
 
 
-def test_scope_suffix_generic_when_unknown(window):
+def test_scope_phrase_generic_when_unknown(window):
     window._namespace = None
     window._tag = None
-    assert window._scope_suffix() == " in the current namespace and tag"
+    assert window._scope_phrase("tags") == " in the current namespace and tag"
 
 
 # --- Download / Delete -------------------------------------------------------
