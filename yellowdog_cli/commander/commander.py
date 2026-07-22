@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-GUI application for driving YellowDog applications & demos.
+YellowDog Commander: GUI application for driving the YellowDog CLI
 """
 
 import os
@@ -69,7 +69,7 @@ from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
-DEMO_ROOT = os.getcwd()  # default dir for file dialogs when no config selected
+CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
@@ -440,7 +440,7 @@ class YellowDogApp(QMainWindow):
     def _select_config_file_action(self):
         file = self._select_file(
             caption="Please select a configuration file",
-            directory=(self._config_dir() if self._config_file else DEMO_ROOT),
+            directory=(self._config_dir() if self._config_file else CWD),
             file_pattern="*.toml",
         )
         if file is None:
@@ -492,7 +492,7 @@ class YellowDogApp(QMainWindow):
         return cast(QStyleHints, QApplication.styleHints()).colorScheme()
 
     def _select_work_requirement_action(self):
-        directory = DEMO_ROOT if self._config_file is None else self._config_dir()
+        directory = CWD if self._config_file is None else self._config_dir()
         file = self._select_file(
             caption="Please select a Work Requirement definition file",
             directory=directory,
@@ -505,7 +505,7 @@ class YellowDogApp(QMainWindow):
             self._log(f"Selected Work Requirement definition '{self._wr_file}'")
 
     def _select_worker_pool_action(self):
-        directory = DEMO_ROOT if self._config_file is None else self._config_dir()
+        directory = CWD if self._config_file is None else self._config_dir()
         file = self._select_file(
             caption="Please select a Worker Pool definition file",
             directory=directory,
