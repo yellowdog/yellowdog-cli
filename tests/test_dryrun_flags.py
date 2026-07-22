@@ -1,0 +1,38 @@
+"""
+Flag/guard tests for the dry-run mode on yd-cancel / yd-shutdown / yd-terminate.
+These exercise argument parsing only (the by-name guard errors at parse time,
+before any platform contact), so they need no credentials.
+"""
+
+import pytest
+from cli_test_helpers import shell
+
+
+@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+def test_dry_run_flag_in_help(cmd):
+    assert "--dry-run" in shell(f"{cmd} --help").stdout
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "yd-cancel -D some-wr-name",
+        "yd-shutdown -D some-wp-name",
+        "yd-terminate -D some-cr-name",
+    ],
+)
+def test_dry_run_with_explicit_names_errors(cmd):
+    # Guard: --dry-run + explicit names/IDs must error at parse time (exit 2),
+    # never falling through to the acting path.
+    result = shell(cmd)
+    assert result.exit_code == 2
+    assert "not supported with explicit names" in (result.stderr + result.stdout)
+
+
+@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+def test_json_without_dry_run_errors(cmd):
+    # --json only shapes the --dry-run output; on its own it must error at parse
+    # time rather than be silently ignored.
+    result = shell(f"{cmd} --json")
+    assert result.exit_code == 2
+    assert "only valid with --dry-run" in (result.stderr + result.stdout)

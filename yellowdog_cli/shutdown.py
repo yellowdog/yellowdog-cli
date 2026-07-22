@@ -13,6 +13,7 @@ from yellowdog_client.model import (
     WorkerPoolSummary,
 )
 
+from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
@@ -56,6 +57,16 @@ def main():
                 and CONFIG_COMMON.name_tag in worker_pool_summary.name
             ):
                 selected_worker_pool_summaries.append(worker_pool_summary)
+
+    if ARGS_PARSER.dry_run:
+        report_dry_run(
+            CLIENT,
+            selected_worker_pool_summaries,
+            "Worker Pool",
+            "shut down",
+            bool(ARGS_PARSER.json_output),
+        )
+        return
 
     if selected_worker_pool_summaries:
         selected_worker_pool_summaries = select(CLIENT, selected_worker_pool_summaries)

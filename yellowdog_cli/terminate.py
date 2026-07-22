@@ -16,6 +16,7 @@ from yellowdog_client.model import (
     NodeStatus,
 )
 
+from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_id_by_name,
     get_compute_requirement_id_by_worker_pool_id,
@@ -59,6 +60,16 @@ def main():
             VALID_TERMINATION_STATUSES,
         )
     )
+
+    if ARGS_PARSER.dry_run:
+        report_dry_run(
+            CLIENT,
+            compute_requirement_summaries,
+            "Compute Requirement",
+            "terminated",
+            bool(ARGS_PARSER.json_output),
+        )
+        return
 
     terminated_ids: list[str] = []
     selected_compute_requirement_summaries: list[ComputeRequirementSummary] = select(
