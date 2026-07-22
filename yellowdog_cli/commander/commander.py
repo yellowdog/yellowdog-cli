@@ -61,6 +61,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLayout,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QWidget,
@@ -177,8 +178,11 @@ class YellowDogApp(QMainWindow):
     next_command: QPushButton
     prev_command: QPushButton
 
-    def __init__(self, config_file: str | None = None):
+    def __init__(
+        self, config_file: str | None = None, disable_confirmations: bool = False
+    ):
         super().__init__()
+        self._confirmations_disabled = disable_confirmations
 
         # Dynamically loads the QT UI definition
         loadUi(join(_PKG_DIR, "commander.ui"), self)
@@ -266,6 +270,7 @@ class YellowDogApp(QMainWindow):
         self._config_file: str | None = None
         self._wr_file: str | None = None
         self._wp_file: str | None = None
+        self._skip_confirmations: set[str] = set()
 
         self._namespace: str | None = None
         self._tag: str | None = None
@@ -544,6 +549,48 @@ class YellowDogApp(QMainWindow):
         override = self.object_path_override.toPlainText().strip()
         return override if override else f"{self._tag}*"
 
+    def _scope_suffix(self) -> str:
+        """
+        A human-readable ' in namespace X with tag Y' suffix for confirmation
+        messages, using the discovered namespace/tag. Returns a generic phrase
+        when neither is known.
+        """
+        parts = []
+        if self._namespace:
+            parts.append(f"namespace '{self._namespace}'")
+        if self._tag:
+            parts.append(f"tag '{self._tag}'")
+        if not parts:
+            return " in the current namespace and tag"
+        return " in " + " with ".join(parts)
+
+    def _confirm_destructive(self, action_key: str, title: str, body: str) -> bool:
+        """
+        Show a warning confirmation dialog for a destructive action. Returns
+        True if the action should proceed. 'Yes (Don't Ask Again)' confirms and
+        suppresses future confirmations for this same action (identified by
+        action_key) for the rest of the session; the suppression is per-action,
+        not global.
+        """
+        if self._confirmations_disabled or action_key in self._skip_confirmations:
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(title)
+        box.setText(body)
+        no_btn = box.addButton("No", QMessageBox.ButtonRole.NoRole)
+        yes_btn = box.addButton("Yes", QMessageBox.ButtonRole.YesRole)
+        skip_btn = box.addButton(
+            "Yes (Don't Ask Again)", QMessageBox.ButtonRole.YesRole
+        )
+        box.setDefaultButton(no_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is skip_btn:
+            self._skip_confirmations.add(action_key)
+            return True
+        return clicked is yes_btn
+
     def _download_results_action(self):
         """
         Download matching objects from remote storage into the results directory.
@@ -558,8 +605,16 @@ class YellowDogApp(QMainWindow):
         """
         Delete matching objects from remote storage.
         """
+        dry_run = self.dry_run_objects.isChecked()
+        if not dry_run and not self._confirm_destructive(
+            "delete",
+            "Delete Objects",
+            f"Delete objects matching '{self._object_path()}'?"
+            "\n\nThis cannot be undone.",
+        ):
+            return
         args = ["-Ry", self._object_path()]
-        if self.dry_run_objects.isChecked():
+        if dry_run:
             args += ["-D"]
         self._run_command_in_subprocess("yd-delete", args)
 
@@ -572,9 +627,23 @@ class YellowDogApp(QMainWindow):
         )
 
     def _cancel_work_requirements_action(self):
+        if not self._confirm_destructive(
+            "cancel",
+            "Cancel Work Requirements",
+            f"Cancel ALL work requirements{self._scope_suffix()}?"
+            "\n\nThis cannot be undone.",
+        ):
+            return
         self._run_command_in_subprocess("yd-cancel", ["-y"])
 
     def _cancel_work_requirements_and_abort_action(self):
+        if not self._confirm_destructive(
+            "cancel_abort",
+            "Cancel and Abort Work Requirements",
+            f"Cancel ALL work requirements{self._scope_suffix()} and abort their"
+            " running tasks?\n\nThis cannot be undone.",
+        ):
+            return
         self._run_command_in_subprocess("yd-cancel", ["-ay"])
 
     def _create_worker_pool_action(self):
@@ -590,9 +659,23 @@ class YellowDogApp(QMainWindow):
         self._run_command_in_subprocess("yd-provision", args)
 
     def _shutdown_all_worker_pools_action(self):
+        if not self._confirm_destructive(
+            "shutdown",
+            "Shut Down Worker Pools",
+            f"Shut down ALL worker pools{self._scope_suffix()}?"
+            "\n\nThis cannot be undone.",
+        ):
+            return
         self._run_command_in_subprocess("yd-shutdown", ["-y"])
 
     def _terminate_all_compute_requirements_action(self):
+        if not self._confirm_destructive(
+            "terminate",
+            "Terminate Compute Requirements",
+            f"Terminate ALL compute requirements{self._scope_suffix()}?"
+            "\n\nThis cannot be undone.",
+        ):
+            return
         self._run_command_in_subprocess("yd-terminate", ["-y"])
 
     def _namespace_tag_and_user_vars(self) -> list[str]:
@@ -1014,7 +1097,7 @@ class YellowDogApp(QMainWindow):
         return None if file_name[0] == "" else file_name[0]
 
 
-def run_app(config_file: str | None = None):
+def run_app(config_file: str | None = None, disable_confirmations: bool = False):
     try:
         if WINDOWS:
             # noinspection PyUnresolvedReferences
@@ -1024,7 +1107,7 @@ def run_app(config_file: str | None = None):
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
-        win = YellowDogApp(config_file)
+        win = YellowDogApp(config_file, disable_confirmations)
         win.setWindowIcon(icon)
 
         cast(QLayout, win.layout()).activate()

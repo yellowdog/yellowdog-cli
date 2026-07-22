@@ -26,6 +26,8 @@ Optionally pass a configuration file as the first argument:
 yd-commander path/to/config.toml
 ```
 
+Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+
 Multiple instances can run simultaneously.
 
 ## How It Works
@@ -101,4 +103,4 @@ If a running command prompts for input, type into the **Command Input** field an
 
 ## A Note on Confirmations
 
-Cancellation, object download and deletion, Worker Pool shutdown, and Compute Requirement termination all operate **without asking for confirmation**, and act on **all** matching entities. Check the namespace, tag, and path you have set before using them.
+Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination act on **all** matching entities and cannot be undone, so each asks for confirmation before running. The dialog offers **Yes**, **No**, and **Yes (Don't Ask Again)**; the last confirms and suppresses further prompts for that same action for the rest of the session. Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session.

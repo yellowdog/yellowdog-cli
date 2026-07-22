@@ -123,27 +123,99 @@ def test_provision_dry_run(window, captured):
     assert captured == [("yd-provision", ["-D"])]
 
 
-# --- Cancel / Shutdown / Terminate -------------------------------------------
+# --- Destructive-action confirmations ----------------------------------------
 
 
-def test_cancel(window, captured):
-    window._cancel_work_requirements_action()
-    assert captured == [("yd-cancel", ["-y"])]
+@pytest.mark.parametrize(
+    "method,command,args",
+    [
+        ("_cancel_work_requirements_action", "yd-cancel", ["-y"]),
+        ("_cancel_work_requirements_and_abort_action", "yd-cancel", ["-ay"]),
+        ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y"]),
+        ("_terminate_all_compute_requirements_action", "yd-terminate", ["-y"]),
+    ],
+)
+def test_destructive_action_runs_when_confirmed(
+    window, captured, monkeypatch, method, command, args
+):
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    getattr(window, method)()
+    assert captured == [(command, args)]
 
 
-def test_cancel_and_abort(window, captured):
-    window._cancel_work_requirements_and_abort_action()
-    assert captured == [("yd-cancel", ["-ay"])]
+def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    for method in (
+        "_cancel_work_requirements_action",
+        "_cancel_work_requirements_and_abort_action",
+        "_shutdown_all_worker_pools_action",
+        "_terminate_all_compute_requirements_action",
+    ):
+        getattr(window, method)()
+    assert captured == []
 
 
-def test_shutdown(window, captured):
-    window._shutdown_all_worker_pools_action()
-    assert captured == [("yd-shutdown", ["-y"])]
+def test_delete_runs_when_confirmed(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window._tag = "my-tag"
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
 
 
-def test_terminate(window, captured):
+def test_delete_declined_does_not_run(window, captured, monkeypatch):
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    window._delete_objects_action()
+    assert captured == []
+
+
+def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
+    # Dry run is a harmless preview: it must run even when confirmation is denied.
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
+    window._tag = "my-tag"
+    window.dry_run_objects.setChecked(True)
+    window._delete_objects_action()
+    assert captured == [("yd-delete", ["-Ry", "my-tag*", "-D"])]
+
+
+def test_skip_confirmations_key_short_circuits(window, captured):
+    # With this action's key in the bypass set, no dialog is created (exec would
+    # block offscreen) and the command runs directly.
+    window._skip_confirmations = {"terminate"}
     window._terminate_all_compute_requirements_action()
     assert captured == [("yd-terminate", ["-y"])]
+
+
+def test_yes_flag_disables_all_confirmations(qapp):
+    # Launching with disable_confirmations=True (the -y/--yes flag) makes every
+    # destructive action auto-confirm with no dialog, across all action keys.
+    win = YellowDogApp(disable_confirmations=True)
+    assert win._confirm_destructive("terminate", "t", "b") is True
+    assert win._confirm_destructive("delete", "t", "b") is True
+
+
+def test_confirmations_enabled_by_default(window):
+    # Default construction leaves confirmations enabled.
+    assert window._confirmations_disabled is False
+
+
+def test_skip_confirmations_is_per_action(window):
+    # The bypass is per-action: a key present short-circuits its own action, but
+    # a different action's key is unaffected. Assert directly on the helper's
+    # short-circuit (no dialog is created when the key is present).
+    window._skip_confirmations = {"terminate"}
+    assert window._confirm_destructive("terminate", "t", "b") is True
+    assert "shutdown" not in window._skip_confirmations
+
+
+def test_scope_suffix_with_namespace_and_tag(window):
+    window._namespace, window._tag = "ns", "tg"
+    assert window._scope_suffix() == " in namespace 'ns' with tag 'tg'"
+
+
+def test_scope_suffix_generic_when_unknown(window):
+    window._namespace = None
+    window._tag = None
+    assert window._scope_suffix() == " in the current namespace and tag"
 
 
 # --- Download / Delete -------------------------------------------------------
