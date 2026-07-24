@@ -38,6 +38,21 @@ The full command line for every operation is echoed to the Command Output window
 
 A configuration file is optional: if none is selected, Commander runs the `yd-*` commands with `--no-config`, sourcing settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below, and results/downloads are written under the launch directory. Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
+## Naming and Matching Assumptions
+
+Commander's bulk management actions — cancelling Work Requirements, terminating Compute Requirements, shutting down Worker Pools, and downloading or deleting objects — do not act on a specific entity you name. Instead they select every entity that matches the current **namespace** and **tag**, so they assume you are using the CLI's default naming convention, in which the tag is embedded in the names, tags, and object paths of the entities you create.
+
+By default that convention holds automatically: when you submit or provision without overriding names, the CLI derives them from the tag. A Work Requirement is named `<tag>_<timestamp>` and tagged with the tag; a Compute Requirement is tagged with the tag; a Worker Pool's name incorporates the tag; and results are written to an object path beginning with the tag. The default namespace is `default` and the default tag is your username, both overridable in the configuration file, by the Namespace and Tag fields, or by environment variables.
+
+Given that convention, the management actions match as follows:
+
+- **Cancel Work Requirements** (`yd-cancel`) — Work Requirements in the namespace whose tag contains the current tag.
+- **Terminate Compute Requirements** (`yd-terminate`) — Compute Requirements in the namespace whose tag contains the current tag.
+- **Shut Down Worker Pools** (`yd-shutdown`) — Worker Pools in the namespace whose name contains the current tag.
+- **Download / Delete Matching Objects** (`yd-download` / `yd-delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
+
+Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind. If you override an entity's name, tag, or object path so that it no longer contains the tag, these actions will not find it. Conversely, a tag that is a substring of another (for example `test` also matches `test2`) will match more entities than you intend. Set the Namespace, Tag, and Path fields deliberately, and use the confirmation dialog's listing of affected items to check exactly what will be acted on before you proceed.
+
 ## Selecting a Configuration (Panel 1)
 
 Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
