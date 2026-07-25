@@ -47,6 +47,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import (
+    filter_summaries_by_name_glob,
     get_all_applications,
     get_all_groups,
     get_all_roles,
@@ -60,10 +61,12 @@ from yellowdog_cli.utils.entity_utils import (
     get_task_groups_from_wr_by_id,
     get_user_groups,
     get_worker_pool_summaries,
+    resolve_name_glob,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
+from yellowdog_cli.utils.glob_utils import glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import (
     print_info,
@@ -264,10 +267,6 @@ def list_work_requirements():
     This function falls through from WRs to TGs to Tasks, depending on the
     options chosen.
     """
-    print_info(
-        f"Listing Work Requirements in namespace  '{CONFIG_COMMON.namespace}' "
-        f"with '{CONFIG_COMMON.name_tag}' in tag",
-    )
     if ARGS_PARSER.active_only:
         print_info("Listing active Work Requirements only")
 
@@ -280,14 +279,35 @@ def list_work_requirements():
         if ARGS_PARSER.active_only
         else []
     )
-    work_requirement_summaries: list[WorkRequirementSummary] = (
-        get_filtered_work_requirement_summaries(
+    work_requirement_summaries: list[WorkRequirementSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Work Requirements in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        work_requirement_summaries = filter_summaries_by_name_glob(
+            get_filtered_work_requirement_summaries(
+                CLIENT,
+                name=glob_search_prefix(name) or None,
+                namespace=namespace,
+                exclude_filter=exclude_filter,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            f"Listing Work Requirements in namespace  '{CONFIG_COMMON.namespace}' "
+            f"with '{CONFIG_COMMON.name_tag}' in tag",
+        )
+        work_requirement_summaries = get_filtered_work_requirement_summaries(
             CLIENT,
             namespace=CONFIG_COMMON.namespace,
             tag=CONFIG_COMMON.name_tag,
             exclude_filter=exclude_filter,
         )
-    )
     if not work_requirement_summaries:
         _print_empty("No matching Work Requirements")
         return
@@ -380,17 +400,35 @@ def list_tasks(task_group: TaskGroup, _work_summary: WorkRequirementSummary):
 
 
 def list_worker_pools():
-    print_info(
-        f"Displaying Worker Pools in namespace '{CONFIG_COMMON.namespace}' "
-        f"with '{CONFIG_COMMON.name_tag}' in name"
-    )
-
-    worker_pool_summaries: list[WorkerPoolSummary] = get_worker_pool_summaries(
-        CLIENT,
-        CONFIG_COMMON.namespace,
-        CONFIG_COMMON.name_tag,
-        partial_name_matches=True,
-    )
+    worker_pool_summaries: list[WorkerPoolSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Displaying Worker Pools in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        worker_pool_summaries = filter_summaries_by_name_glob(
+            get_worker_pool_summaries(
+                CLIENT,
+                namespace,
+                glob_search_prefix(name) or None,
+                partial_name_matches=True,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            f"Displaying Worker Pools in namespace '{CONFIG_COMMON.namespace}' "
+            f"with '{CONFIG_COMMON.name_tag}' in name"
+        )
+        worker_pool_summaries = get_worker_pool_summaries(
+            CLIENT,
+            CONFIG_COMMON.namespace,
+            CONFIG_COMMON.name_tag,
+            partial_name_matches=True,
+        )
 
     excluded_states = (
         [WorkerPoolStatus.TERMINATED, WorkerPoolStatus.SHUTDOWN]
@@ -406,7 +444,10 @@ def list_worker_pools():
             wp_summary
             for wp_summary in worker_pool_summaries
             if wp_summary.status not in excluded_states
-            and CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
+            and (
+                bool(ARGS_PARSER.name_glob)
+                or CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
+            )
         ]
     )
 
@@ -459,12 +500,6 @@ def list_worker_pools():
 
 
 def list_compute_requirements():
-    print_info(
-        "Listing Compute Requirements in "
-        f"namespace '{CONFIG_COMMON.namespace}' with "
-        f" names containing '{CONFIG_COMMON.name_tag}'"
-    )
-
     if ARGS_PARSER.active_only:
         print_info("Listing active Compute Requirements only")
         included_statuses = [
@@ -478,11 +513,34 @@ def list_compute_requirements():
     else:
         included_statuses = None
 
-    compute_requirement_summaries: list[ComputeRequirementSummary] = (
-        get_compute_requirement_summaries(
+    compute_requirement_summaries: list[ComputeRequirementSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Compute Requirements in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        compute_requirement_summaries = filter_summaries_by_name_glob(
+            get_compute_requirement_summaries(
+                CLIENT,
+                namespace,
+                None,
+                included_statuses,
+                name=glob_search_prefix(name) or None,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            "Listing Compute Requirements in "
+            f"namespace '{CONFIG_COMMON.namespace}' with "
+            f" names containing '{CONFIG_COMMON.name_tag}'"
+        )
+        compute_requirement_summaries = get_compute_requirement_summaries(
             CLIENT, CONFIG_COMMON.namespace, CONFIG_COMMON.name_tag, included_statuses
         )
-    )
 
     if not compute_requirement_summaries:
         _print_empty("No matching Compute Requirements")

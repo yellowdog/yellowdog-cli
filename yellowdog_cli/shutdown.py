@@ -15,11 +15,13 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    expand_name_globs,
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
 )
 from yellowdog_cli.utils.follow_utils import follow_ids
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -29,34 +31,54 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 @main_wrapper
 def main():
-    if ARGS_PARSER.worker_pool_nodes_list:
-        shutdown_by_names_or_ids(ARGS_PARSER.worker_pool_nodes_list)
+    names = ARGS_PARSER.worker_pool_nodes_list or []
+    globs = [n for n in names if contains_glob_chars(n)]
+
+    if names and not globs:
+        shutdown_by_names_or_ids(names)
         return
 
-    print_info(
-        "Shutting down Worker Pools in "
-        f"namespace '{CONFIG_COMMON.namespace}' with "
-        f"names including '{CONFIG_COMMON.name_tag}'"
-    )
+    if globs:
+        print_info(
+            f"Shutting down Worker Pools matching {', '.join(repr(g) for g in globs)}"
+        )
+        worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
+            globs,
+            CONFIG_COMMON.namespace,
+            fetch=lambda namespace, prefix: get_worker_pool_summaries(
+                CLIENT, namespace, prefix or None, partial_name_matches=True
+            ),
+        )
+        selected_worker_pool_summaries: list[WorkerPoolSummary] = [
+            wp
+            for wp in worker_pool_summaries
+            if not wp.status.finished  # type: ignore[union-attr]
+        ]
+    else:
+        print_info(
+            "Shutting down Worker Pools in "
+            f"namespace '{CONFIG_COMMON.namespace}' with "
+            f"names including '{CONFIG_COMMON.name_tag}'"
+        )
 
-    worker_pool_summaries: list[WorkerPoolSummary] = get_worker_pool_summaries(
-        CLIENT,
-        CONFIG_COMMON.namespace,
-        CONFIG_COMMON.name_tag,
-        partial_name_matches=True,
-    )
+        worker_pool_summaries = get_worker_pool_summaries(
+            CLIENT,
+            CONFIG_COMMON.namespace,
+            CONFIG_COMMON.name_tag,
+            partial_name_matches=True,
+        )
+
+        selected_worker_pool_summaries = []
+        for worker_pool_summary in worker_pool_summaries:
+            if not worker_pool_summary.status.finished:  # type: ignore[union-attr]
+                if (
+                    worker_pool_summary.name is not None
+                    and worker_pool_summary.namespace == CONFIG_COMMON.namespace
+                    and CONFIG_COMMON.name_tag in worker_pool_summary.name
+                ):
+                    selected_worker_pool_summaries.append(worker_pool_summary)
 
     shutdown_count = 0
-
-    selected_worker_pool_summaries: list[WorkerPoolSummary] = []
-    for worker_pool_summary in worker_pool_summaries:
-        if not worker_pool_summary.status.finished:  # type: ignore[union-attr]
-            if (
-                worker_pool_summary.name is not None
-                and worker_pool_summary.namespace == CONFIG_COMMON.namespace
-                and CONFIG_COMMON.name_tag in worker_pool_summary.name
-            ):
-                selected_worker_pool_summaries.append(worker_pool_summary)
 
     if ARGS_PARSER.dry_run:
         report_dry_run(

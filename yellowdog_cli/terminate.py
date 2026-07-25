@@ -18,12 +18,14 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    expand_name_globs,
     get_compute_requirement_id_by_name,
     get_compute_requirement_id_by_worker_pool_id,
     get_compute_requirement_summaries,
     get_instance_by_id,
 )
 from yellowdog_cli.utils.follow_utils import follow_ids
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -42,24 +44,42 @@ VALID_TERMINATION_STATUSES = [
 
 @main_wrapper
 def main():
-    if ARGS_PARSER.compute_requirements_instances_or_nodes:
-        terminate_by_name_or_id(ARGS_PARSER.compute_requirements_instances_or_nodes)
+    names = ARGS_PARSER.compute_requirements_instances_or_nodes or []
+    globs = [n for n in names if contains_glob_chars(n)]
+
+    if names and not globs:
+        terminate_by_name_or_id(names)
         return
 
-    print_info(
-        "Terminating Compute Requirements in "
-        f"namespace '{CONFIG_COMMON.namespace}' with tags "
-        f"including '{CONFIG_COMMON.name_tag}'"
-    )
-
-    compute_requirement_summaries: list[ComputeRequirementSummary] = (
-        get_compute_requirement_summaries(
+    if globs:
+        print_info(
+            f"Terminating Compute Requirements matching {', '.join(repr(g) for g in globs)}"
+        )
+        compute_requirement_summaries: list[ComputeRequirementSummary] = (
+            expand_name_globs(
+                globs,
+                CONFIG_COMMON.namespace,
+                fetch=lambda namespace, prefix: get_compute_requirement_summaries(
+                    CLIENT,
+                    namespace,
+                    tag=None,
+                    statuses=VALID_TERMINATION_STATUSES,
+                    name=prefix or None,
+                ),
+            )
+        )
+    else:
+        print_info(
+            "Terminating Compute Requirements in "
+            f"namespace '{CONFIG_COMMON.namespace}' with tags "
+            f"including '{CONFIG_COMMON.name_tag}'"
+        )
+        compute_requirement_summaries = get_compute_requirement_summaries(
             CLIENT,
             CONFIG_COMMON.namespace,
             CONFIG_COMMON.name_tag,
             VALID_TERMINATION_STATUSES,
         )
-    )
 
     if ARGS_PARSER.dry_run:
         report_dry_run(

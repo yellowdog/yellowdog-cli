@@ -195,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Jul 21 20:43:55 BST 2026 -->
+<!-- Added by: pwt, at: Sat Jul 25 09:02:58 BST 2026 -->
 
 <!--te-->
 
@@ -3483,6 +3483,8 @@ The `yd-cancel` command cancels any active Work Requirements, including any pend
 
 The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
 
+A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace, e.g. `yd-cancel 'myproject-*'` cancels all matching Work Requirements after the usual confirmation (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list work-requirements --name 'myproject-*'` to preview the matches first, and `--dry-run` shows the matched Work Requirements before anything is cancelled.
+
 By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. Tasks can be instructed to abort immediately by supplying the `--abort` or `-a` option to `yd-cancel`.
 
 ## yd-abort
@@ -3504,6 +3506,8 @@ With `--yes`/`-y`, all executing Tasks in all selected Work Requirements are abo
 The `yd-shutdown` command shuts down Worker Pools that match the `namespace` and `tag` found in the configuration file. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which the Compute Requirement will be terminated.
 
 Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
+
+A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace, e.g. `yd-shutdown 'wp-*'` shuts down all matching Worker Pools after the usual confirmation (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list worker-pools --name 'wp-*'` to preview the matches first, and `--dry-run` shows the matched Worker Pools before anything is shut down.
 
 The `--terminate`/`-T` option also immediately terminates the associated Compute Requirement(s) rather than waiting for executing Tasks to complete, and `--follow`/`-f` follows the shutdown to completion.
 
@@ -3606,6 +3610,8 @@ Specific targets can optionally be supplied as positional arguments instead of u
 - a single instance, in `<compute-requirement-ydid>.<instance-id>` form
 - a Node YDID (the node's instance is terminated)
 
+A Compute Requirement name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace, e.g. `yd-terminate 'ci-*' --dry-run` shows which Compute Requirements would be terminated (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list compute-requirements --name 'ci-*'` to preview the matches first.
+
 The `--follow`/`-f` option follows the affected Compute Requirements' event streams after the action is applied.
 
 ## yd-compute-stop
@@ -3684,6 +3690,7 @@ Please use `yd-list --help` to inspect the full list of options. Commonly used o
 |---|---|
 | `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
 | `--active-only`/`-l` | List only entities in a non-terminated state, where applicable (e.g. Work Requirements, Worker Pools) |
+| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools and Compute Requirements, and is a non-destructive way to preview which entities a glob passed to `yd-cancel`/`yd-shutdown`/`yd-terminate` would select |
 | `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |

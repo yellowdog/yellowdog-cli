@@ -14,10 +14,12 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    expand_name_globs,
     get_filtered_work_requirement_summaries,
     get_work_requirement_summary_by_name_or_id,
 )
 from yellowdog_cli.utils.follow_utils import follow_ids
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -27,28 +29,48 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 @main_wrapper
 def main():
-    if ARGS_PARSER.work_requirement_names:
-        _cancel_work_requirements_by_name_or_id(ARGS_PARSER.work_requirement_names)
+    names = ARGS_PARSER.work_requirement_names or []
+    globs = [n for n in names if contains_glob_chars(n)]
+
+    if names and not globs:
+        # All literal names/IDs: exact path (mixing is rejected at parse time).
+        _cancel_work_requirements_by_name_or_id(names)
         return
 
-    print_info(
-        "Cancelling Work Requirements in namespace "
-        f"'{CONFIG_COMMON.namespace}' with tags "
-        f"including '{CONFIG_COMMON.name_tag}'"
-    )
+    exclude_filter = [
+        WorkRequirementStatus.COMPLETED,
+        WorkRequirementStatus.CANCELLED,
+        WorkRequirementStatus.FAILED,
+    ]
 
-    selected_work_requirement_summaries: list[WorkRequirementSummary] = (
-        get_filtered_work_requirement_summaries(
+    if globs:
+        print_info(
+            f"Cancelling Work Requirements matching {', '.join(repr(g) for g in globs)}"
+        )
+        selected_work_requirement_summaries: list[WorkRequirementSummary] = (
+            expand_name_globs(
+                globs,
+                CONFIG_COMMON.namespace,
+                fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
+                    CLIENT,
+                    name=prefix or None,
+                    namespace=namespace,
+                    exclude_filter=exclude_filter,
+                ),
+            )
+        )
+    else:
+        print_info(
+            "Cancelling Work Requirements in namespace "
+            f"'{CONFIG_COMMON.namespace}' with tags "
+            f"including '{CONFIG_COMMON.name_tag}'"
+        )
+        selected_work_requirement_summaries = get_filtered_work_requirement_summaries(
             client=CLIENT,
             namespace=CONFIG_COMMON.namespace,
             tag=CONFIG_COMMON.name_tag,
-            exclude_filter=[
-                WorkRequirementStatus.COMPLETED,
-                WorkRequirementStatus.CANCELLED,
-                WorkRequirementStatus.FAILED,
-            ],
+            exclude_filter=exclude_filter,
         )
-    )
 
     if ARGS_PARSER.dry_run:
         report_dry_run(
