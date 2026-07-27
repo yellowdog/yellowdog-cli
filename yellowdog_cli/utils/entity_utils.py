@@ -674,6 +674,23 @@ def resolve_name_glob(
     return namespace, cast(str, name)
 
 
+def describe_glob_scope(patterns: list[str], default_namespace: str | None) -> str:
+    """
+    Human-readable scope phrase for a set of name-glob patterns, resolving each
+    pattern's namespace. Collapses to "in namespace 'X' matching 'a', 'b'" when
+    all patterns resolve to the same namespace; otherwise qualifies each pattern
+    with its namespace: "matching 'ns1/a', 'ns2/b'".
+    """
+    resolved = [resolve_name_glob(pattern, default_namespace) for pattern in patterns]
+    namespaces = {namespace for namespace, _ in resolved}
+    if len(namespaces) == 1:
+        namespace = resolved[0][0]
+        names = ", ".join(repr(name) for _, name in resolved)
+        return f"in namespace '{namespace}' matching {names}"
+    qualified = ", ".join(repr(f"{namespace}/{name}") for namespace, name in resolved)
+    return f"matching {qualified}"
+
+
 def filter_summaries_by_name_glob(summaries: list, pattern: str) -> list:
     """
     Return summaries whose '.name' matches the glob 'pattern' (case-sensitive,

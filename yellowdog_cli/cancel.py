@@ -14,6 +14,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    describe_glob_scope,
     expand_name_globs,
     get_filtered_work_requirement_summaries,
     get_work_requirement_summary_by_name_or_id,
@@ -45,7 +46,8 @@ def main():
 
     if globs:
         print_info(
-            f"Cancelling Work Requirements matching {', '.join(repr(g) for g in globs)}"
+            f"Cancelling Work Requirements "
+            f"{describe_glob_scope(globs, CONFIG_COMMON.namespace)}"
         )
         selected_work_requirement_summaries: list[WorkRequirementSummary] = (
             expand_name_globs(

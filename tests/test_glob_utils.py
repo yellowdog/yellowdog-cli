@@ -6,6 +6,7 @@ import pytest
 
 from yellowdog_cli.utils.dataclient_utils import is_glob
 from yellowdog_cli.utils.entity_utils import (
+    describe_glob_scope,
     expand_name_globs,
     filter_summaries_by_name_glob,
     resolve_name_glob,
@@ -93,6 +94,42 @@ def test_expand_name_globs_dedupes_and_filters():
     assert [s.id for s in result] == ["a", "b"]
     # server hint is the non-glob prefix
     assert calls == [("default", "proj-"), ("default", "proj-1")]
+
+
+@pytest.mark.parametrize(
+    "patterns,default_namespace,expected",
+    [
+        # Single pattern, default namespace.
+        (["*"], "yd-demo", "in namespace 'yd-demo' matching '*'"),
+        # Multiple patterns sharing the default namespace collapse.
+        (
+            ["proj-*", "test-*"],
+            "yd-demo",
+            "in namespace 'yd-demo' matching 'proj-*', 'test-*'",
+        ),
+        # Inline namespace override is resolved per-pattern.
+        (["prod/wp-*"], "yd-demo", "in namespace 'prod' matching 'wp-*'"),
+        # An inline namespace equal to the default still collapses.
+        (
+            ["yd-demo/a-*", "b-*"],
+            "yd-demo",
+            "in namespace 'yd-demo' matching 'a-*', 'b-*'",
+        ),
+        # Patterns spanning namespaces qualify each pattern.
+        (
+            ["wp-*", "otherns/prod-*"],
+            "yd-demo",
+            "matching 'yd-demo/wp-*', 'otherns/prod-*'",
+        ),
+    ],
+)
+def test_describe_glob_scope(patterns, default_namespace, expected):
+    assert describe_glob_scope(patterns, default_namespace) == expected
+
+
+def test_describe_glob_scope_rejects_wildcard_namespace():
+    with pytest.raises(ValueError, match="namespace"):
+        describe_glob_scope(["*/proj-1"], "yd-demo")
 
 
 def test_get_compute_requirement_summaries_passes_name():

@@ -15,6 +15,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    describe_glob_scope,
     expand_name_globs,
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
@@ -40,7 +41,8 @@ def main():
 
     if globs:
         print_info(
-            f"Shutting down Worker Pools matching {', '.join(repr(g) for g in globs)}"
+            f"Shutting down Worker Pools "
+            f"{describe_glob_scope(globs, CONFIG_COMMON.namespace)}"
         )
         worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
             globs,

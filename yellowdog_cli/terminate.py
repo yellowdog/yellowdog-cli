@@ -18,6 +18,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    describe_glob_scope,
     expand_name_globs,
     get_compute_requirement_id_by_name,
     get_compute_requirement_id_by_worker_pool_id,
@@ -53,7 +54,8 @@ def main():
 
     if globs:
         print_info(
-            f"Terminating Compute Requirements matching {', '.join(repr(g) for g in globs)}"
+            f"Terminating Compute Requirements "
+            f"{describe_glob_scope(globs, CONFIG_COMMON.namespace)}"
         )
         compute_requirement_summaries: list[ComputeRequirementSummary] = (
             expand_name_globs(
