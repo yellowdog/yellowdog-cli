@@ -149,6 +149,7 @@ class YellowDogApp(QMainWindow):
     any_command: QPlainTextEdit
     namespace_override: QPlainTextEdit
     tag_override: QPlainTextEdit
+    name_glob_override: QPlainTextEdit
     object_path_override: QPlainTextEdit
     stdin_input: QPlainTextEdit
 
@@ -265,6 +266,7 @@ class YellowDogApp(QMainWindow):
             self.any_command,
             self.namespace_override,
             self.tag_override,
+            self.name_glob_override,
             self.object_path_override,
         ]:
             ui_object.textChanged.connect(
@@ -743,6 +745,17 @@ class YellowDogApp(QMainWindow):
             self.log_output.toPlainText()
         )
 
+    def _name_glob_args(self) -> list[str]:
+        """
+        The Name-pattern field's value as a positional glob argument for the
+        destructive commands, or [] when the field is empty. It applies to
+        whichever destructive action is invoked and is NOT a global
+        namespace/tag override, so it is appended per-action rather than via
+        '_namespace_tag_and_user_vars'.
+        """
+        value = self.name_glob_override.toPlainText().strip()
+        return [value] if value else []
+
     def _run_destructive_with_listing(
         self,
         action_key: str,
@@ -763,28 +776,36 @@ class YellowDogApp(QMainWindow):
         action (e.g. 'Cancelling'/'Work Requirements') and 'match_word' is how
         the CLI selects entities ('tags' or 'names').
         """
+        name_args = self._name_glob_args()
+
+        # When a Name pattern is set, entities are selected by that glob rather
+        # than by tag/name-substring, so describe the scope accordingly.
+        if name_args:
+            scope = f" matching name pattern '{name_args[0]}'"
+            if self._namespace:
+                scope = f" in namespace '{self._namespace}'{scope}"
+        else:
+            scope = self._scope_phrase(match_word)
+
         if self._confirmations_disabled or action_key in self._skip_confirmations:
-            self._run_command_in_subprocess(command, run_args)
+            self._run_command_in_subprocess(command, run_args + name_args)
             return
 
         self._log(f"Checking which {plural} would be affected...")
         self.log_output.repaint()
-        names = self._capture_dry_run_entities(command)
+        names = self._capture_dry_run_entities(command, extra_args=name_args)
 
         if not names and names is not None:
-            self._log(f"No matching {plural}{self._scope_phrase(match_word)}")
+            self._log(f"No matching {plural}{scope}")
             return
 
         abort_clause = ", and aborting their running tasks" if and_abort else ""
-        body = (
-            f"{gerund} {plural}{self._scope_phrase(match_word)}{abort_clause}."
-            "\n\nThis cannot be undone."
-        )
+        body = f"{gerund} {plural}{scope}{abort_clause}.\n\nThis cannot be undone."
         if names is None:
             self._log("Could not list affected entities; confirming by scope instead")
 
         if self._confirm_destructive(action_key, title, body, names=names):
-            self._run_command_in_subprocess(command, run_args)
+            self._run_command_in_subprocess(command, run_args + name_args)
 
     def _cancel_work_requirements_action(self):
         self._run_destructive_with_listing(
