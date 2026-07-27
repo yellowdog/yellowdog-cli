@@ -7,6 +7,7 @@ import os
 import sys
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.settings import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DEFAULT_URL,
@@ -705,6 +706,22 @@ class CLIParser:
                 ),
             )
             parser.add_argument(
+                "--name",
+                dest="name_glob",
+                metavar="<glob>",
+                required=False,
+                help=(
+                    "list only entities whose name matches the given glob "
+                    "pattern (e.g. 'proj-*'); applies to work requirements, "
+                    "worker pools, compute requirements, compute requirement/source "
+                    "templates, image families, users, applications, groups, "
+                    "roles, keyrings and permissions; not supported for other "
+                    "entity types; a value without "
+                    "wildcards matches the name exactly, so use '*' for partial "
+                    "matches (e.g. 'linux*' or '*linux*')"
+                ),
+            )
+            parser.add_argument(
                 "--status",
                 dest="status_filter",
                 action="append",
@@ -831,7 +848,8 @@ class CLIParser:
                 default="",
                 metavar="<worker-pool-name-or-ID/node-id>",
                 type=str,
-                help="the name(s) or YellowDog ID(s) of the worker pool(s) and/or ID(s) of nodes",
+                help="the name(s) or YellowDog ID(s) of the worker pool(s) and/or ID(s) of"
+                " nodes; a name may be a glob pattern (e.g. 'wp-*')",
             )
             parser.add_argument(
                 "--follow",
@@ -862,7 +880,8 @@ class CLIParser:
                     # Restart is instance-level only: no CR names/IDs
                     else "the name(s) or YellowDog ID(s) of the compute "
                     "requirement(s), ID(s) of nodes, or instances in "
-                    "'cr_id.instance_id' format"
+                    "'cr_id.instance_id' format; a name may be a glob pattern"
+                    " (e.g. 'cr-*')"
                 ),
             )
             parser.add_argument(
@@ -883,7 +902,8 @@ class CLIParser:
                 type=str,
                 help=(
                     "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-                    " cancelled; can also supply task IDs"
+                    " cancelled; can also supply task IDs; a name may be a glob"
+                    " pattern (e.g. 'proj-*')"
                 ),
             )
 
@@ -1654,14 +1674,30 @@ class CLIParser:
 
         self.args = parser.parse_args()
 
-        # The faithful by-name/ID dry-run is not yet implemented; refuse it
-        # rather than silently falling through to the acting path.
-        if getattr(self.args, "dry_run", False) and (
-            getattr(self.args, "work_requirements", None)
-            or getattr(self.args, "worker_pool_nodes_list", None)
-            or getattr(self.args, "compute_reqs_instances_or_nodes", None)
-        ):
-            parser.error("--dry-run is not supported with explicit names/IDs")
+        # Positional names/IDs on the destructive commands. A name may be a
+        # glob pattern (contains * ? [); globs route through the faithful
+        # summary-based dry-run and are allowed with --dry-run, but must not be
+        # mixed with literal names/IDs (different selection/confirmation paths).
+        if any(c in module_name for c in ("cancel", "shutdown", "terminate")):
+            explicit_names: list[str] = []
+            for attr in (
+                "work_requirements",
+                "worker_pool_nodes_list",
+                "compute_reqs_instances_or_nodes",
+            ):
+                value = getattr(self.args, attr, None)
+                if isinstance(value, list):
+                    explicit_names.extend(value)
+
+            globs = [n for n in explicit_names if contains_glob_chars(n)]
+            literals = [n for n in explicit_names if not contains_glob_chars(n)]
+
+            if globs and literals:
+                parser.error("cannot mix name glob patterns with explicit names/IDs")
+
+            # The literal by-name/ID path has no faithful dry-run; refuse it.
+            if getattr(self.args, "dry_run", False) and literals:
+                parser.error("--dry-run is not supported with explicit names/IDs")
 
         # On the destructive dry-run commands (cancel / shutdown / terminate /
         # delete / rm) '--json' only shapes the '--dry-run' output; reject it on
@@ -1948,6 +1984,11 @@ class CLIParser:
     @allow_missing_attribute
     def entity_type(self) -> str | None:
         return self.args.entity_type
+
+    @property
+    @allow_missing_attribute
+    def name_glob(self) -> str | None:
+        return self.args.name_glob
 
     @property
     @allow_missing_attribute

@@ -60,6 +60,7 @@ def _args_parser(**overrides) -> MagicMock:
         status_filter=None,
         active_only=False,
         entity_type=None,
+        name_glob=None,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)

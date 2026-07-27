@@ -12,6 +12,7 @@ from rclone_api import Config, Rclone
 from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.glob_utils import GLOB_CHARS
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.rclone_utils import (
     make_rclone,
@@ -20,7 +21,14 @@ from yellowdog_cli.utils.rclone_utils import (
 )
 from yellowdog_cli.utils.variables import process_variable_substitutions
 
-_GLOB_CHARS = frozenset("*?[")
+
+def is_glob(path: str) -> bool:
+    """
+    Return True if path contains glob wildcard characters (*  ?  [).
+    Only the path component after the remote: prefix is checked.
+    """
+    path_part = path.split(":", 1)[-1] if ":" in path else path
+    return bool(GLOB_CHARS.intersection(path_part))
 
 
 def _rclone_error_detail(result) -> str:
@@ -213,15 +221,6 @@ def _upload_directory_flat(
         upload_file(config, local_file, dest, dry_run=dry_run)
 
 
-def is_glob(path: str) -> bool:
-    """
-    Return True if path contains glob wildcard characters (*  ?  [).
-    Only the path component after the remote: prefix is checked.
-    """
-    path_part = path.split(":", 1)[-1] if ":" in path else path
-    return bool(_GLOB_CHARS.intersection(path_part))
-
-
 def entries_to_names(entries: list[dict]) -> list[str]:
     """
     Map rclone lsjson entries to display names, appending '/' to directories.
@@ -244,7 +243,7 @@ def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
 
     if "/" in path_part:
         dir_part, pattern = path_part.rsplit("/", 1)
-        if _GLOB_CHARS.intersection(dir_part):
+        if GLOB_CHARS.intersection(dir_part):
             raise ValueError(
                 f"Wildcards are only supported in the final path component:"
                 f" '{remote_path}'"

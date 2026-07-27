@@ -39,3 +39,29 @@ def test_json_without_dry_run_errors(cmd):
     result = shell(f"{cmd} --json")
     assert result.exit_code == 2
     assert "only valid with --dry-run" in (result.stderr + result.stdout)
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    ["yd-cancel 'proj-*' -D", "yd-shutdown 'wp-*' -D", "yd-terminate 'cr-*' -D"],
+)
+def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
+    # A glob + --dry-run must NOT fail at parse time (exit 2). It proceeds to
+    # main(); without credentials it fails later, but never with the parse
+    # error, and never with the "not supported with explicit names" message.
+    result = shell(cmd)
+    assert "not supported with explicit names" not in (result.stderr + result.stdout)
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "yd-cancel 'proj-*' some-wr",
+        "yd-shutdown 'wp-*' some-wp",
+        "yd-terminate 'cr-*' some-cr",
+    ],
+)
+def test_mixing_glob_and_literal_errors(cmd):
+    result = shell(cmd)
+    assert result.exit_code == 2
+    assert "cannot mix" in (result.stderr + result.stdout)

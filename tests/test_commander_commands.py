@@ -127,7 +127,9 @@ def test_provision_dry_run(window, captured):
 
 
 def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
-    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["x"]
+    )
     monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
     for method, command, args in [
         ("_cancel_work_requirements_action", "yd-cancel", ["-y"]),
@@ -140,8 +142,54 @@ def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
         assert captured == [(command, args)]
 
 
+def test_name_glob_appended_as_positional_to_destructive_actions(
+    window, captured, monkeypatch
+):
+    # A non-empty Name field is appended as a positional glob to every
+    # destructive action, and passed to the pre-confirmation enumeration too.
+    seen_extra: list = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: seen_extra.append(extra_args) or ["m"],
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window.name_glob_override.setPlainText("job-*")
+    for method, command, args in [
+        ("_cancel_work_requirements_action", "yd-cancel", ["-y", "job-*"]),
+        ("_cancel_work_requirements_and_abort_action", "yd-cancel", ["-ay", "job-*"]),
+        ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y", "job-*"]),
+        ("_terminate_all_compute_requirements_action", "yd-terminate", ["-y", "job-*"]),
+    ]:
+        captured.clear()
+        getattr(window, method)()
+        assert captured == [(command, args)]
+    # the same positional reached each enumeration
+    assert seen_extra == [["job-*"]] * 4
+
+
+def test_name_glob_appended_on_confirmation_bypass(window, captured):
+    window._skip_confirmations = {"terminate"}
+    window.name_glob_override.setPlainText("cr-*")
+    window._terminate_all_compute_requirements_action()
+    assert captured == [("yd-terminate", ["-y", "cr-*"])]
+
+
+def test_empty_name_glob_appends_nothing(window, captured, monkeypatch):
+    # A blank/whitespace-only Name field leaves the destructive command unchanged.
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["m"]
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window.name_glob_override.setPlainText("   ")
+    window._cancel_work_requirements_action()
+    assert captured == [("yd-cancel", ["-y"])]
+
+
 def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
-    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: ["x"])
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["x"]
+    )
     monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: False)
     for method in (
         "_cancel_work_requirements_action",
@@ -154,16 +202,38 @@ def test_destructive_action_declined_does_not_run(window, captured, monkeypatch)
 
 
 def test_destructive_empty_set_logs_and_skips(window, captured, monkeypatch):
-    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: [])
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: []
+    )
     window.log_output.setPlainText("")
     window._terminate_all_compute_requirements_action()
     assert captured == []
     assert "No matching Compute Requirements" in window.log_output.toPlainText()
 
 
+def test_destructive_logs_status_before_lookup(window, captured, monkeypatch):
+    # A status line is logged before the (blocking) enumeration so the GUI does
+    # not read as frozen during the lookup.
+    logged: list[str] = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: logged.append("looked-up") or ["cr-1"],
+    )
+    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: True)
+    window.log_output.setPlainText("")
+    window._terminate_all_compute_requirements_action()
+    assert "Checking which Compute Requirements would be affected" in (
+        window.log_output.toPlainText()
+    )
+    assert logged == ["looked-up"]  # enumeration did run
+
+
 def test_destructive_passes_names_to_dialog(window, captured, monkeypatch):
     monkeypatch.setattr(
-        window, "_capture_dry_run_entities", lambda command: ["cr-1", "cr-2"]
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: ["cr-1", "cr-2"],
     )
     calls = []
     monkeypatch.setattr(
@@ -182,10 +252,37 @@ def test_destructive_passes_names_to_dialog(window, captured, monkeypatch):
     assert names == ["cr-1", "cr-2"]
 
 
+def test_destructive_confirmation_body_reflects_name_glob(
+    window, captured, monkeypatch
+):
+    # With a Name pattern set, the confirmation body describes the glob scope,
+    # not the tag scope.
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_entities",
+        lambda command, extra_args=None: ["cr-1"],
+    )
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda action_key, title, body, names=None: calls.append(body) or True,
+    )
+    window._namespace, window._tag = "yd-demo", "pyex"
+    window.name_glob_override.setPlainText("ci-*")
+    window._terminate_all_compute_requirements_action()
+    body = calls[0]
+    assert "matching name pattern 'ci-*'" in body
+    assert "in namespace 'yd-demo'" in body
+    assert "with tags including" not in body
+
+
 def test_destructive_enumeration_failure_falls_back_to_scope(
     window, captured, monkeypatch
 ):
-    monkeypatch.setattr(window, "_capture_dry_run_entities", lambda command: None)
+    monkeypatch.setattr(
+        window, "_capture_dry_run_entities", lambda command, extra_args=None: None
+    )
     calls = []
     monkeypatch.setattr(
         window,
@@ -222,7 +319,7 @@ def test_build_destructive_dialog_without_names_has_no_listing(window):
 
 
 def test_bypass_skips_enumeration(window, captured, monkeypatch):
-    def _fail(command):
+    def _fail(command, extra_args=None):
         raise AssertionError("enumeration must not run when confirmations are skipped")
 
     monkeypatch.setattr(window, "_capture_dry_run_entities", _fail)

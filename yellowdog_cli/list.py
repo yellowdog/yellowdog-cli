@@ -47,6 +47,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import (
+    filter_summaries_by_name_glob,
     get_all_applications,
     get_all_groups,
     get_all_roles,
@@ -60,12 +61,15 @@ from yellowdog_cli.utils.entity_utils import (
     get_task_groups_from_wr_by_id,
     get_user_groups,
     get_worker_pool_summaries,
+    resolve_name_glob,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
+from yellowdog_cli.utils.glob_utils import glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import (
+    print_error,
     print_info,
     print_json,
     print_numbered_object_list,
@@ -112,6 +116,56 @@ from yellowdog_cli.utils.settings import (
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+
+NAME_GLOB_SUPPORTED_ENTITY_TYPES: frozenset[str] = frozenset(
+    {
+        ET_WORK_REQUIREMENTS,
+        ET_WORKER_POOLS,
+        ET_COMPUTE_REQUIREMENTS,
+        ET_COMPUTE_REQUIREMENT_TEMPLATES,
+        ET_COMPUTE_SOURCE_TEMPLATES,
+        ET_IMAGE_FAMILIES,
+        ET_USERS,
+        ET_APPLICATIONS,
+        ET_GROUPS,
+        ET_ROLES,
+        ET_KEYRINGS,
+        ET_PERMISSIONS,
+    }
+)
+
+
+def _name_glob_supported(entity_type: str | None) -> bool:
+    """
+    Return True unless '--name' was supplied for an entity type that does not
+    support name-glob filtering. In the unsupported case, log an error (the
+    caller should then stop). Gating on 'entity_type' here also rejects
+    sub-entities (e.g. 'nodes') that route through a supporting top-level
+    listing function.
+    """
+    if ARGS_PARSER.name_glob and entity_type not in NAME_GLOB_SUPPORTED_ENTITY_TYPES:
+        print_error(f"--name is not supported for entity type '{entity_type}'")
+        return False
+    return True
+
+
+def _filter_by_name_glob_with_warning(
+    objects: list, pattern: str, entity_label: str
+) -> list:
+    """
+    Filter account-global entities by a name glob (client-side, exact-glob on
+    '.name'). Warn when entries without a name are excluded — their name is
+    optional, so a name pattern can never match them, and dropping them
+    silently would understate the result.
+    """
+    unnamed = sum(1 for obj in objects if getattr(obj, "name", None) is None)
+    if unnamed:
+        print_warning(
+            f"{unnamed} {entity_label}(s) have no name and are excluded from "
+            "'--name' pattern matching"
+        )
+    return filter_summaries_by_name_glob(objects, pattern)
+
 
 _KNOWN_STATUSES: dict[str, frozenset[str]] = {
     ET_WORK_REQUIREMENTS: frozenset(e.value for e in WorkRequirementStatus),
@@ -222,6 +276,9 @@ def main():
                     f"Known values: {', '.join(sorted(known))}"
                 )
 
+    if not _name_glob_supported(entity_type):
+        return
+
     if entity_type in (ET_WORK_REQUIREMENTS, ET_TASK_GROUPS, ET_TASKS):
         list_work_requirements()
     elif entity_type in (ET_WORKER_POOLS, ET_NODES, ET_WORKERS):
@@ -264,10 +321,6 @@ def list_work_requirements():
     This function falls through from WRs to TGs to Tasks, depending on the
     options chosen.
     """
-    print_info(
-        f"Listing Work Requirements in namespace  '{CONFIG_COMMON.namespace}' "
-        f"with '{CONFIG_COMMON.name_tag}' in tag",
-    )
     if ARGS_PARSER.active_only:
         print_info("Listing active Work Requirements only")
 
@@ -280,14 +333,35 @@ def list_work_requirements():
         if ARGS_PARSER.active_only
         else []
     )
-    work_requirement_summaries: list[WorkRequirementSummary] = (
-        get_filtered_work_requirement_summaries(
+    work_requirement_summaries: list[WorkRequirementSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Work Requirements in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        work_requirement_summaries = filter_summaries_by_name_glob(
+            get_filtered_work_requirement_summaries(
+                CLIENT,
+                name=glob_search_prefix(name) or None,
+                namespace=namespace,
+                exclude_filter=exclude_filter,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            f"Listing Work Requirements in namespace  '{CONFIG_COMMON.namespace}' "
+            f"with '{CONFIG_COMMON.name_tag}' in tag",
+        )
+        work_requirement_summaries = get_filtered_work_requirement_summaries(
             CLIENT,
             namespace=CONFIG_COMMON.namespace,
             tag=CONFIG_COMMON.name_tag,
             exclude_filter=exclude_filter,
         )
-    )
     if not work_requirement_summaries:
         _print_empty("No matching Work Requirements")
         return
@@ -380,17 +454,35 @@ def list_tasks(task_group: TaskGroup, _work_summary: WorkRequirementSummary):
 
 
 def list_worker_pools():
-    print_info(
-        f"Displaying Worker Pools in namespace '{CONFIG_COMMON.namespace}' "
-        f"with '{CONFIG_COMMON.name_tag}' in name"
-    )
-
-    worker_pool_summaries: list[WorkerPoolSummary] = get_worker_pool_summaries(
-        CLIENT,
-        CONFIG_COMMON.namespace,
-        CONFIG_COMMON.name_tag,
-        partial_name_matches=True,
-    )
+    worker_pool_summaries: list[WorkerPoolSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Displaying Worker Pools in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        worker_pool_summaries = filter_summaries_by_name_glob(
+            get_worker_pool_summaries(
+                CLIENT,
+                namespace,
+                glob_search_prefix(name) or None,
+                partial_name_matches=True,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            f"Displaying Worker Pools in namespace '{CONFIG_COMMON.namespace}' "
+            f"with '{CONFIG_COMMON.name_tag}' in name"
+        )
+        worker_pool_summaries = get_worker_pool_summaries(
+            CLIENT,
+            CONFIG_COMMON.namespace,
+            CONFIG_COMMON.name_tag,
+            partial_name_matches=True,
+        )
 
     excluded_states = (
         [WorkerPoolStatus.TERMINATED, WorkerPoolStatus.SHUTDOWN]
@@ -406,7 +498,10 @@ def list_worker_pools():
             wp_summary
             for wp_summary in worker_pool_summaries
             if wp_summary.status not in excluded_states
-            and CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
+            and (
+                bool(ARGS_PARSER.name_glob)
+                or CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
+            )
         ]
     )
 
@@ -459,12 +554,6 @@ def list_worker_pools():
 
 
 def list_compute_requirements():
-    print_info(
-        "Listing Compute Requirements in "
-        f"namespace '{CONFIG_COMMON.namespace}' with "
-        f" names containing '{CONFIG_COMMON.name_tag}'"
-    )
-
     if ARGS_PARSER.active_only:
         print_info("Listing active Compute Requirements only")
         included_statuses = [
@@ -478,11 +567,34 @@ def list_compute_requirements():
     else:
         included_statuses = None
 
-    compute_requirement_summaries: list[ComputeRequirementSummary] = (
-        get_compute_requirement_summaries(
+    compute_requirement_summaries: list[ComputeRequirementSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Compute Requirements in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        compute_requirement_summaries = filter_summaries_by_name_glob(
+            get_compute_requirement_summaries(
+                CLIENT,
+                namespace,
+                None,
+                included_statuses,
+                name=glob_search_prefix(name) or None,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            "Listing Compute Requirements in "
+            f"namespace '{CONFIG_COMMON.namespace}' with "
+            f" names containing '{CONFIG_COMMON.name_tag}'"
+        )
+        compute_requirement_summaries = get_compute_requirement_summaries(
             CLIENT, CONFIG_COMMON.namespace, CONFIG_COMMON.name_tag, included_statuses
         )
-    )
 
     if not compute_requirement_summaries:
         _print_empty("No matching Compute Requirements")
@@ -642,20 +754,36 @@ def list_compute_requirement_templates():
     Print the list of Compute Requirement Templates, filtered on Namespace
     and Name. Set these both to empty strings to generate an unfiltered list.
     """
-    print_info(
-        "Listing Compute Requirement Templates in namespace "
-        f"'{CONFIG_COMMON.namespace}' with names including "
-        f"'{CONFIG_COMMON.name_tag}'"
-    )
-
-    cr_templates: list[ComputeRequirementTemplateSummary] = (
-        get_compute_requirement_templates(
+    cr_templates: list[ComputeRequirementTemplateSummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Compute Requirement Templates in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        cr_templates = filter_summaries_by_name_glob(
+            get_compute_requirement_templates(
+                CLIENT,
+                namespace,
+                glob_search_prefix(name) or None,
+                partial_name_matches=True,
+            ),
+            name,
+        )
+    else:
+        print_info(
+            "Listing Compute Requirement Templates in namespace "
+            f"'{CONFIG_COMMON.namespace}' with names including "
+            f"'{CONFIG_COMMON.name_tag}'"
+        )
+        cr_templates = get_compute_requirement_templates(
             CLIENT,
             CONFIG_COMMON.namespace,
             CONFIG_COMMON.name_tag,
             partial_name_matches=True,
         )
-    )
 
     if not cr_templates:
         _print_empty("No matching Compute Requirement Templates found")
@@ -712,15 +840,29 @@ def list_compute_source_templates():
     and Name. Set these both to empty strings to generate an unfiltered list.
     """
 
-    print_info(
-        "Listing Compute Source Templates in namespace "
-        f"'{CONFIG_COMMON.namespace}' with names including "
-        f"'{CONFIG_COMMON.name_tag}'"
-    )
-
-    cs_templates = get_compute_source_templates(
-        CLIENT, namespace=CONFIG_COMMON.namespace, name=CONFIG_COMMON.name_tag
-    )
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
+        )
+        print_info(
+            f"Listing Compute Source Templates in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        cs_templates = filter_summaries_by_name_glob(
+            get_compute_source_templates(
+                CLIENT, namespace=namespace, name=glob_search_prefix(name) or None
+            ),
+            name,
+        )
+    else:
+        print_info(
+            "Listing Compute Source Templates in namespace "
+            f"'{CONFIG_COMMON.namespace}' with names including "
+            f"'{CONFIG_COMMON.name_tag}'"
+        )
+        cs_templates = get_compute_source_templates(
+            CLIENT, namespace=CONFIG_COMMON.namespace, name=CONFIG_COMMON.name_tag
+        )
 
     if not cs_templates:
         _print_empty("No matching Compute Source Templates found")
@@ -772,6 +914,10 @@ def list_keyrings():
     Print the list of Keyrings
     """
     keyrings: list[KeyringSummary] = CLIENT.keyring_client.find_all_keyrings()
+    if ARGS_PARSER.name_glob:
+        keyrings = _filter_by_name_glob_with_warning(
+            keyrings, ARGS_PARSER.name_glob, "Keyring"
+        )
     if not keyrings:
         _print_empty("No Keyrings found")
         return
@@ -813,21 +959,51 @@ def list_image_families():
     """
     List the Machine Image Families.
     """
-    image_search = MachineImageFamilySearch(
-        includePublic=True,
-        namespaces=(
-            None if CONFIG_COMMON.namespace == "" else [CONFIG_COMMON.namespace]
-        ),
-        familyName=CONFIG_COMMON.name_tag,  # Supports partial match
-    )
-    search_client: SearchClient = CLIENT.images_client.get_image_families(image_search)
-    image_family_summaries: list[MachineImageFamilySummary] = search_client.list_all()
-    if not image_family_summaries:
-        _print_empty(
-            f"No matching Machine Image Families found in namespace "
-            f"'{CONFIG_COMMON.namespace}' with tag including '{CONFIG_COMMON.name_tag}'"
+    image_family_summaries: list[MachineImageFamilySummary]
+    if ARGS_PARSER.name_glob:
+        namespace, name = resolve_name_glob(
+            ARGS_PARSER.name_glob, CONFIG_COMMON.namespace
         )
-        return
+        print_info(
+            f"Listing Machine Image Families in namespace '{namespace}' "
+            f"matching name pattern '{name}'"
+        )
+        image_search = MachineImageFamilySearch(
+            includePublic=True,
+            namespaces=None if namespace is None else [namespace],
+            familyName=glob_search_prefix(name) or None,
+        )
+        search_client: SearchClient = CLIENT.images_client.get_image_families(
+            image_search
+        )
+        image_family_summaries = filter_summaries_by_name_glob(
+            search_client.list_all(), name
+        )
+        if not image_family_summaries:
+            _print_empty(
+                f"No matching Machine Image Families found in namespace "
+                f"'{namespace}' matching name pattern '{name}'"
+            )
+            return
+    else:
+        image_search = MachineImageFamilySearch(
+            includePublic=True,
+            namespaces=(
+                None if CONFIG_COMMON.namespace == "" else [CONFIG_COMMON.namespace]
+            ),
+            familyName=CONFIG_COMMON.name_tag,  # Supports partial match
+        )
+        search_client: SearchClient = CLIENT.images_client.get_image_families(
+            image_search
+        )
+        image_family_summaries = search_client.list_all()
+        if not image_family_summaries:
+            _print_empty(
+                f"No matching Machine Image Families found in namespace "
+                f"'{CONFIG_COMMON.namespace}' with tag including "
+                f"'{CONFIG_COMMON.name_tag}'"
+            )
+            return
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         if ARGS_PARSER.details:
@@ -1053,6 +1229,9 @@ def list_users():
     """
     users: list[User] = get_all_users(CLIENT)
 
+    if ARGS_PARSER.name_glob:
+        users = filter_summaries_by_name_glob(users, ARGS_PARSER.name_glob)
+
     if not users:
         _print_empty("No Users to display")
         return
@@ -1095,6 +1274,11 @@ def list_applications():
     List all applications in the account.
     """
     applications = get_all_applications(CLIENT)
+
+    if ARGS_PARSER.name_glob:
+        applications = filter_summaries_by_name_glob(
+            applications, ARGS_PARSER.name_glob
+        )
 
     if not applications:
         _print_empty("No Applications to display")
@@ -1141,6 +1325,11 @@ def list_groups():
     """
     group_summaries = get_all_groups(CLIENT)
 
+    if ARGS_PARSER.name_glob:
+        group_summaries = _filter_by_name_glob_with_warning(
+            group_summaries, ARGS_PARSER.name_glob, "Group"
+        )
+
     if not group_summaries:
         _print_empty("No Groups to display")
         return
@@ -1182,6 +1371,11 @@ def list_roles():
     List all roles in the account.
     """
     role_summaries = get_all_roles(CLIENT)
+
+    if ARGS_PARSER.name_glob:
+        role_summaries = _filter_by_name_glob_with_warning(
+            role_summaries, ARGS_PARSER.name_glob, "Role"
+        )
 
     if not role_summaries:
         _print_empty("No Roles to display")
@@ -1225,6 +1419,10 @@ def list_permissions():
     List all permissions in the account.
     """
     permissions: list[PermissionDetail] = CLIENT.account_client.list_permissions()
+    if ARGS_PARSER.name_glob:
+        permissions = _filter_by_name_glob_with_warning(
+            permissions, ARGS_PARSER.name_glob, "Permission"
+        )
     permissions.sort(key=lambda permission_: permission_.name)  # type: ignore[arg-type]
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:

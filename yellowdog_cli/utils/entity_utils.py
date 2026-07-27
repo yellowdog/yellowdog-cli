@@ -2,7 +2,10 @@
 Various utility functions for finding objects, etc.
 """
 
+import fnmatch
+from collections.abc import Callable
 from functools import lru_cache
+from typing import cast
 
 from yellowdog_client import PlatformClient
 from yellowdog_client.common import SearchClient
@@ -54,6 +57,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info
@@ -652,6 +656,79 @@ def split_namespace_and_name(
     raise ValueError(f"Malformed name or namespace/name '{namespace_and_name}'")
 
 
+def resolve_name_glob(
+    pattern: str, default_namespace: str | None
+) -> tuple[str | None, str]:
+    """
+    Split an optional 'namespace/pattern' into (namespace, pattern), applying
+    'default_namespace' when no namespace prefix is present. Raises ValueError
+    if the namespace part itself contains glob metacharacters (wildcards are
+    only allowed in the name).
+    """
+    namespace, name = split_namespace_and_name(pattern)
+    namespace = default_namespace if namespace is None else namespace
+    if GLOB_CHARS.intersection(namespace or ""):
+        raise ValueError(
+            f"Wildcards are not allowed in the namespace part of '{pattern}'"
+        )
+    return namespace, cast(str, name)
+
+
+def describe_glob_scope(patterns: list[str], default_namespace: str | None) -> str:
+    """
+    Human-readable scope phrase for a set of name-glob patterns, resolving each
+    pattern's namespace. Collapses to "in namespace 'X' matching 'a', 'b'" when
+    all patterns resolve to the same namespace; otherwise qualifies each pattern
+    with its namespace: "matching 'ns1/a', 'ns2/b'".
+    """
+    resolved = [resolve_name_glob(pattern, default_namespace) for pattern in patterns]
+    namespaces = {namespace for namespace, _ in resolved}
+    if len(namespaces) == 1:
+        namespace = resolved[0][0]
+        names = ", ".join(repr(name) for _, name in resolved)
+        return f"in namespace '{namespace}' matching {names}"
+    qualified = ", ".join(repr(f"{namespace}/{name}") for namespace, name in resolved)
+    return f"matching {qualified}"
+
+
+def filter_summaries_by_name_glob(summaries: list, pattern: str) -> list:
+    """
+    Return summaries whose '.name' matches the glob 'pattern' (case-sensitive,
+    fnmatch semantics). Summaries with a None name are skipped.
+    """
+    return [
+        summary
+        for summary in summaries
+        if summary.name is not None and fnmatch.fnmatchcase(summary.name, pattern)
+    ]
+
+
+def expand_name_globs(
+    patterns: list[str],
+    default_namespace: str | None,
+    fetch: Callable[[str | None, str], list],
+) -> list:
+    """
+    Expand name-glob 'patterns' to a deduplicated list of entity summaries.
+
+    'fetch(namespace, name_prefix)' returns candidate summaries for a namespace,
+    optionally server-side filtered by a partial name; 'name_prefix' is '' when
+    the pattern begins with a wildcard. Each candidate is kept only if its name
+    matches the full glob. Results are deduplicated by '.id', preserving order.
+    Raises ValueError (via resolve_name_glob) for a wildcard in a namespace part.
+    """
+    result: list = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        namespace, name = resolve_name_glob(pattern, default_namespace)
+        candidates = fetch(namespace, glob_search_prefix(name))
+        for summary in filter_summaries_by_name_glob(candidates, name):
+            if summary.id not in seen:
+                seen.add(summary.id)
+                result.append(summary)
+    return result
+
+
 def substitute_ids_for_names_in_crt(
     client: PlatformClient, crt: ComputeRequirementTemplate
 ) -> ComputeRequirementTemplate:
@@ -1055,20 +1132,22 @@ def get_compute_requirement_summaries(
     namespace: str | None = None,
     tag: str | None = None,
     statuses: list[ComputeRequirementStatus] | None = None,
+    name: str | None = None,
 ) -> list[ComputeRequirementSummary]:
     """
     Get compute requirement summaries for a namespace, tag.
-    Optionally filter on statuses.
+    Optionally filter on statuses and a partial name.
     """
     crs_search = ComputeRequirementSummarySearch(
         namespaces=(None if namespace in [None, ""] else [namespace]),  # type: ignore[list-item]
         tag=tag,
         statuses=statuses,
+        name=name,
     )
     search_client: SearchClient = (
         client.compute_client.get_compute_requirement_summaries(crs_search)
     )
-    # Note: partial matches on 'tag'
+    # Note: partial matches on 'tag' and 'name'
     return search_client.list_all()
 
 
