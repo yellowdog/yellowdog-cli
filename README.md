@@ -195,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Jul 25 09:02:58 BST 2026 -->
+<!-- Added by: pwt, at: Mon Jul 27 13:11:35 BST 2026 -->
 
 <!--te-->
 
@@ -3690,7 +3690,7 @@ Please use `yd-list --help` to inspect the full list of options. Commonly used o
 |---|---|
 | `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
 | `--active-only`/`-l` | List only entities in a non-terminated state, where applicable (e.g. Work Requirements, Worker Pools) |
-| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools and Compute Requirements, and is a non-destructive way to preview which entities a glob passed to `yd-cancel`/`yd-shutdown`/`yd-terminate` would select |
+| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and errors for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd-cancel`/`yd-shutdown`/`yd-terminate` would select |
 | `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |

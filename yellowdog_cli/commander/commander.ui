@@ -681,8 +681,9 @@
                 <height>25</height>
                </size>
               </property>
-              <property name="placeholderText">
-               <string>name glob</string>
+              <property name
+              ="placeholderText">
+               <string>name-pattern</string>
               </property>
               <property name="verticalScrollBarPolicy">
                <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>

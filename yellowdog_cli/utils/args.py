@@ -713,7 +713,10 @@ class CLIParser:
                 help=(
                     "list only entities whose name matches the given glob "
                     "pattern (e.g. 'proj-*'); applies to work requirements, "
-                    "worker pools and compute requirements; a value without "
+                    "worker pools, compute requirements, compute requirement/source "
+                    "templates, image families, users, applications, groups, "
+                    "roles, keyrings and permissions; not supported for other "
+                    "entity types; a value without "
                     "wildcards matches the name exactly, so use '*' for partial "
                     "matches (e.g. 'linux*' or '*linux*')"
                 ),
