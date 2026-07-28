@@ -75,7 +75,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit.
+- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect Files** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
 - **Extra Options** — free-text command-line options appended to the `yd-submit` command.
@@ -85,7 +85,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Provisioning and Managing Compute (Panel 3)
 
 - **Create New Cloud Worker Pool** — runs `yd-provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
-- **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision.
+- **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Extra Options** — free-text command-line options appended to the `yd-provision` command.

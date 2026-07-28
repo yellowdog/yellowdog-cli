@@ -50,6 +50,7 @@ from PyQt6.QtGui import (
     QClipboard,
     QColor,
     QFont,
+    QFontMetrics,
     QIcon,
     QPalette,
     QStyleHints,
@@ -77,6 +78,10 @@ SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
 MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
 PATH_ELLIPSIS = "…"
+SELECTED_WR_PREFIX = "Work Requirement: "
+SELECTED_WP_PREFIX = "Worker Pool: "
+BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
+MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
@@ -135,6 +140,20 @@ def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
     if separator_index != -1:  # discard any partial leading directory name
         tail = tail[separator_index:]
     return f"{PATH_ELLIPSIS}{tail}"
+
+
+def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
+    """
+    Shorten text for display by removing characters from the middle, keeping
+    both ends visible. Used for filenames, where the start and the extension
+    are the informative parts.
+    """
+    if len(text) <= max_length:
+        return text
+
+    keep = max_length - len(PATH_ELLIPSIS)
+    head = keep - keep // 2
+    return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
 
 
 class CommandHistory:
@@ -327,6 +346,10 @@ class YellowDogApp(QMainWindow):
         self._wr_file: str | None = None
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
+
+        # Original 'Select' button labels, restored when a file is deselected
+        self._select_wr_default_text = self.select_work_requirement.text()
+        self._select_wp_default_text = self.select_worker_pool.text()
 
         self._namespace: str | None = None
         self._tag: str | None = None
@@ -557,6 +580,49 @@ class YellowDogApp(QMainWindow):
     def _color_scheme() -> Qt.ColorScheme:
         return cast(QStyleHints, QApplication.styleHints()).colorScheme()
 
+    def _show_selection_on_button(
+        self, button: QPushButton, prefix: str, default_text: str, file: str | None
+    ):
+        """
+        Indicate the selected definition file on its own 'Select' button, so
+        that the selection is visible without adding a widget to the left-hand
+        column. The filename is elided to fit the button's current width, so a
+        long name never widens the column; the full path becomes the tooltip.
+        Passing file=None restores the button's original label.
+        """
+        if file is None:
+            button.setText(default_text)
+            button.setToolTip("")
+            return
+
+        name = basename(file)
+        metrics = QFontMetrics(button.font())
+        available = (
+            button.width() - BUTTON_TEXT_MARGIN - metrics.horizontalAdvance(prefix)
+        )
+        if available > 0:
+            name = metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, available)
+        else:  # not yet laid out, so fall back to a character cap
+            name = elide_middle(name)
+        button.setText(f"{prefix}{name}")
+        button.setToolTip(abspath(file))
+
+    def _show_wr_selection(self):
+        self._show_selection_on_button(
+            self.select_work_requirement,
+            SELECTED_WR_PREFIX,
+            self._select_wr_default_text,
+            self._wr_file,
+        )
+
+    def _show_wp_selection(self):
+        self._show_selection_on_button(
+            self.select_worker_pool,
+            SELECTED_WP_PREFIX,
+            self._select_wp_default_text,
+            self._wp_file,
+        )
+
     def _select_work_requirement_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
         file = self._select_file(
@@ -569,6 +635,7 @@ class YellowDogApp(QMainWindow):
         else:
             self._wr_file = relpath(file)
             self._log(f"Selected Work Requirement definition '{self._wr_file}'")
+            self._show_wr_selection()
 
     def _select_worker_pool_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
@@ -582,6 +649,7 @@ class YellowDogApp(QMainWindow):
         else:
             self._wp_file = relpath(file)
             self._log(f"Selected Worker Pool definition '{self._wp_file}'")
+            self._show_wp_selection()
 
     def _submit_work_requirement_action(self):
         # Generate and run the command
@@ -1166,11 +1234,13 @@ class YellowDogApp(QMainWindow):
 
         if self._wr_file is not None:
             self._wr_file = None
+            self._show_wr_selection()
             self._log("Deselected Work Requirement definition file")
             deselected_files = True
 
         if self._wp_file is not None:
             self._wp_file = None
+            self._show_wp_selection()
             self._log("Deselected Worker Pool definition file")
             deselected_files = True
 
