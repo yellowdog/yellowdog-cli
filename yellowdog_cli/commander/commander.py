@@ -31,6 +31,7 @@ elif WINDOWS:
         startfile as os_startfile,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
+from codecs import getincrementaldecoder
 from json import loads
 from os.path import abspath, basename, dirname, exists, join, relpath
 
@@ -87,6 +88,37 @@ NAMESPACE = "namespace"
 TAG = "tag"
 WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
+
+
+class LineBuffer:
+    """
+    Accumulates raw bytes read from a subprocess output channel and yields
+    complete lines. Pipe reads don't respect line boundaries (or UTF-8
+    character boundaries), so any partial trailing line is held back until the
+    rest of it arrives; without this, appending each read to the log pane
+    inserts a spurious line break wherever a read boundary happens to fall.
+    """
+
+    def __init__(self):
+        self._decoder = getincrementaldecoder("utf-8")(errors="replace")
+        self._partial_line = ""
+
+    def feed(self, data: bytes) -> list[str]:
+        """
+        Add the bytes from one read and return the lines completed by them.
+        """
+        self._partial_line += self._decoder.decode(data)
+        *lines, self._partial_line = self._partial_line.split("\n")
+        return [line.rstrip("\r") for line in lines]
+
+    def flush(self) -> list[str]:
+        """
+        Return any unterminated final line. Only safe to call once no more
+        data is coming, i.e. when the process has exited.
+        """
+        self._partial_line += self._decoder.decode(b"", final=True)
+        remainder, self._partial_line = self._partial_line.rstrip("\r"), ""
+        return [remainder] if remainder else []
 
 
 def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
@@ -971,11 +1003,18 @@ class YellowDogApp(QMainWindow):
             process_env.insert("PYTHONIOENCODING", "utf-8")
 
         process.setProcessEnvironment(process_env)
+        stdout_buffer = LineBuffer()
+        stderr_buffer = LineBuffer()
         process.readyReadStandardOutput.connect(
-            functools_partial(self._on_stdout, process)
+            functools_partial(self._on_stdout, process, stdout_buffer)
         )
         process.readyReadStandardError.connect(
-            functools_partial(self._on_stderr, process)
+            functools_partial(self._on_stderr, process, stderr_buffer)
+        )
+        process.finished.connect(
+            functools_partial(
+                self._on_process_output_finished, process, stdout_buffer, stderr_buffer
+            )
         )
 
         command_line_text = (command + " " + " ".join(args)).rstrip()
@@ -1138,13 +1177,35 @@ class YellowDogApp(QMainWindow):
         if not deselected_files:
             self._log("No configuration or definition files to deselect")
 
-    def _on_stdout(self, process: QProcess):
-        text = process.readAllStandardOutput().data().decode("utf-8").rstrip()
-        self._log(text, prefix=False)
+    def _on_stdout(self, process: QProcess, line_buffer: LineBuffer):
+        self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()))
 
-    def _on_stderr(self, process: QProcess):
-        text = process.readAllStandardError().data().decode("utf-8").rstrip()
-        self._log(text, prefix=False)
+    def _on_stderr(self, process: QProcess, line_buffer: LineBuffer):
+        self._log_lines(line_buffer.feed(process.readAllStandardError().data()))
+
+    def _on_process_output_finished(
+        self,
+        process: QProcess,
+        stdout_buffer: LineBuffer,
+        stderr_buffer: LineBuffer,
+        *_signal_args,
+    ):
+        """
+        Drain both output channels when the process exits, and display any
+        final line that wasn't terminated by a newline.
+        """
+        self._log_lines(
+            stdout_buffer.feed(process.readAllStandardOutput().data())
+            + stdout_buffer.flush()
+        )
+        self._log_lines(
+            stderr_buffer.feed(process.readAllStandardError().data())
+            + stderr_buffer.flush()
+        )
+
+    def _log_lines(self, lines: list[str]):
+        if lines:
+            self._log("\n".join(lines), prefix=False)
 
     def _log(self, output: str, prefix: bool = True):
         self.log_output.appendPlainText(f"{self._prefix() if prefix else ''}{output}")
