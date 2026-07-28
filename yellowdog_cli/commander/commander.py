@@ -74,6 +74,8 @@ from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
+MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
+PATH_ELLIPSIS = "…"
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
@@ -85,6 +87,22 @@ NAMESPACE = "namespace"
 TAG = "tag"
 WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
+
+
+def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
+    """
+    Shorten a file path for display so that it doesn't stretch the layout,
+    keeping the end of the path (including the filename) visible. Paths within
+    the length limit are returned unchanged.
+    """
+    if len(path) <= max_length:
+        return path
+
+    tail = path[-(max_length - len(PATH_ELLIPSIS)) :]
+    separator_index = tail.find(os.sep)
+    if separator_index != -1:  # discard any partial leading directory name
+        tail = tail[separator_index:]
+    return f"{PATH_ELLIPSIS}{tail}"
 
 
 class CommandHistory:
@@ -429,6 +447,7 @@ class YellowDogApp(QMainWindow):
             self.select_config_label.setText(
                 f"{SELECTED_CONFIG_PREFIX}{NO_SELECTED_CONFIG}"
             )
+            self.select_config_label.setToolTip("")
             self._config_parse_invalid = True
             if self._parse_yd_config(quiet=True):
                 self._set_placeholders(self._namespace or "", self._tag or "")
@@ -440,13 +459,17 @@ class YellowDogApp(QMainWindow):
             self._log(f"Config file '{config_file}' does not exist")
             return
 
-        self._config_file = relpath(config_file)
+        selected_config_file = relpath(config_file)
+        self._config_file = selected_config_file
         self._config_parse_invalid = True
-        self._log(f"Selected configuration file '{self._config_file}'")
-        self.select_config_label.setText(f"{SELECTED_CONFIG_PREFIX}{self._config_file}")
+        self._log(f"Selected configuration file '{selected_config_file}'")
+        self.select_config_label.setText(
+            f"{SELECTED_CONFIG_PREFIX}{elide_path(selected_config_file)}"
+        )
+        self.select_config_label.setToolTip(abspath(selected_config_file))
         if self._parse_yd_config(quiet=True):
             self._set_placeholders(self._namespace or "", self._tag or "")
-        self._file_watcher.addPath(abspath(cast(str, self._config_file)))
+        self._file_watcher.addPath(abspath(selected_config_file))
 
     def _select_config_file_action(self):
         file = self._select_file(
