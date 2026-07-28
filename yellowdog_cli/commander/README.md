@@ -55,6 +55,19 @@ Matching is by substring or prefix, not exact equality, which has two consequenc
 
 When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag. A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on.
 
+### Object Naming and Matching
+
+The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd-download` / `yd-delete`, so anything those commands accept can be typed into it. Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default), which is why the default `<tag>*` finds your results: it matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
+
+That gives you four ways to widen or narrow the reach of a download or deletion:
+
+- **Wildcards** (`*`, `?`, `[…]`) anywhere in the path, matching files and directories — `<tag>_2607*` for one month's runs, `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
+- **A specific file or subdirectory**, with `/` separators — `myproject_260728-104500123/taskoutput.txt` retrieves a single object rather than a whole tree.
+- **Variable substitution** with `{{...}}` — the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. Unlike on the command line, no quoting is needed: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
+- **An absolute rclone path** of the form `<remote>:<bucket>/<path>`, which is used verbatim and bypasses the configured prefix entirely, reaching anywhere the data store profile has access to — including objects that have nothing to do with the current namespace and tag.
+
+The absolute-path form deserves particular care: a path that escapes the configured prefix also escapes the namespace and tag scoping that otherwise limits what these actions can reach, as does a broad wildcard such as `*`. Delete Matching Objects also deletes recursively, so a matched directory goes with everything inside it. The confirmation dialog always lists the objects and top-level directories it matched first, so read it before confirming.
+
 ## Selecting a Configuration (Panel 1)
 
 Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
@@ -81,7 +94,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 
 ## Collecting and Managing Results (Panel 4)
 
-- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used.
+- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads all matching objects into a `results` directory alongside the configuration file.
 - **Delete Matching Objects** — deletes all matching objects from remote storage.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything.
