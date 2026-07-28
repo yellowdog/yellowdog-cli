@@ -85,12 +85,16 @@ def test_long_filename_is_elided_but_still_identifiable(win):
     assert win.select_work_requirement.toolTip().endswith(LONG_NAME)  # full name
 
 
-def test_deselecting_restores_the_original_labels(win):
+def test_deselecting_restores_the_original_labels(win, monkeypatch):
     win._wr_file = "definitions/mytasks.jsonnet"
     win._wp_file = "definitions/mypool.jsonnet"
     win._show_wr_selection()
     win._show_wp_selection()
 
+    # Choose everything the dialog offers, without showing it
+    monkeypatch.setattr(
+        win, "_choose_files_to_deselect", lambda entries: list(range(len(entries)))
+    )
     win._deselect_files_action()
 
     assert win.select_work_requirement.text() == "Select Work Requirement JSON"

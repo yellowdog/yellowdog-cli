@@ -32,6 +32,7 @@ elif WINDOWS:
     )
 
 from codecs import getincrementaldecoder
+from collections.abc import Callable
 from json import loads
 from os.path import abspath, basename, dirname, exists, join, relpath
 
@@ -82,6 +83,8 @@ SELECTED_WR_PREFIX = "Work Requirement: "
 SELECTED_WP_PREFIX = "Worker Pool: "
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
+MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
+DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
@@ -1226,26 +1229,116 @@ class YellowDogApp(QMainWindow):
             self._log(f"Cannot open Worker Pool file '{path}': {e}")
 
     def _deselect_files_action(self):
-        deselected_files = False
+        """
+        Deselect the configuration file and/or the Work Requirement and Worker
+        Pool definition files. Which of the currently-selected files to
+        deselect is chosen in a dialog; all of them start selected, so
+        accepting it unchanged deselects everything. The dialog is shown
+        regardless of '--yes' (see _choose_files_to_deselect).
+        """
+        entries: list[tuple[str, str, Callable[[], None]]] = []
         if self._config_file is not None:
-            self._set_config_file(None)
-            self._log("Deselected configuration file")
-            deselected_files = True
-
+            entries.append(
+                ("Configuration", self._config_file, self._deselect_config_file)
+            )
         if self._wr_file is not None:
-            self._wr_file = None
-            self._show_wr_selection()
-            self._log("Deselected Work Requirement definition file")
-            deselected_files = True
-
+            entries.append(("Work Requirement", self._wr_file, self._deselect_wr_file))
         if self._wp_file is not None:
-            self._wp_file = None
-            self._show_wp_selection()
-            self._log("Deselected Worker Pool definition file")
-            deselected_files = True
+            entries.append(("Worker Pool", self._wp_file, self._deselect_wp_file))
 
-        if not deselected_files:
+        if not entries:
             self._log("No configuration or definition files to deselect")
+            return
+
+        # Always ask, even with '--yes': this dialog chooses what to act on
+        # rather than confirming a destructive action, so suppressing it would
+        # remove the only way to deselect one file and not the others.
+        chosen = self._choose_files_to_deselect(
+            [(label, path) for label, path, _ in entries]
+        )
+        if chosen is None:
+            self._log("Cancelled: no files deselected")
+            return
+        if not chosen:
+            self._log("No files chosen: nothing deselected")
+            return
+
+        for index in chosen:
+            entries[index][2]()
+
+    def _deselect_config_file(self):
+        self._set_config_file(None)
+        self._log("Deselected configuration file")
+
+    def _deselect_wr_file(self):
+        self._wr_file = None
+        self._show_wr_selection()
+        self._log("Deselected Work Requirement definition file")
+
+    def _deselect_wp_file(self):
+        self._wp_file = None
+        self._show_wp_selection()
+        self._log("Deselected Worker Pool definition file")
+
+    def _choose_files_to_deselect(
+        self, entries: list[tuple[str, str]]
+    ) -> list[int] | None:
+        """
+        Ask which of the currently-selected files to deselect, given a list of
+        (label, path) entries. Returns the indices of the files chosen, which
+        may be empty, or None if the dialog was cancelled.
+        """
+        dialog, checkboxes = self._build_deselect_dialog(entries)
+        if dialog.exec() != QDialog.DialogCode.Accepted.value:
+            return None
+        return [
+            index for index, checkbox in enumerate(checkboxes) if checkbox.isChecked()
+        ]
+
+    def _build_deselect_dialog(
+        self, entries: list[tuple[str, str]]
+    ) -> tuple[QDialog, list[QCheckBox]]:
+        """
+        Build (but do not show) the deselection dialog: a checkbox per
+        currently-selected file, labelled with its type and path and carrying
+        the full path as a tooltip, plus Cancel / Deselect buttons (default
+        Deselect). Every file starts checked, so accepting the dialog unchanged
+        deselects all of them, as the button did before it asked.
+
+        Each row is phrased as an action ('Deselect Worker Pool: ...') rather
+        than as state ('Worker Pool: ...'), because a checked row stating only
+        the file invites the opposite reading — that the box represents the
+        file being selected, and that unchecking it is what deselects it.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Deselect Files")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Check the files to deselect:"))
+
+        checkboxes: list[QCheckBox] = []
+        for label, path in entries:
+            checkbox = QCheckBox(
+                f"{DESELECT_ROW_PREFIX}{label}: "
+                f"{elide_path(path, MAX_DIALOG_PATH_LENGTH)}",
+                dialog,
+            )
+            checkbox.setChecked(True)
+            checkbox.setToolTip(abspath(path))
+            layout.addWidget(checkbox)
+            checkboxes.append(checkbox)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        deselect_btn = cast(
+            QPushButton,
+            button_box.addButton("Deselect", QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        deselect_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        return dialog, checkboxes
 
     def _on_stdout(self, process: QProcess, line_buffer: LineBuffer):
         self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()))
