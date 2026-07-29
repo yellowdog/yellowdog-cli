@@ -55,6 +55,19 @@ Matching is by substring or prefix, not exact equality, which has two consequenc
 
 When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag. A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on.
 
+### Object Naming and Matching
+
+The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd-download` / `yd-delete`, so anything those commands accept can be typed into it. Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default), which is why the default `<tag>*` finds your results: it matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
+
+That gives you four ways to widen or narrow the reach of a download or deletion:
+
+- **Wildcards** (`*`, `?`, `[…]`) anywhere in the path, matching files and directories — `<tag>_2607*` for one month's runs, `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
+- **A specific file or subdirectory**, with `/` separators — `myproject_260728-104500123/taskoutput.txt` retrieves a single object rather than a whole tree.
+- **Variable substitution** with `{{...}}` — the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. Unlike on the command line, no quoting is needed: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
+- **An absolute rclone path** of the form `<remote>:<bucket>/<path>`, which is used verbatim and bypasses the configured prefix entirely, reaching anywhere the data store profile has access to — including objects that have nothing to do with the current namespace and tag.
+
+The absolute-path form deserves particular care: a path that escapes the configured prefix also escapes the namespace and tag scoping that otherwise limits what these actions can reach, as does a broad wildcard such as `*`. Delete Matching Objects also deletes recursively, so a matched directory goes with everything inside it. The confirmation dialog always lists the objects and top-level directories it matched first, so read it before confirming.
+
 ## Selecting a Configuration (Panel 1)
 
 Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
@@ -62,7 +75,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit.
+- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect Files** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
 - **Extra Options** — free-text command-line options appended to the `yd-submit` command.
@@ -72,7 +85,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Provisioning and Managing Compute (Panel 3)
 
 - **Create New Cloud Worker Pool** — runs `yd-provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
-- **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision.
+- **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Extra Options** — free-text command-line options appended to the `yd-provision` command.
@@ -81,7 +94,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 
 ## Collecting and Managing Results (Panel 4)
 
-- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used.
+- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads all matching objects into a `results` directory alongside the configuration file.
 - **Delete Matching Objects** — deletes all matching objects from remote storage.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything.
@@ -108,7 +121,7 @@ Each pair is passed to the command as a `-v` option (`-v instances=2 -v template
 - **View Config Directory** — opens the configuration file's directory in the system file viewer.
 - **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
-- **Deselect Files** — clears any explicitly selected Work Requirement and Worker Pool definition files, reverting to the definitions in the configuration file.
+- **Deselect Files** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
 - **Clear Command Output** / **Copy Command Output** — clear the output window, or copy its full contents to the clipboard.
 - **Dark Mode** — toggle between light and dark appearance.
 
@@ -123,3 +136,5 @@ If a running command prompts for input, type into the **Command Input** field an
 ## A Note on Confirmations
 
 Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination act on **all** matching entities and cannot be undone, so each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything; if nothing matches, Commander reports that in the output window and does nothing rather than showing a dialog. The dialog offers **Yes**, **No**, and **Yes (Don't Ask Again)**; the last confirms and suppresses further prompts for that same action for the rest of the session. Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session.
+
+**Deselect Files** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.
