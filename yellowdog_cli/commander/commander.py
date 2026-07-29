@@ -49,6 +49,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QClipboard,
+    QCloseEvent,
     QColor,
     QFont,
     QFontMetrics,
@@ -85,6 +86,9 @@ BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
 MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
 DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
+TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
+KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
+CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
@@ -385,6 +389,16 @@ class YellowDogApp(QMainWindow):
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
+
+        # Live child processes and nested event loops, so that shutdown() can
+        # stop them deterministically instead of leaving them to be torn down
+        # with the widgets. Commands launched from the UI are kept separately
+        # from internal synchronous helpers, because only the former are worth
+        # asking the user about on quit.
+        self._processes: list[QProcess] = []
+        self._helper_processes: list[QProcess] = []
+        self._nested_loops: list[QEventLoop] = []
+        self._shutting_down = False
         self.stdin_input.textChanged.connect(
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
         )
@@ -459,7 +473,17 @@ class YellowDogApp(QMainWindow):
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
         yd_process.start(cmd, args)
-        event_loop.exec()
+        if not self._run_nested(yd_process, event_loop, CONFIG_PARSE_TIMEOUT_MS):
+            if self._shutting_down:
+                return False  # the widgets are going away; don't touch them
+            # Reported even when quiet: a timeout here means something is
+            # wrong with the configuration (an unreachable API URL, say), and
+            # silently leaving the placeholders blank wouldn't explain it
+            self._log(
+                f"Timed out after {CONFIG_PARSE_TIMEOUT_MS // 1000}s parsing"
+                f" configuration with 'yd-show'"
+            )
+            return False
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             if not quiet:
@@ -820,7 +844,9 @@ class YellowDogApp(QMainWindow):
             + (extra_args or [])
         )
         yd_process.start(command, args)
-        event_loop.exec()
+        self._run_nested(yd_process, event_loop)
+        if self._shutting_down:
+            return None  # the widgets are going away; don't touch them
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             return None
@@ -1100,6 +1126,8 @@ class YellowDogApp(QMainWindow):
                 self._on_process_output_finished, process, stdout_buffer, stderr_buffer
             )
         )
+        self._processes.append(process)
+        process.finished.connect(functools_partial(self._forget_process, process))
 
         command_line_text = (command + " " + " ".join(args)).rstrip()
         self._log(
@@ -1117,6 +1145,202 @@ class YellowDogApp(QMainWindow):
                 self.stdin_input.setEnabled(True)
                 self.stdin_input.setPlaceholderText("Send input to process...")
                 process.finished.connect(self._on_active_process_finished)
+
+    def _forget_process(self, process: QProcess, *_signal_args):
+        for processes in (self._processes, self._helper_processes):
+            if process in processes:
+                processes.remove(process)
+
+    def _run_nested(
+        self, process: QProcess, event_loop: QEventLoop, timeout_ms: int | None = None
+    ) -> bool:
+        """
+        Block in a nested event loop until a synchronous helper's child process
+        finishes, registering both so that shutdown() can release them. A
+        command blocked on a network timeout can hold this loop for as long as
+        that timeout lasts, and the user can close the window while it does.
+
+        With timeout_ms, give up after that long and stop the process. Returns
+        True if the process finished on its own, and False if it timed out or
+        was stopped by shutdown() — in the latter case the caller must not
+        touch any widget, as they are about to be destroyed.
+        """
+        self._helper_processes.append(process)
+        self._nested_loops.append(event_loop)
+
+        timed_out = False
+        timer: QTimer | None = None
+        if timeout_ms is not None:
+
+            def on_timeout():
+                nonlocal timed_out
+                timed_out = True
+                event_loop.quit()
+
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(on_timeout)
+            timer.start(timeout_ms)
+
+        try:
+            event_loop.exec()
+        finally:
+            if timer is not None:
+                timer.stop()
+            self._nested_loops.remove(event_loop)
+            self._forget_process(process)
+
+        if timed_out:
+            self._stop_process(process)
+        return not (timed_out or self._shutting_down)
+
+    def _stop_process(self, process: QProcess) -> bool:
+        """
+        Stop a running child process, politely first and forcibly if it doesn't
+        go. Returns True if it was running and had to be stopped.
+
+        The output handlers are disconnected first: they write to widgets that
+        are about to be destroyed, and would otherwise fire during teardown.
+        """
+        if process.state() == QProcess.ProcessState.NotRunning:
+            return False
+
+        for signal in (
+            process.readyReadStandardOutput,
+            process.readyReadStandardError,
+            process.finished,
+        ):
+            try:
+                signal.disconnect()
+            except TypeError:
+                pass  # nothing was connected to this signal
+
+        process.terminate()
+        if not process.waitForFinished(TERMINATE_TIMEOUT_MS):
+            process.kill()
+            process.waitForFinished(KILL_TIMEOUT_MS)
+        return True
+
+    def shutdown(self):
+        """
+        Stop child processes and leave any nested event loop, before Qt starts
+        destroying the widgets. Idempotent.
+
+        Without this, a command still running at exit is destroyed along with
+        the window: Qt warns 'QProcess: Destroyed while process is still
+        running', its output handlers fire against deleted C++ objects, and the
+        resulting failure during interpreter teardown is what raises a macOS
+        error report. A command blocked on a network timeout — an unreachable
+        API URL, say — makes this the normal case rather than a rare one.
+        """
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+
+        # Release any nested event loop (config parsing, entity enumeration):
+        # the close was delivered from inside it, so it must be told to exit or
+        # it will keep running while the widgets are destroyed around it
+        for event_loop in list(self._nested_loops):
+            event_loop.quit()
+
+        stopped = sum(
+            self._stop_process(process)
+            for process in list(self._processes) + list(self._helper_processes)
+        )
+        if stopped:
+            self._log(f"Stopped {stopped} running command(s) on exit")
+        self._processes.clear()
+        self._helper_processes.clear()
+
+    def _running_commands(self) -> list[QProcess]:
+        """
+        Commands launched from the UI that are still running. Internal helpers
+        are excluded: they are short-lived and not the user's business.
+        """
+        return [
+            process
+            for process in self._processes
+            if process.state() != QProcess.ProcessState.NotRunning
+        ]
+
+    def closeEvent(self, a0: QCloseEvent | None):
+        if not self._shutting_down:
+            running = self._running_commands()
+            if running and not self._confirmations_disabled:
+                if not self._confirm_quit(running):
+                    if a0 is not None:
+                        a0.ignore()  # keep the window open
+                    return
+        self.shutdown()
+        super().closeEvent(a0)
+
+    def _confirm_quit(self, running: list[QProcess]) -> bool:
+        """
+        Ask whether to quit while commands are still running. Returns True if
+        the user chose to quit. Suppressed by '--yes', which quits immediately.
+        """
+        dialog, quit_btn = self._build_quit_dialog(
+            [f"{process.program()} (pid {process.processId()})" for process in running]
+        )
+        clicked: dict[str, object] = {}
+        buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))
+        buttons.clicked.connect(
+            lambda button: (clicked.__setitem__("button", button), dialog.accept())
+        )
+        dialog.exec()
+        return clicked.get("button") is quit_btn
+
+    def _build_quit_dialog(self, names: list[str]) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) the quit-while-running dialog: a warning, the
+        commands that would be stopped, and Cancel / 'Quit and Stop' buttons
+        (default Cancel, since stopping a submission part-way is worse than
+        waiting for it). Returns the dialog and the quit button.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Commands Still Running")
+        layout = QVBoxLayout(dialog)
+
+        header = QHBoxLayout()
+        icon_label = QLabel()
+        icon_label.setPixmap(
+            cast(QStyle, self.style())
+            .standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+            .pixmap(QSize(48, 48))
+        )
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header.addWidget(icon_label)
+        message = QLabel(
+            f"{len(names)} command(s) are still running. Quitting will stop "
+            "them; work already submitted to the platform will carry on there."
+        )
+        message.setWordWrap(True)
+        header.addWidget(message, stretch=1)
+        layout.addLayout(header)
+
+        listing = QPlainTextEdit()
+        listing.setObjectName("running_listing")
+        listing.setReadOnly(True)
+        listing.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        listing.setFont(self._font)
+        listing.setPlainText("\n".join(names))
+        layout.addWidget(listing)
+
+        button_box = QDialogButtonBox(dialog)
+        cancel_btn = cast(
+            QPushButton,
+            button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole),
+        )
+        quit_btn = cast(
+            QPushButton,
+            button_box.addButton(
+                "Quit and Stop", QDialogButtonBox.ButtonRole.AcceptRole
+            ),
+        )
+        cancel_btn.setDefault(True)
+        layout.addWidget(button_box)
+
+        return dialog, quit_btn
 
     def _on_active_process_finished(self):
         self._active_process = None
@@ -1555,6 +1779,8 @@ def run_app(config_file: str | None = None, disable_confirmations: bool = False)
         app.setWindowIcon(icon)
         win = YellowDogApp(config_file, disable_confirmations)
         win.setWindowIcon(icon)
+        # Covers quits that don't close the window first (macOS Cmd-Q, the Dock)
+        app.aboutToQuit.connect(win.shutdown)
 
         cast(QLayout, win.layout()).activate()
         win.setMinimumHeight(win.minimumSizeHint().height())
