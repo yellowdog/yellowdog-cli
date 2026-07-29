@@ -79,9 +79,9 @@ def main():
 
     print(f"  YellowDog CLI Version:   {__version__} (Docs: {DOCS_URL})")
     print(f"  YellowDog SDK Version:   {yd_sdk_version}")
+    print(f"  Python Version:          {py_version.split()[0]} ")
     print(f"  Jsonnet Version:         {_jsonnet_version()}")
     print(f"  rclone Version:          {_rclone_version()}")
-    print(f"  Python Version:          {py_version.split()[0]} ")
     print(f"  Author:                  {__author__} ({__email__}) ")
     if args.debug:
         print(f"  Command:                 {abspath(__file__)}")
