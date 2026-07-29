@@ -403,13 +403,26 @@ class YellowDogApp(QMainWindow):
             self._set_placeholders(self._namespace or "", self._tag or "")
 
     def _set_placeholders(self, namespace: str, tag: str):
+        """
+        Update the placeholder text showing the namespace, tag and object path
+        that will be used if those fields are left blank.
+
+        The viewport repaints are scheduled with update() rather than forced
+        with repaint(): callers reach this immediately after _parse_yd_config
+        has run a nested event loop, and forcing a synchronous paint of a text
+        widget from there is what appears to make macOS log bursts of
+        'TSMSendMessageToUIServer ... FAILED(-1)'. Control returns to the event
+        loop directly afterwards, so the placeholders still appear at once.
+        It has to be the viewport, not the widget: QPlainTextEdit is a scroll
+        area, and the placeholder text is painted by its viewport.
+        """
         self.namespace_override.setPlaceholderText(namespace)
-        cast(QWidget, self.namespace_override.viewport()).repaint()
+        cast(QWidget, self.namespace_override.viewport()).update()
         self.tag_override.setPlaceholderText(tag)
-        cast(QWidget, self.tag_override.viewport()).repaint()
+        cast(QWidget, self.tag_override.viewport()).update()
         default_prefix = f"{tag}*" if tag else ""
         self.object_path_override.setPlaceholderText(default_prefix)
-        cast(QWidget, self.object_path_override.viewport()).repaint()
+        cast(QWidget, self.object_path_override.viewport()).update()
 
     def _parse_yd_config(self, quiet: bool = False) -> bool:
         """
