@@ -1041,14 +1041,23 @@ class YellowDogApp(QMainWindow):
         the monospaced output font and holds its handle in UserRole, which is
         where the run arguments are read from; the tooltip carries the fuller
         text so a row elided by a narrow dialog (QListWidget's default
-        ElideRight, with no horizontal scrollbar) is still recoverable. The
-        widget's height is capped at MAX_DIALOG_LIST_ROWS rows so a long listing
-        scrolls instead of growing the dialog past the screen.
+        ElideRight) is still recoverable. The widget's height is fixed to its
+        content, capped at MAX_DIALOG_LIST_ROWS rows so a long listing scrolls
+        instead of growing the dialog past the screen.
+
+        The horizontal scrollbar is turned off explicitly, and the height is
+        fixed rather than merely capped, because of one bug in each direction. A
+        scrollbar appears when a name overflows a narrow dialog and then eats the
+        height budgeted for the rows — on Windows that left a 1px viewport, so the
+        list showed nothing but the scrollbar. And a bare maximum lets the layout
+        squeeze the list towards nothing when the dialog is short of space, which
+        is platform- and font-dependent. Eliding plus the tooltip is the intended
+        way to cope with a long name, not scrolling sideways.
 
         ENTITY_LIST_PADDING keeps the rows off the frame, which otherwise reads
         as cramped once there are more than a handful. Qt folds stylesheet
-        padding into frameWidth(), so the height cap below picks it up on its
-        own — do not add it a second time.
+        padding into frameWidth(), so the height below picks it up on its own —
+        do not add it a second time.
 
         A QListWidget is used rather than a column of QCheckBox widgets (as
         _build_deselect_dialog uses for its three fixed rows) because a busy
@@ -1060,6 +1069,7 @@ class YellowDogApp(QMainWindow):
         listing.setObjectName("selection_list")
         listing.setFont(self._font)
         listing.setStyleSheet(f"QListWidget {{ padding: {ENTITY_LIST_PADDING}px; }}")
+        listing.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for row in rows:
             item = QListWidgetItem(row.display)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -1071,9 +1081,8 @@ class YellowDogApp(QMainWindow):
         row_height = listing.sizeHintForRow(0)
         if row_height > 0:
             visible_rows = min(len(rows), MAX_DIALOG_LIST_ROWS)
-            listing.setMaximumHeight(
-                row_height * visible_rows + 2 * listing.frameWidth()
-            )
+            height = row_height * visible_rows + 2 * listing.frameWidth()
+            listing.setFixedHeight(height)
         return listing
 
     def _build_destructive_dialog(

@@ -54,6 +54,43 @@ def test_rows_are_padded_off_the_frame(window):
     assert listing.frameWidth() >= ENTITY_LIST_PADDING
 
 
+def test_rows_stay_visible_in_a_narrow_dialog(window):
+    # Regression (reported on Windows): a long name overflowed a narrow dialog, Qt
+    # added a horizontal scrollbar, and the scrollbar ate the height budgeted for
+    # the rows — leaving a 1px viewport showing nothing but the scrollbar. The
+    # earlier height test asserted the arithmetic but never that a row can be seen.
+    long_rows = entity_rows(
+        [
+            EntitySummary(
+                id=f"ydid:workreq:{n}",
+                name=f"a-very-long-work-requirement-name-{n:04d}",
+                status="RUNNING",
+            )
+            for n in range(3)
+        ]
+    )
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Cancel", "Cancel?", rows=long_rows
+    )
+    listing = dialog.findChild(QListWidget, "selection_list")
+    dialog.resize(280, dialog.sizeHint().height())
+    dialog.show()
+
+    assert listing.horizontalScrollBar().isVisible() is False
+    row_height = listing.sizeHintForRow(0)
+    assert listing.viewport().height() // row_height == 3
+
+
+def test_the_horizontal_scrollbar_is_off_so_it_cannot_steal_height(window):
+    # Long names elide, with the tooltip as the recovery path; scrolling sideways
+    # is not the intended answer and costs the rows their vertical space.
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Cancel", "Cancel?", rows=entity_rows(entities())
+    )
+    listing = dialog.findChild(QListWidget, "selection_list")
+    assert listing.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+
+
 def test_height_cap_accounts_for_the_padding(window):
     # The cap must be computed from the padded frame. Derived from an unpadded
     # one it would be short by 2 * ENTITY_LIST_PADDING, clipping the last
