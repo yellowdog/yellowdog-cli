@@ -33,6 +33,7 @@ elif WINDOWS:
 
 from codecs import getincrementaldecoder
 from collections.abc import Callable
+from dataclasses import dataclass
 from json import loads
 from os.path import abspath, basename, dirname, exists, join, relpath
 
@@ -67,6 +68,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
@@ -89,6 +92,11 @@ BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
 MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
 DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
+SKIP_CONFIRMATION_BUTTON_TEXT = "Yes to All (Don't Ask Again)"
+MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
+ENTITY_ROW_GAP = 2  # spaces between the name and status columns
+ENTITY_LIST_PADDING = 6  # px of breathing room inside the entity list's frame
+MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
@@ -103,6 +111,44 @@ NAMESPACE = "namespace"
 TAG = "tag"
 WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
+
+
+@dataclass(frozen=True)
+class EntitySummary:
+    """
+    The identity of one entity in a '-D --json' enumeration: the YDID used to
+    target it on the command line, plus the name and status shown to the user.
+    """
+
+    id: str
+    name: str
+    status: str | None
+
+
+def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
+    """
+    Convert a parsed '-D --json' array into EntitySummary objects. Returns None
+    if any row is not a dict or lacks an 'id' or a 'name': without a YDID the
+    entity cannot be targeted individually, and a selection must never fall back
+    to name-based targeting, because names are not guaranteed unique and the
+    action is destructive.
+    """
+    summaries: list[EntitySummary] = []
+    for obj in parsed:
+        if not isinstance(obj, dict):
+            return None
+        entity_id, name = obj.get("id"), obj.get("name")
+        if not entity_id or not name:
+            return None
+        status = obj.get("status")
+        summaries.append(
+            EntitySummary(
+                id=str(entity_id),
+                name=str(name),
+                status=None if status is None else str(status),
+            )
+        )
+    return summaries
 
 
 class LineBuffer:
@@ -164,6 +210,54 @@ def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
     keep = max_length - len(PATH_ELLIPSIS)
     head = keep - keep // 2
     return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
+
+
+def checked_entity_ids(listing: QListWidget) -> list[str]:
+    """
+    The YDIDs of the ticked rows of an entity list, in list order.
+    """
+    ids: list[str] = []
+    for index in range(listing.count()):
+        item = listing.item(index)
+        if item is not None and item.checkState() == Qt.CheckState.Checked:
+            ids.append(item.data(Qt.ItemDataRole.UserRole))
+    return ids
+
+
+def set_all_check_states(
+    listing: QListWidget, state: Qt.CheckState, *_signal_args
+) -> None:
+    """
+    Set every row of an entity list to the same check state, for the All / None
+    buttons. Takes and ignores the trailing signal arguments so it can be
+    connected to 'clicked' directly.
+    """
+    for index in range(listing.count()):
+        item = listing.item(index)
+        if item is not None:
+            item.setCheckState(state)
+
+
+def update_selection_state(
+    listing: QListWidget,
+    count_label: QLabel,
+    yes_btn: QPushButton,
+    *_signal_args,
+) -> None:
+    """
+    Refresh the 'N of M selected' label and gate the Yes button on something
+    being selected, so the dialog cannot confirm a run that would do nothing.
+    """
+    selected = len(checked_entity_ids(listing))
+    count_label.setText(f"{selected} of {listing.count()} selected")
+    yes_btn.setEnabled(selected > 0)
+
+
+def command_line_text(command: str, args: list[str]) -> str:
+    """
+    A command and its arguments as echoed to the output window.
+    """
+    return (command + " " + " ".join(args)).rstrip()
 
 
 class CommandHistory:
@@ -748,39 +842,121 @@ class YellowDogApp(QMainWindow):
         title: str,
         body: str,
         names: list[str] | None = None,
-    ) -> bool:
+        entities: list[EntitySummary] | None = None,
+    ) -> list[EntitySummary] | None:
         """
         Show a warning confirmation dialog for a destructive action. Returns
-        True if the action should proceed. 'Yes (Don't Ask Again)' confirms and
-        suppresses future confirmations for this same action (identified by
-        action_key) for the rest of the session; the suppression is per-action,
-        not global.
+        None if the action must not proceed; otherwise the entities to act on —
+        the ticked subset when 'entities' was supplied, or [] when there was
+        nothing individually selectable (a 'names' listing, no listing, or a
+        suppressed confirmation). Callers must therefore test 'is not None',
+        not truthiness, since [] means 'proceed over the whole scope'.
+
+        'Yes to All (Don't Ask Again)' confirms and suppresses future
+        confirmations for this same action (identified by action_key) for the
+        rest of the session; the suppression is per-action, not global. It acts
+        on every listed entity regardless of the tick states, as its label says.
         """
         if self._confirmations_disabled or action_key in self._skip_confirmations:
-            return True
-        dialog, yes_btn, skip_btn = self._build_destructive_dialog(title, body, names)
+            return []
+        dialog, yes_btn, skip_btn = self._build_destructive_dialog(
+            title, body, names, entities
+        )
         buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))
         clicked: dict[str, object] = {}
         buttons.clicked.connect(
             lambda button: (clicked.__setitem__("button", button), dialog.accept())
         )
         dialog.exec()
-        if clicked.get("button") is skip_btn:
-            self._skip_confirmations.add(action_key)
-            return True
-        return clicked.get("button") is yes_btn
+
+        try:
+            if clicked.get("button") is skip_btn:
+                self._skip_confirmations.add(action_key)
+                return list(entities or [])
+            if clicked.get("button") is not yes_btn:
+                return None
+            if not entities:
+                return []
+            listing = cast(
+                QListWidget, dialog.findChild(QListWidget, "entity_selection")
+            )
+            checked = set(checked_entity_ids(listing))
+            return [entity for entity in entities if entity.id in checked]
+        finally:
+            # Parented to the main window, so without this every confirmation
+            # dialog — and the hundreds of list items it may own — would live
+            # for the rest of the session.
+            dialog.deleteLater()
+
+    def _build_entity_list_widget(self, entities: list[EntitySummary]) -> QListWidget:
+        """
+        A checkable list of entities, every row ticked. Each row shows the
+        entity's name and status in the monospaced output font, with the name
+        column padded to a common width so the statuses line up; the YDID is
+        kept off the row text (full YDIDs are long enough to push the readable
+        columns off-screen) and is instead held in UserRole, with the tooltip
+        carrying both the name and the YDID so a row elided by a narrow dialog
+        (QListWidget's default ElideRight, with no horizontal scrollbar) still
+        has a recovery path to its full name and its YDID. The widget's height
+        is capped at MAX_DIALOG_LIST_ROWS rows so a long listing scrolls
+        instead of growing the dialog past the screen.
+
+        ENTITY_LIST_PADDING keeps the rows off the frame, which otherwise reads
+        as cramped once there are more than a handful. Qt folds stylesheet
+        padding into frameWidth(), so the height cap below picks it up on its
+        own — do not add it a second time.
+
+        A QListWidget is used rather than a column of QCheckBox widgets (as
+        _build_deselect_dialog uses for its three fixed rows) because a busy
+        namespace can enumerate hundreds of entities, which QListWidget scrolls,
+        keyboard-navigates and repaints natively. 'entities' must be non-empty.
+        """
+        listing = QListWidget()
+        listing.setObjectName("entity_selection")
+        listing.setFont(self._font)
+        listing.setStyleSheet(f"QListWidget {{ padding: {ENTITY_LIST_PADDING}px; }}")
+        name_width = max((len(entity.name) for entity in entities), default=0)
+        for entity in entities:
+            gap = " " * ENTITY_ROW_GAP
+            item = QListWidgetItem(
+                f"{entity.name.ljust(name_width)}{gap}{entity.status or ''}".rstrip()
+            )
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            item.setToolTip(f"{entity.name}\n{entity.id}")
+            item.setData(Qt.ItemDataRole.UserRole, entity.id)
+            listing.addItem(item)
+
+        row_height = listing.sizeHintForRow(0)
+        if row_height > 0:
+            visible_rows = min(len(entities), MAX_DIALOG_LIST_ROWS)
+            listing.setMaximumHeight(
+                row_height * visible_rows + 2 * listing.frameWidth()
+            )
+        return listing
 
     def _build_destructive_dialog(
-        self, title: str, message: str, names: list[str] | None
+        self,
+        title: str,
+        message: str,
+        names: list[str] | None = None,
+        entities: list[EntitySummary] | None = None,
     ) -> tuple[QDialog, QPushButton, QPushButton]:
         """
         Build (but do not show) the destructive-action confirmation dialog: a
-        warning icon and message, an optional read-only, monospaced, non-wrapping
-        (scrollable) list of affected entity names, and No / Yes / Yes (Don't Ask
-        Again) buttons (default No). Returns the dialog and the Yes / skip buttons
-        so the caller can identify which was clicked. A plain QDialog is used
-        rather than QMessageBox so the entity list has full formatting control
-        (no ugly wrapping) and no native-alert 'detailed text' limitations.
+        warning icon and message, an optional listing of the affected items, and
+        No / Yes / 'Yes to All' buttons (default No). Returns the dialog and the
+        Yes / skip buttons so the caller can identify which was clicked.
+
+        With 'entities', the listing is a checkable QListWidget with All / None
+        buttons and an 'N of M selected' label, so the user can act on a subset;
+        Yes is disabled while nothing is ticked. With 'names' (Delete Objects,
+        whose object paths have no YDID to target), it is the read-only,
+        monospaced, non-wrapping listing. 'entities' wins if both are given.
+
+        A plain QDialog is used rather than QMessageBox so the listing has full
+        formatting control (no ugly wrapping) and no native-alert 'detailed
+        text' limitations.
         """
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
@@ -800,7 +976,34 @@ class YellowDogApp(QMainWindow):
         header.addWidget(message_label, stretch=1)
         layout.addLayout(header)
 
-        if names:
+        entity_listing: QListWidget | None = None
+        count_label: QLabel | None = None
+        if entities:
+            entity_listing = self._build_entity_list_widget(entities)
+            count_label = QLabel()
+            count_label.setObjectName("selection_count")
+            all_btn = QPushButton("All")
+            all_btn.setObjectName("select_all")
+            all_btn.clicked.connect(
+                functools_partial(
+                    set_all_check_states, entity_listing, Qt.CheckState.Checked
+                )
+            )
+            none_btn = QPushButton("None")
+            none_btn.setObjectName("select_none")
+            none_btn.clicked.connect(
+                functools_partial(
+                    set_all_check_states, entity_listing, Qt.CheckState.Unchecked
+                )
+            )
+            controls = QHBoxLayout()
+            controls.addWidget(all_btn)
+            controls.addWidget(none_btn)
+            controls.addStretch(1)
+            controls.addWidget(count_label)
+            layout.addLayout(controls)
+            layout.addWidget(entity_listing)
+        elif names:
             listing = QPlainTextEdit()
             listing.setObjectName("entity_listing")
             listing.setReadOnly(True)
@@ -814,24 +1017,38 @@ class YellowDogApp(QMainWindow):
             QPushButton,
             button_box.addButton("No", QDialogButtonBox.ButtonRole.RejectRole),
         )
-        yes_btn = button_box.addButton("Yes", QDialogButtonBox.ButtonRole.AcceptRole)
-        skip_btn = button_box.addButton(
-            "Yes (Don't Ask Again)", QDialogButtonBox.ButtonRole.AcceptRole
+        yes_btn = cast(
+            QPushButton,
+            button_box.addButton("Yes", QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        skip_btn = cast(
+            QPushButton,
+            button_box.addButton(
+                SKIP_CONFIRMATION_BUTTON_TEXT,
+                QDialogButtonBox.ButtonRole.AcceptRole,
+            ),
         )
         no_btn.setDefault(True)
         layout.addWidget(button_box)
 
-        return dialog, cast(QPushButton, yes_btn), cast(QPushButton, skip_btn)
+        if entity_listing is not None and count_label is not None:
+            refresh = functools_partial(
+                update_selection_state, entity_listing, count_label, yes_btn
+            )
+            entity_listing.itemChanged.connect(refresh)
+            refresh()
 
-    def _capture_dry_run_entities(
+        return dialog, yes_btn, skip_btn
+
+    def _capture_dry_run_json(
         self, command: str, extra_args: list[str] | None = None
-    ) -> list[str] | None:
+    ) -> list | None:
         """
         Run '<command> -D --json' (quiet, no formatting) with the current config
-        source and namespace/tag/user variables, and return the affected entity
-        names parsed from the JSON array. Return None on any failure (process
-        error, non-zero exit, or unparseable output) so the caller can fall back
-        to a scope-level confirmation.
+        source and namespace/tag/user variables, and return the parsed JSON
+        array. Return None on any failure (process error, non-zero exit, or
+        output that is not a JSON array) so callers can fall back to a
+        scope-level confirmation.
         """
         yd_process = QProcess()
         event_loop = QEventLoop()
@@ -862,9 +1079,45 @@ class YellowDogApp(QMainWindow):
         output = yd_process.readAllStandardOutput().data().decode().strip()
         try:
             parsed = loads(output)
-            return [obj.get("name") for obj in parsed if obj.get("name")]
         except Exception:
             return None
+        return parsed if isinstance(parsed, list) else None
+
+    def _capture_dry_run_entities(
+        self, command: str, extra_args: list[str] | None = None
+    ) -> list[str] | None:
+        """
+        The affected entity names from a '-D --json' enumeration. Used by Delete
+        Objects, whose listing rows are object paths carrying a name but no id,
+        so they cannot be individually selected or targeted. This method is called
+        directly from UI action handlers without surrounding exception handling, so
+        it must be robust to malformed rows (non-dict elements in the JSON array).
+        """
+        parsed = self._capture_dry_run_json(command, extra_args)
+        if parsed is None:
+            return None
+        return [
+            name
+            for obj in parsed
+            if isinstance(obj, dict) and (name := obj.get("name"))
+        ]
+
+    def _capture_dry_run_summaries(
+        self, command: str, extra_args: list[str] | None = None
+    ) -> list[EntitySummary] | None:
+        """
+        The affected entities from a '-D --json' enumeration, with their YDIDs,
+        so the user can select a subset and the action can target exactly that
+        subset. Returns None when the enumeration failed or did not carry YDIDs,
+        which drops the caller to a scope-level confirmation.
+        """
+        parsed = self._capture_dry_run_json(command, extra_args)
+        if parsed is None:
+            return None
+        summaries = parse_entity_summaries(parsed)
+        if summaries is None:
+            self._log("Entity listing did not include YDIDs; cannot offer a selection")
+        return summaries
 
     def _download_results_action(self):
         """
@@ -890,6 +1143,10 @@ class YellowDogApp(QMainWindow):
             return
 
         if self._confirmations_disabled or "delete" in self._skip_confirmations:
+            self._log(
+                f"Confirmations suppressed for 'delete';"
+                f" deleting all objects matching '{path}'"
+            )
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
             return
 
@@ -905,7 +1162,10 @@ class YellowDogApp(QMainWindow):
             self._log("Could not list affected entities; confirming by scope instead")
 
         body = f"Deleting objects matching '{path}'?\n\nThis cannot be undone."
-        if self._confirm_destructive("delete", "Delete Objects", body, names=names):
+        if (
+            self._confirm_destructive("delete", "Delete Objects", body, names=names)
+            is not None
+        ):
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
 
     def _clear_output_action(self):
@@ -927,6 +1187,21 @@ class YellowDogApp(QMainWindow):
         value = self.name_glob_override.toPlainText().strip()
         return [value] if value else []
 
+    def _abbreviated_run_args(
+        self, run_args: list[str], entities: list[EntitySummary], plural: str
+    ) -> list[str] | None:
+        """
+        A display form of the run arguments for the output window: above
+        MAX_LOGGED_ENTITY_IDS entities, the YDIDs collapse to a count so the
+        echoed command line stays readable. None means 'echo the real
+        arguments'. Nothing is lost by abbreviating — the dialog has just listed
+        the entities by name, and the command reports each one as it acts on it.
+        'plural' is the entity noun, e.g. 'Work Requirements'.
+        """
+        if len(entities) <= MAX_LOGGED_ENTITY_IDS:
+            return None
+        return run_args + [f"<{len(entities)} {plural}>"]
+
     def _run_destructive_with_listing(
         self,
         action_key: str,
@@ -939,13 +1214,23 @@ class YellowDogApp(QMainWindow):
         and_abort: bool = False,
     ) -> None:
         """
-        Confirm and run a destructive action, listing the affected entities.
-        Enumerates via '<command> -D --json' first: with no affected entities,
-        log a message and do nothing; on enumeration failure, confirm at the
-        scope level (without a list). The '-y'/per-action-skip bypasses run the
-        command directly without enumerating. 'gerund'/'plural' describe the
-        action (e.g. 'Cancelling'/'Work Requirements') and 'match_word' is how
-        the CLI selects entities ('tags' or 'names').
+        Confirm and run a destructive action, listing the affected entities for
+        the user to select from and then targeting exactly that selection by
+        YDID. Enumerates via '<command> -D --json' first: with no affected
+        entities, log a message and do nothing; when the enumeration fails there
+        are no YDIDs to target, so confirm at the scope level (without a list)
+        and run over the whole scope.
+
+        The Name pattern narrows the *enumeration* only. It must not reach a run
+        that passes YDIDs, because the CLI rejects mixing glob patterns with
+        literal names/IDs ('cannot mix name glob patterns with explicit
+        names/IDs'); by then the pattern's job is done, the selection having
+        been resolved from the entities it enumerated.
+
+        The '-y' / per-action-skip bypasses run the command over the whole scope
+        without enumerating, logging that they have done so. 'gerund'/'plural'
+        describe the action (e.g. 'Cancelling'/'Work Requirements') and
+        'match_word' is how the CLI selects entities ('tags' or 'names').
         """
         name_args = self._name_glob_args()
 
@@ -959,24 +1244,47 @@ class YellowDogApp(QMainWindow):
             scope = self._scope_phrase(match_word)
 
         if self._confirmations_disabled or action_key in self._skip_confirmations:
+            self._log(
+                f"Confirmations suppressed for '{action_key}';"
+                f" acting on all {plural}{scope}"
+            )
             self._run_command_in_subprocess(command, run_args + name_args)
             return
 
         self._log(f"Checking which {plural} would be affected...")
         self.log_output.repaint()
-        names = self._capture_dry_run_entities(command, extra_args=name_args)
+        entities = self._capture_dry_run_summaries(command, extra_args=name_args)
 
-        if not names and names is not None:
+        if entities is not None and not entities:
             self._log(f"No matching {plural}{scope}")
             return
 
         abort_clause = ", and aborting their running tasks" if and_abort else ""
         body = f"{gerund} {plural}{scope}{abort_clause}.\n\nThis cannot be undone."
-        if names is None:
+        if entities is None:
             self._log("Could not list affected entities; confirming by scope instead")
 
-        if self._confirm_destructive(action_key, title, body, names=names):
+        selected = self._confirm_destructive(action_key, title, body, entities=entities)
+        if selected is None:
+            return
+
+        if entities is None:
+            # The enumeration failed, so there are no YDIDs to target: run over
+            # the scope the user has just confirmed.
             self._run_command_in_subprocess(command, run_args + name_args)
+            return
+
+        if not selected:
+            # A non-empty enumeration that selected nothing must never widen
+            # into a scope-wide run: 'run_args + []' IS the whole-scope command.
+            self._log(f"Nothing selected to act on; no {plural} affected")
+            return
+
+        self._run_command_in_subprocess(
+            command,
+            run_args + [entity.id for entity in selected],
+            log_args=self._abbreviated_run_args(run_args, selected, plural),
+        )
 
     def _cancel_work_requirements_action(self):
         self._run_destructive_with_listing(
@@ -1097,12 +1405,20 @@ class YellowDogApp(QMainWindow):
         args: list[str],
         yd_command: bool = True,
         accept_stdin: bool = False,
+        log_args: list[str] | None = None,
     ):
         """
         Run a command in a subprocess, with adaptations for 'yd-'
-        commands.
+        commands. 'log_args' replaces 'args' in the echoed command line only —
+        used to collapse a long list of YDIDs to a count — and is built the
+        same way, so the config-source prefix still appears in the echo.
         """
         args = self._build_command_args(command, args, yd_command)
+        display_args = (
+            args
+            if log_args is None
+            else self._build_command_args(command, log_args, yd_command)
+        )
 
         process = QProcess(self)
         process_env: QProcessEnvironment = process.processEnvironment()
@@ -1135,9 +1451,9 @@ class YellowDogApp(QMainWindow):
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
 
-        command_line_text = (command + " " + " ".join(args)).rstrip()
         self._log(
-            f"Executing: '{command_line_text}' in directory '{self._working_dir()}'"
+            f"Executing: '{command_line_text(command, display_args)}'"
+            f" in directory '{self._working_dir()}'"
         )
 
         process.setWorkingDirectory(self._working_dir())
