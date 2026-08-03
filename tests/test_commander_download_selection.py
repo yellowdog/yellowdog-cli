@@ -1,8 +1,9 @@
 """
 Tests for choosing which objects a Commander download fetches. The chooser is a
 non-destructive dialog, so it deliberately differs from the destructive
-confirmation: no warning icon, no 'Don't Ask Again', and it is not suppressed by
-'--yes'. What matters here is which paths reach yd-download.
+confirmation: no warning icon and no 'Don't Ask Again'. It IS skipped by '--yes',
+like the confirmations, since an unattended session cannot answer a chooser either.
+What matters here is which paths reach yd-download.
 """
 
 import pytest
@@ -215,6 +216,32 @@ def test_enumeration_failure_downloads_the_whole_pattern(window, captured, monke
     _command, args, _kwargs = captured[0]
     assert args[-1] == "pyex*"
     assert "downloading them all instead" in window.log_output.toPlainText()
+
+
+def test_yes_skips_the_chooser_and_fetches_everything(qapp, monkeypatch):
+    # '--yes' asks for unattended operation, so it skips the chooser and downloads
+    # the whole pattern — consistent with the five destructive confirmations.
+    win = YellowDogApp(disable_confirmations=True)
+    calls: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(
+        win,
+        "_run_command_in_subprocess",
+        lambda command, args, **kwargs: calls.append((command, args)),
+    )
+
+    def fail(*args, **kwargs):
+        raise AssertionError("with --yes there is nothing to enumerate or ask about")
+
+    monkeypatch.setattr(win, "_capture_dry_run_objects", fail)
+    monkeypatch.setattr(win, "_build_chooser_dialog", fail)
+    win._tag = "pyex"
+    win.log_output.setPlainText("")
+
+    win._download_results_action()
+
+    _command, args = calls[0]
+    assert args[-1] == "pyex*"
+    assert "Selection suppressed by '--yes'" in win.log_output.toPlainText()
 
 
 def test_the_dry_run_checkbox_skips_the_chooser(window, captured, monkeypatch):

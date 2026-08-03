@@ -1377,9 +1377,10 @@ class YellowDogApp(QMainWindow):
         ticked, or None if the user dismissed it. The accept button is disabled
         while nothing is ticked, so the returned list is never empty.
 
-        Unlike _confirm_destructive this has no action_key: a chooser is never
-        suppressed by '--yes' or a 'Don't Ask Again', because it is the only way
-        to pick a subset and nothing it offers is irreversible.
+        Unlike _confirm_destructive this has no action_key and no 'Don't Ask
+        Again': you would never want to stop being offered a choice permanently.
+        Callers are responsible for honouring '--yes', which is a launch-time
+        request for unattended operation rather than a mid-session one.
         """
         dialog, _accept_btn = self._build_chooser_dialog(title, body, accept_text, rows)
         try:
@@ -1403,12 +1404,26 @@ class YellowDogApp(QMainWindow):
 
         The dry-run-checkbox preview fetches nothing, so it runs directly with no
         enumeration or chooser.
+
+        '--yes' skips the chooser and fetches everything matched, as it does for
+        the destructive confirmations. The chooser is not a confirmation, but
+        '--yes' asks for unattended operation, and an unattended session cannot
+        answer a chooser either; a user who wants a subset without being asked can
+        narrow the Path field instead.
         """
         dst = join(self._working_dir(), RESULTS_DIR)
         path = self._object_path()
 
         if self.dry_run_objects.isChecked():
             self._run_command_in_subprocess("yd-download", ["--into", dst, path, "-D"])
+            return
+
+        if self._confirmations_disabled:
+            self._log(
+                "Selection suppressed by '--yes';"
+                f" downloading all objects matching '{path}'"
+            )
+            self._run_command_in_subprocess("yd-download", ["--into", dst, path])
             return
 
         self._log(f"Checking which objects match '{path}'...")
