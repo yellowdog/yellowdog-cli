@@ -14,8 +14,9 @@ pytest.importorskip("PyQt6.QtWidgets")
 
 from yellowdog_cli.commander.commander import (
     RESULTS_DIR,
-    SKIP_CONFIRMATION_BUTTON_TEXT,
+    Confirmation,
     EntitySummary,
+    ObjectSummary,
     YellowDogApp,
 )
 
@@ -136,7 +137,11 @@ def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
     monkeypatch.setattr(
         window, "_capture_dry_run_summaries", lambda command, extra_args=None: [entity]
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: [entity])
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=True, handles=[entity.id]),
+    )
     for method, command, args in [
         ("_cancel_work_requirements_action", "yd-cancel", ["-y", "ydid:x:1"]),
         (
@@ -172,7 +177,11 @@ def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
         "_capture_dry_run_summaries",
         lambda command, extra_args=None: seen.append(extra_args) or [entity],
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: [entity])
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=True, handles=[entity.id]),
+    )
     window.name_glob_override.setPlainText("   ")
     window._cancel_work_requirements_action()
     assert seen == [[]]
@@ -184,7 +193,11 @@ def test_destructive_action_declined_does_not_run(window, captured, monkeypatch)
     monkeypatch.setattr(
         window, "_capture_dry_run_summaries", lambda command, extra_args=None: [entity]
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: None)
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=False, handles=None),
+    )
     for method in (
         "_cancel_work_requirements_action",
         "_cancel_work_requirements_and_abort_action",
@@ -217,7 +230,11 @@ def test_destructive_logs_status_before_lookup(window, captured, monkeypatch):
             or [EntitySummary(id="ydid:x:1", name="cr-1", status="RUNNING")]
         ),
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: [])
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=True, handles=["ydid:x:1"]),
+    )
     window.log_output.setPlainText("")
     window._terminate_all_compute_requirements_action()
     assert "Checking which Compute Requirements would be affected" in (
@@ -242,8 +259,8 @@ def test_destructive_confirmation_body_reflects_name_glob(
     monkeypatch.setattr(
         window,
         "_confirm_destructive",
-        lambda action_key, title, body, names=None, entities=None: (
-            calls.append(body) or []
+        lambda action_key, title, body, names=None, rows=None: (
+            calls.append(body) or Confirmation(proceed=True, handles=["ydid:x:1"])
         ),
     )
     window._namespace, window._tag = "yd-demo", "pyex"
@@ -265,8 +282,8 @@ def test_destructive_enumeration_failure_falls_back_to_scope(
     monkeypatch.setattr(
         window,
         "_confirm_destructive",
-        lambda action_key, title, body, names=None, entities=None: (
-            calls.append((body, entities)) or []
+        lambda action_key, title, body, names=None, rows=None: (
+            calls.append((body, rows)) or Confirmation(proceed=True, handles=None)
         ),
     )
     window._terminate_all_compute_requirements_action()
@@ -276,29 +293,16 @@ def test_destructive_enumeration_failure_falls_back_to_scope(
     assert entities is None  # scope-level fallback lists nothing
 
 
-def test_build_destructive_dialog_lists_names(window):
-    from PyQt6.QtWidgets import QDialogButtonBox, QPlainTextEdit
+def test_build_destructive_dialog_without_rows_has_no_listing(window):
+    # The read-only 'names' listing this used to also cover is gone: object
+    # deletion now uses the same selectable 'rows' listing as every other
+    # destructive action, so 'rows=None' (nothing individually selectable) is
+    # the only no-listing case left. See test_commander_entity_selection.py /
+    # test_commander_object_selection.py for the selectable-listing coverage.
+    from PyQt6.QtWidgets import QListWidget, QPlainTextEdit
 
-    dialog, _yes, _skip = window._build_destructive_dialog(
-        "Terminate", "Terminate 2?", ["cr-1", "cr-2"]
-    )
-    listing = dialog.findChild(QPlainTextEdit, "entity_listing")
-    assert listing is not None
-    assert listing.toPlainText() == "cr-1\ncr-2"
-    assert listing.lineWrapMode() == QPlainTextEdit.LineWrapMode.NoWrap
-    box = dialog.findChild(QDialogButtonBox)
-    assert box is not None
-    assert {b.text() for b in box.buttons()} == {
-        "No",
-        "Yes",
-        SKIP_CONFIRMATION_BUTTON_TEXT,
-    }
-
-
-def test_build_destructive_dialog_without_names_has_no_listing(window):
-    from PyQt6.QtWidgets import QPlainTextEdit
-
-    dialog, _yes, _skip = window._build_destructive_dialog("Delete", "Delete?", None)
+    dialog, _yes, _skip = window._build_destructive_dialog("Delete", "Delete?")
+    assert dialog.findChild(QListWidget, "selection_list") is None
     assert dialog.findChild(QPlainTextEdit, "entity_listing") is None
 
 
@@ -314,49 +318,41 @@ def test_bypass_skips_enumeration(window, captured, monkeypatch):
 
 def test_delete_runs_when_confirmed(window, captured, monkeypatch):
     monkeypatch.setattr(
-        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+        window,
+        "_capture_dry_run_objects",
+        lambda extra_args: [
+            ObjectSummary(path="S3:b/pfx/obj", name="obj", is_dir=False)
+        ],
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: [])
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=True, handles=["S3:b/pfx/obj"]),
+    )
     window._tag = "my-tag"
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    assert captured == [("yd-delete", ["-Ry", "S3:b/pfx/obj"])]
 
 
 def test_delete_declined_does_not_run(window, captured, monkeypatch):
     monkeypatch.setattr(
-        window, "_capture_dry_run_entities", lambda command, extra_args=None: ["obj"]
+        window,
+        "_capture_dry_run_objects",
+        lambda extra_args: [
+            ObjectSummary(path="S3:b/pfx/obj", name="obj", is_dir=False)
+        ],
     )
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: None)
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=False, handles=None),
+    )
     window._delete_objects_action()
     assert captured == []
 
 
-def test_delete_lists_matched_objects(window, captured, monkeypatch):
-    monkeypatch.setattr(
-        window,
-        "_capture_dry_run_entities",
-        lambda command, extra_args=None: ["a.txt", "sub/"],
-    )
-    calls = []
-    monkeypatch.setattr(
-        window,
-        "_confirm_destructive",
-        lambda action_key, title, body, names=None, entities=None: (
-            calls.append((body, names)) or []
-        ),
-    )
-    window._tag = "my-tag"
-    window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
-    body, names = calls[0]
-    assert "my-tag*" in body
-    assert names == ["a.txt", "sub/"]
-
-
 def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
-    monkeypatch.setattr(
-        window, "_capture_dry_run_entities", lambda command, extra_args=None: []
-    )
+    monkeypatch.setattr(window, "_capture_dry_run_objects", lambda extra_args: [])
     window._tag = "my-tag"
     window.log_output.setPlainText("")
     window._delete_objects_action()
@@ -365,27 +361,28 @@ def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
 
 
 def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
-    monkeypatch.setattr(
-        window, "_capture_dry_run_entities", lambda command, extra_args=None: None
-    )
+    monkeypatch.setattr(window, "_capture_dry_run_objects", lambda extra_args: None)
     calls = []
     monkeypatch.setattr(
         window,
         "_confirm_destructive",
-        lambda action_key, title, body, names=None, entities=None: (
-            calls.append((body, names)) or []
+        lambda action_key, title, body, names=None, rows=None: (
+            calls.append(rows) or Confirmation(proceed=True, handles=None)
         ),
     )
     window._tag = "my-tag"
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
-    _body, names = calls[0]
-    assert names is None
+    assert calls[0] is None
 
 
 def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
     # Dry run is a harmless preview: it must run even when confirmation is denied.
-    monkeypatch.setattr(window, "_confirm_destructive", lambda *a, **k: None)
+    monkeypatch.setattr(
+        window,
+        "_confirm_destructive",
+        lambda *a, **k: Confirmation(proceed=False, handles=None),
+    )
     window._tag = "my-tag"
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
@@ -419,8 +416,12 @@ def test_yes_flag_disables_all_confirmations(qapp):
     # Launching with disable_confirmations=True (the -y/--yes flag) makes every
     # destructive action auto-confirm with no dialog, across all action keys.
     win = YellowDogApp(disable_confirmations=True)
-    assert win._confirm_destructive("terminate", "t", "b") == []
-    assert win._confirm_destructive("delete", "t", "b") == []
+    assert win._confirm_destructive("terminate", "t", "b") == Confirmation(
+        proceed=True, handles=None
+    )
+    assert win._confirm_destructive("delete", "t", "b") == Confirmation(
+        proceed=True, handles=None
+    )
 
 
 def test_confirmations_enabled_by_default(window):
@@ -433,7 +434,9 @@ def test_skip_confirmations_is_per_action(window):
     # a different action's key is unaffected. Assert directly on the helper's
     # short-circuit (no dialog is created when the key is present).
     window._skip_confirmations = {"terminate"}
-    assert window._confirm_destructive("terminate", "t", "b") == []
+    assert window._confirm_destructive("terminate", "t", "b") == Confirmation(
+        proceed=True, handles=None
+    )
     assert "shutdown" not in window._skip_confirmations
 
 

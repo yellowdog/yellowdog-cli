@@ -97,38 +97,3 @@ def test_capture_summaries_logs_when_ydids_missing(window, monkeypatch):
     window.log_output.setPlainText("")
     assert window._capture_dry_run_summaries("yd-terminate") is None
     assert "did not include YDIDs" in window.log_output.toPlainText()
-
-
-def test_capture_entities_still_returns_names_only(window, monkeypatch):
-    # The names-only helper is unchanged: Delete Objects enumerates object
-    # paths, whose rows carry a name but no id.
-    monkeypatch.setattr(
-        window,
-        "_capture_dry_run_json",
-        lambda command, extra_args=None: [{"name": "a.txt"}, {"name": "sub/"}],
-    )
-    assert window._capture_dry_run_entities("yd-delete") == ["a.txt", "sub/"]
-
-
-def test_capture_entities_none_on_enumeration_failure(window, monkeypatch):
-    monkeypatch.setattr(
-        window, "_capture_dry_run_json", lambda command, extra_args=None: None
-    )
-    assert window._capture_dry_run_entities("yd-delete") is None
-
-
-def test_capture_entities_robust_to_non_dict_rows(window, monkeypatch):
-    # _capture_dry_run_entities is called directly from a UI action handler
-    # (_delete_objects_action) without surrounding try/except, so it must be
-    # robust to malformed enumeration rows (non-dict elements in the JSON array).
-    # It should skip them rather than raise AttributeError on .get().
-    monkeypatch.setattr(
-        window,
-        "_capture_dry_run_json",
-        lambda command, extra_args=None: [
-            {"name": "a.txt"},
-            "not-a-dict",
-            {"name": "b.txt"},
-        ],
-    )
-    assert window._capture_dry_run_entities("yd-delete") == ["a.txt", "b.txt"]

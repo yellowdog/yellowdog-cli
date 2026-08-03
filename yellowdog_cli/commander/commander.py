@@ -80,6 +80,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
 WINDOW_TITLE = f"YellowDog Commander (v{__version__})"
 SELECTED_CONFIG_PREFIX = "  "
@@ -151,6 +152,138 @@ def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
     return summaries
 
 
+@dataclass(frozen=True)
+class SelectableRow:
+    """
+    One row of a checkable listing: the text the user reads, the handle passed
+    back to the command if the row stays ticked, and the tooltip. The handle is
+    deliberately opaque — that is what lets one widget serve both entity YDIDs
+    and object storage paths.
+    """
+
+    display: str
+    handle: str
+    tooltip: str
+
+
+@dataclass(frozen=True)
+class Confirmation:
+    """
+    The outcome of a destructive-action confirmation. 'proceed' is False when the
+    user declined or dismissed the dialog. 'handles' is None when there was
+    nothing individually selectable — a suppressed confirmation, or an
+    enumeration that failed — in which case the caller acts over its whole scope.
+    Otherwise 'handles' is exactly what the user left ticked, and an empty list
+    means the user deselected everything, which must act on nothing at all.
+
+    The three states are separate fields rather than a nullable list because the
+    difference between 'whole scope' and 'nothing' is the difference between
+    destroying everything and destroying nothing.
+    """
+
+    proceed: bool
+    handles: list[str] | None
+
+    def __bool__(self) -> bool:
+        """
+        Refuse truthiness. Both 'act over the whole scope' and 'act on nothing'
+        are legitimate outcomes, so a bare 'if confirmation:' cannot mean
+        anything safe — and unlike the list sentinel this replaced, an always-
+        truthy object would proceed even when the user declined. Callers must
+        read .proceed explicitly.
+        """
+        raise TypeError("check Confirmation.proceed explicitly, not truthiness")
+
+
+def entity_rows(entities: list[EntitySummary]) -> list[SelectableRow]:
+    """
+    Rows for an entity listing: the name padded to a common width so the status
+    column lines up, with the YDID as the handle and kept out of the row text
+    (full YDIDs are long enough to push the readable columns off-screen). The
+    tooltip carries both, so a row elided by a narrow dialog still has a
+    recovery path.
+    """
+    name_width = max((len(entity.name) for entity in entities), default=0)
+    gap = " " * ENTITY_ROW_GAP
+    return [
+        SelectableRow(
+            display=(
+                f"{entity.name.ljust(name_width)}{gap}{entity.status or ''}".rstrip()
+            ),
+            handle=entity.id,
+            tooltip=f"{entity.name}\n{entity.id}",
+        )
+        for entity in entities
+    ]
+
+
+@dataclass(frozen=True)
+class ObjectSummary:
+    """
+    One item in a 'yd-delete -D --json' enumeration: the resolved remote path
+    used to delete it, its display name (directories carry a trailing '/'), and
+    whether it is a directory — which decides whether the confirmation warns
+    that a tick takes the directory's whole contents.
+    """
+
+    path: str
+    name: str
+    is_dir: bool
+
+
+def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
+    """
+    Convert a parsed 'yd-delete -D --json' array into ObjectSummary objects.
+    Returns None if any row is not a dict or lacks a 'path' or a 'name': without
+    a path the object cannot be targeted, and guessing one would delete
+    something other than what the user ticked. A missing 'isDir' defaults to
+    False rather than rejecting the row, because it affects only the display and
+    the recursion caveat, never which paths are deleted.
+    """
+    summaries: list[ObjectSummary] = []
+    for obj in parsed:
+        if not isinstance(obj, dict):
+            return None
+        path, name = obj.get("path"), obj.get("name")
+        if not path or not name:
+            return None
+        summaries.append(
+            ObjectSummary(path=str(path), name=str(name), is_dir=bool(obj.get("isDir")))
+        )
+    return summaries
+
+
+def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
+    """
+    Rows for an object listing: a single column of display names (a directory
+    keeps its trailing '/'), with the resolved remote path as the handle. No
+    column padding, unlike entity rows — there is no second column to align.
+    """
+    return [
+        SelectableRow(
+            display=obj.name,
+            handle=obj.path,
+            tooltip=f"{obj.name}\n{obj.path}",
+        )
+        for obj in objects
+    ]
+
+
+def path_would_be_globbed(remote_path: str) -> bool:
+    """
+    Whether 'yd-delete' would treat this remote path as a wildcard pattern
+    rather than a literal object. Mirrors dataclient_utils.is_glob (which
+    Commander cannot import, since that module pulls in rclone_api): strip a
+    leading 'remote:' prefix, then look for glob metacharacters.
+
+    This matters because an object whose own name contains '*', '?' or '['
+    cannot be targeted by path at all — 'yd-delete' would expand it and act on
+    whatever it matched instead, which for 'a[1].txt' is the sibling 'a1.txt'.
+    """
+    path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
+    return contains_glob_chars(path_part)
+
+
 class LineBuffer:
     """
     Accumulates raw bytes read from a subprocess output channel and yields
@@ -212,23 +345,23 @@ def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
     return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
 
 
-def checked_entity_ids(listing: QListWidget) -> list[str]:
+def checked_handles(listing: QListWidget) -> list[str]:
     """
-    The YDIDs of the ticked rows of an entity list, in list order.
+    The handles of the ticked rows of a selection list, in list order.
     """
-    ids: list[str] = []
+    handles: list[str] = []
     for index in range(listing.count()):
         item = listing.item(index)
         if item is not None and item.checkState() == Qt.CheckState.Checked:
-            ids.append(item.data(Qt.ItemDataRole.UserRole))
-    return ids
+            handles.append(item.data(Qt.ItemDataRole.UserRole))
+    return handles
 
 
 def set_all_check_states(
     listing: QListWidget, state: Qt.CheckState, *_signal_args
 ) -> None:
     """
-    Set every row of an entity list to the same check state, for the All / None
+    Set every row of a selection list to the same check state, for the All / None
     buttons. Takes and ignores the trailing signal arguments so it can be
     connected to 'clicked' directly.
     """
@@ -248,7 +381,7 @@ def update_selection_state(
     Refresh the 'N of M selected' label and gate the Yes button on something
     being selected, so the dialog cannot confirm a run that would do nothing.
     """
-    selected = len(checked_entity_ids(listing))
+    selected = len(checked_handles(listing))
     count_label.setText(f"{selected} of {listing.count()} selected")
     yes_btn.setEnabled(selected > 0)
 
@@ -841,26 +974,33 @@ class YellowDogApp(QMainWindow):
         action_key: str,
         title: str,
         body: str,
-        names: list[str] | None = None,
-        entities: list[EntitySummary] | None = None,
-    ) -> list[EntitySummary] | None:
+        *,
+        rows: list[SelectableRow] | None = None,
+    ) -> Confirmation:
         """
-        Show a warning confirmation dialog for a destructive action. Returns
-        None if the action must not proceed; otherwise the entities to act on —
-        the ticked subset when 'entities' was supplied, or [] when there was
-        nothing individually selectable (a 'names' listing, no listing, or a
-        suppressed confirmation). Callers must therefore test 'is not None',
-        not truthiness, since [] means 'proceed over the whole scope'.
+        Show a warning confirmation dialog for a destructive action. Returns a
+        Confirmation with 'proceed' False if the action must not proceed;
+        otherwise 'handles' is None when there was nothing individually
+        selectable (no listing, or a suppressed confirmation) — the caller
+        acts over its whole scope — or the ticked subset when 'rows' was
+        supplied, where an empty list means the user deselected everything and
+        the caller must act on nothing at all.
+
+        'rows' is keyword-only because 'names' — a second, positionally
+        adjacent listing parameter — used to sit here too; a positional call
+        would have silently landed the wrong argument in this slot. Now there
+        is only one listing parameter, but the call stays keyword-only so a
+        future one can't reintroduce the hazard.
 
         'Yes to All (Don't Ask Again)' confirms and suppresses future
         confirmations for this same action (identified by action_key) for the
         rest of the session; the suppression is per-action, not global. It acts
-        on every listed entity regardless of the tick states, as its label says.
+        on every listed row regardless of the tick states, as its label says.
         """
         if self._confirmations_disabled or action_key in self._skip_confirmations:
-            return []
+            return Confirmation(proceed=True, handles=None)
         dialog, yes_btn, skip_btn = self._build_destructive_dialog(
-            title, body, names, entities
+            title, body, rows=rows
         )
         buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))
         clicked: dict[str, object] = {}
@@ -872,34 +1012,31 @@ class YellowDogApp(QMainWindow):
         try:
             if clicked.get("button") is skip_btn:
                 self._skip_confirmations.add(action_key)
-                return list(entities or [])
+                return Confirmation(
+                    proceed=True,
+                    handles=[row.handle for row in rows] if rows else None,
+                )
             if clicked.get("button") is not yes_btn:
-                return None
-            if not entities:
-                return []
-            listing = cast(
-                QListWidget, dialog.findChild(QListWidget, "entity_selection")
-            )
-            checked = set(checked_entity_ids(listing))
-            return [entity for entity in entities if entity.id in checked]
+                return Confirmation(proceed=False, handles=None)
+            if not rows:
+                return Confirmation(proceed=True, handles=None)
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "selection_list"))
+            return Confirmation(proceed=True, handles=checked_handles(listing))
         finally:
             # Parented to the main window, so without this every confirmation
             # dialog — and the hundreds of list items it may own — would live
             # for the rest of the session.
             dialog.deleteLater()
 
-    def _build_entity_list_widget(self, entities: list[EntitySummary]) -> QListWidget:
+    def _build_selection_list_widget(self, rows: list[SelectableRow]) -> QListWidget:
         """
-        A checkable list of entities, every row ticked. Each row shows the
-        entity's name and status in the monospaced output font, with the name
-        column padded to a common width so the statuses line up; the YDID is
-        kept off the row text (full YDIDs are long enough to push the readable
-        columns off-screen) and is instead held in UserRole, with the tooltip
-        carrying both the name and the YDID so a row elided by a narrow dialog
-        (QListWidget's default ElideRight, with no horizontal scrollbar) still
-        has a recovery path to its full name and its YDID. The widget's height
-        is capped at MAX_DIALOG_LIST_ROWS rows so a long listing scrolls
-        instead of growing the dialog past the screen.
+        A checkable list, every row ticked. Each row shows its display text in
+        the monospaced output font and holds its handle in UserRole, which is
+        where the run arguments are read from; the tooltip carries the fuller
+        text so a row elided by a narrow dialog (QListWidget's default
+        ElideRight, with no horizontal scrollbar) is still recoverable. The
+        widget's height is capped at MAX_DIALOG_LIST_ROWS rows so a long listing
+        scrolls instead of growing the dialog past the screen.
 
         ENTITY_LIST_PADDING keeps the rows off the frame, which otherwise reads
         as cramped once there are more than a handful. Qt folds stylesheet
@@ -908,28 +1045,25 @@ class YellowDogApp(QMainWindow):
 
         A QListWidget is used rather than a column of QCheckBox widgets (as
         _build_deselect_dialog uses for its three fixed rows) because a busy
-        namespace can enumerate hundreds of entities, which QListWidget scrolls,
-        keyboard-navigates and repaints natively. 'entities' must be non-empty.
+        namespace or bucket prefix can enumerate hundreds of items, which
+        QListWidget scrolls, keyboard-navigates and repaints natively. 'rows'
+        must be non-empty.
         """
         listing = QListWidget()
-        listing.setObjectName("entity_selection")
+        listing.setObjectName("selection_list")
         listing.setFont(self._font)
         listing.setStyleSheet(f"QListWidget {{ padding: {ENTITY_LIST_PADDING}px; }}")
-        name_width = max((len(entity.name) for entity in entities), default=0)
-        for entity in entities:
-            gap = " " * ENTITY_ROW_GAP
-            item = QListWidgetItem(
-                f"{entity.name.ljust(name_width)}{gap}{entity.status or ''}".rstrip()
-            )
+        for row in rows:
+            item = QListWidgetItem(row.display)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
-            item.setToolTip(f"{entity.name}\n{entity.id}")
-            item.setData(Qt.ItemDataRole.UserRole, entity.id)
+            item.setToolTip(row.tooltip)
+            item.setData(Qt.ItemDataRole.UserRole, row.handle)
             listing.addItem(item)
 
         row_height = listing.sizeHintForRow(0)
         if row_height > 0:
-            visible_rows = min(len(entities), MAX_DIALOG_LIST_ROWS)
+            visible_rows = min(len(rows), MAX_DIALOG_LIST_ROWS)
             listing.setMaximumHeight(
                 row_height * visible_rows + 2 * listing.frameWidth()
             )
@@ -939,8 +1073,8 @@ class YellowDogApp(QMainWindow):
         self,
         title: str,
         message: str,
-        names: list[str] | None = None,
-        entities: list[EntitySummary] | None = None,
+        *,
+        rows: list[SelectableRow] | None = None,
     ) -> tuple[QDialog, QPushButton, QPushButton]:
         """
         Build (but do not show) the destructive-action confirmation dialog: a
@@ -948,11 +1082,11 @@ class YellowDogApp(QMainWindow):
         No / Yes / 'Yes to All' buttons (default No). Returns the dialog and the
         Yes / skip buttons so the caller can identify which was clicked.
 
-        With 'entities', the listing is a checkable QListWidget with All / None
+        With 'rows', the listing is a checkable QListWidget with All / None
         buttons and an 'N of M selected' label, so the user can act on a subset;
-        Yes is disabled while nothing is ticked. With 'names' (Delete Objects,
-        whose object paths have no YDID to target), it is the read-only,
-        monospaced, non-wrapping listing. 'entities' wins if both are given.
+        Yes is disabled while nothing is ticked. Without 'rows' — nothing was
+        individually selectable — there is no listing at all, and the caller
+        acts over its whole scope.
 
         A plain QDialog is used rather than QMessageBox so the listing has full
         formatting control (no ugly wrapping) and no native-alert 'detailed
@@ -976,24 +1110,24 @@ class YellowDogApp(QMainWindow):
         header.addWidget(message_label, stretch=1)
         layout.addLayout(header)
 
-        entity_listing: QListWidget | None = None
+        selection_listing: QListWidget | None = None
         count_label: QLabel | None = None
-        if entities:
-            entity_listing = self._build_entity_list_widget(entities)
+        if rows:
+            selection_listing = self._build_selection_list_widget(rows)
             count_label = QLabel()
             count_label.setObjectName("selection_count")
             all_btn = QPushButton("All")
             all_btn.setObjectName("select_all")
             all_btn.clicked.connect(
                 functools_partial(
-                    set_all_check_states, entity_listing, Qt.CheckState.Checked
+                    set_all_check_states, selection_listing, Qt.CheckState.Checked
                 )
             )
             none_btn = QPushButton("None")
             none_btn.setObjectName("select_none")
             none_btn.clicked.connect(
                 functools_partial(
-                    set_all_check_states, entity_listing, Qt.CheckState.Unchecked
+                    set_all_check_states, selection_listing, Qt.CheckState.Unchecked
                 )
             )
             controls = QHBoxLayout()
@@ -1002,15 +1136,7 @@ class YellowDogApp(QMainWindow):
             controls.addStretch(1)
             controls.addWidget(count_label)
             layout.addLayout(controls)
-            layout.addWidget(entity_listing)
-        elif names:
-            listing = QPlainTextEdit()
-            listing.setObjectName("entity_listing")
-            listing.setReadOnly(True)
-            listing.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-            listing.setFont(self._font)
-            listing.setPlainText("\n".join(names))
-            layout.addWidget(listing)
+            layout.addWidget(selection_listing)
 
         button_box = QDialogButtonBox()
         no_btn = cast(
@@ -1031,11 +1157,11 @@ class YellowDogApp(QMainWindow):
         no_btn.setDefault(True)
         layout.addWidget(button_box)
 
-        if entity_listing is not None and count_label is not None:
+        if selection_listing is not None and count_label is not None:
             refresh = functools_partial(
-                update_selection_state, entity_listing, count_label, yes_btn
+                update_selection_state, selection_listing, count_label, yes_btn
             )
-            entity_listing.itemChanged.connect(refresh)
+            selection_listing.itemChanged.connect(refresh)
             refresh()
 
         return dialog, yes_btn, skip_btn
@@ -1083,25 +1209,6 @@ class YellowDogApp(QMainWindow):
             return None
         return parsed if isinstance(parsed, list) else None
 
-    def _capture_dry_run_entities(
-        self, command: str, extra_args: list[str] | None = None
-    ) -> list[str] | None:
-        """
-        The affected entity names from a '-D --json' enumeration. Used by Delete
-        Objects, whose listing rows are object paths carrying a name but no id,
-        so they cannot be individually selected or targeted. This method is called
-        directly from UI action handlers without surrounding exception handling, so
-        it must be robust to malformed rows (non-dict elements in the JSON array).
-        """
-        parsed = self._capture_dry_run_json(command, extra_args)
-        if parsed is None:
-            return None
-        return [
-            name
-            for obj in parsed
-            if isinstance(obj, dict) and (name := obj.get("name"))
-        ]
-
     def _capture_dry_run_summaries(
         self, command: str, extra_args: list[str] | None = None
     ) -> list[EntitySummary] | None:
@@ -1119,6 +1226,23 @@ class YellowDogApp(QMainWindow):
             self._log("Entity listing did not include YDIDs; cannot offer a selection")
         return summaries
 
+    def _capture_dry_run_objects(
+        self, extra_args: list[str]
+    ) -> list[ObjectSummary] | None:
+        """
+        The objects and top-level directories a delete would remove, with the
+        resolved path needed to remove each one individually. Returns None when
+        the enumeration failed or did not carry paths, which drops the caller to
+        a scope-level confirmation over the whole pattern.
+        """
+        parsed = self._capture_dry_run_json("yd-delete", extra_args)
+        if parsed is None:
+            return None
+        summaries = parse_object_summaries(parsed)
+        if summaries is None:
+            self._log("Object listing did not include paths; cannot offer a selection")
+        return summaries
+
     def _download_results_action(self):
         """
         Download matching objects from remote storage into the results directory.
@@ -1131,9 +1255,16 @@ class YellowDogApp(QMainWindow):
 
     def _delete_objects_action(self):
         """
-        Delete matching objects from remote storage. Unless it is a dry-run
-        preview, list the matched objects/directories in the confirmation
-        dialog (or report that nothing matches and do nothing).
+        Delete matching objects from remote storage, letting the user select
+        which of the matched items to remove. Enumerates via
+        'yd-delete -D --json -R <path>' first: with nothing matching, log a
+        message and do nothing; when the enumeration fails there are no paths to
+        target, so confirm at the scope level (without a list) and delete the
+        whole pattern.
+
+        The dry-run-checkbox preview changes nothing, so it runs directly with no
+        enumeration or confirmation. The '-y'/per-action-skip bypasses delete the
+        whole pattern, logging that they have done so.
         """
         path = self._object_path()
 
@@ -1152,21 +1283,61 @@ class YellowDogApp(QMainWindow):
 
         self._log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
-        names = self._capture_dry_run_entities("yd-delete", ["-R", path])
+        objects = self._capture_dry_run_objects(["-R", path])
 
-        if not names and names is not None:
+        if objects is not None and not objects:
             self._log(f"No objects match '{path}'")
             return
 
-        if names is None:
-            self._log("Could not list affected entities; confirming by scope instead")
+        body = f"Deleting objects matching '{path}'."
+        if objects and any(obj.is_dir for obj in objects):
+            body += " A ticked directory is deleted with everything inside it."
+        body += "\n\nThis cannot be undone."
+        if objects is None:
+            self._log("Could not list affected objects; confirming by scope instead")
 
-        body = f"Deleting objects matching '{path}'?\n\nThis cannot be undone."
-        if (
-            self._confirm_destructive("delete", "Delete Objects", body, names=names)
-            is not None
-        ):
+        rows = object_rows(objects) if objects else None
+        result = self._confirm_destructive("delete", "Delete Objects", body, rows=rows)
+        if not result.proceed:
+            return
+
+        if result.handles is None:
+            # The enumeration failed, so there are no paths to target: delete the
+            # whole pattern the user has just confirmed.
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
+            return
+
+        if not result.handles:
+            # 'yd-delete -Ry' with no paths would delete the entire configured
+            # prefix, so an empty selection must never reach the command.
+            self._log("Nothing selected to delete; no objects removed")
+            return
+
+        unsafe = [
+            handle
+            for handle in result.handles
+            if path_would_be_globbed(handle) or "{{" in handle
+        ]
+        if unsafe:
+            # 'yd-delete' would either expand these as glob patterns or run them
+            # through variable substitution before the absolute-path check ever
+            # sees them, deleting whatever they matched or resolved to instead
+            # of the object the user ticked — so refuse the whole run rather
+            # than delete part of it.
+            self._log(
+                "Cannot delete by path — these names contain wildcard characters"
+                " ('*', '?', '[') or a '{{' substitution placeholder:"
+                f" {', '.join(unsafe)}."
+                " Deselect them to delete the rest; these objects can only be"
+                " removed with rclone directly."
+            )
+            return
+
+        self._run_command_in_subprocess(
+            "yd-delete",
+            ["-Ry"] + result.handles,
+            log_args=self._abbreviated_run_args(["-Ry"], result.handles, "objects"),
+        )
 
     def _clear_output_action(self):
         self.log_output.setPlainText("")
@@ -1188,19 +1359,19 @@ class YellowDogApp(QMainWindow):
         return [value] if value else []
 
     def _abbreviated_run_args(
-        self, run_args: list[str], entities: list[EntitySummary], plural: str
+        self, run_args: list[str], handles: list[str], plural: str
     ) -> list[str] | None:
         """
         A display form of the run arguments for the output window: above
-        MAX_LOGGED_ENTITY_IDS entities, the YDIDs collapse to a count so the
-        echoed command line stays readable. None means 'echo the real
+        MAX_LOGGED_ENTITY_IDS selected items, the handles collapse to a count so
+        the echoed command line stays readable. None means 'echo the real
         arguments'. Nothing is lost by abbreviating — the dialog has just listed
-        the entities by name, and the command reports each one as it acts on it.
-        'plural' is the entity noun, e.g. 'Work Requirements'.
+        the selected items by name, and the command reports each one as it acts
+        on it. 'plural' is the entity noun, e.g. 'Work Requirements'.
         """
-        if len(entities) <= MAX_LOGGED_ENTITY_IDS:
+        if len(handles) <= MAX_LOGGED_ENTITY_IDS:
             return None
-        return run_args + [f"<{len(entities)} {plural}>"]
+        return run_args + [f"<{len(handles)} {plural}>"]
 
     def _run_destructive_with_listing(
         self,
@@ -1264,26 +1435,27 @@ class YellowDogApp(QMainWindow):
         if entities is None:
             self._log("Could not list affected entities; confirming by scope instead")
 
-        selected = self._confirm_destructive(action_key, title, body, entities=entities)
-        if selected is None:
+        rows = entity_rows(entities) if entities else None
+        result = self._confirm_destructive(action_key, title, body, rows=rows)
+        if not result.proceed:
             return
 
-        if entities is None:
-            # The enumeration failed, so there are no YDIDs to target: run over
-            # the scope the user has just confirmed.
+        if result.handles is None:
+            # Nothing was individually selectable — the enumeration failed — so
+            # run over the scope the user has just confirmed.
             self._run_command_in_subprocess(command, run_args + name_args)
             return
 
-        if not selected:
-            # A non-empty enumeration that selected nothing must never widen
-            # into a scope-wide run: 'run_args + []' IS the whole-scope command.
+        if not result.handles:
+            # 'run_args + []' IS the whole-scope command, so an empty selection
+            # must never fall through to the run below.
             self._log(f"Nothing selected to act on; no {plural} affected")
             return
 
         self._run_command_in_subprocess(
             command,
-            run_args + [entity.id for entity in selected],
-            log_args=self._abbreviated_run_args(run_args, selected, plural),
+            run_args + result.handles,
+            log_args=self._abbreviated_run_args(run_args, result.handles, plural),
         )
 
     def _cancel_work_requirements_action(self):

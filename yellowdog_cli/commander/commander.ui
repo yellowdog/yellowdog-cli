@@ -186,7 +186,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <property name="spacing">
-         <number>0</number>
+         <number>6</number>
         </property>
         <property name="sizeConstraint">
          <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>
@@ -331,7 +331,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_6" stretch="0,0">
         <property name="spacing">
-         <number>0</number>
+         <number>6</number>
         </property>
         <property name="sizeConstraint">
          <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>

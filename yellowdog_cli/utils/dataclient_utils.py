@@ -221,11 +221,20 @@ def _upload_directory_flat(
         upload_file(config, local_file, dest, dry_run=dry_run)
 
 
+def entry_to_name(entry: dict) -> str:
+    """
+    One rclone lsjson entry's display name, with '/' appended to a directory.
+    Factored out because this convention is needed per-entry (alongside that
+    entry's path) as well as over a whole listing.
+    """
+    return entry["Name"] + ("/" if entry["IsDir"] else "")
+
+
 def entries_to_names(entries: list[dict]) -> list[str]:
     """
     Map rclone lsjson entries to display names, appending '/' to directories.
     """
-    return [entry["Name"] + ("/" if entry["IsDir"] else "") for entry in entries]
+    return [entry_to_name(entry) for entry in entries]
 
 
 def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:

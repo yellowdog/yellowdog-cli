@@ -8,7 +8,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
     delete_remote,
-    entries_to_names,
+    entry_to_name,
     is_glob,
     list_remote_glob,
     resolve_remote_path,
@@ -87,9 +87,17 @@ def _delete_one(remote_path: str, recursive: bool, dry_run: bool) -> None:
 def _emit_matched_json(remote_paths: list[str]) -> None:
     """
     Print the top-level items a delete would match, as a JSON array of
-    {"name": ...} (directories carry a trailing '/'), without deleting.
+    {"name", "path", "isDir"}, without deleting.
+
+    'name' is the display basename, with a trailing '/' on a directory. 'path' is
+    the resolved remote path and carries NO trailing slash even for a directory,
+    because resolve_remote_path reads a trailing '/' as directory-destination
+    intent (meaningful for yd-copy/yd-upload, wrong here). 'path' is the handle a
+    caller passes back to delete that one item, so every entry must be joined to
+    the parent directory IT came from — hence the rows are built inside the loop
+    rather than over a flattened list of names.
     """
-    names: list[str] = []
+    rows: list[dict] = []
     resolved = (
         [resolve_remote_path(CONFIG_DATA_CLIENT)]
         if not remote_paths
@@ -101,12 +109,19 @@ def _emit_matched_json(remote_paths: list[str]) -> None:
     for remote_path in resolved:
         # list_remote_glob handles a literal (non-glob) final component too: it
         # lists the parent and exact-matches the name, so a path that matches
-        # nothing yields no entries (rather than echoing the input). This gives
-        # consistent basenames (with '/' on dirs) and reflects what a real
-        # delete would actually remove.
-        _, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
-        names.extend(entries_to_names(matches))
-    print_objects_as_json([{"name": name} for name in names])
+        # nothing yields no entries (rather than echoing the input). The parent it
+        # returns already ends with '/', or is the bare remote prefix ('S3:') when
+        # the path has no directory part.
+        remote_dir, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
+        for entry in matches:
+            rows.append(
+                {
+                    "name": entry_to_name(entry),
+                    "path": f"{remote_dir}{entry['Name']}",
+                    "isDir": bool(entry["IsDir"]),
+                }
+            )
+    print_objects_as_json(rows)
 
 
 if __name__ == "__main__":
