@@ -639,6 +639,17 @@ class YellowDogApp(QMainWindow):
         self._helper_processes: list[QProcess] = []
         self._nested_loops: list[QEventLoop] = []
         self._shutting_down = False
+        # How many nested event loops are running. A nested loop keeps the main
+        # window interactive, so without this an action could be started while
+        # another was mid-enumeration.
+        #
+        # A depth counter rather than a flag, because nested loops really do
+        # nest: the config parse deferred below with singleShot(0) runs in the
+        # first event loop to spin, which can be one an enumeration has already
+        # entered — observed reaching depth 2 for a single enumeration. A flag
+        # cleared by the inner parse finishing would unlock the window while the
+        # outer loop was still blocking, which is the bug this avoids.
+        self._nested_depth = 0
         self.stdin_input.textChanged.connect(
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
         )
@@ -1151,6 +1162,57 @@ class YellowDogApp(QMainWindow):
 
         return dialog, yes_btn, skip_btn
 
+    def _action_buttons(self) -> tuple[QPushButton, ...]:
+        """
+        The buttons whose actions enumerate before acting, and so must not be
+        startable while an enumeration is already blocking in a nested event
+        loop. Submit and provision are absent deliberately: they launch a command
+        and return, without a nested loop or a pre-flight listing to be confused.
+
+        All six grey together, including ones unrelated to the action in flight.
+        That is deliberately conservative rather than strictly required — the
+        demonstrable failure is one action re-entering itself, where the inner
+        dialog's 'Don't Ask Again' makes the outer call return an empty selection.
+        Overlapping *different* actions has no such failure, but it interleaves two
+        listings in the one output window and stacks two modal confirmations in an
+        order unrelated to the clicks, which is a poor property for irreversible
+        operations. One rule also stays correct as actions are added. The block
+        lasts one subprocess, so the cost is a second or two, visibly greyed.
+        """
+        return (
+            self.cancel_work_requirements,
+            self.cancel_work_requirements_and_abort,
+            self.shutdown_all_worker_pools,
+            self.terminate_all_compute_requirements,
+            self.download_results,
+            self.delete_objects,
+        )
+
+    def _set_action_buttons_enabled(self, enabled: bool) -> None:
+        """
+        Grey the enumerating actions out, or restore them. Safe to restore
+        unconditionally because nothing else ever disables these buttons.
+        """
+        for button in self._action_buttons():
+            button.setEnabled(enabled)
+
+    def _operation_in_flight(self, action: str) -> bool:
+        """
+        Whether a nested event loop is already blocking, in which case 'action'
+        must not start. Logs when it refuses, so a click that lands anyway — a
+        queued one, or a keyboard activation — does not look as though it was
+        simply ignored.
+
+        The check belongs at the top of each action, not inside the enumeration:
+        a re-entrant enumeration that returned None would be read as 'enumeration
+        failed', which for the destructive actions means falling back to acting
+        over the whole scope. Refusing early is the only safe answer.
+        """
+        if self._nested_depth == 0:
+            return False
+        self._log(f"Another operation is still in progress; ignoring {action}")
+        return True
+
     def _handles_are_safe_to_target(
         self, handles: list[str], verb: str, past_participle: str
     ) -> bool:
@@ -1420,6 +1482,9 @@ class YellowDogApp(QMainWindow):
         answer a chooser either; a user who wants a subset without being asked can
         narrow the Path field instead.
         """
+        if self._operation_in_flight("Download Matching Objects"):
+            return
+
         dst = join(self._working_dir(), RESULTS_DIR)
         path = self._object_path()
 
@@ -1479,6 +1544,9 @@ class YellowDogApp(QMainWindow):
         enumeration or confirmation. The '-y'/per-action-skip bypasses delete the
         whole pattern, logging that they have done so.
         """
+        if self._operation_in_flight("Delete Matching Objects"):
+            return
+
         path = self._object_path()
 
         if self.dry_run_objects.isChecked():
@@ -1635,6 +1703,9 @@ class YellowDogApp(QMainWindow):
         describe the action (e.g. 'Cancelling'/'Work Requirements') and
         'match_word' is how the CLI selects entities ('tags' or 'names').
         """
+        if self._operation_in_flight(title):
+            return
+
         name_args = self._name_glob_args()
 
         # When a Name pattern is set, entities are selected by that glob rather
@@ -1908,9 +1979,18 @@ class YellowDogApp(QMainWindow):
             timer.timeout.connect(on_timeout)
             timer.start(timeout_ms)
 
+        # Hold the enumerating actions for as long as this loop blocks. The
+        # buttons are greyed for visible feedback; _operation_in_flight is the
+        # guard the actions themselves check, because a click already queued
+        # before the buttons went grey would still be delivered.
+        self._nested_depth += 1
+        self._set_action_buttons_enabled(False)
         try:
             event_loop.exec()
         finally:
+            self._nested_depth -= 1
+            if self._nested_depth == 0 and not self._shutting_down:
+                self._set_action_buttons_enabled(True)
             if timer is not None:
                 timer.stop()
             self._nested_loops.remove(event_loop)
