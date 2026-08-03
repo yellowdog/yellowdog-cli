@@ -128,7 +128,7 @@ Each pair is passed to the command as a `-v` option (`-v instances=2 -v template
 - **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect Files** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
-- **Clear Command Output** / **Copy Command Output** — clear the output window, or copy its full contents to the clipboard.
+- **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its full contents to the clipboard, or write them to a file you nominate. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
 - **Dark Mode** — toggle between light and dark appearance.
 
 ## Running Arbitrary Commands

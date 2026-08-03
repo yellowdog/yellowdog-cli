@@ -98,6 +98,11 @@ MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
 ENTITY_ROW_GAP = 2  # spaces between the name and status columns
 ENTITY_LIST_PADDING = 6  # px of breathing room inside the entity list's frame
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
+# strftime for the pre-filled save-output filename. Colons are not filename-safe
+# on Windows, so this cannot reuse the ':'-separated prefix format used in the
+# output window itself.
+SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
+SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
@@ -472,6 +477,7 @@ class YellowDogApp(QMainWindow):
     download_results: QPushButton
     clear_command_output: QPushButton
     copy_command_output: QPushButton
+    save_command_output: QPushButton
     delete_objects: QPushButton
     cancel_work_requirements: QPushButton
     cancel_work_requirements_and_abort: QPushButton
@@ -525,6 +531,7 @@ class YellowDogApp(QMainWindow):
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
         self.copy_command_output.clicked.connect(self._copy_output_action)
+        self.save_command_output.clicked.connect(self._save_output_action)
         self.delete_objects.clicked.connect(self._delete_objects_action)
         self.cancel_work_requirements.clicked.connect(
             self._cancel_work_requirements_action
@@ -1346,6 +1353,42 @@ class YellowDogApp(QMainWindow):
         cast(QClipboard, QApplication.clipboard()).setText(
             self.log_output.toPlainText()
         )
+
+    def _save_output_action(self):
+        """
+        Save the command output window's contents to a file the user nominates.
+        The dialog pre-fills a timestamped name in the working directory, so
+        repeated saves in one session land in separate files rather than
+        prompting to overwrite.
+
+        With no output, log and stop rather than writing an empty file: the user
+        asked to save what they can see, and an empty file is not that.
+        """
+        text = self.log_output.toPlainText()
+        if not text:
+            self._log("No command output to save")
+            return
+
+        default_name = datetime.now().strftime(SAVED_OUTPUT_NAME_FORMAT)
+        path = self._save_file(
+            caption="Save Command Output",
+            directory=join(self._working_dir(), default_name),
+            file_pattern=SAVED_OUTPUT_FILTER,
+        )
+        if path is None:
+            return
+
+        try:
+            # Explicit utf-8: the output holds whatever a yd-* command emitted,
+            # which can include non-ASCII, and Windows would otherwise write it
+            # in a narrower default encoding.
+            with open(path, "w", encoding="utf-8") as output_file:
+                output_file.write(text if text.endswith("\n") else f"{text}\n")
+        except OSError as e:
+            self._log(f"Could not save command output to '{path}': {e}")
+            return
+
+        self._log(f"Saved command output to '{path}'")
 
     def _name_glob_args(self) -> list[str]:
         """
@@ -2257,6 +2300,31 @@ class YellowDogApp(QMainWindow):
             directory=directory,
             filter=file_pattern,
             options=options,
+        )
+        return None if file_name[0] == "" else file_name[0]
+
+    def _save_file(
+        self,
+        caption: str = "",
+        directory: str = ".",
+        file_pattern: str = "*",
+    ) -> str | None:
+        """
+        Ask for a file to write to, returning None if the dialog was dismissed.
+        'directory' may name a file rather than a directory, which the dialog
+        pre-fills as the suggested target.
+
+        Mirrors _select_file, including DontUseNativeDialog, so the two dialogs
+        look and behave alike; Qt's own dialog also prompts before overwriting an
+        existing file, which is why no separate overwrite check is needed here.
+        ReadOnly is deliberately absent — unlike _select_file, this one writes.
+        """
+        file_name = QFileDialog.getSaveFileName(
+            self,
+            caption=caption,
+            directory=directory,
+            filter=file_pattern,
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         return None if file_name[0] == "" else file_name[0]
 
