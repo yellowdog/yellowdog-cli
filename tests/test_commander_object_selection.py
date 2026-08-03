@@ -85,14 +85,16 @@ def test_capture_objects_parses_enumeration(window, monkeypatch):
             {"name": "pyex-001", "path": "S3:b/pfx/pyex-001", "isDir": False}
         ],
     )
-    assert window._capture_dry_run_objects(["-R", "pyex*"]) == [objects()[0]]
+    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+        objects()[0]
+    ]
 
 
 def test_capture_objects_none_on_enumeration_failure(window, monkeypatch):
     monkeypatch.setattr(
         window, "_capture_dry_run_json", lambda command, extra_args=None: None
     )
-    assert window._capture_dry_run_objects(["-R", "pyex*"]) is None
+    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None
 
 
 def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
@@ -102,7 +104,7 @@ def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
         lambda command, extra_args=None: [{"name": "pyex-001"}],
     )
     window.log_output.setPlainText("")
-    assert window._capture_dry_run_objects(["-R", "pyex*"]) is None
+    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None
     assert "did not include paths" in window.log_output.toPlainText()
 
 
@@ -121,7 +123,7 @@ def captured(window, monkeypatch):
 def stub_delete_flow(window, monkeypatch, enumerated, result):
     """Stub the object enumeration and the confirmation for a delete."""
     monkeypatch.setattr(
-        window, "_capture_dry_run_objects", lambda extra_args: enumerated
+        window, "_capture_dry_run_objects", lambda command, extra_args: enumerated
     )
     monkeypatch.setattr(
         window,
@@ -172,7 +174,7 @@ def test_unticked_object_is_not_deleted(window, captured, monkeypatch):
     # (_capture_dry_run_objects and, via 'captured', _run_command_in_subprocess).
     all_objects = objects()
     monkeypatch.setattr(
-        window, "_capture_dry_run_objects", lambda extra_args: all_objects
+        window, "_capture_dry_run_objects", lambda command, extra_args: all_objects
     )
     drive_dialog(window, monkeypatch, "yes", uncheck=(0,))
     window._tag = "pyex"
@@ -242,14 +244,14 @@ def test_directory_caveat_appears_only_when_a_directory_matched(
     monkeypatch.setattr(window, "_confirm_destructive", capture_body)
 
     monkeypatch.setattr(
-        window, "_capture_dry_run_objects", lambda extra_args: objects()
+        window, "_capture_dry_run_objects", lambda command, extra_args: objects()
     )
     window._delete_objects_action()
     assert "everything inside it" in bodies[0]
     assert "pyex*" in bodies[0]
 
     monkeypatch.setattr(
-        window, "_capture_dry_run_objects", lambda extra_args: [objects()[0]]
+        window, "_capture_dry_run_objects", lambda command, extra_args: [objects()[0]]
     )
     window._delete_objects_action()
     assert "everything inside it" not in bodies[1]
@@ -264,7 +266,7 @@ def test_delete_passes_object_rows_to_the_confirmation(window, captured, monkeyp
         return Confirmation(proceed=False, handles=None)
 
     monkeypatch.setattr(
-        window, "_capture_dry_run_objects", lambda extra_args: objects()
+        window, "_capture_dry_run_objects", lambda command, extra_args: objects()
     )
     monkeypatch.setattr(window, "_confirm_destructive", capture_rows)
     window._tag = "pyex"

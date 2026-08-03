@@ -2552,9 +2552,12 @@ Key options:
 - `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
 - `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
 - `--destination`/`-d <local_path>` — local destination directory (default: mirrors the remote directory name)
+- `--into <local_dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
 - `--dry-run`/`-D` — show what would be downloaded without actually downloading
 
 Remote paths support `{{variable}}` substitution (e.g., `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
+
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
 
 Example: `yd-download 'results_*'` downloads everything whose name starts with `results_`.
 

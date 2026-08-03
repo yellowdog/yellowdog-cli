@@ -1117,33 +1117,7 @@ class YellowDogApp(QMainWindow):
         header.addWidget(message_label, stretch=1)
         layout.addLayout(header)
 
-        selection_listing: QListWidget | None = None
-        count_label: QLabel | None = None
-        if rows:
-            selection_listing = self._build_selection_list_widget(rows)
-            count_label = QLabel()
-            count_label.setObjectName("selection_count")
-            all_btn = QPushButton("All")
-            all_btn.setObjectName("select_all")
-            all_btn.clicked.connect(
-                functools_partial(
-                    set_all_check_states, selection_listing, Qt.CheckState.Checked
-                )
-            )
-            none_btn = QPushButton("None")
-            none_btn.setObjectName("select_none")
-            none_btn.clicked.connect(
-                functools_partial(
-                    set_all_check_states, selection_listing, Qt.CheckState.Unchecked
-                )
-            )
-            controls = QHBoxLayout()
-            controls.addWidget(all_btn)
-            controls.addWidget(none_btn)
-            controls.addStretch(1)
-            controls.addWidget(count_label)
-            layout.addLayout(controls)
-            layout.addWidget(selection_listing)
+        selection_listing, count_label = self._add_selection_listing(layout, rows)
 
         button_box = QDialogButtonBox()
         no_btn = cast(
@@ -1164,14 +1138,155 @@ class YellowDogApp(QMainWindow):
         no_btn.setDefault(True)
         layout.addWidget(button_box)
 
-        if selection_listing is not None and count_label is not None:
-            refresh = functools_partial(
-                update_selection_state, selection_listing, count_label, yes_btn
-            )
-            selection_listing.itemChanged.connect(refresh)
-            refresh()
+        self._wire_selection_gating(selection_listing, count_label, yes_btn)
 
         return dialog, yes_btn, skip_btn
+
+    def _handles_are_safe_to_target(
+        self, handles: list[str], verb: str, past_participle: str
+    ) -> bool:
+        """
+        Whether every selected object path can be named literally on a yd-*
+        command line. False — with the offending names logged — when any contains
+        a glob metacharacter or a '{{' substitution placeholder.
+
+        Both would be expanded before the absolute-path check ever sees them, so
+        the command would act on whatever they matched or resolved to rather than
+        on the object the user ticked. The whole run is refused rather than the
+        offending handles dropped: acting on part of a confirmed selection leaves
+        the user believing it all happened. 'verb'/'past_participle' shape the
+        message, e.g. 'delete'/'removed' or 'download'/'downloaded'.
+        """
+        unsafe = [
+            handle
+            for handle in handles
+            if path_would_be_globbed(handle) or "{{" in handle
+        ]
+        if not unsafe:
+            return True
+
+        self._log(
+            f"Cannot {verb} by path — these names contain wildcard characters"
+            " ('*', '?', '[') or a '{{' substitution placeholder:"
+            f" {', '.join(unsafe)}."
+            f" Deselect them to {verb} the rest; these objects can only be"
+            f" {past_participle} with rclone directly."
+        )
+        return False
+
+    def _add_selection_listing(
+        self, layout: QVBoxLayout, rows: list[SelectableRow] | None
+    ) -> tuple[QListWidget | None, QLabel | None]:
+        """
+        Add the checkable listing and its All / None buttons and count label to a
+        dialog's layout, returning both so the caller can gate its accept button
+        on them. Returns (None, None) when there are no rows — nothing was
+        individually selectable — in which case the dialog shows no listing.
+
+        Shared by the destructive-confirmation dialog and the download chooser,
+        which differ only in their surrounding chrome (warning icon, wording and
+        buttons), not in how a selection is presented or read back.
+        """
+        if not rows:
+            return None, None
+
+        listing = self._build_selection_list_widget(rows)
+        count_label = QLabel()
+        count_label.setObjectName("selection_count")
+        all_btn = QPushButton("All")
+        all_btn.setObjectName("select_all")
+        all_btn.clicked.connect(
+            functools_partial(set_all_check_states, listing, Qt.CheckState.Checked)
+        )
+        none_btn = QPushButton("None")
+        none_btn.setObjectName("select_none")
+        none_btn.clicked.connect(
+            functools_partial(set_all_check_states, listing, Qt.CheckState.Unchecked)
+        )
+        # These are the first focusable widgets in the dialog, and an autoDefault
+        # QPushButton that has focus takes over as the dialog's default button —
+        # which would leave 'All' highlighted instead of the intended default
+        # ('No' on a confirmation, 'Download' on a chooser) and make Return do the
+        # wrong thing. Opt them out so the explicit default stands.
+        all_btn.setAutoDefault(False)
+        none_btn.setAutoDefault(False)
+        controls = QHBoxLayout()
+        controls.addWidget(all_btn)
+        controls.addWidget(none_btn)
+        controls.addStretch(1)
+        controls.addWidget(count_label)
+        layout.addLayout(controls)
+        layout.addWidget(listing)
+        return listing, count_label
+
+    def _wire_selection_gating(
+        self,
+        listing: QListWidget | None,
+        count_label: QLabel | None,
+        accept_btn: QPushButton,
+    ) -> None:
+        """
+        Keep the 'N of M selected' label and the accept button in step with the
+        listing's check states, so neither dialog can accept a selection of
+        nothing. A no-op when there is no listing, since then the caller acts
+        over its whole scope rather than a selection.
+        """
+        if listing is None or count_label is None:
+            return
+        refresh = functools_partial(
+            update_selection_state, listing, count_label, accept_btn
+        )
+        listing.itemChanged.connect(refresh)
+        refresh()
+
+    def _build_chooser_dialog(
+        self,
+        title: str,
+        message: str,
+        accept_text: str,
+        rows: list[SelectableRow],
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) a non-destructive chooser: a message, the same
+        checkable listing the confirmation dialog uses, and Cancel / <accept_text>
+        buttons with the accept button as the default. Returns the dialog and that
+        button so the caller can tell acceptance from dismissal.
+
+        Deliberately unlike _build_destructive_dialog: no warning icon, no 'this
+        cannot be undone', and no 'Don't Ask Again'. Following the precedent set
+        by Deselect Files, a chooser is not a confirmation — nothing it does is
+        irreversible, and suppressing it would remove the only way to pick a
+        subset. 'rows' must be non-empty; with nothing to choose there is no
+        reason to ask.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        layout = QVBoxLayout(dialog)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        listing, count_label = self._add_selection_listing(layout, rows)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        accept_btn = cast(
+            QPushButton,
+            button_box.addButton(accept_text, QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        accept_btn.setDefault(True)
+        # Unlike the confirmation dialog, whose caller inspects which button was
+        # clicked, this one only needs accept-or-dismiss — so wire the box straight
+        # to the dialog. Without these the buttons do nothing at all and exec()
+        # never returns.
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        self._wire_selection_gating(listing, count_label, accept_btn)
+
+        return dialog, accept_btn
 
     def _capture_dry_run_json(
         self, command: str, extra_args: list[str] | None = None
@@ -1234,15 +1349,19 @@ class YellowDogApp(QMainWindow):
         return summaries
 
     def _capture_dry_run_objects(
-        self, extra_args: list[str]
+        self, command: str, extra_args: list[str]
     ) -> list[ObjectSummary] | None:
         """
-        The objects and top-level directories a delete would remove, with the
-        resolved path needed to remove each one individually. Returns None when
-        the enumeration failed or did not carry paths, which drops the caller to
-        a scope-level confirmation over the whole pattern.
+        The objects and top-level directories 'command' would act on, with the
+        resolved path needed to name each one individually. Returns None when the
+        enumeration failed or did not carry paths, which drops the caller back to
+        acting over the whole pattern.
+
+        'command' is 'yd-delete' or 'yd-download': both emit the same row shape
+        from their '--dry-run --json' mode, and both offer the same selection
+        over it.
         """
-        parsed = self._capture_dry_run_json("yd-delete", extra_args)
+        parsed = self._capture_dry_run_json(command, extra_args)
         if parsed is None:
             return None
         summaries = parse_object_summaries(parsed)
@@ -1250,15 +1369,78 @@ class YellowDogApp(QMainWindow):
             self._log("Object listing did not include paths; cannot offer a selection")
         return summaries
 
+    def _choose_objects(
+        self, title: str, body: str, accept_text: str, rows: list[SelectableRow]
+    ) -> list[str] | None:
+        """
+        Offer a non-destructive chooser over 'rows' and return the handles left
+        ticked, or None if the user dismissed it. The accept button is disabled
+        while nothing is ticked, so the returned list is never empty.
+
+        Unlike _confirm_destructive this has no action_key: a chooser is never
+        suppressed by '--yes' or a 'Don't Ask Again', because it is the only way
+        to pick a subset and nothing it offers is irreversible.
+        """
+        dialog, _accept_btn = self._build_chooser_dialog(title, body, accept_text, rows)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "selection_list"))
+            return checked_handles(listing)
+        finally:
+            # Parented to the main window, so without this every chooser — and
+            # the rows it owns — would live for the rest of the session.
+            dialog.deleteLater()
+
     def _download_results_action(self):
         """
-        Download matching objects from remote storage into the results directory.
+        Download matching objects from remote storage into the results directory,
+        letting the user choose which of the matched items to fetch.
+
+        Enumerates via 'yd-download -D --json' first: with nothing matching, log
+        and do nothing; when the enumeration fails there are no paths to choose
+        between, so fall back to downloading the whole pattern as before.
+
+        The dry-run-checkbox preview fetches nothing, so it runs directly with no
+        enumeration or chooser.
         """
         dst = join(self._working_dir(), RESULTS_DIR)
-        args = ["-d", dst, self._object_path()]
+        path = self._object_path()
+
         if self.dry_run_objects.isChecked():
-            args += ["-D"]
-        self._run_command_in_subprocess("yd-download", args)
+            self._run_command_in_subprocess("yd-download", ["--into", dst, path, "-D"])
+            return
+
+        self._log(f"Checking which objects match '{path}'...")
+        self.log_output.repaint()
+        objects = self._capture_dry_run_objects("yd-download", [path])
+
+        if objects is not None and not objects:
+            self._log(f"No objects match '{path}'")
+            return
+
+        if objects is None:
+            self._log("Could not list matching objects; downloading them all instead")
+            self._run_command_in_subprocess("yd-download", ["--into", dst, path])
+            return
+
+        body = f"Downloading objects matching '{path}' into '{RESULTS_DIR}'."
+        if any(obj.is_dir for obj in objects):
+            body += " A ticked directory is downloaded with everything inside it."
+        handles = self._choose_objects(
+            "Download Objects", body, "Download", object_rows(objects)
+        )
+        if handles is None:
+            return
+
+        if not self._handles_are_safe_to_target(handles, "download", "downloaded"):
+            return
+
+        self._run_command_in_subprocess(
+            "yd-download",
+            ["--into", dst] + handles,
+            log_args=self._abbreviated_run_args(["--into", dst], handles, "objects"),
+        )
 
     def _delete_objects_action(self):
         """
@@ -1290,7 +1472,7 @@ class YellowDogApp(QMainWindow):
 
         self._log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
-        objects = self._capture_dry_run_objects(["-R", path])
+        objects = self._capture_dry_run_objects("yd-delete", ["-R", path])
 
         if objects is not None and not objects:
             self._log(f"No objects match '{path}'")
@@ -1320,24 +1502,7 @@ class YellowDogApp(QMainWindow):
             self._log("Nothing selected to delete; no objects removed")
             return
 
-        unsafe = [
-            handle
-            for handle in result.handles
-            if path_would_be_globbed(handle) or "{{" in handle
-        ]
-        if unsafe:
-            # 'yd-delete' would either expand these as glob patterns or run them
-            # through variable substitution before the absolute-path check ever
-            # sees them, deleting whatever they matched or resolved to instead
-            # of the object the user ticked — so refuse the whole run rather
-            # than delete part of it.
-            self._log(
-                "Cannot delete by path — these names contain wildcard characters"
-                " ('*', '?', '[') or a '{{' substitution placeholder:"
-                f" {', '.join(unsafe)}."
-                " Deselect them to delete the rest; these objects can only be"
-                " removed with rclone directly."
-            )
+        if not self._handles_are_safe_to_target(result.handles, "delete", "removed"):
             return
 
         self._run_command_in_subprocess(

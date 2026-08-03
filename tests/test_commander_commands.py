@@ -320,7 +320,7 @@ def test_delete_runs_when_confirmed(window, captured, monkeypatch):
     monkeypatch.setattr(
         window,
         "_capture_dry_run_objects",
-        lambda extra_args: [
+        lambda command, extra_args: [
             ObjectSummary(path="S3:b/pfx/obj", name="obj", is_dir=False)
         ],
     )
@@ -338,7 +338,7 @@ def test_delete_declined_does_not_run(window, captured, monkeypatch):
     monkeypatch.setattr(
         window,
         "_capture_dry_run_objects",
-        lambda extra_args: [
+        lambda command, extra_args: [
             ObjectSummary(path="S3:b/pfx/obj", name="obj", is_dir=False)
         ],
     )
@@ -352,7 +352,9 @@ def test_delete_declined_does_not_run(window, captured, monkeypatch):
 
 
 def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
-    monkeypatch.setattr(window, "_capture_dry_run_objects", lambda extra_args: [])
+    monkeypatch.setattr(
+        window, "_capture_dry_run_objects", lambda command, extra_args: []
+    )
     window._tag = "my-tag"
     window.log_output.setPlainText("")
     window._delete_objects_action()
@@ -361,7 +363,9 @@ def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
 
 
 def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
-    monkeypatch.setattr(window, "_capture_dry_run_objects", lambda extra_args: None)
+    monkeypatch.setattr(
+        window, "_capture_dry_run_objects", lambda command, extra_args: None
+    )
     calls = []
     monkeypatch.setattr(
         window,
@@ -457,12 +461,18 @@ def test_scope_phrase_generic_when_unknown(window):
 # --- Download / Delete -------------------------------------------------------
 
 
-def test_download(window, captured):
+def test_download(window, captured, monkeypatch):
+    # Destination and path assembly, exercised through the enumeration-failure
+    # fallback (which downloads the whole pattern, as this action always did).
+    # The chooser path is covered in tests/test_commander_download_selection.py.
+    monkeypatch.setattr(
+        window, "_capture_dry_run_objects", lambda command, extra_args: None
+    )
     window._config_file = "cfg/config.toml"
     window._tag = "my-tag"
     window._download_results_action()
     expected_dst = join(dirname(abspath("cfg/config.toml")), RESULTS_DIR)
-    assert captured == [("yd-download", ["-d", expected_dst, "my-tag*"])]
+    assert captured == [("yd-download", ["--into", expected_dst, "my-tag*"])]
 
 
 def test_delete_with_path_override_and_dry_run(window, captured):
@@ -475,12 +485,18 @@ def test_delete_with_path_override_and_dry_run(window, captured):
 # --- Results / view actions work without a config file -----------------------
 
 
-def test_download_results_no_config_uses_cwd(window, captured):
+def test_download_results_no_config_uses_cwd(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_objects", lambda command, extra_args: None
+    )
     window._config_file = None
     expected_path = window._object_path()
     window._download_results_action()
     assert captured == [
-        ("yd-download", ["-d", os.path.join(os.getcwd(), RESULTS_DIR), expected_path])
+        (
+            "yd-download",
+            ["--into", os.path.join(os.getcwd(), RESULTS_DIR), expected_path],
+        )
     ]
 
 

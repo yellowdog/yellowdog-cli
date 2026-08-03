@@ -8,9 +8,9 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
     delete_remote,
-    entry_to_name,
     is_glob,
     list_remote_glob,
+    matched_item_rows,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
@@ -87,41 +87,11 @@ def _delete_one(remote_path: str, recursive: bool, dry_run: bool) -> None:
 def _emit_matched_json(remote_paths: list[str]) -> None:
     """
     Print the top-level items a delete would match, as a JSON array of
-    {"name", "path", "isDir"}, without deleting.
-
-    'name' is the display basename, with a trailing '/' on a directory. 'path' is
-    the resolved remote path and carries NO trailing slash even for a directory,
-    because resolve_remote_path reads a trailing '/' as directory-destination
-    intent (meaningful for yd-copy/yd-upload, wrong here). 'path' is the handle a
-    caller passes back to delete that one item, so every entry must be joined to
-    the parent directory IT came from — hence the rows are built inside the loop
-    rather than over a flattened list of names.
+    {"name", "path", "isDir"}, without deleting. The row building lives in
+    dataclient_utils because 'yd-download --dry-run --json' emits the same shape
+    for the same purpose — offering the user a selection of matched items.
     """
-    rows: list[dict] = []
-    resolved = (
-        [resolve_remote_path(CONFIG_DATA_CLIENT)]
-        if not remote_paths
-        else [
-            resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=p)
-            for p in remote_paths
-        ]
-    )
-    for remote_path in resolved:
-        # list_remote_glob handles a literal (non-glob) final component too: it
-        # lists the parent and exact-matches the name, so a path that matches
-        # nothing yields no entries (rather than echoing the input). The parent it
-        # returns already ends with '/', or is the bare remote prefix ('S3:') when
-        # the path has no directory part.
-        remote_dir, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
-        for entry in matches:
-            rows.append(
-                {
-                    "name": entry_to_name(entry),
-                    "path": f"{remote_dir}{entry['Name']}",
-                    "isDir": bool(entry["IsDir"]),
-                }
-            )
-    print_objects_as_json(rows)
+    print_objects_as_json(matched_item_rows(CONFIG_DATA_CLIENT, remote_paths))
 
 
 if __name__ == "__main__":

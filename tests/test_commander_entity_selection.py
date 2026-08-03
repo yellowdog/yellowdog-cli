@@ -143,6 +143,21 @@ def test_all_and_none_buttons_set_every_row(window):
     assert checked_handles(listing) == ["ydid:workreq:1", "ydid:workreq:22"]
 
 
+def test_no_is_the_default_button_on_a_confirmation(window):
+    # Safety property: Return must not confirm a destructive action. The All / None
+    # buttons are the first focusable widgets, and an autoDefault QPushButton that
+    # gains focus takes over as the dialog's default — which silently defeated this.
+    dialog, yes_btn, _skip = window._build_destructive_dialog(
+        "Cancel", "Cancel?", rows=entity_rows(entities())
+    )
+    dialog.show()
+    no_btn = next(b for b in dialog.findChildren(QPushButton) if b.text() == "No")
+    assert no_btn.isDefault() is True
+    assert yes_btn.isDefault() is False
+    assert dialog.findChild(QPushButton, "select_all").autoDefault() is False
+    assert dialog.findChild(QPushButton, "select_none").autoDefault() is False
+
+
 def test_skip_button_says_it_acts_on_all(window):
     dialog, _yes, _skip = window._build_destructive_dialog(
         "Cancel", "Cancel?", rows=entity_rows(entities())
