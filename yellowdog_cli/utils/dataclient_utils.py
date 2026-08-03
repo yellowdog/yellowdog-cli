@@ -221,11 +221,20 @@ def _upload_directory_flat(
         upload_file(config, local_file, dest, dry_run=dry_run)
 
 
+def entry_to_name(entry: dict) -> str:
+    """
+    One rclone lsjson entry's display name, with '/' appended to a directory.
+    Factored out because this convention is needed per-entry (alongside that
+    entry's path) as well as over a whole listing.
+    """
+    return entry["Name"] + ("/" if entry["IsDir"] else "")
+
+
 def entries_to_names(entries: list[dict]) -> list[str]:
     """
     Map rclone lsjson entries to display names, appending '/' to directories.
     """
-    return [entry["Name"] + ("/" if entry["IsDir"] else "") for entry in entries]
+    return [entry_to_name(entry) for entry in entries]
 
 
 def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
@@ -531,6 +540,47 @@ def list_remote_glob(
         return remote_dir, []
     entries = json.loads(check.stdout or "[]")
     return remote_dir, [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
+
+
+def matched_item_rows(config: ConfigDataClient, remote_paths: list[str]) -> list[dict]:
+    """
+    The top-level items the given remote paths match, as JSON-ready rows of
+    {"name", "path", "isDir"}, without touching any of them. Shared by
+    'yd-delete --dry-run --json' and 'yd-download --dry-run --json', which offer
+    the same selection from the same shape of listing.
+
+    'name' is the display basename, with a trailing '/' on a directory. 'path' is
+    the resolved remote path and carries NO trailing slash even for a directory,
+    because resolve_remote_path reads a trailing '/' as directory-destination
+    intent (meaningful for yd-copy/yd-upload, wrong for naming one item). 'path'
+    is the handle a caller passes back to act on that one item, so every entry
+    must be joined to the parent directory IT came from — hence the rows are
+    built inside the loop rather than over a flattened list of names.
+
+    With no remote paths, the configured prefix is enumerated.
+    """
+    rows: list[dict] = []
+    resolved = (
+        [resolve_remote_path(config)]
+        if not remote_paths
+        else [resolve_remote_path(config, relative_path=p) for p in remote_paths]
+    )
+    for remote_path in resolved:
+        # list_remote_glob handles a literal (non-glob) final component too: it
+        # lists the parent and exact-matches the name, so a path that matches
+        # nothing yields no entries (rather than echoing the input). The parent it
+        # returns already ends with '/', or is the bare remote prefix ('S3:') when
+        # the path has no directory part.
+        remote_dir, matches = list_remote_glob(config, remote_path)
+        for entry in matches:
+            rows.append(
+                {
+                    "name": entry_to_name(entry),
+                    "path": f"{remote_dir}{entry['Name']}",
+                    "isDir": bool(entry["IsDir"]),
+                }
+            )
+    return rows
 
 
 def list_remote(

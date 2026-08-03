@@ -186,7 +186,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <property name="spacing">
-         <number>0</number>
+         <number>6</number>
         </property>
         <property name="sizeConstraint">
          <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>
@@ -331,7 +331,7 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_6" stretch="0,0">
         <property name="spacing">
-         <number>0</number>
+         <number>6</number>
         </property>
         <property name="sizeConstraint">
          <enum>QLayout::SizeConstraint::SetDefaultConstraint</enum>
@@ -1006,6 +1006,19 @@
           </property>
           <property name="text">
            <string>Copy Command Output</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="save_command_output">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Save Command Output</string>
           </property>
          </widget>
         </item>

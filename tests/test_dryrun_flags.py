@@ -30,7 +30,16 @@ def test_dry_run_with_explicit_names_errors(cmd):
 
 
 @pytest.mark.parametrize(
-    "cmd", ["yd-cancel", "yd-shutdown", "yd-terminate", "yd-delete"]
+    "cmd",
+    [
+        "yd-cancel",
+        "yd-shutdown",
+        "yd-terminate",
+        "yd-delete",
+        # yd-download takes a required positional, so give it one: the point is
+        # that --json alone is rejected, not that the arguments are incomplete.
+        "yd-download somepath",
+    ],
 )
 def test_json_without_dry_run_errors(cmd):
     # --json only shapes the --dry-run output; on its own it must error at parse

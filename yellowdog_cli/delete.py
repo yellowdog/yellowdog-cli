@@ -8,9 +8,9 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
     delete_remote,
-    entries_to_names,
     is_glob,
     list_remote_glob,
+    matched_item_rows,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
@@ -87,26 +87,11 @@ def _delete_one(remote_path: str, recursive: bool, dry_run: bool) -> None:
 def _emit_matched_json(remote_paths: list[str]) -> None:
     """
     Print the top-level items a delete would match, as a JSON array of
-    {"name": ...} (directories carry a trailing '/'), without deleting.
+    {"name", "path", "isDir"}, without deleting. The row building lives in
+    dataclient_utils because 'yd-download --dry-run --json' emits the same shape
+    for the same purpose — offering the user a selection of matched items.
     """
-    names: list[str] = []
-    resolved = (
-        [resolve_remote_path(CONFIG_DATA_CLIENT)]
-        if not remote_paths
-        else [
-            resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=p)
-            for p in remote_paths
-        ]
-    )
-    for remote_path in resolved:
-        # list_remote_glob handles a literal (non-glob) final component too: it
-        # lists the parent and exact-matches the name, so a path that matches
-        # nothing yields no entries (rather than echoing the input). This gives
-        # consistent basenames (with '/' on dirs) and reflects what a real
-        # delete would actually remove.
-        _, matches = list_remote_glob(CONFIG_DATA_CLIENT, remote_path)
-        names.extend(entries_to_names(matches))
-    print_objects_as_json([{"name": name} for name in names])
+    print_objects_as_json(matched_item_rows(CONFIG_DATA_CLIENT, remote_paths))
 
 
 if __name__ == "__main__":

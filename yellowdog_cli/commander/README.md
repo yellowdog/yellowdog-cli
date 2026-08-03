@@ -26,7 +26,7 @@ Optionally pass a configuration file as the first argument:
 yd-commander path/to/config.toml
 ```
 
-Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, and the download chooser, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
 
 Multiple instances can run simultaneously.
 
@@ -37,6 +37,12 @@ Commander does not talk to the YellowDog platform directly. Every action runs on
 The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd-*` command and arguments were used.
 
 A configuration file is optional: if none is selected, Commander runs the `yd-*` commands with `--no-config`, sourcing settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below, and results/downloads are written under the launch directory. Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
+
+## Quitting
+
+Quitting with commands still running asks first, listing the commands that would be stopped, with **Cancel** as the default — stopping a submission part-way is usually worse than waiting for it. Choosing **Quit and Stop** signals each command to finish and forces it to stop if it doesn't; work already accepted by the YellowDog platform continues there regardless, since stopping the CLI command does not cancel it. Launching with `-y`/`--yes` suppresses the question and quits immediately. Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-show` invocations it makes internally to read your configuration.
+
+Reading the configuration is bounded by a 10-second timeout, so an unreachable API URL leaves the Namespace, Tag, and Path placeholders unresolved and reports the timeout in the Command Output window, rather than hanging the window until the platform's own timeout expires.
 
 ## Naming and Matching Assumptions
 
@@ -51,9 +57,9 @@ Given that convention, the management actions match as follows:
 - **Shut Down Worker Pools** (`yd-shutdown`) — Worker Pools in the namespace whose name contains the current tag.
 - **Download / Delete Matching Objects** (`yd-download` / `yd-delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
 
-Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind. If you override an entity's name, tag, or object path so that it no longer contains the tag, these actions will not find it. Conversely, a tag that is a substring of another (for example `test` also matches `test2`) will match more entities than you intend. Set the Namespace, Tag, and Path fields deliberately, and use the confirmation dialog's listing of affected items to check exactly what will be acted on before you proceed.
+Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind. If you override an entity's name, tag, or object path so that it no longer contains the tag, these actions will not find it. Conversely, a tag that is a substring of another (for example `test` also matches `test2`) will match more entities than you intend. Set the Namespace, Tag, and Path fields deliberately, and use the confirmation dialog's listing of affected items to check exactly what will be acted on before you proceed — you can also untick anything in that listing you want left alone.
 
-When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag. A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on.
+When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag. A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on, and you can untick individual matches there, so the pattern only has to get you close.
 
 ### Object Naming and Matching
 
@@ -66,7 +72,7 @@ That gives you four ways to widen or narrow the reach of a download or deletion:
 - **Variable substitution** with `{{...}}` — the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. Unlike on the command line, no quoting is needed: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
 - **An absolute rclone path** of the form `<remote>:<bucket>/<path>`, which is used verbatim and bypasses the configured prefix entirely, reaching anywhere the data store profile has access to — including objects that have nothing to do with the current namespace and tag.
 
-The absolute-path form deserves particular care: a path that escapes the configured prefix also escapes the namespace and tag scoping that otherwise limits what these actions can reach, as does a broad wildcard such as `*`. Delete Matching Objects also deletes recursively, so a matched directory goes with everything inside it. The confirmation dialog always lists the objects and top-level directories it matched first, so read it before confirming.
+The absolute-path form deserves particular care: a path that escapes the configured prefix also escapes the namespace and tag scoping that otherwise limits what these actions can reach, as does a broad wildcard such as `*`. Delete Matching Objects also deletes recursively, so a matched directory goes with everything inside it. The confirmation dialog always lists the objects and top-level directories it matched first, and you can untick anything you want to keep, so read it before confirming — but note that a ticked directory is deleted with everything inside it, since the listing shows top-level matches only.
 
 ## Selecting a Configuration (Panel 1)
 
@@ -95,7 +101,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Collecting and Managing Results (Panel 4)
 
 - **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
-- **Download Matching Objects** — downloads all matching objects into a `results` directory alongside the configuration file.
+- **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch; a ticked directory is downloaded with everything inside it, since the listing shows top-level matches only.
 - **Delete Matching Objects** — deletes all matching objects from remote storage.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything.
 - **View Results Directory** — opens the `results` directory in the system file viewer.
@@ -122,7 +128,7 @@ Each pair is passed to the command as a `-v` option (`-v instances=2 -v template
 - **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect Files** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
-- **Clear Command Output** / **Copy Command Output** — clear the output window, or copy its full contents to the clipboard.
+- **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its full contents to the clipboard, or write them to a file you nominate. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
 - **Dark Mode** — toggle between light and dark appearance.
 
 ## Running Arbitrary Commands
@@ -135,6 +141,8 @@ If a running command prompts for input, type into the **Command Input** field an
 
 ## A Note on Confirmations
 
-Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination act on **all** matching entities and cannot be undone, so each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything; if nothing matches, Commander reports that in the output window and does nothing rather than showing a dialog. The dialog offers **Yes**, **No**, and **Yes (Don't Ask Again)**; the last confirms and suppresses further prompts for that same action for the rest of the session. Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session.
+Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination cannot be undone, so each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything; if nothing matches, Commander reports that in the output window and does nothing rather than showing a dialog. For all five destructive actions that listing is **checkable**, with every item ticked to begin with: untick anything you want left alone, use **All** and **None** to set every item at once, and the count above the list shows how many are currently selected. **Yes** is unavailable while nothing is selected, and acts on precisely the items you have ticked. Object deletion is selectable in the same way, with one caveat: the listing shows top-level matches, so unticking works at that level and a ticked directory is deleted with everything inside it. The dialog offers **Yes**, **No**, and **Yes to All (Don't Ask Again)**; the last acts on every listed item regardless of what you have ticked, and suppresses further prompts for that same action for the rest of the session, after which that action always applies to everything in scope. Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session, in which case every action applies to everything in scope.
+
+**Download Matching Objects** also shows a dialog, but it is a chooser rather than a confirmation: downloading nothing irreversibly, it has no warning icon, no **Don't Ask Again**, and its default button is **Download**. It offers the same checkable listing, **All** and **None** buttons and selection count as the confirmations above, and **Download** is unavailable while nothing is ticked. Launching with `-y`/`--yes` skips it and downloads everything the path matched, just as that flag skips the confirmations: it asks for an unattended session, and an unattended session cannot answer a chooser either. To fetch a subset without being asked, narrow the **Path** field instead. Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd-download` and `yd-delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
 
 **Deselect Files** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.

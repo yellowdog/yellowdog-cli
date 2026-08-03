@@ -1543,7 +1543,12 @@ class CLIParser:
                 nargs="+",
                 help="remote file(s) or pattern(s) to download",
             )
-            parser.add_argument(
+            # '--destination' names the local path corresponding to one remote
+            # item; '--into' names a container directory that several items keep
+            # their own names inside. Honouring both is meaningless, so let
+            # argparse refuse the combination rather than picking one.
+            destination_group = parser.add_mutually_exclusive_group()
+            destination_group.add_argument(
                 "--destination",
                 "-d",
                 type=str,
@@ -1551,6 +1556,18 @@ class CLIParser:
                 default=None,
                 help="local directory or file path to write to (default: mirrors remote name)",
                 metavar="<local-path>",
+            )
+            destination_group.add_argument(
+                "--into",
+                type=str,
+                required=False,
+                default=None,
+                help=(
+                    "local directory to download each remote item into, under its "
+                    "own name; unlike --destination, which names the local path "
+                    "corresponding to a single remote item"
+                ),
+                metavar="<local-dir>",
             )
             parser.add_argument(
                 "--sync",
@@ -1566,6 +1583,15 @@ class CLIParser:
                 action="store_true",
                 required=False,
                 help="strip remote directory structure; download all files flat",
+            )
+            parser.add_argument(
+                "--json",
+                action="store_true",
+                required=False,
+                help=(
+                    "with --dry-run, list the matched items as JSON instead of "
+                    "downloading"
+                ),
             )
 
         # yd-delete / yd-rm (data client)
@@ -1699,11 +1725,11 @@ class CLIParser:
             if getattr(self.args, "dry_run", False) and literals:
                 parser.error("--dry-run is not supported with explicit names/IDs")
 
-        # On the destructive dry-run commands (cancel / shutdown / terminate /
-        # delete / rm) '--json' only shapes the '--dry-run' output; reject it on
-        # its own rather than silently ignoring it (or, for delete, falling
-        # through to a real deletion). Commands with '--json' but no '--dry-run'
-        # (e.g. yd-list) are unaffected.
+        # On the dry-run enumeration commands (cancel / shutdown / terminate /
+        # delete / rm / download) '--json' only shapes the '--dry-run' output;
+        # reject it on its own rather than silently ignoring it (or, for delete,
+        # falling through to a real deletion). Commands with '--json' but no
+        # '--dry-run' (e.g. yd-list) are unaffected.
         if (
             getattr(self.args, "json", False)
             and hasattr(self.args, "dry_run")
@@ -2398,6 +2424,11 @@ class CLIParser:
     @allow_missing_attribute
     def destination(self) -> str | None:
         return self.args.destination
+
+    @property
+    @allow_missing_attribute
+    def into(self) -> str | None:
+        return self.args.into
 
     @property
     @allow_missing_attribute

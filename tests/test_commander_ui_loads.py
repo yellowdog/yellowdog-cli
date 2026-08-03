@@ -12,14 +12,18 @@ pytest.importorskip("PyQt6.QtWidgets")
 
 from PyQt6.QtWidgets import QPlainTextEdit, QPushButton
 
+from yellowdog_cli._version import __version__
 from yellowdog_cli.commander.commander import YellowDogApp
 
 
 def test_ui_loads_and_binds_expected_widgets(qapp):
     win = YellowDogApp()
 
-    # loadUi succeeded and the window is the branded Commander window.
-    assert win.windowTitle() == "YellowDog Commander"
+    # loadUi succeeded and the window is the branded Commander window, with the
+    # CLI version in the title. Asserted by parts rather than as an exact string
+    # so that tweaking how the version is punctuated does not fail the test.
+    assert win.windowTitle().startswith("YellowDog Commander")
+    assert __version__ in win.windowTitle()
 
     # A representative sample of code-referenced widgets exist with the right
     # types (loadUi would have failed, or __init__'s signal wiring would have
