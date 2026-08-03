@@ -4,6 +4,7 @@ the checkable dialog listing, the confirmation's return value, and the YDIDs
 that reach the yd-* command.
 """
 
+import commander_dialogs
 import pytest
 
 pytest.importorskip("PyQt6.QtWidgets")
@@ -234,31 +235,22 @@ def test_confirmation_truthiness_is_refused():
 
 def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     """
-    Let _confirm_destructive run without blocking on exec(): replace the
-    dialog's exec() with a callback that unticks the given row indices and
-    clicks a button, exactly as a user would. 'choose' is 'yes', 'skip', or
-    None to dismiss without clicking anything.
+    Arm the next destructive confirmation to untick the given row indices and press
+    'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
+
+    Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
+    the interaction queued into it. This used to replace exec() with a stub, which
+    is how a button box that was never connected went unnoticed: with exec() faked,
+    a click that did nothing looked identical to one that worked.
     """
-    real_build = window._build_destructive_dialog
-
-    def build(title, message, rows=None):
-        dialog, yes_btn, skip_btn = real_build(title, message, rows=rows)
-
-        def fake_exec():
-            listing = dialog.findChild(QListWidget, "selection_list")
-            if listing is not None:
-                for index in uncheck:
-                    listing.item(index).setCheckState(Qt.CheckState.Unchecked)
-            if choose == "yes":
-                yes_btn.click()
-            elif choose == "skip":
-                skip_btn.click()
-            return 0
-
-        monkeypatch.setattr(dialog, "exec", fake_exec)
-        return dialog, yes_btn, skip_btn
-
-    monkeypatch.setattr(window, "_build_destructive_dialog", build)
+    commander_dialogs.drive_confirmation(
+        window,
+        monkeypatch,
+        {"yes": commander_dialogs.YES, "skip": commander_dialogs.SKIP}.get(
+            choose, commander_dialogs.DISMISS
+        ),
+        untick_rows=uncheck,
+    )
 
 
 def test_confirm_returns_all_when_nothing_unticked(window, monkeypatch):

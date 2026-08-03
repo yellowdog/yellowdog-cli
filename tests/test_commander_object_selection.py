@@ -3,12 +3,11 @@ Tests for selecting which objects a Commander deletion removes: parsing the
 enumeration, rendering object rows, and the paths that reach yd-delete.
 """
 
+import commander_dialogs
 import pytest
 
 pytest.importorskip("PyQt6.QtWidgets")
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QListWidget
 
 from yellowdog_cli.commander.commander import (
     Confirmation,
@@ -134,37 +133,22 @@ def stub_delete_flow(window, monkeypatch, enumerated, result):
 
 def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     """
-    Let _confirm_destructive run without blocking on exec(): replace the
-    dialog's exec() with a callback that unticks the given row indices and
-    clicks a button, exactly as a user would.
+    Arm the next destructive confirmation to untick the given row indices and press
+    'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
 
-    This is a local equivalent of test_commander_entity_selection.drive_dialog
-    rather than a cross-module import: tests/ has no __init__.py, so the two
-    test files are not a package, and importing one test module from another
-    would lean on pytest's import-mode fallback rather than an explicit,
-    supported layout. Keeping a small duplicate here is cheaper than coupling
-    the two files together.
+    Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
+    the interaction queued into it. This used to replace exec() with a stub, which
+    is how a button box that was never connected went unnoticed: with exec() faked,
+    a click that did nothing looked identical to one that worked.
     """
-    real_build = window._build_destructive_dialog
-
-    def build(title, message, rows=None):
-        dialog, yes_btn, skip_btn = real_build(title, message, rows=rows)
-
-        def fake_exec():
-            listing = dialog.findChild(QListWidget, "selection_list")
-            if listing is not None:
-                for index in uncheck:
-                    listing.item(index).setCheckState(Qt.CheckState.Unchecked)
-            if choose == "yes":
-                yes_btn.click()
-            elif choose == "skip":
-                skip_btn.click()
-            return 0
-
-        monkeypatch.setattr(dialog, "exec", fake_exec)
-        return dialog, yes_btn, skip_btn
-
-    monkeypatch.setattr(window, "_build_destructive_dialog", build)
+    commander_dialogs.drive_confirmation(
+        window,
+        monkeypatch,
+        {"yes": commander_dialogs.YES, "skip": commander_dialogs.SKIP}.get(
+            choose, commander_dialogs.DISMISS
+        ),
+        untick_rows=uncheck,
+    )
 
 
 def test_unticked_object_is_not_deleted(window, captured, monkeypatch):

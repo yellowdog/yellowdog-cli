@@ -142,6 +142,18 @@ CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (d
 - LRU cache on entity lookup functions in `entity_utils.py`
 - Config dataclasses in `config_types.py`; no raw dicts for structured config
 
+### Testing Commander's GUI
+
+Commander's dialogs are tested as dialogs, through `tests/gui_harness.py` (generic Qt helpers) and `tests/commander_dialogs.py` (drivers for Commander's own confirmation and chooser). Three rules, each of which exists because breaking it let a bug reach a user:
+
+- **Never stub `dialog.exec()`.** Use `gui_harness.run_modal()` when the test owns the dialog, or `commander_dialogs.drive_confirmation()` / `drive_chooser()` when production builds and execs it. Both queue the interaction with `QTimer.singleShot(0, ...)` so it lands inside the *real* modal loop, which means a click has to travel the real button-box wiring to have any effect. A stubbed `exec()` cannot tell a working button from an inert one.
+- **Assert geometric relationships, never pixel counts.** `gui_harness.visible_rows(listing)` rather than a height in pixels: CI nodes substitute fonts, so absolute measurements do not travel. A list squeezed flat or robbed of its height by a scrollbar still has correct-looking arithmetic — only "how many rows can be seen" catches it.
+- **Assert outcomes, not arguments.** Contract tests over `_run_command_in_subprocess` args are useful but blind: every GUI bug that has reached a user lived in a seam those tests stubbed or asserted around.
+
+Everything runs under `QT_QPA_PLATFORM=offscreen` with no display, so it works on a headless CI node; nodes without a usable Qt skip via `conftest`'s `qapp` fixture. Modal runs are watchdogged, because a dialog that never closes would hang CI rather than fail it. An autouse `conftest` fixture surfaces assertions raised inside Qt callbacks, which Qt would otherwise print and discard.
+
+Note that `_build_destructive_dialog` returns a dialog whose buttons are *not* wired — `_confirm_destructive` attaches a `clicked` handler afterwards, because it needs to know which button was pressed. Drive it through `_confirm_destructive`, not from the builder. `_build_chooser_dialog` wires its own box and can be driven directly.
+
 ### Dependencies
 
 - `yellowdog-sdk` — YellowDog platform API client

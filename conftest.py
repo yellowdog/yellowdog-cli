@@ -88,6 +88,31 @@ def cleanup():
         shell(cmd)
 
 
+@pytest.fixture(autouse=True)
+def _gui_harness_guard():
+    """
+    Surface anything that happened inside a Qt callback.
+
+    Dialogs armed with gui_harness.arm_modal() have their exec() called by the
+    code under test, so the test never sees a return value. Without this, an
+    assertion raised inside the queued interaction would be printed by Qt and
+    discarded — leaving the test green — and a dialog that never closed would look
+    like a slow test rather than a broken one.
+
+    Autouse and repo-wide so no GUI test can forget it. Silently inert when PyQt6
+    is not installed, which is also when there are no GUI tests to guard.
+    """
+    try:
+        import gui_harness
+    except ImportError:  # no PyQt6, or not running from the tests directory
+        yield
+        return
+
+    gui_harness.reset()
+    yield
+    gui_harness.check()
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """
