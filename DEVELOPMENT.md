@@ -7,7 +7,7 @@
 - `make` — for formatting, building, and other development tasks
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
-- On a minimal Linux image, Qt's runtime libraries — needed only by the Commander GUI tests (see [Testing](#testing)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
+- On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
 
 ## Getting Started
 
@@ -139,18 +139,40 @@ make build        # builds the distribution into dist/
 make pypi_check   # checks the distribution with twine
 ```
 
+## Commander
+
+`yd-commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together; what follows is what you need in order to work on it.
+
+```shell
+yd-commander                        # or: python -m yellowdog_cli.commander
+yd-commander config.toml            # pre-select a configuration file
+yd-commander -y                     # skip the destructive-action confirmations
+```
+
+PyQt6 is the optional `commander` extra, installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd-commander` exits with an instruction to install it rather than a traceback, and the GUI tests skip (see [Commander GUI Tests](#commander-gui-tests)).
+
+The GUI holds no API client and imports neither the SDK nor `utils/wrapper.py`: every action runs a `yd-*` command as a child process. Two consequences worth keeping in mind when changing a command:
+
+- Its behaviour, output and configuration precedence are the CLI's, so a fix to a command reaches the GUI for free.
+- The selection dialogs are built by parsing `-D --json` output from `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-download` and `yd-delete` (`parse_entity_summaries` and `parse_object_summaries`). Changing the shape of that JSON will change what the GUI offers to act on, and the tests for those parsers are where that will show up.
+
+The window layout is `commander.ui`, Qt Designer XML. Edit it in Designer if you have Qt's tools installed, otherwise the XML directly; either way keep widget names in step with the code, since `loadUi()` binds them by name and `YellowDogApp.__init__` connects signals to them — a renamed widget fails at construction, which `tests/test_commander_ui_loads.py` exists to catch.
+
+Assets ship through `[tool.setuptools.package-data]` in `pyproject.toml`, which lists `*.ui` and `images/*`; `include-package-data` is `false`, so anything new has to be added there or it will be missing from the wheel while still working from a checkout. `screenshots/` is for the README and is deliberately not shipped.
+
 ## Project Structure
 
 ```
-yellowdog_cli/          # One module per yd-* command
-yellowdog_cli/utils/    # Shared utilities (config, variables, printing, SDK wrappers, etc.)
-tests/                  # All tests (see tests/README.md)
-pyproject.toml          # Package metadata, dependencies, ruff config
-uv.lock                 # Locked dependency versions for reproducible installs
-Makefile                # format, build, install, update, toc, pypi, pyright targets
-setup-ubuntu.sh         # Bare Ubuntu/Debian machine -> a checkout that runs the tests
-config-template.toml    # Annotated template for all TOML configuration properties
-RELEASING.md            # Branch model, release process, PyPI credentials
+yellowdog_cli/            # One module per yd-* command
+yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
+yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
+tests/                    # All tests (see tests/README.md)
+pyproject.toml            # Package metadata, dependencies, ruff config
+uv.lock                   # Locked dependency versions for reproducible installs
+Makefile                  # format, build, install, update, toc, pypi, pyright targets
+setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
+config-template.toml      # Annotated template for all TOML configuration properties
+RELEASING.md              # Branch model, release process, PyPI credentials
 ```
 
 For a detailed description of the architecture and coding conventions, see [`CLAUDE.md`](CLAUDE.md).
