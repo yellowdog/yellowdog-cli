@@ -16,6 +16,8 @@ Five categories of test exist, controlled by pytest flags:
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
 | `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
 
+Around 290 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
+
 ## Quick Reference
 
 ```shell
@@ -87,6 +89,43 @@ pytest -v -n 4 --run-demos
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
 | `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, type constants |
+
+### Commander GUI Tests (no flags required; skipped without a usable Qt)
+
+Around 290 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally. See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
+
+| File | What it tests |
+|---|---|
+| `test_commander_button_wiring.py` | Every main-window button is connected to the action it claims to perform — a button wired to nothing, or to the wrong action, looks healthy to every other test |
+| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned) |
+| `test_commander_dialog_behaviour.py` | The dialogs as dialogs: real `exec()`, real clicks, real geometry — the bug classes that reached users (inert buttons, a stolen default button, a list squeezed until no row shows) |
+| `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
+| `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting |
+| `test_commander_object_selection.py` | Choosing which objects a deletion removes: enumeration, object rows, and the paths that reach `yd-delete` |
+| `test_commander_download_selection.py` | Choosing which objects a download fetches, and how the chooser differs from a destructive confirmation |
+| `test_commander_deselect.py` | The Deselect Files action: which of the currently-selected files get deselected |
+| `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
+| `test_commander_reentrancy.py` | The guard that stops a second action starting while one is enumerating in a nested event loop |
+| `test_commander_shutdown.py` | The shutdown path: no process destroyed while running, no handler firing against a deleted object, nested loops released |
+| `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
+| `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
+| `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
+| `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
+| `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
+| `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames |
+| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6 and every code-referenced widget exists |
+| `test_commander_resources.py` | The package data (`.ui` file and images) is present and resolvable through the installed package |
+| `test_commander_entrypoint.py` | The `yd-commander` console script is registered and has its own CLI, not the shared parser |
+| `test_gui_harness.py` | Self-tests for the harness itself: that it surfaces hangs and assertions instead of swallowing them, and that its geometry helper measures what it claims |
+
+These are supported by three non-test modules and by fixtures in the root `conftest.py`:
+
+| File | Role |
+|---|---|
+| `gui_harness.py` | Generic Qt helpers: run or arm a dialog so an interaction lands inside its real modal loop, watchdogged; count visible rows; find buttons |
+| `commander_dialogs.py` | Drivers for Commander's own confirmation and chooser, for the cases where production builds and execs the dialog |
+| `qt_guard.py` | `require_qt()` — the module-level skip, used instead of `pytest.importorskip` so that PyQt6-present-but-unusable skips rather than errors |
+| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), and `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`) |
 
 ### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
 
