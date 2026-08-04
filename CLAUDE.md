@@ -188,3 +188,25 @@ Note that `_build_destructive_dialog` returns a dialog whose buttons are *not* w
 - `PyQt6` — optional (the `commander` extra), for the `yd-commander` GUI; on a minimal Linux image it also needs Qt's runtime libraries, which `setup-ubuntu.sh` installs
 - `rclone_api` — Python wrapper around the rclone binary; used by data client commands
 - Cloud wizard extras: `boto3`, `google-cloud-*`, `azure-*`
+
+## Keeping the Ancillary Files in Step
+
+Documentation here is spread across several files, each with its own audience, and a change that lands in the code but not in them leaves the repo describing something it no longer is. **Before finishing any change, go through this list and update what the change has made wrong or incomplete.** Most changes touch one or two of these; some touch none. Say which ones you updated, or that none needed it.
+
+| File | Update it when |
+|---|---|
+| `README.md` | User-visible CLI behaviour changes: a new command, flag, property, or a change in what one does. Run `make toc` afterwards — never hand-edit the table of contents |
+| `README_CLOUDWIZARD.md` | Cloud Wizard behaviour changes (`make toc_cloudwizard` for its TOC) |
+| `PYPI_README.md` | The command list or the headline description changes — it is the PyPI landing page, so it summarises rather than documents |
+| `yellowdog_cli/commander/README.md` | Commander's GUI behaviour changes: a new button, dialog, or a change in what an action does |
+| `DEVELOPMENT.md` | Anything a developer runs or needs installed changes: make targets, prerequisites, the venv or extras, `setup-ubuntu.sh`, the project layout |
+| `tests/README.md` | Test files are added, renamed or removed, or a category, flag, marker or shared fixture changes |
+| `CLAUDE.md` (this file) | A new module, pattern or convention arrives, or an existing one is described here and changes |
+| `config-template.toml` | A new or changed TOML configuration property — it is the annotated reference for all of them |
+| `pyproject.toml` | A new entry point, extra, or package-data file (`include-package-data` is `false`, so an unlisted asset ships broken) |
+| `RELEASING.md` | The release process, branch model or PyPI arrangements change |
+
+Two traps worth naming, both of which have bitten:
+
+- A **new test file is invisible** unless it is added to `tests/README.md` — nothing fails, the table just quietly stops being a list of the tests.
+- **Docs that describe a mechanism drift silently.** If a paragraph names a function, flag, package or file, check that it still exists and still behaves that way, rather than assuming the prose is fine because the code compiles.
