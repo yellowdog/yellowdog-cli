@@ -10,6 +10,7 @@ import qt_guard
 qt_guard.require_qt()
 
 import gui_harness
+from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -104,6 +105,51 @@ def test_an_interaction_that_never_ran_is_reported(qapp, monkeypatch):
     monkeypatch.setattr(dialog, "exec", lambda: QDialog.DialogCode.Rejected.value)
     with pytest.raises(AssertionError, match="never ran"):
         gui_harness.run_modal(dialog, lambda _d: None, watchdog_ms=250)
+
+
+def _hold_the_loop_for(ms: int) -> None:
+    """
+    Block in a nested event loop, as a YellowDogApp's deferred config parse does
+    while yd-show runs. Queued at zero delay, so it is delivered before an
+    interaction queued after it.
+    """
+
+    def hold():
+        loop = QEventLoop()
+        QTimer.singleShot(ms, loop.quit)
+        loop.exec()
+
+    QTimer.singleShot(0, hold)
+
+
+def test_work_before_the_interaction_is_not_charged_to_the_watchdog(qapp):
+    # A t3a.small CI node reported four correctly-closing dialogs as hung. The
+    # window's construction defers its config parse with singleShot(0); that parse
+    # spawns yd-show and blocks in a nested loop, and it is queued before the
+    # interaction, so it runs first — inside the dialog's exec(). The watchdog's
+    # budget was spent there, before the dialog had been touched. It must measure
+    # the dialog, not whatever else the loop was busy with beforehand.
+    dialog, ok = _wired_dialog()
+    _hold_the_loop_for(120)
+
+    result = gui_harness.run_modal(dialog, lambda _d: ok.click(), watchdog_ms=60)
+
+    assert result == QDialog.DialogCode.Accepted.value
+
+
+def test_a_closed_dialog_is_not_reported_hung_by_a_later_loop(qapp):
+    # The same fault from the other side: an armed dialog resolves at once, and an
+    # event loop runs later — a second dialog, or another nested parse — by which
+    # time the watchdog would have expired. It must not convict a dialog that closed.
+    dialog, ok = _wired_dialog()
+    gui_harness.arm_modal(dialog, lambda _d: ok.click(), watchdog_ms=50)
+    dialog.exec()
+
+    loop = QEventLoop()
+    QTimer.singleShot(120, loop.quit)
+    loop.exec()
+
+    gui_harness.check()  # must not raise
 
 
 def test_visible_rows_counts_what_fits_not_what_exists(qapp):

@@ -99,10 +99,22 @@ def _install(dialog: QDialog, interact, watchdog_ms: int) -> dict:
         "hung": False,
         "error": None,
         "ran": False,
+        "closed": False,
     }
 
     def _run_interaction():
         record["ran"] = True
+        # The watchdog's clock starts here rather than at arming, so that it times
+        # the dialog and not whatever else the loop was busy with first. A
+        # YellowDogApp defers its config parse with singleShot(0); that parse spawns
+        # yd-show and blocks in a nested loop, it is queued before this callback, and
+        # a zero-interval timer is only delivered once the queue is otherwise empty —
+        # so it runs inside the dialog's exec() and ahead of the interaction. On a
+        # small CI node it consumed the whole budget, and four dialogs that closed
+        # correctly were convicted of hanging. Nothing is lost by waiting: the
+        # watchdog's only lever is rejecting the dialog, which would not have
+        # released a nested loop held open by something else anyway.
+        watchdog.start(watchdog_ms)
         try:
             interact(dialog)
         except BaseException as error:
@@ -112,17 +124,25 @@ def _install(dialog: QDialog, interact, watchdog_ms: int) -> dict:
             dialog.reject()
 
     def _on_timeout():
+        if record["closed"]:
+            return  # a stale timer firing in a later loop, not a hang
         record["hung"] = True
         dialog.reject()
+
+    def _on_closed(_result: int):
+        # done() — and so exec() returning — stops the watchdog, so it cannot
+        # convict this dialog once some later event loop runs.
+        record["closed"] = True
+        watchdog.stop()
 
     watchdog = QTimer(dialog)
     watchdog.setSingleShot(True)
     watchdog.timeout.connect(_on_timeout)
+    dialog.finished.connect(_on_closed)
 
     # singleShot(0) cannot fire until an event loop runs, and the test itself runs
     # none — so this is delivered inside the dialog's own exec(), not before it.
     QTimer.singleShot(0, _run_interaction)
-    watchdog.start(watchdog_ms)
     return record
 
 
