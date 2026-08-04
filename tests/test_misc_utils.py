@@ -272,8 +272,14 @@ class TestLoadDotenvFile:
 
     _FAKE_DOTENV = "/fake/.env"
 
-    def _run(self, monkeypatch, env_override_set: bool, args_override: bool = False):
+    def _run(
+        self, monkeypatch, tmp_path, env_override_set: bool, args_override: bool = False
+    ):
         """Patch dependencies and call load_dotenv_file(); return the load_dotenv mock."""
+        # Run from an empty directory: load_dotenv_file looks for a .env beside the
+        # config file before it consults find_dotenv, so a real .env in or above the
+        # repo would be picked up instead of the patched one.
+        monkeypatch.chdir(tmp_path)
         if env_override_set:
             monkeypatch.setenv(YD_ENV_OVERRIDE, "1")
         else:
@@ -306,19 +312,28 @@ class TestLoadDotenvFile:
 
         return load_dotenv_mock
 
-    def test_env_var_set_calls_load_dotenv_with_override_true(self, monkeypatch):
-        mock = self._run(monkeypatch, env_override_set=True)
+    def test_env_var_set_calls_load_dotenv_with_override_true(
+        self, monkeypatch, tmp_path
+    ):
+        mock = self._run(monkeypatch, tmp_path, env_override_set=True)
         mock.assert_called_once_with(self._FAKE_DOTENV, override=True)
 
-    def test_env_var_unset_calls_load_dotenv_with_override_false(self, monkeypatch):
-        mock = self._run(monkeypatch, env_override_set=False)
+    def test_env_var_unset_calls_load_dotenv_with_override_false(
+        self, monkeypatch, tmp_path
+    ):
+        mock = self._run(monkeypatch, tmp_path, env_override_set=False)
         mock.assert_called_once_with(self._FAKE_DOTENV, override=False)
 
-    def test_args_flag_calls_load_dotenv_with_override_true(self, monkeypatch):
-        mock = self._run(monkeypatch, env_override_set=False, args_override=True)
+    def test_args_flag_calls_load_dotenv_with_override_true(
+        self, monkeypatch, tmp_path
+    ):
+        mock = self._run(
+            monkeypatch, tmp_path, env_override_set=False, args_override=True
+        )
         mock.assert_called_once_with(self._FAKE_DOTENV, override=True)
 
-    def test_no_dotenv_file_skips_load(self, monkeypatch):
+    def test_no_dotenv_file_skips_load(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)  # as in _run: no real .env may interfere
         monkeypatch.delenv(YD_ENV_OVERRIDE, raising=False)
         load_dotenv_mock = MagicMock()
         with (

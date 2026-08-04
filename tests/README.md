@@ -2,13 +2,15 @@
 
 Tests are run using [pytest](https://docs.pytest.org/).
 
+The unit tests need no configuration at all: a yd-* command module loads its configuration when imported, so `conftest.py` substitutes a dummy key and secret where none can be found, and reports that in the pytest header. Anything already working is left alone, and no substitution is made for the flags below that reach the platform.
+
 ## Test Categories
 
 Five categories of test exist, controlled by pytest flags:
 
 | Flag | Marker | Description |
 |---|---|---|
-| *(none)* | — | Unit tests; no platform connectivity required |
+| *(none)* | — | Unit tests; no platform connectivity, configuration file or credentials required |
 | `--run-dryruns` | `dryruns` | Demo dry-runs (no platform calls); requires `../python-examples-demos` |
 | `--run-demos` | `demos` | Full live demo runs on the platform |
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |

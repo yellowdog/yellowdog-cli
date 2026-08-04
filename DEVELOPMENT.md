@@ -61,11 +61,13 @@ pre-commit run --all-files
 
 ## Testing
 
-Unit tests require no credentials and no network access:
+Unit tests require no credentials, no configuration file and no network access:
 
 ```shell
 pytest -v
 ```
+
+A yd-* command module loads its configuration when it is imported, so without a key and secret the test run used to stop during collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-system-compute` or `--run-demos`, which need genuine credentials.
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, compute, and demo test categories, credentials setup, and parallel execution options.
 

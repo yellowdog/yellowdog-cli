@@ -221,7 +221,84 @@ def yd_list_row_matches(stdout: str, name: str, status: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+_dummy_credentials_used = False
+
+
+def _supply_dummy_credentials_if_unconfigured(config) -> None:
+    """
+    Let the default tests run on a machine with no YellowDog configuration.
+
+    Most test modules import a yd-* command module, and those load their
+    configuration when imported — wrapper.py does 'CONFIG_COMMON =
+    load_config_common()', which reports a missing key or secret and exits. During
+    collection that surfaces as a pytest INTERNALERROR with no tests run at all, even
+    though the default tests never contact the platform. (Only key and secret bite:
+    namespace and tag already fall back to defaults.)
+
+    Whether configuration exists is decided by asking the real loader, not by
+    guessing: credentials can come from the environment under either of two names, a
+    config.toml, an importCommon indirection inside it, or a .env somewhere above the
+    working directory. If the import succeeds, nothing is touched — an environment
+    variable outranks both config.toml and .env, so a dummy set over a working
+    credential would shadow it.
+
+    Never substituted for a run that talks to the platform: those need real
+    credentials, and 'auth failed' hours later is a worse answer than the CLI's own
+    'Missing configuration data' now.
+    """
+    global _dummy_credentials_used
+
+    import os
+
+    from yellowdog_cli.utils.settings import YD_KEY, YD_SECRET
+
+    if any(
+        config.getoption(flag)
+        for flag in ("--run-system", "--run-system-compute", "--run-demos")
+    ):
+        return
+    if _command_modules_import_cleanly():
+        return
+
+    os.environ[YD_KEY] = "dummy-key-for-tests"
+    os.environ[YD_SECRET] = "dummy-secret-for-tests"
+    _dummy_credentials_used = True
+
+
+def _command_modules_import_cleanly() -> bool:
+    """
+    Whether this machine has a configuration a yd-* command can load.
+
+    wrapper.py loads the common config when imported and exits if it cannot, so this
+    asks the loader itself. Its output is discarded: on failure the CLI prints an
+    error that is about to be made irrelevant by the fallback, and on success it
+    prints notes about where the configuration came from that would otherwise appear
+    twice. Nothing is wasted either way — collection imports this module immediately
+    afterwards, and the second import is cached.
+    """
+    from contextlib import redirect_stderr, redirect_stdout
+    from io import StringIO
+
+    discard = StringIO()
+    try:
+        with redirect_stdout(discard), redirect_stderr(discard):
+            import yellowdog_cli.utils.wrapper  # noqa: F401
+    except SystemExit:
+        return False
+    return True
+
+
+def pytest_report_header(config):
+    if _dummy_credentials_used:
+        return (
+            "yellowdog: no usable configuration found, so a dummy key/secret is in"
+            " use; the default tests do not contact the platform"
+        )
+    return None
+
+
 def pytest_configure(config):
+    _supply_dummy_credentials_if_unconfigured(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"
     )
