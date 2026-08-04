@@ -118,6 +118,40 @@ def _gui_harness_guard():
     gui_harness.check()
 
 
+@pytest.fixture(autouse=True)
+def _no_config_discovery(request, monkeypatch):
+    """
+    Keep Commander's config discovery out of the GUI unit tests.
+
+    A YellowDogApp defers _set_config_file with singleShot(0), and that calls
+    _parse_yd_config, which runs 'yd-show' as a child process and blocks in a nested
+    event loop until it finishes. So every test that constructs a window ran a real
+    CLI invocation inside whichever event loop spun first — usually a dialog's exec().
+    Measured on this repo: 235 invocations across the Commander tests, 18 of their 21
+    seconds, and far worse on a small CI node. It also made them depend on an
+    installed, working yd-show, and on whatever namespace and tag the environment
+    happened to supply.
+
+    None of these tests are about discovery: they set _namespace/_tag directly or
+    call _set_placeholders. The two that do exercise _parse_yd_config itself opt out
+    with @pytest.mark.real_config_parse.
+
+    Returning False is what the real method returns when it cannot discover anything,
+    which leaves the placeholders blank — the same state as a parse that found no
+    namespace or tag.
+    """
+    if "qapp" not in request.fixturenames:
+        return  # not a GUI test; nothing constructs a window
+    if "real_config_parse" in request.keywords:
+        return
+
+    from yellowdog_cli.commander.commander import YellowDogApp
+
+    monkeypatch.setattr(
+        YellowDogApp, "_parse_yd_config", lambda self, quiet=False: False
+    )
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """
@@ -201,4 +235,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "system_compute: mark test to run only when '--run-system-compute' is specified",
+    )
+    config.addinivalue_line(
+        "markers",
+        "real_config_parse: keep Commander's real _parse_yd_config, which runs"
+        " 'yd-show' (see the '_no_config_discovery' fixture)",
     )

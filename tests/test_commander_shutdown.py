@@ -277,10 +277,14 @@ def test_nested_loop_within_the_timeout_reports_success(win):
     assert win._run_nested(process, event_loop, timeout_ms=10_000) is True
 
 
+@pytest.mark.real_config_parse
 def test_config_parse_timeout_is_bounded(win, monkeypatch):
     """
     _parse_yd_config must pass its timeout through, and report a timeout in the
     log rather than leaving the placeholders silently blank.
+
+    One of the two tests that need the real method rather than the stub the
+    '_no_config_discovery' fixture installs.
     """
     seen: dict[str, object] = {}
 
@@ -299,6 +303,7 @@ def test_config_parse_timeout_is_bounded(win, monkeypatch):
     assert "Timed out after 10s parsing configuration" in win.log_output.toPlainText()
 
 
+@pytest.mark.real_config_parse
 def test_config_parse_stays_quiet_when_shutting_down(win, monkeypatch):
     monkeypatch.setattr(
         win, "_run_nested", lambda process, loop, timeout_ms=None: False
