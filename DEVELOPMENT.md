@@ -11,6 +11,16 @@
 
 ## Getting Started
 
+On an unconfigured Ubuntu or Debian machine, [`setup-ubuntu.sh`](setup-ubuntu.sh) does everything below — system packages, uv, Python, the clone, the install — and then runs the suite. Nothing needs to be in place but `curl`:
+
+```shell
+curl -LsSf https://raw.githubusercontent.com/yellowdog/yellowdog-cli/next-version/setup-ubuntu.sh | bash
+```
+
+That clones into `./yellowdog-cli`; add `-s --` to pass options, e.g. `| bash -s -- --dir ~/src/yellowdog-cli --no-test`. Run from inside an existing checkout (`./setup-ubuntu.sh`) it uses that checkout as it stands and clones nothing — it never fetches, switches branches or pulls. It is idempotent, and installs nothing outside apt, uv's own `~/.local` downloads, and the checkout's `.venv`. `--help` lists the options.
+
+Elsewhere, or to do it by hand:
+
 ```shell
 git clone https://github.com/yellowdog/yellowdog-cli
 cd yellowdog-cli
@@ -138,6 +148,7 @@ tests/                  # All tests (see tests/README.md)
 pyproject.toml          # Package metadata, dependencies, ruff config
 uv.lock                 # Locked dependency versions for reproducible installs
 Makefile                # format, build, install, update, toc, pypi, pyright targets
+setup-ubuntu.sh         # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml    # Annotated template for all TOML configuration properties
 RELEASING.md            # Branch model, release process, PyPI credentials
 ```
