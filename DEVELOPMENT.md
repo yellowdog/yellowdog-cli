@@ -20,7 +20,7 @@ source .venv/bin/activate      # macOS/Linux
 # .venv\Scripts\activate       # Windows
 
 # Install in editable mode with all dev dependencies
-uv pip install -e ".[dev,jsonnet,cloudwizard]"
+uv pip install -e ".[dev,jsonnet,cloudwizard,commander]"
 ```
 
 This installs the package in editable mode, making all `yd-*` commands available in your environment and reflecting any local code changes immediately. You may need to re-source the venv to access the commands immediately.
