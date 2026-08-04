@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-YellowDog CLI (`yellowdog-cli`) is a Python CLI tool suite for managing distributed computing jobs and resources on the YellowDog platform. It provides ~25 `yd-*` commands (e.g., `yd-submit`, `yd-provision`, `yd-list`, `yd-upload`, `yd-download`) installable as a package.
+YellowDog CLI (`yellowdog-cli`) is a Python CLI tool suite for managing distributed computing jobs and resources on the YellowDog platform. It provides ~25 `yd-*` commands (e.g., `yd-submit`, `yd-provision`, `yd-list`, `yd-upload`, `yd-download`) installable as a package. It also provides `yd-commander`, a PyQt6 desktop GUI that drives those same commands (see [Commander](#commander)).
 
 Current version: defined in `yellowdog_cli/_version.py`.
 
@@ -12,7 +12,7 @@ Current version: defined in `yellowdog_cli/_version.py`.
 
 ```bash
 # Install in editable/development mode
-make install          # builds then pip install -U -e .
+make install          # builds, then uv pip install -U -e ".[commander,jsonnet,cloudwizard]"
 
 # Format code (ruff check --fix + ruff format)
 make format
@@ -33,7 +33,7 @@ make tox
 make pyright
 
 # Update dependencies
-make update           # uv pip install -U -e ".[dev,jsonnet,cloudwizard]"
+make update           # uv pip install -U -e ".[dev,commander,jsonnet,cloudwizard]"
 ```
 
 ## Architecture
@@ -44,6 +44,13 @@ make update           # uv pip install -U -e ".[dev,jsonnet,cloudwizard]"
 yellowdog_cli/
 ├── __init__.py                  # Version only
 ├── *.py                         # ~29 command modules (one per yd-* command)
+├── commander/                   # yd-commander: the PyQt6 desktop GUI (see Commander below)
+│   ├── launcher.py              # Entry point; argument parsing and the PyQt6 guard, before any Qt import
+│   ├── __main__.py              # 'python -m yellowdog_cli.commander'
+│   ├── commander.py             # The whole GUI: YellowDogApp plus its dialogs and helpers
+│   ├── commander.ui             # Qt Designer layout, loaded by loadUi() at construction
+│   ├── images/                  # Branding and window icons (light/dark)
+│   └── README.md                # User-facing documentation for the GUI
 └── utils/
     ├── wrapper.py               # Global CLIENT + CONFIG_COMMON; @main_wrapper decorator
     ├── args.py                  # CLIParser class (single shared instance: ARGS_PARSER)
@@ -96,6 +103,8 @@ if __name__ == "__main__":
 
 A small number of standalone commands (`yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json`) need neither credentials nor a config file — they just define a bare `main()` function with no decorator.
 
+`yd-commander` is the exception to all of this: it uses neither wrapper, loads no config at import, and never touches the SDK, because it runs the other commands as child processes. Its `main()` is in `commander/launcher.py` and stays free of Qt so that the missing-extra message works without PyQt6 installed. See [Commander](#commander).
+
 Data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`) use `@dataclient_wrapper` instead — no SDK client is initialised:
 
 ```python
@@ -133,6 +142,18 @@ The `::` unset suffix (`{{varname::}}`) removes a property entirely when the var
 
 CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (defined in `csv_data.py`), distinct from `{{`/`}}` to allow both to coexist in the same spec without ambiguity.
 
+### Commander
+
+`yd-commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. It is not a second API client: **every action it takes runs a `yd-*` command as a child process** (`_run_command_in_subprocess`, via `QProcess`), so behaviour, output and configuration precedence are the CLI's. Nothing in the package imports the SDK or `wrapper.py`, and there is no `CLIENT`. `yellowdog_cli/commander/README.md` documents it for users; the notes here are the ones that matter when changing it.
+
+- **PyQt6 is an optional extra** (`pip install "yellowdog-cli[commander]"`). `launcher.py` is deliberately free of Qt and of the heavy CLI imports, so `--help` and the missing-extra message (`check_commander_imports()`) work without it. Only after that guard does it import `commander.py` and call `run_app()`.
+- **The layout lives in `commander.ui`**, loaded by `loadUi()` in `YellowDogApp.__init__`, which then connects signals to widgets by name. A renamed or deleted widget therefore fails at construction rather than at use — `tests/test_commander_ui_loads.py` is what catches that.
+- **Bulk destructive actions enumerate before they act.** `_capture_dry_run_json/_summaries/_objects` run the same command with `-D --json` to list what would be affected, then `_confirm_destructive` (entities and objects) or `_choose_objects` (downloads) offers a tick-list, and only the chosen handles are passed back as explicit arguments. The shared primitives are `SelectableRow`, `entity_rows`/`object_rows`, `_build_selection_list_widget`, `checked_handles` and `update_selection_state`. If a seventh action needs them, move them out of `commander.py` into their own module.
+- **`Confirmation.__bool__` raises deliberately.** A confirmation carries both `proceed` and `handles`, and `if self._confirm_destructive(...)` — which is what the natural mistake looks like — would be true even for a refusal. Check `.proceed`.
+- **Synchronous helpers block in nested event loops** (`_run_nested`), which keeps the window responsive while a child process runs. That makes re-entrancy possible, so the enumerating actions are guarded by `_operation_in_flight()` and a `_nested_depth` counter (a counter, not a flag: the config parse deferred with `singleShot(0)` runs inside the first loop to spin, so depth 2 is normal). A re-entrant enumeration returning `None` would read as "enumeration failed", which for a destructive action means falling back to the whole scope — hence refusing early.
+- **Placeholders come from `yd-show`.** `_parse_yd_config()` runs it to resolve the namespace and tag for the current config file. It is stubbed in the tests (see below), so nothing there spawns a CLI process for it.
+- `commander.py` carries `E402`/`RUF005` per-file ignores in `pyproject.toml`: it was lifted from the standalone `yellow-gui` demo repo, and those are pre-existing findings kept out of the relocation diff.
+
 ### Coding Conventions
 
 - Python 3.10+ syntax: use `str | None` (not `Optional[str]`), `match` statements where appropriate
@@ -164,5 +185,6 @@ Note that `_build_destructive_dialog` returns a dialog whose buttons are *not* w
 - `python-dotenv` — `.env` file support
 - `pypac` — proxy auto-configuration
 - `jsonnet` — optional, for Jsonnet spec templating
+- `PyQt6` — optional (the `commander` extra), for the `yd-commander` GUI; on a minimal Linux image it also needs Qt's runtime libraries, which `setup-ubuntu.sh` installs
 - `rclone_api` — Python wrapper around the rclone binary; used by data client commands
 - Cloud wizard extras: `boto3`, `google-cloud-*`, `azure-*`
