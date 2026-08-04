@@ -26,6 +26,13 @@ Two rules worth keeping:
   which is worse than a red test. Every modal run here is watchdogged.
 """
 
+import qt_guard
+
+# Guards its own Qt import, so that importing this helper from a test module skips
+# that module rather than failing its collection when Qt is unusable — whatever
+# order the module's imports happen to be sorted into.
+qt_guard.require_qt()
+
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QDialog, QListWidget, QPushButton, QWidget
 

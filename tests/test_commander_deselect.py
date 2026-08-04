@@ -6,8 +6,9 @@ the chooser stubbed out, so no test blocks on a modal dialog.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from PyQt6.QtWidgets import QCheckBox, QDialogButtonBox, QLabel, QPushButton
 

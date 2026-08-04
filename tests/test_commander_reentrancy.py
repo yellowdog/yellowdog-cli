@@ -10,8 +10,9 @@ whole scope.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from yellowdog_cli.commander.commander import (
     Confirmation,

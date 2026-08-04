@@ -5,8 +5,9 @@ listing that lacks them rather than falling back to name-based targeting.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from yellowdog_cli.commander.commander import (
     EntitySummary,

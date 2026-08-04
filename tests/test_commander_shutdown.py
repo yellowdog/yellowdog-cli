@@ -13,8 +13,9 @@ well before it would finish on its own.
 import os
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from PyQt6.QtCore import QEventLoop, QProcess, QTimer
 from PyQt6.QtWidgets import QDialogButtonBox, QPlainTextEdit

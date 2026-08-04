@@ -6,6 +6,8 @@
 - `git`
 - `make` — for formatting, building, and other development tasks
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
+- On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
+- On a minimal Linux image, Qt's runtime libraries — needed only by the Commander GUI tests (see [Testing](#testing)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
 
 ## Getting Started
 
@@ -67,6 +69,18 @@ pytest -v
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, compute, and demo test categories, credentials setup, and parallel execution options.
 
+### Commander GUI Tests
+
+Around 290 of the unit tests exercise the Commander GUI. They run offscreen with no display, so a headless node is fine, but they do need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against. Where either is missing, those test modules skip and the rest of the suite runs normally — installing them is only necessary to test Commander itself.
+
+On a minimal Linux image the libraries are the part that is usually absent, and the skip message names the missing one, e.g. `Qt is unavailable, so Commander cannot be tested here: libGL.so.1: cannot open shared object file`. They are dependencies of Qt itself rather than of the display, so offscreen needs them too — text is still laid out, just never shown. On a fresh Ubuntu node the following was enough to run the whole suite:
+
+```shell
+sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+```
+
+Each library surfaces separately as the previous one is satisfied, so install them together rather than chasing them one message at a time. If a run names something not listed here, the package is usually the library's name with the version suffix moved to the end (`libxkbcommon.so.0` → `libxkbcommon0`).
+
 ### Testing Across Python Versions
 
 To run the unit tests against all supported Python versions (3.10–3.14), use [tox](https://tox.wiki/) via:
@@ -100,7 +114,9 @@ Static type checking is done with [pyright](https://github.com/microsoft/pyright
 make pyright
 ```
 
-Pyright is configured in `pyproject.toml` under `[tool.pyright]`. It uses the active Python environment automatically — no extra setup is needed beyond the normal `uv pip install -e ".[dev,...]"` step.
+Pyright is configured in `pyproject.toml` under `[tool.pyright]`. It uses the active Python environment automatically, so no Python-side setup is needed beyond the normal `uv pip install -e ".[dev,...]"` step.
+
+Pyright itself runs on Node, though, and that is the one place a bare Linux node can trip. `pyright-python` prefers a `node` already on `PATH` and otherwise downloads its own into `~/.cache/pyright-python/`; that prebuilt binary is dynamically linked against libatomic, which minimal images often omit. The failure is `node: error while loading shared libraries: libatomic.so.1` and `make: *** [pyright] Error 127`. Install `libatomic1` on Debian/Ubuntu or `libatomic` on the RHEL family; installing a distro `nodejs` also works, since pyright then prefers it, but that package depends on libatomic anyway. Nothing else in the toolchain needs Node — `pytest` and `make format` are unaffected.
 
 The codebase targets zero pyright errors. Where the SDK's type stubs are overly pessimistic (e.g. attributes typed `str | None` that are never `None` after an API call), or where CLI code accesses attributes defined on a concrete SDK subclass but not on its abstract base type (e.g. `sources` on `ComputeRequirementStaticTemplate`, provider-specific image properties on `ComputeSource` subclasses), the relevant lines carry a `# type: ignore[...]` comment with a specific error code.
 

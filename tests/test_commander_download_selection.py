@@ -6,12 +6,13 @@ like the confirmations, since an unattended session cannot answer a chooser eith
 What matters here is which paths reach yd-download.
 """
 
+import pytest
+import qt_guard
+
+qt_guard.require_qt()
+
 import commander_dialogs
 import gui_harness
-import pytest
-
-pytest.importorskip("PyQt6.QtWidgets")
-
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,

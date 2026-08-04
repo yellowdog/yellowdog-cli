@@ -5,8 +5,9 @@ not, and that the geometry helper measures what it claims to.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtWidgets import (

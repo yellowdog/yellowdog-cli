@@ -18,6 +18,11 @@ straight from that builder therefore has buttons that do nothing, and its result
 code is not meaningful — drive it through _confirm_destructive, as here.
 """
 
+import qt_guard
+
+# As in gui_harness: guard before importing Qt, so a node without Qt skips.
+qt_guard.require_qt()
+
 import gui_harness
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QListWidget

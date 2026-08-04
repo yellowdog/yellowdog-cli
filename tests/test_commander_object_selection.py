@@ -3,11 +3,12 @@ Tests for selecting which objects a Commander deletion removes: parsing the
 enumeration, rendering object rows, and the paths that reach yd-delete.
 """
 
-import commander_dialogs
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
+import commander_dialogs
 
 from yellowdog_cli.commander.commander import (
     Confirmation,

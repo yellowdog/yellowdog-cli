@@ -4,11 +4,12 @@ the checkable dialog listing, the confirmation's return value, and the YDIDs
 that reach the yd-* command.
 """
 
-import commander_dialogs
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
+import commander_dialogs
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,

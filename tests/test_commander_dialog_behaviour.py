@@ -8,8 +8,9 @@ asserted on arguments, so nothing here does either.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 import commander_dialogs
 import gui_harness

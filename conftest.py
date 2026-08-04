@@ -104,7 +104,12 @@ def _gui_harness_guard():
     """
     try:
         import gui_harness
-    except ImportError:  # no PyQt6, or not running from the tests directory
+    except (ImportError, pytest.skip.Exception):
+        # ImportError: not running from the tests directory. Skipped: gui_harness
+        # guards its own Qt import (see tests/qt_guard.py), so on a node where Qt
+        # is unusable importing it raises Skipped rather than ImportError. This
+        # fixture is autouse for the whole repo, so it must stay inert either way —
+        # letting Skipped out of here would skip every test in the suite, GUI or not.
         yield
         return
 
@@ -125,13 +130,16 @@ def qapp():
     """
     import os
 
-    # QtWidgets is the submodule that pulls in the graphical runtime libs;
-    # importorskip on the top-level 'PyQt6' package would not catch a missing
-    # libGL/xcb, so guard on QtWidgets directly.
-    pytest.importorskip("PyQt6.QtWidgets")
+    # QtWidgets is the submodule that pulls in the graphical runtime libs, so guard
+    # on it rather than on the top-level 'PyQt6' package. Not importorskip: from
+    # pytest 9.1 that skips only on ModuleNotFoundError, so a missing libGL — an
+    # ImportError but not a ModuleNotFoundError — would error instead of skipping.
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError as exc:
+        pytest.skip(f"Qt is unavailable: {exc}")
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PyQt6.QtWidgets import QApplication
 
     try:
         return QApplication.instance() or QApplication([])
