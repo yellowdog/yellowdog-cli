@@ -6,14 +6,33 @@ Handle optional imports.
 def check_jsonnet_import():
     # Jsonnet is not installed by default, due to a binary build requirement
     # on some platforms.
+    #
+    # '_jsonnet' is a compiled extension, so "missing" and "present but will not
+    # load" are different problems with different remedies, and telling someone to
+    # pip install a package they already have sends them the wrong way.
     try:
         from _jsonnet import evaluate_file  # noqa: F401
-    except ImportError:
+    except ModuleNotFoundError:
         raise ImportError(
             "Jsonnet support is not included by default. The 'jsonnet' Python package"
             " can usually be installed by adding the option to pip:"
             ' pip install -U "yellowdog-cli[jsonnet]"'
             " or installed separately using: pip install -U jsonnet"
+        )
+    except ImportError as exc:
+        # The package is there but its extension module cannot be loaded: a
+        # missing C++ runtime, or a wheel built for a different Python or
+        # architecture. Reinstalling the same wheel will not change any of that.
+        raise ImportError(
+            f"The 'jsonnet' package is installed, but its compiled extension will"
+            f" not load: {exc}\n"
+            "Reinstalling the same wheel is unlikely to help. Either a system"
+            " library is missing — on Debian/Ubuntu, 'sudo apt-get install -y"
+            " libstdc++6' — or the wheel does not match this Python or CPU"
+            " architecture, in which case rebuild it from source with:\n"
+            "    pip install -U --no-binary :all: jsonnet\n"
+            "That compiles Jsonnet, so it needs a C++ compiler ('build-essential'"
+            " on Debian/Ubuntu)."
         )
 
 

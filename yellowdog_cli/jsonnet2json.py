@@ -18,7 +18,15 @@ _GLOB_CHARS = frozenset("*?[")
 
 
 def main():
-    check_jsonnet_import()
+    # This command has no @main_wrapper to catch and print an exception, so the
+    # guard's message is presented here; otherwise advice about how to install
+    # Jsonnet arrives buried in a traceback.
+    try:
+        check_jsonnet_import()
+    except ImportError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
     from _jsonnet import evaluate_file
 
     if len(sys.argv) < 2:

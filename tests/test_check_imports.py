@@ -8,7 +8,10 @@ import types
 
 import pytest
 
-from yellowdog_cli.utils.check_imports import check_commander_imports
+from yellowdog_cli.utils.check_imports import (
+    check_commander_imports,
+    check_jsonnet_import,
+)
 
 
 def test_check_commander_imports_raises_when_pyqt6_absent(monkeypatch):
@@ -60,3 +63,47 @@ def test_check_commander_imports_explains_a_missing_system_library(monkeypatch):
 def test_check_commander_imports_ok_when_present():
     pytest.importorskip("PyQt6.QtWidgets")
     check_commander_imports()  # must not raise
+
+
+def test_check_jsonnet_import_raises_when_absent(monkeypatch):
+    monkeypatch.setitem(sys.modules, "_jsonnet", None)
+    with pytest.raises(ImportError, match=r"pip install .*jsonnet") as raised:
+        check_jsonnet_import()
+    # Advice is to install the package, not to chase a build or a system library.
+    message = str(raised.value)
+    assert "compiled extension" not in message
+    assert "build-essential" not in message
+
+
+def test_check_jsonnet_import_explains_an_extension_that_will_not_load(monkeypatch):
+    """
+    '_jsonnet' is a compiled extension, so "missing" and "present but unloadable"
+    are different problems. Telling someone to pip install a package they already
+    have sends them the wrong way, and the real cause -- a missing C++ runtime, or
+    a wheel built for another Python or architecture -- goes unmentioned.
+    """
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "_jsonnet":
+            raise ImportError(
+                "libstdc++.so.6: cannot open shared object file: No such file or directory"
+            )
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "_jsonnet", raising=False)
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+
+    with pytest.raises(ImportError) as raised:
+        check_jsonnet_import()
+
+    message = str(raised.value)
+    assert "libstdc++.so.6" in message  # names what actually failed
+    assert "is installed" in message  # does not claim it is missing
+    assert "--no-binary" in message  # gives a remedy that could work
+    assert "not included by default" not in message  # not the wrong diagnosis
+
+
+def test_check_jsonnet_import_ok_when_present():
+    pytest.importorskip("_jsonnet")
+    check_jsonnet_import()  # must not raise
