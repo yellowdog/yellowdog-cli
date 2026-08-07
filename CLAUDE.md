@@ -154,6 +154,12 @@ CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (d
 - **Placeholders come from `yd-show`.** `_parse_yd_config()` runs it to resolve the namespace and tag for the current config file. It is stubbed in the tests (see below), so nothing there spawns a CLI process for it.
 - `commander.py` carries `E402`/`RUF005` per-file ignores in `pyproject.toml`: it was lifted from the standalone `yellow-gui` demo repo, and those are pre-existing findings kept out of the relocation diff.
 
+### Resource Specification Test Corpus
+
+`tests/resources/` is the single source of resource specifications used by the resource-definition tests (`test_resource_specs.py`, `test_resource_property_coverage.py`, `test_system_resources.py`) — one Jsonnet file per resource type, each with a minimal variant (only required properties) and a maximal one (every settable property), loaded through the CLI's own loader rather than duplicated as separate fixtures. See `tests/resources/README.md` for the minimal/maximal convention and how to add a new resource type.
+
+`tests/resource_models.py` is a write-side coverage gate: it introspects the SDK's own dataclasses for every model the corpus's resource types build (via `create.py`'s `_get_model_object`) and fails, naming the property, when a settable property is set by no specification at all. A property can only be excluded from the gate by a registry entry (`SERVER_ASSIGNED_COVERAGE`, `NOT_SETTABLE`, `NOT_TESTED`) carrying a stated reason — never inferred from the dataclass's own `field.init`, since the SDK structures an `init=False` field from a specification exactly like any other. A live read gate in `test_system_resources.py` then demands every property excluded as platform-assigned either actually come back from a real `yd-show` at least once, or carry a recorded reason why this suite cannot make it come back (most of the waived ones belong to a compute source that never provisions a real instance, so it has no status, no instance summary and no exhaustion to report); an exclusion the platform has started honouring is reported as stale, so a waiver cannot outlive its reason. Consequently, closing a coverage gap the SDK opens (a new property on an existing model) is an edit to one `.jsonnet` file, not to several JSON fixtures.
+
 ### Coding Conventions
 
 - Python 3.10+ syntax: use `str | None` (not `Optional[str]`), `match` statements where appropriate

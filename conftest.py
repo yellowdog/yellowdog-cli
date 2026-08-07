@@ -200,6 +200,115 @@ def system_tag() -> str:
     return tag
 
 
+@pytest.fixture(scope="session")
+def run_id() -> str:
+    """
+    The run-unique suffix every corpus resource name carries.
+
+    Also registers a belt-and-braces atexit sweep, mirroring system_tag's own
+    pattern above: a live test's in-process teardown (the 'cleanup' fixture, or a
+    try/finally) does not run at all if the process is killed rather than exiting
+    normally, and this fixture backs tests against a production account. Sweeping
+    every live corpus file with 'yd-remove' is safe to do speculatively --
+    remove_resources() (remove.py) reports a resource it can't find and moves on
+    to the next one rather than raising, the same tolerance create_resources()
+    has for a resource it can't create (see resource_live.KNOWN_PARTIAL_FAILURES)
+    -- so a file with nothing left to remove, or nothing ever created from it in
+    the first place, costs one wasted subprocess call and nothing else.
+
+    Changes into each file's own parent directory before invoking 'yd-remove',
+    the way resource_corpus.load_corpus_file() does for the in-process loader, and
+    restores the original directory afterwards regardless of outcome. Without
+    this, 'yd-remove' runs as a subprocess from pytest's own working directory
+    (the repo root): eight of the ten live corpus files start with
+    "local base = import 'lib/base.libsonnet';", which cannot resolve from there
+    ("couldn't open import ... no match locally or in the Jsonnet library
+    paths"), so the sweep would silently fail to even load those files, let
+    alone remove anything from them. yd()/shell() never raises on a non-zero
+    exit, so that failure would not surface anywhere -- it would just be a sweep
+    that never ran, for 8 of the 10 files it exists to protect. (The two
+    exceptions are keyrings.jsonnet and namespace-policy.jsonnet, neither of
+    which imports anything; the chdir is applied uniformly to every file
+    regardless, so those two just get harmlessly redundant treatment.)
+    """
+    import atexit
+    import os
+
+    import resource_corpus
+    import resource_live
+
+    def _remove_everything_this_run_might_have_created() -> None:
+        original_cwd = os.getcwd()
+        for path in resource_corpus.live_corpus_files():
+            # live_corpus_files() already yields absolute paths (CORPUS_DIR is
+            # built from Path(__file__).parent); .resolve() here is just belt
+            # and braces against that ever changing, not a real relative-path
+            # fixup.
+            resolved = path.resolve()
+            try:
+                os.chdir(resolved.parent)
+                # '-M' (--match-allowances-by-description): without it,
+                # remove_allowance() (remove.py) only warns and removes nothing
+                # for an Allowance (see resource_live.LIVE_ONLY_EXCLUSIONS'
+                # sibling in test_system_resources.py, _remove_args()) --
+                # harmless for every other live corpus file, which has no
+                # Allowance to match, but required for allowances.jsonnet to be
+                # genuinely swept rather than merely attempted.
+                resource_live.yd("yd-remove", "-y", "-M", str(resolved))
+            finally:
+                os.chdir(original_cwd)
+
+    atexit.register(_remove_everything_this_run_might_have_created)
+    return resource_live.run_id()
+
+
+@pytest.fixture(scope="session")
+def live_namespace() -> str:
+    """
+    Ensure the single test namespace exists, and leave it there: the platform will
+    not delete a namespace that has ever been populated. create_namespace treats an
+    existing namespace as a warning, so this is idempotent.
+    """
+    import os
+
+    import resource_corpus
+    import resource_live
+
+    result = resource_live.yd(
+        "yd-create", str(resource_corpus.CORPUS_DIR / "namespace.jsonnet")
+    )
+    if result.exit_code != 0:
+        # This is the first thing every live test touches, so it is where a
+        # missing prerequisite surfaces -- and "could not create the test
+        # namespace" on its own sent people looking in the wrong place. Name the
+        # likely cause, and show what the command said: creating a namespace
+        # prints no secret, so its output is safe to quote.
+        missing = [name for name in ("YD_KEY", "YD_SECRET") if not os.environ.get(name)]
+        if missing:
+            cause = (
+                f"{' and '.join(missing)} {'is' if len(missing) == 1 else 'are'} not"
+                " set in the environment, which is where the live tests take"
+                " credentials from -- and deliberately the only place, so nothing is"
+                f" fabricated for a run that touches the platform."
+                f" Set {'it' if len(missing) == 1 else 'them'} (plus YD_URL for a"
+                " non-default platform) and try again."
+            )
+        else:
+            cause = (
+                "Credentials are set in the environment, so this is something else --"
+                " the account may lack permission to create a namespace, or the"
+                " platform may be unreachable."
+            )
+        # The CLI reports errors on stderr, so quote that first; stdout carries
+        # only progress notes. Creating a namespace prints no secret either way,
+        # so quoting the command's output here is safe.
+        said = (result.stderr or "").strip() or (result.stdout or "").strip()
+        raise AssertionError(
+            f"Could not create the test namespace. {cause}\n'yd-create' said:\n{said}"
+        )
+    return resource_corpus.dummy_variables()["namespace"]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

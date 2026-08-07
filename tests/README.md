@@ -78,6 +78,8 @@ pytest -v -n 4 --run-demos
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
 | `test_resequence_resources.py` | `utils/load_resources.py` — `_resequence_resources` (creation/removal dependency ordering) |
 | `test_resolve_entity_type.py` | `utils/args.py` — `resolve_entity_type` (full names, prefixes, synonyms) |
+| `test_resource_property_coverage.py` | `resource_models.py` — the write-side coverage gate: every settable property of every SDK model the resource corpus (`tests/resources/`) touches must be set by some specification, or excluded with an evidenced reason |
+| `test_resource_specs.py` | `resource_corpus.py`/`resource_models.py` — offline coverage of the resource corpus: each `.jsonnet` file is loaded through the CLI's own loader and built into the same SDK model(s) `create.py` builds, checking every property survives with the value sent; no credentials or network needed |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
 | `test_submit_batching.py` | `submit.py` — sequential vs. parallel task batch submission in `add_tasks_to_task_group` |
@@ -144,9 +146,19 @@ These are supported by three non-test modules and by fixtures in the root `conft
 | File | What it tests |
 |---|---|
 | `test_system_error_handling.py` | Hard failures (exit 1) and soft failures (exit 0 + error message) for bad input, unknown YDIDs, missing resources |
-| `test_system_resources.py` | Full create → list → show → remove lifecycle for keyrings, namespaces, image families, namespace policies, attributes, groups |
+| `test_system_resources.py` | Create → `yd-show`/`yd-list --details` → remove lifecycle for every file in the resource corpus (`tests/resources/`), parametrized one case per file, comparing what the platform returns against what was sent; also the read gate, confirming every property the write-side coverage gate excludes as platform-assigned actually comes back from a live response at least once |
 | `test_system_cancel_hold_finish.py` | Work Requirement control commands: hold, start, finish, cancel (WR stays PENDING — no compute provisioned) |
 | `test_system_dataclient.py` | Data client commands (`yd-upload`, `yd-ls`, `yd-download`, `yd-delete`): upload/list/delete cycle, upload→download round-trip, recursive upload and listing, wildcard list and delete, dry-run enforcement for upload/download/delete |
+
+`test_system_resources.py` is built on the resource corpus and shares its three supporting modules with the offline `test_resource_specs.py`/`test_resource_property_coverage.py` above:
+
+| File | Role |
+|---|---|
+| `resource_corpus.py` | Loads a corpus file the way `yd-create` does — Jsonnet expansion, `{{variable}}` substitution, dependency resequencing — without a platform |
+| `resource_models.py` | Which SDK model(s) `create.py` builds for each resource type, and the write-side coverage gate over their settable properties |
+| `resource_live.py` | Helpers for the live suite: `yd()`/`ydids()`/`show()` subprocess wrappers, and `mismatches()`, the create-vs-`yd-show` comparison |
+
+Beyond the general platform-test prerequisites below, the resource corpus needs only `YD_KEY` and `YD_SECRET` in the environment (plus `YD_URL` for a non-default platform). It requires no configuration file of your own and no cloud credentials: `tests/resources/test-config.toml` supplies the namespace and the dummy infrastructure values, and deliberately carries no credentials and imports none — see `tests/resources/README.md`.
 
 ### System Compute Tests (`--run-system-compute`, provisions real cloud instances)
 
@@ -168,6 +180,8 @@ These are supported by three non-test modules and by fixtures in the root `conft
 |---|---|
 | `test_create_remove.py` | `yd-create` / `yd-remove` round-trips for all resource types |
 | `test_list.py` | `yd-list` with various resource-type filters |
+
+`test_create_remove.py`'s fourteen cases depend on `tests/resource-examples/`, a directory that is not tracked in the repository — a deliberate choice, not an oversight, so it only runs on the repository owner's machine, and fails on missing files for anyone else who runs it. It overlaps `test_system_resources.py`'s live corpus suite in what it exercises, but asserts only exit codes, never that a returned property matches what was sent. It is currently the only coverage this suite has of a user update (`user.json`) and of an application granted access to a keyring (`application-with-keyring.json`), neither of which the resource corpus covers.
 
 ## Prerequisites for Platform Tests
 
