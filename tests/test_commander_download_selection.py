@@ -7,10 +7,12 @@ What matters here is which paths reach yd-download.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
-from PyQt6.QtCore import Qt
+import commander_dialogs
+import gui_harness
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -53,26 +55,18 @@ def objects() -> list[ObjectSummary]:
 
 def drive_chooser(window, monkeypatch, accept: bool, uncheck: tuple = ()):
     """
-    Let _choose_objects run without blocking on exec(): replace the dialog's
-    exec() with a callback that unticks the given rows and then accepts or
-    rejects, as a user would. Everything else — the real chooser dialog, the real
-    listing, the real handle read-back — stays live.
+    Arm the next chooser to untick the given rows and then press Download or Cancel.
+
+    Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
+    the interaction queued into it, rather than replacing exec() with a stub that
+    returns a chosen result code.
     """
-    real_build = window._build_chooser_dialog
-
-    def build(title, message, accept_text, rows):
-        dialog, accept_btn = real_build(title, message, accept_text, rows)
-
-        def fake_exec():
-            listing = dialog.findChild(QListWidget, "selection_list")
-            for index in uncheck:
-                listing.item(index).setCheckState(Qt.CheckState.Unchecked)
-            return 1 if accept else 0
-
-        monkeypatch.setattr(dialog, "exec", fake_exec)
-        return dialog, accept_btn
-
-    monkeypatch.setattr(window, "_build_chooser_dialog", build)
+    commander_dialogs.drive_chooser(
+        window,
+        monkeypatch,
+        commander_dialogs.ACCEPT if accept else commander_dialogs.CANCEL,
+        untick_rows=uncheck,
+    )
 
 
 def stub_enumeration(window, monkeypatch, enumerated):
@@ -278,7 +272,7 @@ def test_a_directory_match_adds_the_recursion_note(window, captured, monkeypatch
     def build(title, message, accept_text, rows):
         bodies.append(message)
         dialog, accept_btn = real_build(title, message, accept_text, rows)
-        monkeypatch.setattr(dialog, "exec", lambda: 0)
+        gui_harness.arm_modal(dialog, lambda open_dialog: open_dialog.reject())
         return dialog, accept_btn
 
     monkeypatch.setattr(window, "_build_chooser_dialog", build)

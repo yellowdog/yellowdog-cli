@@ -1,0 +1,70 @@
+# Configuration for the resource definition tests.
+#
+# Credentials are NOT here and must not be added, nor imported via importCommon:
+# YD_KEY and YD_SECRET come from the environment, as does YD_URL for a non-default
+# platform. This file names no credential property at all, which is what leaves the
+# choice to the environment -- a config selected with '-c' outranks the environment
+# only for properties it actually defines. See tests/resources/README.md.
+#
+# Every value below is a dummy: pointing the corpus at real infrastructure is an
+# edit to this file alone, because the specifications only ever name variables.
+#
+# Note: because this file is passed with '-c', its [common.variables] take
+# precedence over YD_VAR_* environment variables. Override by editing here.
+
+[common]
+    namespace = "yd-cli-tests"
+    tag = "yd-cli-tests"
+
+[common.variables]
+    # AWS
+    aws_credential = "yd-test-keyring/aws-dummy"
+    aws_region = "eu-west-2"
+    aws_availability_zone = "eu-west-2a"
+    aws_subnet_id = "subnet-00000000000000000"
+    aws_security_group_id = "sg-00000000000000000"
+    aws_image_id = "ami-00000000000000000"
+    aws_instance_type = "t3a.micro"
+    aws_iam_instance_profile_arn = "arn:aws:iam::000000000000:instance-profile/yd-dummy"
+    aws_key_name = "yd-dummy-key"
+    aws_placement_group = "yd-dummy-placement-group"
+    aws_placement_group_id = "pg-00000000000000000"
+    aws_capacity_reservation_group_arn = "arn:aws:resource-groups:eu-west-2:000000000000:group/yd-dummy-cr-group"
+    aws_capacity_reservation_id = "cr-00000000000000000"
+    aws_secondary_subnet_id = "subnet-00000000000000001"
+    aws_secondary_security_group_id = "sg-00000000000000001"
+    aws_fleet_id = "fleet-00000000000000000"
+    # Azure
+    azure_credential = "yd-test-keyring/azure-dummy"
+    azure_admin_credential = "yd-test-keyring/azure-admin-dummy"
+    azure_region = "uksouth"
+    azure_availability_zone = "1"
+    azure_environment = "AzureCloud"
+    azure_network_resource_group = "yd-dummy-rg"
+    azure_network_name = "yd-dummy-vnet"
+    azure_subnet_name = "yd-dummy-subnet"
+    azure_vm_size = "Standard_B1s"
+    azure_image_id = "/subscriptions/00000000-0000-0000-0000-000000000000/dummy"
+    azure_ssh_key = "ssh-ed25519 AAAADUMMY yd-dummy"
+    # GCP
+    gcp_credential = "yd-test-keyring/gcp-dummy"
+    gcp_project = "yd-dummy-project"
+    gcp_region = "europe-west2"
+    gcp_zone = "europe-west2-a"
+    gcp_machine_type = "e2-micro"
+    gcp_image = "projects/yd-dummy/global/images/yd-dummy-image"
+    gcp_network = "yd-dummy-network"
+    gcp_subnetwork = "yd-dummy-subnetwork"
+    gcp_accelerator_type = "nvidia-tesla-t4"
+    gcp_ssh_keys = "yd-dummy:ssh-ed25519 AAAADUMMY yd-dummy"
+    # OCI
+    oci_credential = "yd-test-keyring/oci-dummy"
+    oci_region = "uk-london-1"
+    oci_availability_domain = "AaBb:UK-LONDON-1-AD-1"
+    oci_compartment_id = "ocid1.compartment.oc1..dummy"
+    oci_subnet_id = "ocid1.subnet.oc1..dummy"
+    oci_image_id = "ocid1.image.oc1..dummy"
+    oci_shape = "VM.Standard.E4.Flex"
+    oci_ssh_key = "ssh-ed25519 AAAADUMMY yd-dummy"
+    # Shared
+    user_data = "#!/bin/sh\necho yd-cli-tests"

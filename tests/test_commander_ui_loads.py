@@ -6,9 +6,9 @@ installed PyQt6 and that no code-referenced widget is missing. Guards against
 Qt-version incompatibilities and accidental .ui edits.
 """
 
-import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from PyQt6.QtWidgets import QPlainTextEdit, QPushButton
 

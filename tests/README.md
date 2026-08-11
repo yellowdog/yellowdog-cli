@@ -2,17 +2,21 @@
 
 Tests are run using [pytest](https://docs.pytest.org/).
 
+The unit tests need no configuration at all: a yd-* command module loads its configuration when imported, so `conftest.py` substitutes a dummy key and secret where none can be found, and reports that in the pytest header. Anything already working is left alone, and no substitution is made for the flags below that reach the platform.
+
 ## Test Categories
 
 Five categories of test exist, controlled by pytest flags:
 
 | Flag | Marker | Description |
 |---|---|---|
-| *(none)* | — | Unit tests; no platform connectivity required |
+| *(none)* | — | Unit tests; no platform connectivity, configuration file or credentials required |
 | `--run-dryruns` | `dryruns` | Demo dry-runs (no platform calls); requires `../python-examples-demos` |
 | `--run-demos` | `demos` | Full live demo runs on the platform |
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
 | `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
+
+Around 290 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
 
 ## Quick Reference
 
@@ -74,7 +78,10 @@ pytest -v -n 4 --run-demos
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
 | `test_resequence_resources.py` | `utils/load_resources.py` — `_resequence_resources` (creation/removal dependency ordering) |
 | `test_resolve_entity_type.py` | `utils/args.py` — `resolve_entity_type` (full names, prefixes, synonyms) |
+| `test_resource_property_coverage.py` | `resource_models.py` — the write-side coverage gate: every settable property of every SDK model the resource corpus (`tests/resources/`) touches must be set by some specification, or excluded with an evidenced reason |
+| `test_resource_specs.py` | `resource_corpus.py`/`resource_models.py` — offline coverage of the resource corpus: each `.jsonnet` file is loaded through the CLI's own loader and built into the same SDK model(s) `create.py` builds, checking every property survives with the value sent; no credentials or network needed |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
+| `test_show_instance.py` | `show.py` — the Instance (`cr_id.instance_id`) form: routing, lookup and error paths |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
 | `test_submit_batching.py` | `submit.py` — sequential vs. parallel task batch submission in `add_tasks_to_task_group` |
 | `test_submit_functions.py` | `submit.py` — `create_task_group` and `submit_work_requirement` |
@@ -85,6 +92,43 @@ pytest -v -n 4 --run-demos
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
 | `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, type constants |
+
+### Commander GUI Tests (no flags required; skipped without a usable Qt)
+
+Around 290 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally. See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
+
+| File | What it tests |
+|---|---|
+| `test_commander_button_wiring.py` | Every main-window button is connected to the action it claims to perform — a button wired to nothing, or to the wrong action, looks healthy to every other test |
+| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned) |
+| `test_commander_dialog_behaviour.py` | The dialogs as dialogs: real `exec()`, real clicks, real geometry — the bug classes that reached users (inert buttons, a stolen default button, a list squeezed until no row shows) |
+| `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
+| `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting |
+| `test_commander_object_selection.py` | Choosing which objects a deletion removes: enumeration, object rows, and the paths that reach `yd-delete` |
+| `test_commander_download_selection.py` | Choosing which objects a download fetches, and how the chooser differs from a destructive confirmation |
+| `test_commander_deselect.py` | The Deselect Files action: which of the currently-selected files get deselected |
+| `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
+| `test_commander_reentrancy.py` | The guard that stops a second action starting while one is enumerating in a nested event loop |
+| `test_commander_shutdown.py` | The shutdown path: no process destroyed while running, no handler firing against a deleted object, nested loops released |
+| `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
+| `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
+| `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
+| `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
+| `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
+| `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames |
+| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6 and every code-referenced widget exists |
+| `test_commander_resources.py` | The package data (`.ui` file and images) is present and resolvable through the installed package |
+| `test_commander_entrypoint.py` | The `yd-commander` console script is registered and has its own CLI, not the shared parser |
+| `test_gui_harness.py` | Self-tests for the harness itself: that it surfaces hangs and assertions instead of swallowing them, and that its geometry helper measures what it claims |
+
+These are supported by three non-test modules and by fixtures in the root `conftest.py`:
+
+| File | Role |
+|---|---|
+| `gui_harness.py` | Generic Qt helpers: run or arm a dialog so an interaction lands inside its real modal loop, watchdogged; count visible rows; find buttons |
+| `commander_dialogs.py` | Drivers for Commander's own confirmation and chooser, for the cases where production builds and execs the dialog |
+| `qt_guard.py` | `require_qt()` — the module-level skip, used instead of `pytest.importorskip` so that PyQt6-present-but-unusable skips rather than errors |
+| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), and `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`) |
 
 ### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
 
@@ -103,9 +147,19 @@ pytest -v -n 4 --run-demos
 | File | What it tests |
 |---|---|
 | `test_system_error_handling.py` | Hard failures (exit 1) and soft failures (exit 0 + error message) for bad input, unknown YDIDs, missing resources |
-| `test_system_resources.py` | Full create → list → show → remove lifecycle for keyrings, namespaces, image families, namespace policies, attributes, groups |
+| `test_system_resources.py` | Create → `yd-show`/`yd-list --details` → remove lifecycle for every file in the resource corpus (`tests/resources/`), parametrized one case per file, comparing what the platform returns against what was sent; also the read gate, confirming every property the write-side coverage gate excludes as platform-assigned actually comes back from a live response at least once |
 | `test_system_cancel_hold_finish.py` | Work Requirement control commands: hold, start, finish, cancel (WR stays PENDING — no compute provisioned) |
 | `test_system_dataclient.py` | Data client commands (`yd-upload`, `yd-ls`, `yd-download`, `yd-delete`): upload/list/delete cycle, upload→download round-trip, recursive upload and listing, wildcard list and delete, dry-run enforcement for upload/download/delete |
+
+`test_system_resources.py` is built on the resource corpus and shares its three supporting modules with the offline `test_resource_specs.py`/`test_resource_property_coverage.py` above:
+
+| File | Role |
+|---|---|
+| `resource_corpus.py` | Loads a corpus file the way `yd-create` does — Jsonnet expansion, `{{variable}}` substitution, dependency resequencing — without a platform |
+| `resource_models.py` | Which SDK model(s) `create.py` builds for each resource type, and the write-side coverage gate over their settable properties |
+| `resource_live.py` | Helpers for the live suite: `yd()`/`ydids()`/`show()` subprocess wrappers, and `mismatches()`, the create-vs-`yd-show` comparison |
+
+Beyond the general platform-test prerequisites below, the resource corpus needs only `YD_KEY` and `YD_SECRET` in the environment (plus `YD_URL` for a non-default platform). It requires no configuration file of your own and no cloud credentials: `tests/resources/test-config.toml` supplies the namespace and the dummy infrastructure values, and deliberately carries no credentials and imports none — see `tests/resources/README.md`.
 
 ### System Compute Tests (`--run-system-compute`, provisions real cloud instances)
 
@@ -127,6 +181,8 @@ pytest -v -n 4 --run-demos
 |---|---|
 | `test_create_remove.py` | `yd-create` / `yd-remove` round-trips for all resource types |
 | `test_list.py` | `yd-list` with various resource-type filters |
+
+`test_create_remove.py`'s fourteen cases depend on `tests/resource-examples/`, a directory that is not tracked in the repository — a deliberate choice, not an oversight, so it only runs on the repository owner's machine, and fails on missing files for anyone else who runs it. It overlaps `test_system_resources.py`'s live corpus suite in what it exercises, but asserts only exit codes, never that a returned property matches what was sent. It is currently the only coverage this suite has of a user update (`user.json`) and of an application granted access to a keyring (`application-with-keyring.json`), neither of which the resource corpus covers.
 
 ## Prerequisites for Platform Tests
 

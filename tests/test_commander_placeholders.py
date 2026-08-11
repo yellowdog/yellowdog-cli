@@ -9,8 +9,9 @@ nested event loop — is what appears to provoke macOS 'TSMSendMessageToUIServer
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from PyQt6.QtCore import QEvent, QObject
 

@@ -4,9 +4,9 @@ read from a pipe. Guards against spurious line breaks in the log pane where a
 read boundary falls part-way through a line.
 """
 
-import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")  # commander imports QtWidgets at module top
+qt_guard.require_qt()  # commander imports QtWidgets at module top
 
 from yellowdog_cli.commander.commander import LineBuffer
 

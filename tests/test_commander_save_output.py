@@ -5,8 +5,9 @@ dismisses the dialog, and that a failure to write is reported rather than swallo
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from PyQt6.QtWidgets import QPushButton
 

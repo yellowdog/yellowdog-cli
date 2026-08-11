@@ -195,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Jul 27 13:11:35 BST 2026 -->
+<!-- Added by: pwt, at: Tue Aug 11 12:05:15 BST 2026 -->
 
 <!--te-->
 
@@ -3809,6 +3809,12 @@ The `yd-show` command will show the details (in JSON) of any YellowDog entity th
 - Applications
 - Groups
 - Roles
+
+Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format used by `yd-terminate` and `yd-compute-stop`/`yd-compute-start`/`yd-compute-restart`:
+
+```shell
+yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
+```
 
 When showing the details of a Configured Worker Pool, the `--show-token` option includes the Worker Pool token in the output.
 

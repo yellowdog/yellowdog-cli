@@ -5,9 +5,11 @@ that reach the yd-* command.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
+import commander_dialogs
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
@@ -52,6 +54,43 @@ def test_rows_are_padded_off_the_frame(window):
     )
     listing = dialog.findChild(QListWidget, "selection_list")
     assert listing.frameWidth() >= ENTITY_LIST_PADDING
+
+
+def test_rows_stay_visible_in_a_narrow_dialog(window):
+    # Regression (reported on Windows): a long name overflowed a narrow dialog, Qt
+    # added a horizontal scrollbar, and the scrollbar ate the height budgeted for
+    # the rows — leaving a 1px viewport showing nothing but the scrollbar. The
+    # earlier height test asserted the arithmetic but never that a row can be seen.
+    long_rows = entity_rows(
+        [
+            EntitySummary(
+                id=f"ydid:workreq:{n}",
+                name=f"a-very-long-work-requirement-name-{n:04d}",
+                status="RUNNING",
+            )
+            for n in range(3)
+        ]
+    )
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Cancel", "Cancel?", rows=long_rows
+    )
+    listing = dialog.findChild(QListWidget, "selection_list")
+    dialog.resize(280, dialog.sizeHint().height())
+    dialog.show()
+
+    assert listing.horizontalScrollBar().isVisible() is False
+    row_height = listing.sizeHintForRow(0)
+    assert listing.viewport().height() // row_height == 3
+
+
+def test_the_horizontal_scrollbar_is_off_so_it_cannot_steal_height(window):
+    # Long names elide, with the tooltip as the recovery path; scrolling sideways
+    # is not the intended answer and costs the rows their vertical space.
+    dialog, _yes, _skip = window._build_destructive_dialog(
+        "Cancel", "Cancel?", rows=entity_rows(entities())
+    )
+    listing = dialog.findChild(QListWidget, "selection_list")
+    assert listing.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
 
 
 def test_height_cap_accounts_for_the_padding(window):
@@ -197,31 +236,22 @@ def test_confirmation_truthiness_is_refused():
 
 def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     """
-    Let _confirm_destructive run without blocking on exec(): replace the
-    dialog's exec() with a callback that unticks the given row indices and
-    clicks a button, exactly as a user would. 'choose' is 'yes', 'skip', or
-    None to dismiss without clicking anything.
+    Arm the next destructive confirmation to untick the given row indices and press
+    'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
+
+    Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
+    the interaction queued into it. This used to replace exec() with a stub, which
+    is how a button box that was never connected went unnoticed: with exec() faked,
+    a click that did nothing looked identical to one that worked.
     """
-    real_build = window._build_destructive_dialog
-
-    def build(title, message, rows=None):
-        dialog, yes_btn, skip_btn = real_build(title, message, rows=rows)
-
-        def fake_exec():
-            listing = dialog.findChild(QListWidget, "selection_list")
-            if listing is not None:
-                for index in uncheck:
-                    listing.item(index).setCheckState(Qt.CheckState.Unchecked)
-            if choose == "yes":
-                yes_btn.click()
-            elif choose == "skip":
-                skip_btn.click()
-            return 0
-
-        monkeypatch.setattr(dialog, "exec", fake_exec)
-        return dialog, yes_btn, skip_btn
-
-    monkeypatch.setattr(window, "_build_destructive_dialog", build)
+    commander_dialogs.drive_confirmation(
+        window,
+        monkeypatch,
+        {"yes": commander_dialogs.YES, "skip": commander_dialogs.SKIP}.get(
+            choose, commander_dialogs.DISMISS
+        ),
+        untick_rows=uncheck,
+    )
 
 
 def test_confirm_returns_all_when_nothing_unticked(window, monkeypatch):

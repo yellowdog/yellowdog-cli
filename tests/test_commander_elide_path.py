@@ -6,9 +6,9 @@ the selected definition filenames shown on the 'Select' buttons.
 
 import os
 
-import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")  # commander imports QtWidgets at module top
+qt_guard.require_qt()  # commander imports QtWidgets at module top
 
 from yellowdog_cli.commander.commander import (
     MAX_DISPLAYED_NAME_LENGTH,

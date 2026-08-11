@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-YellowDog CLI (`yellowdog-cli`) is a Python CLI tool suite for managing distributed computing jobs and resources on the YellowDog platform. It provides ~25 `yd-*` commands (e.g., `yd-submit`, `yd-provision`, `yd-list`, `yd-upload`, `yd-download`) installable as a package.
+YellowDog CLI (`yellowdog-cli`) is a Python CLI tool suite for managing distributed computing jobs and resources on the YellowDog platform. It provides ~25 `yd-*` commands (e.g., `yd-submit`, `yd-provision`, `yd-list`, `yd-upload`, `yd-download`) installable as a package. It also provides `yd-commander`, a PyQt6 desktop GUI that drives those same commands (see [Commander](#commander)).
 
 Current version: defined in `yellowdog_cli/_version.py`.
 
@@ -12,7 +12,7 @@ Current version: defined in `yellowdog_cli/_version.py`.
 
 ```bash
 # Install in editable/development mode
-make install          # builds then pip install -U -e .
+make install          # builds, then uv pip install -U -e ".[commander,jsonnet,cloudwizard]"
 
 # Format code (ruff check --fix + ruff format)
 make format
@@ -33,7 +33,7 @@ make tox
 make pyright
 
 # Update dependencies
-make update           # uv pip install -U -e ".[dev,jsonnet,cloudwizard]"
+make update           # uv pip install -U -e ".[dev,commander,jsonnet,cloudwizard]"
 ```
 
 ## Architecture
@@ -44,6 +44,13 @@ make update           # uv pip install -U -e ".[dev,jsonnet,cloudwizard]"
 yellowdog_cli/
 ├── __init__.py                  # Version only
 ├── *.py                         # ~29 command modules (one per yd-* command)
+├── commander/                   # yd-commander: the PyQt6 desktop GUI (see Commander below)
+│   ├── launcher.py              # Entry point; argument parsing and the PyQt6 guard, before any Qt import
+│   ├── __main__.py              # 'python -m yellowdog_cli.commander'
+│   ├── commander.py             # The whole GUI: YellowDogApp plus its dialogs and helpers
+│   ├── commander.ui             # Qt Designer layout, loaded by loadUi() at construction
+│   ├── images/                  # Branding and window icons (light/dark)
+│   └── README.md                # User-facing documentation for the GUI
 └── utils/
     ├── wrapper.py               # Global CLIENT + CONFIG_COMMON; @main_wrapper decorator
     ├── args.py                  # CLIParser class (single shared instance: ARGS_PARSER)
@@ -96,6 +103,8 @@ if __name__ == "__main__":
 
 A small number of standalone commands (`yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json`) need neither credentials nor a config file — they just define a bare `main()` function with no decorator.
 
+`yd-commander` is the exception to all of this: it uses neither wrapper, loads no config at import, and never touches the SDK, because it runs the other commands as child processes. Its `main()` is in `commander/launcher.py` and stays free of Qt so that the missing-extra message works without PyQt6 installed. See [Commander](#commander).
+
 Data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`) use `@dataclient_wrapper` instead — no SDK client is initialised:
 
 ```python
@@ -133,6 +142,24 @@ The `::` unset suffix (`{{varname::}}`) removes a property entirely when the var
 
 CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (defined in `csv_data.py`), distinct from `{{`/`}}` to allow both to coexist in the same spec without ambiguity.
 
+### Commander
+
+`yd-commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. It is not a second API client: **every action it takes runs a `yd-*` command as a child process** (`_run_command_in_subprocess`, via `QProcess`), so behaviour, output and configuration precedence are the CLI's. Nothing in the package imports the SDK or `wrapper.py`, and there is no `CLIENT`. `yellowdog_cli/commander/README.md` documents it for users; the notes here are the ones that matter when changing it.
+
+- **PyQt6 is an optional extra** (`pip install "yellowdog-cli[commander]"`). `launcher.py` is deliberately free of Qt and of the heavy CLI imports, so `--help` and the missing-extra message (`check_commander_imports()`) work without it. Only after that guard does it import `commander.py` and call `run_app()`.
+- **The layout lives in `commander.ui`**, loaded by `loadUi()` in `YellowDogApp.__init__`, which then connects signals to widgets by name. A renamed or deleted widget therefore fails at construction rather than at use — `tests/test_commander_ui_loads.py` is what catches that.
+- **Bulk destructive actions enumerate before they act.** `_capture_dry_run_json/_summaries/_objects` run the same command with `-D --json` to list what would be affected, then `_confirm_destructive` (entities and objects) or `_choose_objects` (downloads) offers a tick-list, and only the chosen handles are passed back as explicit arguments. The shared primitives are `SelectableRow`, `entity_rows`/`object_rows`, `_build_selection_list_widget`, `checked_handles` and `update_selection_state`. If a seventh action needs them, move them out of `commander.py` into their own module.
+- **`Confirmation.__bool__` raises deliberately.** A confirmation carries both `proceed` and `handles`, and `if self._confirm_destructive(...)` — which is what the natural mistake looks like — would be true even for a refusal. Check `.proceed`.
+- **Synchronous helpers block in nested event loops** (`_run_nested`), which keeps the window responsive while a child process runs. That makes re-entrancy possible, so the enumerating actions are guarded by `_operation_in_flight()` and a `_nested_depth` counter (a counter, not a flag: the config parse deferred with `singleShot(0)` runs inside the first loop to spin, so depth 2 is normal). A re-entrant enumeration returning `None` would read as "enumeration failed", which for a destructive action means falling back to the whole scope — hence refusing early.
+- **Placeholders come from `yd-show`.** `_parse_yd_config()` runs it to resolve the namespace and tag for the current config file. It is stubbed in the tests (see below), so nothing there spawns a CLI process for it.
+- `commander.py` carries `E402`/`RUF005` per-file ignores in `pyproject.toml`: it was lifted from the standalone `yellow-gui` demo repo, and those are pre-existing findings kept out of the relocation diff.
+
+### Resource Specification Test Corpus
+
+`tests/resources/` is the single source of resource specifications used by the resource-definition tests (`test_resource_specs.py`, `test_resource_property_coverage.py`, `test_system_resources.py`) — one Jsonnet file per resource type, each with a minimal variant (only required properties) and a maximal one (every settable property), loaded through the CLI's own loader rather than duplicated as separate fixtures. See `tests/resources/README.md` for the minimal/maximal convention and how to add a new resource type.
+
+`tests/resource_models.py` is a write-side coverage gate: it introspects the SDK's own dataclasses for every model the corpus's resource types build (via `create.py`'s `_get_model_object`) and fails, naming the property, when a settable property is set by no specification at all. A property can only be excluded from the gate by a registry entry (`SERVER_ASSIGNED_COVERAGE`, `NOT_SETTABLE`, `NOT_TESTED`) carrying a stated reason — never inferred from the dataclass's own `field.init`, since the SDK structures an `init=False` field from a specification exactly like any other. A live read gate in `test_system_resources.py` then demands every property excluded as platform-assigned either actually come back from a real `yd-show` at least once, or carry a recorded reason why this suite cannot make it come back (most of the waived ones belong to a compute source that never provisions a real instance, so it has no status, no instance summary and no exhaustion to report); an exclusion the platform has started honouring is reported as stale, so a waiver cannot outlive its reason. Consequently, closing a coverage gap the SDK opens (a new property on an existing model) is an edit to one `.jsonnet` file, not to several JSON fixtures.
+
 ### Coding Conventions
 
 - Python 3.10+ syntax: use `str | None` (not `Optional[str]`), `match` statements where appropriate
@@ -142,6 +169,20 @@ CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (d
 - LRU cache on entity lookup functions in `entity_utils.py`
 - Config dataclasses in `config_types.py`; no raw dicts for structured config
 
+### Testing Commander's GUI
+
+Commander's dialogs are tested as dialogs, through `tests/gui_harness.py` (generic Qt helpers) and `tests/commander_dialogs.py` (drivers for Commander's own confirmation and chooser). Three rules, each of which exists because breaking it let a bug reach a user:
+
+- **Never stub `dialog.exec()`.** Use `gui_harness.run_modal()` when the test owns the dialog, or `commander_dialogs.drive_confirmation()` / `drive_chooser()` when production builds and execs it. Both queue the interaction with `QTimer.singleShot(0, ...)` so it lands inside the *real* modal loop, which means a click has to travel the real button-box wiring to have any effect. A stubbed `exec()` cannot tell a working button from an inert one.
+- **Assert geometric relationships, never pixel counts.** `gui_harness.visible_rows(listing)` rather than a height in pixels: CI nodes substitute fonts, so absolute measurements do not travel. A list squeezed flat or robbed of its height by a scrollbar still has correct-looking arithmetic — only "how many rows can be seen" catches it.
+- **Assert outcomes, not arguments.** Contract tests over `_run_command_in_subprocess` args are useful but blind: every GUI bug that has reached a user lived in a seam those tests stubbed or asserted around.
+
+Constructing a `YellowDogApp` defers `_set_config_file` with `singleShot(0)`, and that runs `yd-show` in a child process inside whichever event loop spins first — usually a dialog's `exec()`. `conftest`'s autouse `_no_config_discovery` stubs `_parse_yd_config` for any test that uses `qapp`, since none of them are about discovery; the two that test the method itself carry `@pytest.mark.real_config_parse`. Left live it cost 235 CLI invocations and most of the GUI suite's runtime, made the tests depend on an installed `yd-show`, and let the environment's namespace and tag leak in.
+
+Everything runs under `QT_QPA_PLATFORM=offscreen` with no display, so it works on a headless CI node. Nodes without a usable Qt skip: every Commander test module calls `tests/qt_guard.py`'s `require_qt()` before importing anything that pulls in Qt, and the `qapp` fixture guards again. That guard is deliberately not `pytest.importorskip` — from pytest 9.1 it skips only on `ModuleNotFoundError`, so PyQt6-installed-but-`libGL`-missing (a minimal Linux image) errored instead of skipping. Calling it before the imports is what the `E402` per-file ignores in `pyproject.toml` are for. Modal runs are watchdogged, because a dialog that never closes would hang CI rather than fail it. An autouse `conftest` fixture surfaces assertions raised inside Qt callbacks, which Qt would otherwise print and discard.
+
+Note that `_build_destructive_dialog` returns a dialog whose buttons are *not* wired — `_confirm_destructive` attaches a `clicked` handler afterwards, because it needs to know which button was pressed. Drive it through `_confirm_destructive`, not from the builder. `_build_chooser_dialog` wires its own box and can be driven directly.
+
 ### Dependencies
 
 - `yellowdog-sdk` — YellowDog platform API client
@@ -150,5 +191,28 @@ CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (d
 - `python-dotenv` — `.env` file support
 - `pypac` — proxy auto-configuration
 - `jsonnet` — optional, for Jsonnet spec templating
+- `PyQt6` — optional (the `commander` extra), for the `yd-commander` GUI; on a minimal Linux image it also needs Qt's runtime libraries, which `setup-ubuntu.sh` installs
 - `rclone_api` — Python wrapper around the rclone binary; used by data client commands
 - Cloud wizard extras: `boto3`, `google-cloud-*`, `azure-*`
+
+## Keeping the Ancillary Files in Step
+
+Documentation here is spread across several files, each with its own audience, and a change that lands in the code but not in them leaves the repo describing something it no longer is. **Before finishing any change, go through this list and update what the change has made wrong or incomplete.** Most changes touch one or two of these; some touch none. Say which ones you updated, or that none needed it.
+
+| File | Update it when |
+|---|---|
+| `README.md` | User-visible CLI behaviour changes: a new command, flag, property, or a change in what one does. Run `make toc` afterwards — never hand-edit the table of contents |
+| `README_CLOUDWIZARD.md` | Cloud Wizard behaviour changes (`make toc_cloudwizard` for its TOC) |
+| `PYPI_README.md` | The command list or the headline description changes — it is the PyPI landing page, so it summarises rather than documents |
+| `yellowdog_cli/commander/README.md` | Commander's GUI behaviour changes: a new button, dialog, or a change in what an action does |
+| `DEVELOPMENT.md` | Anything a developer runs or needs installed changes: make targets, prerequisites, the venv or extras, `setup-ubuntu.sh`, the project layout |
+| `tests/README.md` | Test files are added, renamed or removed, or a category, flag, marker or shared fixture changes |
+| `CLAUDE.md` (this file) | A new module, pattern or convention arrives, or an existing one is described here and changes |
+| `config-template.toml` | A new or changed TOML configuration property — it is the annotated reference for all of them |
+| `pyproject.toml` | A new entry point, extra, or package-data file (`include-package-data` is `false`, so an unlisted asset ships broken) |
+| `RELEASING.md` | The release process, branch model or PyPI arrangements change |
+
+Two traps worth naming, both of which have bitten:
+
+- A **new test file is invisible** unless it is added to `tests/README.md` — nothing fails, the table just quietly stops being a list of the tests.
+- **Docs that describe a mechanism drift silently.** If a paragraph names a function, flag, package or file, check that it still exists and still behaves that way, rather than assuming the prose is fine because the code compiles.

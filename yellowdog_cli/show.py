@@ -9,6 +9,7 @@ from yellowdog_client.model import ConfiguredWorkerPool
 from yellowdog_cli.list import get_keyring
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
+    get_instance_by_id,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -87,6 +88,20 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
     """
     Show the details for a given YDID.
     """
+    # Instances have no YDID of their own: they're identified by their Compute
+    # Requirement plus an instance ID, in 'cr_id.instance_id' form
+    if (
+        len(cr_id_instance_id := ydid.split(".")) == 2
+        and get_ydid_type(cr_id_instance_id[0]) == YDIDType.COMPUTE_REQUIREMENT
+    ):
+        _show_instance_details(
+            cr_id_instance_id[0],
+            cr_id_instance_id[1],
+            initial_indent=initial_indent,
+            with_final_comma=with_final_comma,
+        )
+        return
+
     try:
         if (ydid_type := get_ydid_type(ydid)) is None:
             print_error(f"Invalid YellowDog ID '{ydid}'")
@@ -292,6 +307,43 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             print_error(f"{ydid_type.value} ID '{ydid}' not found")  # type: ignore[union-attr]
         else:
             print_error(f"Unable to show details for '{ydid}': {e}")
+
+
+def _show_instance_details(
+    cr_id: str,
+    instance_id: str,
+    initial_indent: int = 0,
+    with_final_comma: bool = False,
+):
+    """
+    Show the details of an Instance within a Compute Requirement, supplied
+    in 'cr_id.instance_id' form.
+    """
+    print_info(
+        f"Showing details of Instance ID '{instance_id}' in "
+        f"Compute Requirement ID '{cr_id}'"
+    )
+
+    try:
+        instance = get_instance_by_id(CLIENT, cr_id, instance_id)
+    except Exception as e:
+        if is_http_not_found(e):
+            print_error(f"Compute Requirement ID '{cr_id}' not found")
+        else:
+            print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
+        return
+
+    if instance is None:
+        print_error(
+            f"Instance ID '{instance_id}' not found in Compute Requirement ID '{cr_id}'"
+        )
+        return
+
+    print_yd_object(
+        instance,
+        initial_indent=initial_indent,
+        with_final_comma=with_final_comma,
+    )
 
 
 def _report_variables(variable_names: list[str]):

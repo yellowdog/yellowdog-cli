@@ -4,8 +4,9 @@ targets many entities by YDID would otherwise print a wall of identifiers.
 """
 
 import pytest
+import qt_guard
 
-pytest.importorskip("PyQt6.QtWidgets")
+qt_guard.require_qt()
 
 from yellowdog_cli.commander.commander import (
     EntitySummary,

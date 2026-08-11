@@ -130,6 +130,15 @@
     # diff against the source limited to the documented path decoupling.
     "yellowdog_cli/commander/commander.py" = ["E402", "RUF005"]
 
+    # Commander's tests call tests/qt_guard.py's require_qt() before importing
+    # anything that pulls in Qt, so that a node without Qt's runtime libraries
+    # skips them rather than failing to collect. That is necessarily a statement
+    # ahead of the imports, which is what E402 reports.
+    "tests/test_commander_*.py" = ["E402"]
+    "tests/test_gui_harness.py" = ["E402"]
+    "tests/gui_harness.py" = ["E402"]
+    "tests/commander_dialogs.py" = ["E402"]
+
 [tool.pytest.ini_options]
     filterwarnings = [
       "ignore::DeprecationWarning:pydispatch",
