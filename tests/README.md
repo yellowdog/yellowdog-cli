@@ -81,6 +81,7 @@ pytest -v -n 4 --run-demos
 | `test_resource_property_coverage.py` | `resource_models.py` — the write-side coverage gate: every settable property of every SDK model the resource corpus (`tests/resources/`) touches must be set by some specification, or excluded with an evidenced reason |
 | `test_resource_specs.py` | `resource_corpus.py`/`resource_models.py` — offline coverage of the resource corpus: each `.jsonnet` file is loaded through the CLI's own loader and built into the same SDK model(s) `create.py` builds, checking every property survives with the value sent; no credentials or network needed |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
+| `test_show_instance.py` | `show.py` — the Instance (`cr_id.instance_id`) form: routing, lookup and error paths |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
 | `test_submit_batching.py` | `submit.py` — sequential vs. parallel task batch submission in `add_tasks_to_task_group` |
 | `test_submit_functions.py` | `submit.py` — `create_task_group` and `submit_work_requirement` |

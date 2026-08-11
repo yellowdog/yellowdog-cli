@@ -1013,13 +1013,19 @@ class CLIParser:
                 if "wait" in module_name
                 else "show"
             )
+            ids_help = f"the YellowDog ID(s) of the item(s) to {verb}"
+            if verb == "show":
+                ids_help += (
+                    "; Instances have no ID of their own and are specified "
+                    "in 'cr_id.instance_id' format"
+                )
             parser.add_argument(
                 "yellowdog_ids",
                 nargs="*",
                 default=[],
                 metavar="<yellowdog-id>",
                 type=str,
-                help=f"the YellowDog ID(s) of the item(s) to {verb}",
+                help=ids_help,
             )
 
         # yd-follow
