@@ -324,13 +324,22 @@ def _show_instance_details(
         f"Compute Requirement ID '{cr_id}'"
     )
 
+    # Check the Compute Requirement exists first: the Instance search below
+    # returns an empty list for a non-existent Compute Requirement, which is
+    # indistinguishable from a Compute Requirement without this Instance
     try:
-        instance = get_instance_by_id(CLIENT, cr_id, instance_id)
+        CLIENT.compute_client.get_compute_requirement_by_id(cr_id)
     except Exception as e:
         if is_http_not_found(e):
             print_error(f"Compute Requirement ID '{cr_id}' not found")
         else:
-            print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
+            print_error(f"Unable to find Compute Requirement ID '{cr_id}': {e}")
+        return
+
+    try:
+        instance = get_instance_by_id(CLIENT, cr_id, instance_id)
+    except Exception as e:
+        print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
         return
 
     if instance is None:
