@@ -100,6 +100,28 @@ def get_ydid_type(ydid: str | None) -> YDIDType | None:
     return None
 
 
+def split_instance_specification(name_or_id: str) -> tuple[str, str] | None:
+    """
+    Split an Instance specification of the form 'cr_id.instance_id' into its
+    Compute Requirement ID and its provider-assigned instance ID, or return
+    None if the string is not an Instance specification.
+
+    Only the first '.' is the separator: instance IDs can themselves contain
+    dots (e.g. OCI's 'ocid1.instance.oc1.uk-london-1.anwgi...'), while a
+    Compute Requirement YDID never does. The prefix must be a Compute
+    Requirement YDID, otherwise a Compute Requirement *name* containing a '.'
+    would be misclassified.
+    """
+    cr_id, separator, instance_id = name_or_id.partition(".")
+    if (
+        separator == ""
+        or instance_id == ""
+        or get_ydid_type(cr_id) != YDIDType.COMPUTE_REQUIREMENT
+    ):
+        return None
+    return cr_id, instance_id
+
+
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _HEX = r"[0-9a-fA-F]+"
 

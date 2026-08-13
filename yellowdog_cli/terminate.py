@@ -31,7 +31,11 @@ from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
-from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+from yellowdog_cli.utils.ydid_utils import (
+    YDIDType,
+    get_ydid_type,
+    split_instance_specification,
+)
 
 VALID_TERMINATION_STATUSES = [
     ComputeRequirementStatus.NEW,
@@ -143,12 +147,8 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
     node_or_instance_cr_ids: list[str] = []
 
     for name_or_id in set(names_or_ids):  # Remove duplicates
-        # Is this a cr_id.instance_id specification? The prefix must be a CR
-        # YDID, otherwise a CR *name* containing a '.' would be misclassified
-        if (
-            len(cr_id_instance_id := name_or_id.split(".")) == 2
-            and get_ydid_type(cr_id_instance_id[0]) == YDIDType.COMPUTE_REQUIREMENT
-        ):
+        # Is this a cr_id.instance_id specification?
+        if (cr_id_instance_id := split_instance_specification(name_or_id)) is not None:
             if (
                 cr_id := _terminate_instance(cr_id_instance_id[0], cr_id_instance_id[1])
             ) is not None:

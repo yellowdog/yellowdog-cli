@@ -27,6 +27,7 @@ from yellowdog_cli.utils.ydid_utils import (
     YDID,
     YDIDType,
     get_ydid_type,
+    split_instance_specification,
 )
 
 _UUID = "00000000-0000-0000-0000-000000000000"
@@ -92,3 +93,39 @@ class TestGetYdidType:
             YDIDType.COMPUTE_REQUIREMENT_TEMPLATE.value
             == "Compute Requirement Template"
         )
+
+
+class TestSplitInstanceSpecification:
+    CR_ID = _ydid(TYPE_COMPREQ)
+    # OCI instance IDs (OCIDs) contain dots of their own
+    OCID = (
+        "ocid1.instance.oc1.uk-london-1."
+        "anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa"
+    )
+
+    @pytest.mark.parametrize(
+        "instance_id",
+        [
+            "i-0123456789abcdef0",  # AWS
+            OCID,  # OCI
+            "my.dotted.instance.name",
+        ],
+    )
+    def test_instance_id_may_contain_dots(self, instance_id):
+        assert split_instance_specification(f"{self.CR_ID}.{instance_id}") == (
+            self.CR_ID,
+            instance_id,
+        )
+
+    def test_bare_compute_requirement_id_is_not_an_instance_specification(self):
+        assert split_instance_specification(self.CR_ID) is None
+
+    def test_trailing_dot_is_not_an_instance_specification(self):
+        assert split_instance_specification(f"{self.CR_ID}.") is None
+
+    @pytest.mark.parametrize("prefix", [_ydid(TYPE_NODE), "cr-name", ""])
+    def test_non_compute_requirement_prefix_returns_none(self, prefix):
+        assert split_instance_specification(f"{prefix}.i-0123456789abcdef0") is None
+
+    def test_compute_requirement_name_containing_dots_returns_none(self):
+        assert split_instance_specification("my.compute.requirement") is None

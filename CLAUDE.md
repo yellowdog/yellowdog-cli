@@ -57,13 +57,14 @@ yellowdog_cli/
     ├── config_types.py          # Configuration dataclasses
     ├── load_config.py           # Config loading from TOML/env vars
     ├── settings.py              # Constants, env var names, Rich theme
-    ├── entity_utils.py          # API entity lookups (LRU-cached search functions)
+    ├── entity_utils.py          # API entity lookups (LRU-cached search functions); name-glob resolution, expansion and filtering for entity selection
+    ├── glob_utils.py            # contains_glob_chars() and glob_search_prefix(): the glob-character set, and the literal prefix a pattern can be searched by
     ├── printing.py              # Rich-based output formatting
     ├── variables.py             # Variable substitution engine ({{ }} delimiters)
     ├── submit_utils.py          # Work requirement construction helpers; resolve_task_data() resolves taskData/taskDataFile (with variable substitution) for tasks and taskTemplate
     ├── csv_data.py              # CSV batch task processing; substitution uses << >> delimiters
     ├── property_names.py        # All TOML/JSON spec property name constants + ALL_KEYS list
-    ├── ydid_utils.py            # YDIDType enum + get_ydid_type() prefix parser
+    ├── ydid_utils.py            # YDIDType enum + get_ydid_type() prefix parser; split_instance_specification() splits 'cr_id.instance_id' on the first dot only, so dotted instance IDs (OCI OCIDs) survive
     ├── items.py                 # Item TypeVar — union of all SDK model types used as a generic
     ├── type_check.py            # check_int/float/bool/str/list/dict — raise on type mismatch
     ├── validate_properties.py   # validate_properties(): checks dict keys against ALL_KEYS; warns on deprecated names
@@ -71,13 +72,17 @@ yellowdog_cli/
     ├── load_resources.py        # load_resource_specifications(): loads TOML/JSON/Jsonnet files, applies substitutions, re-sequences in dependency order
     ├── provision_utils.py       # get_user_data_property() (reads/concatenates userdata scripts), get_template_id() (name→ID), get_image_id()
     ├── rclone_utils.py          # RcloneUploadedFiles: uploads task data input files via rclone; parses rclone connection strings; deduplicates
+    ├── rclone_version.py        # find_rclone()/rclone_version(): locates the rclone binary (system PATH, then rclone_api's cache) and reports its version; stdlib-only, so the standalone yd-version can use it
     ├── dataclient_utils.py      # Core logic for rclone-backed data client commands: resolve_remote_path(), upload_file/directory(), download_files(), delete_remote(), list_remote(), glob support
     ├── dataclient_wrapper.py    # @dataclient_wrapper decorator used by yd-upload/download/delete/ls (no SDK client needed)
     ├── follow_utils.py          # follow_ids(): subscribes to SSE event streams for WRs/WPs/CRs in daemon threads; auto-reconnects on drop
     ├── interactive.py           # confirmed() (respects --yes/YD_YES), select() (numbered list selection with range syntax e.g. 1,2,4-7)
     ├── start_hold_common.py     # Shared logic for yd-start and yd-hold: filter by status, confirm, apply action
+    ├── compute_action_common.py # ComputeAction (COMPUTE_STOP/START/RESTART) and the shared logic for yd-compute-stop/start/restart: CR names/globs/IDs, node IDs, and instances in 'cr_id.instance_id' form
+    ├── dryrun_utils.py          # report_dry_run(): lists what yd-cancel/yd-shutdown/yd-terminate would affect, as yd-list's table or as JSON, without acting
     ├── compact_json.py          # CompactJSONEncoder: small containers on one line, larger ones indented
-    ├── check_imports.py         # Guards for optional imports (jsonnet, cloudwizard) with install hints
+    ├── check_imports.py         # Guards for optional imports (jsonnet, cloudwizard, commander) with install hints
+    ├── user_agent.py            # set_user_agent(), called at wrapper.py import: CLI_USER_AGENT on direct calls, SDK_USER_AGENT on calls made through the SDK
     ├── rich_console_input_fixed.py  # ConsoleWithInputBackspaceFixed: workaround for Rich backspace-deletes-prompt bug
     └── cloudwizard_*.py         # AWS/Azure/GCP provider integration (cloudwizard_common, _aws, _aws_types, _azure, _gcp); sets up compute source/requirement templates and credentials; no longer creates cloud storage buckets or namespace storage configurations
 ```

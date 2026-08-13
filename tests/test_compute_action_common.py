@@ -29,6 +29,11 @@ CR_ID_2 = "ydid:compreq:d9c548:11111111-2222-3333-4444-555555555555"
 NODE_ID = "ydid:node:d9c548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8"
 INSTANCE_ID = "i-0123456789abcdef0"
 INSTANCE_SPEC = f"{CR_ID}.{INSTANCE_ID}"
+# OCI instance IDs (OCIDs) contain dots of their own
+OCI_INSTANCE_ID = (
+    "ocid1.instance.oc1.uk-london-1."
+    "anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +327,8 @@ class TestByNameOrId:
             CR_ID
         )
 
-    def test_instance_spec_routes_to_instance_action(self):
+    @pytest.mark.parametrize("instance_id", [INSTANCE_ID, OCI_INSTANCE_ID])
+    def test_instance_spec_routes_to_instance_action(self, instance_id):
         with (
             patch.object(cac_module, "ARGS_PARSER", _make_args(follow=True)),
             patch.object(
@@ -330,10 +336,10 @@ class TestByNameOrId:
             ) as mock_instance_action,
             patch.object(cac_module, "follow_ids") as mock_follow,
         ):
-            _apply_action_by_name_or_id(COMPUTE_RESTART, [INSTANCE_SPEC])
+            _apply_action_by_name_or_id(COMPUTE_RESTART, [f"{CR_ID}.{instance_id}"])
 
         mock_instance_action.assert_called_once_with(
-            COMPUTE_RESTART, CR_ID, INSTANCE_ID
+            COMPUTE_RESTART, CR_ID, instance_id
         )
         mock_follow.assert_called_once_with([CR_ID])
 

@@ -58,16 +58,25 @@ pytest -v -n 4 --run-demos
 | `test_args_command_detection.py` | `utils/args.py` — command detection uses the basename of `sys.argv[0]`, not the full install path |
 | `test_arguments_assembly.py` | `utils/submit_utils.py` — `assemble_arguments` (argumentsPrefix + arguments + argumentsPostfix combination) |
 | `test_build_dc_substitutions.py` | `utils/load_config.py` — `_build_dc_substitutions` (data client config merging and inheritance) |
+| `test_cancel_glob.py` | `cancel.py` — glob vs. literal name/YDID selection for `yd-cancel`: dry-run reporting of the matched Work Requirements, exclusion of terminal statuses |
+| `test_check_imports.py` | `utils/check_imports.py` — the optional-import guards (jsonnet, Cloud Wizard, Commander) and their install hints |
 | `test_compact_json.py` | `utils/compact_json.py` — `CompactJSONEncoder` (inline vs. expanded formatting, float precision) |
 | `test_compare.py` | `compare.py` — pure static comparison helpers |
 | `test_compute_action_common.py` | `utils/compute_action_common.py` — `yd-compute-stop/start/restart` actions: dispatch, tag-based selection, name/ID, instance and node paths |
 | `test_csv_data.py` | `utils/csv_data.py` — `CSVTaskData`, `CSVDataCache`, substitution helpers |
 | `test_dataclient_utils.py` | `utils/dataclient_utils.py` — `resolve_remote_path` (rclone remote path resolution, trailing-slash directory intent) |
+| `test_download_destination.py` | `download.py` — where each item lands locally: `--destination` vs. `--into` for one glob, one literal path and several literal paths |
+| `test_dryrun_flags.py` | `utils/args.py` — the dry-run flags on `yd-cancel`/`yd-shutdown`/`yd-terminate`: presence in `--help` and the parse-time by-name guard (no platform contact) |
+| `test_dryrun_utils.py` | `utils/dryrun_utils.py` — `report_dry_run` (human table via `yd-list`'s renderer, JSON output, empty match set) |
 | `test_environment_merge.py` | `utils/submit_utils.py` — `merge_environment` (addEnvironment merging and key-override behaviour) |
+| `test_follow_utils.py` | `utils/follow_utils.py` — SSE event-stream following: subscription, reconnection after a dropped stream, thread lifecycle |
+| `test_glob_utils.py` | `utils/glob_utils.py`, `utils/entity_utils.py`, `utils/dataclient_utils.py` — the shared glob helpers: `contains_glob_chars`, `glob_search_prefix`, `is_glob`, `filter_summaries_by_name_glob`, `resolve_name_glob`, `expand_name_globs`, `describe_glob_scope` |
 | `test_instance_pricing_preference.py` | `instancePricingPreference` enum, config field, and `load_config_work_requirement()` mapping |
 | `test_interactive.py` | `utils/interactive.py` — `confirmed` (--yes / YD_YES shortcuts), `get_selected_list_items` (range parsing: comma, dash, `*`, error recovery) |
+| `test_list_name_glob.py` | `list.py` — `yd-list --name` glob filtering for every entity type that supports it, rejection for those that don't, and the warnings for unnamed items |
 | `test_load_config_helpers.py` | `utils/load_config.py` — helpers not covered by other test files |
 | `test_ls_formatting.py` | `ls.py` — `_print_listing`, `_print_flat`, `_print_tree` output formatting |
+| `test_matched_item_rows.py` | `utils/dataclient_utils.py` — `matched_item_rows`, the enumeration behind `yd-delete`/`yd-download --dry-run --json`: each row's path must be usable verbatim and joined to the directory it came from |
 | `test_misc_utils.py` | `utils/misc_utils.py` — name formatting, ID generation, delimiter parsing, etc. |
 | `test_node_batching.py` | `provision.py`, `instantiate.py` — `_allocate_nodes_to_batches`: batch count, even distribution, remainder spreading, zero-node edge cases |
 | `test_nodeaction_args.py` | `utils/args.py` — `yd-nodeaction` argument parsing |
@@ -76,22 +85,28 @@ pytest -v -n 4 --run-demos
 | `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag) |
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
+| `test_rclone_version.py` | `utils/rclone_version.py` — the rclone version lookup order, parsing of `rclone --version` output, and not-installed handling |
 | `test_resequence_resources.py` | `utils/load_resources.py` — `_resequence_resources` (creation/removal dependency ordering) |
 | `test_resolve_entity_type.py` | `utils/args.py` — `resolve_entity_type` (full names, prefixes, synonyms) |
 | `test_resource_property_coverage.py` | `resource_models.py` — the write-side coverage gate: every settable property of every SDK model the resource corpus (`tests/resources/`) touches must be set by some specification, or excluded with an evidenced reason |
 | `test_resource_specs.py` | `resource_corpus.py`/`resource_models.py` — offline coverage of the resource corpus: each `.jsonnet` file is loaded through the CLI's own loader and built into the same SDK model(s) `create.py` builds, checking every property survives with the value sent; no credentials or network needed |
+| `test_retry_failure_policy.py` | `utils/submit_utils.py`, `submit.py` — the `RetryPolicy`/`FailurePolicy`/`TaskErrorSelector`/`Selection` builders, and the conflict and deprecation handling around them |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
 | `test_show_instance.py` | `show.py` — the Instance (`cr_id.instance_id`) form: routing, lookup and error paths |
+| `test_shutdown_glob.py` | `shutdown.py` — glob vs. literal name selection for `yd-shutdown`, excluding already-finished Worker Pools |
+| `test_sorted_objects.py` | `utils/printing.py` — `sorted_objects`: `--sort created` ordering of entity summaries, earliest first, with `--reverse` inverting it |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
 | `test_submit_batching.py` | `submit.py` — sequential vs. parallel task batch submission in `add_tasks_to_task_group` |
 | `test_submit_functions.py` | `submit.py` — `create_task_group` and `submit_work_requirement` |
 | `test_submit_utils.py` | `utils/submit_utils.py` — task/task-group naming, `get_task_data_property`, `create_task` |
+| `test_terminate_glob.py` | `terminate.py` — name/ID selection for `yd-terminate`: glob filtering, literal names, and the Instance (`cr_id.instance_id`) form |
 | `test_type_check.py` | `utils/type_check.py` — `check_int/float/bool/str/list/dict` |
 | `test_upload_destination.py` | `upload.py` — `--destination` handling for single vs. multiple files and `dir/` destinations |
+| `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
 | `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
-| `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, type constants |
+| `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 
 ### Commander GUI Tests (no flags required; skipped without a usable Qt)
 
@@ -146,6 +161,7 @@ These are supported by three non-test modules and by fixtures in the root `conft
 
 | File | What it tests |
 |---|---|
+| `test_dryrun_system.py` | End-to-end `--dry-run` for `yd-cancel`/`yd-shutdown`/`yd-terminate`: they contact the platform to list entities, using an empty namespace and tag so the matching set is empty and nothing can be acted on |
 | `test_system_error_handling.py` | Hard failures (exit 1) and soft failures (exit 0 + error message) for bad input, unknown YDIDs, missing resources |
 | `test_system_resources.py` | Create → `yd-show`/`yd-list --details` → remove lifecycle for every file in the resource corpus (`tests/resources/`), parametrized one case per file, comparing what the platform returns against what was sent; also the read gate, confirming every property the write-side coverage gate excludes as platform-assigned actually comes back from a live response at least once |
 | `test_system_cancel_hold_finish.py` | Work Requirement control commands: hold, start, finish, cancel (WR stays PENDING — no compute provisioned) |
