@@ -3810,10 +3810,11 @@ The `yd-show` command will show the details (in JSON) of any YellowDog entity th
 - Groups
 - Roles
 
-Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format used by `yd-terminate` and `yd-compute-stop`/`yd-compute-start`/`yd-compute-restart`:
+Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format used by `yd-terminate` and `yd-compute-stop`/`yd-compute-start`/`yd-compute-restart`. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment:
 
 ```shell
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
+yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
 ```
 
 When showing the details of a Configured Worker Pool, the `--show-token` option includes the Worker Pool token in the output.

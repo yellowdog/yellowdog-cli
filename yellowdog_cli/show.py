@@ -47,6 +47,7 @@ from yellowdog_cli.utils.ydid_utils import (
     TYPE_WRKR,
     YDIDType,
     get_ydid_type,
+    split_instance_specification,
 )
 
 
@@ -90,10 +91,7 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
     """
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form
-    if (
-        len(cr_id_instance_id := ydid.split(".")) == 2
-        and get_ydid_type(cr_id_instance_id[0]) == YDIDType.COMPUTE_REQUIREMENT
-    ):
+    if (cr_id_instance_id := split_instance_specification(ydid)) is not None:
         _show_instance_details(
             cr_id_instance_id[0],
             cr_id_instance_id[1],

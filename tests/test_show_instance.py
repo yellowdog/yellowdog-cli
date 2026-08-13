@@ -17,6 +17,11 @@ CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
 NODE_ID = "ydid:node:d9c548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8"
 INSTANCE_ID = "i-0123456789abcdef0"
 INSTANCE_SPEC = f"{CR_ID}.{INSTANCE_ID}"
+# OCI instance IDs (OCIDs) contain dots of their own
+OCI_INSTANCE_ID = (
+    "ocid1.instance.oc1.uk-london-1."
+    "anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa"
+)
 
 
 def _make_args() -> MagicMock:
@@ -33,15 +38,18 @@ def _make_args() -> MagicMock:
 
 
 class TestRouting:
-    def test_instance_spec_routes_to_instance_details(self):
+    @pytest.mark.parametrize("instance_id", [INSTANCE_ID, OCI_INSTANCE_ID])
+    def test_instance_spec_routes_to_instance_details(self, instance_id):
         with (
             patch.object(show_module, "ARGS_PARSER", _make_args()),
             patch.object(show_module, "_show_instance_details") as mock_instance,
         ):
-            show_details(INSTANCE_SPEC, initial_indent=2, with_final_comma=True)
+            show_details(
+                f"{CR_ID}.{instance_id}", initial_indent=2, with_final_comma=True
+            )
 
         mock_instance.assert_called_once_with(
-            CR_ID, INSTANCE_ID, initial_indent=2, with_final_comma=True
+            CR_ID, instance_id, initial_indent=2, with_final_comma=True
         )
 
     @pytest.mark.parametrize("ydid", [CR_ID, NODE_ID])
