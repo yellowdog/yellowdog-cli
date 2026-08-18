@@ -16,7 +16,7 @@ Five categories of test exist, controlled by pytest flags:
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
 | `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
 
-Around 320 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
+Around 340 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
 
 ## Quick Reference
 
@@ -110,7 +110,7 @@ pytest -v -n 4 --run-demos
 
 ### Commander GUI Tests (no flags required; skipped without a usable Qt)
 
-Around 320 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally. See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
+Around 340 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally. See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
 
 | File | What it tests |
 |---|---|
@@ -128,6 +128,7 @@ Around 320 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, and its draggable width — plus what browsing, selecting and saving do with the file the user picks |
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
+| `test_commander_config_discovery.py` | The `yd-show` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, and that every path into discovery gets that retry |
 | `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |

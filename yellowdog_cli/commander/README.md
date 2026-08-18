@@ -106,7 +106,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 
 ## Collecting and Managing Results (Panel 4)
 
-- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
+- **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used; if the tag could not be discovered from the configuration, the download and delete actions report that and do nothing rather than guessing a path. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch; a ticked directory is downloaded with everything inside it, since the listing shows top-level matches only.
 - **Delete Matching Objects** — deletes matching objects from remote storage. Like the download it first lists what the path matched and lets you choose which of those items to remove; a ticked directory is deleted with everything inside it.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.

@@ -133,8 +133,10 @@ def _no_config_discovery(request, monkeypatch):
     happened to supply.
 
     None of these tests are about discovery: they set _namespace/_tag directly or
-    call _set_placeholders. The two that do exercise _parse_yd_config itself opt out
-    with @pytest.mark.real_config_parse.
+    call _set_placeholders. The ones that do exercise discovery itself opt out with
+    @pytest.mark.real_config_parse — two in test_commander_shutdown.py, and the whole
+    of test_commander_config_discovery.py, which overrides _yd_show_command instead so
+    that it still spawns no yd-show.
 
     Returning False is what the real method returns when it cannot discover anything,
     which leaves the placeholders blank — the same state as a parse that found no
@@ -148,7 +150,9 @@ def _no_config_discovery(request, monkeypatch):
     from yellowdog_cli.commander.commander import YellowDogApp
 
     monkeypatch.setattr(
-        YellowDogApp, "_parse_yd_config", lambda self, quiet=False: False
+        YellowDogApp,
+        "_parse_yd_config",
+        lambda self, quiet=False, timeout_ms=None: False,
     )
 
 
