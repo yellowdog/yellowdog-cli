@@ -563,20 +563,57 @@ def test_the_file_selector_previews_the_highlighted_file(window, tmp_path, monke
     assert seen["body"] == '[common]\nnamespace = "pyex"'
 
 
-def test_the_file_selector_returns_the_file_the_user_opened(
+def test_the_file_selector_returns_the_file_the_user_selected(
     window, tmp_path, monkeypatch
 ):
     (tmp_path / "wr.jsonnet").write_text("{ }\n")
 
     def interact(dialog):
         highlight(dialog, "wr.jsonnet")
-        press(dialog, "Open")
+        press(dialog, "Select")
 
     drive_file_dialog(window, monkeypatch, interact)
 
     chosen = window._select_file(caption="Pick", directory=str(tmp_path))
 
     assert chosen == str(tmp_path / "wr.jsonnet")
+
+
+def test_the_file_selector_accepts_with_select_not_open(window, tmp_path, monkeypatch):
+    # These dialogs nominate a file for a later command to read; nothing is opened
+    # by pressing the button, unlike the browse dialog's 'Open'.
+    labels: dict = {}
+
+    def interact(dialog):
+        labels["buttons"] = [
+            button.text().replace("&", "")
+            for button in dialog.findChildren(QPushButton)
+        ]
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert "Select" in labels["buttons"]
+    assert "Open" not in labels["buttons"]
+
+
+def test_the_browse_dialog_still_says_open(window, tmp_path, monkeypatch):
+    # It really does open the file it is given, in the platform's default
+    # application, so 'Open' is the honest label there.
+    labels: dict = {}
+
+    def interact(dialog):
+        labels["buttons"] = [
+            button.text().replace("&", "")
+            for button in dialog.findChildren(QPushButton)
+        ]
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._browse_with_preview("Browse", str(tmp_path))
+
+    assert "Open" in labels["buttons"]
 
 
 def test_the_save_dialog_has_no_preview_and_still_suggests_its_name(

@@ -3149,6 +3149,9 @@ class YellowDogApp(QMainWindow):
         dialog.setOption(QFileDialog.Option.ReadOnly, True)
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        # 'Select', not Qt's 'Open': these dialogs nominate a file for a later
+        # command to read, and nothing is opened by pressing the button.
+        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
         self._add_preview_pane(dialog)
         return self._run_file_dialog(dialog)
 
