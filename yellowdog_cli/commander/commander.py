@@ -82,7 +82,7 @@ from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
-WINDOW_TITLE = f"YellowDog Commander (v{__version__})"
+WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
 MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
