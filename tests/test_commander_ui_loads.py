@@ -20,10 +20,13 @@ def test_ui_loads_and_binds_expected_widgets(qapp):
     win = YellowDogApp()
 
     # loadUi succeeded and the window is the branded Commander window, with the
-    # CLI version in the title. Asserted by parts rather than as an exact string
-    # so that tweaking how the version is punctuated does not fail the test.
-    assert win.windowTitle().startswith("YellowDog Commander")
-    assert __version__ in win.windowTitle()
+    # CLI version in the title. Asserted word by word rather than as a phrase:
+    # 'YellowDog Commander' became 'YellowDog CLI Commander' without the branding
+    # or the version changing, and only this assertion noticed.
+    title = win.windowTitle()
+    assert title.startswith("YellowDog")
+    assert "Commander" in title
+    assert __version__ in title
 
     # A representative sample of code-referenced widgets exist with the right
     # types (loadUi would have failed, or __init__'s signal wiring would have

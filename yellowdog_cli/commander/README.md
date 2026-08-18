@@ -74,6 +74,12 @@ That gives you four ways to widen or narrow the reach of a download or deletion:
 
 The absolute-path form deserves particular care: a path that escapes the configured prefix also escapes the namespace and tag scoping that otherwise limits what these actions can reach, as does a broad wildcard such as `*`. Delete Matching Objects also deletes recursively, so a matched directory goes with everything inside it. The confirmation dialog always lists the objects and top-level directories it matched first, and you can untick anything you want to keep, so read it before confirming — but note that a ticked directory is deleted with everything inside it, since the listing shows top-level matches only.
 
+## File Dialogs
+
+The file dialogs — choosing a configuration or definition file, and the two directory-viewing buttons — are Qt's own dialogs rather than the platform's, and each carries a preview pane down the right-hand side: highlight a file to see its name, size and kind, together with a thumbnail if it is an image or its first lines if it is text. A binary file is named and sized but not previewed, rather than shown as gibberish. Whether a file counts as text is decided by reading the start of it, not by its extension, so task output named whatever the task named it is previewed all the same.
+
+Drag the divider to set the pane's width; the thumbnail rescales as you do. That width is remembered for the rest of the session, so a pane widened once stays wide in every later dialog, whichever button opened it. The pane cannot be dragged shut, because a pane collapsed to nothing leaves nothing obvious to drag back out. The **Save Command Output** dialog is the exception to all of this: it names a file that does not exist yet, so there is nothing worth previewing and it carries no pane.
+
 ## Selecting a Configuration (Panel 1)
 
 Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
@@ -104,7 +110,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch; a ticked directory is downloaded with everything inside it, since the listing shows top-level matches only.
 - **Delete Matching Objects** — deletes matching objects from remote storage. Like the download it first lists what the path matched and lets you choose which of those items to remove; a ticked directory is deleted with everything inside it.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
-- **View Results Directory** — opens the `results` directory in the system file viewer.
+- **View Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing.
 
 The dry run overlaps with those selection dialogs, deliberately: both show you what the path matched before anything happens, and either lets you back out. They differ in three ways worth knowing. The dry run skips the dialog and writes its report to the command output window, where you can scroll it, copy it, and save it to a file, whereas the dialog's listing is transient and shows about a dozen rows before scrolling. The dry run reports what the *pattern* matched, so it also lists objects whose names contain a wildcard character or a `{{` placeholder — which the selection dialogs refuse to act on, and so cannot show you acting on. And because `-y`/`--yes` suppresses both dialogs, a dry run is the only preview left in a session launched that way. What neither reports is how much sits inside a matched directory: counting that means walking every subtree, one recursive listing per matched item, which is why it is left out of both.
 
@@ -126,7 +132,7 @@ Each pair is passed to the command as a `-v` option (`-v instances=2 -v template
 
 ## Utility Actions
 
-- **View Config Directory** — opens the configuration file's directory in the system file viewer.
+- **View Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
 - **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect Files** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
