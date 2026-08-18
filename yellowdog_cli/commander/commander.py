@@ -35,7 +35,7 @@ from codecs import getincrementaldecoder
 from collections.abc import Callable
 from dataclasses import dataclass
 from json import loads
-from os.path import abspath, basename, dirname, exists, join, relpath
+from os.path import abspath, basename, dirname, exists, getsize, isdir, join, relpath
 
 _PKG_DIR = dirname(abspath(__file__))
 
@@ -55,7 +55,10 @@ from PyQt6.QtGui import (
     QFont,
     QFontMetrics,
     QIcon,
+    QImage,
+    QImageReader,
     QPalette,
+    QPixmap,
     QStyleHints,
     QTextCursor,
 )
@@ -73,6 +76,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -82,7 +87,7 @@ from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
-WINDOW_TITLE = f"YellowDog Commander (v{__version__})"
+WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 SELECTED_CONFIG_PREFIX = "  "
 NO_SELECTED_CONFIG = "No configuration selected"
 MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
@@ -108,6 +113,12 @@ KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
+PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
+PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
+PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
+PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
+PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
+PREVIEW_NO_SELECTION = "No file selected"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
@@ -287,6 +298,240 @@ def path_would_be_globbed(remote_path: str) -> bool:
     """
     path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
     return contains_glob_chars(path_part)
+
+
+def format_file_size(size: int) -> str:
+    """
+    A file size in the units the platform's own file viewers use — powers of
+    1000, as both Finder and Windows Explorer report — with one decimal place
+    above a kilobyte. Small files keep their exact byte count, where '87 bytes'
+    says more than '0.1 kB'.
+    """
+    if size < 1000:
+        return f"{size} byte{'' if size == 1 else 's'}"
+    scaled = float(size)
+    for unit in ("kB", "MB", "GB"):
+        scaled /= 1000
+        if scaled < 1000:
+            return f"{scaled:,.1f} {unit}"
+    return f"{scaled / 1000:,.1f} TB"
+
+
+class FilePreview(QWidget):
+    """
+    The preview column added to the directory-browsing file dialog: the name of
+    whatever is highlighted, a size-and-kind line, and then either a scaled
+    thumbnail (anything Qt can decode as an image) or the head of the file as
+    text (anything that decodes as UTF-8). Anything else — a binary, an
+    unreadable file — gets the size-and-kind line alone, which is still more
+    than the bare listing says.
+
+    This exists because Qt's own file dialog has no preview, and Commander's
+    directory buttons no longer hand the directory to the platform's file
+    viewer, so Finder's Quick Look is not there to fall back on. It is a plain
+    widget driven by the dialog's currentChanged signal rather than a
+    QFileDialog subclass, so the dialog itself stays the stock one.
+
+    Its width is the user's to set (it goes into the dialog's own splitter), so
+    the pane keeps the decoded image rather than only the scaled thumbnail: a
+    widened pane rescales from the original, where rescaling the thumbnail would
+    show a magnified version of the smaller one.
+    """
+
+    def __init__(self, font: QFont, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setMinimumWidth(PREVIEW_MIN_WIDTH)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.name_label = QLabel()
+        self.name_label.setWordWrap(True)
+        name_font = self.name_label.font()
+        name_font.setBold(True)
+        self.name_label.setFont(name_font)
+        layout.addWidget(self.name_label)
+
+        self.meta_label = QLabel()
+        self.meta_label.setWordWrap(True)
+        layout.addWidget(self.meta_label)
+
+        self.image_view = QLabel()
+        self.image_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Ignored in both directions: a QLabel's size hint grows with the pixmap
+        # it holds, so a label that drives the layout would widen the pane to fit
+        # the thumbnail, which rescales the thumbnail, which widens the pane.
+        self.image_view.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
+        self.image_view.setMinimumSize(1, 1)
+        layout.addWidget(self.image_view, 1)
+
+        self.text_view = QPlainTextEdit()
+        self.text_view.setReadOnly(True)
+        self.text_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.text_view.setFont(font)
+        layout.addWidget(self.text_view, 1)
+
+        self._image: QImage | None = None  # the decoded original, for rescaling
+        self.clear()
+
+    def clear(self):
+        """Show the placeholder, as before anything has been highlighted."""
+        self._describe(PREVIEW_NO_SELECTION, "")
+
+    def show_path(self, path: str):
+        """
+        Preview whatever 'path' names. Connected to the dialog's currentChanged,
+        so it is called for directories and for paths that have since gone away
+        as well as for files, and must show something for all of them.
+        """
+        if not path or not exists(path):
+            self.clear()
+            return
+
+        if isdir(path):
+            self._describe(basename(path.rstrip("/\\")) or path, "Directory")
+            return
+
+        name = basename(path)
+        try:
+            size = getsize(path)
+        except OSError as error:
+            self._describe(name, f"Unreadable: {error.strerror or error}")
+            return
+
+        image, image_format = self._read_image(path)
+        if image is not None:
+            self._describe(
+                name,
+                f"{format_file_size(size)}  ·  {image_format} image"
+                f"  ·  {image.width()} x {image.height()}",
+            )
+            self._image = image
+            # Shown before it is filled: _thumbnail measures the label, and a
+            # layout leaves a hidden widget's geometry alone.
+            self.image_view.setVisible(True)
+            self.image_view.setPixmap(self._thumbnail(image))
+            return
+
+        head = self._decoded_head(path)
+        if head is None:
+            self._describe(name, f"{format_file_size(size)}  ·  no preview available")
+            return
+        self._describe(name, f"{format_file_size(size)}  ·  text")
+        self.text_view.setPlainText(head)
+        self.text_view.setVisible(True)
+
+    def _describe(self, name: str, meta: str):
+        """
+        Set the two heading lines and hide both preview bodies, which is the
+        state every branch of show_path starts from — one of them then reveals
+        the body it has filled in.
+        """
+        self.name_label.setText(name)
+        self.meta_label.setText(meta)
+        self._image = None
+        self.image_view.clear()
+        self.image_view.setVisible(False)
+        self.text_view.clear()
+        self.text_view.setVisible(False)
+
+    @staticmethod
+    def _read_image(path: str) -> tuple[QImage | None, str]:
+        """
+        The decoded image and the name of its format, or (None, "") if Qt cannot
+        read the file as an image. canRead() alone is not enough: it is happy
+        with a truncated or corrupt file that read() then fails on, and a
+        half-downloaded result file is exactly the case in hand.
+        """
+        reader = QImageReader(path)
+        reader.setAutoTransform(True)  # honour a JPEG's EXIF orientation
+        if not reader.canRead():
+            return None, ""
+        # Read the format first: it is the detected format of a file not yet
+        # consumed, and comes back empty once read() has been called.
+        image_format = reader.format().data().decode(errors="replace").upper()
+        image = reader.read()
+        if image.isNull():
+            return None, ""
+        return image, image_format or "unrecognised"
+
+    def resizeEvent(self, a0):
+        """
+        Rescale the thumbnail to the pane's new width. Dragging the pane wider
+        should show more of the image, not the same thumbnail with more grey
+        around it — and there is no other moment at which the new width is known.
+        """
+        super().resizeEvent(a0)
+        if self._image is not None:
+            self.image_view.setPixmap(self._thumbnail(self._image))
+
+    def _thumbnail(self, image: QImage) -> QPixmap:
+        """
+        The image scaled to fit the space the pane currently gives it,
+        downscaling only — blowing a 16x16 icon up to the width of the pane
+        makes it less recognisable, not more. Falls back to the pane's opening
+        size for a preview filled in before the pane has been laid out.
+        """
+        layout = self.layout()
+        if layout is not None:
+            # Give the label its real geometry before measuring it. A layout is
+            # otherwise activated by an event, which has not been delivered yet
+            # when the pane has only just been shown or resized — leaving the
+            # label at its default size, and the thumbnail scaled to that.
+            layout.activate()
+        available = QSize(
+            self.image_view.width() or PREVIEW_PANE_WIDTH,
+            self.image_view.height() or PREVIEW_IMAGE_HEIGHT,
+        )
+        pixmap = QPixmap.fromImage(image)
+        if (
+            pixmap.width() <= available.width()
+            and pixmap.height() <= available.height()
+        ):
+            return pixmap
+        return pixmap.scaled(
+            available,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+    @staticmethod
+    def _decoded_head(path: str) -> str | None:
+        """
+        The first lines of a text file, elided with an ellipsis line if there is
+        more, or None if the file is not text.
+
+        Read as bytes and decoded strictly, rather than trusted by extension:
+        task output, logs and JSON arrive with every extension and none. The
+        incremental decoder is what makes the byte cap safe — it holds back a
+        multi-byte character straddling the cap instead of declaring the file
+        binary. A NUL byte is treated as proof of binary before that, since a
+        UTF-16 file decodes as UTF-8 without complaint and would otherwise be
+        previewed as gibberish interleaved with NULs.
+        """
+        try:
+            with open(path, "rb") as file:
+                head = file.read(PREVIEW_READ_BYTES + 1)
+        except OSError:
+            return None
+
+        truncated = len(head) > PREVIEW_READ_BYTES
+        head = head[:PREVIEW_READ_BYTES]
+        if b"\0" in head:
+            return None
+        try:
+            text = getincrementaldecoder("utf-8")(errors="strict").decode(
+                head, final=not truncated
+            )
+        except UnicodeDecodeError:
+            return None
+
+        lines = text.splitlines()
+        elided = truncated or len(lines) > PREVIEW_MAX_LINES
+        body = "\n".join(lines[:PREVIEW_MAX_LINES])
+        return f"{body}\n…" if elided else body
 
 
 class LineBuffer:
@@ -508,6 +753,10 @@ class YellowDogApp(QMainWindow):
         self.setWindowTitle(WINDOW_TITLE)
 
         self._pid = os.getpid()
+
+        # The width of the file dialogs' preview pane, for the session: set it
+        # once by dragging, and every later dialog opens at that width.
+        self._preview_width = PREVIEW_PANE_WIDTH
 
         # Override the branding pixmap with the SVG for the current style
         self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
@@ -2169,15 +2418,120 @@ class YellowDogApp(QMainWindow):
         self._open_file_viewer(self._working_dir())
 
     def _open_file_viewer(self, directory: str):
+        """
+        Browse a directory using Qt's own file dialog rather than the platform's
+        file viewer, so the listing looks and behaves like the file selectors
+        elsewhere in the window. A chosen file is handed to the platform's
+        default application for its type; dismissing the dialog does nothing.
+        """
         if not exists(directory):
             self._log(f"Directory '{directory}' does not (yet) exist")
             return
+        file_name = self._browse_with_preview(f"Browse '{directory}'", directory)
+        if file_name is not None:
+            self._open_with_default_application(file_name)
+
+    def _build_browse_dialog(self, caption: str, directory: str) -> QFileDialog:
+        """
+        Build (but do not show) the read-only browse dialog: Qt's own file
+        dialog rooted at 'directory', previewing whatever is highlighted.
+
+        Read-only because this is a viewer, not a file manager: Qt's dialog
+        otherwise offers renaming, deleting and creating folders inside the
+        results directory, none of which is what the button promises.
+        """
+        dialog = QFileDialog(self, caption, directory)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.setOption(QFileDialog.Option.ReadOnly, True)
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
+        self._add_preview_pane(dialog)
+        return dialog
+
+    def _add_preview_pane(self, dialog: QFileDialog) -> FilePreview | None:
+        """
+        Add a FilePreview to a non-native file dialog and wire it to the
+        dialog's currentChanged signal, returning it — or None if there was
+        nowhere to put it.
+
+        It goes into the splitter that already holds the dialog's sidebar and
+        listing, which is what makes the width draggable, and what puts the
+        handle where a user looks for one. That splitter is Qt's own, so it is
+        reached defensively: a preview parented to the dialog but never placed
+        would be drawn on top of the listing rather than beside it, so with no
+        splitter to hold it the dialog is left exactly as Qt built it.
+
+        The pane opens at the width the user last dragged it to, remembered for
+        the session — a width worth setting once, not once per dialog. It is
+        deliberately not collapsible: a pane dragged shut leaves a handle flush
+        against the dialog's edge, which is a poor thing to have to find again.
+        """
+        splitter = dialog.findChild(QSplitter, "splitter")
+        if splitter is None:
+            return None
+
+        preview = FilePreview(self._font, dialog)
+        preview.setObjectName("file_preview")
+        splitter.addWidget(preview)
+        index = splitter.indexOf(preview)
+        splitter.setCollapsible(index, False)
+        splitter.setStretchFactor(index, 0)
+
+        # Widen the dialog by the pane rather than letting the pane take its
+        # width out of the listing, which is the part the user came for.
+        dialog.resize(dialog.width() + self._preview_width, dialog.height())
+        sizes = splitter.sizes()
+        sizes[index] = self._preview_width
+        splitter.setSizes(sizes)
+
+        dialog.currentChanged.connect(preview.show_path)
+        dialog.finished.connect(
+            lambda _result: self._remember_preview_width(splitter, index)
+        )
+        return preview
+
+    def _remember_preview_width(self, splitter: QSplitter, index: int):
+        """
+        Keep the width the preview pane ended up at, for the next dialog. Read
+        on the dialog's own finished signal, which is emitted while the splitter
+        is still alive — a width read after deleteLater() would not be.
+        """
+        sizes = splitter.sizes()
+        if 0 <= index < len(sizes) and sizes[index] > 0:
+            self._preview_width = sizes[index]
+
+    def _browse_with_preview(self, caption: str, directory: str) -> str | None:
+        """
+        Browse 'directory' and return the file the user opened, or None if the
+        dialog was dismissed.
+        """
+        return self._run_file_dialog(self._build_browse_dialog(caption, directory))
+
+    @staticmethod
+    def _run_file_dialog(dialog: QFileDialog) -> str | None:
+        """
+        Run a file dialog and return the single path chosen, or None if it was
+        dismissed. Shared by browsing, selecting and saving, which differ in how
+        the dialog is set up and not at all in how it is run.
+        """
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            selected = dialog.selectedFiles()
+            return selected[0] if selected else None
+        finally:
+            # Parented to the main window, so without this every dialog — and
+            # the file-system model behind it — would live for the session.
+            dialog.deleteLater()
+
+    @staticmethod
+    def _open_with_default_application(path: str):
         if MACOS:
-            os_system(f"open {quote(directory)}")
+            os_system(f"open {quote(path)}")
         elif LINUX:
-            os_system(f"xdg-open {quote(directory)} &")
+            os_system(f"xdg-open {quote(path)} &")
         elif WINDOWS:
-            os_startfile(directory)
+            os_startfile(path)
 
     def _show_config_action(self):
         if not self._check_config_file():
@@ -2561,16 +2915,19 @@ class YellowDogApp(QMainWindow):
         directory: str = ".",
         file_pattern: str = "*",
     ) -> str | None:
-        options: QFileDialog.Option = QFileDialog.Option.ReadOnly
-        options |= QFileDialog.Option.DontUseNativeDialog
-        file_name = QFileDialog.getOpenFileName(
-            self,
-            caption=caption,
-            directory=directory,
-            filter=file_pattern,
-            options=options,
-        )
-        return None if file_name[0] == "" else file_name[0]
+        """
+        Ask for an existing file to read, returning None if the dialog was
+        dismissed. Carries the same preview pane as the browse dialog: picking
+        the right configuration or definition file out of several similarly
+        named ones is exactly the case a preview answers.
+        """
+        dialog = QFileDialog(self, caption, directory, file_pattern)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.setOption(QFileDialog.Option.ReadOnly, True)
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        self._add_preview_pane(dialog)
+        return self._run_file_dialog(dialog)
 
     def _save_file(
         self,
@@ -2587,15 +2944,16 @@ class YellowDogApp(QMainWindow):
         look and behave alike; Qt's own dialog also prompts before overwriting an
         existing file, which is why no separate overwrite check is needed here.
         ReadOnly is deliberately absent — unlike _select_file, this one writes.
+
+        No preview pane, unlike every other file dialog here: this one names a
+        file that does not exist yet, so all a preview could show is a file the
+        user is not saving to, at the cost of the width the pane takes up.
         """
-        file_name = QFileDialog.getSaveFileName(
-            self,
-            caption=caption,
-            directory=directory,
-            filter=file_pattern,
-            options=QFileDialog.Option.DontUseNativeDialog,
-        )
-        return None if file_name[0] == "" else file_name[0]
+        dialog = QFileDialog(self, caption, directory, file_pattern)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+        return self._run_file_dialog(dialog)
 
 
 def run_app(config_file: str | None = None, disable_confirmations: bool = False):
