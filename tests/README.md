@@ -125,7 +125,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
 | `test_commander_reentrancy.py` | The guard that stops a second action starting while one is enumerating in a nested event loop |
 | `test_commander_shutdown.py` | The shutdown path: no process destroyed while running, no handler firing against a deleted object, nested loops released |
-| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, and its draggable width — plus what browsing, selecting and saving do with the file the user picks |
+| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, and its draggable width — the hand-over to the platform's file viewer, and what browsing, selecting and saving do with the file the user picks |
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_notices.py` | The modal notice for a missing `results` directory: shown and logged, one OK button, plain text so a Windows path survives, and log-only under `--yes` or shutdown |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |

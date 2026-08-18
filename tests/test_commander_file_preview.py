@@ -19,6 +19,7 @@ import qt_guard
 
 qt_guard.require_qt()
 
+from os.path import realpath
 from time import monotonic
 
 import gui_harness
@@ -27,14 +28,18 @@ from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QDialogButtonBox,
     QFileDialog,
     QLineEdit,
+    QProxyStyle,
     QPushButton,
     QSplitter,
+    QStyle,
     QWidget,
 )
 
 from yellowdog_cli.commander.commander import (
+    NATIVE_VIEWER_BUTTON_TEXT,
     PREVIEW_MAX_LINES,
     PREVIEW_MIN_WIDTH,
     PREVIEW_NO_SELECTION,
@@ -129,6 +134,40 @@ def dialog_preview(dialog) -> FilePreview:
     found = dialog.findChild(FilePreview, "file_preview")
     assert found is not None, "the browse dialog has no preview pane"
     return found
+
+
+class MacButtonLayout(QProxyStyle):
+    """
+    A style that lays a dialog's button box out the way macOS does: the accept and
+    reject buttons in a vertical column, with an ActionRole button appended after
+    them.
+
+    Needed because the offscreen platform's own style puts an ActionRole button
+    first whatever the code does, so without this the placement is untestable
+    here — the assertion would pass whether or not Commander places the button
+    itself. Which is exactly how 'on the Mac it sits below Open' got past a green
+    suite once already.
+    """
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_DialogButtonLayout:
+            return QDialogButtonBox.ButtonLayout.MacLayout.value
+        return super().styleHint(hint, option, widget, returnData)
+
+
+@pytest.fixture
+def mac_button_layout(qapp):
+    """
+    Lay dialog button boxes out as macOS does, for one test.
+
+    Restored by name rather than by holding the old style object: setStyle takes
+    ownership of what it is given and deletes the style it replaces, so keeping a
+    reference to put back would leave a dangling one.
+    """
+    previous = qapp.style().objectName()
+    qapp.setStyle(MacButtonLayout())
+    yield
+    qapp.setStyle(previous)
 
 
 def press(dialog, label: str) -> None:
@@ -648,3 +687,138 @@ def test_the_width_the_user_drags_the_pane_to_is_used_by_the_next_dialog(
     # Remembered across dialog *kinds*: the width is a property of the session,
     # not of the button that happened to open a dialog.
     assert reopened["width"] == dragged_to
+
+
+# --- Switching to the platform's own file viewer ------------------------------
+# Qt's dialog is read-only, so this button is the only way from here to delete or
+# rename anything in the results directory.
+
+
+def test_the_browse_dialog_offers_the_platform_file_viewer(
+    window, tmp_path, monkeypatch
+):
+    handed: list[str] = []
+    monkeypatch.setattr(window, "_open_with_default_application", handed.append)
+    drive_file_dialog(
+        window, monkeypatch, lambda dialog: press(dialog, NATIVE_VIEWER_BUTTON_TEXT)
+    )
+
+    chosen = window._browse_with_preview("Browse", str(tmp_path))
+
+    assert [realpath(path) for path in handed] == [realpath(str(tmp_path))]
+    # Switching hands over; it does not also report a file the user never picked.
+    assert chosen is None
+
+
+def test_the_platform_viewer_is_given_the_directory_on_screen(
+    window, tmp_path, monkeypatch
+):
+    # Navigating first and then switching should hand over what is being looked
+    # at, not wherever the dialog happened to open.
+    (tmp_path / "task_1").mkdir()
+    handed: list[str] = []
+    monkeypatch.setattr(window, "_open_with_default_application", handed.append)
+
+    def interact(dialog):
+        dialog.setDirectory(str(tmp_path / "task_1"))
+        press(dialog, NATIVE_VIEWER_BUTTON_TEXT)
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._browse_with_preview("Browse", str(tmp_path))
+
+    assert [realpath(path) for path in handed] == [realpath(str(tmp_path / "task_1"))]
+
+
+def test_the_platform_viewer_button_does_not_steal_the_default(
+    window, tmp_path, monkeypatch
+):
+    # An autoDefault button that gains focus takes the default from the accept
+    # button, which would make Return mean 'switch to Finder' instead of 'Open'.
+    seen: dict = {}
+
+    def interact(dialog):
+        # With focus on it, an autoDefault button *becomes* the default — which is
+        # the mechanism to guard against, so the check has to focus it first.
+        for button in dialog.findChildren(QPushButton):
+            if button.text().replace("&", "") == NATIVE_VIEWER_BUTTON_TEXT:
+                button.setFocus()
+        QApplication.processEvents()  # deliver the focus change before reading it
+        assert dialog.focusWidget() is not None
+        default = gui_harness.default_button(dialog)
+        seen["default"] = None if default is None else default.text().replace("&", "")
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._browse_with_preview("Browse", str(tmp_path))
+
+    assert seen["default"] == "Open"
+
+
+def test_the_file_selector_has_no_platform_viewer_button(window, tmp_path, monkeypatch):
+    # Deliberate: a selector is for feeding a file to a command, not for managing
+    # the directory it sits in.
+    labels: dict = {}
+
+    def interact(dialog):
+        labels["buttons"] = [
+            button.text().replace("&", "")
+            for button in dialog.findChildren(QPushButton)
+        ]
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert NATIVE_VIEWER_BUTTON_TEXT not in labels["buttons"]
+
+
+def test_the_platform_viewer_button_comes_ahead_of_the_accept_button(
+    window, tmp_path, monkeypatch, mac_button_layout
+):
+    # Under the macOS button layout, Qt appends an ActionRole button after Cancel,
+    # so it trailed the dialog's own answers. Commander places it first instead —
+    # above Open in a vertical column, leftmost in a horizontal row.
+    corners: dict = {}
+
+    def interact(dialog):
+        box = dialog.findChild(QDialogButtonBox)
+        assert box is not None, "the file dialog has no button box"
+        for button in box.buttons():
+            label = button.text().replace("&", "")
+            corners[label] = button.mapTo(dialog, button.rect().topLeft())
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._browse_with_preview("Browse", str(tmp_path))
+
+    finder, accept = corners[NATIVE_VIEWER_BUTTON_TEXT], corners["Open"]
+    assert finder.y() < accept.y(), "the button trails the dialog's own answers"
+
+
+def test_the_platform_viewer_button_is_first_in_the_button_box(
+    window, tmp_path, monkeypatch
+):
+    # The layout-order counterpart of the geometric check above, which holds
+    # whichever direction the platform's box runs in.
+    order: dict = {}
+
+    def interact(dialog):
+        box = dialog.findChild(QDialogButtonBox)
+        assert box is not None, "the file dialog has no button box"
+        layout = box.layout()
+        assert layout is not None, "the button box has no layout"
+        button = next(
+            b
+            for b in box.buttons()
+            if b.text().replace("&", "") == NATIVE_VIEWER_BUTTON_TEXT
+        )
+        order["index"] = layout.indexOf(button)
+        # Still a proper member of the box, with its role: only its position moved.
+        order["role"] = box.buttonRole(button)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._browse_with_preview("Browse", str(tmp_path))
+
+    assert order["index"] == 0
+    assert order["role"] == QDialogButtonBox.ButtonRole.ActionRole

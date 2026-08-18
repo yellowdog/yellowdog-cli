@@ -64,6 +64,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -126,6 +127,12 @@ PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
 PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
 PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
 PREVIEW_NO_SELECTION = "No file selected"
+# What the browse dialog's button for handing over to the platform's own file
+# viewer says. Qt's dialog is read-only, so this is the route to deleting or
+# renaming anything in the directory being browsed.
+NATIVE_VIEWER_BUTTON_TEXT = (
+    "Use Finder" if MACOS else "Use Explorer" if WINDOWS else "Use File Manager"
+)
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
 # to derive a default object path from. Better than acting on a guess: the tag is
 # interpolated into the default path, and a missing one used to produce 'None*'.
@@ -2609,7 +2616,60 @@ class YellowDogApp(QMainWindow):
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
         self._add_preview_pane(dialog)
+        self._add_platform_viewer_button(dialog)
         return dialog
+
+    def _add_platform_viewer_button(self, dialog: QFileDialog):
+        """
+        Add a button handing the directory being browsed to the platform's own
+        file viewer (Finder, Explorer, the desktop's file manager) and closing
+        this dialog.
+
+        Qt's dialog is deliberately read-only, so this is the route to deleting or
+        renaming something in the results directory — which is what the platform
+        viewer was worth keeping a way back to for. Closing rather than staying
+        open: the viewer is where the contents get changed, and a listing left
+        behind it would be showing a directory that no longer looks like that.
+
+        ActionRole so Qt does not read the click as accepting or rejecting, and
+        autoDefault off so Return still means Open — an autoDefault button that
+        gains focus takes the default role from the accept button. The handler
+        rejects explicitly, which is what makes _run_file_dialog report no chosen
+        file: switching to the viewer is not picking something to open.
+        """
+        button_box = dialog.findChild(QDialogButtonBox)
+        if button_box is None:
+            return  # no button box to attach to: leave the dialog as Qt built it
+        button = cast(
+            QPushButton,
+            button_box.addButton(
+                NATIVE_VIEWER_BUTTON_TEXT, QDialogButtonBox.ButtonRole.ActionRole
+            ),
+        )
+        button.setAutoDefault(False)
+        button.clicked.connect(lambda: self._switch_to_platform_viewer(dialog))
+
+        # Placed explicitly at the head of the box rather than left where the
+        # style put it: each style appends an ActionRole button somewhere of its
+        # own choosing — macOS after Cancel, Fusion before Open — so the button
+        # moved about between platforms. First means above Open in the vertical
+        # column macOS lays out, and leftmost in the row Windows and Linux do,
+        # which in both cases keeps it clear of the accept and reject buttons
+        # rather than trailing after them. The button stays a member of the box
+        # with its role and wiring intact; only its position in the layout moves.
+        box_layout = button_box.layout()
+        if box_layout is not None:
+            box_layout.removeWidget(button)
+            cast(QBoxLayout, box_layout).insertWidget(0, button)
+
+    def _switch_to_platform_viewer(self, dialog: QFileDialog):
+        """
+        Hand the directory currently on screen to the platform's file viewer and
+        close the dialog. The current directory, not the one the dialog opened
+        at, so navigating into a subdirectory first hands over what is displayed.
+        """
+        self._open_with_default_application(dialog.directory().absolutePath())
+        dialog.reject()
 
     def _add_preview_pane(self, dialog: QFileDialog) -> FilePreview | None:
         """
