@@ -74,6 +74,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -2455,6 +2456,47 @@ class YellowDogApp(QMainWindow):
         dialog.exec()
         return clicked.get("button") is quit_btn
 
+    def _notify(self, message: str):
+        """
+        Log a message and show it in a modal notice, for a click that did nothing
+        and would otherwise say so only in the output window.
+
+        Logged first and always, so the output window keeps the whole narrative
+        with its timestamps whether or not a dialog is shown — and so the notice
+        survives the two cases that get no dialog: an unattended session, where
+        '--yes' says nobody is there to press OK and a modal would hang, and
+        shutdown, where the widgets are going away.
+        """
+        self._log(message)
+        if self._confirmations_disabled or self._shutting_down:
+            return
+        dialog = self._build_notice_dialog(message)
+        try:
+            dialog.exec()
+        finally:
+            # Parented to the main window, so without this every notice would
+            # live for the rest of the session.
+            dialog.deleteLater()
+
+    def _build_notice_dialog(self, message: str) -> QMessageBox:
+        """
+        Build (but do not show) the notice: one message, one OK button.
+
+        Plain text deliberately: a notice carries filesystem paths and entity
+        names, and as rich text a Windows path loses its backslashes while
+        anything between angle brackets disappears as an unknown tag.
+
+        Split from _notify so that a test can arm the real dialog rather than
+        stub exec() — the convention the other dialogs here follow.
+        """
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(WINDOW_TITLE)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(message)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        return dialog
+
     def _build_quit_dialog(self, names: list[str]) -> tuple[QDialog, QPushButton]:
         """
         Build (but do not show) the quit-while-running dialog: a warning, the
@@ -2522,7 +2564,18 @@ class YellowDogApp(QMainWindow):
         self.stdin_input.setPlainText("")
 
     def _view_results_action(self):
-        self._open_file_viewer(join(self._working_dir(), RESULTS_DIR))
+        """
+        Browse the results directory, saying so in a dialog when there is not one
+        yet — the commonest reason this button appears to do nothing, and a log
+        line alone was missed. The check is repeated in _open_file_viewer, which
+        keeps its log-only report for the config-directory button and for the
+        directory disappearing between here and there.
+        """
+        results_dir = join(self._working_dir(), RESULTS_DIR)
+        if not exists(results_dir):
+            self._notify(f"Directory '{results_dir}' does not (yet) exist")
+            return
+        self._open_file_viewer(results_dir)
 
     def _view_config_directory_action(self):
         self._open_file_viewer(self._working_dir())

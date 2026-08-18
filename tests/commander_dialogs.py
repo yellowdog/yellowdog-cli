@@ -129,3 +129,33 @@ def drive_chooser(
         return dialog, accept_btn
 
     monkeypatch.setattr(window, "_build_chooser_dialog", build)
+
+
+def drive_notice(window, monkeypatch, inspect=None) -> dict:
+    """
+    Arm the next notice dialog so that, inside its real exec(), 'inspect(dialog)'
+    runs (if given) and OK is pressed. Returns a dict recording how many notices
+    were shown and the message of the last one, since a notice has no result for
+    the caller to inspect afterwards.
+
+    A test asserting that NO notice appears can use the same dict: production
+    builds the dialog, so an unexpected notice shows up as a count of one.
+    """
+    shown: dict = {"count": 0, "message": None}
+    real_build = window._build_notice_dialog
+
+    def build(message):
+        dialog = real_build(message)
+        shown["count"] += 1
+        shown["message"] = message
+
+        def interact(open_dialog):
+            if inspect is not None:
+                inspect(open_dialog)
+            gui_harness.button_labelled(open_dialog, "OK").click()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog
+
+    monkeypatch.setattr(window, "_build_notice_dialog", build)
+    return shown
