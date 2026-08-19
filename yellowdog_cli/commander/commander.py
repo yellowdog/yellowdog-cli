@@ -90,7 +90,10 @@ from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
-SELECTED_CONFIG_PREFIX = "  "
+# px: inset between the selected-configuration label's frame and its text.
+# Set here rather than in commander.ui because PyQt6's loadUi() silently
+# drops a QLabel's 'margin' property, leaving the text against the frame.
+SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
 MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
 PATH_ELLIPSIS = "…"
@@ -773,6 +776,10 @@ class YellowDogApp(QMainWindow):
         # Include the CLI version in the window title
         self.setWindowTitle(WINDOW_TITLE)
 
+        # The framed label showing the selected configuration file (the frame
+        # itself comes from commander.ui, which cannot carry this margin)
+        self.select_config_label.setMargin(SELECTED_CONFIG_MARGIN)
+
         self._pid = os.getpid()
 
         # The width of the file dialogs' preview pane, for the session: set it
@@ -1139,9 +1146,7 @@ class YellowDogApp(QMainWindow):
 
         if config_file is None:
             self._config_file = None
-            self.select_config_label.setText(
-                f"{SELECTED_CONFIG_PREFIX}{NO_SELECTED_CONFIG}"
-            )
+            self.select_config_label.setText(NO_SELECTED_CONFIG)
             self.select_config_label.setToolTip("")
             self._invalidate_config_parse()
             # Cleared first, then filled in again by whatever discovery finds
@@ -1159,9 +1164,7 @@ class YellowDogApp(QMainWindow):
         self._config_file = selected_config_file
         self._invalidate_config_parse()
         self._log(f"Selected configuration file '{selected_config_file}'")
-        self.select_config_label.setText(
-            f"{SELECTED_CONFIG_PREFIX}{elide_path(selected_config_file)}"
-        )
+        self.select_config_label.setText(elide_path(selected_config_file))
         self.select_config_label.setToolTip(abspath(selected_config_file))
         self._reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
