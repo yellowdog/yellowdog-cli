@@ -87,13 +87,22 @@
         <property name="maximumSize">
          <size>
           <width>16777215</width>
-          <height>30</height>
+          <height>34</height>
          </size>
         </property>
         <property name="font">
          <font>
           <bold>true</bold>
          </font>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Shadow::Sunken</enum>
+        </property>
+        <property name="margin">
+         <number>5</number>
         </property>
         <property name="text">
          <string/>

@@ -64,6 +64,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -74,6 +75,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
@@ -88,7 +90,10 @@ from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
-SELECTED_CONFIG_PREFIX = "  "
+# px: inset between the selected-configuration label's frame and its text.
+# Set here rather than in commander.ui because PyQt6's loadUi() silently
+# drops a QLabel's 'margin' property, leaving the text against the frame.
+SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
 MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
 PATH_ELLIPSIS = "…"
@@ -111,6 +116,12 @@ SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
+# The one retry after a timeout gets a longer budget: by then it is known that a
+# 'yd-show' here is slow rather than hung, and on Windows the first 'yd-*' of a
+# session can legitimately need this long to start (interpreter start, SDK
+# imports, a virus scan of a freshly installed console script).
+CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
+CONFIG_PARSE_RETRY_DELAY_MS = 1_000  # let the event loop breathe before retrying
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
@@ -119,6 +130,19 @@ PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
 PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
 PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
 PREVIEW_NO_SELECTION = "No file selected"
+# What the browse dialog's button for handing over to the platform's own file
+# viewer says. Qt's dialog is read-only, so this is the route to deleting or
+# renaming anything in the directory being browsed.
+NATIVE_VIEWER_BUTTON_TEXT = (
+    "Use Finder" if MACOS else "Use Explorer" if WINDOWS else "Use File Manager"
+)
+# Shown when the Path field is empty and the tag is unknown, so there is nothing
+# to derive a default object path from. Better than acting on a guess: the tag is
+# interpolated into the default path, and a missing one used to produce 'None*'.
+NO_OBJECT_PATH = (
+    "No object path: the namespace/tag discovery has not succeeded, so there is"
+    " no default path to match. Enter a Path, or reselect the configuration file."
+)
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
@@ -752,6 +776,10 @@ class YellowDogApp(QMainWindow):
         # Include the CLI version in the window title
         self.setWindowTitle(WINDOW_TITLE)
 
+        # The framed label showing the selected configuration file (the frame
+        # itself comes from commander.ui, which cannot carry this margin)
+        self.select_config_label.setMargin(SELECTED_CONFIG_MARGIN)
+
         self._pid = os.getpid()
 
         # The width of the file dialogs' preview pane, for the session: set it
@@ -849,7 +877,17 @@ class YellowDogApp(QMainWindow):
 
         self._namespace: str | None = None
         self._tag: str | None = None
-        self._config_parse_invalid = True
+        self._config_parse_invalid = True  # nothing discovered yet
+        self._config_parse_timed_out = False
+        self._config_parse_retried = False
+        self._last_discovery_failure: str | None = None
+
+        # One retry of namespace/tag discovery, a moment after a timeout. Timers
+        # here are parented to the window so they die with it; a bare
+        # QTimer.singleShot would fire into destroyed widgets.
+        self._discovery_retry_timer = QTimer(self)
+        self._discovery_retry_timer.setSingleShot(True)
+        self._discovery_retry_timer.timeout.connect(self._retry_discovery)
 
         # Watch the selected config file for on-disk changes
         self._file_watcher = QFileSystemWatcher(self)
@@ -910,11 +948,68 @@ class YellowDogApp(QMainWindow):
         )
 
     def _invalidate_config_parse(self):
+        """
+        Mark the discovered namespace/tag stale, and give the next discovery a
+        fresh retry. The retry budget is per parse, not per session: a new
+        configuration file must not inherit the exhausted budget of the last one.
+        """
         self._config_parse_invalid = True
+        self._config_parse_retried = False
 
-    def _reparse_placeholders(self):
-        if self._parse_yd_config(quiet=True):
+    def _reparse_placeholders(self, timeout_ms: int | None = None):
+        """
+        Re-run discovery and show what it found, scheduling one retry if it timed
+        out. The single place that pairs a parse with the placeholders, so a
+        caller cannot get the retry by accident and lose it by accident.
+        """
+        if self._parse_yd_config(quiet=True, timeout_ms=timeout_ms):
             self._set_placeholders(self._namespace or "", self._tag or "")
+            return
+        self._schedule_discovery_retry()
+
+    def _schedule_discovery_retry(self):
+        """
+        Queue the one retry allowed after a timed-out discovery.
+
+        Only after a *timeout*: a non-zero exit or a program that cannot be
+        started will fail again the same way, so retrying would only be noise. A
+        timeout is different — the incident this exists for was a first 'yd-show'
+        on Windows that needed longer than its budget to start, where the second
+        one is warm and finishes at once. Before this, the placeholders stayed
+        blank until Commander was restarted, which is what the user had to do.
+        """
+        if (
+            self._shutting_down
+            or self._config_parse_retried
+            or not self._config_parse_timed_out
+        ):
+            return
+        self._config_parse_retried = True
+        self._log(
+            f"Retrying namespace/tag discovery with a"
+            f" {CONFIG_PARSE_RETRY_TIMEOUT_MS // 1000}s timeout; the first"
+            f" 'yd-*' command of a session can be slow to start"
+        )
+        self._discovery_retry_timer.start(CONFIG_PARSE_RETRY_DELAY_MS)
+
+    def _retry_discovery(self):
+        self._reparse_placeholders(timeout_ms=CONFIG_PARSE_RETRY_TIMEOUT_MS)
+
+    def _report_discovery_failure(self, message: str):
+        """
+        Say why namespace/tag discovery failed. Logged however quiet the parse
+        was: blank placeholders with nothing in the output window to explain them
+        is what left a Windows incident with no evidence to diagnose.
+
+        Consecutive identical messages are suppressed, because the user-variables
+        box reparses 600ms after every edit and a broken configuration would
+        otherwise fill the window with one line over and over. A success clears
+        the memory, so the same failure recurring is reported again.
+        """
+        if message == self._last_discovery_failure:
+            return
+        self._last_discovery_failure = message
+        self._log(message)
 
     def _set_placeholders(self, namespace: str, tag: str):
         """
@@ -938,26 +1033,12 @@ class YellowDogApp(QMainWindow):
         self.object_path_override.setPlaceholderText(default_prefix)
         cast(QWidget, self.object_path_override.viewport()).update()
 
-    def _parse_yd_config(self, quiet: bool = False) -> bool:
+    def _yd_show_command(self) -> tuple[str, list[str]]:
         """
-        Parse the configuration file to obtain the CLI-processed values of the
-        namespace and tag variables, used to populate placeholder text.
+        The 'yd-show' invocation that resolves the namespace and tag for the
+        current configuration source, namespace/tag overrides and user variables.
         """
-        if not self._config_parse_invalid:
-            return True
-
-        yd_process = QProcess()
-        event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
-        yd_process.finished.connect(event_loop.quit)
-        yd_process.errorOccurred.connect(event_loop.quit)
-
-        cmd = "yd-show"
-        args = (
+        return "yd-show", (
             self._config_source_args()
             + [
                 "--nf",
@@ -970,35 +1051,61 @@ class YellowDogApp(QMainWindow):
             + self._namespace_tag_and_user_vars()
         )
 
+    def _parse_yd_config(
+        self, quiet: bool = False, timeout_ms: int | None = None
+    ) -> bool:
+        """
+        Parse the configuration file to obtain the CLI-processed values of the
+        namespace and tag variables, used to populate placeholder text.
+
+        'timeout_ms' defaults to CONFIG_PARSE_TIMEOUT_MS; the retry after a
+        timeout passes a longer one. Every failure is reported through
+        _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
+        announcement of a routine reparse, not the reason one failed.
+        """
+        if not self._config_parse_invalid:
+            return True
+        if timeout_ms is None:
+            timeout_ms = CONFIG_PARSE_TIMEOUT_MS
+        self._config_parse_timed_out = False
+
+        yd_process = QProcess()
+        event_loop = QEventLoop()
+
+        env = QProcessEnvironment.systemEnvironment()
+        yd_process.setProcessEnvironment(env)
+        yd_process.setWorkingDirectory(self._working_dir())
+
+        yd_process.finished.connect(event_loop.quit)
+        yd_process.errorOccurred.connect(event_loop.quit)
+
+        cmd, args = self._yd_show_command()
+
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
         yd_process.start(cmd, args)
-        if not self._run_nested(yd_process, event_loop, CONFIG_PARSE_TIMEOUT_MS):
+        if not self._run_nested(yd_process, event_loop, timeout_ms):
             if self._shutting_down:
                 return False  # the widgets are going away; don't touch them
-            # Reported even when quiet: a timeout here means something is
-            # wrong with the configuration (an unreachable API URL, say), and
-            # silently leaving the placeholders blank wouldn't explain it
-            self._log(
-                f"Timed out after {CONFIG_PARSE_TIMEOUT_MS // 1000}s parsing"
+            self._config_parse_timed_out = True
+            self._report_discovery_failure(
+                f"Timed out after {timeout_ms // 1000}s parsing"
                 f" configuration with 'yd-show'"
             )
             return False
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
-            if not quiet:
-                self._log(
-                    f"Error parsing config with 'yd-show': {yd_process.errorString()}"
-                )
+            self._report_discovery_failure(
+                f"Error parsing config with 'yd-show': {yd_process.errorString()}"
+            )
             return False
 
         if yd_process.exitCode() != 0:
-            if not quiet:
-                error_output = yd_process.readAllStandardError().data().decode().strip()
-                self._log(
-                    f"Error parsing config with 'yd-show'"
-                    f" (Exit {yd_process.exitCode()}): {error_output}"
-                )
+            error_output = yd_process.readAllStandardError().data().decode().strip()
+            self._report_discovery_failure(
+                f"Error parsing config with 'yd-show'"
+                f" (Exit {yd_process.exitCode()}): {error_output}"
+            )
             return False
 
         output = yd_process.readAllStandardOutput().data().decode().strip()
@@ -1007,10 +1114,11 @@ class YellowDogApp(QMainWindow):
             self._namespace = parsed_data.get(NAMESPACE)
             self._tag = parsed_data.get(TAG)
         except Exception as e:
-            self._log(f"Error reading config variables: {e}")
+            self._report_discovery_failure(f"Error reading config variables: {e}")
             return False
 
         self._config_parse_invalid = False
+        self._last_discovery_failure = None  # a recurrence is worth reporting again
         return True
 
     def _on_config_file_changed(self, _path: str):
@@ -1024,10 +1132,9 @@ class YellowDogApp(QMainWindow):
             abs_path = abspath(self._config_file)
             if exists(abs_path) and abs_path not in self._file_watcher.files():
                 self._file_watcher.addPath(abs_path)
-        self._config_parse_invalid = True
+        self._invalidate_config_parse()
         self._log(f"Config file '{self._config_file}' changed on disk; refreshing...")
-        if self._parse_yd_config(quiet=True):
-            self._set_placeholders(self._namespace or "", self._tag or "")
+        self._reparse_placeholders()
 
     def _set_config_file(self, config_file: str | None):
         """
@@ -1039,15 +1146,14 @@ class YellowDogApp(QMainWindow):
 
         if config_file is None:
             self._config_file = None
-            self.select_config_label.setText(
-                f"{SELECTED_CONFIG_PREFIX}{NO_SELECTED_CONFIG}"
-            )
+            self.select_config_label.setText(NO_SELECTED_CONFIG)
             self.select_config_label.setToolTip("")
-            self._config_parse_invalid = True
-            if self._parse_yd_config(quiet=True):
-                self._set_placeholders(self._namespace or "", self._tag or "")
-            else:
-                self._set_placeholders("", "")
+            self._invalidate_config_parse()
+            # Cleared first, then filled in again by whatever discovery finds
+            # without a config file (environment variables, or nothing at all):
+            # the previous file's namespace and tag must not linger either way.
+            self._set_placeholders("", "")
+            self._reparse_placeholders()
             return
 
         if not exists(config_file):
@@ -1056,14 +1162,11 @@ class YellowDogApp(QMainWindow):
 
         selected_config_file = relpath(config_file)
         self._config_file = selected_config_file
-        self._config_parse_invalid = True
+        self._invalidate_config_parse()
         self._log(f"Selected configuration file '{selected_config_file}'")
-        self.select_config_label.setText(
-            f"{SELECTED_CONFIG_PREFIX}{elide_path(selected_config_file)}"
-        )
+        self.select_config_label.setText(elide_path(selected_config_file))
         self.select_config_label.setToolTip(abspath(selected_config_file))
-        if self._parse_yd_config(quiet=True):
-            self._set_placeholders(self._namespace or "", self._tag or "")
+        self._reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
     def _select_config_file_action(self):
@@ -1214,9 +1317,21 @@ class YellowDogApp(QMainWindow):
             pid = self._pid
         return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
 
-    def _object_path(self) -> str:
+    def _object_path(self) -> str | None:
+        """
+        The object path the download and delete actions work on: the Path field
+        if it has one, otherwise every object whose name starts with the
+        discovered tag.
+
+        None when neither is available — the Path field is empty and no tag has
+        been discovered. Callers must refuse rather than carry on: this used to
+        interpolate the missing tag and return the literal 'None*', which was
+        then handed to 'yd-download' and 'yd-delete' as the scope to act on.
+        """
         override = self.object_path_override.toPlainText().strip()
-        return override if override else f"{self._tag}*"
+        if override:
+            return override
+        return f"{self._tag}*" if self._tag else None
 
     def _scope_phrase(self, match_word: str) -> str:
         """
@@ -1736,6 +1851,9 @@ class YellowDogApp(QMainWindow):
 
         dst = join(self._working_dir(), RESULTS_DIR)
         path = self._object_path()
+        if path is None:
+            self._log(NO_OBJECT_PATH)
+            return
 
         if self.dry_run_objects.isChecked():
             self._run_command_in_subprocess("yd-download", ["--into", dst, path, "-D"])
@@ -1797,6 +1915,9 @@ class YellowDogApp(QMainWindow):
             return
 
         path = self._object_path()
+        if path is None:
+            self._log(NO_OBJECT_PATH)
+            return
 
         if self.dry_run_objects.isChecked():
             # Harmless preview: run directly, no enumeration or confirmation.
@@ -2345,6 +2466,47 @@ class YellowDogApp(QMainWindow):
         dialog.exec()
         return clicked.get("button") is quit_btn
 
+    def _notify(self, message: str):
+        """
+        Log a message and show it in a modal notice, for a click that did nothing
+        and would otherwise say so only in the output window.
+
+        Logged first and always, so the output window keeps the whole narrative
+        with its timestamps whether or not a dialog is shown — and so the notice
+        survives the two cases that get no dialog: an unattended session, where
+        '--yes' says nobody is there to press OK and a modal would hang, and
+        shutdown, where the widgets are going away.
+        """
+        self._log(message)
+        if self._confirmations_disabled or self._shutting_down:
+            return
+        dialog = self._build_notice_dialog(message)
+        try:
+            dialog.exec()
+        finally:
+            # Parented to the main window, so without this every notice would
+            # live for the rest of the session.
+            dialog.deleteLater()
+
+    def _build_notice_dialog(self, message: str) -> QMessageBox:
+        """
+        Build (but do not show) the notice: one message, one OK button.
+
+        Plain text deliberately: a notice carries filesystem paths and entity
+        names, and as rich text a Windows path loses its backslashes while
+        anything between angle brackets disappears as an unknown tag.
+
+        Split from _notify so that a test can arm the real dialog rather than
+        stub exec() — the convention the other dialogs here follow.
+        """
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(WINDOW_TITLE)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(message)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        return dialog
+
     def _build_quit_dialog(self, names: list[str]) -> tuple[QDialog, QPushButton]:
         """
         Build (but do not show) the quit-while-running dialog: a warning, the
@@ -2412,7 +2574,18 @@ class YellowDogApp(QMainWindow):
         self.stdin_input.setPlainText("")
 
     def _view_results_action(self):
-        self._open_file_viewer(join(self._working_dir(), RESULTS_DIR))
+        """
+        Browse the results directory, saying so in a dialog when there is not one
+        yet — the commonest reason this button appears to do nothing, and a log
+        line alone was missed. The check is repeated in _open_file_viewer, which
+        keeps its log-only report for the config-directory button and for the
+        directory disappearing between here and there.
+        """
+        results_dir = join(self._working_dir(), RESULTS_DIR)
+        if not exists(results_dir):
+            self._notify(f"Directory '{results_dir}' does not (yet) exist")
+            return
+        self._open_file_viewer(results_dir)
 
     def _view_config_directory_action(self):
         self._open_file_viewer(self._working_dir())
@@ -2446,7 +2619,60 @@ class YellowDogApp(QMainWindow):
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
         self._add_preview_pane(dialog)
+        self._add_platform_viewer_button(dialog)
         return dialog
+
+    def _add_platform_viewer_button(self, dialog: QFileDialog):
+        """
+        Add a button handing the directory being browsed to the platform's own
+        file viewer (Finder, Explorer, the desktop's file manager) and closing
+        this dialog.
+
+        Qt's dialog is deliberately read-only, so this is the route to deleting or
+        renaming something in the results directory — which is what the platform
+        viewer was worth keeping a way back to for. Closing rather than staying
+        open: the viewer is where the contents get changed, and a listing left
+        behind it would be showing a directory that no longer looks like that.
+
+        ActionRole so Qt does not read the click as accepting or rejecting, and
+        autoDefault off so Return still means Open — an autoDefault button that
+        gains focus takes the default role from the accept button. The handler
+        rejects explicitly, which is what makes _run_file_dialog report no chosen
+        file: switching to the viewer is not picking something to open.
+        """
+        button_box = dialog.findChild(QDialogButtonBox)
+        if button_box is None:
+            return  # no button box to attach to: leave the dialog as Qt built it
+        button = cast(
+            QPushButton,
+            button_box.addButton(
+                NATIVE_VIEWER_BUTTON_TEXT, QDialogButtonBox.ButtonRole.ActionRole
+            ),
+        )
+        button.setAutoDefault(False)
+        button.clicked.connect(lambda: self._switch_to_platform_viewer(dialog))
+
+        # Placed explicitly at the head of the box rather than left where the
+        # style put it: each style appends an ActionRole button somewhere of its
+        # own choosing — macOS after Cancel, Fusion before Open — so the button
+        # moved about between platforms. First means above Open in the vertical
+        # column macOS lays out, and leftmost in the row Windows and Linux do,
+        # which in both cases keeps it clear of the accept and reject buttons
+        # rather than trailing after them. The button stays a member of the box
+        # with its role and wiring intact; only its position in the layout moves.
+        box_layout = button_box.layout()
+        if box_layout is not None:
+            box_layout.removeWidget(button)
+            cast(QBoxLayout, box_layout).insertWidget(0, button)
+
+    def _switch_to_platform_viewer(self, dialog: QFileDialog):
+        """
+        Hand the directory currently on screen to the platform's file viewer and
+        close the dialog. The current directory, not the one the dialog opened
+        at, so navigating into a subdirectory first hands over what is displayed.
+        """
+        self._open_with_default_application(dialog.directory().absolutePath())
+        dialog.reject()
 
     def _add_preview_pane(self, dialog: QFileDialog) -> FilePreview | None:
         """
@@ -2926,6 +3152,9 @@ class YellowDogApp(QMainWindow):
         dialog.setOption(QFileDialog.Option.ReadOnly, True)
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        # 'Select', not Qt's 'Open': these dialogs nominate a file for a later
+        # command to read, and nothing is opened by pressing the button.
+        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
         self._add_preview_pane(dialog)
         return self._run_file_dialog(dialog)
 
@@ -2963,6 +3192,9 @@ def run_app(config_file: str | None = None, disable_confirmations: bool = False)
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
                 "yellowdog.commander"
             )
+        if MACOS:
+            # Silence macOS / Qt platform plugin system warnings
+            os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)

@@ -491,6 +491,7 @@ def test_download_results_no_config_uses_cwd(window, captured, monkeypatch):
         window, "_capture_dry_run_objects", lambda command, extra_args: None
     )
     window._config_file = None
+    window._tag = "my-tag"
     expected_path = window._object_path()
     window._download_results_action()
     assert captured == [
@@ -536,6 +537,60 @@ def test_object_path_uses_override(window):
     window._tag = "my-tag"
     window.object_path_override.setPlainText("custom/path/*")
     assert window._object_path() == "custom/path/*"
+
+
+def test_object_path_is_unknown_without_a_tag_or_override(window):
+    # It used to interpolate the missing tag, producing the literal 'None*' and
+    # handing that to yd-download / yd-delete as the scope to act on.
+    window._tag = None
+    assert window._object_path() is None
+
+
+def test_object_path_uses_the_override_even_without_a_tag(window):
+    window._tag = None
+    window.object_path_override.setPlainText("custom/path/*")
+    assert window._object_path() == "custom/path/*"
+
+
+def test_download_refuses_when_no_object_path_can_be_worked_out(window, captured):
+    window._tag = None
+
+    window._download_results_action()
+
+    assert captured == []
+    assert "no object path" in window.log_output.toPlainText().lower()
+
+
+def test_delete_refuses_when_no_object_path_can_be_worked_out(window, captured):
+    window._tag = None
+
+    window._delete_objects_action()
+
+    assert captured == []
+    assert "no object path" in window.log_output.toPlainText().lower()
+
+
+def test_delete_refuses_even_with_confirmations_suppressed(window, captured):
+    # The dangerous combination: '--yes' skips the confirmation, so 'None*' would
+    # have gone straight to 'yd-delete -Ry', deleting anything named 'None...'.
+    window._tag = None
+    window._confirmations_disabled = True
+
+    window._delete_objects_action()
+
+    assert captured == []
+
+
+def test_dry_run_refuses_too_when_no_object_path_can_be_worked_out(window, captured):
+    # A dry run reporting on 'None*' says 'nothing matches', which reads as
+    # reassurance about the wrong question.
+    window._tag = None
+    window.dry_run_objects.setChecked(True)
+
+    window._download_results_action()
+    window._delete_objects_action()
+
+    assert captured == []
 
 
 # --- Config-file requirement -------------------------------------------------
