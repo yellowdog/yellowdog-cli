@@ -3189,6 +3189,9 @@ def run_app(config_file: str | None = None, disable_confirmations: bool = False)
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
                 "yellowdog.commander"
             )
+        if MACOS:
+            # Silence macOS / Qt platform plugin system warnings
+            os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
