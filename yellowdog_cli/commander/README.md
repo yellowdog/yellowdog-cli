@@ -110,6 +110,8 @@ Those two also carry a **Use Finder** button (**Use Explorer** on Windows, **Use
 
 Drag the divider to set the pane's width; the thumbnail rescales as you do. That width is remembered for the rest of the session, so a pane widened once stays wide in every later dialog, whichever button opened it. The pane cannot be dragged shut, because a pane collapsed to nothing leaves nothing obvious to drag back out.
 
+The places sidebar down the left — **Computer** and your home directory — opens wide enough to read its entries rather than at the width Qt would choose, which truncates even *Computer* to *Co...*. Drag it to whatever width suits you and that width is what you get from then on, in every later dialog and after a restart: Qt remembers it, and Commander only sets a width when Qt has none to remember.
+
 The **Save Command Output** dialog is the exception to all of this: it names a file that does not exist yet, so there is nothing worth previewing and it carries no pane.
 
 ## Selecting a Configuration (Panel 1)

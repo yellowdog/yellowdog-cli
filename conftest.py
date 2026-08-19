@@ -156,6 +156,85 @@ def _no_config_discovery(request, monkeypatch):
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _preserve_qt_sidebar_width():
+    """
+    Put the machine's own Qt sidebar width back after the test session.
+
+    Qt persists the file dialog's sidebar width in shared user settings — a real
+    plist or registry key, belonging to the user rather than to the test session —
+    and writes it whenever one of these dialogs closes. Commander reads a
+    remembered width as the user's own choice and leaves it alone, so a run that
+    left 90 behind quietly turned the widening off on the developer's machine.
+
+    Restored from atexit rather than from this fixture's teardown, because that is
+    the last thing to run: the QApplication outlives every fixture (see qapp), and
+    the stray write landed after a teardown-time restore.
+
+    Inert without a usable Qt, since this is autouse for the whole repo.
+    """
+    try:
+        from PyQt6.QtCore import QSettings
+
+        from yellowdog_cli.commander.commander import (
+            QT_SETTINGS_ORGANISATION,
+            QT_SIDEBAR_WIDTH_SETTING,
+        )
+    except Exception:  # PyQt6 absent, or its Qt runtime libraries are
+        yield
+        return
+
+    previous = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION).value(
+        QT_SIDEBAR_WIDTH_SETTING
+    )
+
+    def restore():
+        # A QSettings of its own each time: the one this fixture might have kept is
+        # a deleted C++ object by the time the atexit handler runs.
+        settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
+        if previous is None:
+            settings.remove(QT_SIDEBAR_WIDTH_SETTING)
+        else:
+            settings.setValue(QT_SIDEBAR_WIDTH_SETTING, previous)
+        settings.sync()
+
+    # Twice over: once here, and once from atexit in case anything writes the
+    # setting after the last fixture has been torn down. The QApplication outlives
+    # every fixture (see qapp), so a dialog of its own could still be closing.
+    atexit.register(restore)
+    yield
+    restore()
+
+
+@pytest.fixture
+def qt_sidebar_width(_preserve_qt_sidebar_width):
+    """
+    Set what Qt has remembered for a file dialog's sidebar width: a width, or None
+    for a machine that has never had one.
+
+    The sidebar cases would otherwise pass or fail on whatever this machine last
+    happened to keep — including passing for free where it is already wide. Putting
+    the user's own value back is _preserve_qt_sidebar_width's business.
+    """
+    from PyQt6.QtCore import QSettings
+
+    from yellowdog_cli.commander.commander import (
+        QT_SETTINGS_ORGANISATION,
+        QT_SIDEBAR_WIDTH_SETTING,
+    )
+
+    settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
+
+    def remember(width: int | None):
+        if width is None:
+            settings.remove(QT_SIDEBAR_WIDTH_SETTING)
+        else:
+            settings.setValue(QT_SIDEBAR_WIDTH_SETTING, width)
+        settings.sync()
+
+    return remember
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """
