@@ -26,6 +26,7 @@ import gui_harness
 from PyQt6.QtCore import QEventLoop, QPoint, QRect
 from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QAbstractItemView,
     QApplication,
     QDialogButtonBox,
@@ -40,12 +41,15 @@ from PyQt6.QtWidgets import (
 )
 
 from yellowdog_cli.commander.commander import (
+    DIALOG_VIEW_MODE,
     NATIVE_VIEWER_BUTTON_TEXT,
     PREVIEW_MAX_LINES,
     PREVIEW_MIN_WIDTH,
     PREVIEW_NO_SELECTION,
     PREVIEW_PANE_WIDTH,
     PREVIEW_READ_BYTES,
+    SETTING_DIALOG_SIDEBAR_WIDTH,
+    SETTING_DIALOG_VIEW_MODE,
     SIDEBAR_PANE_WIDTH,
     FilePreview,
     YellowDogApp,
@@ -775,6 +779,58 @@ def plain_dialog_widths(directory) -> tuple[int, int]:
         dialog.deleteLater()
 
 
+def test_the_listing_shows_names_only_by_default(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # Qt's Detail view spends most of the listing's width on size, kind and date,
+    # and elides the one column that identifies the file. Its List view is names
+    # only, and the two toolbar buttons still switch between them.
+    (tmp_path / "a-file-with-a-name-long-enough-to-elide.log").write_text("x\n")
+    seen = {}
+
+    def interact(dialog):
+        seen["mode"] = dialog.viewMode()
+        seen["view"] = listing_view(dialog).objectName()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert seen["mode"] == DIALOG_VIEW_MODE == QFileDialog.ViewMode.List
+    assert seen["view"] == "listView"
+
+
+def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # Switched with the dialog's own toolbar button, so the switch travels the
+    # same wiring a user's click does.
+    reopened = {}
+
+    def switch(dialog):
+        button = dialog.findChild(QAbstractButton, "detailModeButton")
+        assert button is not None, "the dialog has no detail-mode button"
+        button.click()
+        press(dialog, "Cancel")
+
+    def reopen(dialog):
+        reopened["mode"] = dialog.viewMode()
+        reopened["view"] = listing_view(dialog).objectName()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, switch)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    drive_file_dialog(window, monkeypatch, reopen)
+    window._open_file_viewer(str(tmp_path))
+
+    # Remembered across dialog *kinds*, and across sessions: it is the user's
+    # choice, not a property of the button that opened a dialog.
+    assert reopened["mode"] == QFileDialog.ViewMode.Detail
+    assert reopened["view"] == "treeView"
+    assert commander_dialog_settings.value(SETTING_DIALOG_VIEW_MODE) == "Detail"
+
+
 def test_the_places_sidebar_opens_wide_enough_to_read_its_entries(
     window, tmp_path, monkeypatch, qt_sidebar_width
 ):
@@ -820,18 +876,16 @@ def test_the_save_dialog_widens_its_sidebar_too(
 
 
 @pytest.mark.parametrize(
-    "dragged_to",
+    "remembered",
     [SIDEBAR_PANE_WIDTH - 60, SIDEBAR_PANE_WIDTH + 60],
     ids=["narrower", "wider"],
 )
-def test_a_sidebar_width_the_user_has_dragged_to_is_left_alone(
-    window, tmp_path, monkeypatch, qt_sidebar_width, dragged_to
+def test_a_sidebar_width_commander_remembers_is_used_as_it_stands(
+    window, tmp_path, monkeypatch, commander_dialog_settings, remembered
 ):
-    # Qt remembers the width across dialogs and across sessions. Widening is a
-    # better first-run default, not a standing override — forced every time, a
-    # narrower sidebar could never be kept, and Commander would be writing its own
-    # width back over the user's choice.
-    qt_sidebar_width(dragged_to)
+    # Widening is a default, not a standing override: forced every time, a narrower
+    # sidebar could never be kept, and a wider one would be clamped back.
+    commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, remembered)
     measured = {}
 
     def interact(dialog):
@@ -844,11 +898,60 @@ def test_a_sidebar_width_the_user_has_dragged_to_is_left_alone(
     drive_file_dialog(window, monkeypatch, interact)
     window._select_file(caption="Pick", directory=str(tmp_path))
 
-    assert measured["sidebar"] == dragged_to
+    assert measured["sidebar"] == remembered
     # A width that happens to be the pane's minimum is the one width a squashed
     # sidebar also lands on, so it would prove nothing: that is how this case
     # first passed against code that discarded the remembered width entirely.
-    assert dragged_to != measured["minimum"]
+    assert remembered != measured["minimum"]
+
+
+def test_the_sidebar_width_the_user_drags_to_is_used_by_the_next_dialog(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    dragged_to = SIDEBAR_PANE_WIDTH + 40
+    reopened = {}
+
+    def drag(dialog):
+        splitter = dialog.findChild(QSplitter, "splitter")
+        assert splitter is not None, "the file dialog has no splitter"
+        sizes = splitter.sizes()
+        sizes[1] = max(1, sizes[1] - (dragged_to - sizes[0]))
+        sizes[0] = dragged_to
+        splitter.setSizes(sizes)
+        press(dialog, "Cancel")
+
+    def reopen(dialog):
+        reopened["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, drag)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+    assert commander_dialog_settings.value(SETTING_DIALOG_SIDEBAR_WIDTH) is not None
+
+    drive_file_dialog(window, monkeypatch, reopen)
+    window._open_file_viewer(str(tmp_path))
+
+    assert reopened["sidebar"] == dragged_to
+
+
+def test_qts_own_remembered_sidebar_width_is_ignored(
+    window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
+):
+    # Qt writes its own remembered width whenever one of these dialogs closes, so
+    # every machine that has ever opened one carries a value — 90 on any that ran
+    # the version which squashed the sidebar to its minimum. Reading it was how
+    # the widening came to be a no-op everywhere except a brand-new profile.
+    qt_sidebar_width(90)
+    measured = {}
+
+    def interact(dialog):
+        measured["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert measured["sidebar"] == SIDEBAR_PANE_WIDTH
 
 
 def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
@@ -876,16 +979,15 @@ def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
     assert 0 <= lost <= measured["handle"]
 
 
-def test_the_listing_keeps_its_width_once_qt_remembers_the_wider_sidebar(
-    window, tmp_path, monkeypatch, qt_sidebar_width
+def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
+    window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
 ):
-    # Qt saves the widened sidebar when the first dialog closes and restores it
-    # into every later one — knowing nothing about the wider dialog Commander
-    # made room in. Uncompensated, the listing is 84px narrower from the second
-    # dialog of the session onwards than it was in the first.
+    # The dialog must make room for the sidebar whether Commander is setting the
+    # width for the first time or applying a remembered one. Uncompensated, the
+    # listing was 84px narrower from the second dialog of the session onwards.
     qt_sidebar_width(None)
     _, plain_listing = plain_dialog_widths(tmp_path)
-    qt_sidebar_width(SIDEBAR_PANE_WIDTH)
+    commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, SIDEBAR_PANE_WIDTH)
     measured = {}
 
     def interact(dialog):

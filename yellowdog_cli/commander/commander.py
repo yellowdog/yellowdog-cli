@@ -134,10 +134,15 @@ PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
 PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
 PREVIEW_NO_SELECTION = "No file selected"
 SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
-# Where Qt itself keeps the width the user last dragged that sidebar to, and
-# restores it from. Read so that a remembered width wins; see _sidebar_widening.
-QT_SETTINGS_ORGANISATION = "QtProject"
-QT_SIDEBAR_WIDTH_SETTING = "FileDialog/sidebarWidth"
+# Names only, no size/kind/date columns: the one column that identifies a file is
+# the one Qt's Detail view elides to make room for the other three.
+DIALOG_VIEW_MODE = QFileDialog.ViewMode.List
+# Where Commander keeps the file-dialog choices that outlive a dialog; see
+# dialog_settings().
+COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
+COMMANDER_SETTINGS_APPLICATION = "Commander"
+SETTING_DIALOG_SIDEBAR_WIDTH = "fileDialog/sidebarWidth"
+SETTING_DIALOG_VIEW_MODE = "fileDialog/viewMode"
 # What the browse dialog's button for handing over to the platform's own file
 # viewer says. Qt's dialog is read-only, so this is the route to deleting or
 # renaming anything in the directory being browsed.
@@ -347,6 +352,29 @@ def format_file_size(size: int) -> str:
         if scaled < 1000:
             return f"{scaled:,.1f} {unit}"
     return f"{scaled / 1000:,.1f} TB"
+
+
+def dialog_settings() -> QSettings:
+    """
+    Where Commander keeps the file-dialog choices that outlive a dialog: the width
+    of the places sidebar and which of Qt's two views to list files in.
+
+    Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
+    those whenever one of these dialogs closes, so every machine that has ever
+    opened one carries a value and there is no telling a width the user chose from
+    a default written back — which made a default conditional on 'nothing
+    remembered' a no-op everywhere but a brand-new profile. Keeping our own
+    removes the guess: the stored value is one a user set, and its absence means
+    they have set nothing.
+
+    A function, not a constant, so that the tests can point it at a file of their
+    own instead of the developer's real settings.
+    """
+    return QSettings(
+        QSettings.Scope.UserScope,
+        COMMANDER_SETTINGS_ORGANISATION,
+        COMMANDER_SETTINGS_APPLICATION,
+    )
 
 
 class FilePreview(QWidget):
@@ -2644,7 +2672,7 @@ class YellowDogApp(QMainWindow):
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
         self._add_preview_pane(dialog)
-        self._set_dialog_pane_widths(dialog)
+        self._apply_dialog_preferences(dialog)
         self._add_platform_viewer_button(dialog)
         return dialog
 
@@ -2713,7 +2741,7 @@ class YellowDogApp(QMainWindow):
         would be drawn on top of the listing rather than beside it, so with no
         splitter to hold it the dialog is left exactly as Qt built it.
 
-        How wide it opens is _set_dialog_pane_widths's business, called once the
+        How wide it opens is _apply_dialog_preferences's business, called once the
         pane is in place; what is set here is that it is deliberately not
         collapsible, a pane dragged shut leaving a handle flush against the
         dialog's edge, which is a poor thing to have to find again. The width the
@@ -2747,30 +2775,33 @@ class YellowDogApp(QMainWindow):
         if 0 <= index < len(sizes) and sizes[index] > 0:
             self._preview_width = sizes[index]
 
-    def _set_dialog_pane_widths(self, dialog: QFileDialog):
+    def _apply_dialog_preferences(self, dialog: QFileDialog):
         """
-        Open a non-native file dialog's panes at the widths Commander wants: the
-        places sidebar wide enough to read, and the preview pane — if this dialog
-        has one — at the width the session last left it at.
+        Set up a non-native file dialog the way the user last left one: listing
+        files in their chosen view, with the places sidebar at their width and the
+        preview pane — if this dialog has one — at the width the session left it
+        at. Called by all three dialogs, once the pane is in place.
 
-        Both in one setSizes, deliberately. Before a dialog has been shown the
-        splitter reports placeholder sizes rather than the ones it has been given,
-        so a second call would read those placeholders and throw the first call's
-        widths away — which is how widening the sidebar collapsed the preview to
-        its minimum. The listing is the one pane whose width is left to the
-        splitter, because it is the one that should take whatever is left over.
+        The widths go in one setSizes, and every pane's is stated except the
+        listing's. Both matter, because this runs on a dialog that has not been
+        shown: the splitter reports placeholder sizes rather than the widths it
+        has been given, so a second call throws the first call's away, and a pane
+        left out of the list is squashed to its minimum. The listing is the pane
+        left to the splitter, being the one that should take what is over.
 
         The dialog grows by whatever the panes gain, rather than the panes taking
         it out of the listing — the listing is the part the user came for.
         """
+        dialog.setViewMode(self._preferred_view_mode())
+
         splitter = dialog.findChild(QSplitter, "splitter")
         if splitter is None:
             return
 
-        # Placeholders, on a dialog not yet shown, and no use for measuring how
-        # much wider the dialog should be, so each pane says that for itself: the
-        # preview counts its whole width, being a pane nothing has given any width
-        # up for yet, and the sidebar only what it gains on Qt's own width.
+        # Placeholders, and no use for measuring how much wider the dialog should
+        # be, so each pane says that for itself: the preview counts its whole
+        # width, being a pane nothing has given any width up for yet, and the
+        # sidebar only what it gains on the width Qt would have opened it at.
         sizes = splitter.sizes()
         widened = 0
         stated = False
@@ -2787,12 +2818,49 @@ class YellowDogApp(QMainWindow):
             widened += self._preview_width
             stated = True
 
+        dialog.finished.connect(
+            lambda _result: self._remember_dialog_preferences(dialog, splitter)
+        )
+
         if not stated:
             # Nothing to say about any pane, and the sizes read above are
             # placeholders — setting them would be setting nonsense.
             return
         dialog.resize(dialog.width() + widened, dialog.height())
         splitter.setSizes(sizes)
+
+    @staticmethod
+    def _remember_dialog_preferences(dialog: QFileDialog, splitter: QSplitter):
+        """
+        Keep the view mode and sidebar width a dialog is closing with, so the next
+        one opens the way the user left this one. Read on the dialog's own finished
+        signal, which is emitted while the splitter is still alive.
+
+        Written even when they are the defaults, and that is the point: what is
+        stored is a width and a mode a user has been shown and not changed, so
+        Commander need never guess whether a stored value was chosen.
+        """
+        settings = dialog_settings()
+        settings.setValue(SETTING_DIALOG_VIEW_MODE, dialog.viewMode().name)
+        sizes = splitter.sizes()
+        if sizes and sizes[0] > 0:
+            settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, sizes[0])
+
+    @staticmethod
+    def _preferred_view_mode() -> QFileDialog.ViewMode:
+        """
+        Which of Qt's two views to list files in: whichever the user last left a
+        dialog in, or DIALOG_VIEW_MODE — names only — if they have not switched.
+
+        Anything unreadable in the setting reads as 'not switched', which is the
+        harmless way round: a dialog opens in Commander's own view rather than
+        refusing to open.
+        """
+        stored = dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
+        try:
+            return QFileDialog.ViewMode[str(stored)]
+        except KeyError:
+            return DIALOG_VIEW_MODE
 
     @classmethod
     def _sidebar_widening(cls, dialog: QFileDialog) -> tuple[int, int] | None:
@@ -2802,19 +2870,9 @@ class YellowDogApp(QMainWindow):
         dialog must be for the listing not to pay for it. None if the dialog has
         no sidebar to size.
 
-        The width is always stated, even when it is the one Qt would have used
-        anyway, because the caller's setSizes is built on a dialog that has not
-        been shown: a pane left out of that list is squashed to its minimum rather
-        than left alone. That is what used to happen — every dialog carrying a
-        preview pane showed a 90px 'Co...' sidebar, however wide Qt had it, and
-        wrote that width back as the one to remember.
-
-        Qt opens the sidebar at its own size hint, which elides even 'Computer',
-        so a wider one is a better first-run default — and only that. Qt persists
-        the width the user drags to and restores it when the next dialog is built,
-        so a remembered width is the width we set. Overriding it every time would
-        mean a narrower sidebar could never be kept, and Commander writing its own
-        width back over the user's choice.
+        Qt opens the sidebar at its own size hint, which elides even 'Computer' to
+        'Co...', so SIDEBAR_PANE_WIDTH is the width to start from; from then on it
+        is whatever the user last dragged one to.
 
         The dialog pays for the width Commander chose and no more: a sidebar
         dragged wider than SIDEBAR_PANE_WIDTH is a listing the user has chosen to
@@ -2823,27 +2881,13 @@ class YellowDogApp(QMainWindow):
         sidebar = dialog.findChild(QListView, "sidebar")
         if sidebar is None:
             return None
-        natural = sidebar.sizeHint().width()
-        remembered = cls._remembered_sidebar_width()
-        width = max(natural, SIDEBAR_PANE_WIDTH) if remembered is None else remembered
-        return width, max(0, min(width, SIDEBAR_PANE_WIDTH) - natural)
-
-    @staticmethod
-    def _remembered_sidebar_width() -> int | None:
-        """
-        The width Qt has remembered for a file dialog's places sidebar, or None if
-        it has none — including a setting it cannot make an integer of, which a
-        renamed or rewritten one on some future Qt would be. That is the harmless
-        way round: the sidebar opens wide, as it does on a first run, rather than
-        staying too narrow to read.
-        """
-        remembered = QSettings(
-            QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION
-        ).value(QT_SIDEBAR_WIDTH_SETTING)
+        stored = dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
         try:
-            return int(remembered)  # a string, on some of QSettings' backends
+            width = int(stored)
         except (TypeError, ValueError):
-            return None
+            width = SIDEBAR_PANE_WIDTH
+        natural = sidebar.sizeHint().width()
+        return width, max(0, min(width, SIDEBAR_PANE_WIDTH) - natural)
 
     def _browse_with_preview(self, caption: str, directory: str) -> str | None:
         """
@@ -3275,7 +3319,7 @@ class YellowDogApp(QMainWindow):
         # command to read, and nothing is opened by pressing the button.
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
         self._add_preview_pane(dialog)
-        self._set_dialog_pane_widths(dialog)
+        self._apply_dialog_preferences(dialog)
         return self._run_file_dialog(dialog)
 
     def _save_file(
@@ -3302,7 +3346,7 @@ class YellowDogApp(QMainWindow):
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setFileMode(QFileDialog.FileMode.AnyFile)
-        self._set_dialog_pane_widths(dialog)
+        self._apply_dialog_preferences(dialog)
         return self._run_file_dialog(dialog)
 
 

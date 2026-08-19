@@ -156,6 +156,13 @@ def _no_config_discovery(request, monkeypatch):
     )
 
 
+# Qt's own file-dialog settings, which Commander deliberately does not read (it
+# keeps its own; see commander.dialog_settings). Named here because the only code
+# that cares is the fixtures below and the one case that proves they are ignored.
+QT_SETTINGS_ORGANISATION = "QtProject"
+QT_SIDEBAR_WIDTH_SETTING = "FileDialog/sidebarWidth"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _preserve_qt_sidebar_width():
     """
@@ -163,9 +170,9 @@ def _preserve_qt_sidebar_width():
 
     Qt persists the file dialog's sidebar width in shared user settings — a real
     plist or registry key, belonging to the user rather than to the test session —
-    and writes it whenever one of these dialogs closes. Commander reads a
-    remembered width as the user's own choice and leaves it alone, so a run that
-    left 90 behind quietly turned the widening off on the developer's machine.
+    and writes it whenever one of these dialogs closes. Commander keeps its own
+    (see commander_dialog_settings) and does not read Qt's, but a test still sets
+    Qt's to prove exactly that, and none of them should leave it changed.
 
     Restored from atexit rather than from this fixture's teardown, because that is
     the last thing to run: the QApplication outlives every fixture (see qapp), and
@@ -175,11 +182,6 @@ def _preserve_qt_sidebar_width():
     """
     try:
         from PyQt6.QtCore import QSettings
-
-        from yellowdog_cli.commander.commander import (
-            QT_SETTINGS_ORGANISATION,
-            QT_SIDEBAR_WIDTH_SETTING,
-        )
     except Exception:  # PyQt6 absent, or its Qt runtime libraries are
         yield
         return
@@ -212,16 +214,13 @@ def qt_sidebar_width(_preserve_qt_sidebar_width):
     Set what Qt has remembered for a file dialog's sidebar width: a width, or None
     for a machine that has never had one.
 
-    The sidebar cases would otherwise pass or fail on whatever this machine last
-    happened to keep — including passing for free where it is already wide. Putting
-    the user's own value back is _preserve_qt_sidebar_width's business.
+    Qt restores that width when a dialog is built, so the case that Commander's own
+    preference wins needs to be able to say what Qt is restoring — and the cases
+    that measure a stock dialog need it cleared, or they measure whatever this
+    machine last happened to keep. Putting the user's own value back is
+    _preserve_qt_sidebar_width's business.
     """
     from PyQt6.QtCore import QSettings
-
-    from yellowdog_cli.commander.commander import (
-        QT_SETTINGS_ORGANISATION,
-        QT_SIDEBAR_WIDTH_SETTING,
-    )
 
     settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
 
@@ -233,6 +232,34 @@ def qt_sidebar_width(_preserve_qt_sidebar_width):
         settings.sync()
 
     return remember
+
+
+@pytest.fixture(autouse=True)
+def commander_dialog_settings(request, tmp_path_factory, monkeypatch):
+    """
+    Commander's own file-dialog preferences — the sidebar width and the view mode
+    — kept in an ini file of this test's own, and returned so that a test can say
+    what is already remembered.
+
+    Autouse, and a seam rather than a snapshot: these live in real user settings,
+    so a test that let them through would both read whatever the developer had
+    chosen and write its own choice back over it. Empty unless a test fills it,
+    which is the state Commander applies its defaults in.
+
+    Yields None for a test with no Qt at all, which must not import PyQt6 here:
+    this fixture is autouse for the whole repo.
+    """
+    if "qapp" not in request.fixturenames:
+        return None
+
+    from PyQt6.QtCore import QSettings
+
+    from yellowdog_cli.commander import commander
+
+    path = tmp_path_factory.mktemp("commander-settings") / "commander.ini"
+    settings = QSettings(str(path), QSettings.Format.IniFormat)
+    monkeypatch.setattr(commander, "dialog_settings", lambda: settings)
+    return settings
 
 
 @pytest.fixture(scope="session")
