@@ -112,7 +112,9 @@ Those two also carry a **Use Finder** button (**Use Explorer** on Windows, **Use
 
 Drag the divider to set the pane's width; the thumbnail rescales as you do. That width is remembered for the rest of the session, so a pane widened once stays wide in every later dialog, whichever button opened it. The pane cannot be dragged shut, because a pane collapsed to nothing leaves nothing obvious to drag back out.
 
-The listing shows file names and nothing else — no size, kind or date columns, which between them take most of the width and leave the name, the one column that identifies a file, elided. The two buttons at the top right switch to Qt's detailed view and back whenever you want the other columns.
+The listing shows file names and nothing else — no size, kind or date columns, which between them take most of the width and leave the name, the one column that identifies a file, elided. The preview pane reports the size and kind of whatever you highlight instead.
+
+Directories expand in place, as in the Finder's list view: click the triangle beside one to see what is in it without leaving the directory you are in, which is what reading a task's output three levels down otherwise costs. Double-clicking a directory still descends into it, so the triangle and the double-click each do their own thing, and a file you select inside an expanded directory is the file you get. The left-hand of the two buttons at the top right switches to a flat listing of the current directory alone.
 
 The places sidebar down the left — **Computer** and your home directory — opens wide enough to read its entries rather than at the width Qt would choose, which truncates even *Computer* to *Co...*.
 

@@ -20,6 +20,7 @@ import qt_guard
 qt_guard.require_qt()
 
 from os.path import realpath
+from pathlib import Path
 from time import monotonic
 
 import gui_harness
@@ -37,11 +38,11 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStyle,
+    QTreeView,
     QWidget,
 )
 
 from yellowdog_cli.commander.commander import (
-    DIALOG_VIEW_MODE,
     NATIVE_VIEWER_BUTTON_TEXT,
     PREVIEW_ELIDED_BYTES,
     PREVIEW_ELIDED_LINES,
@@ -131,6 +132,57 @@ def highlight(dialog, name: str) -> None:
     assert index is not None, f"{name!r} never appeared in the listing"
     view.setCurrentIndex(index)
     QApplication.processEvents()
+
+
+def downloaded_results(root: Path) -> Path:
+    """
+    A results directory shaped the way yd-download leaves one — work requirement,
+    task group, task, output file — and the path of the file at the bottom of it.
+    """
+    task = root / "pyex-bash-pwt_260820-083723781" / "task_group_1" / "task_1"
+    task.mkdir(parents=True)
+    output = task / "taskoutput.txt"
+    output.write_text("task output\n")
+    (root / "pyex-bash-pwt_260820-083723781" / "sleep_script.sh").write_text(
+        "sleep 1\n"
+    )
+    (root / "pyex-bash-pwt_260820-083725128").mkdir()
+    return output
+
+
+def model_index(view: QAbstractItemView, path: Path):
+    """
+    The index for 'path' in the listing's model, waiting for it: QFileSystemModel
+    populates each directory on its own thread, so a level just expanded does not
+    have its children yet.
+    """
+    model = view.model()
+    assert model is not None, "the file dialog's listing has no model"
+    deadline = monotonic() + LISTING_TIMEOUT_S
+    index = model.index(str(path))
+    while not index.isValid() and monotonic() < deadline:
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+        index = model.index(str(path))
+    assert index.isValid(), f"{path} never appeared in the listing's model"
+    return index
+
+
+def expand_to(dialog, path: Path):
+    """
+    Expand every directory between the dialog's own directory and 'path', the way
+    clicking each disclosure triangle does, and return the index of 'path' itself.
+    """
+    view = listing_view(dialog)
+    root = Path(dialog.directory().absolutePath())
+    branch = []
+    current = path.parent
+    while current != root:
+        branch.append(current)
+        current = current.parent
+    for directory in reversed(branch):
+        view.expand(model_index(view, directory))
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+    return model_index(view, path)
 
 
 def rect_in(widget: QWidget, ancestor: QWidget) -> QRect:
@@ -841,21 +893,77 @@ def test_the_listing_shows_names_only_by_default(
     window, tmp_path, monkeypatch, commander_dialog_settings
 ):
     # Qt's Detail view spends most of the listing's width on size, kind and date,
-    # and elides the one column that identifies the file. Its List view is names
-    # only, and the two toolbar buttons still switch between them.
-    (tmp_path / "a-file-with-a-name-long-enough-to-elide.log").write_text("x\n")
+    # and elides the one column that identifies the file. Same view, those columns
+    # hidden and the name given the width instead.
     seen = {}
 
     def interact(dialog):
-        seen["mode"] = dialog.viewMode()
-        seen["view"] = listing_view(dialog).objectName()
+        view = listing_view(dialog)
+        assert isinstance(view, QTreeView), "the hierarchy needs the tree view"
+        header = view.header()
+        seen["view"] = view.objectName()
+        seen["header_hidden"] = header.isHidden()
+        seen["visible_columns"] = [
+            column
+            for column in range(header.count())
+            if not view.isColumnHidden(column)
+        ]
+        seen["name_width"] = header.sectionSize(0)
+        seen["viewport"] = view.viewport().width()
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
     window._select_file(caption="Pick", directory=str(tmp_path))
 
-    assert seen["mode"] == DIALOG_VIEW_MODE == QFileDialog.ViewMode.List
-    assert seen["view"] == "listView"
+    assert seen["view"] == "treeView"
+    assert seen["visible_columns"] == [0], "only the name column should be shown"
+    assert seen["header_hidden"], "a one-column listing needs no header"
+    # The name takes the width the other columns are no longer using; left at its
+    # own width it elides with empty space beside it, which is the worst of both.
+    assert seen["name_width"] == seen["viewport"]
+
+
+def test_a_nested_file_is_reachable_without_leaving_the_directory(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # The point of the hierarchy: task output sits three directories down, and
+    # expanding to it beats navigating in and back out for every task.
+    output = downloaded_results(tmp_path)
+    seen = {}
+
+    def interact(dialog):
+        index = expand_to(dialog, output)
+        view = listing_view(dialog)
+        seen["row_height"] = view.visualRect(index).height()
+        seen["directory"] = Path(dialog.directory().absolutePath())
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(tmp_path))
+
+    assert seen["row_height"] > 0, "the nested file has no row on screen"
+    assert seen["directory"] == tmp_path, "the dialog navigated instead of expanding"
+
+
+def test_a_file_inside_an_expanded_directory_is_opened_by_its_full_path(
+    window, tmp_path, monkeypatch
+):
+    # A tree's selection is not relative to the directory the dialog is showing, so
+    # this is the case that would hand a command the wrong path.
+    output = downloaded_results(tmp_path)
+    opened: list[str] = []
+    monkeypatch.setattr(window, "_open_with_default_application", opened.append)
+
+    def interact(dialog):
+        index = expand_to(dialog, output)
+        listing_view(dialog).setCurrentIndex(index)
+        QApplication.processEvents()
+        press(dialog, "Open")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(tmp_path))
+
+    assert opened == [realpath(str(output))]
 
 
 def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
@@ -866,8 +974,8 @@ def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
     reopened = {}
 
     def switch(dialog):
-        button = dialog.findChild(QAbstractButton, "detailModeButton")
-        assert button is not None, "the dialog has no detail-mode button"
+        button = dialog.findChild(QAbstractButton, "listModeButton")
+        assert button is not None, "the dialog has no list-mode button"
         button.click()
         press(dialog, "Cancel")
 
@@ -884,9 +992,9 @@ def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
 
     # Remembered across dialog *kinds*, and across sessions: it is the user's
     # choice, not a property of the button that opened a dialog.
-    assert reopened["mode"] == QFileDialog.ViewMode.Detail
-    assert reopened["view"] == "treeView"
-    assert commander_dialog_settings.value(SETTING_DIALOG_VIEW_MODE) == "Detail"
+    assert reopened["mode"] == QFileDialog.ViewMode.List
+    assert reopened["view"] == "listView"
+    assert commander_dialog_settings.value(SETTING_DIALOG_VIEW_MODE) == "List"
 
 
 def test_the_places_sidebar_opens_wide_enough_to_read_its_entries(

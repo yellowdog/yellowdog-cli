@@ -71,6 +71,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLayout,
     QListView,
@@ -84,6 +85,7 @@ from PyQt6.QtWidgets import (
     QSpacerItem,
     QSplitter,
     QStyle,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -146,9 +148,10 @@ PREVIEW_ELIDED_LINES = "… first {lines} lines shown"
 PREVIEW_ELIDED_BYTES = "… first {size} shown"
 PREVIEW_NO_SELECTION = "No file selected"
 SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
-# Names only, no size/kind/date columns: the one column that identifies a file is
-# the one Qt's Detail view elides to make room for the other three.
-DIALOG_VIEW_MODE = QFileDialog.ViewMode.List
+# The tree, because that is the view a hierarchy can be shown in — Qt's other one
+# is a QListView, which has no disclosure. Its size/kind/date columns are hidden
+# and its header with them; see _make_listing_a_names_only_tree().
+DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
 # Where Commander keeps the file-dialog choices that outlive a dialog; see
 # dialog_settings().
 COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
@@ -2812,6 +2815,54 @@ class YellowDogApp(QMainWindow):
         if 0 <= index < len(sizes) and sizes[index] > 0:
             self._preview_width = sizes[index]
 
+    @staticmethod
+    def _make_listing_a_names_only_tree(dialog: QFileDialog):
+        """
+        Turn Qt's Detail listing into the names-only hierarchy Commander shows: a
+        directory expands in place rather than having to be navigated into and back
+        out of, and the name gets the width the other columns were using.
+
+        Qt ships the tree flat — `rootIsDecorated` and `itemsExpandable` both off —
+        though the model under it (`QFileSystemModel`) has always been hierarchical.
+        Turning them on is all the hierarchy needs, and it costs nothing that was
+        there before: double-clicking a directory still navigates into it, so the
+        triangle and the double-click each keep their own job. A file picked inside
+        an expanded directory comes back with its full path, since the selection is
+        the model's, not the listed directory's.
+
+        That double-click behaviour is worth being sure of rather than assuming,
+        since a QTreeView with expandable items can consume a double-click to
+        expand instead of activating the row. Measured on macOS with a collapsed
+        directory: it navigated and did not expand, with `expandsOnDoubleClick`
+        either way, QFileDialog's own activation winning. It is not covered by a
+        test because the offscreen platform delivers neither a double-click nor a
+        Return to an item view — a stock dialog does not navigate there either.
+
+        Size, kind and date go because between them they take most of the width and
+        leave the name — the one column that says which file this is — elided. The
+        header goes with them, having one column left to sort. Stretching that
+        column is not cosmetic either: left at its own width the name still elides,
+        now with empty space beside it, which is the worst of both.
+
+        Applied when the dialog is built rather than when the tree is shown, so a
+        user who switches views mid-dialog finds it set up either way.
+        """
+        tree = dialog.findChild(QTreeView, "treeView")
+        if tree is None:
+            return
+
+        tree.setRootIsDecorated(True)
+        tree.setItemsExpandable(True)
+
+        header = tree.header()
+        if header is None:
+            return
+        for column in range(1, header.count()):
+            tree.setColumnHidden(column, True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
+        header.hide()
+
     def _apply_dialog_preferences(self, dialog: QFileDialog):
         """
         Set up a non-native file dialog the way the user last left one: listing
@@ -2829,6 +2880,7 @@ class YellowDogApp(QMainWindow):
         The dialog grows by whatever the panes gain, rather than the panes taking
         it out of the listing — the listing is the part the user came for.
         """
+        self._make_listing_a_names_only_tree(dialog)
         dialog.setViewMode(self._preferred_view_mode())
 
         splitter = dialog.findChild(QSplitter, "splitter")
