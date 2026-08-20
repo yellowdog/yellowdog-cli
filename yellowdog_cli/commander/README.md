@@ -104,13 +104,23 @@ The file dialogs — choosing a configuration or definition file, and the two di
 
 A binary file is named and sized but not previewed, rather than shown as gibberish. Whether a file counts as text is decided by reading the start of it, not by its extension, so task output named whatever the task named it is previewed all the same.
 
+A text file is previewed from the top: up to 500 lines, or the first 256 kB of it, whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
+
 The three selectors accept with a **Select** button rather than Qt's **Open**: they nominate a file for a later command to read, and nothing is opened by pressing it. The two directory-browsing dialogs do say **Open**, because there they really do open the chosen file in the default application for its type.
 
 Those two also carry a **Use Finder** button (**Use Explorer** on Windows, **Use File Manager** on Linux), which hands the directory you are looking at — including a subdirectory you have navigated into — to the platform's own file viewer and closes the dialog. That is the way to delete or rename anything in the `results` directory, since the Qt dialog is deliberately read-only.
 
 Drag the divider to set the pane's width; the thumbnail rescales as you do. That width is remembered for the rest of the session, so a pane widened once stays wide in every later dialog, whichever button opened it. The pane cannot be dragged shut, because a pane collapsed to nothing leaves nothing obvious to drag back out.
 
-The **Save Command Output** dialog is the exception to all of this: it names a file that does not exist yet, so there is nothing worth previewing and it carries no pane.
+The listing shows file names and nothing else — no size, kind or date columns, which between them take most of the width and leave the name, the one column that identifies a file, elided. The preview pane reports the size and kind of whatever you highlight instead.
+
+Directories expand in place, as in the Finder's list view: click the triangle beside one to see what is in it without leaving the directory you are in, which is what reading a task's output three levels down otherwise costs. Double-clicking a directory still descends into it, so the triangle and the double-click each do their own thing, and a file you select inside an expanded directory is the file you get. The left-hand of the two buttons at the top right switches to a flat listing of the current directory alone.
+
+The places sidebar down the left — **Computer** and your home directory — opens wide enough to read its entries rather than at the width Qt would choose, which truncates even *Computer* to *Co...*.
+
+Both are yours to change: whichever view you leave a dialog in, and whatever width you drag the sidebar to, is how the next dialog opens — whichever button opened it, and after a restart.
+
+The **Save Command Output** dialog is the exception to the preview: it names a file that does not exist yet, so there is nothing worth previewing and it carries no pane. It lists files the same way as the others, and shares the same sidebar width.
 
 ## Selecting a Configuration (Panel 1)
 

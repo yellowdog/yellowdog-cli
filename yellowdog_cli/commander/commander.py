@@ -44,6 +44,7 @@ from PyQt6.QtCore import (
     QFileSystemWatcher,
     QProcess,
     QProcessEnvironment,
+    QSettings,
     QSize,
     Qt,
     QTimer,
@@ -70,8 +71,10 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLayout,
+    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -79,8 +82,10 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpacerItem,
     QSplitter,
     QStyle,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -127,9 +132,32 @@ RESULTS_DIR = "results"
 PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
 PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
 PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
-PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
-PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
+PREVIEW_READ_BYTES = 262_144  # bytes read from the head of a file to preview it
+PREVIEW_MAX_LINES = 500  # lines of that head shown before the preview is elided
+# Characters of any one of those lines shown before it is cut. A performance cap
+# rather than a cosmetic one: QPlainTextEdit lays a single line out at superlinear
+# cost, so the 256kB head of a minified JSON file — one line, no newlines — took
+# 110ms to show, on a preview that is refilled at every arrow-key press. Cut to
+# this it is 1.4ms even with every line at the cap, and 2,000 characters is some
+# fifty screenfuls of a pane this wide.
+PREVIEW_MAX_LINE_CHARS = 2000
+# The last line of an elided preview, saying which cap stopped it. Only what is
+# knowable without reading the whole file: a total line count would mean reading
+# all of it, which is what the byte cap exists to avoid.
+PREVIEW_ELIDED_LINES = "… first {lines} lines shown"
+PREVIEW_ELIDED_BYTES = "… first {size} shown"
 PREVIEW_NO_SELECTION = "No file selected"
+SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
+# The tree, because that is the view a hierarchy can be shown in — Qt's other one
+# is a QListView, which has no disclosure. Its size/kind/date columns are hidden
+# and its header with them; see _make_listing_a_names_only_tree().
+DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
+# Where Commander keeps the file-dialog choices that outlive a dialog; see
+# dialog_settings().
+COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
+COMMANDER_SETTINGS_APPLICATION = "Commander"
+SETTING_DIALOG_SIDEBAR_WIDTH = "fileDialog/sidebarWidth"
+SETTING_DIALOG_VIEW_MODE = "fileDialog/viewMode"
 # What the browse dialog's button for handing over to the platform's own file
 # viewer says. Qt's dialog is read-only, so this is the route to deleting or
 # renaming anything in the directory being browsed.
@@ -341,6 +369,29 @@ def format_file_size(size: int) -> str:
     return f"{scaled / 1000:,.1f} TB"
 
 
+def dialog_settings() -> QSettings:
+    """
+    Where Commander keeps the file-dialog choices that outlive a dialog: the width
+    of the places sidebar and which of Qt's two views to list files in.
+
+    Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
+    those whenever one of these dialogs closes, so every machine that has ever
+    opened one carries a value and there is no telling a width the user chose from
+    a default written back — which made a default conditional on 'nothing
+    remembered' a no-op everywhere but a brand-new profile. Keeping our own
+    removes the guess: the stored value is one a user set, and its absence means
+    they have set nothing.
+
+    A function, not a constant, so that the tests can point it at a file of their
+    own instead of the developer's real settings.
+    """
+    return QSettings(
+        QSettings.Scope.UserScope,
+        COMMANDER_SETTINGS_ORGANISATION,
+        COMMANDER_SETTINGS_APPLICATION,
+    )
+
+
 class FilePreview(QWidget):
     """
     The preview column added to the directory-browsing file dialog: the name of
@@ -380,6 +431,15 @@ class FilePreview(QWidget):
         self.meta_label.setWordWrap(True)
         layout.addWidget(self.meta_label)
 
+        # Pinned to the top, and to the height their own text needs. A label
+        # defaults to taking a share of any spare height and centring its text in
+        # it, and a directory — named and kinded, with no body to show — leaves
+        # the pane nothing but spare height: the two headings ended up a third
+        # and two thirds of the way down, reading as two unrelated captions.
+        for label in (self.name_label, self.meta_label):
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
         self.image_view = QLabel()
         self.image_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         # Ignored in both directions: a QLabel's size hint grows with the pixmap
@@ -396,6 +456,14 @@ class FilePreview(QWidget):
         self.text_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.text_view.setFont(font)
         layout.addWidget(self.text_view, 1)
+
+        # Where the spare height goes once the headings will not take it, and
+        # once both bodies are hidden. Deliberately stretch 0, unlike the two
+        # bodies: a stretch of 1 would make it an equal claimant with whichever
+        # body is on show, halving the thumbnail or the text for nothing.
+        layout.addItem(
+            QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        )
 
         self._image: QImage | None = None  # the decoded original, for rescaling
         self.clear()
@@ -522,10 +590,25 @@ class FilePreview(QWidget):
         )
 
     @staticmethod
-    def _decoded_head(path: str) -> str | None:
+    def _cut(line: str) -> str:
         """
-        The first lines of a text file, elided with an ellipsis line if there is
-        more, or None if the file is not text.
+        One line of a preview, cut to PREVIEW_MAX_LINE_CHARS and marked if it was
+        longer. See that constant: this is what keeps a file with no newlines in it
+        from taking a tenth of a second to show.
+        """
+        if len(line) <= PREVIEW_MAX_LINE_CHARS:
+            return line
+        return f"{line[:PREVIEW_MAX_LINE_CHARS]}…"
+
+    @classmethod
+    def _decoded_head(cls, path: str) -> str | None:
+        """
+        The first lines of a text file — ending in a line saying which cap stopped
+        it, if either did — or None if the file is not text.
+
+        That last line states only what reading the head can know: how many lines
+        were shown, or how much of the file was read. A total line count would mean
+        reading all of it, which is what the byte cap is here to avoid.
 
         Read as bytes and decoded strictly, rather than trusted by extension:
         task output, logs and JSON arrive with every extension and none. The
@@ -553,9 +636,19 @@ class FilePreview(QWidget):
             return None
 
         lines = text.splitlines()
-        elided = truncated or len(lines) > PREVIEW_MAX_LINES
-        body = "\n".join(lines[:PREVIEW_MAX_LINES])
-        return f"{body}\n…" if elided else body
+        body = "\n".join(cls._cut(line) for line in lines[:PREVIEW_MAX_LINES])
+        if len(lines) > PREVIEW_MAX_LINES:
+            # The binding cap when both bite: the reader has been given 500 lines,
+            # and the byte cap behind them is not what stopped the preview.
+            return (
+                f"{body}\n{PREVIEW_ELIDED_LINES.format(lines=f'{PREVIEW_MAX_LINES:,}')}"
+            )
+        if truncated:
+            return (
+                f"{body}\n"
+                f"{PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))}"
+            )
+        return body
 
 
 class LineBuffer:
@@ -2619,6 +2712,7 @@ class YellowDogApp(QMainWindow):
         dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
         self._add_preview_pane(dialog)
+        self._apply_dialog_preferences(dialog)
         self._add_platform_viewer_button(dialog)
         return dialog
 
@@ -2687,10 +2781,12 @@ class YellowDogApp(QMainWindow):
         would be drawn on top of the listing rather than beside it, so with no
         splitter to hold it the dialog is left exactly as Qt built it.
 
-        The pane opens at the width the user last dragged it to, remembered for
-        the session — a width worth setting once, not once per dialog. It is
-        deliberately not collapsible: a pane dragged shut leaves a handle flush
-        against the dialog's edge, which is a poor thing to have to find again.
+        How wide it opens is _apply_dialog_preferences's business, called once the
+        pane is in place; what is set here is that it is deliberately not
+        collapsible, a pane dragged shut leaving a handle flush against the
+        dialog's edge, which is a poor thing to have to find again. The width the
+        user drags it to is remembered for the session, on the dialog's own
+        finished signal.
         """
         splitter = dialog.findChild(QSplitter, "splitter")
         if splitter is None:
@@ -2702,13 +2798,6 @@ class YellowDogApp(QMainWindow):
         index = splitter.indexOf(preview)
         splitter.setCollapsible(index, False)
         splitter.setStretchFactor(index, 0)
-
-        # Widen the dialog by the pane rather than letting the pane take its
-        # width out of the listing, which is the part the user came for.
-        dialog.resize(dialog.width() + self._preview_width, dialog.height())
-        sizes = splitter.sizes()
-        sizes[index] = self._preview_width
-        splitter.setSizes(sizes)
 
         dialog.currentChanged.connect(preview.show_path)
         dialog.finished.connect(
@@ -2725,6 +2814,169 @@ class YellowDogApp(QMainWindow):
         sizes = splitter.sizes()
         if 0 <= index < len(sizes) and sizes[index] > 0:
             self._preview_width = sizes[index]
+
+    @staticmethod
+    def _make_listing_a_names_only_tree(dialog: QFileDialog):
+        """
+        Turn Qt's Detail listing into the names-only hierarchy Commander shows: a
+        directory expands in place rather than having to be navigated into and back
+        out of, and the name gets the width the other columns were using.
+
+        Qt ships the tree flat — `rootIsDecorated` and `itemsExpandable` both off —
+        though the model under it (`QFileSystemModel`) has always been hierarchical.
+        Turning them on is all the hierarchy needs, and it costs nothing that was
+        there before: double-clicking a directory still navigates into it, so the
+        triangle and the double-click each keep their own job. A file picked inside
+        an expanded directory comes back with its full path, since the selection is
+        the model's, not the listed directory's.
+
+        That double-click behaviour is worth being sure of rather than assuming,
+        since a QTreeView with expandable items can consume a double-click to
+        expand instead of activating the row. Measured on macOS with a collapsed
+        directory: it navigated and did not expand, with `expandsOnDoubleClick`
+        either way, QFileDialog's own activation winning. It is not covered by a
+        test because the offscreen platform delivers neither a double-click nor a
+        Return to an item view — a stock dialog does not navigate there either.
+
+        Size, kind and date go because between them they take most of the width and
+        leave the name — the one column that says which file this is — elided. The
+        header goes with them, having one column left to sort. Stretching that
+        column is not cosmetic either: left at its own width the name still elides,
+        now with empty space beside it, which is the worst of both.
+
+        Applied when the dialog is built rather than when the tree is shown, so a
+        user who switches views mid-dialog finds it set up either way.
+        """
+        tree = dialog.findChild(QTreeView, "treeView")
+        if tree is None:
+            return
+
+        tree.setRootIsDecorated(True)
+        tree.setItemsExpandable(True)
+
+        header = tree.header()
+        if header is None:
+            return
+        for column in range(1, header.count()):
+            tree.setColumnHidden(column, True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
+        header.hide()
+
+    def _apply_dialog_preferences(self, dialog: QFileDialog):
+        """
+        Set up a non-native file dialog the way the user last left one: listing
+        files in their chosen view, with the places sidebar at their width and the
+        preview pane — if this dialog has one — at the width the session left it
+        at. Called by all three dialogs, once the pane is in place.
+
+        The widths go in one setSizes, and every pane's is stated except the
+        listing's. Both matter, because this runs on a dialog that has not been
+        shown: the splitter reports placeholder sizes rather than the widths it
+        has been given, so a second call throws the first call's away, and a pane
+        left out of the list is squashed to its minimum. The listing is the pane
+        left to the splitter, being the one that should take what is over.
+
+        The dialog grows by whatever the panes gain, rather than the panes taking
+        it out of the listing — the listing is the part the user came for.
+        """
+        self._make_listing_a_names_only_tree(dialog)
+        dialog.setViewMode(self._preferred_view_mode())
+
+        splitter = dialog.findChild(QSplitter, "splitter")
+        if splitter is None:
+            return
+
+        # Placeholders, and no use for measuring how much wider the dialog should
+        # be, so each pane says that for itself: the preview counts its whole
+        # width, being a pane nothing has given any width up for yet, and the
+        # sidebar only what it gains on the width Qt would have opened it at.
+        sizes = splitter.sizes()
+        widened = 0
+        stated = False
+
+        widening = self._sidebar_widening(dialog)
+        if widening is not None:
+            sizes[0], extra = widening
+            widened += extra
+            stated = True
+
+        preview = dialog.findChild(FilePreview, "file_preview")
+        if preview is not None:
+            sizes[splitter.indexOf(preview)] = self._preview_width
+            widened += self._preview_width
+            stated = True
+
+        dialog.finished.connect(
+            lambda _result: self._remember_dialog_preferences(dialog, splitter)
+        )
+
+        if not stated:
+            # Nothing to say about any pane, and the sizes read above are
+            # placeholders — setting them would be setting nonsense.
+            return
+        dialog.resize(dialog.width() + widened, dialog.height())
+        splitter.setSizes(sizes)
+
+    @staticmethod
+    def _remember_dialog_preferences(dialog: QFileDialog, splitter: QSplitter):
+        """
+        Keep the view mode and sidebar width a dialog is closing with, so the next
+        one opens the way the user left this one. Read on the dialog's own finished
+        signal, which is emitted while the splitter is still alive.
+
+        Written even when they are the defaults, and that is the point: what is
+        stored is a width and a mode a user has been shown and not changed, so
+        Commander need never guess whether a stored value was chosen.
+        """
+        settings = dialog_settings()
+        settings.setValue(SETTING_DIALOG_VIEW_MODE, dialog.viewMode().name)
+        sizes = splitter.sizes()
+        if sizes and sizes[0] > 0:
+            settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, sizes[0])
+
+    @staticmethod
+    def _preferred_view_mode() -> QFileDialog.ViewMode:
+        """
+        Which of Qt's two views to list files in: whichever the user last left a
+        dialog in, or DIALOG_VIEW_MODE — names only — if they have not switched.
+
+        Anything unreadable in the setting reads as 'not switched', which is the
+        harmless way round: a dialog opens in Commander's own view rather than
+        refusing to open.
+        """
+        stored = dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
+        try:
+            return QFileDialog.ViewMode[str(stored)]
+        except KeyError:
+            return DIALOG_VIEW_MODE
+
+    @classmethod
+    def _sidebar_widening(cls, dialog: QFileDialog) -> tuple[int, int] | None:
+        """
+        How wide to open the dialog's places sidebar — 'Computer', the home
+        directory, whatever the user has dropped there — and how much wider the
+        dialog must be for the listing not to pay for it. None if the dialog has
+        no sidebar to size.
+
+        Qt opens the sidebar at its own size hint, which elides even 'Computer' to
+        'Co...', so SIDEBAR_PANE_WIDTH is the width to start from; from then on it
+        is whatever the user last dragged one to.
+
+        The dialog pays for the width Commander chose and no more: a sidebar
+        dragged wider than SIDEBAR_PANE_WIDTH is a listing the user has chosen to
+        shrink, and re-widening the dialog would be undoing that.
+        """
+        sidebar = dialog.findChild(QListView, "sidebar")
+        if sidebar is None:
+            return None
+        stored = dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
+        try:
+            width = int(stored)
+        except (TypeError, ValueError):
+            width = SIDEBAR_PANE_WIDTH
+        natural = sidebar.sizeHint().width()
+        return width, max(0, min(width, SIDEBAR_PANE_WIDTH) - natural)
 
     def _browse_with_preview(self, caption: str, directory: str) -> str | None:
         """
@@ -3156,6 +3408,7 @@ class YellowDogApp(QMainWindow):
         # command to read, and nothing is opened by pressing the button.
         dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
         self._add_preview_pane(dialog)
+        self._apply_dialog_preferences(dialog)
         return self._run_file_dialog(dialog)
 
     def _save_file(
@@ -3182,6 +3435,7 @@ class YellowDogApp(QMainWindow):
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setFileMode(QFileDialog.FileMode.AnyFile)
+        self._apply_dialog_preferences(dialog)
         return self._run_file_dialog(dialog)
 
 

@@ -125,7 +125,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
 | `test_commander_reentrancy.py` | The guard that stops a second action starting while one is enumerating in a nested event loop |
 | `test_commander_shutdown.py` | The shutdown path: no process destroyed while running, no handler firing against a deleted object, nested loops released |
-| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, and its draggable width — the hand-over to the platform's file viewer, and what browsing, selecting and saving do with the file the user picks |
+| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, its headings staying at the top of the pane, and its draggable width — the names-only expandable listing (including that a file picked inside an expanded directory comes back with its full path) and the width the places sidebar opens at, both remembered as the user leaves them, the hand-over to the platform's file viewer, and what browsing, selecting and saving do with the file the user picks |
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_notices.py` | The modal notice for a missing `results` directory: shown and logged, one OK button, plain text so a Windows path survives, and log-only under `--yes` or shutdown |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
@@ -146,7 +146,7 @@ These are supported by three non-test modules and by fixtures in the root `conft
 | `gui_harness.py` | Generic Qt helpers: run or arm a dialog so an interaction lands inside its real modal loop, watchdogged; count visible rows; find buttons |
 | `commander_dialogs.py` | Drivers for Commander's own confirmation, chooser and notice, for the cases where production builds and execs the dialog |
 | `qt_guard.py` | `require_qt()` — the module-level skip, used instead of `pytest.importorskip` so that PyQt6-present-but-unusable skips rather than errors |
-| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), and `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`) |
+| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
 
 ### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
 

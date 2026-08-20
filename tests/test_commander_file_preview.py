@@ -20,31 +20,41 @@ import qt_guard
 qt_guard.require_qt()
 
 from os.path import realpath
+from pathlib import Path
 from time import monotonic
 
 import gui_harness
 from PyQt6.QtCore import QEventLoop, QPoint, QRect
 from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QAbstractItemView,
     QApplication,
     QDialogButtonBox,
     QFileDialog,
     QLineEdit,
+    QListView,
     QProxyStyle,
     QPushButton,
     QSplitter,
     QStyle,
+    QTreeView,
     QWidget,
 )
 
 from yellowdog_cli.commander.commander import (
     NATIVE_VIEWER_BUTTON_TEXT,
+    PREVIEW_ELIDED_BYTES,
+    PREVIEW_ELIDED_LINES,
+    PREVIEW_MAX_LINE_CHARS,
     PREVIEW_MAX_LINES,
     PREVIEW_MIN_WIDTH,
     PREVIEW_NO_SELECTION,
     PREVIEW_PANE_WIDTH,
     PREVIEW_READ_BYTES,
+    SETTING_DIALOG_SIDEBAR_WIDTH,
+    SETTING_DIALOG_VIEW_MODE,
+    SIDEBAR_PANE_WIDTH,
     FilePreview,
     YellowDogApp,
     format_file_size,
@@ -54,6 +64,10 @@ from yellowdog_cli.commander.commander import (
 # not have the directory's rows yet. Generous for a slow CI node; a real failure
 # to list the file still fails the test rather than hanging the suite.
 LISTING_TIMEOUT_S = 5.0
+
+# A pane taller than its own content, so that the layout has spare height to put
+# somewhere: the point of the heading cases below is where that spare height goes.
+TALL_PANE_HEIGHT = 400
 
 
 @pytest.fixture
@@ -118,6 +132,57 @@ def highlight(dialog, name: str) -> None:
     assert index is not None, f"{name!r} never appeared in the listing"
     view.setCurrentIndex(index)
     QApplication.processEvents()
+
+
+def downloaded_results(root: Path) -> Path:
+    """
+    A results directory shaped the way yd-download leaves one — work requirement,
+    task group, task, output file — and the path of the file at the bottom of it.
+    """
+    task = root / "pyex-bash-pwt_260820-083723781" / "task_group_1" / "task_1"
+    task.mkdir(parents=True)
+    output = task / "taskoutput.txt"
+    output.write_text("task output\n")
+    (root / "pyex-bash-pwt_260820-083723781" / "sleep_script.sh").write_text(
+        "sleep 1\n"
+    )
+    (root / "pyex-bash-pwt_260820-083725128").mkdir()
+    return output
+
+
+def model_index(view: QAbstractItemView, path: Path):
+    """
+    The index for 'path' in the listing's model, waiting for it: QFileSystemModel
+    populates each directory on its own thread, so a level just expanded does not
+    have its children yet.
+    """
+    model = view.model()
+    assert model is not None, "the file dialog's listing has no model"
+    deadline = monotonic() + LISTING_TIMEOUT_S
+    index = model.index(str(path))
+    while not index.isValid() and monotonic() < deadline:
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+        index = model.index(str(path))
+    assert index.isValid(), f"{path} never appeared in the listing's model"
+    return index
+
+
+def expand_to(dialog, path: Path):
+    """
+    Expand every directory between the dialog's own directory and 'path', the way
+    clicking each disclosure triangle does, and return the index of 'path' itself.
+    """
+    view = listing_view(dialog)
+    root = Path(dialog.directory().absolutePath())
+    branch = []
+    current = path.parent
+    while current != root:
+        branch.append(current)
+        current = current.parent
+    for directory in reversed(branch):
+        view.expand(model_index(view, directory))
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+    return model_index(view, path)
 
 
 def rect_in(widget: QWidget, ancestor: QWidget) -> QRect:
@@ -271,8 +336,61 @@ def test_a_long_text_file_is_elided_rather_than_read_whole(preview, tmp_path):
     body = preview.text_view.toPlainText().splitlines()
     assert body[0] == "line 0"
     assert body[PREVIEW_MAX_LINES - 1] == f"line {PREVIEW_MAX_LINES - 1}"
-    assert body[-1] == "…", "an elided preview must say so"
     assert len(body) == PREVIEW_MAX_LINES + 1
+
+
+def test_a_line_capped_preview_says_how_many_lines_it_is_showing(preview, tmp_path):
+    # A bare ellipsis says only 'there is more', which for task output could mean
+    # twenty more lines or twenty thousand. What is knowable without reading the
+    # whole file is how much was shown, so that is what it says.
+    target = tmp_path / "big.log"
+    target.write_text("".join(f"line {n}\n" for n in range(PREVIEW_MAX_LINES + 20)))
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert body[-1] == PREVIEW_ELIDED_LINES.format(lines=f"{PREVIEW_MAX_LINES:,}")
+
+
+def test_a_byte_capped_preview_says_how_much_of_the_file_it_read(preview, tmp_path):
+    # Few lines, but long ones: the byte cap bites where the line cap does not, and
+    # 'first 500 lines' would be a lie about a file with three of them.
+    target = tmp_path / "one-long-record.json"
+    target.write_text("".join("x" * 100_000 + "\n" for _ in range(3)))
+    assert target.stat().st_size > PREVIEW_READ_BYTES
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert len(body) - 1 <= PREVIEW_MAX_LINES, "the line cap should not have bitten"
+    assert body[-1] == PREVIEW_ELIDED_BYTES.format(
+        size=format_file_size(PREVIEW_READ_BYTES)
+    )
+
+
+def test_a_very_long_line_is_cut_rather_than_laid_out_whole(preview, tmp_path):
+    # Not cosmetic: QPlainTextEdit lays a single line out at superlinear cost, so
+    # the head of a minified JSON file — one line, no newlines — took 110ms to
+    # show, and show_path runs on every arrow-key move through the listing. Cut to
+    # PREVIEW_MAX_LINE_CHARS it is 1.4ms even when every line is at the cap.
+    target = tmp_path / "minified.json"
+    target.write_text("x" * (PREVIEW_MAX_LINE_CHARS * 4) + "\n")
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert body[0].startswith("xxx")
+    assert body[0].endswith("…"), "a line that was cut must say so"
+    assert all(len(line) <= PREVIEW_MAX_LINE_CHARS + 1 for line in body)
+
+
+def test_a_whole_short_file_is_shown_without_an_elision_note(preview, tmp_path):
+    target = tmp_path / "task_1.log"
+    target.write_text("Task started\nDone in 4.1s\n")
+
+    preview.show_path(str(target))
+
+    assert preview.text_view.toPlainText() == "Task started\nDone in 4.1s"
 
 
 def test_a_multibyte_character_across_the_read_cap_is_not_taken_for_binary(
@@ -288,7 +406,9 @@ def test_a_multibyte_character_across_the_read_cap_is_not_taken_for_binary(
 
     assert "text" in preview.meta_label.text()
     assert preview.text_view.toPlainText().startswith("aaa")
-    assert preview.text_view.toPlainText().endswith("…")
+    assert preview.text_view.toPlainText().endswith(
+        PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))
+    )
 
 
 def test_a_binary_file_is_not_previewed_as_text(preview, tmp_path):
@@ -389,6 +509,51 @@ def test_a_directory_is_named_as_one_with_no_body(preview, tmp_path):
     assert preview.meta_label.text() == "Directory"
     assert not preview.text_view.isVisible()
     assert not preview.image_view.isVisible()
+
+
+def test_the_headings_stay_at_the_top_when_there_is_no_body_to_show(preview, tmp_path):
+    # A directory has no body, which leaves the two headings as the only things in
+    # the layout — and Qt, with nothing able to grow, spreads the pane's spare
+    # height evenly around them: the name a third of the way down, the kind
+    # another third below it, and a hand's width of nothing in between.
+    (tmp_path / "results").mkdir()
+    preview.resize(PREVIEW_PANE_WIDTH, TALL_PANE_HEIGHT)
+
+    preview.show_path(str(tmp_path / "results"))
+    preview.layout().activate()
+
+    name = preview.name_label.geometry()
+    meta = preview.meta_label.geometry()
+    assert name.top() < name.height(), "the headings do not start at the top"
+    assert name.height() < preview.height() // 4, (
+        "a heading holds more height than its text needs"
+    )
+    assert 0 <= meta.top() - name.bottom() <= name.height(), (
+        "the two heading lines have drifted apart"
+    )
+    assert preview.height() - meta.bottom() > preview.height() // 2, (
+        "the spare height is not below the headings"
+    )
+
+
+def test_the_body_still_runs_to_the_bottom_of_the_pane(preview, tmp_path):
+    # The other half of grouping the headings at the top: whatever holds the spare
+    # height down there must give all of it back once there is a body to show.
+    log = tmp_path / "task_1.log"
+    log.write_text("Task started\n")
+    preview.resize(PREVIEW_PANE_WIDTH, TALL_PANE_HEIGHT)
+
+    preview.show_path(str(log))
+    preview.layout().activate()
+
+    body = preview.text_view.geometry()
+    meta = preview.meta_label.geometry()
+    assert 0 <= body.top() - meta.bottom() <= meta.height(), (
+        "the body does not follow the headings"
+    )
+    assert preview.height() - body.bottom() <= preview.layout().spacing(), (
+        "the body has been robbed of the pane's spare height"
+    )
 
 
 def test_a_path_that_has_gone_away_falls_back_to_the_placeholder(preview, tmp_path):
@@ -693,6 +858,315 @@ def test_the_preview_is_added_beside_the_listing_not_out_of_it(
     # come from somewhere; the pane's own width comes from the wider dialog.
     lost = listing_widths["plain"] - listing_widths["with_preview"]
     assert 0 <= lost <= listing_widths["handle"]
+
+
+def sidebar_width(dialog) -> int:
+    """
+    How wide the dialog's places sidebar — 'Computer', the home directory — has
+    opened. It is the first pane of the same splitter the preview goes into.
+    """
+    splitter = dialog.findChild(QSplitter, "splitter")
+    assert splitter is not None, "the file dialog has no splitter"
+    return splitter.sizes()[0]
+
+
+def plain_dialog_widths(directory) -> tuple[int, int]:
+    """
+    The sidebar and listing widths of a stock Qt file dialog over 'directory',
+    built and shown the way Commander's are but with none of its additions.
+
+    The baseline the sidebar cases measure against, rather than a Commander
+    dialog with a method stubbed out: what matters is how this compares with
+    the dialog Qt would have given the user unaided.
+    """
+    dialog = QFileDialog(None, "Plain", str(directory))
+    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+    try:
+        gui_harness.shown(dialog)
+        return sidebar_width(dialog), dialog.findChild(QSplitter, "splitter").sizes()[1]
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+
+
+def test_the_listing_shows_names_only_by_default(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # Qt's Detail view spends most of the listing's width on size, kind and date,
+    # and elides the one column that identifies the file. Same view, those columns
+    # hidden and the name given the width instead.
+    seen = {}
+
+    def interact(dialog):
+        view = listing_view(dialog)
+        assert isinstance(view, QTreeView), "the hierarchy needs the tree view"
+        header = view.header()
+        seen["view"] = view.objectName()
+        seen["header_hidden"] = header.isHidden()
+        seen["visible_columns"] = [
+            column
+            for column in range(header.count())
+            if not view.isColumnHidden(column)
+        ]
+        seen["name_width"] = header.sectionSize(0)
+        seen["viewport"] = view.viewport().width()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert seen["view"] == "treeView"
+    assert seen["visible_columns"] == [0], "only the name column should be shown"
+    assert seen["header_hidden"], "a one-column listing needs no header"
+    # The name takes the width the other columns are no longer using; left at its
+    # own width it elides with empty space beside it, which is the worst of both.
+    assert seen["name_width"] == seen["viewport"]
+
+
+def test_a_nested_file_is_reachable_without_leaving_the_directory(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # The point of the hierarchy: task output sits three directories down, and
+    # expanding to it beats navigating in and back out for every task.
+    output = downloaded_results(tmp_path)
+    seen = {}
+
+    def interact(dialog):
+        index = expand_to(dialog, output)
+        view = listing_view(dialog)
+        seen["row_height"] = view.visualRect(index).height()
+        seen["directory"] = Path(dialog.directory().absolutePath())
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(tmp_path))
+
+    assert seen["row_height"] > 0, "the nested file has no row on screen"
+    assert seen["directory"] == tmp_path, "the dialog navigated instead of expanding"
+
+
+def test_a_file_inside_an_expanded_directory_is_opened_by_its_full_path(
+    window, tmp_path, monkeypatch
+):
+    # A tree's selection is not relative to the directory the dialog is showing, so
+    # this is the case that would hand a command the wrong path.
+    output = downloaded_results(tmp_path)
+    opened: list[str] = []
+    monkeypatch.setattr(window, "_open_with_default_application", opened.append)
+
+    def interact(dialog):
+        index = expand_to(dialog, output)
+        listing_view(dialog).setCurrentIndex(index)
+        QApplication.processEvents()
+        press(dialog, "Open")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(tmp_path))
+
+    assert opened == [realpath(str(output))]
+
+
+def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # Switched with the dialog's own toolbar button, so the switch travels the
+    # same wiring a user's click does.
+    reopened = {}
+
+    def switch(dialog):
+        button = dialog.findChild(QAbstractButton, "listModeButton")
+        assert button is not None, "the dialog has no list-mode button"
+        button.click()
+        press(dialog, "Cancel")
+
+    def reopen(dialog):
+        reopened["mode"] = dialog.viewMode()
+        reopened["view"] = listing_view(dialog).objectName()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, switch)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    drive_file_dialog(window, monkeypatch, reopen)
+    window._open_file_viewer(str(tmp_path))
+
+    # Remembered across dialog *kinds*, and across sessions: it is the user's
+    # choice, not a property of the button that opened a dialog.
+    assert reopened["mode"] == QFileDialog.ViewMode.List
+    assert reopened["view"] == "listView"
+    assert commander_dialog_settings.value(SETTING_DIALOG_VIEW_MODE) == "List"
+
+
+def test_the_places_sidebar_opens_wide_enough_to_read_its_entries(
+    window, tmp_path, monkeypatch, qt_sidebar_width
+):
+    # Left to itself Qt opens it at the sidebar's size hint, which elides even
+    # 'Computer' to 'Co...' — the one part of the dialog that says nothing.
+    qt_sidebar_width(None)
+    plain_sidebar, _ = plain_dialog_widths(tmp_path)
+    measured = {}
+
+    def interact(dialog):
+        measured["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert plain_sidebar < SIDEBAR_PANE_WIDTH, (
+        "Qt already opens the sidebar wide enough, so this proves nothing"
+    )
+    assert measured["sidebar"] >= SIDEBAR_PANE_WIDTH
+
+
+def test_the_save_dialog_widens_its_sidebar_too(
+    window, tmp_path, monkeypatch, qt_sidebar_width
+):
+    # It carries no preview pane, so it is the call site that a width set from
+    # inside _add_preview_pane would quietly miss.
+    qt_sidebar_width(None)
+    measured = {}
+
+    def interact(dialog):
+        measured["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._save_file(
+        caption="Save",
+        directory=str(tmp_path / "output.txt"),
+        file_pattern="All files (*)",
+    )
+
+    assert measured["sidebar"] >= SIDEBAR_PANE_WIDTH
+
+
+@pytest.mark.parametrize(
+    "remembered",
+    [SIDEBAR_PANE_WIDTH - 60, SIDEBAR_PANE_WIDTH + 60],
+    ids=["narrower", "wider"],
+)
+def test_a_sidebar_width_commander_remembers_is_used_as_it_stands(
+    window, tmp_path, monkeypatch, commander_dialog_settings, remembered
+):
+    # Widening is a default, not a standing override: forced every time, a narrower
+    # sidebar could never be kept, and a wider one would be clamped back.
+    commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, remembered)
+    measured = {}
+
+    def interact(dialog):
+        measured["sidebar"] = sidebar_width(dialog)
+        sidebar = dialog.findChild(QListView, "sidebar")
+        assert sidebar is not None, "the file dialog has no sidebar"
+        measured["minimum"] = sidebar.minimumSizeHint().width()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert measured["sidebar"] == remembered
+    # A width that happens to be the pane's minimum is the one width a squashed
+    # sidebar also lands on, so it would prove nothing: that is how this case
+    # first passed against code that discarded the remembered width entirely.
+    assert remembered != measured["minimum"]
+
+
+def test_the_sidebar_width_the_user_drags_to_is_used_by_the_next_dialog(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    dragged_to = SIDEBAR_PANE_WIDTH + 40
+    reopened = {}
+
+    def drag(dialog):
+        splitter = dialog.findChild(QSplitter, "splitter")
+        assert splitter is not None, "the file dialog has no splitter"
+        sizes = splitter.sizes()
+        sizes[1] = max(1, sizes[1] - (dragged_to - sizes[0]))
+        sizes[0] = dragged_to
+        splitter.setSizes(sizes)
+        press(dialog, "Cancel")
+
+    def reopen(dialog):
+        reopened["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, drag)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+    assert commander_dialog_settings.value(SETTING_DIALOG_SIDEBAR_WIDTH) is not None
+
+    drive_file_dialog(window, monkeypatch, reopen)
+    window._open_file_viewer(str(tmp_path))
+
+    assert reopened["sidebar"] == dragged_to
+
+
+def test_qts_own_remembered_sidebar_width_is_ignored(
+    window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
+):
+    # Qt writes its own remembered width whenever one of these dialogs closes, so
+    # every machine that has ever opened one carries a value — 90 on any that ran
+    # the version which squashed the sidebar to its minimum. Reading it was how
+    # the widening came to be a no-op everywhere except a brand-new profile.
+    qt_sidebar_width(90)
+    measured = {}
+
+    def interact(dialog):
+        measured["sidebar"] = sidebar_width(dialog)
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert measured["sidebar"] == SIDEBAR_PANE_WIDTH
+
+
+def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
+    window, tmp_path, monkeypatch, qt_sidebar_width
+):
+    # Same bargain as the preview pane: the dialog grows by what the sidebar
+    # gains, rather than the listing shrinking by it.
+    qt_sidebar_width(None)
+    _, plain_listing = plain_dialog_widths(tmp_path)
+    measured = {}
+
+    def interact(dialog):
+        splitter = dialog.findChild(QSplitter, "splitter")
+        assert splitter is not None, "the file dialog has no splitter"
+        measured["listing"] = splitter.sizes()[1]
+        measured["handle"] = splitter.handleWidth()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    # All the listing gives up is the preview pane's own splitter handle, which
+    # has to come from somewhere; both panes' widths come from the wider dialog.
+    lost = plain_listing - measured["listing"]
+    assert 0 <= lost <= measured["handle"]
+
+
+def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
+    window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
+):
+    # The dialog must make room for the sidebar whether Commander is setting the
+    # width for the first time or applying a remembered one. Uncompensated, the
+    # listing was 84px narrower from the second dialog of the session onwards.
+    qt_sidebar_width(None)
+    _, plain_listing = plain_dialog_widths(tmp_path)
+    commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, SIDEBAR_PANE_WIDTH)
+    measured = {}
+
+    def interact(dialog):
+        splitter = dialog.findChild(QSplitter, "splitter")
+        assert splitter is not None, "the file dialog has no splitter"
+        measured["listing"] = splitter.sizes()[1]
+        measured["handle"] = splitter.handleWidth()
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._select_file(caption="Pick", directory=str(tmp_path))
+
+    assert plain_listing - measured["listing"] <= measured["handle"]
 
 
 def test_the_width_the_user_drags_the_pane_to_is_used_by_the_next_dialog(

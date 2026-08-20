@@ -156,6 +156,112 @@ def _no_config_discovery(request, monkeypatch):
     )
 
 
+# Qt's own file-dialog settings, which Commander deliberately does not read (it
+# keeps its own; see commander.dialog_settings). Named here because the only code
+# that cares is the fixtures below and the one case that proves they are ignored.
+QT_SETTINGS_ORGANISATION = "QtProject"
+QT_SIDEBAR_WIDTH_SETTING = "FileDialog/sidebarWidth"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _preserve_qt_sidebar_width():
+    """
+    Put the machine's own Qt sidebar width back after the test session.
+
+    Qt persists the file dialog's sidebar width in shared user settings — a real
+    plist or registry key, belonging to the user rather than to the test session —
+    and writes it whenever one of these dialogs closes. Commander keeps its own
+    (see commander_dialog_settings) and does not read Qt's, but a test still sets
+    Qt's to prove exactly that, and none of them should leave it changed.
+
+    Restored from atexit rather than from this fixture's teardown, because that is
+    the last thing to run: the QApplication outlives every fixture (see qapp), and
+    the stray write landed after a teardown-time restore.
+
+    Inert without a usable Qt, since this is autouse for the whole repo.
+    """
+    try:
+        from PyQt6.QtCore import QSettings
+    except Exception:  # PyQt6 absent, or its Qt runtime libraries are
+        yield
+        return
+
+    previous = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION).value(
+        QT_SIDEBAR_WIDTH_SETTING
+    )
+
+    def restore():
+        # A QSettings of its own each time: the one this fixture might have kept is
+        # a deleted C++ object by the time the atexit handler runs.
+        settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
+        if previous is None:
+            settings.remove(QT_SIDEBAR_WIDTH_SETTING)
+        else:
+            settings.setValue(QT_SIDEBAR_WIDTH_SETTING, previous)
+        settings.sync()
+
+    # Twice over: once here, and once from atexit in case anything writes the
+    # setting after the last fixture has been torn down. The QApplication outlives
+    # every fixture (see qapp), so a dialog of its own could still be closing.
+    atexit.register(restore)
+    yield
+    restore()
+
+
+@pytest.fixture
+def qt_sidebar_width(_preserve_qt_sidebar_width):
+    """
+    Set what Qt has remembered for a file dialog's sidebar width: a width, or None
+    for a machine that has never had one.
+
+    Qt restores that width when a dialog is built, so the case that Commander's own
+    preference wins needs to be able to say what Qt is restoring — and the cases
+    that measure a stock dialog need it cleared, or they measure whatever this
+    machine last happened to keep. Putting the user's own value back is
+    _preserve_qt_sidebar_width's business.
+    """
+    from PyQt6.QtCore import QSettings
+
+    settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
+
+    def remember(width: int | None):
+        if width is None:
+            settings.remove(QT_SIDEBAR_WIDTH_SETTING)
+        else:
+            settings.setValue(QT_SIDEBAR_WIDTH_SETTING, width)
+        settings.sync()
+
+    return remember
+
+
+@pytest.fixture(autouse=True)
+def commander_dialog_settings(request, tmp_path_factory, monkeypatch):
+    """
+    Commander's own file-dialog preferences — the sidebar width and the view mode
+    — kept in an ini file of this test's own, and returned so that a test can say
+    what is already remembered.
+
+    Autouse, and a seam rather than a snapshot: these live in real user settings,
+    so a test that let them through would both read whatever the developer had
+    chosen and write its own choice back over it. Empty unless a test fills it,
+    which is the state Commander applies its defaults in.
+
+    Yields None for a test with no Qt at all, which must not import PyQt6 here:
+    this fixture is autouse for the whole repo.
+    """
+    if "qapp" not in request.fixturenames:
+        return None
+
+    from PyQt6.QtCore import QSettings
+
+    from yellowdog_cli.commander import commander
+
+    path = tmp_path_factory.mktemp("commander-settings") / "commander.ini"
+    settings = QSettings(str(path), QSettings.Format.IniFormat)
+    monkeypatch.setattr(commander, "dialog_settings", lambda: settings)
+    return settings
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """
