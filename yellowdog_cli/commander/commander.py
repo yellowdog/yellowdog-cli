@@ -130,8 +130,20 @@ RESULTS_DIR = "results"
 PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
 PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
 PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
-PREVIEW_READ_BYTES = 8192  # bytes read from the head of a file to preview it
-PREVIEW_MAX_LINES = 60  # lines of that head shown before the preview is elided
+PREVIEW_READ_BYTES = 262_144  # bytes read from the head of a file to preview it
+PREVIEW_MAX_LINES = 500  # lines of that head shown before the preview is elided
+# Characters of any one of those lines shown before it is cut. A performance cap
+# rather than a cosmetic one: QPlainTextEdit lays a single line out at superlinear
+# cost, so the 256kB head of a minified JSON file — one line, no newlines — took
+# 110ms to show, on a preview that is refilled at every arrow-key press. Cut to
+# this it is 1.4ms even with every line at the cap, and 2,000 characters is some
+# fifty screenfuls of a pane this wide.
+PREVIEW_MAX_LINE_CHARS = 2000
+# The last line of an elided preview, saying which cap stopped it. Only what is
+# knowable without reading the whole file: a total line count would mean reading
+# all of it, which is what the byte cap exists to avoid.
+PREVIEW_ELIDED_LINES = "… first {lines} lines shown"
+PREVIEW_ELIDED_BYTES = "… first {size} shown"
 PREVIEW_NO_SELECTION = "No file selected"
 SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
 # Names only, no size/kind/date columns: the one column that identifies a file is
@@ -575,10 +587,25 @@ class FilePreview(QWidget):
         )
 
     @staticmethod
-    def _decoded_head(path: str) -> str | None:
+    def _cut(line: str) -> str:
         """
-        The first lines of a text file, elided with an ellipsis line if there is
-        more, or None if the file is not text.
+        One line of a preview, cut to PREVIEW_MAX_LINE_CHARS and marked if it was
+        longer. See that constant: this is what keeps a file with no newlines in it
+        from taking a tenth of a second to show.
+        """
+        if len(line) <= PREVIEW_MAX_LINE_CHARS:
+            return line
+        return f"{line[:PREVIEW_MAX_LINE_CHARS]}…"
+
+    @classmethod
+    def _decoded_head(cls, path: str) -> str | None:
+        """
+        The first lines of a text file — ending in a line saying which cap stopped
+        it, if either did — or None if the file is not text.
+
+        That last line states only what reading the head can know: how many lines
+        were shown, or how much of the file was read. A total line count would mean
+        reading all of it, which is what the byte cap is here to avoid.
 
         Read as bytes and decoded strictly, rather than trusted by extension:
         task output, logs and JSON arrive with every extension and none. The
@@ -606,9 +633,19 @@ class FilePreview(QWidget):
             return None
 
         lines = text.splitlines()
-        elided = truncated or len(lines) > PREVIEW_MAX_LINES
-        body = "\n".join(lines[:PREVIEW_MAX_LINES])
-        return f"{body}\n…" if elided else body
+        body = "\n".join(cls._cut(line) for line in lines[:PREVIEW_MAX_LINES])
+        if len(lines) > PREVIEW_MAX_LINES:
+            # The binding cap when both bite: the reader has been given 500 lines,
+            # and the byte cap behind them is not what stopped the preview.
+            return (
+                f"{body}\n{PREVIEW_ELIDED_LINES.format(lines=f'{PREVIEW_MAX_LINES:,}')}"
+            )
+        if truncated:
+            return (
+                f"{body}\n"
+                f"{PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))}"
+            )
+        return body
 
 
 class LineBuffer:

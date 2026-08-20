@@ -104,6 +104,8 @@ The file dialogs — choosing a configuration or definition file, and the two di
 
 A binary file is named and sized but not previewed, rather than shown as gibberish. Whether a file counts as text is decided by reading the start of it, not by its extension, so task output named whatever the task named it is previewed all the same.
 
+A text file is previewed from the top: up to 500 lines, or the first 256 kB of it, whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
+
 The three selectors accept with a **Select** button rather than Qt's **Open**: they nominate a file for a later command to read, and nothing is opened by pressing it. The two directory-browsing dialogs do say **Open**, because there they really do open the chosen file in the default application for its type.
 
 Those two also carry a **Use Finder** button (**Use Explorer** on Windows, **Use File Manager** on Linux), which hands the directory you are looking at — including a subdirectory you have navigated into — to the platform's own file viewer and closes the dialog. That is the way to delete or rename anything in the `results` directory, since the Qt dialog is deliberately read-only.

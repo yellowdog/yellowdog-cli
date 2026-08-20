@@ -43,6 +43,9 @@ from PyQt6.QtWidgets import (
 from yellowdog_cli.commander.commander import (
     DIALOG_VIEW_MODE,
     NATIVE_VIEWER_BUTTON_TEXT,
+    PREVIEW_ELIDED_BYTES,
+    PREVIEW_ELIDED_LINES,
+    PREVIEW_MAX_LINE_CHARS,
     PREVIEW_MAX_LINES,
     PREVIEW_MIN_WIDTH,
     PREVIEW_NO_SELECTION,
@@ -281,8 +284,61 @@ def test_a_long_text_file_is_elided_rather_than_read_whole(preview, tmp_path):
     body = preview.text_view.toPlainText().splitlines()
     assert body[0] == "line 0"
     assert body[PREVIEW_MAX_LINES - 1] == f"line {PREVIEW_MAX_LINES - 1}"
-    assert body[-1] == "…", "an elided preview must say so"
     assert len(body) == PREVIEW_MAX_LINES + 1
+
+
+def test_a_line_capped_preview_says_how_many_lines_it_is_showing(preview, tmp_path):
+    # A bare ellipsis says only 'there is more', which for task output could mean
+    # twenty more lines or twenty thousand. What is knowable without reading the
+    # whole file is how much was shown, so that is what it says.
+    target = tmp_path / "big.log"
+    target.write_text("".join(f"line {n}\n" for n in range(PREVIEW_MAX_LINES + 20)))
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert body[-1] == PREVIEW_ELIDED_LINES.format(lines=f"{PREVIEW_MAX_LINES:,}")
+
+
+def test_a_byte_capped_preview_says_how_much_of_the_file_it_read(preview, tmp_path):
+    # Few lines, but long ones: the byte cap bites where the line cap does not, and
+    # 'first 500 lines' would be a lie about a file with three of them.
+    target = tmp_path / "one-long-record.json"
+    target.write_text("".join("x" * 100_000 + "\n" for _ in range(3)))
+    assert target.stat().st_size > PREVIEW_READ_BYTES
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert len(body) - 1 <= PREVIEW_MAX_LINES, "the line cap should not have bitten"
+    assert body[-1] == PREVIEW_ELIDED_BYTES.format(
+        size=format_file_size(PREVIEW_READ_BYTES)
+    )
+
+
+def test_a_very_long_line_is_cut_rather_than_laid_out_whole(preview, tmp_path):
+    # Not cosmetic: QPlainTextEdit lays a single line out at superlinear cost, so
+    # the head of a minified JSON file — one line, no newlines — took 110ms to
+    # show, and show_path runs on every arrow-key move through the listing. Cut to
+    # PREVIEW_MAX_LINE_CHARS it is 1.4ms even when every line is at the cap.
+    target = tmp_path / "minified.json"
+    target.write_text("x" * (PREVIEW_MAX_LINE_CHARS * 4) + "\n")
+
+    preview.show_path(str(target))
+
+    body = preview.text_view.toPlainText().splitlines()
+    assert body[0].startswith("xxx")
+    assert body[0].endswith("…"), "a line that was cut must say so"
+    assert all(len(line) <= PREVIEW_MAX_LINE_CHARS + 1 for line in body)
+
+
+def test_a_whole_short_file_is_shown_without_an_elision_note(preview, tmp_path):
+    target = tmp_path / "task_1.log"
+    target.write_text("Task started\nDone in 4.1s\n")
+
+    preview.show_path(str(target))
+
+    assert preview.text_view.toPlainText() == "Task started\nDone in 4.1s"
 
 
 def test_a_multibyte_character_across_the_read_cap_is_not_taken_for_binary(
@@ -298,7 +354,9 @@ def test_a_multibyte_character_across_the_read_cap_is_not_taken_for_binary(
 
     assert "text" in preview.meta_label.text()
     assert preview.text_view.toPlainText().startswith("aaa")
-    assert preview.text_view.toPlainText().endswith("…")
+    assert preview.text_view.toPlainText().endswith(
+        PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))
+    )
 
 
 def test_a_binary_file_is_not_previewed_as_text(preview, tmp_path):
