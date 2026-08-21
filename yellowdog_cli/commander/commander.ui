@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1064</width>
-    <height>720</height>
+    <height>840</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -123,7 +123,7 @@
        <number>0</number>
       </property>
       <property name="rightMargin">
-       <number>5</number>
+       <number>0</number>
       </property>
       <property name="bottomMargin">
        <number>12</number>
@@ -200,7 +200,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="label_5">
+         <widget class="QLabel" name="wr_options_label">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -222,7 +222,7 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>170</width>
+            <width>150</width>
             <height>25</height>
            </size>
           </property>
@@ -345,7 +345,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="label_6">
+         <widget class="QLabel" name="wp_options_label">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -457,7 +457,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="label_object_path">
+         <widget class="QLabel" name="object_path_label">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -479,7 +479,7 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>214</width>
+            <width>150</width>
             <height>25</height>
            </size>
           </property>
@@ -560,7 +560,7 @@
     <item row="0" column="2">
      <layout class="QHBoxLayout" name="horizontalLayout_8" stretch="0,0,0,0,0,0">
       <property name="leftMargin">
-       <number>15</number>
+       <number>0</number>
       </property>
       <property name="topMargin">
        <number>0</number>
@@ -573,7 +573,7 @@
          </font>
         </property>
         <property name="text">
-         <string> Namespace:</string>
+         <string>Namespace:</string>
         </property>
        </widget>
       </item>
@@ -675,7 +675,7 @@
     <item row="1" column="2">
      <layout class="QHBoxLayout" name="horizontalLayout">
       <property name="leftMargin">
-       <number>15</number>
+       <number>0</number>
       </property>
       <item>
        <widget class="QLabel" name="label_4">
@@ -691,7 +691,7 @@
          </font>
         </property>
         <property name="text">
-         <string> User-Defined Variables:</string>
+         <string>User-Defined Variables:</string>
         </property>
        </widget>
       </item>

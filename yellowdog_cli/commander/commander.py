@@ -40,6 +40,7 @@ from os.path import abspath, basename, dirname, exists, getsize, isdir, join, re
 _PKG_DIR = dirname(abspath(__file__))
 
 from PyQt6.QtCore import (
+    QEvent,
     QEventLoop,
     QFileSystemWatcher,
     QProcess,
@@ -85,6 +86,7 @@ from PyQt6.QtWidgets import (
     QSpacerItem,
     QSplitter,
     QStyle,
+    QStyleOptionButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -814,6 +816,9 @@ class YellowDogApp(QMainWindow):
     # static type checkers can resolve their attribute references.
     branding: QLabel
     select_config_label: QLabel
+    wr_options_label: QLabel
+    wp_options_label: QLabel
+    object_path_label: QLabel
 
     log_output: QPlainTextEdit
     user_variables: QPlainTextEdit
@@ -872,6 +877,8 @@ class YellowDogApp(QMainWindow):
         # The framed label showing the selected configuration file (the frame
         # itself comes from commander.ui, which cannot carry this margin)
         self.select_config_label.setMargin(SELECTED_CONFIG_MARGIN)
+
+        self._align_field_labels()
 
         self._pid = os.getpid()
 
@@ -1286,6 +1293,106 @@ class YellowDogApp(QMainWindow):
                 self._log(NO_SELECTED_CONFIG)
             return False
         return True
+
+    def _align_field_labels(self):
+        """
+        Start the left-hand column's input fields at one edge, by widening each
+        of their labels to the widest of them.
+
+        Their rows sit in three separate panel layouts, and Qt aligns nothing
+        across layouts, so each field began wherever its own label happened to
+        end — at 110, 110 and 56. Measured here rather than set as a width in
+        commander.ui, because a width in pixels is a width for one font: these
+        labels are the widest under this one, and need not be under the next.
+        """
+        labels = (self.wr_options_label, self.wp_options_label, self.object_path_label)
+        widest = max(label.sizeHint().width() for label in labels)
+        for label in labels:
+            label.setMinimumWidth(widest)
+
+    def _align_checkbox_indicators(self):
+        """
+        Indent the left-hand column's checkboxes by however far the current style
+        insets a push button's frame inside its widget, so that the indicators line
+        up with the buttons above and below them.
+
+        Both are laid out at the same x. The macOS style then paints a button's
+        bevel 2px in — room for its focus ring — and a checkbox's indicator flush,
+        which leaves the checkboxes looking a couple of pixels further left than
+        every button in the column.
+
+        Read from the style rather than written as 2, because Dark Mode switches
+        the application style to Fusion and back (see _dark_mode_action), and
+        Fusion paints the bevel flush; hence also the recomputation on a style
+        change in changeEvent(), and clearing the margins before measuring, so that
+        the measurement is of the style and not of the last margin applied.
+
+        Not covered by a test: the inset only exists when painting through the real
+        platform, so it cannot be reproduced offscreen — even under the macOS style
+        a headless button reports its bevel flush. Verified by measuring the painted
+        pixels of a real window, where the buttons start at x=22 and the checkboxes
+        did at x=20.
+        """
+        checkboxes = (
+            self.dry_run,
+            self.follow_progress,
+            self.dry_run_worker_pool,
+            self.follow_worker_pool,
+            self.dry_run_objects,
+        )
+        for checkbox in checkboxes:
+            checkbox.setStyleSheet("")
+
+        inset = self._button_bevel_inset(
+            self.submit_work_requirement
+        ) - self._indicator_inset(self.dry_run)
+        if inset <= 0:
+            return
+        for checkbox in checkboxes:
+            checkbox.setStyleSheet(f"margin-left: {inset}px")
+
+    @staticmethod
+    def _button_bevel_inset(button: QPushButton) -> int:
+        """How far inside its widget the current style paints a push button's frame."""
+        option = QStyleOptionButton()
+        button.initStyleOption(option)
+        style = button.style()
+        if style is None:
+            return 0
+        return style.subElementRect(
+            QStyle.SubElement.SE_PushButtonBevel, option, button
+        ).left()
+
+    @staticmethod
+    def _indicator_inset(checkbox: QCheckBox) -> int:
+        """The same, for a checkbox's indicator."""
+        option = QStyleOptionButton()
+        checkbox.initStyleOption(option)
+        style = checkbox.style()
+        if style is None:
+            return 0
+        return style.subElementRect(
+            QStyle.SubElement.SE_CheckBoxIndicator, option, checkbox
+        ).left()
+
+    def showEvent(self, a0):
+        """
+        Align the checkboxes once the window is on screen. The style resolves a
+        button's bevel inset against the real platform, so measuring it in
+        __init__ reports flush — 0 rather than 2 — and the indent never gets
+        applied. Idempotent, so a later show costs nothing.
+        """
+        super().showEvent(a0)
+        self._align_checkbox_indicators()
+
+    def changeEvent(self, a0):
+        """
+        Re-align the checkboxes when the application style changes, which Dark Mode
+        does: the inset they are indented by belongs to the style, not to the theme.
+        """
+        super().changeEvent(a0)
+        if a0 is not None and a0.type() == QEvent.Type.StyleChange:
+            self._align_checkbox_indicators()
 
     def _config_dir(self) -> str:
         """
