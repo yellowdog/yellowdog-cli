@@ -118,6 +118,16 @@ tox -- --run-system --run-demos
 tox -e py310,py314 -- --run-demos tests/test_demos.py -n 12
 ```
 
+#### Python Pre-Releases
+
+Python 3.15 has a `py315` environment, deliberately kept out of `env_list` so that `make tox` neither runs it nor is broken by it; `tox list` shows it under *additional environments*, and it is run explicitly:
+
+```shell
+tox -e py315
+```
+
+The interpreter itself is no obstacle — uv downloads pre-release CPython like any other version — but as of August 2026 the environment cannot be created, because two dependencies publish no cp315 wheel. `rclone-api` requires `psycopg2-binary`, so uv falls back to building it from source and fails on the missing `pg_config`; and `PyQt6_sip`, pulled in by the `commander` extra, is missing a wheel too. Once both ship for cp315, `tox -e py315` should pass, at which point `py315` belongs in `env_list` and `3.15` in the classifiers in `pyproject.toml`.
+
 ## Type Checking
 
 Static type checking is done with [pyright](https://github.com/microsoft/pyright) in basic mode:

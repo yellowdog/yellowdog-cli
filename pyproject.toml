@@ -155,3 +155,6 @@
     runner = "uv-venv-runner"
     extras = ["dev", "commander"]
     commands = [["pytest", "{posargs}"]]
+
+[tool.tox.env.py315]
+    description = "pre-release; excluded from the default run, see DEVELOPMENT.md"

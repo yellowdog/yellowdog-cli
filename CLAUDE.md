@@ -28,6 +28,7 @@ pytest -v -k test_variable          # run a single test file/pattern
 
 # Run tests across all supported Python versions (3.10–3.14) via tox + uv
 make tox
+tox -e py315          # Python 3.15 pre-release: opt-in, kept out of env_list (see DEVELOPMENT.md)
 
 # Type checking
 make pyright
