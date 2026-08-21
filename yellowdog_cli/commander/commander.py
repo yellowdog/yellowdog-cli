@@ -960,6 +960,13 @@ class YellowDogApp(QMainWindow):
             )
 
         self._config_file: str | None = None
+        # Absolute, deliberately: these are handed to a child process that runs
+        # in the config file's directory (see _working_dir), while Commander's own
+        # directory is wherever it was launched from — and Show reads them in this
+        # process. A path relative to either base is wrong for the other, so
+        # 'yd-submit -r ../demos/bash/x.json' went looking for it under the config
+        # directory and failed. The config file needs no such care: its consumers
+        # take _config_dir() and _config_basename() from it rather than passing it on.
         self._wr_file: str | None = None
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
@@ -1369,7 +1376,7 @@ class YellowDogApp(QMainWindow):
         if file is None:
             self._log("No Work Requirement definition file selected")
         else:
-            self._wr_file = relpath(file)
+            self._wr_file = abspath(file)
             self._log(f"Selected Work Requirement definition '{self._wr_file}'")
             self._show_wr_selection()
 
@@ -1383,7 +1390,7 @@ class YellowDogApp(QMainWindow):
         if file is None:
             self._log("No Worker Pool definition file selected")
         else:
-            self._wp_file = relpath(file)
+            self._wp_file = abspath(file)
             self._log(f"Selected Worker Pool definition '{self._wp_file}'")
             self._show_wp_selection()
 

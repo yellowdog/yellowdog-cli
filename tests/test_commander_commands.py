@@ -6,7 +6,7 @@ instead of spawning a process, so no yd-* command is actually run.
 """
 
 import os
-from os.path import abspath, dirname, join
+from os.path import abspath, dirname, join, realpath
 
 import pytest
 import qt_guard
@@ -100,6 +100,82 @@ def test_submit_follow(window, captured):
     window.follow_progress.setChecked(True)
     window._submit_work_requirement_action()
     assert captured == [("yd-submit", ["-f"])]
+
+
+# --- Selected definition files and the command's working directory -----------
+# Commands run in the config file's directory, not Commander's own, so a path
+# stored relative to the launch directory resolves to nothing once handed over.
+
+
+def selected_definition(window, monkeypatch, tmp_path, name: str):
+    """
+    Select a definition file that sits beside a config file in a directory which
+    is deliberately not Commander's own, and return its path.
+    """
+    config_dir = tmp_path / "demos" / "bash"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text("")
+    definition = config_dir / name
+    definition.write_text('{"workRequirement": {}}\n')
+
+    window._config_file = str(config_dir / "config.toml")
+    monkeypatch.setattr(window, "_select_file", lambda **kwargs: str(definition))
+    return definition
+
+
+def handed_over(window, captured, flag: str) -> str:
+    """
+    Where the path given after 'flag' actually lands, resolved the way the child
+    process resolves it: from the working directory the command is run in.
+    """
+    assert len(captured) == 1, f"expected one command, got {captured}"
+    _, args = captured[0]
+    assert flag in args, f"{flag} missing from {args}"
+    return realpath(join(window._working_dir(), args[args.index(flag) + 1]))
+
+
+def test_a_selected_work_requirement_reaches_yd_submit(
+    window, captured, monkeypatch, tmp_path
+):
+    definition = selected_definition(
+        window, monkeypatch, tmp_path, "bash_with_args.json"
+    )
+
+    window._select_work_requirement_action()
+    window._submit_work_requirement_action()
+
+    assert handed_over(window, captured, "-r") == realpath(str(definition))
+
+
+def test_a_selected_worker_pool_reaches_yd_provision(
+    window, captured, monkeypatch, tmp_path
+):
+    definition = selected_definition(window, monkeypatch, tmp_path, "worker_pool.json")
+
+    window._select_worker_pool_action()
+    window._create_worker_pool_action()
+
+    assert handed_over(window, captured, "-p") == realpath(str(definition))
+
+
+def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
+    window, monkeypatch, tmp_path
+):
+    # The other consumer of the stored path: Show reads the file in Commander's
+    # own process, whose directory is not the one commands run in. Whatever is
+    # stored has to work for both, which a config-dir-relative path would not.
+    definition = selected_definition(
+        window, monkeypatch, tmp_path, "bash_with_args.json"
+    )
+    logged: list[str] = []
+    monkeypatch.setattr(window, "_log", lambda text, **kwargs: logged.append(text))
+
+    window._select_work_requirement_action()
+    window._show_wr_action()
+
+    assert any(definition.read_text().strip() in line for line in logged), (
+        f"the file's contents were never shown; logged: {logged}"
+    )
 
 
 # --- Provision Worker Pool ---------------------------------------------------
