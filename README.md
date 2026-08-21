@@ -195,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Aug 11 12:05:15 BST 2026 -->
+<!-- Added by: pwt, at: Fri Aug 21 11:17:40 BST 2026 -->
 
 <!--te-->
 
@@ -3258,6 +3258,8 @@ The use of the filename extension `.jsonnet` will activate Jsonnet evaluation. (
 ## Jsonnet Installation
 
 Jsonnet is **not** installed by default. If you try to use a Jsonnet file without it installed, the commands will print an error with installation instructions.
+
+On most platforms Jsonnet installs as a prebuilt wheel and needs nothing else. There is no wheel for Linux on Arm (`aarch64`), for Intel macOS, for Windows on Arm, or for Linux distributions older than Debian 9 / Ubuntu 17.04; on those, pip compiles Jsonnet from source, which needs a C++ compiler — `build-essential` on Debian/Ubuntu. `yd-version` reports whether Jsonnet is installed, and which version.
 
 **With pipx:**
 

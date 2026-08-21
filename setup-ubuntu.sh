@@ -173,7 +173,8 @@ install_first_available() {
 # - ca-certificates, curl: fetching uv and the Python it manages
 # - git: cloning the repository
 # - make: the checkout's make targets
-# - build-essential: the 'jsonnet' extra has no wheel and is compiled on install
+# - build-essential: 'jsonnet' ships x86_64 wheels but none for aarch64, so on an
+#   Arm image it is compiled on install
 # - libatomic1: 'make pyright' runs pyright on Node, and the Node binary
 #   pyright-python downloads is linked against libatomic
 # - the Qt libraries: PyQt6, for the Commander GUI tests. Needed even though those
