@@ -115,7 +115,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | File | What it tests |
 |---|---|
 | `test_commander_button_wiring.py` | Every main-window button is connected to the action it claims to perform — a button wired to nothing, or to the wrong action, looks healthy to every other test |
-| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned) |
+| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned), and a selected definition file survives the hand-over — its path resolved against the directory the command runs in, and read back through Show |
 | `test_commander_dialog_behaviour.py` | The dialogs as dialogs: real `exec()`, real clicks, real geometry — the bug classes that reached users (inert buttons, a stolen default button, a list squeezed until no row shows) |
 | `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
 | `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting |
@@ -134,7 +134,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
 | `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames |
-| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6 and every code-referenced widget exists |
+| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6, every code-referenced widget exists, and the layout holds together: the separator below the View Config Directory row lies between that row and the one beneath it, the paired top rows of the two columns share a grid row, the window opens tall enough that no button is squeezed below or stretched beyond its natural height, a taller window does not spread the left column's rows apart, each column's rows start at one left edge, no label is indented with leading spaces, and a style change re-aligns the checkbox indents (the indents themselves need a real platform to appear) |
 | `test_commander_resources.py` | The package data (`.ui` file and images) is present and resolvable through the installed package |
 | `test_commander_entrypoint.py` | The `yd-commander` console script is registered and has its own CLI, not the shared parser |
 | `test_gui_harness.py` | Self-tests for the harness itself: that it surfaces hangs and assertions instead of swallowing them, and that its geometry helper measures what it claims |
