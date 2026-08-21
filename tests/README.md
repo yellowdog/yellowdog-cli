@@ -134,7 +134,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
 | `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames |
-| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6 and every code-referenced widget exists |
+| `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6, every code-referenced widget exists, and the separator below the View Config Directory row lies between that row and the one beneath it |
 | `test_commander_resources.py` | The package data (`.ui` file and images) is present and resolvable through the installed package |
 | `test_commander_entrypoint.py` | The `yd-commander` console script is registered and has its own CLI, not the shared parser |
 | `test_gui_harness.py` | Self-tests for the harness itself: that it surfaces hangs and assertions instead of swallowing them, and that its geometry helper measures what it claims |

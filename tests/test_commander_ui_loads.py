@@ -10,7 +10,9 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from PyQt6.QtWidgets import QPlainTextEdit, QPushButton
+import gui_harness
+from PyQt6.QtCore import QPoint
+from PyQt6.QtWidgets import QFrame, QPlainTextEdit, QPushButton
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.commander.commander import YellowDogApp
@@ -36,3 +38,28 @@ def test_ui_loads_and_binds_expected_widgets(qapp):
     assert isinstance(win.submit_work_requirement, QPushButton)
     assert isinstance(win.create_worker_pool, QPushButton)
     assert isinstance(win.download_results, QPushButton)
+
+
+def test_a_separator_divides_the_view_row_from_the_run_command_row(qapp):
+    # Found by shape and position rather than by name, so it survives whatever
+    # Designer calls it, and asserts the thing that matters: that a horizontal
+    # rule lies between the two rows rather than merely existing somewhere.
+    win = gui_harness.shown(YellowDogApp())
+
+    def top(widget) -> int:
+        return widget.mapTo(win, QPoint(0, 0)).y()
+
+    def bottom(widget) -> int:
+        return top(widget) + widget.height()
+
+    between = [
+        frame
+        for frame in win.findChildren(QFrame)
+        if frame.frameShape() == QFrame.Shape.HLine
+        and bottom(win.view_config_directory) <= top(frame) <= top(win.run_any_command)
+    ]
+
+    assert between, "no horizontal separator below the View Config Directory row"
+    assert all(
+        bottom(separator) <= top(win.run_any_command) for separator in between
+    ), "the separator overlaps the row beneath it"
