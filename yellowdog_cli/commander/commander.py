@@ -852,12 +852,12 @@ class YellowDogApp(QMainWindow):
     create_worker_pool: QPushButton
     shutdown_all_worker_pools: QPushButton
     terminate_all_compute_requirements: QPushButton
-    view_results: QPushButton
-    show_configuration: QPushButton
-    show_wr: QPushButton
-    show_wp: QPushButton
+    browse_results_directory: QPushButton
+    show_config: QPushButton
+    show_wr_json: QPushButton
+    show_wp_json: QPushButton
     deselect_files: QPushButton
-    view_config_directory: QPushButton
+    browse_config_directory: QPushButton
     run_any_command: QPushButton
     next_command: QPushButton
     prev_command: QPushButton
@@ -924,12 +924,16 @@ class YellowDogApp(QMainWindow):
         self.terminate_all_compute_requirements.clicked.connect(
             self._terminate_all_compute_requirements_action
         )
-        self.view_results.clicked.connect(self._view_results_action)
-        self.show_configuration.clicked.connect(self._show_config_action)
-        self.show_wr.clicked.connect(self._show_wr_action)
-        self.show_wp.clicked.connect(self._show_wp_action)
+        self.browse_results_directory.clicked.connect(
+            self._browse_results_directory_action
+        )
+        self.show_config.clicked.connect(self._show_config_action)
+        self.show_wr_json.clicked.connect(self._show_wr_json_action)
+        self.show_wp_json.clicked.connect(self._show_wp_json_action)
         self.deselect_files.clicked.connect(self._deselect_files_action)
-        self.view_config_directory.clicked.connect(self._view_config_directory_action)
+        self.browse_config_directory.clicked.connect(
+            self._browse_config_directory_action
+        )
         self.run_any_command.clicked.connect(self._run_any_command_action)
 
         self.next_command.clicked.connect(self._next_command_action)
@@ -1896,10 +1900,10 @@ class YellowDogApp(QMainWindow):
 
         Deliberately unlike _build_destructive_dialog: no warning icon, no 'this
         cannot be undone', and no 'Don't Ask Again'. Following the precedent set
-        by Deselect Files, a chooser is not a confirmation — nothing it does is
-        irreversible, and suppressing it would remove the only way to pick a
-        subset. 'rows' must be non-empty; with nothing to choose there is no
-        reason to ask.
+        by the Deselect... dialog, a chooser is not a confirmation — nothing it
+        does is irreversible, and suppressing it would remove the only way to
+        pick a subset. 'rows' must be non-empty; with nothing to choose there is
+        no reason to ask.
         """
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
@@ -2780,7 +2784,7 @@ class YellowDogApp(QMainWindow):
         self._log(f"{self._prefix(pid)}<-- {text}", prefix=False)
         self.stdin_input.setPlainText("")
 
-    def _view_results_action(self):
+    def _browse_results_directory_action(self):
         """
         Browse the results directory, saying so in a dialog when there is not one
         yet — the commonest reason this button appears to do nothing, and a log
@@ -2794,7 +2798,7 @@ class YellowDogApp(QMainWindow):
             return
         self._open_file_viewer(results_dir)
 
-    def _view_config_directory_action(self):
+    def _browse_config_directory_action(self):
         self._open_file_viewer(self._working_dir())
 
     def _open_file_viewer(self, directory: str):
@@ -3193,7 +3197,7 @@ class YellowDogApp(QMainWindow):
 
         return str(join(self._config_dir(), value))
 
-    def _show_wr_action(self):
+    def _show_wr_json_action(self):
         path = self._wr_file or self._get_config_data_file(WR_DATA)
         if path is None:
             self._log("No Work Requirement definition file selected")
@@ -3205,7 +3209,7 @@ class YellowDogApp(QMainWindow):
         except OSError as e:
             self._log(f"Cannot open Work Requirement file '{path}': {e}")
 
-    def _show_wp_action(self):
+    def _show_wp_json_action(self):
         path = self._wp_file or self._get_config_data_file(WP_DATA)
         if path is None:
             self._log("No Worker Pool definition file selected")

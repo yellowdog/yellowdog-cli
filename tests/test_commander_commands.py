@@ -171,7 +171,7 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
     monkeypatch.setattr(window, "_log", lambda text, **kwargs: logged.append(text))
 
     window._select_work_requirement_action()
-    window._show_wr_action()
+    window._show_wr_json_action()
 
     assert any(definition.read_text().strip() in line for line in logged), (
         f"the file's contents were never shown; logged: {logged}"
