@@ -11,7 +11,7 @@ import qt_guard
 qt_guard.require_qt()
 
 import gui_harness
-from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -261,3 +261,30 @@ def test_a_style_change_re_aligns_the_checkboxes(qapp):
     QApplication.processEvents()
 
     assert win.dry_run.styleSheet() == "", "a stale indent survived the style change"
+
+
+def test_dark_mode_draws_every_separator_alike(qapp):
+    # Dark Mode restyles the separators, because the native sunken line all but
+    # disappears against a dark window. The rule names them one by one, so a
+    # separator left out of it keeps the native line and is drawn a pixel thinner
+    # than the ones beside it — which is what happened to the two added when the
+    # top rows moved into a shared grid. Heights are compared with each other,
+    # never with a number, so the assertion says nothing about the styled width.
+    win = gui_harness.shown(YellowDogApp())
+
+    try:
+        win._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+
+        heights = {
+            separator.objectName(): separator.height()
+            for separator in win.findChildren(QFrame)
+            if separator.frameShape() is QFrame.Shape.HLine
+        }
+    finally:
+        win._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+    assert len(set(heights.values())) == 1, (
+        f"separators are drawn at different thicknesses in Dark Mode: {heights}"
+    )

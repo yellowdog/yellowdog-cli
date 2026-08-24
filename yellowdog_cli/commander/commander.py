@@ -3421,7 +3421,7 @@ class YellowDogApp(QMainWindow):
             )
         if is_dark:
             self.setStyleSheet(
-                "#line_3, #line_4, #line_6 {"
+                "#line_3, #line_4, #line_6, #line_7, #line_8 {"
                 " background-color: #555555; border: none; max-height: 2px; }"
                 " #line_5 { background-color: #555555; border: none; max-width: 2px; }"
             )
