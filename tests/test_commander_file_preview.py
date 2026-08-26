@@ -24,7 +24,7 @@ from pathlib import Path
 from time import monotonic
 
 import gui_harness
-from PyQt6.QtCore import QEventLoop, QPoint, QRect
+from PyQt6.QtCore import QEventLoop, QPoint, QRect, QSortFilterProxyModel
 from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -155,16 +155,69 @@ def model_index(view: QAbstractItemView, path: Path):
     The index for 'path' in the listing's model, waiting for it: QFileSystemModel
     populates each directory on its own thread, so a level just expanded does not
     have its children yet.
+
+    Resolving a path is QFileSystemModel's own index(str) overload, so a listing
+    sorted through a proxy has to be asked of the source model and the answer
+    mapped back. Stating the mapping rather than assuming either shape, because
+    both are real: the save dialog and the sorted ones do not agree on it.
     """
     model = view.model()
     assert model is not None, "the file dialog's listing has no model"
+
+    def resolve():
+        if isinstance(model, QSortFilterProxyModel):
+            source = model.sourceModel()
+            return model.mapFromSource(source.index(str(path)))
+        return model.index(str(path))
+
     deadline = monotonic() + LISTING_TIMEOUT_S
-    index = model.index(str(path))
+    index = resolve()
     while not index.isValid() and monotonic() < deadline:
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
-        index = model.index(str(path))
+        index = resolve()
     assert index.isValid(), f"{path} never appeared in the listing's model"
     return index
+
+
+def listed_names(view: QAbstractItemView, directory: Path, expected: int) -> list[str]:
+    """
+    The names in one level of the listing, in the order the view shows them,
+    once the level holds 'expected' of them: QFileSystemModel delivers a
+    directory's contents in batches on its own thread, so a level read too early
+    is in order simply for being short.
+
+    The parent index is resolved afresh on every pass rather than held, because
+    sorting a level as its rows arrive moves them, and a QModelIndex is a
+    position rather than a handle.
+
+    Read once the order has stopped changing, not merely once the rows are all
+    there. QFileSystemModel delivers a level unsorted and sorts it from a queued
+    call afterwards, so the level the dialog opens at is briefly in filesystem
+    order — read at that moment, every one of these cases passes or fails on
+    timing rather than on ordering. Waiting for two identical reads costs one
+    extra pass where the order is settled, and is what makes the level that is
+    never sorted at all fail rather than flake.
+    """
+    model = view.model()
+    assert model is not None, "the file dialog's listing has no model"
+
+    def names() -> list[str]:
+        parent = model_index(view, directory)
+        return [
+            model.index(row, 0, parent).data() for row in range(model.rowCount(parent))
+        ]
+
+    deadline = monotonic() + LISTING_TIMEOUT_S
+    settled: list[str] | None = None
+    while monotonic() < deadline:
+        current = names()
+        if len(current) == expected and current == settled:
+            return current
+        settled = current
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+    raise AssertionError(
+        f"{directory} never settled at {expected} rows; last saw {settled}"
+    )
 
 
 def expand_to(dialog, path: Path):
@@ -943,6 +996,99 @@ def test_a_nested_file_is_reachable_without_leaving_the_directory(
 
     assert seen["row_height"] > 0, "the nested file has no row on screen"
     assert seen["directory"] == tmp_path, "the dialog navigated instead of expanding"
+
+
+# --- The order the listing puts a level in ------------------------------------
+# Turning expansion on made levels below the dialog's own directory visible for
+# the first time, and QFileSystemModel sorts only the level it opens at: a
+# directory expanded in place arrived in filesystem order, which on APFS and on
+# ext4 is a hash order. So a task group listed its tasks as 005, 002, 003, 004,
+# 010 — and no header click sorts it, the header having been the one thing that
+# could and this listing having none.
+
+# Deliberately mixed padding, since it separates the two orderings a listing
+# could plausibly be in: 'task_2' before 'task_10' is the natural order Qt's own
+# file model and the platform's file viewer both use, and 'task_10' before
+# 'task_2' is a plain string sort. A filesystem that happened to hand its entries
+# over already sorted would therefore still fail this without the fix, rather
+# than passing by luck.
+NUMBERED_TASKS = ["task_1", "task_2", "task_3", "task_10", "task_20", "task_100"]
+# Padded the way yd-download names them, which is the case the user hit.
+PADDED_TASKS = [f"task_{n:03d}" for n in range(1, 13)]
+
+
+def task_group(root: Path, names: list[str]) -> Path:
+    """A work requirement directory holding one task group of the named tasks."""
+    group = root / "wr_260826-071540" / "task_group_1"
+    group.mkdir(parents=True)
+    for name in names:
+        (group / name).mkdir()
+    return group
+
+
+def expanded_level(window, monkeypatch, root: Path, group: Path, names: list[str]):
+    """
+    Browse 'root', expand down to 'group', and report the names it lists.
+
+    Expanded to by way of one of its children, since that is what expand_to
+    takes; the child has to be one that exists, or the wait for it to appear is
+    the only thing the test measures.
+    """
+    seen = {}
+
+    def interact(dialog):
+        view = listing_view(dialog)
+        expand_to(dialog, group / names[0])
+        seen["names"] = listed_names(view, group, len(names))
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(root))
+    return seen["names"]
+
+
+def test_an_expanded_directory_lists_its_contents_in_order(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    group = task_group(tmp_path, PADDED_TASKS)
+
+    listed = expanded_level(window, monkeypatch, tmp_path, group, PADDED_TASKS)
+
+    assert listed == PADDED_TASKS
+
+
+def test_an_expanded_directory_numbers_names_the_way_a_file_viewer_does(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # Natural order, which is what Qt's own file model gives the level it opens
+    # at, so the levels below it are not ordered differently from the one above.
+    group = task_group(tmp_path, NUMBERED_TASKS)
+
+    listed = expanded_level(window, monkeypatch, tmp_path, group, NUMBERED_TASKS)
+
+    assert listed == NUMBERED_TASKS
+
+
+def test_the_directory_the_dialog_opens_at_is_still_in_order(
+    window, tmp_path, monkeypatch, commander_dialog_settings
+):
+    # The level Qt already ordered, and ordered naturally. Whatever orders the
+    # expanded levels must not reorder this one — a plain string sort would list
+    # 'task_10' before 'task_2' here, which is a regression rather than a fix.
+    for name in NUMBERED_TASKS:
+        (tmp_path / name).mkdir()
+    seen = {}
+
+    def interact(dialog):
+        seen["names"] = listed_names(
+            listing_view(dialog), tmp_path, len(NUMBERED_TASKS)
+        )
+        press(dialog, "Cancel")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    window._open_file_viewer(str(tmp_path))
+
+    assert seen["names"] == NUMBERED_TASKS
 
 
 def test_a_file_inside_an_expanded_directory_is_opened_by_its_full_path(

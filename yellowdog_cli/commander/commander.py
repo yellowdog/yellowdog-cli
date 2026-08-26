@@ -40,13 +40,17 @@ from os.path import abspath, basename, dirname, exists, getsize, isdir, join, re
 _PKG_DIR = dirname(abspath(__file__))
 
 from PyQt6.QtCore import (
+    QCollator,
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
+    QModelIndex,
+    QObject,
     QProcess,
     QProcessEnvironment,
     QSettings,
     QSize,
+    QSortFilterProxyModel,
     Qt,
     QTimer,
 )
@@ -154,6 +158,12 @@ SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens a
 # is a QListView, which has no disclosure. Its size/kind/date columns are hidden
 # and its header with them; see _make_listing_a_names_only_tree().
 DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
+# How the file dialogs' listing is ordered, at every level; see
+# NaturalOrderProxy. The name column, ascending, which is the order Qt's own file
+# model gives the one level it sorts — and with the header hidden there is no way
+# for a user to ask for another, so this is the only order the listing is ever in.
+LISTING_SORT_COLUMN = 0
+LISTING_SORT_ORDER = Qt.SortOrder.AscendingOrder
 # Where Commander keeps the file-dialog choices that outlive a dialog; see
 # dialog_settings().
 COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
@@ -682,6 +692,52 @@ class LineBuffer:
         self._partial_line += self._decoder.decode(b"", final=True)
         remainder, self._partial_line = self._partial_line.rstrip("\r"), ""
         return [remainder] if remainder else []
+
+
+class NaturalOrderProxy(QSortFilterProxyModel):
+    """
+    Keeps a file dialog's listing in order at every level, not just the one it
+    opens at.
+
+    QFileSystemModel sorts the level it is rooted at and nothing beneath it. A
+    directory expanded in place therefore arrives in filesystem order — a hash
+    order on APFS and on ext4, so 'task_005, task_002, task_003' — and stays in
+    it: verified that neither sort() on the model nor the header's own sort
+    indicator reorders such a level, and that it is still unsorted twelve seconds
+    later, so it is not a race that settles. Commander turned expansion on, which
+    is what made those levels reachable and the ordering visible; the behaviour
+    beneath is Qt's, and the same in a stock dialog.
+
+    Interposing a proxy is Qt's own answer to it (QFileDialog.setProxyModel), and
+    a dynamically sorted one orders each level as its rows arrive, which is what
+    an expanded level needs. It costs a Python comparison per pair: ~130ms of the
+    ~0.5s a 5,000-entry directory takes to list, paid once as the level opens.
+
+    The comparison is a QCollator in numeric mode, not the default string
+    compare, because that is what QFileSystemModel itself does for the level it
+    sorts: 'task_1, task_2, task_10', never 'task_1, task_10, task_2'. A plain
+    sort would put every expanded level in a different order from the directory
+    above it — worse than the bug — and would disagree with the platform's file
+    viewer, which the browse dialog hands over to.
+    """
+
+    def __init__(self, parent: QObject | None = None):
+        super().__init__(parent)
+        self._collator = QCollator()
+        self._collator.setNumericMode(True)
+        self._collator.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        # Ordered as rows arrive, rather than once when the level is opened: a
+        # level is delivered in batches, and only the first batch would be sorted.
+        self.setDynamicSortFilter(True)
+        self.sort(LISTING_SORT_COLUMN, LISTING_SORT_ORDER)
+
+    def lessThan(self, source_left: QModelIndex, source_right: QModelIndex) -> bool:
+        if source_left.column() != LISTING_SORT_COLUMN:
+            return super().lessThan(source_left, source_right)
+        return (
+            self._collator.compare(str(source_left.data()), str(source_right.data()))
+            < 0
+        )
 
 
 def variable_is_complete(variable: str) -> bool:
@@ -3033,7 +3089,12 @@ class YellowDogApp(QMainWindow):
 
         The dialog grows by whatever the panes gain, rather than the panes taking
         it out of the listing — the listing is the part the user came for.
+
+        The sorting proxy goes in before the listing is set up, not after: it
+        replaces the views' model, and the hidden columns and the stretched name
+        are properties of the view against that model.
         """
+        dialog.setProxyModel(NaturalOrderProxy())
         self._make_listing_a_names_only_tree(dialog)
         dialog.setViewMode(self._preferred_view_mode())
 
