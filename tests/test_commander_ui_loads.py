@@ -11,7 +11,7 @@ import qt_guard
 qt_guard.require_qt()
 
 import gui_harness
-from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -49,7 +49,7 @@ def test_ui_loads_and_binds_expected_widgets(qapp):
     assert isinstance(win.download_results, QPushButton)
 
 
-def test_a_separator_divides_the_view_row_from_the_run_command_row(qapp):
+def test_a_separator_divides_the_browse_row_from_the_run_command_row(qapp):
     # Found by shape and position rather than by name, so it survives whatever
     # Designer calls it, and asserts the thing that matters: that a horizontal
     # rule lies between the two rows rather than merely existing somewhere.
@@ -65,10 +65,12 @@ def test_a_separator_divides_the_view_row_from_the_run_command_row(qapp):
         frame
         for frame in win.findChildren(QFrame)
         if frame.frameShape() == QFrame.Shape.HLine
-        and bottom(win.view_config_directory) <= top(frame) <= top(win.run_any_command)
+        and bottom(win.browse_config_directory)
+        <= top(frame)
+        <= top(win.run_any_command)
     ]
 
-    assert between, "no horizontal separator below the View Config Directory row"
+    assert between, "no horizontal separator below the Browse Config Directory row"
     assert all(
         bottom(separator) <= top(win.run_any_command) for separator in between
     ), "the separator overlaps the row beneath it"
@@ -123,13 +125,16 @@ def test_the_paired_rows_align_across_the_two_columns(qapp):
     assert not misaligned, "rows do not share a grid row: " + "; ".join(misaligned)
 
 
-def test_the_window_opens_tall_enough_for_its_own_layout(qapp):
+def test_the_window_opens_big_enough_for_its_own_layout(qapp):
     # It opened 720 tall against a layout that needed 822, so Qt compressed the
     # left column below its minimum size hint. Compared with the hint rather than
-    # with a number, so it stays true whatever the platform's metrics are.
+    # with a number, so it stays true whatever the platform's metrics are — and
+    # in both directions, because a button renamed to a longer label widens the
+    # row it sits in and the window has to be opened wider to match.
     win = gui_harness.shown(YellowDogApp())
 
     assert win.height() >= win.minimumSizeHint().height()
+    assert win.width() >= win.minimumSizeHint().width()
 
 
 def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
@@ -151,7 +156,7 @@ def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
 RIGHT_COLUMN_ROWS = [
     "label_7",  # Namespace:
     "label_4",  # User-Defined Variables:
-    "view_config_directory",
+    "browse_config_directory",
     "run_any_command",
     "command_output_title",
     "stdin_label",
@@ -216,7 +221,7 @@ LEFT_COLUMN_ROWS = [
     "cancel_work_requirements",
     "create_worker_pool",
     "download_results",
-    "view_results",
+    "browse_results_directory",
 ]
 
 
@@ -261,3 +266,30 @@ def test_a_style_change_re_aligns_the_checkboxes(qapp):
     QApplication.processEvents()
 
     assert win.dry_run.styleSheet() == "", "a stale indent survived the style change"
+
+
+def test_dark_mode_draws_every_separator_alike(qapp):
+    # Dark Mode restyles the separators, because the native sunken line all but
+    # disappears against a dark window. The rule names them one by one, so a
+    # separator left out of it keeps the native line and is drawn a pixel thinner
+    # than the ones beside it — which is what happened to the two added when the
+    # top rows moved into a shared grid. Heights are compared with each other,
+    # never with a number, so the assertion says nothing about the styled width.
+    win = gui_harness.shown(YellowDogApp())
+
+    try:
+        win._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+
+        heights = {
+            separator.objectName(): separator.height()
+            for separator in win.findChildren(QFrame)
+            if separator.frameShape() is QFrame.Shape.HLine
+        }
+    finally:
+        win._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+    assert len(set(heights.values())) == 1, (
+        f"separators are drawn at different thicknesses in Dark Mode: {heights}"
+    )

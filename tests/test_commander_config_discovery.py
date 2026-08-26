@@ -300,3 +300,76 @@ def test_a_configuration_file_changing_on_disk_retries_a_timed_out_discovery(
     settle(win, attempts, 2)
 
     assert win.tag_override.placeholderText() == "my-tag"
+
+
+# --- Discovery while a user-defined variable is being typed -------------------
+# The user-variables box reparses 600ms after every keystroke, and every
+# variable is typed through states that are not yet 'name=value' — 'instances'
+# on the way to 'instances=3'. Handed one of those, 'yd-show' exits 1 with
+# "Error in variable substitution 'instances'", so simply adding a variable
+# reported an error the user had not made.
+
+
+def type_user_variables(win, text: str) -> None:
+    """
+    Put text in the user-variables box the way typing does, and let the
+    debounced reparse it schedules run. The real timer and the real connection,
+    with the debounce interval taken down to nothing so the test does not wait
+    it out.
+    """
+    win._user_vars_reparse_timer.setInterval(0)
+    win.user_variables.setPlainText(text)
+    assert win._user_vars_reparse_timer.isActive(), "editing should schedule a reparse"
+    deadline = monotonic() + SETTLE_TIMEOUT_S
+    while win._user_vars_reparse_timer.isActive() and monotonic() < deadline:
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
+    assert not win._user_vars_reparse_timer.isActive(), "the reparse never ran"
+    QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
+
+
+def test_a_half_typed_variable_does_not_run_discovery(win, monkeypatch):
+    attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
+
+    type_user_variables(win, "instances")
+
+    assert attempts == [], "'yd-show' cannot resolve 'instances'; do not ask it to"
+    assert win.log_output.toPlainText() == "", "the user has not made a mistake yet"
+
+
+def test_a_completed_variable_runs_discovery(win, monkeypatch):
+    attempts = python_commands(win, monkeypatch, PRINTS_CONFIG)
+
+    type_user_variables(win, "instances=3")
+
+    assert len(attempts) == 1
+    assert win.namespace_override.placeholderText() == "yd-demo"
+
+
+def test_a_half_typed_second_variable_does_not_run_discovery(win, monkeypatch):
+    attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
+
+    type_user_variables(win, "instances=3 nodes")
+
+    assert attempts == [], "one incomplete variable is enough to hold the reparse"
+
+
+def test_a_variable_with_an_empty_name_does_not_run_discovery(win, monkeypatch):
+    # The CLI rejects this too, so there is nothing to be learnt from running it
+    # 600ms after a keystroke. The user hears about it when they run a command.
+    attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
+
+    type_user_variables(win, "=3")
+
+    assert attempts == []
+
+
+def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
+    attempts = python_commands(win, monkeypatch, PRINTS_CONFIG)
+    # Filled in and then emptied again, since setting the text of an already
+    # empty box emits nothing and so schedules no reparse to observe.
+    win.user_variables.setPlainText("instances=3")
+    win._user_vars_reparse_timer.stop()
+
+    type_user_variables(win, "")
+
+    assert len(attempts) == 1, "nothing typed is not the same as something incomplete"

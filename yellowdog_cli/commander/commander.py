@@ -684,6 +684,16 @@ class LineBuffer:
         return [remainder] if remainder else []
 
 
+def variable_is_complete(variable: str) -> bool:
+    """
+    Whether a whitespace-separated token from the user-variables box is a
+    'name=value' the CLI will accept. Mirrors the rule in utils/variables.py:
+    an '=' with a non-empty name in front of it.
+    """
+    name, separator, _ = variable.partition("=")
+    return bool(separator) and bool(name)
+
+
 def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
     """
     Shorten a file path for display so that it doesn't stretch the layout,
@@ -852,12 +862,12 @@ class YellowDogApp(QMainWindow):
     create_worker_pool: QPushButton
     shutdown_all_worker_pools: QPushButton
     terminate_all_compute_requirements: QPushButton
-    view_results: QPushButton
-    show_configuration: QPushButton
-    show_wr: QPushButton
-    show_wp: QPushButton
+    browse_results_directory: QPushButton
+    show_config: QPushButton
+    show_wr_json: QPushButton
+    show_wp_json: QPushButton
     deselect_files: QPushButton
-    view_config_directory: QPushButton
+    browse_config_directory: QPushButton
     run_any_command: QPushButton
     next_command: QPushButton
     prev_command: QPushButton
@@ -924,12 +934,16 @@ class YellowDogApp(QMainWindow):
         self.terminate_all_compute_requirements.clicked.connect(
             self._terminate_all_compute_requirements_action
         )
-        self.view_results.clicked.connect(self._view_results_action)
-        self.show_configuration.clicked.connect(self._show_config_action)
-        self.show_wr.clicked.connect(self._show_wr_action)
-        self.show_wp.clicked.connect(self._show_wp_action)
+        self.browse_results_directory.clicked.connect(
+            self._browse_results_directory_action
+        )
+        self.show_config.clicked.connect(self._show_config_action)
+        self.show_wr_json.clicked.connect(self._show_wr_json_action)
+        self.show_wp_json.clicked.connect(self._show_wp_json_action)
         self.deselect_files.clicked.connect(self._deselect_files_action)
-        self.view_config_directory.clicked.connect(self._view_config_directory_action)
+        self.browse_config_directory.clicked.connect(
+            self._browse_config_directory_action
+        )
         self.run_any_command.clicked.connect(self._run_any_command_action)
 
         self.next_command.clicked.connect(self._next_command_action)
@@ -1014,7 +1028,9 @@ class YellowDogApp(QMainWindow):
         self._user_vars_reparse_timer = QTimer(self)
         self._user_vars_reparse_timer.setSingleShot(True)
         self._user_vars_reparse_timer.setInterval(600)
-        self._user_vars_reparse_timer.timeout.connect(self._reparse_placeholders)
+        self._user_vars_reparse_timer.timeout.connect(
+            self._reparse_placeholders_after_edit
+        )
         self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
         # Defer config parse until after the window is shown, so the GUI is
@@ -1062,6 +1078,30 @@ class YellowDogApp(QMainWindow):
         """
         self._config_parse_invalid = True
         self._config_parse_retried = False
+
+    def _reparse_placeholders_after_edit(self):
+        """
+        The debounced reparse behind an edit to the user-variables box.
+
+        Held back while any variable in the box is not yet 'name=value'. Every
+        variable is typed through states that are not — 'instances' on the way
+        to 'instances=3' — and 'yd-show' rejects one and exits 1, so the reparse
+        landing on such a keystroke reported "Error in variable substitution
+        'instances'" against a mistake the user had not made. Nothing is said
+        about it, because at 600ms after a keystroke there is nothing to say: an
+        unfinished variable and a wrong one are the same text. The parse stays
+        marked invalid, so the edit that completes the variable reparses as
+        usual.
+
+        Only this path is held back. A malformed variable still reaches the CLI
+        when the user runs a command, which is where it is a real error rather
+        than an unfinished one, and where they are there to read it.
+        """
+        if all(
+            variable_is_complete(variable)
+            for variable in self.user_variables.toPlainText().split()
+        ):
+            self._reparse_placeholders()
 
     def _reparse_placeholders(self, timeout_ms: int | None = None):
         """
@@ -1896,10 +1936,10 @@ class YellowDogApp(QMainWindow):
 
         Deliberately unlike _build_destructive_dialog: no warning icon, no 'this
         cannot be undone', and no 'Don't Ask Again'. Following the precedent set
-        by Deselect Files, a chooser is not a confirmation — nothing it does is
-        irreversible, and suppressing it would remove the only way to pick a
-        subset. 'rows' must be non-empty; with nothing to choose there is no
-        reason to ask.
+        by the Deselect... dialog, a chooser is not a confirmation — nothing it
+        does is irreversible, and suppressing it would remove the only way to
+        pick a subset. 'rows' must be non-empty; with nothing to choose there is
+        no reason to ask.
         """
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
@@ -2780,7 +2820,7 @@ class YellowDogApp(QMainWindow):
         self._log(f"{self._prefix(pid)}<-- {text}", prefix=False)
         self.stdin_input.setPlainText("")
 
-    def _view_results_action(self):
+    def _browse_results_directory_action(self):
         """
         Browse the results directory, saying so in a dialog when there is not one
         yet — the commonest reason this button appears to do nothing, and a log
@@ -2794,7 +2834,7 @@ class YellowDogApp(QMainWindow):
             return
         self._open_file_viewer(results_dir)
 
-    def _view_config_directory_action(self):
+    def _browse_config_directory_action(self):
         self._open_file_viewer(self._working_dir())
 
     def _open_file_viewer(self, directory: str):
@@ -3193,7 +3233,7 @@ class YellowDogApp(QMainWindow):
 
         return str(join(self._config_dir(), value))
 
-    def _show_wr_action(self):
+    def _show_wr_json_action(self):
         path = self._wr_file or self._get_config_data_file(WR_DATA)
         if path is None:
             self._log("No Work Requirement definition file selected")
@@ -3205,7 +3245,7 @@ class YellowDogApp(QMainWindow):
         except OSError as e:
             self._log(f"Cannot open Work Requirement file '{path}': {e}")
 
-    def _show_wp_action(self):
+    def _show_wp_json_action(self):
         path = self._wp_file or self._get_config_data_file(WP_DATA)
         if path is None:
             self._log("No Worker Pool definition file selected")
@@ -3421,7 +3461,7 @@ class YellowDogApp(QMainWindow):
             )
         if is_dark:
             self.setStyleSheet(
-                "#line_3, #line_4, #line_6 {"
+                "#line_3, #line_4, #line_6, #line_7, #line_8 {"
                 " background-color: #555555; border: none; max-height: 2px; }"
                 " #line_5 { background-color: #555555; border: none; max-width: 2px; }"
             )

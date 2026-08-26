@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1064</width>
+    <width>1091</width>
     <height>840</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>1053</width>
+    <width>1080</width>
     <height>720</height>
    </size>
   </property>
@@ -529,9 +529,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="view_results">
+       <widget class="QPushButton" name="browse_results_directory">
         <property name="text">
-         <string>View Results Directory</string>
+         <string>Browse Results Directory</string>
         </property>
        </widget>
       </item>
@@ -774,7 +774,7 @@
          <number>0</number>
         </property>
         <item>
-         <widget class="QPushButton" name="view_config_directory">
+         <widget class="QPushButton" name="browse_config_directory">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -788,12 +788,12 @@
            </size>
           </property>
           <property name="text">
-           <string> View Config Directory </string>
+           <string> Browse Config Directory </string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="show_configuration">
+         <widget class="QPushButton" name="show_config">
           <property name="minimumSize">
            <size>
             <width>0</width>
@@ -801,28 +801,28 @@
            </size>
           </property>
           <property name="text">
-           <string> Show Configuration </string>
+           <string> Show Config </string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="show_wr">
+         <widget class="QPushButton" name="show_wr_json">
           <property name="text">
-           <string> Show WR </string>
+           <string> Show WR JSON </string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="show_wp">
+         <widget class="QPushButton" name="show_wp_json">
           <property name="text">
-           <string> Show WP </string>
+           <string> Show WP JSON </string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="deselect_files">
           <property name="text">
-           <string> Deselect Files </string>
+           <string> Deselect... </string>
           </property>
          </widget>
         </item>

@@ -129,7 +129,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect Files** to revert to the configuration file's definition.
+- **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
 - **Extra Options** — free-text command-line options appended to the `yd-submit` command.
@@ -152,7 +152,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch; a ticked directory is downloaded with everything inside it, since the listing shows top-level matches only.
 - **Delete Matching Objects** — deletes matching objects from remote storage. Like the download it first lists what the path matched and lets you choose which of those items to remove; a ticked directory is deleted with everything inside it.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
-- **View Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight, with a button that switches to the platform's file viewer when you need to change the directory's contents rather than look at them. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing. If there is no `results` directory yet — nothing has been downloaded — a dialog says so, rather than only the command output window, and `--yes` reduces that to the log line alone.
+- **Browse Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight, with a button that switches to the platform's file viewer when you need to change the directory's contents rather than look at them. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing. If there is no `results` directory yet — nothing has been downloaded — a dialog says so, rather than only the command output window, and `--yes` reduces that to the log line alone.
 
 The dry run overlaps with those selection dialogs, deliberately: both show you what the path matched before anything happens, and either lets you back out. They differ in three ways worth knowing.
 
@@ -178,12 +178,14 @@ instances=2 template=my_template
 
 Each pair is passed to the command as a `-v` option (`-v instances=2 -v template=my_template`).
 
+Editing the field re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since a variable can be used in the configuration file's `namespace` or `tag`. It waits until every pair in the field is a complete `name=value`, so a name part-way through being typed does not report itself as an error.
+
 ## Utility Actions
 
-- **View Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
-- **Show Configuration** — prints the contents of the selected configuration file to the Command Output window.
-- **Show WR** / **Show WP** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
-- **Deselect Files** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
+- **Browse Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
+- **Show Config** — prints the contents of the selected configuration file to the Command Output window.
+- **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
+- **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its full contents to the clipboard, or write them to a file you nominate. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
 - **Dark Mode** — toggle between light and dark appearance.
 
@@ -218,4 +220,4 @@ Launching with `-y`/`--yes` skips it and downloads everything the path matched, 
 
 Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd-download` and `yd-delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
 
-**Deselect Files** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.
+**Deselect...** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.

@@ -2,7 +2,7 @@
 Tests for Commander's notice dialog: a modal that says what a click did not do,
 for cases where the output window's log line is easy to miss.
 
-Applied so far to one case — View Results Directory with no results directory
+Applied so far to one case — Browse Results Directory with no results directory
 yet, the case a user missed on Windows. The other dead-end notices deliberately
 remain log-only, and one of the tests here holds that line, so extending the
 dialog to them stays a decision rather than a side effect.
@@ -26,7 +26,7 @@ from yellowdog_cli.commander.commander import RESULTS_DIR, YellowDogApp
 @pytest.fixture
 def window(qapp, tmp_path):
     win = YellowDogApp()
-    # Anchor the working directory: _view_results_action looks for 'results'
+    # Anchor the working directory: _browse_results_directory_action looks for 'results'
     # beside the selected configuration file.
     config_file = tmp_path / "config.toml"
     config_file.write_text('[common]\nnamespace = "yd-demo"\n')
@@ -50,7 +50,7 @@ def test_a_missing_results_directory_is_reported_in_a_dialog(
 ):
     shown = commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_results_action()
+    window._browse_results_directory_action()
 
     assert shown["count"] == 1
     expected = join(str(tmp_path), RESULTS_DIR)
@@ -61,7 +61,7 @@ def test_a_missing_results_directory_is_reported_in_a_dialog(
 def test_the_notice_is_logged_as_well_as_shown(window, monkeypatch, never_browses):
     commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_results_action()
+    window._browse_results_directory_action()
 
     # The output window keeps the whole narrative, timestamps and all; the dialog
     # is there so the notice is not only in a window nobody is watching.
@@ -111,7 +111,7 @@ def test_an_existing_results_directory_browses_instead_of_notifying(
     )
     shown = commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_results_action()
+    window._browse_results_directory_action()
 
     assert browsed == [join(str(tmp_path), RESULTS_DIR)]
     assert shown["count"] == 0
@@ -124,7 +124,7 @@ def test_an_unattended_session_logs_the_notice_without_a_dialog(
     window._confirmations_disabled = True
     shown = commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_results_action()
+    window._browse_results_directory_action()
 
     assert shown["count"] == 0
     assert "does not (yet) exist" in window.log_output.toPlainText()
@@ -136,7 +136,7 @@ def test_shutting_down_logs_the_notice_without_a_dialog(
     window._shutting_down = True
     shown = commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_results_action()
+    window._browse_results_directory_action()
 
     assert shown["count"] == 0
 
@@ -146,7 +146,7 @@ def test_the_config_directory_button_stays_log_only(window, monkeypatch, tmp_pat
     window._config_file = str(tmp_path / "gone" / "config.toml")
     shown = commander_dialogs.drive_notice(window, monkeypatch)
 
-    window._view_config_directory_action()
+    window._browse_config_directory_action()
 
     assert shown["count"] == 0
     assert "does not (yet) exist" in window.log_output.toPlainText()
