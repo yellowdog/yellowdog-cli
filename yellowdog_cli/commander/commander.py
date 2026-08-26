@@ -684,6 +684,16 @@ class LineBuffer:
         return [remainder] if remainder else []
 
 
+def variable_is_complete(variable: str) -> bool:
+    """
+    Whether a whitespace-separated token from the user-variables box is a
+    'name=value' the CLI will accept. Mirrors the rule in utils/variables.py:
+    an '=' with a non-empty name in front of it.
+    """
+    name, separator, _ = variable.partition("=")
+    return bool(separator) and bool(name)
+
+
 def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
     """
     Shorten a file path for display so that it doesn't stretch the layout,
@@ -1018,7 +1028,9 @@ class YellowDogApp(QMainWindow):
         self._user_vars_reparse_timer = QTimer(self)
         self._user_vars_reparse_timer.setSingleShot(True)
         self._user_vars_reparse_timer.setInterval(600)
-        self._user_vars_reparse_timer.timeout.connect(self._reparse_placeholders)
+        self._user_vars_reparse_timer.timeout.connect(
+            self._reparse_placeholders_after_edit
+        )
         self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
         # Defer config parse until after the window is shown, so the GUI is
@@ -1066,6 +1078,30 @@ class YellowDogApp(QMainWindow):
         """
         self._config_parse_invalid = True
         self._config_parse_retried = False
+
+    def _reparse_placeholders_after_edit(self):
+        """
+        The debounced reparse behind an edit to the user-variables box.
+
+        Held back while any variable in the box is not yet 'name=value'. Every
+        variable is typed through states that are not — 'instances' on the way
+        to 'instances=3' — and 'yd-show' rejects one and exits 1, so the reparse
+        landing on such a keystroke reported "Error in variable substitution
+        'instances'" against a mistake the user had not made. Nothing is said
+        about it, because at 600ms after a keystroke there is nothing to say: an
+        unfinished variable and a wrong one are the same text. The parse stays
+        marked invalid, so the edit that completes the variable reparses as
+        usual.
+
+        Only this path is held back. A malformed variable still reaches the CLI
+        when the user runs a command, which is where it is a real error rather
+        than an unfinished one, and where they are there to read it.
+        """
+        if all(
+            variable_is_complete(variable)
+            for variable in self.user_variables.toPlainText().split()
+        ):
+            self._reparse_placeholders()
 
     def _reparse_placeholders(self, timeout_ms: int | None = None):
         """

@@ -178,6 +178,8 @@ instances=2 template=my_template
 
 Each pair is passed to the command as a `-v` option (`-v instances=2 -v template=my_template`).
 
+Editing the field re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since a variable can be used in the configuration file's `namespace` or `tag`. It waits until every pair in the field is a complete `name=value`, so a name part-way through being typed does not report itself as an error.
+
 ## Utility Actions
 
 - **Browse Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
