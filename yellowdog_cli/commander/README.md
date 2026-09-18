@@ -116,6 +116,8 @@ The listing shows file names and nothing else — no size, kind or date columns,
 
 Directories expand in place, as in the Finder's list view: click the triangle beside one to see what is in it without leaving the directory you are in, which is what reading a task's output three levels down otherwise costs. Double-clicking a directory still descends into it, so the triangle and the double-click each do their own thing, and a file you select inside an expanded directory is the file you get. The left-hand of the two buttons at the top right switches to a flat listing of the current directory alone.
 
+Every level is listed in name order, including the ones you expand into, and numbered names are ordered by their numbers — `task_2` before `task_10`, not after `task_100` — the way the platform's own file viewer orders them.
+
 The places sidebar down the left — **Computer** and your home directory — opens wide enough to read its entries rather than at the width Qt would choose, which truncates even *Computer* to *Co...*.
 
 Both are yours to change: whichever view you leave a dialog in, and whatever width you drag the sidebar to, is how the next dialog opens — whichever button opened it, and after a restart.

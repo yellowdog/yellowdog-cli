@@ -125,7 +125,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
 | `test_commander_reentrancy.py` | The guard that stops a second action starting while one is enumerating in a nested event loop |
 | `test_commander_shutdown.py` | The shutdown path: no process destroyed while running, no handler firing against a deleted object, nested loops released |
-| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, its headings staying at the top of the pane, and its draggable width — the names-only expandable listing (including that a file picked inside an expanded directory comes back with its full path) and the width the places sidebar opens at, both remembered as the user leaves them, the hand-over to the platform's file viewer, and what browsing, selecting and saving do with the file the user picks |
+| `test_commander_file_preview.py` | The preview pane the file dialogs carry — image, text, binary, directory and vanished-file branches, its headings staying at the top of the pane, and its draggable width — the names-only expandable listing (including that a file picked inside an expanded directory comes back with its full path, and that every level — expanded ones included — is in natural name order) and the width the places sidebar opens at, both remembered as the user leaves them, the hand-over to the platform's file viewer, and what browsing, selecting and saving do with the file the user picks |
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_notices.py` | The modal notice for a missing `results` directory: shown and logged, one OK button, plain text so a Windows path survives, and log-only under `--yes` or shutdown |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
@@ -193,6 +193,10 @@ Beyond the general platform-test prerequisites below, the resource corpus needs 
 | File | What it tests                                                  |
 |---|----------------------------------------------------------------|
 | `test_demos.py` | Full live runs of all standard python-examples-demos workloads |
+
+Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT` (15 minutes), because a demo can hang rather than fail: a Work Requirement that is never allocated — an image carrying an Agent version the platform will not schedule to, say — sits WAITING indefinitely, and neither `yd-submit -E` nor a WR `taskTimeout` ever fires, since no task reaches EXECUTING. An expired command exits 124, which distinguishes a hang from a failed WR, and cleanup runs either way.
+
+`test_demos.py` also holds `TestDemoCommandHarness`, which is deliberately **unmarked** and so runs in the standard suite: it exercises the two shell idioms the demo commands are built from (`_timed` and `_with_cleanup`) using stub commands, provisioning nothing. It is what guards the coreutils `timeout` dependency — standard on Linux, but on macOS it comes from Homebrew coreutils — so a machine without it fails one fast test, naming the cause, rather than every demo at exit 127.
 
 ### Other Platform Tests (no flags, but credentials required)
 
