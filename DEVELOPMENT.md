@@ -8,6 +8,7 @@
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
 - On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
+- On macOS, `coreutils` — provides `timeout`, which the demo tests put every `yd-*` command under; `brew install coreutils`. Standard on Linux, so nothing to install there, and needed only by `pytest --run-demos`
 
 ## Getting Started
 

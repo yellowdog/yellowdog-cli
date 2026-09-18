@@ -194,6 +194,10 @@ Beyond the general platform-test prerequisites below, the resource corpus needs 
 |---|----------------------------------------------------------------|
 | `test_demos.py` | Full live runs of all standard python-examples-demos workloads |
 
+Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT` (15 minutes), because a demo can hang rather than fail: a Work Requirement that is never allocated — an image carrying an Agent version the platform will not schedule to, say — sits WAITING indefinitely, and neither `yd-submit -E` nor a WR `taskTimeout` ever fires, since no task reaches EXECUTING. An expired command exits 124, which distinguishes a hang from a failed WR, and cleanup runs either way.
+
+`test_demos.py` also holds `TestDemoCommandHarness`, which is deliberately **unmarked** and so runs in the standard suite: it exercises the two shell idioms the demo commands are built from (`_timed` and `_with_cleanup`) using stub commands, provisioning nothing. It is what guards the coreutils `timeout` dependency — standard on Linux, but on macOS it comes from Homebrew coreutils — so a machine without it fails one fast test, naming the cause, rather than every demo at exit 127.
+
 ### Other Platform Tests (no flags, but credentials required)
 
 | File | What it tests |
