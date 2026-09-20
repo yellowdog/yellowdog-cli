@@ -6,6 +6,12 @@ import re
 
 DEFAULT_URL = "https://api.yellowdog.ai"
 
+# Reported when a required configuration property is absent from every source.
+# Shared rather than written out at each site because Commander matches on it:
+# with no configuration file selected it recognises this one failure of
+# 'yd-show' as 'nothing is configured' rather than reporting it as an error.
+MISSING_CONFIG_DATA = "Missing configuration data"
+
 YD_KEY = "YD_KEY"
 YD_SECRET = "YD_SECRET"
 YD_NAMESPACE = "YD_NAMESPACE"

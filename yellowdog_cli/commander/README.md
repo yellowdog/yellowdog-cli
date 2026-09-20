@@ -40,6 +40,8 @@ A configuration file is optional: if none is selected, Commander runs the `yd-*`
 
 Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
+With no configuration file selected and no YellowDog credentials in the environment either, there is nothing to resolve the Namespace, Tag, and Path placeholders from: they are simply left blank, and nothing is reported, since nothing is wrong yet. Any other failure to resolve them is still reported in the Command Output window, whether or not a configuration file is selected.
+
 ## Quitting
 
 Quitting with commands still running asks first, listing the commands that would be stopped, with **Cancel** as the default — stopping a submission part-way is usually worse than waiting for it.
@@ -86,6 +88,8 @@ A value without wildcards matches the name exactly, so use `*` for partial match
 The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd-download` / `yd-delete`, so anything those commands accept can be typed into it.
 
 Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default), which is why the default `<tag>*` finds your results: it matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
+
+The default is built from the discovered tag, so when no tag has been discovered — nothing configured yet, or a configuration file deselected — Download Matching Objects and Delete Matching Objects refuse an empty Path field and say so, rather than acting on a guess at what you meant.
 
 That gives you four ways to widen or narrow the reach of a download or deletion:
 

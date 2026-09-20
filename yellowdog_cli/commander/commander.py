@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-YellowDog Commander: GUI application for driving the YellowDog CLI
+YellowDog Commander: Qt-based GUI application for driving the YellowDog CLI
 """
 
 import os
@@ -99,6 +99,7 @@ from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
+from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # px: inset between the selected-configuration label's frame and its text.
@@ -179,9 +180,13 @@ NATIVE_VIEWER_BUTTON_TEXT = (
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
 # to derive a default object path from. Better than acting on a guess: the tag is
 # interpolated into the default path, and a missing one used to produce 'None*'.
+# Two ways to have no tag, so the wording covers both: no configuration file is
+# selected, in which case none is discovered at all, or one is and discovery of
+# it failed.
 NO_OBJECT_PATH = (
-    "No object path: the namespace/tag discovery has not succeeded, so there is"
-    " no default path to match. Enter a Path, or reselect the configuration file."
+    "No object path: no tag has been discovered, so there is no default path to"
+    " match. Enter a Path, or select a configuration file to discover one from"
+    " (reselect it if discovery has already failed)."
 )
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
@@ -1131,9 +1136,19 @@ class YellowDogApp(QMainWindow):
         Mark the discovered namespace/tag stale, and give the next discovery a
         fresh retry. The retry budget is per parse, not per session: a new
         configuration file must not inherit the exhausted budget of the last one.
+
+        The same goes for what _report_discovery_failure will say next. It
+        suppresses a repeat of the message it said last, for the user-variables
+        box that reparses after every edit — but a configuration file being
+        deselected and selected again is not a repeat, and a failure suppressed
+        in between (see _nothing_is_configured) would otherwise leave the last
+        message said no longer the last failure there was. Only the three
+        configuration-file paths reach here; an edit to the user variables does
+        not, which is what keeps that suppression doing its job.
         """
         self._config_parse_invalid = True
         self._config_parse_retried = False
+        self._last_discovery_failure = None
 
     def _reparse_placeholders_after_edit(self):
         """
@@ -1254,6 +1269,32 @@ class YellowDogApp(QMainWindow):
             + self._namespace_tag_and_user_vars()
         )
 
+    def _nothing_is_configured(self, error_output: str) -> bool:
+        """
+        Whether a failed discovery means 'nothing is configured yet' rather than
+        'something is wrong', in which case it is not reported.
+
+        Only with no configuration file selected. 'yd-show' is then given '--nc'
+        and has nothing but the environment to work from, and an environment
+        with no YellowDog credentials in it makes it exit 1 with "Missing
+        configuration data: 'key'" before it can resolve anything. Reported, that
+        put an error in the output window at startup, and again on every
+        Deselect, in front of a user who had done nothing wrong.
+
+        Deliberately narrow in both directions. With a configuration file
+        selected the same message means the selected file cannot be used, which
+        is the user's to see. And with none selected every *other* failure is
+        still reported, because discovery from the environment alone is a
+        supported way to run Commander — credentials and namespace/tag in YD_*
+        variables, with the definition files nominated by hand — and its
+        failures are as worth seeing as any other.
+
+        Matched on the message, the CLI having one exit code for everything.
+        MISSING_CONFIG_DATA is the CLI's own definition of it, imported rather
+        than written out again here, so the two cannot drift apart silently.
+        """
+        return self._config_file is None and MISSING_CONFIG_DATA in error_output
+
     def _parse_yd_config(
         self, quiet: bool = False, timeout_ms: int | None = None
     ) -> bool:
@@ -1264,7 +1305,8 @@ class YellowDogApp(QMainWindow):
         'timeout_ms' defaults to CONFIG_PARSE_TIMEOUT_MS; the retry after a
         timeout passes a longer one. Every failure is reported through
         _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
-        announcement of a routine reparse, not the reason one failed.
+        announcement of a routine reparse, not the reason one failed. The one
+        exception is _nothing_is_configured() above.
         """
         if not self._config_parse_invalid:
             return True
@@ -1305,6 +1347,8 @@ class YellowDogApp(QMainWindow):
 
         if yd_process.exitCode() != 0:
             error_output = yd_process.readAllStandardError().data().decode().strip()
+            if self._nothing_is_configured(error_output):
+                return False
             self._report_discovery_failure(
                 f"Error parsing config with 'yd-show'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"
@@ -1355,6 +1399,11 @@ class YellowDogApp(QMainWindow):
             # Cleared first, then filled in again by whatever discovery finds
             # without a config file (environment variables, or nothing at all):
             # the previous file's namespace and tag must not linger either way.
+            # _namespace and _tag are cleared as well as the placeholders they
+            # are shown in, because _object_path() builds the default download
+            # and delete path out of the tag, so a stale one is a path acted on.
+            self._namespace = None
+            self._tag = None
             self._set_placeholders("", "")
             self._reparse_placeholders()
             return

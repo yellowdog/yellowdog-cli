@@ -14,6 +14,7 @@ import qt_guard
 qt_guard.require_qt()
 
 from yellowdog_cli.commander.commander import (
+    NO_OBJECT_PATH,
     RESULTS_DIR,
     Confirmation,
     EntitySummary,
@@ -437,6 +438,31 @@ def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
     window._delete_objects_action()
     assert captured == []
     assert "No objects match 'my-tag*'" in window.log_output.toPlainText()
+
+
+def test_delete_refuses_when_there_is_no_tag_and_no_path(window, captured):
+    # With no configuration file selected nothing is discovered, so there is no
+    # tag to build the default '<tag>*' path from — and with confirmations
+    # suppressed 'yd-delete -Ry None*' is what acting on a guess would mean.
+    window._config_file = None
+    window._tag = None
+    window.log_output.setPlainText("")
+
+    window._delete_objects_action()
+
+    assert captured == []
+    assert NO_OBJECT_PATH in window.log_output.toPlainText()
+
+
+def test_download_refuses_when_there_is_no_tag_and_no_path(window, captured):
+    window._config_file = None
+    window._tag = None
+    window.log_output.setPlainText("")
+
+    window._download_results_action()
+
+    assert captured == []
+    assert NO_OBJECT_PATH in window.log_output.toPlainText()
 
 
 def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
