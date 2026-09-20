@@ -195,7 +195,7 @@
    * [yd-upload](#yd-upload-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Aug 21 11:17:40 BST 2026 -->
+<!-- Added by: pwt, at: Sun Sep 20 10:31:41 BST 2026 -->
 
 <!--te-->
 
@@ -1677,7 +1677,7 @@ Note that variable substitutions **can** be used in the raw JSON file, just as i
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. The binary is stored in the Python package's own directory and does not affect any `rclone` already on your `$PATH`. To explicitly upgrade it to the latest version, run `yd-submit --upgrade-rclone`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-submit --which-rclone` or `yd-version --debug`; to explicitly upgrade the downloaded copy to the latest version, run `yd-submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-submit`, i.e., by `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls`, and `yd-copy`.
 
 Currently, Data Client only supports **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
@@ -3470,7 +3470,7 @@ To submit a Work Requirement in the `HELD` (paused) state, use `--hold` (`-H`); 
 
 To submit a Work Requirement with no Task Groups (to be populated later), use `--empty` (`-e`). To add Task Groups or Tasks to an existing Work Requirement, use `--add-to` (`-A`). See [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement) for details.
 
-To explicitly download or upgrade the rclone binary used by the Data Client, run `yd-submit --upgrade-rclone`.
+To explicitly download or upgrade the rclone binary used by the Data Client, run `yd-submit --upgrade-rclone`. To report the path and version of the binary that would be used, without downloading anything, run `yd-submit --which-rclone`. Both options are also accepted by the Data Client commands themselves (`yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls`, and `yd-copy`) — see [Using the YellowDog Data Client](#using-the-yellowdog-data-client).
 
 ## yd-provision
 
