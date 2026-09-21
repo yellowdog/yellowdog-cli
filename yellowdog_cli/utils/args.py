@@ -2494,7 +2494,7 @@ def lookup_module_description(module_name: str) -> str | None:
     """
     Descriptive string for the module's purpose.
     """
-    prefix = "YellowDog command line utility for "
+    prefix = "YellowDog command-line utility for "
     suffix = None
 
     # The compute-* checks must precede the 'start' check, since 'start' is a
