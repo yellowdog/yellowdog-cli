@@ -120,6 +120,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
 | `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting |
 | `test_commander_object_selection.py` | Choosing which objects a deletion removes: enumeration, object rows, and the paths that reach `yd-delete` |
+| `test_commander_check_indicator.py` | Every row of a selection list paints its own check state, on a style that places the check indicator where it is told to and on one that paints it at the painter's origin (Qt's macOS style under the macOS 26 control redesign, stood in for by a proxy — the real one draws no indicator at all under the offscreen platform) |
 | `test_commander_download_selection.py` | Choosing which objects a download fetches, and how the chooser differs from a destructive confirmation |
 | `test_commander_deselect.py` | The Deselect Files action: which of the currently-selected files get deselected |
 | `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
