@@ -34,6 +34,7 @@ from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
     CR_MAX_INSTANCES,
     DEFAULT_URL,
+    MISSING_CONFIG_DATA,
     TASK_BATCH_SIZE_DEFAULT,
     TOML_VAR_NESTED_DEPTH,
     YD_CONF,
@@ -330,7 +331,7 @@ def load_config_common() -> ConfigCommon:
         )
 
     except KeyError as e:
-        print_error(f"Missing configuration data: {e}")
+        print_error(f"{MISSING_CONFIG_DATA}: {e}")
         exit(1)
 
 
@@ -733,7 +734,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         )
 
     except KeyError as e:
-        print_error(f"Missing configuration data: {e}")
+        print_error(f"{MISSING_CONFIG_DATA}: {e}")
         exit(1)
 
     except Exception as e:
@@ -852,7 +853,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         )
 
     except KeyError as e:
-        print_error(f"Missing configuration data: {e}")
+        print_error(f"{MISSING_CONFIG_DATA}: {e}")
         exit(1)
 
     except ValueError as e:

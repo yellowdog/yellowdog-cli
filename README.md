@@ -1,7 +1,7 @@
-# YellowDog Command Line Interface
+# YellowDog Command-Line Interface
 
 <!--ts-->
-* [YellowDog Command Line Interface](#yellowdog-command-line-interface)
+* [YellowDog Command-Line Interface](#yellowdog-command-line-interface)
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
 * [Installation](#installation)
@@ -121,11 +121,6 @@
 * [Data Client](#data-client)
    * [Named Profiles](#named-profiles)
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
-   * [yd-upload](#yd-upload)
-   * [yd-download](#yd-download)
-   * [yd-delete](#yd-delete)
-   * [yd-ls](#yd-ls)
-   * [yd-copy](#yd-copy)
 * [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources)
    * [Overview of Operation](#overview-of-operation)
       * [Resource Creation](#resource-creation)
@@ -159,49 +154,57 @@
    * [Checking Jsonnet Processing](#checking-jsonnet-processing)
    * [Jsonnet Example](#jsonnet-example)
 * [Command List](#command-list)
-   * [yd-submit](#yd-submit)
-   * [yd-provision](#yd-provision)
-   * [yd-cancel](#yd-cancel)
-   * [yd-abort](#yd-abort)
-   * [yd-shutdown](#yd-shutdown)
-   * [yd-nodeaction](#yd-nodeaction)
-   * [yd-instantiate](#yd-instantiate)
-      * [Test-Running a Dynamic Template](#test-running-a-dynamic-template)
-   * [yd-terminate](#yd-terminate)
-   * [yd-compute-stop](#yd-compute-stop)
-   * [yd-compute-start](#yd-compute-start)
-   * [yd-compute-restart](#yd-compute-restart)
-   * [yd-list](#yd-list)
-   * [yd-resize](#yd-resize)
-   * [yd-create](#yd-create)
-   * [yd-remove](#yd-remove)
-   * [yd-follow](#yd-follow)
-   * [yd-wait](#yd-wait)
-   * [yd-start](#yd-start)
-   * [yd-hold](#yd-hold)
-   * [yd-boost](#yd-boost)
-   * [yd-show](#yd-show)
-   * [yd-compare](#yd-compare)
-   * [yd-finish](#yd-finish)
-   * [yd-application](#yd-application)
-   * [yd-help](#yd-help)
-   * [yd-jsonnet2json](#yd-jsonnet2json)
-   * [yd-format-json](#yd-format-json)
-   * [yd-version](#yd-version)
-   * [yd-copy](#yd-copy-1)
-   * [yd-delete / yd-rm](#yd-delete--yd-rm)
-   * [yd-download](#yd-download-1)
-   * [yd-ls](#yd-ls-1)
-   * [yd-upload](#yd-upload-1)
+   * [Universal Options](#universal-options)
+   * [Shared Options](#shared-options)
+   * [Work Requirement Commands](#work-requirement-commands)
+      * [yd-submit](#yd-submit)
+      * [yd-cancel](#yd-cancel)
+      * [yd-abort](#yd-abort)
+      * [yd-start](#yd-start)
+      * [yd-hold](#yd-hold)
+      * [yd-finish](#yd-finish)
+   * [Worker Pool and Compute Commands](#worker-pool-and-compute-commands)
+      * [yd-provision](#yd-provision)
+      * [yd-shutdown](#yd-shutdown)
+      * [yd-resize](#yd-resize)
+      * [yd-nodeaction](#yd-nodeaction)
+      * [yd-instantiate](#yd-instantiate)
+         * [Test-Running a Dynamic Template](#test-running-a-dynamic-template)
+      * [yd-terminate](#yd-terminate)
+      * [yd-compute-stop](#yd-compute-stop)
+      * [yd-compute-start](#yd-compute-start)
+      * [yd-compute-restart](#yd-compute-restart)
+   * [Monitoring and Inspection Commands](#monitoring-and-inspection-commands)
+      * [yd-list](#yd-list)
+      * [yd-show](#yd-show)
+      * [yd-follow](#yd-follow)
+      * [yd-wait](#yd-wait)
+      * [yd-compare](#yd-compare)
+      * [yd-application](#yd-application)
+   * [Resource Commands](#resource-commands)
+      * [yd-create](#yd-create)
+      * [yd-remove](#yd-remove)
+      * [yd-boost](#yd-boost)
+   * [Data Client Commands](#data-client-commands)
+      * [yd-upload](#yd-upload)
+      * [yd-download](#yd-download)
+      * [yd-delete / yd-rm](#yd-delete--yd-rm)
+      * [yd-ls](#yd-ls)
+      * [yd-copy](#yd-copy)
+   * [Utility Commands](#utility-commands)
+      * [yd-help](#yd-help)
+      * [yd-version](#yd-version)
+      * [yd-format-json](#yd-format-json)
+      * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Aug 21 11:17:40 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 13:49:21 BST 2026 -->
 
 <!--te-->
 
 # Overview
 
-This repository contains a set of command line utilities for driving the YellowDog Platform, written in Python. The scripts use the **[YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html)**, the code for which can be found [on GitHub](https://github.com/yellowdog/yellowdog-sdk-python-public).
+This repository contains a set of command-line utilities for driving the YellowDog Platform, written in Python. The scripts use the **[YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html)**, the code for which can be found [on GitHub](https://github.com/yellowdog/yellowdog-sdk-python-public).
 
 This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**, which provides a comprehensive description of the concepts and operation of the YellowDog Platform.
 
@@ -210,26 +213,26 @@ The commands provide the following capabilities:
 - **Aborting** running Tasks with the **`yd-abort`** command
 - **Boosting** Allowances with the **`yd-boost`** command
 - **Cancelling** Work Requirements with the **`yd-cancel`** command
-- **Comparing** whether worker pools are a match for task groups with the **`yd-compare`** command
+- **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
 - **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
-- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
 - **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
 - **Showing** the details of the current Application with the **`yd-application`** command
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
-- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
-- **Submitting** Work Requirements with the **`yd-submit`** command
-- **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Submitting** Work Requirements with the **`yd-submit`** command
+- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
+- **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
+- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
-The operation of the commands is controlled using TOML configuration files and/or environment variables and command line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
+The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 
 Commands are also provided for the semi-automatic setup of cloud provider accounts for use with YellowDog, and the creation of YellowDog assets to work with these cloud provider accounts. Please see **[Cloud Wizard](README_CLOUDWIZARD.md)** for more details.
 
@@ -237,7 +240,7 @@ Run any command with the `--help`/`-h` option to discover the command's options.
 
 # YellowDog Prerequisites
 
-To submit **Work Requirements** to YellowDog for processing by Configured Worker Pools (on-premise) and/or Provisioned Worker Pools (cloud-provisioned resources), you'll need:
+To submit **Work Requirements** to YellowDog for processing by Configured Worker Pools (on-premises) and/or Provisioned Worker Pools (cloud-provisioned resources), you'll need:
 
 
 1. A YellowDog Platform Account.
@@ -257,7 +260,7 @@ To set up **Configured Worker Pools**, you'll need:
 5. A Configured Worker Pool Token: from the **Workers** tab in the YellowDog Portal, use the **+Add Configured Worker Pool** button to create a new Worker Pool and generate a token.
 
 
-6. Obtain the YellowDog Agent and install/configure it on your on-premise systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-CONFIGURED.md).
+6. Obtain the YellowDog Agent and install/configure it on your on-premises systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-CONFIGURED.md).
 
 # Installation
 
@@ -388,54 +391,60 @@ It works by invoking the `yd-*` commands on your behalf and displaying their out
 
 # Usage
 
-Both installation methods add a number of **`yd-`** commands to your PATH.
+All three installation methods add a number of **`yd-`** commands to your PATH.
 
-Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command line options applicable to that command, e.g.:
+Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
 ```text
 % yd-cancel -h
 usage: yd-cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>] [--debug]
                  [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config] [--property <section.key=value>]
-                 [--variable <var1=v1>] [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--interactive] [--yes]
-                 [--raw-events]
+                 [--sort <name|created|status|namespace>] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
+                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes] [--raw-events]
                  [<work-requirement-name-or-ID> ...]
 
-YellowDog command line utility for cancelling Work Requirements
+YellowDog command-line utility for cancelling Work Requirements
 
 positional arguments:
   <work-requirement-name-or-ID>
-                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs
+                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may
+                        be a glob pattern (e.g. 'proj-*')
 
 options:
   -h, --help            show this help message and exit
   --docs                provide a link to the documentation for this version
-  --config <config_file.toml>, -c <config_file.toml>
+  --config, -c <config_file.toml>
                         configuration file in TOML format; the default to use is 'config.toml' in the current directory
-  --key <app-key-id>, -k <app-key-id>
+  --key, -k <app-key-id>
                         the application key ID
-  --secret <app-key-secret>, -s <app-key-secret>
+  --secret, -s <app-key-secret>
                         the application key secret
-  --url <url>, -u <url>
-                        the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
+  --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
   --debug               display the Python stack trace on error
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
-  --env-override        values in '.env' file override values in the environment (also set permanently via YD_ENV_OVERRIDE)
+  --env-override        values in '.env' file override values in the environment (also set via YD_ENV_OVERRIDE)
   --print-pid, --pp     include the process ID of this CLI invocation alongside timestamp in logging messages
   --no-config, --nc     ignore the contents of any TOML configuration file (even if specified on the command line)
   --property <section.key=value>
                         override a TOML configuration property; format: 'section.key=value', e.g.
                         'workRequirement.workerTags=["mytag"]'; can be supplied multiple times
-  --variable <var1=v1>, -v <var1=v1>
+  --sort <name|created|status|namespace>
+                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation
+                        time, earliest first), 'status' (status name, then name), or 'namespace' (namespace, then name); combine with
+                        --reverse to invert the order
+  --reverse             reverse (descending) order of the active --sort key
+  --variable, -v <var1=v1>
                         user-defined variable substitution; the option can be supplied multiple times, one per variable
-  --namespace [<namespace>], -n [<namespace>]
+  --namespace, -n [<namespace>]
                         the namespace to use when specifying entities; this is set to '' if the option is provided without a value
-  --tag [<tag>], -t [<tag>]
-                        the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without
+  --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without
                         a value
   --abort, -a           abort running tasks with immediate effect
   --follow, -f          follow progress after cancelling the work requirement(s)
+  --dry-run, -D         list the entities that would be affected, without acting
+  --json                with --dry-run, emit the affected entities as a JSON array
   --interactive, -i     list, and interactively select, the items to act on
   --yes, -y             perform modifying/destructive actions without requiring user confirmation
   --raw-events          print the raw JSON event stream when following events
@@ -494,7 +503,7 @@ All entity names used within the YellowDog Platform must comply with the followi
 - Names can only contain the following: lowercase letters, digits, hyphens and underscores (note that spaces are not permitted)
 - Names must start with a letter
 - Names must end with a letter or digit
-- Name length must 60 characters or fewer
+- Name length must be 60 characters or fewer
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
@@ -555,13 +564,13 @@ Properties set in the imported file are superseded by any of the same properties
 
 The commands will respect the value of the environment variable `HTTPS_PROXY` if routing through a proxy is required.
 
-In addition, commands can use proxy autoconfiguration (PAC) if the `--pac` command line option is specified, or if the `usePAC` property is set to `true` in the `[common]` section of the `config.toml` file.
+In addition, commands can use proxy autoconfiguration (PAC) if the `--pac` command-line option is specified, or if the `usePAC` property is set to `true` in the `[common]` section of the `config.toml` file.
 
 ## Specifying Common Properties using the Command Line or Environment Variables
 
-All the common properties can be set using command line options, or in environment variables.
+All the common properties can be set using command-line options, or in environment variables.
 
-The **command line options** are as follows:
+The **command-line options** are as follows:
 
 - `--key` or `-k`
 - `--secret` or `-s`
@@ -635,7 +644,7 @@ The `.env` file is located by checking the following locations in order:
 1. The directory containing the active `config.toml` file (as specified by `--config`, or the default `config.toml` in the current directory). This allows a `.env` file to live alongside its `config.toml` and be found even when commands are run from a different directory.
 2. Searching upward from the current working directory (standard `python-dotenv` behaviour).
 
-Entries in the `.env` file will not overwrite existing environment variables — i.e., environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g., in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
+Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
 
 Environment variables sourced from a `.env` file whose names start with `YD` will be reported on the command line. Variables whose names do not start with `YD` will not be reported, but they will still be applied.
 
@@ -647,14 +656,14 @@ Variable substitutions are discussed in more detail below.
 
 # Variable Substitutions
 
-Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g., for the `arguments` property, and tables (dictionaries), e.g., the `environment` property.
+Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g. for the `arguments` property, and tables (dictionaries), e.g. the `environment` property.
 
 Variable substitutions are expressed using the `{{variable}}` notation (note: no spaces between the double brackets and the variable name), where the expression is replaced by the value of `variable`.
 
 Substitutions can also be performed for non-string (number, boolean, array, and table) values using the `num:`, `bool:`, `array:`, and `table:` prefixes within the variable substitution:
 
 - Define the variable substitution using one of the following patterns: `"{{num:my_int}}"`, `"{{num:my_float}}"`, `"{{bool:my_bool}}"`, `"{{array:my_array}}"`, `"{{table:my_table}}"`
-- Variable definitions supplied on the command line would then be of the form, e.g.: 
+- Variable definitions supplied on the command line would then be of the form, e.g.:
 
 ```shell
  yd-submit -v my_int=5 -v my_float=2.5 -v my_bool=true \
@@ -684,7 +693,7 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
-For the `date`, `time`, `datetime` and `random` directives, the same values will be used for the duration of a command -- i.e., if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
+For the `date`, `time`, `datetime` and `random` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
 
@@ -715,16 +724,16 @@ User-defined variable names must not start with a reserved prefix. The implement
 
 ### Setting Variable Values
 
-1. The **command line** option is `--variable` (or `-v`). For example, `yd-submit -v project_code=pr-213-a -v run_id=1234` will establish two new variables that can be used as `{{project_code}}` and `{{run_id}}`, which will be substituted by `pr-213-a` and `1234` respectively.
+1. The **command-line** option is `--variable` (or `-v`). For example, `yd-submit -v project_code=pr-213-a -v run_id=1234` will establish two new variables that can be used as `{{project_code}}` and `{{run_id}}`, which will be substituted by `pr-213-a` and `1234` respectively.
 
 
 2. For **environment variables**, setting the variable `YD_VAR_project_code="pr-213-a"` will create a new variable that can be accessed as `{{project_code}}`, which will be substituted by `pr-213-a`. Note that if running on Windows, all environment variable names are case-insensitive and converted to upper case, so choose upper case variable names only.
 
 
-3. **General (i.e., non-`YD_VAR_`) environment variables** can be used by adding the `env:` prefix before the name of the environment variable in the substitution, e.g.: `{{env:ENV_VAR_NAME}}`. (If you also need to use one of the type prefixes, just do so as follows (e.g.): `{{num:env:COUNT}}`). A default value can also be provided for the case where the environment variable is not set: `{{env:ENV_VAR_NAME:=default_value}}`.
+3. **General (i.e. non-`YD_VAR_`) environment variables** can be used by adding the `env:` prefix before the name of the environment variable in the substitution, e.g. `{{env:ENV_VAR_NAME}}`. (If you also need to use one of the type prefixes, just do so as follows (e.g.): `{{num:env:COUNT}}`). A default value can also be provided for the case where the environment variable is not set: `{{env:ENV_VAR_NAME:=default_value}}`.
 
 
-4. For **setting within the TOML file**, include a **`variables`** table in the `[common]` section of the file. E.g., `variables = {project_code = "pr-213a", run_id = "1234"}`. Note that this can also use the form:
+4. For **setting within the TOML file**, include a **`variables`** table in the `[common]` section of the file. E.g. `variables = {project_code = "pr-213a", run_id = "1234"}`. Note that this can also use the form:
 
 ```toml
 [common.variables]
@@ -745,7 +754,7 @@ The precedence order for setting variables is:
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 
-This method can also be used to override some default variables, e.g., setting `-v username="other-user"` will override the default `{{username}}` variable.
+This method can also be used to override some default variables, e.g. setting `-v username="other-user"` will override the default `{{username}}` variable.
 
 ### Nested Variables
 
@@ -765,7 +774,7 @@ For example, if one wanted to select a different `templateId` for a Worker Pool 
 
 Then, if one used `yd-provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
 
-Nesting can be up to three levels deep including the top level. Note that sequencing of properties in the TOML file does not matter, e.g., variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
+Nesting can be up to three levels deep including the top level. Note that sequencing of properties in the TOML file does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
 
 ### Providing Default Values for User-Defined Variables
 
@@ -797,7 +806,7 @@ When a JSON default contains double-quoted strings, use a TOML single-quoted (li
 workerTags = '{{array:worker_tags:=["tag1", "tag2"]}}'
 ```
 
-Default values can be used anywhere that variable substitutions are allowed.  In TOML files only, nested variable substitutions can be used inside default values, e.g.:
+Default values can be used anywhere that variable substitutions are allowed. In TOML files only, nested variable substitutions can be used inside default values, e.g.:
 
 ```toml
 name = "{{name_var:={{tag}}-{{datetime}}}}"
@@ -840,7 +849,7 @@ taskType = "{{::}}"   # always removed
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
-In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variable substitutions **must be prefixed and postfixed by double underscores** `__`, e.g., `__{{username}}__`. This is to disambiguate client-side variable substitutions from server-side Mustache variable processing.
+In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variable substitutions **must be prefixed and postfixed by double underscores** `__`, e.g. `__{{username}}__`. This is to disambiguate client-side variable substitutions from server-side Mustache variable processing.
 
 Variable substitutions can also be used within **User Data** to be supplied to instances, for which the same prefix/postfix requirement applies, **including** for User Data supplied directly using the `userData` property in the `workerPool` section of the TOML file.
 
@@ -890,7 +899,7 @@ A very simple example document is shown below with a top-level Work Requirement 
 
 ```
 
-To specify the file containing the JSON document, either populate the `workRequirementData` property in the `workRequirement` section of the TOML configuration file with the JSON filename, or specify it on the command line as a positional argument (which will override the property in the TOML file), e.g.
+To specify the file containing the JSON document, either populate the `workRequirementData` property in the `workRequirement` section of the TOML configuration file with the JSON filename, or specify it on the command line as a positional argument (which will override the property in the TOML file), e.g.:
 
 `yd-submit --config myconfig.toml my_workreq.json`
 
@@ -898,9 +907,9 @@ To specify the file containing the JSON document, either populate the `workRequi
 
 Work Requirement specifications can be simplified substantially by the property inheritance features in `yd-submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
 
-This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level).  Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
+This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level). Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
 
-Overridden properties are also inherited at lower levels in the hierarchy. E.g., if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
+Overridden properties are also inherited at lower levels in the hierarchy. E.g. if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
 
 ## Work Requirement Property Dictionary
 
@@ -909,57 +918,57 @@ The following table outlines all the properties available for defining Work Requ
 
 | Property Name               | Description                                                                                                                                                                                                                         | TOML | WR  | TGrp | Task |
 |:----------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----|:----|:-----|:-----|
-| `addEnvironment`            | A table of environment variable key-value pairs merged into each Task's `environment`. Keys in `addEnvironment` override any matching keys already present in `environment`. E.g., `{EXTRA = "val", X = "1"}`.                      | Yes  | Yes | Yes  |      |
+| `addEnvironment`            | A table of environment variable key-value pairs merged into each Task's `environment`. Keys in `addEnvironment` override any matching keys already present in `environment`. E.g. `{EXTRA = "val", X = "1"}`.                      | Yes  | Yes | Yes  |      |
 | `addYDEnvironment`          | Automatically add YellowDog environment variables to each Task's environment.                                                                                                                                                       | Yes  | Yes | Yes  | Yes  |
-| `argumentsPostfix`          | A fixed list of arguments appended after `arguments` for every Task. Combined result is `argumentsPrefix` + `arguments` + `argumentsPostfix`. E.g.: `["--output", "results/"]`.                                                     | Yes  | Yes | Yes  |      |
-| `argumentsPrefix`           | A fixed list of arguments prepended before `arguments` for every Task. Combined result is `argumentsPrefix` + `arguments` + `argumentsPostfix`. E.g.: `["--input", "data/"]`.                                                       | Yes  | Yes | Yes  |      |
-| `arguments`                 | The list of arguments to be passed to the Task when it is executed. E.g.: `[1, "Two"]`.                                                                                                                                             | Yes  | Yes | Yes  | Yes  |
-| `completedTaskTtl`          | The time (in minutes) to live for completed Tasks. If set, Tasks that have been completed for longer than this period will be deleted. E.g.: `10.0`.                                                                                | Yes  | Yes | Yes  |      |
+| `argumentsPostfix`          | A fixed list of arguments appended after `arguments` for every Task. Combined result is `argumentsPrefix` + `arguments` + `argumentsPostfix`. E.g. `["--output", "results/"]`.                                                     | Yes  | Yes | Yes  |      |
+| `argumentsPrefix`           | A fixed list of arguments prepended before `arguments` for every Task. Combined result is `argumentsPrefix` + `arguments` + `argumentsPostfix`. E.g. `["--input", "data/"]`.                                                       | Yes  | Yes | Yes  |      |
+| `arguments`                 | The list of arguments to be passed to the Task when it is executed. E.g. `[1, "Two"]`.                                                                                                                                             | Yes  | Yes | Yes  | Yes  |
+| `completedTaskTtl`          | The time (in minutes) to live for completed Tasks. If set, Tasks that have been completed for longer than this period will be deleted. E.g. `10.0`.                                                                                | Yes  | Yes | Yes  |      |
 | `csvFile`                   | The name of the CSV file used to derive Task data. An alternative to `csvFiles` that can be used when there's only a single CSV file. E.g. `"file.csv"`.                                                                            | Yes  |     |      |      |
 | `csvFiles`                  | A list of CSV files used to derive Task data. E.g. `["file.csv", "file_2.csv:2]`.                                                                                                                                                   | Yes  |     |      |      |
 | `dependencies`              | The names of other Task Groups within the same Work Requirement that must be successfully completed before the Task Group is started. E.g. `["task_group_1", "task_group_2"]`.                                                      |      |     | Yes  |      |
 | `dependentOn`               | **Deprecated** — use `dependencies` instead (see above). Takes a single string rather than a list. Support for `dependentOn` will be removed in a future release.                                                                   |      |     | Yes  |      |
 | `disablePreallocation`      | If `true`, tasks are only allocated to nodes as workers become idle and are not queued on the node. Default: `false`.                                                                                                               | Yes  | Yes | Yes  |      |
-| `environment`               | The environment variables to set for a Task when it's executed. E.g., JSON: `{"VAR_1": "abc", "VAR_2": "def"}`, TOML: `{VAR_1 = "abc", VAR_2 = "def"}`.                                                                             | Yes  | Yes | Yes  | Yes  |
+| `environment`               | The environment variables to set for a Task when it's executed. E.g. JSON: `{"VAR_1": "abc", "VAR_2": "def"}`, TOML: `{VAR_1 = "abc", VAR_2 = "def"}`.                                                                             | Yes  | Yes | Yes  | Yes  |
 | `failurePolicy`             | A policy for resubmitting a Task to a different Task Group when it would otherwise be `FAILED`. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                       | Yes  | Yes | Yes  |      |
 | `finishIfAllTasksFinished`  | If true, the Task Group will finish automatically if all contained tasks finish. Default:`true`.                                                                                                                                    | Yes  | Yes | Yes  |      |
 | `finishIfAnyTaskFailed`     | If true, the Task Group will be failed automatically if any contained tasks fail. Default:`false`.                                                                                                                                  | Yes  | Yes | Yes  |      |
 | `instancePricingPreference` | The preferred instance pricing type for Tasks. One of: `SPOT_ONLY`, `ON_DEMAND_ONLY`, `SPOT_THEN_ON_DEMAND`, `ON_DEMAND_THEN_SPOT`. Default: no preference.                                                                         | Yes  | Yes | Yes  |      |
-| `instanceTypes`             | The machine instance types that can be used to execute Tasks. E.g., `["t3.micro", "t3a.micro"]`.                                                                                                                                    | Yes  | Yes | Yes  |      |
-| `maxWorkers`                | The maximum number of Workers that can be claimed for the associated Task Group. E.g., `10`.                                                                                                                                        | Yes  | Yes | Yes  |      |
-| `maximumTaskRetries`        | (Deprecated — see `retryPolicy`.) The maximum number of times a Task can be retried after it has failed. E.g.: `5`.                                                                                                                  | Yes  | Yes | Yes  |      |
-| `minWorkers`                | The minimum number of Workers that the associated Task Group will retain even if this exceeds the current number of Tasks. E.g., `1`.                                                                                               | Yes  | Yes | Yes  |      |
-| `name`                      | The name of the Work Requirement, Task Group or Task. E.g., `"wr_name"`. Note that the `name` property is not inherited.                                                                                                            | Yes  | Yes | Yes  | Yes  |
-| `namespaces`                | Only Workers whose Worker Pools match one of the namespaces in this list can be claimed by the Task Group. E.g., `["namespace_1", "namespace_2"]. Defaults to `None`.                                                               | Yes  | Yes | Yes  |      |
+| `instanceTypes`             | The machine instance types that can be used to execute Tasks. E.g. `["t3.micro", "t3a.micro"]`.                                                                                                                                    | Yes  | Yes | Yes  |      |
+| `maxWorkers`                | The maximum number of Workers that can be claimed for the associated Task Group. E.g. `10`.                                                                                                                                        | Yes  | Yes | Yes  |      |
+| `maximumTaskRetries`        | (Deprecated — see `retryPolicy`.) The maximum number of times a Task can be retried after it has failed. E.g. `5`.                                                                                                                  | Yes  | Yes | Yes  |      |
+| `minWorkers`                | The minimum number of Workers that the associated Task Group will retain even if this exceeds the current number of Tasks. E.g. `1`.                                                                                               | Yes  | Yes | Yes  |      |
+| `name`                      | The name of the Work Requirement, Task Group or Task. E.g. `"wr_name"`. Note that the `name` property is not inherited.                                                                                                            | Yes  | Yes | Yes  | Yes  |
+| `namespaces`                | Only Workers whose Worker Pools match one of the namespaces in this list can be claimed by the Task Group. E.g. `["namespace_1", "namespace_2"]. Defaults to `None`.                                                               | Yes  | Yes | Yes  |      |
 | `parallelBatches`           | The number of parallel threads to use when uploading batches of Tasks.                                                                                                                                                              | Yes  |     |      |      |
-| `priority`                  | The priority of Work Requirements and Task Groups. Higher priority acquires Workers ahead of lower priority. E.g., `0.0`.                                                                                                           | Yes  | Yes | Yes  |      |
-| `providers`                 | Constrains the YellowDog Scheduler only to execute tasks from the associated Task Group on the specified providers. E.g., `["AWS", "GOOGLE"]`.                                                                                      | Yes  | Yes | Yes  |      |
-| `ram`                       | Range constraint on GB of RAM that are required to execute Tasks. E.g., `[2.5, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.5, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                           | Yes  | Yes | Yes  |      |
-| `regions`                   | Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g., `["eu-west-2]`.                                                                                             | Yes  | Yes | Yes  |      |
+| `priority`                  | The priority of Work Requirements and Task Groups. Higher priority acquires Workers ahead of lower priority. E.g. `0.0`.                                                                                                           | Yes  | Yes | Yes  |      |
+| `providers`                 | Constrains the YellowDog Scheduler only to execute tasks from the associated Task Group on the specified providers. E.g. `["AWS", "GOOGLE"]`.                                                                                      | Yes  | Yes | Yes  |      |
+| `ram`                       | Range constraint on GB of RAM that are required to execute Tasks. E.g. `[2.5, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.5, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                           | Yes  | Yes | Yes  |      |
+| `regions`                   | Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g. `["eu-west-2]`.                                                                                             | Yes  | Yes | Yes  |      |
 | `retryPolicy`               | A policy controlling Task retries on error. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                                                                            | Yes  | Yes | Yes  |      |
 | `retryableErrors`           | (Deprecated — see `retryPolicy`.) A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
 | `setTaskNames`              | Set this to `false` to suppress automatic generation of Task names. Defaults to `true`. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.                  | Yes  | Yes | Yes  | Yes  |
 | `tag`                       | A tag that can be associated with a Work Requirement, Task Group or Task. Note there is **no property inheritance** for these tags.                                                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 1,000.                                                                                                                                                       | Yes  |     |      |      |
 | `taskCount`                 | The number of times to execute the Task.                                                                                                                                                                                            | Yes  | Yes | Yes  |      |
-| `taskDataFile`              | Populate the `taskData` property above with the contents of the specified file. E.g., `"my_task_data_file.txt"`.                                                                                                                    | Yes  | Yes | Yes  | Yes  |
-| `taskDataFiles`             | Populate the `taskData` property above by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g., `["header.txt", "body.txt"]`.                                                | Yes  | Yes | Yes  | Yes  |
-| `taskDataInputs`            | A list of data inputs to be downloaded by the task E.g., JSON: `{"source": "src", "destination": "dest"}`, TOML: `{source = "src", destination = "dest"}`.                                                                          | Yes  | Yes | Yes  | Yes  |
-| `taskDataOutputs`           | A list of data outputs to be uploaded at the conclusion of a task E.g., JSON: `{"source": "src", "destination": "dest", "alwaysUpload": true}`, TOML: `{source = "src", destination = "dest", alwaysUpload = true}`.                | Yes  | Yes | Yes  | Yes  |
-| `taskData`                  | The data to be passed to the Worker when the Task is started. E.g., `"mydata"`. Becomes file `taskdata.txt` in the Task's working directory when the task executes.                                                                 | Yes  | Yes | Yes  | Yes  |
+| `taskDataFile`              | Populate the `taskData` property above with the contents of the specified file. E.g. `"my_task_data_file.txt"`.                                                                                                                    | Yes  | Yes | Yes  | Yes  |
+| `taskDataFiles`             | Populate the `taskData` property above by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g. `["header.txt", "body.txt"]`.                                                | Yes  | Yes | Yes  | Yes  |
+| `taskDataInputs`            | A list of data inputs to be downloaded by the task E.g. JSON: `{"source": "src", "destination": "dest"}`, TOML: `{source = "src", destination = "dest"}`.                                                                          | Yes  | Yes | Yes  | Yes  |
+| `taskDataOutputs`           | A list of data outputs to be uploaded at the conclusion of a task E.g. JSON: `{"source": "src", "destination": "dest", "alwaysUpload": true}`, TOML: `{source = "src", destination = "dest", alwaysUpload = true}`.                | Yes  | Yes | Yes  | Yes  |
+| `taskData`                  | The data to be passed to the Worker when the Task is started. E.g. `"mydata"`. Becomes file `taskdata.txt` in the Task's working directory when the task executes.                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskGroupCount`            | Create `taskGroupCount` duplicates of a single Task Group.                                                                                                                                                                          | Yes  | Yes |      |      |
-| `taskGroupName`             | The name to use for the Task Group. Only usable in the TOML file. E.g., `"my_tg_number_{{task_group_number}}"`.                                                                                                                     | Yes  |     |      |      |
-| `taskName`                  | The name to use for the Task. Only usable in the TOML file. Mostly useful in conjunction with CSV Task data. E.g., `"my_task_number_{{task_number}}"`.                                                                              | Yes  |     |      |      |
-| `taskTemplate`              | Sets default `taskType`, `taskData` (or `taskDataFile`/`taskDataFiles`), and/or `environment` for all Tasks in a Task Group; applied by the platform, allowing Tasks to be more compact. E.g., `{"taskType": "docker", "environment": {"X": "1"}}`. | Yes  | Yes | Yes  |      |
+| `taskGroupName`             | The name to use for the Task Group. Only usable in the TOML file. E.g. `"my_tg_number_{{task_group_number}}"`.                                                                                                                     | Yes  |     |      |      |
+| `taskName`                  | The name to use for the Task. Only usable in the TOML file. Mostly useful in conjunction with CSV Task data. E.g. `"my_task_number_{{task_number}}"`.                                                                              | Yes  |     |      |      |
+| `taskTemplate`              | Sets default `taskType`, `taskData` (or `taskDataFile`/`taskDataFiles`), and/or `environment` for all Tasks in a Task Group; applied by the platform, allowing Tasks to be more compact. E.g. `{"taskType": "docker", "environment": {"X": "1"}}`. | Yes  | Yes | Yes  |      |
 | `taskTimeout`               | The timeout in minutes after which an executing Task will be terminated and reported as `FAILED`. E.g. `120.0`. The default is no timeout.                                                                                          | Yes  | Yes | Yes  |      |
-| `taskType`                  | The Task Type of a Task. E.g., `"docker"`.                                                                                                                                                                                          | Yes  |     |      | Yes  |
-| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g., `["docker", "bash"]`. If omitted, the value is auto-derived from the `taskType` of the constituent Tasks (see [Automatic `taskTypes` Population](#automatic-tasktypes-population) below).             |      | Yes | Yes  |      |
-| `tasksPerWorker`            | Determines the number of Worker claims based on splitting the number of unfinished Tasks across Workers. E.g., `1`.                                                                                                                 | Yes  | Yes | Yes  |      |
-| `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g., `[2.0, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.0, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                      | Yes  | Yes | Yes  |      |
+| `taskType`                  | The Task Type of a Task. E.g. `"docker"`.                                                                                                                                                                                          | Yes  |     |      | Yes  |
+| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g. `["docker", "bash"]`. If omitted, the value is auto-derived from the `taskType` of the constituent Tasks (see [Automatic `taskTypes` Population](#automatic-tasktypes-population) below).             |      | Yes | Yes  |      |
+| `tasksPerWorker`            | Determines the number of Worker claims based on splitting the number of unfinished Tasks across Workers. E.g. `1`.                                                                                                                 | Yes  | Yes | Yes  |      |
+| `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g. `[2.0, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.0, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                      | Yes  | Yes | Yes  |      |
 | `timeout`                   | As above, but set at the individual Task level, which overrides the group level `taskTimeout` property (if present).                                                                                                                | Yes  |     |      | Yes  |
-| `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g., `[2.0, 4.0]`.                                                                                                                                          | Yes  | Yes | Yes  |      |
-| `workRequirementData`       | The name of the file containing the JSON document in which the Work Requirement is defined. E.g., `"test_workreq.json"`.                                                                                                            | Yes  |     |      |      |
-| `workerTags`                | The list of Worker Tags that will be used to match against the Worker Tag of a candidate Worker. E.g., `["tag_x", "tag_y"]`.                                                                                                        | Yes  | Yes | Yes  |      |
+| `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g. `[2.0, 4.0]`.                                                                                                                                          | Yes  | Yes | Yes  |      |
+| `workRequirementData`       | The name of the file containing the JSON document in which the Work Requirement is defined. E.g. `"test_workreq.json"`.                                                                                                            | Yes  |     |      |      |
+| `workerTags`                | The list of Worker Tags that will be used to match against the Worker Tag of a candidate Worker. E.g. `["tag_x", "tag_y"]`.                                                                                                        | Yes  | Yes | Yes  |      |
 
 ## Automatic `taskTypes` Population
 
@@ -1240,7 +1249,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, and a UTC timestamp: e.g.: `mytag_221024-15552480`.
+- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, and a UTC timestamp: e.g. `mytag_221024-15552480`.
 - **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
 - **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
 
@@ -1276,7 +1285,7 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. This property can also be set on the command line using the `--task-count`/`-C` option of `yd-submit` followed by the required number of Tasks.
 
-Also useful for testing, the `taskGroupCount` property or the command line option `--task-group-count`/`-G` can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e., the total number of tasks is the multiple of `taskGroupCount` and `taskGroup`.
+Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
 ## Examples
 
@@ -1516,7 +1525,7 @@ Variable substitutions can be used within any property value in TOML configurati
 
 ### Work Requirement Name Substitution
 
-The name of the Work Requirement itself can be used via the variable substitution `{{wr_name}}`. This can be used anywhere in the `workRequirement` section of the TOML configuration file, or in JSON Work Requirement definitions
+The name of the Work Requirement itself can be used via the variable substitution `{{wr_name}}`. This can be used anywhere in the `workRequirement` section of the TOML configuration file, or in JSON Work Requirement definitions.
 
 ### Task and Task Group Name Substitutions
 
@@ -1562,9 +1571,9 @@ As an example, the following JSON Work Requirement:
 
 ## Dry-Running Work Requirement Submissions
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` (`-D`) command line option when running `yd-submit`. This will print the fully processed JSON for the Work Requirement. Nothing will be submitted to the Platform.
+To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` (`-D`) command-line option when running `yd-submit`. This will print the fully processed JSON for the Work Requirement. Nothing will be submitted to the Platform.
 
-A dry-run is useful for inspecting the results of all the processing that's been performed. To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command line option.
+A dry-run is useful for inspecting the results of all the processing that's been performed. To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
 
 Note that the generated JSON is a **consolidated form** of what would be submitted to the YellowDog API, and Tasks are incorporated directly within their Task Group data structures for ease of comprehension. In actual API submissions, the Work Requirement with zero or more Task Groups is submitted first, and Tasks are then added to their Task Groups separately, in subsequent API calls. Task Groups and Tasks can also later be added to the Work Requirement.
 
@@ -1628,7 +1637,7 @@ When a JSON spec file is supplied, empty arrays are honoured directly — `--emp
 { "taskGroups": [] }
 ```
 
-or a Task Group with no tasks:
+or a Task Group with no Tasks:
 
 ```json
 {
@@ -1638,7 +1647,7 @@ or a Task Group with no tasks:
 }
 ```
 
-The `--add-to` (`-A`) option allows task groups and/or tasks to be added to a Work Requirement that has already been submitted, as long as it is not in a terminal state.
+The `--add-to` (`-A`) option allows Task Groups and/or Tasks to be added to a Work Requirement that has already been submitted, as long as it is not in a terminal state.
 
 The argument to `--add-to` is the name or YellowDog ID of the target Work Requirement:
 
@@ -1648,10 +1657,10 @@ yd-submit --add-to my-work-requirement my-spec.json
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
 
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Task and Task Group numbers continue from where the existing tasks left off, ensuring consistent naming.
+- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Task and Task Group numbers continue from where the existing Tasks left off, ensuring consistent naming.
 - **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way.
 
-A single `yd-submit --add-to` invocation can add a mix of new Task Groups and tasks to existing Task Groups simultaneously.
+A single `yd-submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
 
 As with a normal `yd-submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
 
@@ -1667,7 +1676,7 @@ By default, `yd-submit` checks whether a file already exists at the remote desti
 
 ### Submitting 'Raw' JSON Work Requirement Specifications
 
-It's possible to use the JSON output of `yd-submit --dry-run` (such as the example above) as a self-contained, fully-specified Work Requirement specification, using the `--json-raw` (or `-j`) command line option, i.e.: `yd-submit --json-raw <filename.json>`.
+It's possible to use the JSON output of `yd-submit --dry-run` (such as the example above) as a self-contained, fully specified Work Requirement specification, using the `--json-raw` (or `-j`) command-line option, i.e. `yd-submit --json-raw <filename.json>`.
 
 This will submit the Work Requirement, then add all the specified Tasks.
 
@@ -1677,7 +1686,7 @@ Note that variable substitutions **can** be used in the raw JSON file, just as i
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. The binary is stored in the Python package's own directory and does not affect any `rclone` already on your `$PATH`. To explicitly upgrade it to the latest version, run `yd-submit --upgrade-rclone`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-submit --which-rclone` or `yd-version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd-submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-submit`, i.e. by `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls`, and `yd-copy`.
 
 Currently, Data Client only supports **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
@@ -1703,12 +1712,12 @@ JSON:
 ],
 ```
 
-- The `source` property must be an rclone-compliant path starting with `rclone:`, e.g.: `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
-- The `destination` property must specify a local pathname and be prefixed with `local:`, e.g.: `local:my_output.txt`
+- The `source` property must be an rclone-compliant path starting with `rclone:`, e.g. `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
+- The `destination` property must specify a local pathname and be prefixed with `local:`, e.g. `local:my_output.txt`
 
 ### Automatic Upload of Local Files
 
-The `yd-submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localFile` property, and optionally the `uploadPath` property, to the relevant input specification,  e.g.:
+The `yd-submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localFile` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
 
 TOML, in the `workRequirement` section:
 
@@ -1745,7 +1754,7 @@ As an example, if the requirement is to upload to an S3 bucket then appropriate 
 
 2. Explicitly using environment variables for authentication: `rclone:S3,type=s3,provider=AWS,access_key_id={{env:AWS_ACCESS_KEY_ID}},secret_access_key={{env:AWS_SECRET_ACCESS_KEY}},region=eu-west-2,location_constraint=eu-west-2:<bucket-name>/<pathname>`. Note that this will include the key ID and secret in plain text in the task specification.
 
-3. Using an rclone configuration file, e.g., referencing a `[mys3]` section in `rclone.conf`: `rclone:mys3:<bucket-name>/<pathname>`.
+3. Using an rclone configuration file, e.g. referencing a `[mys3]` section in `rclone.conf`: `rclone:mys3:<bucket-name>/<pathname>`.
 
 ### Specifying Data Client Outputs
 
@@ -1767,8 +1776,8 @@ JSON:
 ],
 ```
 
-- The `source` property must specify a local pathname and be prefixed with `local:`, e.g.: `local:my_output.txt`
-- The `destination` property must be an rclone-compliant path, e.g.: `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
+- The `source` property must specify a local pathname and be prefixed with `local:`, e.g. `local:my_output.txt`
+- The `destination` property must be an rclone-compliant path, e.g. `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
 
 ## Task Execution Context
 
@@ -1778,13 +1787,13 @@ This section discusses the context within which a Task operates when it's execut
 
 When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the following steps are followed:
 
-1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd_submit`, and the Agent itself -- see above for details.
+1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd-submit` and the Agent itself — see above for details.
 2. An ephemeral working directory is created. Data Client input objects are downloaded to this directory, and the contents of the `taskData` property (if set) are written to the file `taskdata.txt`.
-3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This done as a simple `exec` of a subprocess to run the Task.
+3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This is done as a simple `exec` of a subprocess to run the Task.
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
 5. The Agent uploads any Data Client outputs specified in `taskDataOutputs` to their destinations. The ephemeral Task directory is then deleted.
 
-Note that if a Task is aborted during execution, the Task's subprocess is sent a `SIGTERM`, allowing the Task an opportunity to terminate any child processes or other resources (e.g., containers) that may have been started as part of Task execution. In addition, there is the option to set an `abort` clause as part of the Task Type specification in the Agent's `application.yaml` file, in which case the script specified in the `abort` clause takes over complete responsibility for any abort handling.
+Note that if a Task is aborted during execution, the Task's subprocess is sent a `SIGTERM`, allowing the Task an opportunity to terminate any child processes or other resources (e.g. containers) that may have been started as part of Task execution. In addition, there is the option to set an `abort` clause as part of the Task Type specification in the Agent's `application.yaml` file, in which case the script specified in the `abort` clause takes over complete responsibility for any abort handling.
 
 Once the steps above have been completed, the Worker is ready to process its next Task.
 
@@ -1837,7 +1846,7 @@ Note that the Task directory — including `taskoutput.txt` — is **ephemeral**
 CSV data files can be used to drive the generation of lists of Tasks, as follows:
 
 - A **prototype** Task specification is created within a JSON Work Requirement specification or in the `workRequirement` section of the TOML configuration file
-- The prototype task includes one or more variable substitutions using the CSV delimiter syntax `<<variable_name>>`
+- The prototype Task includes one or more variable substitutions using the CSV delimiter syntax `<<variable_name>>`
 - A CSV file is created, with the **headers** (first row) matching the names of the variable substitutions in the Task prototype
 - Each subsequent row of the CSV file represents a new Task to be built using the prototype, with the variables substituted by the values in the row
 - A Task will be created for each row of data
@@ -1903,7 +1912,7 @@ If these files are processed using `yd-submit wr.json -V wr_data.csv`, the follo
 
 ### CSV Variable Substitutions
 
-When the CSV file data is processed, the only substitutions made are those which match the variable substitutions in the prototype Task. The CSV file is the **only** source of substitutions used for this processing phase; all other variable substitutions (supplied on the command line, in the TOML configuration file, or from environment variables) are ignored -- i.e., they do not override the contents of the CSV file.
+When the CSV file data is processed, the only substitutions made are those which match the variable substitutions in the prototype Task. The CSV file is the **only** source of substitutions used for this processing phase; all other variable substitutions (supplied on the command line, in the TOML configuration file, or from environment variables) are ignored — i.e. they do not override the contents of the CSV file.
 
 All variable substitutions unrelated to the CSV file data are left unchanged, for subsequent processing by `yd-submit`.
 
@@ -1917,7 +1926,7 @@ All the usual property inheritance features operate as normal. Properties are in
 
 The use of multiple Task Groups is also supported, by using one CSV file per Task Group. Each Task Group must contain only a single prototype Task.
 
-The CSV files are supplied on the command line in the order of the Task Groups to which they apply. For example, if `wr_json` contains two Task Groups, as follows:
+The CSV files are supplied on the command line in the order of the Task Groups to which they apply. For example, if `wr.json` contains two Task Groups, as follows:
 
 ```json
 {
@@ -1948,9 +1957,9 @@ The `yd-submit` command would then be invoked with a separate CSV file for each 
 yd-submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
 ```
 
-If there are **fewer** CSV files than Task Groups a warning will be printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
+If there are **fewer** CSV files than Task Groups, a warning will be printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
 
-It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g., `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
+It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g. `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
 
 ```shell
 yd-submit wr.json -V wr_data_task_group_2.csv:2 -V wr_data_task_group_4.csv:4
@@ -1966,7 +1975,7 @@ Note that only one CSV file can be applied to any given Task Group. A single CSV
 
 ### Using CSV Data with Simple, TOML-Only Work Requirement Specifications
 
-It's possible to use TOML exclusively to derive a list of Tasks from CSV data -- i.e., a JSON Work Requirement specification is not required.
+It's possible to use TOML exclusively to derive a list of Tasks from CSV data — i.e. a JSON Work Requirement specification is not required.
 
 To make use of this:
 
@@ -1988,7 +1997,7 @@ A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances ru
 
 The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd-provision` command. A subset of the properties is also used by the `yd-instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
 
-The only mandatory property is `templateId`. All other properties have defaults (or are not required). 
+The only mandatory property is `templateId`. All other properties have defaults (or are not required).
 The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name.
 
 ## Worker Pools vs. Compute Requirements
@@ -2035,7 +2044,7 @@ The following properties are available:
 
 The `templateId` property can be directly populated with the YellowDog ID (YDID), or it can be populated with the textual name of the template, in the form `namespace/template_name`.
 
-Similarly, the `imagesId` property can be populated with the YDID of an Image Family, Image Group, Image, or a string representing the native name of a cloud provider image (e.g., an AWS AMI). It can also be populated with an Image Family name in the form `namespace/image_family_name`, or an Image Group name in the form `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`. Optionally, a `yd/` prefix can be supplied. The CLI will aim to map the provided name into an Image Family or Group YDID.
+Similarly, the `imagesId` property can be populated with the YDID of an Image Family, Image Group, Image, or a string representing the native name of a cloud provider image (e.g. an AWS AMI). It can also be populated with an Image Family name in the form `namespace/image_family_name`, or an Image Group name in the form `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`. Optionally, a `yd/` prefix can be supplied. The CLI will aim to map the provided name into an Image Family or Group YDID.
 
 ## Large-Scale Provisioning
 
@@ -2045,7 +2054,7 @@ The `computeRequirementBatchSize` property controls the maximum number of instan
 
 ## Automatic Properties
 
-The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of `wp_`, the `tag` property, and a UTC timestamp, e.g.: `wp_mytag_221024-155524`.
+The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of `wp_`, the `tag` property, and a UTC timestamp, e.g. `wp_mytag_221024-155524`.
 
 ## TOML Properties in the `workerPool` Section
 
@@ -2079,7 +2088,7 @@ Here's an example of the `workerPool` section of a TOML configuration file, show
 
 ## Worker Pool Specification Using JSON Documents
 
-It's also possible to capture a Worker Pool definition as a JSON document. The JSON filename can be supplied either by supplying the command line positional argument for `yd-provision`, or by populating the `workerPoolData` property in the TOML configuration file with the JSON filename. Command line specification takes priority over TOML specification.
+It's also possible to capture a Worker Pool definition as a JSON document. The JSON filename can be supplied either by supplying the command-line positional argument for `yd-provision`, or by populating the `workerPoolData` property in the TOML configuration file with the JSON filename. Command-line specification takes priority over TOML specification.
 
 The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types.
 
@@ -2218,7 +2227,7 @@ When a JSON Worker Pool specification is used, the following properties from the
 - `userDataFile`
 - `userDataFiles`
 
-Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. Similarly, the `imagesId` property can use either a YDID or the Image Family or Image Group name (e.g, `"yd-agent-docker"`).
+Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. Similarly, the `imagesId` property can use either a YDID or the Image Family or Image Group name (e.g. `"yd-agent-docker"`).
 
 **Properties Inherited within the `provisionedProperties` Property**
 
@@ -2241,11 +2250,11 @@ In general, double underscores are **not** required in variable substitutions wi
 
 ## Dry-Running Worker Pool Provisioning
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command line option when running `yd-provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform.
+To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command-line option when running `yd-provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform.
 
 The generated JSON is produced after all processing (incorporating `config.toml` properties, variable substitutions, etc.) has been concluded, so the dry-run is useful for inspecting the results of all the processing that's been performed.
 
-To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command line option.
+To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
 
 Use `--follow` (`-f`) to track the provisioning progress after submission — `yd-provision` will report on node events and not return until the Worker Pool reaches a stable state.
 
@@ -2258,7 +2267,7 @@ yd-provision my_worker_pool.json
 
 ## Node Actions
 
-Node Actions allow scripts and commands to be dispatched directly to running Worker Pool nodes. They can be used to start services (e.g., Slurm controllers), write configuration files, or create YellowDog Workers dynamically — without modifying the original Worker Pool specification. Node Actions are submitted using the **`yd-nodeaction`** command.
+Node Actions allow scripts and commands to be dispatched directly to running Worker Pool nodes. They can be used to start services (e.g. Slurm controllers), write configuration files, or create YellowDog Workers dynamically — without modifying the original Worker Pool specification. Node Actions are submitted using the **`yd-nodeaction`** command.
 
 ### Action Types
 
@@ -2391,7 +2400,7 @@ When submitting actions, target nodes are specified in one of three ways:
 
 - **`--node <id>`**: Submit to a specific node; can be repeated for multiple nodes. If the value is a node YDID, the Worker Pool is resolved automatically without prompting.
 - **`--all-nodes`**: Broadcast to all current nodes in the pool.
-- **Interactive**: If neither flag is given, the worker pool's current nodes are displayed for interactive selection.
+- **Interactive**: If neither flag is given, the Worker Pool's current nodes are displayed for interactive selection.
 
 For grouped actions, `--all-nodes` applies the groups to all nodes; `--node` restricts them to the specified node IDs; omitting both offers interactive node selection.
 
@@ -2435,6 +2444,8 @@ yd-nodeaction --status --node ydid:node:D9C548:abc123... --follow
 
 The `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
 
+This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-upload](#yd-upload), [yd-download](#yd-download), [yd-delete / yd-rm](#yd-delete--yd-rm), [yd-ls](#yd-ls), and [yd-copy](#yd-copy).
+
 The `rclone` binary will be automatically downloaded if not already present.
 
 These commands share a common `[dataClient]` TOML configuration section:
@@ -2446,14 +2457,14 @@ These commands share a common `[dataClient]` TOML configuration section:
     prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (default: namespace/tag)
 ```
 
-The `remote`, `bucket`, and `prefix` values can also be supplied via command line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely.
+The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely.
 
 The `remote` field accepts either:
-- A plain remote name defined in the system `rclone.conf` (e.g., `"yds3"`)
-- An inline rclone connection string (e.g., `"S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"`)
+- A plain remote name defined in the system `rclone.conf` (e.g. `"yds3"`)
+- An inline rclone connection string (e.g. `"S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"`)
 - An `rclone:` prefix can optionally be included
 
-The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
+The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command-line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
 
 > **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target.
 
@@ -2499,13 +2510,13 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
 | `{{dataClient.<name>.prefix}}` | Named profile's prefix |
 
-For `yd-upload`/`yd-download`/`yd-delete`/`yd-ls`/`yd-copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully-resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
+For `yd-upload`/`yd-download`/`yd-delete`/`yd-ls`/`yd-copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 
 > **Note on Worker Pool / Compute Requirement specs and User Data:** In JSON/Jsonnet Worker Pool and Compute Requirement specifications, and in all User Data (whether supplied via `userData`, `userDataFile`, or `userDataFiles`), variable substitutions **must be prefixed and postfixed by double underscores** to disambiguate them from server-side Mustache processing. Use `__{{dataClient.remote}}__`, `__{{dataClient.prod.bucket}}__`, etc.
 
-Example use in a work requirement spec (no underscores needed in WR JSON):
+Example use in a Work Requirement spec (no underscores needed in WR JSON):
 
 ```json
 {
@@ -2523,122 +2534,6 @@ Example use in a `userdata` script (double underscores required):
 ```bash
 #!/bin/bash
 rclone copy __{{dataClient.prod.remote}}__:__{{dataClient.prod.bucket}}__/configs /tmp/configs
-```
-
-## yd-upload
-
-The `yd-upload` command uploads local files or directories to a remote data store.
-
-```
-yd-upload [options] <local_path> [<local_path> ...]
-```
-
-Key options:
-- `--recursive`/`-R` — upload directories recursively, preserving the directory structure
-- `--flatten` — upload all files in a directory tree to a flat (single-level) remote destination
-- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
-- `--destination`/`-d <remote_path>` — override the destination path; supports `{{variable}}` substitution
-- `--dry-run`/`-D` — show what would be uploaded without actually uploading
-
-## yd-download
-
-The `yd-download` command downloads files from a remote data store to a local directory.
-
-```
-yd-download [options] <remote_path> [<remote_path> ...]
-```
-
-Key options:
-- `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
-- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
-- `--destination`/`-d <local_path>` — local destination directory (default: mirrors the remote directory name)
-- `--into <local_dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
-- `--dry-run`/`-D` — show what would be downloaded without actually downloading
-
-Remote paths support `{{variable}}` substitution (e.g., `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
-
-`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
-
-Example: `yd-download 'results_*'` downloads everything whose name starts with `results_`.
-
-## yd-delete
-
-The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym.
-
-```
-yd-delete [options] [<remote_path> ...]
-```
-
-If no remote paths are specified, the command operates on the entire configured prefix. Use `--recursive` to delete a directory tree.
-
-Key options:
-- `--recursive`/`-R` — recursively delete a remote directory tree
-- `--dry-run`/`-D` — show what would be deleted without actually deleting
-- `--yes`/`-y` — skip confirmation prompts
-
-Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested before any deletions take place. Matching directories require `--recursive` to be deleted.
-
-Example: `yd-delete 'results_*'` deletes all items whose name starts with `results_`.
-
-## yd-ls
-
-The `yd-ls` command lists files and directories in a remote data store.
-
-```
-yd-ls [options] [<remote_path> ...]
-```
-
-If no remote paths are specified, the configured prefix is listed.
-
-Key options:
-- `--recursive`/`-R` — list recursively; output is displayed as a directory tree
-
-Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
-
-Example: `yd-ls -R 'results_*'` lists all items matching `results_*`, showing directory contents as trees.
-
-## yd-copy
-
-The `yd-copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
-
-```
-yd-copy [options] <src-path> <dst-path>
-```
-
-`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution.
-
-Key options:
-- `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`); defaults to the base `[dataClient]` config
-- `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
-- `--sync` — mirror the source to the destination, deleting destination files not present in the source
-- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
-- `--dry-run`/`-D` — show what would happen without performing any transfers
-
-The source remote is configured via the standard data client flags (`--remote`, `--bucket`, `--prefix`, `--no-prefix`, `--data-client-profile`, or TOML `[dataClient]` settings).
-
-Examples:
-
-```bash
-# Copy a file to a new location within the same prefix
-yd-copy input/data.csv output/data.csv
-
-# Rename a file while copying (destination path does not end with '/')
-yd-copy results/output.csv archive/output-{{date}}.csv
-
-# Copy a directory to a different prefix on the same remote
-yd-copy --dst-prefix staging input/ input/
-
-# Copy results to a named profile (e.g. a separate bucket defined in config.toml)
-yd-copy --dst-profile production results/ results/
-
-# Sync a directory to a backup profile (deletes destination files not in source)
-yd-copy --sync --dst-profile backup data/ data/
-
-# Copy from outside the configured prefix using --no-prefix
-yd-copy --no-prefix shared/configs/base.json configs/base.json
-
-# Dry-run to preview what would be copied without transferring anything
-yd-copy --dry-run input/ output/
 ```
 
 # Creating, Updating and Removing YellowDog Resources
@@ -2669,6 +2564,8 @@ Each resource specification file can contain a single resource specification or 
 
 The complete list of resource specifications is re-sequenced on processing to ensure that possibly dependent resources are dealt with in a suitable order. For example, all Compute Source Templates are always processed before any Compute Requirement Templates on resource creation, and the reverse sequencing is used on resource removal.
 
+The `--no-resequence` option (`yd-create` only) disables this, processing the resources strictly in the order in which they appear. This is occasionally useful when the supplied order is deliberate and the automatic sequencing would disturb it; note that dependent resources will then fail to be created if they are listed before the resources they depend on.
+
 Resource specification files can use all forms of **variable substitution** just as in the case of Work Requirements, etc.
 
 ### Resource Creation
@@ -2681,7 +2578,7 @@ yd-create resources_1.json <resources_2.json, ...>
 
 ### Resource Update
 
-Resources are updated by re-running the `yd-create` command with the same (edited) resource specifications. Update operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command line option.
+Resources are updated by re-running the `yd-create` command with the same (edited) resource specifications. Update operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command-line option.
 
 The update action will create any resources that are not already present in the Platform, and it will update any resources that are already present. The command does not check for specific differences, so an unchanged resource specification will still cause an update.
 
@@ -2692,7 +2589,7 @@ Resources are removed by running the `yd-remove` command, with the same form of 
 ```shell
 yd-remove resources_1.json <resources_2.json, ...>
 ```
-Destructive operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command line option.
+Destructive operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command-line option.
 
 The `yd-remove` command can also be used to remove resources by their `ydid` resource IDs, by using the `--ids` option. For example:
 
@@ -2702,13 +2599,13 @@ yd-remove --ids ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:imgfam
 
 ### Resource Matching
 
-Resources match on **resource names** and (where applicable) **resource namespaces** rather than on YellowDog IDs. This is done for flexibility and to allow the `yd-create` and `yd-remove` commands to be stateless (i.e., we don't need to keep a local record of the YellowDog IDs of the resources created).
+Resources match on **resource names** and (where applicable) **resource namespaces** rather than on YellowDog IDs. This is done for flexibility and to allow the `yd-create` and `yd-remove` commands to be stateless (i.e. we don't need to keep a local record of the YellowDog IDs of the resources created).
 
-However, this means that **caution is required** when updating or removing resources, since resource matching is done using **only** the **namespace/name** of the resource -- i.e., the system-generated `ydid` IDs are not used. This means that a resource with a given name could have been removed and replaced in the platform by some other means, and the resource specification(s) would still match it.
+However, this means that **caution is required** when updating or removing resources, since resource matching is done using **only** the **namespace/name** of the resource — i.e. the system-generated `ydid` IDs are not used. This means that a resource with a given name could have been removed and replaced in the platform by some other means, and the resource specification(s) would still match it.
 
 ## Resource Specification Definitions
 
-The JSON specification used to define each type of resource can be found by inspecting the YellowDog Platform REST API documentation at https://docs.yellowdog.co/api.
+The JSON specification used to define each type of resource can be found by inspecting the YellowDog Platform REST API documentation at https://docs.yellowdog.ai/api.
 
 For example, to obtain the JSON schema for creating a Compute Source Template, take a look at the REST API models for the Compute API: https://docs.yellowdog.ai/api?spec=Compute%20API.
 
@@ -2730,7 +2627,7 @@ When using the `yd-create` and `yd-remove` commands, note that an additional pro
 
 ## Generating Resource Specifications using `yd-list`
 
-To generate example JSON specifications from resources already included in the platform, the `yd-list` command can be used with the `--details`, `--substitute-ids`/`-U`, and  `--strip-ids` options, and select the resources for which details are required. E.g.:
+To generate example JSON specifications from resources already included in the platform, the `yd-list` command can be used with the `--details`, `--substitute-ids`/`-U`, and `--strip-ids` options, and select the resources for which details are required. E.g.:
 
 ```shell
 yd-list compute-source-templates --details --substitute-ids --strip-ids
@@ -2746,7 +2643,7 @@ The detailed resource list can also be copied directly to an output file in addi
 yd-list compute-source-templates --details --output-file my-resources.json
 ```
 
-Alternatively, the `yd-show` command can be used with one or more `ydid` arguments to generate the details of each identified resource. E.g.,
+Alternatively, the `yd-show` command can be used with one or more `ydid` arguments to generate the details of each identified resource. E.g.:
 
 ```shell
 yd-show -q ydid:cst:000000:cde265f8-0b17-4e0e-be1c-505174a620e4 --substitute-ids --strip-ids --output-file my-compute-source-template.json
@@ -2760,7 +2657,7 @@ The `--strip-ids` option will remove any YellowDog IDs ('ydids') from the JSON o
 
 ### Usage Scenario: Moving or Copying Resources to a New Namespace
 
-In the following usage scenario, we want to move a set of resources from one namespace `ns-1`, to another `ns-2`. We'll move all compute source templates, compute requirement templates, and image families.
+In the following usage scenario, we want to move a set of resources from one namespace `ns-1`, to another `ns-2`. We'll move all Compute Source Templates, Compute Requirement Templates, and Image Families.
 
 **Step 1: Capture the target resources in JSON files**
 
@@ -2780,7 +2677,7 @@ yd-remove -y csts.json crts.json ifs.json
 
 **Step 3: Change the namespace in all the resources**
 
-Use an editor's search and replace function, or a command line tool such as `sed` to replace all occurences of `"ns-1"` with `"ns-2`", for every `namespace` property, in each of the JSON files.
+Use an editor's search and replace function, or a command-line tool such as `sed` to replace all occurrences of `"ns-1"` with `"ns-2"`, for every `namespace` property, in each of the JSON files.
 
 **Step 4: Recreate all resources in the new namespace**
 
@@ -2816,7 +2713,7 @@ or to specify two Keyrings at once:
 ]
 ```
 
-When a new Keyring is created it's usable only by the YellowDog application which created it. A **system-generated password** is also returned as a one time response, which would allow the Keyring also to be claimed by YellowDog Portal users. For security reasons the password is not displayed, but this behaviour can be overridden using the `--show-keyring-passwords` command line option, e.g.:
+When a new Keyring is created it's usable only by the YellowDog application which created it. A **system-generated password** is also returned as a one-time response, which would allow the Keyring also to be claimed by YellowDog Portal users. For security reasons the password is not displayed, but this behaviour can be overridden using the `--show-keyring-passwords` command-line option, e.g.:
 
 ```shell
 % yd-create --quiet --show-keyring-passwords keyring.json
@@ -2890,7 +2787,7 @@ In the Compute Source Template `imageId` property, an Image Family name **namesp
 
 The Compute Requirement Template models can be found in the Compute API at: https://docs.yellowdog.ai/api?spec=Compute%20API.
 
-An example Compute Requirement resource specification is found below, for a **static** tempate:
+An example Compute Requirement resource specification is found below, for a **static** template:
 
 ```json
 {
@@ -2912,7 +2809,7 @@ Note that Compute Source Template **namespace/names** in the form `namespace/com
 
 The top-level `userData` property accepts an inline script string. As with Compute Source Templates, `userDataFile` and `userDataFiles` are also supported as mutually exclusive alternatives (see above).
 
-Also, In the `imagesId` property, an Image Family name **namespace/family-name** or an Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imagesId": "yellowdog/yd-agent-docker/latest"`. The `yd-create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
+Also, in the `imagesId` property, an Image Family name **namespace/family-name** or an Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imagesId": "yellowdog/yd-agent-docker/latest"`. The `yd-create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
 
 A **dynamic** template example is:
 
@@ -3128,7 +3025,7 @@ Namespace Policies are matched by their `namespace` property when using `yd-crea
 
 ## Groups
 
-When creating and updating groups, a list of roles with their scopes can can be supplied and the group will be created or updated with the roles specified. Roles can be identified by their names or YellowDog IDs.
+When creating and updating groups, a list of roles with their scopes can be supplied and the group will be created or updated with the roles specified. Roles can be identified by their names or YellowDog IDs.
 
 Example:
 
@@ -3185,13 +3082,13 @@ An optional `keyrings` list can be supplied to grant the Application access to o
 
 When an Application is **created**, the full API key returned at creation time is used to perform the grant — no additional options are required.
 
-When an Application is **updated**, the grant is attempted without an API key secret. If the platform requires the key secret (e.g., for initial access setup), re-run the update with `--regenerate-app-keys`; the newly generated key will be used to perform the grant.
+When an Application is **updated**, the grant is attempted without an API key secret. If the platform requires the key secret (e.g. for initial access setup), re-run the update with `--regenerate-app-keys`; the newly generated key will be used to perform the grant.
 
 ### Creating and Regenerating Application Keys
 
 When an Application is created, its Application Key ID and Secret will be displayed (even if the `--quiet` option is used).
 
-When an Application is updated, the `--regenerate-app-keys` option can be used. This will invalidate the current Application key and secret, revoke any Keyring access, and generate a new key and secret which will be displayed.
+When an Application is updated, the `--regenerate-app-keys` option can be used. This will invalidate the current Application key and secret, revoke any Keyring access, and generate a new key and secret, which will be displayed.
 
 ## Users
 
@@ -3428,36 +3325,96 @@ When this is inspected using the `dry-run` option (`yd-submit -D my_work_req.jso
 
 # Command List
 
-Help is available for all commands by invoking a command with the `--help` or `-h` option. Some command line parameters are common to all commands, while others are command-specific.
+Help is available for all commands by invoking a command with the `--help` or `-h` option. The two tables below describe the options shared across commands; the sections that follow describe each command individually, along with its own command-specific options.
 
-All destructive commands require user confirmation before taking effect. This can be suppressed using the `--yes` or `-y` option, in which case the command will proceed without confirmation.
+## Universal Options
 
-Some commands support the `--interactive` or `-i` option, allowing user selections to be made. E.g., this can be used to select which object paths to delete.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
-The `--quiet` or `-q` option reduces the command output down to essential messages only. For `yd-submit`, `yd-provision`, and `yd-instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
+The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
+
+| Option | Effect |
+|---|---|
+| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory |
+| `--no-config`, `--nc` | Ignore the contents of any TOML configuration file, even one named using `--config` |
+| `--key <app-key-id>`, `-k` | The Application key ID |
+| `--secret <app-key-secret>`, `-s` | The Application key secret |
+| `--url <url>`, `-u` | The YellowDog Platform API URL (defaults to `https://api.yellowdog.ai`) |
+| `--property <section.key=value>` | Override a single TOML configuration property; can be supplied multiple times — see [Overriding Arbitrary TOML Properties on the Command Line](#overriding-arbitrary-toml-properties-on-the-command-line) |
+| `--env-override` | Values in a `.env` file override values in the environment — see [Support for .env Files](#support-for-env-files) |
+| `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
+| `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
+| `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
+| `--debug` | Display the Python stack trace on error, which can be useful for support purposes |
+| `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](#https-proxy-support) |
+| `--docs` | Provide a link to the documentation for this version of the CLI |
+
+Note that `yd-version` also accepts `--debug`, but reports the Python path and executable details rather than a stack trace.
+
+Any output exceeding 1,000 lines in size (e.g. a very large JSON object, or table) will not produce coloured output, whether or not `--no-format` is used.
+
+For `yd-submit`, `yd-provision`, and `yd-instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
 
 ```bash
 WR_ID=$(yd-submit --quiet)
 yd-follow "$WR_ID"
 ```
 
-The `--print-pid` (or `--pp`) option prefixes every log line with the process ID of the CLI invocation. This is useful when running multiple commands in parallel, to disambiguate interleaved output.
+## Shared Options
 
-If you encounter an error it can be useful for support purposes to see the full Python stack trace. This can be enabled by running the command using the `--debug` option.
+These options are accepted by many commands, but not by all. The command sections below mention them only where a command does something particular with one; use `--help` to confirm exactly what any given command accepts.
 
-To suppress output formatting, including coloured output and line wrapping, the `--no-format` option can be used. Note that any outputs exceeding 1,000 lines in size (e.g., a very large JSON object, or table), will not produce coloured output.
+| Option | Effect |
+|---|---|
+| `--variable <var1=v1>`, `-v` | Set a user-defined variable substitution; can be supplied multiple times, one per variable — see [User-Defined Variables](#user-defined-variables) |
+| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value |
+| `--tag [<tag>]`, `-t` | The tag to use when naming, tagging, or selecting entities; this is set to `''` if the option is supplied without a value |
+| `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
+| `--dry-run`, `-D` | Report what the command would do, without acting |
+| `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
+| `--follow`, `-f` | Follow the relevant event stream after the command has acted |
+| `--raw-events` | Print the raw JSON event stream when following events |
+| `--sort <name\|created\|status\|namespace>` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name) |
+| `--reverse` | Reverse (descending) order of the active `--sort` key |
+| `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](#checking-jsonnet-processing) |
 
-## yd-submit
+All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
 
-The `yd-submit` command submits a new Work Requirement, according to the Work Requirement definition found in the `workRequirement` section of the TOML configuration file and/or the specification found in a Work Requirement JSON document supplied using the `--work-requirement` option.
+The data client commands share a further set of options (`--remote`, `--bucket`, `--prefix`, `--no-prefix` and `--data-client-profile`), which are described under [Data Client](#data-client).
 
-Use the `--dry-run` option to inspect the details of the Work Requirement, Task Groups, and Tasks that will be submitted, in JSON format.
+## Work Requirement Commands
+
+### yd-submit
+
+The `yd-submit` command submits a new Work Requirement, according to the Work Requirement definition found in the `workRequirement` section of the TOML configuration file and/or the specification found in a Work Requirement JSON (or Jsonnet) document.
+
+```shell
+yd-submit [options] [<work-requirement-specification-file>]
+```
 
 Once submitted, the Work Requirement will appear in the **Work** tab in the YellowDog Portal.
 
-The Work Requirement's progress can be tracked to completion by using the `--follow` (or `-f`) option when invoking `yd-submit`: the command will report on Tasks as they conclude and won't return until the Work Requirement has finished.
+Key options:
+- `--follow`/`-f` — report on Tasks as they conclude, and don't return until the Work Requirement has finished
+- `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
+- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state
+- `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-start`
+- `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
+- `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
+- `--task-type`/`-T <type>` — the Task Type to use
+- `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group
+- `--csv-file`/`-V <data.csv>` — read Task data from one or more CSV files; `--process-csv-only`/`-p` outputs the intermediate JSON specification without submitting
+- `--task-batch-size`/`-b <n>` — the batch size for Task submission, between 1 and 10,000
+- `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential)
+- `--pause-between-batches`/`-P [<seconds>]` — pause between batch submissions; with no interval, user input is required to advance. Only valid when `--parallel-batches` is `1`
+- `--overwrite`/`-O` — overwrite a file that already exists at the remote destination; by default, existing files are skipped
+- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file
+- `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found
+- `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
 
-For a compact, live view, use `--progress` instead. This displays a progress bar showing completed and failed tasks vs. the total, and blocks until the Work Requirement finishes — similar to `--follow` but with a single updating line rather than per-task event messages.
+```shell
+yd-submit my_work_requirement.json --follow
+```
 
 When `--quiet` (`-q`) is used, only the YDID of the submitted Work Requirement is printed to stdout, with all other output suppressed. This is convenient for scripting:
 
@@ -3466,35 +3423,44 @@ WR_ID=$(yd-submit --quiet)
 yd-follow "$WR_ID"
 ```
 
-To submit a Work Requirement in the `HELD` (paused) state, use `--hold` (`-H`); it can later be started with `yd-start`.
+To force a download or upgrade of the rclone binary used by the Data Client, run `yd-submit --upgrade-rclone`. To report the path and version of the binary that would be used, without downloading anything, run `yd-submit --which-rclone`. Both options are also accepted by the Data Client commands themselves.
 
-To submit a Work Requirement with no Task Groups (to be populated later), use `--empty` (`-e`). To add Task Groups or Tasks to an existing Work Requirement, use `--add-to` (`-A`). See [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement) for details.
+The specification file may also be supplied using the deprecated `--work-requirement`/`-r` option; the positional argument is preferred.
 
-To explicitly download or upgrade the rclone binary used by the Data Client, run `yd-submit --upgrade-rclone`.
+See [Work Requirements](#work-requirements) for the full specification reference, [Specifying Work Requirements using CSV Data](#specifying-work-requirements-using-csv-data) for the CSV options, and [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement) for `--add-to`.
 
-## yd-provision
+### yd-cancel
 
-The `yd-provision` command provisions a new Worker Pool according to the specifications in the `workerPool` section of the TOML configuration file and/or in the specification found in a Worker Pool JSON document supplied using the `--worker-pool` option.
+The `yd-cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain.
 
-Use the `--dry-run` option to inspect the details of the Worker Pool specification that will be submitted, in JSON format.
-
-The `--target <n>`/`-T <n>` option overrides the `targetInstanceCount` from the specification or configuration. (The same option is available for `yd-instantiate`.)
-
-Once provisioned, the Worker Pool will appear in the **Workers** tab in the YellowDog Portal, and its associated Compute Requirement will appear in the **Compute** tab.
-
-## yd-cancel
-
-The `yd-cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain. 
+```shell
+yd-cancel [options] [<work-requirement-name-or-ID> ...]
+```
 
 The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
 
-A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace, e.g. `yd-cancel 'myproject-*'` cancels all matching Work Requirements after the usual confirmation (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list work-requirements --name 'myproject-*'` to preview the matches first, and `--dry-run` shows the matched Work Requirements before anything is cancelled.
+A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list work-requirements --name 'myproject-*'` to preview the matches first.
 
-By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. Tasks can be instructed to abort immediately by supplying the `--abort` or `-a` option to `yd-cancel`.
+By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail.
 
-## yd-abort
+Key options:
+- `--abort`/`-a` — instruct running Tasks to abort immediately, rather than running to completion
+- `--dry-run`/`-D` — show the matched Work Requirements before anything is cancelled
+- `--json` — with `--dry-run`, emit the affected entities as a JSON array
 
-The `yd-abort` command is used to abort Tasks that are currently running. The user interactively selects the Work Requirements to target, and then which Tasks within those Work Requirements to abort. The Work Requirements are not cancelled as part of this process.
+```shell
+yd-cancel 'myproject-*' --dry-run
+```
+
+### yd-abort
+
+The `yd-abort` command aborts Tasks that are currently running, without cancelling the Work Requirements that contain them.
+
+```shell
+yd-abort [options] [<target> ...]
+```
+
+With no arguments, the user interactively selects the Work Requirements to target, and then which Tasks within those Work Requirements to abort.
 
 Aborting a Task sends `SIGTERM` to the Task's subprocess, giving it an opportunity to clean up. The Task is then reported as `FAILED`. If the Task Type has an `abort` clause configured in the Agent's `application.yaml`, that script takes over abort handling entirely.
 
@@ -3506,19 +3472,144 @@ The `namespace` and `tag` values in the `config.toml` file are used to identify 
 
 With `--yes`/`-y`, all executing Tasks in all selected Work Requirements are aborted without prompting.
 
-## yd-shutdown
+```shell
+yd-abort my-analysis-run/task-group-1
+```
+
+### yd-start
+
+The `yd-start` command starts Work Requirements that are in the `HELD` (paused) state.
+
+```shell
+yd-start [options] [<work-requirement-name-or-ID> ...]
+```
+
+It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
+
+```shell
+yd-start my-analysis-run --follow
+```
+
+Work Requirements are submitted in the `HELD` state using `yd-submit --hold`; `yd-hold` returns a `RUNNING` one to it.
+
+### yd-hold
+
+The `yd-hold` command holds (pauses) `RUNNING` Work Requirements.
+
+```shell
+yd-hold [options] [<work-requirement-name-or-ID> ...]
+```
+
+It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
+
+```shell
+yd-hold my-analysis-run
+```
+
+A held Work Requirement is restarted using `yd-start`.
+
+### yd-finish
+
+The `yd-finish` command moves Work Requirements into the `FINISHING` state, meaning that the requirements will be allowed to conclude but that no new Tasks can be added.
+
+```shell
+yd-finish [options] [<work-requirement-name-or-ID> ...]
+```
+
+As with `yd-start` and `yd-hold`, specific names and/or YDIDs can be supplied, otherwise the `namespace` and `tag` are used to generate the list of candidates.
+
+```shell
+yd-finish my-analysis-run
+```
+
+## Worker Pool and Compute Commands
+
+### yd-provision
+
+The `yd-provision` command provisions a new Worker Pool according to the specifications in the `workerPool` section of the TOML configuration file and/or in a Worker Pool JSON (or Jsonnet) document.
+
+```shell
+yd-provision [options] [<worker-pool-specification-file>]
+```
+
+Once provisioned, the Worker Pool will appear in the **Workers** tab in the YellowDog Portal, and its associated Compute Requirement will appear in the **Compute** tab.
+
+Key options:
+- `--target`/`-T <n>` — override the `targetInstanceCount` from the specification or configuration
+- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
+
+```shell
+yd-provision my_worker_pool.json --target 10 --follow
+```
+
+When `--quiet` (`-q`) is used, only the YDID of the provisioned Worker Pool is printed to stdout.
+
+The specification file may also be supplied using the deprecated `--worker-pool`/`-p` option; the positional argument is preferred.
+
+See [Worker Pools](#worker-pools) for the full specification reference.
+
+### yd-shutdown
 
 The `yd-shutdown` command shuts down Worker Pools that match the `namespace` and `tag` found in the configuration file. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which the Compute Requirement will be terminated.
 
+```shell
+yd-shutdown [options] [<worker-pool-name-or-ID/node-id> ...]
+```
+
 Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
 
-A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace, e.g. `yd-shutdown 'wp-*'` shuts down all matching Worker Pools after the usual confirmation (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list worker-pools --name 'wp-*'` to preview the matches first, and `--dry-run` shows the matched Worker Pools before anything is shut down.
+A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list worker-pools --name 'wp-*'` to preview the matches first.
 
-The `--terminate`/`-T` option also immediately terminates the associated Compute Requirement(s) rather than waiting for executing Tasks to complete, and `--follow`/`-f` follows the shutdown to completion.
+Key options:
+- `--terminate`/`-T` — immediately terminate the associated Compute Requirement(s) rather than waiting for executing Tasks to complete
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
+- `--dry-run`/`-D` — show the matched Worker Pools before anything is shut down
+- `--json` — with `--dry-run`, emit the affected entities as a JSON array
 
-## yd-nodeaction
+```shell
+yd-shutdown 'wp-*' --dry-run
+```
 
-The `yd-nodeaction` command submits Node Actions to running Worker Pool nodes. Actions are defined in a JSON (or Jsonnet) spec file supplied via `--actions`. See the [Node Actions](#node-actions) section for a full description of the spec format, action types, and field reference.
+### yd-resize
+
+The `yd-resize` command resizes Worker Pools, and also Compute Requirements when used with the `--compute-requirement`/`-C` option.
+
+```shell
+yd-resize [options] <worker-pool-or-compute-requirement-name-or-ID> <new-node/instance-count>
+```
+
+The name or ID of the Worker Pool or Compute Requirement is supplied along with the new target number of Nodes or Instances.
+
+Key options:
+- `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+
+```shell
+yd-resize wp_pyex-slurm-pwt_230711-124356-0d6 10
+yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
+yd-resize --compute-requirement cr_pyex-slurm-pwt_230712-110226-04c 5
+yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+```
+
+### yd-nodeaction
+
+The `yd-nodeaction` command submits Node Actions to running Worker Pool nodes.
+
+```shell
+yd-nodeaction [options]
+```
+
+The command takes no positional arguments: the actions are supplied with `--actions`, which is required unless `--status` is used. `--worker-pool` accepts a pool name or a Worker Pool YDID; if omitted, an interactive selection is shown. When `--node` is given with a node YDID, the Worker Pool is resolved automatically.
+
+Key options:
+- `--actions`/`-S <file>` — the Node Action spec file, in JSON or Jsonnet format
+- `--worker-pool`/`-p <name>` — the target Worker Pool
+- `--node`/`-N <node-id>` — target a specific node by ID; can be supplied multiple times
+- `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec
+- `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
+- `--content-path`/`-F <directory>` — the directory in which files for upload are found
 
 ```shell
 # Submit actions to interactively selected node(s)
@@ -3528,34 +3619,39 @@ yd-nodeaction --actions my_actions.json --worker-pool my-pool
 yd-nodeaction --actions my_actions.json --worker-pool my-pool --all-nodes
 
 # Submit to a specific node by YDID (worker pool resolved automatically)
-yd-nodeaction --actions my_actions.json --node ydid:node:D9C548:...
-
-# Submit to a specific node and follow progress until complete
 yd-nodeaction --actions my_actions.json --node ydid:node:D9C548:... --follow
 
-# Check node action queue status (interactive pool + node selection)
-yd-nodeaction --status --worker-pool my-pool
-
-# Check queue status for a specific node directly
-yd-nodeaction --status --node ydid:node:D9C548:...
-
-# Full JSON queue details for a specific node
+# Check node action queue status for a specific node
 yd-nodeaction --status --node ydid:node:D9C548:... --details
 ```
 
-`--worker-pool` accepts a pool name or a Worker Pool YDID. If omitted, an interactive selection is shown. When `--node` is given with a node YDID, the Worker Pool is resolved automatically.
+See [Node Actions](#node-actions) for the spec format, action types, and field reference.
 
-Use `--yes` (`-y`) to skip the confirmation prompt.
+### yd-instantiate
 
-## yd-instantiate
+The `yd-instantiate` command instantiates a Compute Requirement (i.e. a set of instances that are managed by their creator and do not automatically become part of a YellowDog Worker Pool).
 
-The `yd-instantiate` command instantiates a Compute Requirement (i.e., a set of instances that are managed by their creator and do not automatically become part of a YellowDog Worker Pool).
+```shell
+yd-instantiate [options] [<compute-requirement-specification-file>]
+```
 
 This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd-instantiate`.
 
-Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifications, using the `--compute-requirement` (or `-C`) command line option, followed by the filename, or by using the `computeRequirementData` property in the `workerPool`/`computeRequirement` section. The properties listed above will be inherited from the config.toml `workerPool` specification if they are not present in the JSON file.
+Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifications, supplied as the positional argument or by using the `computeRequirementData` property in the `workerPool`/`computeRequirement` section. The properties listed above will be inherited from the `config.toml` `workerPool` specification if they are not present in the JSON file.
 
-Variable substitutions must be prefixed and postfixed by a double underscore (`__`), e.g.: `"__{{my_variable}}__"`.
+The specification file may also be supplied using the deprecated `--compute-requirement`/`-C` or `--worker-pool`/`-p` options; the positional argument is preferred.
+
+Variable substitutions must be prefixed and postfixed by a double underscore (`__`), e.g. `"__{{my_variable}}__"`.
+
+Key options:
+- `--target`/`-T <n>` — override `targetInstanceCount` from the specification or configuration
+- `--report`/`-r` — report on a test run of a Dynamic Template, without provisioning (see below)
+- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
+- `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd-instantiate`
+
+```shell
+yd-instantiate my_compute_requirement.json --target 4
+```
 
 An example JSON specification is shown below:
 
@@ -3575,13 +3671,13 @@ An example JSON specification is shown below:
 
 Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property.
 
-If a Worker Pool is defined in JSON, using `workerPoolData` in the configuration file or by supplying the command line positional argument, `yd-instantiate` will extract the Compute Requirement from the Worker Pool specification (ignoring Worker-Pool-specific data), and use that for instantiating the Compute Requirement.
+If a Worker Pool is defined in JSON, using `workerPoolData` in the configuration file or by supplying the command-line positional argument, `yd-instantiate` will extract the Compute Requirement from the Worker Pool specification (ignoring Worker-Pool-specific data), and use that for instantiating the Compute Requirement.
 
-Use the `--dry-run` option to inspect the details of the Compute Requirement specification that will be submitted, in JSON format. The JSON output of this command can itself be used with the `yd-instantiate` command.
+When `--quiet` (`-q`) is used, only the YDID of the instantiated Compute Requirement is printed to stdout.
 
-### Test-Running a Dynamic Template
+#### Test-Running a Dynamic Template
 
-When a the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command line option. This can be used with TOML-defined Compute Requirement specifications, but not those that are JSON-defined.
+When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with TOML-defined Compute Requirement specifications, but not those that are JSON-defined.
 
 No instances will be provisioned during the test run.
 
@@ -3605,9 +3701,13 @@ For example:
 └────┴────────┴────────────┴───────────────────────────┴───────────┴────────────────┴───────────────────┘
 ```
 
-## yd-terminate
+### yd-terminate
 
 The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. Compute Requirements in either `RUNNING` or `STOPPED` states can be terminated.
+
+```shell
+yd-terminate [options] [<name-or-ID> ...]
+```
 
 Specific targets can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. Each target can be:
 
@@ -3615,13 +3715,24 @@ Specific targets can optionally be supplied as positional arguments instead of u
 - a single instance, in `<compute-requirement-ydid>.<instance-id>` form
 - a Node YDID (the node's instance is terminated)
 
-A Compute Requirement name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace, e.g. `yd-terminate 'ci-*' --dry-run` shows which Compute Requirements would be terminated (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command; use `yd-list compute-requirements --name 'ci-*'` to preview the matches first.
+A Compute Requirement name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list compute-requirements --name 'ci-*'` to preview the matches first.
 
-The `--follow`/`-f` option follows the affected Compute Requirements' event streams after the action is applied.
+Key options:
+- `--dry-run`/`-D` — show which Compute Requirements would be terminated
+- `--json` — with `--dry-run`, emit the affected entities as a JSON array
+- `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 
-## yd-compute-stop
+```shell
+yd-terminate 'ci-*' --dry-run
+```
+
+### yd-compute-stop
 
 The `yd-compute-stop` command stops `RUNNING` Compute Requirements and Instances. Stopped Compute Requirements and Instances can subsequently be started again using `yd-compute-start`.
+
+```shell
+yd-compute-stop [options] [<name-or-ID> ...]
+```
 
 If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of any of the following:
 
@@ -3629,7 +3740,7 @@ If no arguments are supplied, Compute Requirements that match the `namespace` an
 - Instances in `<compute-requirement-ydid>.<instance-id>` form, to stop individual Instances
 - Node YDIDs, to stop the Instances on which Worker Pool Nodes are running
 
-Usage examples:
+A Compute Requirement name may also be a glob pattern (e.g. `'cr-*'`). The `--follow`/`-f` option follows the event stream(s) of the affected Compute Requirement(s).
 
 ```shell
 yd-compute-stop
@@ -3639,26 +3750,42 @@ yd-compute-stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2
 yd-compute-stop ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-The `--follow`/`-f` option follows the event stream(s) of the affected Compute Requirement(s).
+### yd-compute-start
 
-## yd-compute-start
+The `yd-compute-start` command starts `STOPPED` Compute Requirements and Instances.
 
-The `yd-compute-start` command starts `STOPPED` Compute Requirements and Instances. It accepts the same arguments as `yd-compute-stop`: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
+```shell
+yd-compute-start [options] [<name-or-ID> ...]
+```
 
-## yd-compute-restart
+It accepts the same arguments as `yd-compute-stop`: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
+
+```shell
+yd-compute-start my-compute-requirement --follow
+```
+
+### yd-compute-restart
 
 The `yd-compute-restart` command restarts (reboots) `RUNNING` Instances. Restarting applies to Instances only; whole Compute Requirements cannot be restarted.
 
+```shell
+yd-compute-restart [options] [<name-or-ID> ...]
+```
+
 Instances to restart are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs.
 
-## yd-list
+```shell
+yd-compute-restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+```
 
-The `yd-list` command is used to list various YellowDog items, using the `namespace` and `tag` properties (if applicable) to target the scope of what to list.
+## Monitoring and Inspection Commands
 
-The entity type to list is supplied as a positional argument:
+### yd-list
+
+The `yd-list` command lists various YellowDog items, using the `namespace` and `tag` properties (if applicable) to target the scope of what to list.
 
 ```shell
-yd-list <entity-type> [options]
+yd-list [options] <entity-type>
 ```
 
 Valid entity types are:
@@ -3689,7 +3816,7 @@ Valid entity types are:
 
 Unambiguous prefix matching is supported — for example `yd-list work-r` resolves to `yd-list work-requirements`, and `yd-list key` resolves to `yd-list keyrings`. Single uppercase synonyms also work, e.g. `yd-list W` and `yd-list K`.
 
-Please use `yd-list --help` to inspect the full list of options. Commonly used options include:
+`yd-list` has more options than are listed here; use `yd-list --help` to inspect the full set. Commonly used options are:
 
 | Option | Description |
 |---|---|
@@ -3700,99 +3827,27 @@ Please use `yd-list --help` to inspect the full list of options. Commonly used o
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
 | `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd-list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
-| `--sort <name\|created\|status\|namespace>` | Order listed (and interactively-selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
+| `--sort <name\|created\|status\|namespace>` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
 | `--reverse` | List items in reverse (descending) order of the active `--sort` key |
 | `--public-ips-only` | With `instances`, list public IP addresses only |
 
+```shell
+yd-list work-requirements --name 'myproject-*' --active-only
+```
+
 For convenience, `tag` is set to the empty string unless explicitly set on the command line; `namespace` falls back to the configured value as usual.
 
-## yd-resize
+The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list).
 
-The `yd-resize` command is used to resize Worker Pools, and also Compute Requirements when used with the `--compute-requirement`/`-C` option. See `yd-resize --help` for more information.
+### yd-show
 
-The name or ID of the Worker Pool or Compute Requirement is supplied along with the new target number of Nodes or Instances. Usage examples:
-
-```shell
-yd-resize wp_pyex-slurm-pwt_230711-124356-0d6 10
-yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
-yd-resize --compute-requirement cr_pyex-slurm-pwt_230712-110226-04c 5
-yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
-```
-
-## yd-create
-
-The `yd-create` command is used to create or update YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources. See [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources) for the full resource specification reference.
-
-## yd-remove
-
-The `yd-remove` command is used to remove YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources. See [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources) for details.
-
-## yd-follow
-
-The `yd-follow` command is used to follow the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs (`ydids`), e.g.:
+The `yd-show` command shows the details (in JSON) of any YellowDog entity that has a YellowDog ID.
 
 ```shell
-yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
-          ydid:wrkrpool:D9C548:c22f0d9a-4a99-460d-ae42-15653ba264c3 \
-          ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
+yd-show [options] [<yellowdog-id> ...]
 ```
 
-The `yd-follow` command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
-
-The command exits with code 1 if any of the supplied IDs could not be followed (invalid ID, entity not found, or a connection/stream error), and 0 otherwise. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
-
-Additional options:
-
-- `--progress`: display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)
-- `--auto-follow-compute-requirements`/`-a`: automatically follow the associated Compute Requirements when following Worker Pools
-- `--raw-events`: print the raw JSON event stream
-
-## yd-wait
-
-The `yd-wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome:
-
-- **Exit 0** — all entities concluded successfully
-- **Exit 1** — one or more Work Requirements ended in a `FAILED` or `CANCELLED` state, or an error occurred fetching the final status
-
-```shell
-yd-wait ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8
-```
-
-Multiple IDs can be supplied; `yd-wait` blocks until all of them have reached a terminal state. This makes it suitable for scripting pipelines:
-
-```shell
-WR_ID=$(yd-submit mywork.json --quiet)
-yd-wait "$WR_ID" && yd-download results/
-```
-
-Use `--quiet` / `-q` to suppress all output and rely solely on the exit code, which is useful in automated pipelines. For interactive observation of event streams, use `yd-follow` instead.
-
-## yd-start
-
-The `yd-start` command is used to start `HELD` Work Requirements.
-
-It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` will be used to generate a list of candidate requirements.
-
-## yd-hold
-
-The `yd-hold` command is used to hold (pause) `RUNNING` Work Requirements.
-
-It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` will be used to generate a list of candidate requirements.
-
-## yd-boost
-
-The `yd-boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
-
-The number of hours to add is supplied first, followed by the YDID(s) of one or more Allowances to boost (Allowance names are not accepted):
-
-```shell
-yd-boost 10 ydid:allowance:D9C548:...
-yd-boost 10 ydid:allowance:D9C548:... ydid:allowance:D9C548:...
-```
-
-## yd-show
-
-The `yd-show` command will show the details (in JSON) of any YellowDog entity that has a YellowDog ID. It supports IDs referring to:
+It supports IDs referring to:
 
 - Compute Source Templates
 - Compute Requirement Templates
@@ -3812,28 +3867,76 @@ The `yd-show` command will show the details (in JSON) of any YellowDog entity th
 - Groups
 - Roles
 
-Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format used by `yd-terminate` and `yd-compute-stop`/`yd-compute-start`/`yd-compute-restart`. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment:
+Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format used by `yd-terminate` and `yd-compute-stop`/`yd-compute-start`/`yd-compute-restart`. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
+
+Key options:
+- `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
+- `--report-variable`/`-r <var>` — report the processed value of the specified variable substitution and exit; can be supplied multiple times, or use `all` to report all variables. Combine with `--quiet` to emit the report as JSON. This is useful for debugging variable substitution setups
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list)
 
 ```shell
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
 ```
 
-When showing the details of a Configured Worker Pool, the `--show-token` option includes the Worker Pool token in the output.
+### yd-follow
 
-The `--report-variable <var>`/`-r <var>` option reports the processed value of the specified variable substitution and exits; it can be supplied multiple times, or use `--report-variable all` to report all variables. Combine with `--quiet` to emit the report as JSON. This is useful for debugging variable substitution setups.
+The `yd-follow` command follows the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs.
 
-## yd-compare
+```shell
+yd-follow [options] [<yellowdog-id> ...]
+```
+
+The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+
+It exits with code 1 if any of the supplied IDs could not be followed (invalid ID, entity not found, or a connection/stream error), and 0 otherwise. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
+
+Key options:
+- `--progress` — display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)
+- `--auto-follow-compute-requirements`/`-a` — automatically follow the associated Compute Requirements when following Worker Pools
+- `--raw-events` — print the raw JSON event stream
+
+```shell
+yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
+          ydid:wrkrpool:D9C548:c22f0d9a-4a99-460d-ae42-15653ba264c3 \
+          ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
+```
+
+### yd-wait
+
+The `yd-wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome.
+
+```shell
+yd-wait [options] [<yellowdog-id> ...]
+```
+
+- **Exit 0** — all entities concluded successfully
+- **Exit 1** — one or more Work Requirements ended in a `FAILED` or `CANCELLED` state, or an error occurred fetching the final status
+
+Multiple IDs can be supplied; `yd-wait` blocks until all of them have reached a terminal state. This makes it suitable for scripting pipelines. Use `--quiet`/`-q` to suppress all output and rely solely on the exit code. For interactive observation of event streams, use `yd-follow` instead.
+
+```bash
+WR_ID=$(yd-submit mywork.json --quiet)
+yd-wait "$WR_ID" && yd-download results/
+```
+
+### yd-compare
 
 The `yd-compare` command takes a Work Requirement or Task Group ID and one or more Worker Pool IDs, and compares the selected Task Group(s) against the available Nodes/Workers in the Worker Pool(s). If a Work Requirement ID is supplied, all Task Groups in the Work Requirement will be compared.
 
-```commandline
-yd-compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+```shell
+yd-compare [options] <work-requirement-or-task-group-ID> <provisioned-worker-pool-ID> ...
 ```
 
 The command checks if the **Run Specification** of a Task Group matches the properties of the Worker Pools and their registered Nodes and Workers, meaning there are Workers in the Worker Pool that could be claimed by the Task Group and that the Worker Pool would be a candidate for scaling up to meet the demands of the Task Group.
 
 A detailed matching report showing the comparison against each specific property is created, which can be used to determine which properties are preventing a Worker Pool match.
+
+By default every Node registered to a Worker Pool is included in the comparison, whatever its state. The `--running-nodes-only` option restricts the comparison to Nodes in the `RUNNING` state, which gives a more accurate picture of current capacity when a pool contains Nodes that are still provisioning or have been terminated.
+
+```shell
+yd-compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+```
 
 The match status of a Worker Pool falls into one of four categories:
 
@@ -3844,45 +3947,231 @@ The match status of a Worker Pool falls into one of four categories:
 | **MAYBE**        | The Worker Pool matches the Task Group but no Nodes have yet registered, so Node/Worker properties are unknown. |
 | **PARTIAL**      | The Worker Pool and some of the Nodes/Workers that have registered are a match for the Task Group.              |
 
-## yd-finish
+### yd-application
 
-The `yd-finish` command moves work requirements into the `FINISHING` state, meaning the requirements will be allowed to conclude but that no new tasks can be added.
+The `yd-application` command shows the details of the current Application, i.e. the Application represented by the `key` and `secret` being used.
 
-## yd-application
+```shell
+yd-application [options]
+```
 
-The `yd-application` command shows the details of the current Application, i.e., the Application represented by the `key` and `secret` being used.
+It takes no arguments beyond the [Universal Options](#universal-options), and is the quickest way to confirm which Application a set of credentials belongs to.
 
-## yd-help
+```shell
+yd-application --config prod.toml
+```
 
-The `yd-help` command lists all available `yd-*` commands and their purposes:
+## Resource Commands
+
+### yd-create
+
+The `yd-create` command creates or updates YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+
+```shell
+yd-create [options] <resource-specification> [<resource-specification> ...]
+```
+
+Key options:
+- `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
+- `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
+- `--regenerate-app-keys` — regenerate the application key and secret when updating an Application
+- `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
+- `--dry-run`/`-D` — report what would be created or updated, without applying any changes
+- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+
+```shell
+yd-create my_keyring.json my_compute_templates.jsonnet
+```
+
+See [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources) for the full resource specification reference.
+
+### yd-remove
+
+The `yd-remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+
+```shell
+yd-remove [options] <resource-specification> [<resource-specification> ...]
+```
+
+Key options:
+- `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files
+- `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
+- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+
+```shell
+yd-remove my_compute_templates.jsonnet
+yd-remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+```
+
+See [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources) for details.
+
+### yd-boost
+
+The `yd-boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
+
+```shell
+yd-boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
+```
+
+The number of hours to add is supplied first, followed by the YDID(s) of one or more Allowances to boost. Allowance names are not accepted.
+
+```shell
+yd-boost 10 ydid:allowance:D9C548:...
+yd-boost 10 ydid:allowance:D9C548:... ydid:allowance:D9C548:...
+```
+
+See [Allowances](#allowances) for how Allowances are defined.
+
+## Data Client Commands
+
+These five commands provide direct access to remote data stores via rclone, and never contact the YellowDog Platform API. They accordingly do not accept the `--key`, `--secret`, `--url` or `--pac` [Universal Options](#universal-options); the remainder apply as usual, including `--config`, `--namespace`/`--tag` (which supply the default path prefix) and `--property`. They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](#data-client), along with the `[dataClient]` configuration section and named profiles.
+
+### yd-upload
+
+The `yd-upload` command uploads local files or directories to a remote data store.
+
+```shell
+yd-upload [options] <local-path> [<local-path> ...]
+```
+
+Key options:
+- `--recursive`/`-R` — upload directories recursively, preserving the directory structure
+- `--flatten` — upload all files in a directory tree to a flat (single-level) remote destination
+- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
+- `--destination`/`-d <remote-path>` — override the destination path; supports `{{variable}}` substitution
+- `--dry-run`/`-D` — show what would be uploaded, without uploading
+
+```shell
+yd-upload --recursive my_input_data/
+```
+
+### yd-download
+
+The `yd-download` command downloads files from a remote data store to the local filesystem.
+
+```shell
+yd-download [options] <remote-path> [<remote-path> ...]
+```
+
+Remote paths support `{{variable}}` substitution (e.g. `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
+
+Key options:
+- `--destination`/`-d <local-path>` — local destination directory (default: mirrors the remote directory name)
+- `--into <local-dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
+- `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
+- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
+- `--dry-run`/`-D` — show what would be downloaded, without downloading; add `--json` to list the matched items as JSON
+
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
+
+```shell
+yd-download 'results_*'
+```
+
+### yd-delete / yd-rm
+
+The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym.
+
+```shell
+yd-delete [options] [<remote-path> ...]
+```
+
+If no remote paths are specified, the command operates on the entire configured prefix.
+
+Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested before any deletions take place. Matching directories require `--recursive` to be deleted.
+
+Key options:
+- `--recursive`/`-R` — recursively delete a remote directory tree
+- `--dry-run`/`-D` — show what would be deleted, without deleting; add `--json` to list the matched items as JSON
+- `--yes`/`-y` — skip confirmation prompts
+
+```shell
+yd-delete 'results_*' --dry-run
+```
+
+### yd-ls
+
+The `yd-ls` command lists files and directories in a remote data store.
+
+```shell
+yd-ls [options] [<remote-path> ...]
+```
+
+If no remote paths are specified, the configured prefix is listed.
+
+Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
+
+Key options:
+- `--recursive`/`-R` — list recursively; output is displayed as a directory tree
+- `--long`/`-l` — long listing, showing file sizes and modification timestamps
+
+```shell
+yd-ls -Rl 'results_*'
+```
+
+### yd-copy
+
+The `yd-copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
+
+```shell
+yd-copy [options] <src-path> <dst-path>
+```
+
+`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution. The source remote is configured via the standard data client options; the destination defaults to the same, and is overridden with `--dst-profile` and/or `--dst-prefix`.
+
+Key options:
+- `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`)
+- `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
+- `--sync` — mirror the source to the destination, deleting destination files not present in the source
+- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
+- `--dry-run`/`-D` — show what would happen, without performing any transfers
+
+```bash
+# Copy a file to a new location within the same prefix
+yd-copy input/data.csv output/data.csv
+
+# Rename a file while copying (destination path does not end with '/')
+yd-copy results/output.csv archive/output-{{date}}.csv
+
+# Copy a directory to a different prefix on the same remote
+yd-copy --dst-prefix staging input/ input/
+
+# Copy results to a named profile (e.g. a separate bucket defined in config.toml)
+yd-copy --dst-profile production results/ results/
+
+# Sync a directory to a backup profile (deletes destination files not in source)
+yd-copy --sync --dst-profile backup data/ data/
+
+# Copy from outside the configured prefix using --no-prefix
+yd-copy --no-prefix shared/configs/base.json configs/base.json
+
+# Dry-run to preview what would be copied without transferring anything
+yd-copy --dry-run input/ output/
+```
+
+## Utility Commands
+
+None of these commands requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options).
+
+### yd-help
+
+The `yd-help` command lists all available `yd-*` commands and their purposes.
 
 ```shell
 yd-help
 ```
 
-## yd-jsonnet2json
+### yd-version
 
-The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source:
-
-```shell
-yd-jsonnet2json my_spec.jsonnet            # JSON to stdout
-yd-jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
-yd-jsonnet2json 'specs/*.jsonnet'          # writes a .json file per match
-```
-
-This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
-
-## yd-format-json
-
-The `yd-format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored:
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet and the rclone binary.
 
 ```shell
-yd-format-json my_file.json my_other_file.json
+yd-version [options]
 ```
 
-## yd-version
-
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet and the rclone binary. Each of the mutually exclusive options `--cli`, `--sdk`, `--python`, `--jsonnet` and `--rclone` prints just that bare version number, for use in scripts:
+Key options:
+- `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone` — mutually exclusive; each prints just that bare version number, for use in scripts
+- `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error)
 
 ```shell
 yd-version           # report all versions
@@ -3892,24 +4181,32 @@ yd-version --rclone  # print the rclone binary version only
 
 The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet` and `--rclone` exit with a non-zero status if the respective component is not installed.
 
-Neither `yd-version`, `yd-format-json`, `yd-help` nor `yd-jsonnet2json` requires a configuration file or YellowDog credentials.
+### yd-format-json
 
-## yd-copy
+The `yd-format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored.
 
-The `yd-copy` command copies files or directories between remote data client locations. See [Data Client](#data-client) for full documentation.
+```shell
+yd-format-json <file.json> [<file.json> ...]
+```
 
-## yd-delete / yd-rm
+```shell
+yd-format-json my_file.json my_other_file.json
+```
 
-The `yd-delete` command (synonym: `yd-rm`) deletes files or directories from a remote data store. See [Data Client](#data-client) for full documentation.
+### yd-jsonnet2json
 
-## yd-download
+The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
 
-The `yd-download` command downloads files from a remote data store to the local filesystem. See [Data Client](#data-client) for full documentation.
+```shell
+yd-jsonnet2json <file.jsonnet> [<file.jsonnet> ...]
+```
 
-## yd-ls
+```shell
+yd-jsonnet2json my_spec.jsonnet                 # JSON to stdout
+yd-jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
+yd-jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
+```
 
-The `yd-ls` command lists files and directories in a remote data store. See [Data Client](#data-client) for full documentation.
+This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
 
-## yd-upload
-
-The `yd-upload` command uploads local files or directories to a remote data store. See [Data Client](#data-client) for full documentation.
+See [Jsonnet Support](#jsonnet-support) for installation and usage.

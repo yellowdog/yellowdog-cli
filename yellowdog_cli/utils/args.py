@@ -143,6 +143,16 @@ class CLIParser:
         # mis-register arguments when the install path contains a command name
         module_name = os.path.basename(sys.argv[0])
 
+        # The data client commands (yd-upload/download/delete/rm/ls/copy) talk
+        # only to the remote data store via rclone: they never build a
+        # PlatformClient, and load_config_data_client() bypasses
+        # load_config_common(), which is the sole consumer of the key, secret,
+        # URL and PAC settings. Those four options are therefore not offered.
+        is_data_client = any(
+            module in module_name
+            for module in ["upload", "download", "delete", "-rm", "ls", "copy"]
+        )
+
         self.tag_required = False
         self.namespace_required = False
 
@@ -166,42 +176,44 @@ class CLIParser:
             ),
             metavar="<config_file.toml>",
         )
-        parser.add_argument(
-            "--key",
-            "-k",
-            type=str,
-            required=False,
-            help="the application key ID",
-            metavar="<app-key-id>",
-        )
-        parser.add_argument(
-            "--secret",
-            "-s",
-            required=False,
-            type=str,
-            help="the application key secret",
-            metavar="<app-key-secret>",
-        )
-        parser.add_argument(
-            "--url",
-            "-u",
-            type=str,
-            required=False,
-            help=f"the YellowDog Platform API URL (defaults to '{DEFAULT_URL}')",
-            metavar="<url>",
-        )
+        if not is_data_client:
+            parser.add_argument(
+                "--key",
+                "-k",
+                type=str,
+                required=False,
+                help="the application key ID",
+                metavar="<app-key-id>",
+            )
+            parser.add_argument(
+                "--secret",
+                "-s",
+                required=False,
+                type=str,
+                help="the application key secret",
+                metavar="<app-key-secret>",
+            )
+            parser.add_argument(
+                "--url",
+                "-u",
+                type=str,
+                required=False,
+                help=f"the YellowDog Platform API URL (defaults to '{DEFAULT_URL}')",
+                metavar="<url>",
+            )
         parser.add_argument(
             "--debug",
             action="store_true",
             required=False,
             help="display the Python stack trace on error",
         )
-        parser.add_argument(
-            "--pac",
-            action="store_true",
-            required=False,
-            help="enable PAC (proxy auto-configuration) support",
-        )
+        if not is_data_client:
+            parser.add_argument(
+                "--pac",
+                action="store_true",
+                required=False,
+                help="enable PAC (proxy auto-configuration) support",
+            )
         parser.add_argument(
             "--no-format",
             "--nf",
@@ -1316,7 +1328,7 @@ class CLIParser:
                 action="store_true",
                 required=False,
                 help=(
-                    "don't re-sequence resources prior  to creation (e.g., "
+                    "don't re-sequence resources prior to creation (e.g., "
                     "putting source templates before requirement templates)"
                 ),
             )
@@ -1432,10 +1444,7 @@ class CLIParser:
             )
 
         # yd-upload / yd-download / yd-delete / yd-rm / yd-ls / yd-copy (data client commands)
-        if any(
-            module in module_name
-            for module in ["upload", "download", "delete", "-rm", "ls", "copy"]
-        ):
+        if is_data_client:
             parser.add_argument(
                 "--remote",
                 "-r",
@@ -2494,7 +2503,7 @@ def lookup_module_description(module_name: str) -> str | None:
     """
     Descriptive string for the module's purpose.
     """
-    prefix = "YellowDog command line utility for "
+    prefix = "YellowDog command-line utility for "
     suffix = None
 
     # The compute-* checks must precede the 'start' check, since 'start' is a

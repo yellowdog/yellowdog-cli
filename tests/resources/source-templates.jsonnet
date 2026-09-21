@@ -195,6 +195,7 @@ local azureInstancesMax = azureInstancesMin {
   environment: '{{azure_environment}}',
   userData: '{{user_data}}',
   instanceTags: { purpose: 'yd-cli-tests' },
+  bootVolumeSizeGb: 20,
   adminUserCredential: '{{azure_admin_credential}}',
   sshKey: '{{azure_ssh_key}}',
   assignPublicIp: true,
@@ -239,6 +240,7 @@ local gceInstanceGroupMax = gceInstanceGroupMin {
   assignPublicIp: true,
   userData: '{{user_data}}',
   instanceTags: { purpose: 'yd-cli-tests' },
+  bootVolumeSizeGb: 20,
   sshKeys: '{{gcp_ssh_keys}}',
   zone: '{{gcp_zone}}',
   network: '{{gcp_network}}',
@@ -274,6 +276,7 @@ local gceInstancesMax = gceInstancesMin {
   createCompactPlacementPolicy: false,
   userData: '{{user_data}}',
   instanceTags: { purpose: 'yd-cli-tests' },
+  bootVolumeSizeGb: 20,
   sshKeys: '{{gcp_ssh_keys}}',
   zone: '{{gcp_zone}}',
   network: '{{gcp_network}}',
@@ -312,6 +315,9 @@ local ociInstancePoolMax = ociInstancePoolMin {
   createClusterNetwork: false,
   userData: '{{user_data}}',
   instanceTags: { purpose: 'yd-cli-tests' },
+  // 50 rather than the 20 the other sources use: OCI's own minimum boot
+  // volume size is 50 GB.
+  bootVolumeSizeGb: 50,
 };
 
 // ---------------------------------------------------------------------------
@@ -340,6 +346,8 @@ local ociInstancesMax = ociInstancesMin {
   assignPublicIp: true,
   userData: '{{user_data}}',
   instanceTags: { purpose: 'yd-cli-tests' },
+  // See ociInstancePoolMax above on the 50.
+  bootVolumeSizeGb: 50,
 };
 
 // ---------------------------------------------------------------------------
@@ -374,6 +382,7 @@ local simulatorMax = simulatorMin {
   imageId: 'simulated-image',
   instanceTags: { purpose: 'yd-cli-tests' },
   userData: '{{user_data}}',
+  bootVolumeSizeGb: 20,
   implicitCapacity: 10,
   instanceStartupTimeSeconds: 5,
   instanceStartupTimeVariance: 1.0,

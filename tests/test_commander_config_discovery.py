@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander import commander as commander_module
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 # These are the tests discovery itself is the subject of, so they opt out of
 # conftest's stub of _parse_yd_config. No 'yd-show' is spawned all the same:
@@ -98,6 +99,14 @@ PRINTS_CONFIG = 'print(\'{"namespace": "yd-demo", "tag": "my-tag"}\')'
 NEVER_FINISHES = "import time; time.sleep(60)"
 EXITS_NON_ZERO = "import sys; sys.stderr.write('bad config\\n'); sys.exit(3)"
 PRINTS_RUBBISH = "print('not json at all')"
+# What 'yd-show --nc' says when the environment holds no YellowDog credentials:
+# load_common_config() raises KeyError('key') and the CLI exits 1. Built from the
+# CLI's own constant, so renaming the message cannot leave this passing against
+# wording Commander no longer recognises.
+NO_CREDENTIALS_STDERR = f"2026-01-01 00:00:00 : Error: {MISSING_CONFIG_DATA}: 'key'"
+NO_CREDENTIALS = (
+    f"import sys; sys.stderr.write({NO_CREDENTIALS_STDERR!r} + chr(10)); sys.exit(1)"
+)
 
 
 def settle(win, attempts: list, expected: int) -> None:
@@ -208,10 +217,16 @@ def test_output_that_is_not_json_is_reported(win, monkeypatch):
 def test_the_same_failure_is_not_reported_over_and_over(win, monkeypatch):
     # The user-variables box reparses 600ms after every edit, so a broken config
     # would otherwise fill the output window with one repeated line.
+    #
+    # No _invalidate_config_parse() between the two, deliberately: a failed parse
+    # leaves _config_parse_invalid set, so the reparse this stands in for runs
+    # again without one — and the box's reparse does not call it in any case.
+    # Calling it here reset what the suppression compares against, which is the
+    # behaviour a configuration file being reselected needs and this one must not
+    # have.
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
 
     win._reparse_placeholders()
-    win._invalidate_config_parse()
     win._reparse_placeholders()
 
     assert win.log_output.toPlainText().count("Exit 3") == 1
@@ -373,3 +388,111 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
     type_user_variables(win, "")
 
     assert len(attempts) == 1, "nothing typed is not the same as something incomplete"
+
+
+# --- 'Nothing is configured' is not a failure ---------------------------------
+# With no configuration file selected, 'yd-show' is run with '--nc' and has only
+# the environment to work from. An environment with no YellowDog credentials
+# makes it exit 1 before it can resolve anything, and that was reported as an
+# error — at startup, and again on every Deselect, to a user who had done
+# nothing. It alone is suppressed. Discovery still runs, because credentials and
+# namespace/tag in YD_* variables with no configuration file at all is a
+# supported way to drive Commander, and everything else it can say is still
+# worth hearing.
+
+
+def test_no_credentials_and_no_configuration_file_reports_nothing(win, monkeypatch):
+    assert win._config_file is None
+    python_commands(win, monkeypatch, NO_CREDENTIALS)
+
+    win._reparse_placeholders()
+
+    assert win.log_output.toPlainText() == ""
+    assert win.namespace_override.placeholderText() == ""
+
+
+def test_starting_with_no_credentials_reports_nothing(qapp, monkeypatch):
+    # The report this exists for arrived before the user had touched anything.
+    monkeypatch.setattr(
+        YellowDogApp,
+        "_yd_show_command",
+        lambda self: (sys.executable, ["-c", NO_CREDENTIALS]),
+    )
+    window = YellowDogApp()
+    try:
+        deadline = monotonic() + SETTLE_TIMEOUT_S
+        while window._config_parse_invalid and monotonic() < deadline:
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+
+        assert window.log_output.toPlainText() == ""
+    finally:
+        window.close()
+
+
+def test_the_environment_alone_still_fills_in_the_placeholders(win, monkeypatch):
+    # The case the suppression must not cost: no configuration file, everything
+    # in YD_* variables, the definition files nominated by hand.
+    assert win._config_file is None
+    python_commands(win, monkeypatch, PRINTS_CONFIG)
+
+    win._reparse_placeholders()
+
+    assert win.namespace_override.placeholderText() == "yd-demo"
+    assert win.tag_override.placeholderText() == "my-tag"
+    assert win.object_path_override.placeholderText() == "my-tag*"
+
+
+def test_any_other_failure_is_still_reported_with_nothing_selected(win, monkeypatch):
+    # Only 'nothing is configured' is suppressed, not discovery's failures in
+    # general: running from the environment alone is supported, so its failures
+    # are as worth seeing as any other.
+    python_commands(win, monkeypatch, EXITS_NON_ZERO)
+
+    win._reparse_placeholders()
+
+    assert "Exit 3" in win.log_output.toPlainText()
+
+
+def test_a_missing_configuration_is_reported_when_a_file_is_selected(
+    win, monkeypatch, tmp_path
+):
+    # With a file selected the same message means something else entirely: the
+    # file the user chose cannot be used. That is theirs to see.
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[common]\nnamespace = "yd-demo"\n')
+    python_commands(win, monkeypatch, NO_CREDENTIALS)
+
+    win._set_config_file(str(config_file))
+
+    assert MISSING_CONFIG_DATA in win.log_output.toPlainText()
+
+
+def test_a_suppressed_failure_does_not_mask_the_next_one(win, monkeypatch, tmp_path):
+    # _report_discovery_failure suppresses a repeat of the message it said last,
+    # and a suppressed failure never becomes that message — so without the reset
+    # in _invalidate_config_parse the second 'Exit 3' here looks like a repeat of
+    # the first and is swallowed, though the user selected the file again in
+    # between.
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[common]\nnamespace = "yd-demo"\n')
+    python_commands(win, monkeypatch, EXITS_NON_ZERO, NO_CREDENTIALS, EXITS_NON_ZERO)
+
+    win._set_config_file(str(config_file))  # selected: reported
+    win._set_config_file(None)  # deselected: suppressed
+    win._set_config_file(str(config_file))  # selected again: reported again
+
+    assert win.log_output.toPlainText().count("Exit 3") == 2
+
+
+def test_deselecting_a_configuration_file_clears_the_discovered_tag(win, monkeypatch):
+    # Not just the placeholders: _object_path() builds the default download and
+    # delete path out of the tag, so a stale one is a path acted on.
+    python_commands(win, monkeypatch, PRINTS_CONFIG, NO_CREDENTIALS)
+    win._set_config_file(None)  # a no-op selection-wise, to run the first script
+    assert win._tag == "my-tag"
+
+    win._set_config_file(None)
+
+    assert win._namespace is None
+    assert win._tag is None
+    assert win._object_path() is None

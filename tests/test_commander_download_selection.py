@@ -31,7 +31,13 @@ from yellowdog_cli.commander.commander import (
 
 @pytest.fixture
 def window(qapp):
-    return YellowDogApp()
+    window = YellowDogApp()
+    # Let the deferred startup _set_config_file(None) run here, rather than
+    # inside the nested loop of the first dialog a test opens: it clears the
+    # discovered namespace and tag, which is exactly what these tests set by
+    # hand beforehand.
+    qapp.processEvents()
+    return window
 
 
 @pytest.fixture
