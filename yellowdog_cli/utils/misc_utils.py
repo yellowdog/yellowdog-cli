@@ -34,12 +34,29 @@ def pathname_relative_to_config_file(config_file_dir: str, file: str) -> str:
     return normpath(relpath(join(config_file_dir, file)))
 
 
+# Lower case base 36, for the process discriminator added by generate_id()
+BASE36_DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+
 def generate_id(prefix: str = "", max_length: int = 60) -> str:
     """
-    Add a UTC timestamp and check length.
+    Add a UTC timestamp and a process discriminator, and check length.
     """
-    # Include seconds to three decimal points
-    generated_id = prefix + UTCNOW.strftime("_%y%m%d-%H%M%S%f")[:-3]
+    # Seconds to one decimal place, then a hyphen and the PID in two base 36
+    # digits. The timestamp on its own does not make the name unique: UTCNOW is
+    # set when this module is imported, so commands launched together -- from
+    # yd-commander, or a shell loop -- reach that import within the same
+    # millisecond and generate identical names. Processes that are alive at the
+    # same time always have distinct PIDs, and consecutive launches get
+    # adjacent ones, so 'pid % 1296' separates them unless 1296 processes were
+    # spawned in between. The hyphen marks the last two digits as something
+    # other than a continuation of the timestamp.
+    pid = os.getpid() % (36 * 36)
+    generated_id = (
+        prefix
+        + UTCNOW.strftime("_%y%m%d-%H%M%S%f")[:-5]
+        + f"-{BASE36_DIGITS[pid // 36]}{BASE36_DIGITS[pid % 36]}"
+    )
     if len(generated_id) > max_length:
         raise ValueError(
             f"Error: Generated ID '{generated_id}' would exceed "

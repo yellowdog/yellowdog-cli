@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 13:49:21 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 14:47:09 BST 2026 -->
 
 <!--te-->
 
@@ -506,6 +506,8 @@ All entity names used within the YellowDog Platform must comply with the followi
 - Name length must be 60 characters or fewer
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
+
+When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd-commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer, and 39 or fewer for Worker Pools and Compute Requirements, whose generated names also carry a `wp_` or `cr_` prefix.
 
 Later sections of this document describe variable substitutions implemented with user-defined and CSV-file-defined variables. As a type modifier within these substitution expressions, the `format_name:` option is available, and works in the same manner as `num:`, `bool:`, etc. The `format_name:` modifier will convert the substituted string into one that satisfies YellowDog naming, by switching characters to lower case, etc.
 
