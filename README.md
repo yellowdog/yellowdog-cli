@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 10:57:50 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 13:49:21 BST 2026 -->
 
 <!--te-->
 
@@ -218,19 +218,19 @@ The commands provide the following capabilities:
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
-- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
 - **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
 - **Showing** the details of the current Application with the **`yd-application`** command
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
-- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
-- **Submitting** Work Requirements with the **`yd-submit`** command
-- **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Submitting** Work Requirements with the **`yd-submit`** command
+- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
+- **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
+- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 
@@ -391,7 +391,7 @@ It works by invoking the `yd-*` commands on your behalf and displaying their out
 
 # Usage
 
-Both installation methods add a number of **`yd-`** commands to your PATH.
+All three installation methods add a number of **`yd-`** commands to your PATH.
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
