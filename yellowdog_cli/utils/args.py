@@ -1316,7 +1316,7 @@ class CLIParser:
                 action="store_true",
                 required=False,
                 help=(
-                    "don't re-sequence resources prior  to creation (e.g., "
+                    "don't re-sequence resources prior to creation (e.g., "
                     "putting source templates before requirement templates)"
                 ),
             )

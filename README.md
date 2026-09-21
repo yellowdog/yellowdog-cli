@@ -121,11 +121,6 @@
 * [Data Client](#data-client)
    * [Named Profiles](#named-profiles)
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
-   * [yd-upload](#yd-upload)
-   * [yd-download](#yd-download)
-   * [yd-delete](#yd-delete)
-   * [yd-ls](#yd-ls)
-   * [yd-copy](#yd-copy)
 * [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources)
    * [Overview of Operation](#overview-of-operation)
       * [Resource Creation](#resource-creation)
@@ -188,14 +183,14 @@
    * [yd-jsonnet2json](#yd-jsonnet2json)
    * [yd-format-json](#yd-format-json)
    * [yd-version](#yd-version)
-   * [yd-copy](#yd-copy-1)
+   * [yd-upload](#yd-upload)
+   * [yd-download](#yd-download)
    * [yd-delete / yd-rm](#yd-delete--yd-rm)
-   * [yd-download](#yd-download-1)
-   * [yd-ls](#yd-ls-1)
-   * [yd-upload](#yd-upload-1)
+   * [yd-ls](#yd-ls)
+   * [yd-copy](#yd-copy)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 08:28:54 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 10:29:53 BST 2026 -->
 
 <!--te-->
 
@@ -2441,6 +2436,8 @@ yd-nodeaction --status --node ydid:node:D9C548:abc123... --follow
 
 The `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
 
+This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-upload](#yd-upload), [yd-download](#yd-download), [yd-delete / yd-rm](#yd-delete--yd-rm), [yd-ls](#yd-ls), and [yd-copy](#yd-copy).
+
 The `rclone` binary will be automatically downloaded if not already present.
 
 These commands share a common `[dataClient]` TOML configuration section:
@@ -2531,122 +2528,6 @@ Example use in a `userdata` script (double underscores required):
 rclone copy __{{dataClient.prod.remote}}__:__{{dataClient.prod.bucket}}__/configs /tmp/configs
 ```
 
-## yd-upload
-
-The `yd-upload` command uploads local files or directories to a remote data store.
-
-```
-yd-upload [options] <local_path> [<local_path> ...]
-```
-
-Key options:
-- `--recursive`/`-R` — upload directories recursively, preserving the directory structure
-- `--flatten` — upload all files in a directory tree to a flat (single-level) remote destination
-- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
-- `--destination`/`-d <remote_path>` — override the destination path; supports `{{variable}}` substitution
-- `--dry-run`/`-D` — show what would be uploaded without actually uploading
-
-## yd-download
-
-The `yd-download` command downloads files from a remote data store to a local directory.
-
-```
-yd-download [options] <remote_path> [<remote_path> ...]
-```
-
-Key options:
-- `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
-- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
-- `--destination`/`-d <local_path>` — local destination directory (default: mirrors the remote directory name)
-- `--into <local_dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
-- `--dry-run`/`-D` — show what would be downloaded without actually downloading
-
-Remote paths support `{{variable}}` substitution (e.g. `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
-
-`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
-
-Example: `yd-download 'results_*'` downloads everything whose name starts with `results_`.
-
-## yd-delete
-
-The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym.
-
-```
-yd-delete [options] [<remote_path> ...]
-```
-
-If no remote paths are specified, the command operates on the entire configured prefix. Use `--recursive` to delete a directory tree.
-
-Key options:
-- `--recursive`/`-R` — recursively delete a remote directory tree
-- `--dry-run`/`-D` — show what would be deleted without actually deleting
-- `--yes`/`-y` — skip confirmation prompts
-
-Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested before any deletions take place. Matching directories require `--recursive` to be deleted.
-
-Example: `yd-delete 'results_*'` deletes all items whose name starts with `results_`.
-
-## yd-ls
-
-The `yd-ls` command lists files and directories in a remote data store.
-
-```
-yd-ls [options] [<remote_path> ...]
-```
-
-If no remote paths are specified, the configured prefix is listed.
-
-Key options:
-- `--recursive`/`-R` — list recursively; output is displayed as a directory tree
-
-Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
-
-Example: `yd-ls -R 'results_*'` lists all items matching `results_*`, showing directory contents as trees.
-
-## yd-copy
-
-The `yd-copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
-
-```
-yd-copy [options] <src-path> <dst-path>
-```
-
-`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution.
-
-Key options:
-- `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`); defaults to the base `[dataClient]` config
-- `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
-- `--sync` — mirror the source to the destination, deleting destination files not present in the source
-- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
-- `--dry-run`/`-D` — show what would happen without performing any transfers
-
-The source remote is configured via the standard data client flags (`--remote`, `--bucket`, `--prefix`, `--no-prefix`, `--data-client-profile`, or TOML `[dataClient]` settings).
-
-Examples:
-
-```bash
-# Copy a file to a new location within the same prefix
-yd-copy input/data.csv output/data.csv
-
-# Rename a file while copying (destination path does not end with '/')
-yd-copy results/output.csv archive/output-{{date}}.csv
-
-# Copy a directory to a different prefix on the same remote
-yd-copy --dst-prefix staging input/ input/
-
-# Copy results to a named profile (e.g. a separate bucket defined in config.toml)
-yd-copy --dst-profile production results/ results/
-
-# Sync a directory to a backup profile (deletes destination files not in source)
-yd-copy --sync --dst-profile backup data/ data/
-
-# Copy from outside the configured prefix using --no-prefix
-yd-copy --no-prefix shared/configs/base.json configs/base.json
-
-# Dry-run to preview what would be copied without transferring anything
-yd-copy --dry-run input/ output/
-```
-
 # Creating, Updating and Removing YellowDog Resources
 
 The commands **yd-create** and **yd-remove** allow the creation, update and removal of the following YellowDog resources:
@@ -2674,6 +2555,8 @@ The **yd-create** and **yd-remove** commands operate on a list of one or more re
 Each resource specification file can contain a single resource specification or a list of resource specifications. Different resource types can be mixed together in the same list.
 
 The complete list of resource specifications is re-sequenced on processing to ensure that possibly dependent resources are dealt with in a suitable order. For example, all Compute Source Templates are always processed before any Compute Requirement Templates on resource creation, and the reverse sequencing is used on resource removal.
+
+The `--no-resequence` option (`yd-create` only) disables this, processing the resources strictly in the order in which they appear. This is occasionally useful when the supplied order is deliberate and the automatic sequencing would disturb it; note that dependent resources will then fail to be created if they are listed before the resources they depend on.
 
 Resource specification files can use all forms of **variable substitution** just as in the case of Work Requirements, etc.
 
@@ -3841,6 +3724,8 @@ The command checks if the **Run Specification** of a Task Group matches the prop
 
 A detailed matching report showing the comparison against each specific property is created, which can be used to determine which properties are preventing a Worker Pool match.
 
+By default every Node registered to a Worker Pool is included in the comparison, whatever its state. The `--running-nodes-only` option restricts the comparison to Nodes in the `RUNNING` state, which gives a more accurate picture of current capacity when a pool contains Nodes that are still provisioning or have been terminated.
+
 The match status of a Worker Pool falls into one of four categories:
 
 | **Match Status** | **Meaning**                                                                                                     |
@@ -3900,22 +3785,118 @@ The rclone version is detected using the same lookup order as `yd-submit --which
 
 None of `yd-version`, `yd-format-json`, `yd-help` or `yd-jsonnet2json` requires a configuration file or YellowDog credentials.
 
-## yd-copy
+## yd-upload
 
-The `yd-copy` command copies files or directories between remote data client locations. See [Data Client](#data-client) for full documentation.
+The `yd-upload` command uploads local files or directories to a remote data store. See [Data Client](#data-client) for the shared `remote`/`bucket`/`prefix` configuration.
 
-## yd-delete / yd-rm
+```
+yd-upload [options] <local_path> [<local_path> ...]
+```
 
-The `yd-delete` command (synonym: `yd-rm`) deletes files or directories from a remote data store. See [Data Client](#data-client) for full documentation.
+Key options:
+- `--recursive`/`-R` — upload directories recursively, preserving the directory structure
+- `--flatten` — upload all files in a directory tree to a flat (single-level) remote destination
+- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
+- `--destination`/`-d <remote_path>` — override the destination path; supports `{{variable}}` substitution
+- `--dry-run`/`-D` — show what would be uploaded without actually uploading
 
 ## yd-download
 
-The `yd-download` command downloads files from a remote data store to the local filesystem. See [Data Client](#data-client) for full documentation.
+The `yd-download` command downloads files from a remote data store to a local directory. See [Data Client](#data-client) for the shared `remote`/`bucket`/`prefix` configuration.
+
+```
+yd-download [options] <remote_path> [<remote_path> ...]
+```
+
+Key options:
+- `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
+- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
+- `--destination`/`-d <local_path>` — local destination directory (default: mirrors the remote directory name)
+- `--into <local_dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
+- `--dry-run`/`-D` — show what would be downloaded without actually downloading
+
+Remote paths support `{{variable}}` substitution (e.g. `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
+
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
+
+Example: `yd-download 'results_*'` downloads everything whose name starts with `results_`.
+
+## yd-delete / yd-rm
+
+The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym. See [Data Client](#data-client) for the shared `remote`/`bucket`/`prefix` configuration.
+
+```
+yd-delete [options] [<remote_path> ...]
+```
+
+If no remote paths are specified, the command operates on the entire configured prefix. Use `--recursive` to delete a directory tree.
+
+Key options:
+- `--recursive`/`-R` — recursively delete a remote directory tree
+- `--dry-run`/`-D` — show what would be deleted without actually deleting
+- `--yes`/`-y` — skip confirmation prompts
+
+Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested before any deletions take place. Matching directories require `--recursive` to be deleted.
+
+Example: `yd-delete 'results_*'` deletes all items whose name starts with `results_`.
 
 ## yd-ls
 
-The `yd-ls` command lists files and directories in a remote data store. See [Data Client](#data-client) for full documentation.
+The `yd-ls` command lists files and directories in a remote data store. See [Data Client](#data-client) for the shared `remote`/`bucket`/`prefix` configuration.
 
-## yd-upload
+```
+yd-ls [options] [<remote_path> ...]
+```
 
-The `yd-upload` command uploads local files or directories to a remote data store. See [Data Client](#data-client) for full documentation.
+If no remote paths are specified, the configured prefix is listed.
+
+Key options:
+- `--recursive`/`-R` — list recursively; output is displayed as a directory tree
+
+Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
+
+Example: `yd-ls -R 'results_*'` lists all items matching `results_*`, showing directory contents as trees.
+
+## yd-copy
+
+The `yd-copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved. See [Data Client](#data-client) for the shared `remote`/`bucket`/`prefix` configuration.
+
+```
+yd-copy [options] <src-path> <dst-path>
+```
+
+`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution.
+
+Key options:
+- `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`); defaults to the base `[dataClient]` config
+- `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
+- `--sync` — mirror the source to the destination, deleting destination files not present in the source
+- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
+- `--dry-run`/`-D` — show what would happen without performing any transfers
+
+The source remote is configured via the standard data client flags (`--remote`, `--bucket`, `--prefix`, `--no-prefix`, `--data-client-profile`, or TOML `[dataClient]` settings).
+
+Examples:
+
+```bash
+# Copy a file to a new location within the same prefix
+yd-copy input/data.csv output/data.csv
+
+# Rename a file while copying (destination path does not end with '/')
+yd-copy results/output.csv archive/output-{{date}}.csv
+
+# Copy a directory to a different prefix on the same remote
+yd-copy --dst-prefix staging input/ input/
+
+# Copy results to a named profile (e.g. a separate bucket defined in config.toml)
+yd-copy --dst-profile production results/ results/
+
+# Sync a directory to a backup profile (deletes destination files not in source)
+yd-copy --sync --dst-profile backup data/ data/
+
+# Copy from outside the configured prefix using --no-prefix
+yd-copy --no-prefix shared/configs/base.json configs/base.json
+
+# Dry-run to preview what would be copied without transferring anything
+yd-copy --dry-run input/ output/
+```
