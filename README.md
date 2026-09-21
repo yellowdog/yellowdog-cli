@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 14:47:09 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 16:41:03 BST 2026 -->
 
 <!--te-->
 
@@ -507,7 +507,7 @@ All entity names used within the YellowDog Platform must comply with the followi
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
-When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd-commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer, and 39 or fewer for Worker Pools and Compute Requirements, whose generated names also carry a `wp_` or `cr_` prefix.
+When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd-commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer.
 
 Later sections of this document describe variable substitutions implemented with user-defined and CSV-file-defined variables. As a type modifier within these substitution expressions, the `format_name:` option is available, and works in the same manner as `num:`, `bool:`, etc. The `format_name:` modifier will convert the substituted string into one that satisfies YellowDog naming, by switching characters to lower case, etc.
 
@@ -687,6 +687,7 @@ The following substitutions are automatically created and can be used in any sec
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
 | `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
 | `{{random}}`          | A random, three digit hexadecimal number (lower case)          | a1c                     |
+| `{{pid}}`             | The process discriminator: the PID mod 1296, in two base 36 digits, lower case | 4f      |
 | `{{namespace}}`       | The `namespace` property.                                      | my_namespace            |
 | `{{tag}}`             | The `tag` property.                                            | my_tag                  |
 | `{{key}}`             | The application `key` property.                                |                         |
@@ -695,9 +696,11 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
-For the `date`, `time`, `datetime` and `random` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
+For the `date`, `time`, `datetime`, `random` and `pid` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
+
+The `pid` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](#naming-rules)), so a hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid}}"` is disambiguated between simultaneously launched commands in exactly the way a generated one is: processes alive at the same time always have distinct PIDs, so `{{pid}}` differs between them unless 1,296 processes were spawned in between.
 
 ## User-Defined Variables
 
@@ -1251,7 +1254,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, and a UTC timestamp: e.g. `mytag_221024-15552480`.
+- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](#naming-rules)): e.g. `mytag_221024-1555241-4f`.
 - **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
 - **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
 
@@ -1587,7 +1590,7 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 
 ```json
 {
-  "name": "pyex-docker-pwt_240424-12051160",
+  "name": "pyex-docker-pwt_240424-1205116-4f",
   "namespace": "pyexamples-pwt",
   "priority": 0,
   "tag": "pyex-docker-pwt",
@@ -1612,7 +1615,7 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
             "YD_TASK_NUMBER": "1",
             "YD_TASK_GROUP_NAME": "task_group_1",
             "YD_TASK_GROUP_NUMBER": "1",
-            "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-12051160",
+            "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-1205116-4f",
             "YD_NAMESPACE": "pyexamples-pwt"
           },
           "name": "task_1",
@@ -2056,7 +2059,7 @@ The `computeRequirementBatchSize` property controls the maximum number of instan
 
 ## Automatic Properties
 
-The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of `wp_`, the `tag` property, and a UTC timestamp, e.g. `wp_mytag_221024-155524`.
+The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](#naming-rules)), e.g. `mytag_221024-1555241-4f`.
 
 ## TOML Properties in the `workerPool` Section
 
@@ -2104,7 +2107,7 @@ The example below is of a simple JSON specification of a Worker Pool with one in
 {
   "requirementTemplateUsage": {
     "maintainInstanceCount": false,
-    "requirementName": "wp_pyex-primes_230113-161528",
+    "requirementName": "pyex-primes_230113-1615283-4f",
     "requirementNamespace": "pyexamples",
     "requirementTag": "pyex-primes",
     "targetInstanceCount": 1,
@@ -3589,9 +3592,9 @@ Key options:
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 
 ```shell
-yd-resize wp_pyex-slurm-pwt_230711-124356-0d6 10
+yd-resize pyex-slurm-pwt_230711-1243561-0d 10
 yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
-yd-resize --compute-requirement cr_pyex-slurm-pwt_230712-110226-04c 5
+yd-resize --compute-requirement pyex-slurm-pwt_230712-1102264-4c 5
 yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
 ```
 

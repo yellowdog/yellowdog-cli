@@ -6,6 +6,8 @@ and process_variable_substitutions / process_variable_substitutions_in_file_cont
 (require patching the VARIABLE_SUBSTITUTIONS global).
 """
 
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -601,3 +603,45 @@ class TestProcessVariableSubstitutionsInFileContents:
         content = "'{{array:arr}}'"
         result = var_module.process_variable_substitutions_in_file_contents(content)
         assert result == '["Alpha", "Beta"]'
+
+
+# ---------------------------------------------------------------------------
+# The '{{pid}}' default substitution
+# ---------------------------------------------------------------------------
+
+
+class TestPidDefaultSubstitution:
+    """
+    '{{pid}}' exposes the same process discriminator that generate_id() appends
+    to an automatically generated name, so that a hand-written name can be made
+    to disambiguate simultaneous launches in exactly the same way.
+    """
+
+    def test_is_a_default_substitution(self):
+        from yellowdog_cli.utils.misc_utils import PROCESS_DISCRIMINATOR
+
+        assert var_module.VARIABLE_SUBSTITUTIONS["pid"] == PROCESS_DISCRIMINATOR
+
+    def test_substitutes_the_discriminator_of_the_running_process(self):
+        # Run in a subprocess: the discriminator is the *interpreter's* PID, so
+        # this both isolates the process-global substitutions dict and proves
+        # that the substituted value and the generated name agree for one run
+        # The marker is needed because importing the module announces any
+        # environment-defined substitutions it finds on the way past
+        snippet = (
+            "from yellowdog_cli.utils.misc_utils import generate_id; "
+            "from yellowdog_cli.utils.variables import "
+            "process_variable_substitutions as p; "
+            "print('RESULT', p('{{pid}}'), generate_id('name'))"
+        )
+        output = subprocess.run(
+            [sys.executable, "-c", snippet],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=True,
+        ).stdout
+        result = [line for line in output.splitlines() if line.startswith("RESULT ")]
+        assert len(result) == 1, f"no single result line in {output!r}"
+        _, pid_substitution, generated_name = result[0].split()
+        assert len(pid_substitution) == 2
+        assert generated_name.endswith(f"-{pid_substitution}")

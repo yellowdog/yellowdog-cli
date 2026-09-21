@@ -69,7 +69,7 @@ class WPBatch:
 
 
 CONFIG_WP: ConfigWorkerPool = load_config_worker_pool()
-GENERATED_ID = generate_id("wp" + "_" + CONFIG_COMMON.name_tag)
+GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
 
 
 @main_wrapper

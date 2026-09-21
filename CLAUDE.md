@@ -69,7 +69,7 @@ yellowdog_cli/
     ├── items.py                 # Item TypeVar — union of all SDK model types used as a generic
     ├── type_check.py            # check_int/float/bool/str/list/dict — raise on type mismatch
     ├── validate_properties.py   # validate_properties(): checks dict keys against ALL_KEYS; warns on deprecated names
-    ├── misc_utils.py            # generate_id() (UTC timestamp to 100ms plus 'pid % 1296' in base 36 — the timestamp alone collides for simultaneously launched commands), format_yd_name(), load_dotenv_file(), link_entity(); delimiter-parsing helpers used by variables.py
+    ├── misc_utils.py            # generate_id() (UTC timestamp to 100ms plus PROCESS_DISCRIMINATOR, 'pid % 1296' in base 36 — the timestamp alone collides for simultaneously launched commands; the same constant backs the '{{pid}}' substitution), format_yd_name(), load_dotenv_file(), link_entity(); delimiter-parsing helpers used by variables.py
     ├── load_resources.py        # load_resource_specifications(): loads TOML/JSON/Jsonnet files, applies substitutions, re-sequences in dependency order
     ├── provision_utils.py       # get_user_data_property() (reads/concatenates userdata scripts), get_template_id() (name→ID), get_image_id()
     ├── rclone_utils.py          # RcloneUploadedFiles: uploads task data input files via rclone; parses rclone connection strings; deduplicates
@@ -144,7 +144,7 @@ Any TOML property can be overridden on the command line with `--property 'sectio
 
 ### Variable Substitution
 
-Specs (TOML/JSON/Jsonnet) support `{{variable_name}}` substitution with type tags: `num:`, `bool:`, `array:`, `table:`, `format_name:`. Default values use `:=` separator. Environment variables via `env:` prefix. Up to 3 levels of nesting (`TOML_VAR_NESTED_DEPTH = 3`).
+Specs (TOML/JSON/Jsonnet) support `{{variable_name}}` substitution with type tags: `num:`, `bool:`, `array:`, `table:`, `format_name:`. Default substitutions are defined in `VARIABLE_SUBSTITUTIONS` in `variables.py`; `{{pid}}` is `misc_utils.PROCESS_DISCRIMINATOR`, so a hand-written name can be disambiguated the same way a generated one is. Default values use `:=` separator. Environment variables via `env:` prefix. Up to 3 levels of nesting (`TOML_VAR_NESTED_DEPTH = 3`).
 
 The `::` unset suffix (`{{varname::}}`) removes a property entirely when the variable is undefined; if defined, its value is used normally. The bare `{{::}}` always removes the property unconditionally. Both work in TOML, JSON, and Jsonnet — `process_variable_substitutions_in_file_contents` leaves unset tokens intact so `process_variable_substitutions_insitu` can remove them after parsing.
 

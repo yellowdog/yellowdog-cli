@@ -21,6 +21,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.misc_utils import (
     BASE36_DIGITS,
+    PROCESS_DISCRIMINATOR,
     Substring,
     add_batch_number_postfix,
     camel_case_split,
@@ -156,6 +157,23 @@ class TestGenerateId:
         ]
         ids = [process.communicate()[0].strip() for process in processes]
         assert len(set(ids)) == 3, f"duplicate IDs among {ids}"
+
+
+class TestProcessDiscriminator:
+    def test_tracks_the_pid(self):
+        pid = os.getpid() % (36 * 36)
+        assert (
+            PROCESS_DISCRIMINATOR == BASE36_DIGITS[pid // 36] + BASE36_DIGITS[pid % 36]
+        )
+
+    def test_is_what_generate_id_appends(self):
+        # The '{{pid}}' variable substitution exposes this constant, so it has
+        # to be the same two characters the generated name ends with
+        assert generate_id("test").endswith(f"-{PROCESS_DISCRIMINATOR}")
+
+    def test_two_base36_digits(self):
+        assert len(PROCESS_DISCRIMINATOR) == 2
+        assert all(character in BASE36_DIGITS for character in PROCESS_DISCRIMINATOR)
 
 
 class TestGetDelimitedStringBoundaries:
