@@ -20,8 +20,8 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.printing import print_info
-from yellowdog_cli.utils.settings import YD_ENV_OVERRIDE
+from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 
 UTCNOW = datetime.now(timezone.utc)
 
@@ -262,11 +262,22 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
         )
 
     # Must start with an alphabetic character
-    if add_prefix and not new_yd_name[0].isalpha():
-        new_yd_name = f"y{new_yd_name}"
+    prefix_added = add_prefix and not new_yd_name[0].isalpha()
+    if prefix_added:
+        new_yd_name = NAME_START_PREFIX + new_yd_name
 
     # Mustn't exceed 60 chars
-    return new_yd_name[:60]
+    new_yd_name = new_yd_name[:60]
+
+    # Warned about after truncation, so that the reported name is the one that
+    # will actually be used
+    if prefix_added:
+        print_warning(
+            f"Name '{yd_name}' doesn't start with a letter: "
+            f"using '{new_yd_name}' instead"
+        )
+
+    return new_yd_name
 
 
 def load_dotenv_file():

@@ -35,7 +35,7 @@ from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
     split_delimited_string,
 )
-from yellowdog_cli.utils.settings import YD_ENV_OVERRIDE
+from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 
 
 class TestAddBatchNumberPostfix:
@@ -73,16 +73,47 @@ class TestFormatYdName:
     @pytest.mark.parametrize(
         "s,add_prefix,expected",
         [
-            ("123abc", True, "y123abc"),
+            ("123abc", True, "yd_123abc"),
             ("123abc", False, "123abc"),
             ("abc123", True, "abc123"),
+            ("-leading-hyphen", True, "yd_-leading-hyphen"),
+            ("_leading_underscore", True, "yd__leading_underscore"),
         ],
     )
     def test_numeric_prefix_behaviour(self, s, add_prefix, expected):
-        assert format_yd_name(s, add_prefix=add_prefix) == expected
+        with patch("yellowdog_cli.utils.misc_utils.print_warning"):
+            assert format_yd_name(s, add_prefix=add_prefix) == expected
+
+    def test_prefix_is_warned_about(self):
+        with patch("yellowdog_cli.utils.misc_utils.print_warning") as warning:
+            format_yd_name("123abc")
+        warning.assert_called_once()
+        message = warning.call_args.args[0]
+        assert "123abc" in message and "yd_123abc" in message
+
+    def test_no_warning_when_no_prefix_is_needed(self):
+        with patch("yellowdog_cli.utils.misc_utils.print_warning") as warning:
+            format_yd_name("abc123")
+            format_yd_name("123abc", add_prefix=False)
+        warning.assert_not_called()
+
+    def test_warning_names_the_truncated_result(self):
+        # The prefix is applied before truncation, so the name that ends up in
+        # use is three characters shorter than the one supplied -- the warning
+        # has to report what will actually be used, not the untruncated form
+        with patch("yellowdog_cli.utils.misc_utils.print_warning") as warning:
+            result = format_yd_name("9" * 70)
+        assert result == NAME_START_PREFIX + "9" * (60 - len(NAME_START_PREFIX))
+        assert len(result) == 60
+        assert f"'{result}'" in warning.call_args.args[0]
 
     def test_truncated_at_60_chars(self):
         assert len(format_yd_name("a" * 70)) == 60
+
+    def test_prefix_is_a_visible_prefix(self):
+        # 'yd' alone merged into the name it was fixing; the underscore is what
+        # makes it legible as something the CLI added
+        assert NAME_START_PREFIX == "yd_"
 
     def test_result_only_contains_valid_chars(self):
         result = format_yd_name("weird @#$% chars!!", add_prefix=False)

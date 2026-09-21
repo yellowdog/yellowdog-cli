@@ -47,6 +47,11 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
 
+# Prepended by format_yd_name() to a name that doesn't start with a letter.
+# The underscore is what makes the prefix visible as a prefix: bare 'yd' merges
+# into the name it is fixing, so 'yd2024-run' reads as a name the user chose.
+NAME_START_PREFIX = "yd_"
+
 NAMESPACE_PREFIX_SEPARATOR = "/"
 WP_VARIABLES_PREFIX = "__"
 WP_VARIABLES_POSTFIX = "__"

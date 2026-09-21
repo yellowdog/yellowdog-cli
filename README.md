@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 16:41:03 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 17:13:40 BST 2026 -->
 
 <!--te-->
 
@@ -507,11 +507,13 @@ All entity names used within the YellowDog Platform must comply with the followi
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
+Work Requirement, Task Group and Task names supplied to `yd-submit` are automatically adjusted to comply with these rules: characters are switched to lower case, spaces and full stops become underscores, forward slashes become hyphens, any remaining invalid characters are discarded, and the result is truncated to 60 characters. If the adjusted name doesn't start with a letter it is prefixed with `yd_` — e.g. `2024-run` becomes `yd_2024-run` — and a warning is printed naming both the supplied name and the one that will be used in its place. A name left with no usable characters at all is an error rather than something to correct.
+
 When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd-commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer.
 
 Later sections of this document describe variable substitutions implemented with user-defined and CSV-file-defined variables. As a type modifier within these substitution expressions, the `format_name:` option is available, and works in the same manner as `num:`, `bool:`, etc. The `format_name:` modifier will convert the substituted string into one that satisfies YellowDog naming, by switching characters to lower case, etc.
 
-For example, a variable substitution `{{format_name:ligand_name}}`, with variable `ligand_name` set to `DCCCDE_00000s`, would substitute to become `dcccde_00000s`, and would be acceptable for use as a component of a YellowDog name.
+For example, a variable substitution `{{format_name:ligand_name}}`, with variable `ligand_name` set to `DCCCDE_00000s`, would substitute to become `dcccde_00000s`, and would be acceptable for use as a component of a YellowDog name. Because such a substitution is usually only one component of a name, `format_name:` does not apply the `yd_` prefix and issues no warning: a value that starts with a digit is left as it is.
 
 # Common Properties
 
