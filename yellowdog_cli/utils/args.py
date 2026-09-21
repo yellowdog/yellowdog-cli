@@ -412,6 +412,16 @@ class CLIParser:
                 ),
             )
 
+        # yd-application
+        if "application" in module_name:
+            parser.add_argument(
+                "--json",
+                "-J",
+                action="store_true",
+                required=False,
+                help="emit the Application's details as JSON",
+            )
+
         # yd-submit
         if any(module in module_name for module in ["submit"]):
             parser.add_argument(

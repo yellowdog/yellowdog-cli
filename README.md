@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 17:13:40 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 17:38:33 BST 2026 -->
 
 <!--te-->
 
@@ -3964,8 +3964,31 @@ yd-application [options]
 
 It takes no arguments beyond the [Universal Options](#universal-options), and is the quickest way to confirm which Application a set of credentials belongs to.
 
+Key options:
+- `--json`/`-J` — emit the Application's details as JSON instead of the readable report
+
 ```shell
 yd-application --config prod.toml
+```
+
+The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined: `portalUrl` when the Platform API URL isn't in the standard form, and `groups` and `roles` when the Application lacks the permissions required to look them up.
+
+```shell
+yd-application --json
+```
+
+```json
+{
+  "accountId": "000000",
+  "accountName": "my-account",
+  "allNamespacesReadable": true,
+  "features": ["PLATFORM"],
+  "groups": ["administrators"],
+  "id": "ydid:app:000000:557cc657-4fca-4e00-aa7a-3f6bd59dc6f2",
+  "name": "my-app",
+  "portalUrl": "https://portal.yellowdog.ai/#/signin?account=my-account",
+  "roles": {"administrator": ["GLOBAL"]}
+}
 ```
 
 ## Resource Commands
