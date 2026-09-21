@@ -111,7 +111,7 @@ A small number of standalone commands (`yd-help`, `yd-version`, `yd-format-json`
 
 `yd-commander` is the exception to all of this: it uses neither wrapper, loads no config at import, and never touches the SDK, because it runs the other commands as child processes. Its `main()` is in `commander/launcher.py` and stays free of Qt so that the missing-extra message works without PyQt6 installed. See [Commander](#commander).
 
-Data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`) use `@dataclient_wrapper` instead — no SDK client is initialised:
+Data client commands (`yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls`, `yd-copy`) use `@dataclient_wrapper` instead — no SDK client is initialised:
 
 ```python
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
@@ -123,6 +123,8 @@ def main():
     # Command logic using ARGS_PARSER and CONFIG_DATA_CLIENT
     ...
 ```
+
+These commands never contact the Platform API, so `args.py` does not register `--key`, `--secret`, `--url` or `--pac` for them: `load_config_data_client()` bypasses `load_config_common()`, which is the sole reader of all four, and no `PlatformClient` is built. The gate is the `is_data_client` predicate hoisted to the top of `CLIParser.__init__`, which also selects the data-client-only options further down. The four `ARGS_PARSER` properties are decorated with `@allow_missing_attribute` and so return `None` rather than raising when unregistered — which is what lets `load_config_common()` keep reading them unconditionally. Passing one of the four to a data client command is now an argparse error rather than a silent no-op.
 
 ### Global State (wrapper.py)
 

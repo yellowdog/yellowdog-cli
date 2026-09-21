@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 10:47:49 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 10:57:50 BST 2026 -->
 
 <!--te-->
 
@@ -3331,6 +3331,8 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 These options are accepted by every `yd-*` command except `yd-commander`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
+The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
+
 | Option | Effect |
 |---|---|
 | `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory |
@@ -4022,7 +4024,7 @@ See [Allowances](#allowances) for how Allowances are defined.
 
 ## Data Client Commands
 
-These five commands provide direct access to remote data stores via rclone, and do not require a YellowDog Application key or secret. They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](#data-client), along with the `[dataClient]` configuration section and named profiles.
+These five commands provide direct access to remote data stores via rclone, and never contact the YellowDog Platform API. They accordingly do not accept the `--key`, `--secret`, `--url` or `--pac` [Universal Options](#universal-options); the remainder apply as usual, including `--config`, `--namespace`/`--tag` (which supply the default path prefix) and `--property`. They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](#data-client), along with the `[dataClient]` configuration section and named profiles.
 
 ### yd-upload
 
