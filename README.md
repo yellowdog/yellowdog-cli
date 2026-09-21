@@ -154,6 +154,8 @@
    * [Checking Jsonnet Processing](#checking-jsonnet-processing)
    * [Jsonnet Example](#jsonnet-example)
 * [Command List](#command-list)
+   * [Universal Options](#universal-options)
+   * [Shared Options](#shared-options)
    * [yd-submit](#yd-submit)
    * [yd-provision](#yd-provision)
    * [yd-cancel](#yd-cancel)
@@ -190,7 +192,7 @@
    * [yd-copy](#yd-copy)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 10:29:53 BST 2026 -->
+<!-- Added by: pwt, at: Mon Sep 21 10:39:16 BST 2026 -->
 
 <!--te-->
 
@@ -3317,24 +3319,60 @@ When this is inspected using the `dry-run` option (`yd-submit -D my_work_req.jso
 
 # Command List
 
-Help is available for all commands by invoking a command with the `--help` or `-h` option. Some command-line parameters are common to all commands, while others are command-specific.
+Help is available for all commands by invoking a command with the `--help` or `-h` option. The two tables below describe the options shared across commands; the sections that follow describe each command individually, along with its own command-specific options.
 
-All destructive commands require user confirmation before taking effect. This can be suppressed using the `--yes` or `-y` option, in which case the command will proceed without confirmation.
+## Universal Options
 
-Some commands support the `--interactive` or `-i` option, allowing user selections to be made. E.g. this can be used to select which object paths to delete.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
-The `--quiet` or `-q` option reduces the command output down to essential messages only. For `yd-submit`, `yd-provision`, and `yd-instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
+| Option | Effect |
+|---|---|
+| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory |
+| `--no-config`, `--nc` | Ignore the contents of any TOML configuration file, even one named using `--config` |
+| `--key <app-key-id>`, `-k` | The Application key ID |
+| `--secret <app-key-secret>`, `-s` | The Application key secret |
+| `--url <url>`, `-u` | The YellowDog Platform API URL (defaults to `https://api.yellowdog.ai`) |
+| `--property <section.key=value>` | Override a single TOML configuration property; can be supplied multiple times — see [Overriding Arbitrary TOML Properties on the Command Line](#overriding-arbitrary-toml-properties-on-the-command-line) |
+| `--env-override` | Values in a `.env` file override values in the environment — see [Support for .env Files](#support-for-env-files) |
+| `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
+| `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
+| `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
+| `--debug` | Display the Python stack trace on error, which can be useful for support purposes |
+| `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](#https-proxy-support) |
+| `--docs` | Provide a link to the documentation for this version of the CLI |
+
+Note that `yd-version` also accepts `--debug`, but reports the Python path and executable details rather than a stack trace.
+
+Any output exceeding 1,000 lines in size (e.g. a very large JSON object, or table) will not produce coloured output, whether or not `--no-format` is used.
+
+For `yd-submit`, `yd-provision`, and `yd-instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
 
 ```bash
 WR_ID=$(yd-submit --quiet)
 yd-follow "$WR_ID"
 ```
 
-The `--print-pid` (or `--pp`) option prefixes every log line with the process ID of the CLI invocation. This is useful when running multiple commands in parallel, to disambiguate interleaved output.
+## Shared Options
 
-If you encounter an error it can be useful for support purposes to see the full Python stack trace. This can be enabled by running the command using the `--debug` option.
+These options are accepted by many commands, but not by all. The command sections below mention them only where a command does something particular with one; use `--help` to confirm exactly what any given command accepts.
 
-To suppress output formatting, including coloured output and line wrapping, the `--no-format` option can be used. Note that any outputs exceeding 1,000 lines in size (e.g. a very large JSON object, or table), will not produce coloured output.
+| Option | Effect |
+|---|---|
+| `--variable <var1=v1>`, `-v` | Set a user-defined variable substitution; can be supplied multiple times, one per variable — see [User-Defined Variables](#user-defined-variables) |
+| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value |
+| `--tag [<tag>]`, `-t` | The tag to use when naming, tagging, or selecting entities; this is set to `''` if the option is supplied without a value |
+| `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
+| `--dry-run`, `-D` | Report what the command would do, without acting |
+| `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
+| `--follow`, `-f` | Follow the relevant event stream after the command has acted |
+| `--raw-events` | Print the raw JSON event stream when following events |
+| `--sort <name\|created\|status\|namespace>` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name) |
+| `--reverse` | Reverse (descending) order of the active `--sort` key |
+| `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](#checking-jsonnet-processing) |
+
+All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
+
+The data client commands share a further set of options (`--remote`, `--bucket`, `--prefix`, `--no-prefix` and `--data-client-profile`), which are described under [Data Client](#data-client).
 
 ## yd-submit
 
