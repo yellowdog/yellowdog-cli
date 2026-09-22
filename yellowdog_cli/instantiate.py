@@ -25,6 +25,7 @@ from yellowdog_cli.utils.misc_utils import (
 )
 from yellowdog_cli.utils.printing import (
     print_compute_template_test_result,
+    print_dry_run,
     print_error,
     print_info,
     print_yd_object,
@@ -190,9 +191,9 @@ def main():
                 print_info(f"YellowDog ID is '{compute_requirement.id}'")
 
             else:
-                print_info("Dry-run: Printing JSON Compute Requirement specification")
+                print_dry_run("Printing JSON Compute Requirement specification")
                 print_yd_object(compute_requirement_template_usage)
-                print_info("Dry-run: Complete")
+                print_dry_run("Complete")
 
         except Exception as e:
             raise RuntimeError(
@@ -313,9 +314,9 @@ def _create_compute_requirement_from_json(
         )
 
     if ARGS_PARSER.dry_run:
-        print_info("Dry-run: Printing JSON Compute Requirement specification")
+        print_dry_run("Printing JSON Compute Requirement specification")
         print_yd_object(cr_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         return
 
     response = requests.post(

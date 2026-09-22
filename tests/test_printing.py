@@ -7,9 +7,11 @@ by the rest of the test suite.
 """
 
 import re
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from rich.console import Console
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 
 import yellowdog_cli.utils.printing as printing_module
@@ -20,12 +22,19 @@ from yellowdog_cli.utils.printing import (
     get_type_name,
     indent,
     keyring_table,
+    print_debug,
+    print_dry_run,
+    print_info,
     print_string,
     status_counts_msg,
     task_table,
     work_requirement_table,
 )
-from yellowdog_cli.utils.settings import MAX_TABLE_DESCRIPTION
+from yellowdog_cli.utils.settings import (
+    DEBUG_STYLE,
+    DRY_RUN_MARKER,
+    MAX_TABLE_DESCRIPTION,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -258,6 +267,197 @@ class TestPrintString:
         ):
             result = print_string("raw message")
         assert result.endswith("raw message")
+
+
+# ---------------------------------------------------------------------------
+# print_debug
+# ---------------------------------------------------------------------------
+
+
+class TestPrintDebug:
+    """
+    The startup/configuration messages: printed only when '--debug' is set,
+    and still suppressed by '--quiet' and by the JSON output modes.
+    """
+
+    def setup_method(self):
+        printing_module.PREFIX_LEN = 0
+        printing_module.SUBSEQUENT_INDENT = ""
+
+    @staticmethod
+    def _args(**kwargs):
+        defaults = dict(
+            debug=False,
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=True,
+            print_pid=False,
+        )
+        defaults.update(kwargs)
+        return SimpleNamespace(**defaults)
+
+    def _output(self, capsys, **kwargs) -> str:
+        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+            print_debug("Loading configuration data")
+        return capsys.readouterr().out
+
+    def test_nothing_is_printed_without_debug(self, capsys):
+        assert self._output(capsys, debug=False) == ""
+
+    def test_message_is_printed_with_debug(self, capsys):
+        assert "Loading configuration data" in self._output(capsys, debug=True)
+
+    def test_debug_marker_precedes_the_message(self, capsys):
+        output = self._output(capsys, debug=True)
+        assert "DEBUG : Loading configuration data" in output
+
+    def test_timestamp_prefix_is_the_standard_one(self, capsys):
+        # The same prefix as print_info carries
+        output = self._output(capsys, debug=True)
+        assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} : DEBUG : ", output)
+
+    def test_message_is_printed_with_formatting_enabled(self, capsys):
+        # '--no-format' picks plain print() over the Rich console; the gate
+        # and the marker are the same either way
+        output = self._output(capsys, debug=True, no_format=False)
+        assert "DEBUG : Loading configuration data" in output
+
+    def test_nothing_is_printed_without_debug_with_formatting_enabled(self, capsys):
+        assert self._output(capsys, debug=False, no_format=False) == ""
+
+    def test_quiet_suppresses_it_even_with_debug(self, capsys):
+        assert self._output(capsys, debug=True, quiet=True) == ""
+
+    def test_json_output_suppresses_it_even_with_debug(self, capsys):
+        assert self._output(capsys, debug=True, json_output=True) == ""
+
+
+# ---------------------------------------------------------------------------
+# print_dry_run
+# ---------------------------------------------------------------------------
+
+
+class TestPrintDryRun:
+    """
+    The dry-run messages: an ordinary message carrying the DRY-RUN marker.
+    Unlike print_debug(), it does no gating of its own — every caller is
+    already inside a dry-run branch.
+    """
+
+    def setup_method(self):
+        printing_module.PREFIX_LEN = 0
+        printing_module.SUBSEQUENT_INDENT = ""
+
+    @staticmethod
+    def _args(**kwargs):
+        defaults = dict(
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=True,
+            print_pid=False,
+        )
+        defaults.update(kwargs)
+        return SimpleNamespace(**defaults)
+
+    def _output(self, capsys, **kwargs) -> str:
+        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+            print_dry_run("Would resize Worker Pool")
+        return capsys.readouterr().out
+
+    def test_marker_precedes_the_message(self, capsys):
+        assert f"{DRY_RUN_MARKER}Would resize Worker Pool" in self._output(capsys)
+
+    def test_timestamp_prefix_is_the_standard_one(self, capsys):
+        assert re.match(
+            rf"\d{{4}}-\d{{2}}-\d{{2}} \d{{2}}:\d{{2}}:\d{{2}} : {DRY_RUN_MARKER}",
+            self._output(capsys),
+        )
+
+    def test_it_prints_without_any_gating(self, capsys):
+        # No '--debug' or '--dry-run' attribute is consulted
+        assert self._output(capsys) != ""
+
+    def test_quiet_suppresses_it(self, capsys):
+        assert self._output(capsys, quiet=True) == ""
+
+    def test_json_output_suppresses_it(self, capsys):
+        assert self._output(capsys, json_output=True) == ""
+
+    def test_message_is_printed_with_formatting_enabled(self, capsys):
+        assert DRY_RUN_MARKER in self._output(capsys, no_format=False)
+
+
+# ---------------------------------------------------------------------------
+# Colouring: the '--debug' preamble is styled, ordinary output is not
+# ---------------------------------------------------------------------------
+
+
+# Rich's 'dark_orange', as the 256-colour console below renders it
+DEBUG_COLOUR = "\x1b[38;5;208m"
+
+
+class TestStyledOutput:
+    """
+    print_info() carries an optional Rich style, which is what lets
+    print_debug() colour the preamble without reimplementing print_info().
+    """
+
+    def setup_method(self):
+        printing_module.PREFIX_LEN = 0
+        printing_module.SUBSEQUENT_INDENT = ""
+
+    @staticmethod
+    def _args(**kwargs):
+        defaults = dict(
+            debug=True,
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=False,
+            print_pid=False,
+        )
+        defaults.update(kwargs)
+        return SimpleNamespace(**defaults)
+
+    def _render(self, call, **kwargs) -> str:
+        """
+        Run 'call' against a real Rich console that emits colour, and return
+        what it wrote — escape sequences included.
+        """
+        buffer = StringIO()
+        console = Console(
+            file=buffer, force_terminal=True, color_system="256", width=200
+        )
+        with (
+            patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)),
+            patch("yellowdog_cli.utils.printing.CONSOLE", console),
+        ):
+            call()
+        return buffer.getvalue()
+
+    def test_debug_messages_are_coloured(self):
+        output = self._render(lambda: print_debug("Loading configuration data"))
+        assert DEBUG_COLOUR in output
+        assert "Loading configuration data" in output
+
+    def test_ordinary_messages_are_not_coloured(self):
+        assert DEBUG_COLOUR not in self._render(lambda: print_info("Submitting"))
+
+    def test_dry_run_messages_are_not_coloured(self):
+        assert DEBUG_COLOUR not in self._render(lambda: print_dry_run("Complete"))
+
+    def test_the_style_reaches_the_console_from_print_info(self):
+        output = self._render(lambda: print_info("Plain", style=DEBUG_STYLE))
+        assert DEBUG_COLOUR in output
+
+    def test_no_format_emits_no_colour_at_all(self):
+        # The '--no-format' branch is plain print(), so nothing is styled
+        output = self._render(
+            lambda: print_debug("Loading configuration data"), no_format=True
+        )
+        assert "\x1b[" not in output
 
 
 # ---------------------------------------------------------------------------

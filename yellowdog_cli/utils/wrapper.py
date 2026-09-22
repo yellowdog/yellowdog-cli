@@ -13,7 +13,7 @@ from yellowdog_client.model import ApiKey, ServicesSchema
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.load_config import load_config_common
-from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.printing import print_debug, print_error, print_info
 from yellowdog_cli.utils.user_agent import set_user_agent
 
 # Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and direct)
@@ -46,17 +46,17 @@ def set_proxy():
 
     proxy_var = "HTTPS_PROXY"
     if CONFIG_COMMON.use_pac:
-        print_info("Using Proxy Auto-Configuration (PAC)")
+        print_debug("Using Proxy Auto-Configuration (PAC)")
         with pac_context_for_url(CONFIG_COMMON.url):
             https_proxy = os.getenv(proxy_var, None)
         if https_proxy is not None:
             os.environ[proxy_var] = https_proxy
         else:
-            print_info("No PAC proxy settings found")
+            print_debug("No PAC proxy settings found")
     else:
         https_proxy = os.getenv(proxy_var, None)
     if https_proxy is not None:
-        print_info(f"Using {proxy_var}={https_proxy}")
+        print_debug(f"Using {proxy_var}={https_proxy}")
 
 
 def main_wrapper(func):

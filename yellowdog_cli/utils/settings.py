@@ -91,7 +91,11 @@ MAX_TABLE_DESCRIPTION = 50
 MAX_LINES_COLOURED_FORMATTING = 1024
 ERROR_STYLE = "bold red3"
 WARNING_STYLE = "red3"
+# Marks and colours the configuration/startup messages shown only under '--debug'
+DEBUG_MARKER = "DEBUG : "
 DEBUG_STYLE = "dark_orange"
+# Marks the messages reporting what a '--dry-run' would have done
+DRY_RUN_MARKER = "DRY-RUN : "
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [
     re.compile(r"(?P<active>ALLOCATED)"),

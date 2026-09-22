@@ -19,7 +19,8 @@ from yellowdog_cli.utils.entity_utils import (
 )
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import print_dry_run, print_info, print_warning
+from yellowdog_cli.utils.settings import DRY_RUN_MARKER
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -36,7 +37,7 @@ def _resize_worker_pool():
     """
     Resize a Worker Pool
     """
-    action = "Dry-run: Would resize" if ARGS_PARSER.dry_run else "Resizing"
+    action = f"{DRY_RUN_MARKER}Would resize" if ARGS_PARSER.dry_run else "Resizing"
     print_info(
         f"{action} Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
         f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
@@ -57,8 +58,8 @@ def _resize_worker_pool():
     )
 
     if ARGS_PARSER.dry_run:
-        print_info(f"Dry-run: Found Worker Pool '{worker_pool.id}'")
-        print_info("Dry-run: Complete")
+        print_dry_run(f"Found Worker Pool '{worker_pool.id}'")
+        print_dry_run("Complete")
         return
 
     if not confirmed(
@@ -84,7 +85,11 @@ def _resize_compute_requirement():
     """
     Resize a Compute Requirement
     """
-    action = "Dry-run: Would resize" if ARGS_PARSER.dry_run else "Attempting to resize"
+    action = (
+        f"{DRY_RUN_MARKER}Would resize"
+        if ARGS_PARSER.dry_run
+        else "Attempting to resize"
+    )
     print_info(
         f"{action} Compute Requirement '{ARGS_PARSER.worker_pool_name}' "
         f"to {ARGS_PARSER.worker_pool_size:,d} instance(s)"
@@ -116,8 +121,8 @@ def _resize_compute_requirement():
             return
 
         if ARGS_PARSER.dry_run:
-            print_info(f"Dry-run: Found Compute Requirement '{cr_summary.id}'")
-            print_info("Dry-run: Complete")
+            print_dry_run(f"Found Compute Requirement '{cr_summary.id}'")
+            print_dry_run("Complete")
             return
 
         if not confirmed(

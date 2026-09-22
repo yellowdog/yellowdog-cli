@@ -205,7 +205,10 @@ class CLIParser:
             "--debug",
             action="store_true",
             required=False,
-            help="display the Python stack trace on error",
+            help=(
+                "display the Python stack trace on error, and the"
+                " configuration preamble"
+            ),
         )
         if not is_data_client:
             parser.add_argument(

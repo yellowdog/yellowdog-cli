@@ -64,6 +64,7 @@ pytest -v -n 4 --run-demos
 | `test_compact_json.py` | `utils/compact_json.py` — `CompactJSONEncoder` (inline vs. expanded formatting, float precision) |
 | `test_compare.py` | `compare.py` — pure static comparison helpers |
 | `test_compute_action_common.py` | `utils/compute_action_common.py` — `yd-compute-stop/start/restart` actions: dispatch, tag-based selection, name/ID, instance and node paths |
+| `test_config_preamble.py` | `utils/printing.py`, `utils/load_config.py`, `utils/variables.py`, `utils/misc_utils.py`, `utils/wrapper.py` — the startup preamble is silent by default and, under `--debug`, every line of it carries the `DEBUG` marker. Imports `wrapper.py` in a subprocess, per scenario, for the messages emitted at import; calls `set_proxy()` directly, with the PAC lookup stubbed, for those emitted at command time. No platform access |
 | `test_csv_data.py` | `utils/csv_data.py` — `CSVTaskData`, `CSVDataCache`, substitution helpers |
 | `test_dataclient_utils.py` | `utils/dataclient_utils.py` — `resolve_remote_path` (rclone remote path resolution, trailing-slash directory intent) |
 | `test_download_destination.py` | `download.py` — where each item lands locally: `--destination` vs. `--into` for one glob, one literal path and several literal paths |
@@ -82,7 +83,7 @@ pytest -v -n 4 --run-demos
 | `test_node_batching.py` | `provision.py`, `instantiate.py` — `_allocate_nodes_to_batches`: batch count, even distribution, remainder spreading, zero-node edge cases |
 | `test_nodeaction_args.py` | `utils/args.py` — `yd-nodeaction` argument parsing |
 | `test_nodeaction_parsing.py` | `nodeaction.py` — parsing helpers (`_parse_node_worker_target`, etc.) |
-| `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`; table-building helpers |
+| `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`, `print_debug`, `print_dry_run`; the styling of output (the `--debug` preamble is coloured, ordinary and dry-run messages are not), rendered through a real Rich console so the assertions read the escape sequences; table-building helpers |
 | `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag) |
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |

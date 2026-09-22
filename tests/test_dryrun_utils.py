@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.settings import DRY_RUN_MARKER
 
 
 def test_human_non_empty_delegates_to_table(capsys):
@@ -17,7 +18,8 @@ def test_human_non_empty_delegates_to_table(capsys):
             client, summaries, "Work Requirement", "cancelled", as_json=False
         )
     assert (
-        "Dry run: 2 Work Requirement(s) would be cancelled" in capsys.readouterr().out
+        f"{DRY_RUN_MARKER}2 Work Requirement(s) would be cancelled"
+        in capsys.readouterr().out
     )
     mock_table.assert_called_once_with(
         client, summaries, object_type_name="Work Requirement"

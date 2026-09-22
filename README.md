@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 17:38:33 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 22 09:02:05 BST 2026 -->
 
 <!--te-->
 
@@ -420,7 +420,8 @@ options:
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error
+  --debug               display the Python stack trace on error, and the
+                        configuration preamble
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
@@ -569,6 +570,8 @@ Properties set in the imported file are superseded by any of the same properties
 The commands will respect the value of the environment variable `HTTPS_PROXY` if routing through a proxy is required.
 
 In addition, commands can use proxy autoconfiguration (PAC) if the `--pac` command-line option is specified, or if the `usePAC` property is set to `true` in the `[common]` section of the `config.toml` file.
+
+The proxy that a command ends up using is reported only under `--debug`, whether it came from `HTTPS_PROXY` or from PAC; PAC finding no proxy is reported there too.
 
 ## Specifying Common Properties using the Command Line or Environment Variables
 
@@ -3352,7 +3355,7 @@ The five [Data Client Commands](#data-client-commands) are a partial exception: 
 | `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
 | `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
 | `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
-| `--debug` | Display the Python stack trace on error, which can be useful for support purposes |
+| `--debug` | Display the Python stack trace on error, which can be useful for support purposes. Also shows the startup preamble, each line marked `DEBUG`: where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL when it is not the default, the HTTPS proxy in use, and the certificates bundle when one is set. The whole preamble is suppressed by default |
 | `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](#https-proxy-support) |
 | `--docs` | Provide a link to the documentation for this version of the CLI |
 

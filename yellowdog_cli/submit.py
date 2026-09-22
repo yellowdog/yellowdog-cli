@@ -49,6 +49,7 @@ from yellowdog_cli.utils.load_config import (
 from yellowdog_cli.utils.misc_utils import format_yd_name, generate_id, link_entity
 from yellowdog_cli.utils.printing import (
     WorkRequirementSnapshot,
+    print_dry_run,
     print_error,
     print_info,
     print_json,
@@ -1436,9 +1437,9 @@ def submit_json_raw(wr_file: str):
 
     if ARGS_PARSER.dry_run:
         # This will show the results of any variable substitutions
-        print_info("Dry-run: Printing JSON Work Requirement specification:")
+        print_dry_run("Printing JSON Work Requirement specification:")
         print_json(wr_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         return
 
     # Extract Tasks from Task Groups

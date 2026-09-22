@@ -60,7 +60,7 @@ yellowdog_cli/
     ├── settings.py              # Constants, env var names, Rich theme
     ├── entity_utils.py          # API entity lookups (LRU-cached search functions); name-glob resolution, expansion and filtering for entity selection
     ├── glob_utils.py            # contains_glob_chars() and glob_search_prefix(): the glob-character set, and the literal prefix a pattern can be searched by
-    ├── printing.py              # Rich-based output formatting
+    ├── printing.py              # Rich-based output formatting; print_debug() is the configuration/startup preamble, gated on '--debug' and coloured, and print_dry_run() the '--dry-run' messages — each prepends its marker from settings.py and delegates to print_info(), which takes an optional Rich style
     ├── variables.py             # Variable substitution engine ({{ }} delimiters)
     ├── submit_utils.py          # Work requirement construction helpers; resolve_task_data() resolves taskData/taskDataFile (with variable substitution) for tasks and taskTemplate
     ├── csv_data.py              # CSV batch task processing; substitution uses << >> delimiters
@@ -188,7 +188,7 @@ CSV batch task prototypes use a separate `<<variable_name>>` delimiter system (d
 - Python 3.10+ syntax: use `str | None` (not `Optional[str]`), `match` statements where appropriate
 - Type hints on all new functions
 - Constants in `settings.py` (UPPERCASE); property name constants prefixed `PROP_`, resource name constants prefixed `RN_`
-- Use `print_error()`, `print_info()`, `print_warning()` from `printing.py` — never `print()` directly
+- Use `print_error()`, `print_info()`, `print_warning()` from `printing.py` — never `print()` directly. Two wrappers over `print_info()` carry a marker from `settings.py`, so the marker is stated once rather than at every call site: `print_debug()` (`DEBUG_MARKER`) for the startup preamble — *every* message printed before a command's own output, so `load_config.py` no longer calls `print_info()` at all — which it also gates on `--debug` and colours `DEBUG_STYLE`; and `print_dry_run()` (`DRY_RUN_MARKER`) for the `--dry-run` messages, which gates nothing and is uncoloured, because every caller is already inside a dry-run branch and the messages are ordinary output. A site that needs the marker without printing it — a conditional prefix, as in `resize.py` — imports the constant instead. The colouring is why `print_info()` takes an optional `style`: it is a Rich *base* style, so the highlighter's own colours for timestamps, quoted strings and YDIDs still apply on top, and `--no-format` ignores it with all other colouring. Reaching for it anywhere else needs a reason — plain `print_info()` is the default
 - LRU cache on entity lookup functions in `entity_utils.py`
 - Config dataclasses in `config_types.py`; no raw dicts for structured config
 

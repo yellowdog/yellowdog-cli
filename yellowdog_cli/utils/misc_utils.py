@@ -20,7 +20,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 
 UTCNOW = datetime.now(timezone.utc)
@@ -304,7 +304,7 @@ def load_dotenv_file():
         os.environ.get(YD_ENV_OVERRIDE)
     )
 
-    print_info(
+    print_debug(
         f"Loading environment variables from '{dotenv_file}' ("
         f"{'OVERRIDING' if env_override else 'NOT OVERRIDING'} existing variables)"
     )
@@ -316,7 +316,7 @@ def load_dotenv_file():
     ]
 
     if dotenv_yd_substitutions:
-        print_info(
+        print_debug(
             f"Adding 'YD' environment variable(s): {', '.join(dotenv_yd_substitutions)}"
         )
 

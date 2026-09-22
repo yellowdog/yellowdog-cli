@@ -26,7 +26,12 @@ from yellowdog_cli.utils.misc_utils import (
     remove_outer_delimiters,
     split_delimited_string,
 )
-from yellowdog_cli.utils.printing import print_error, print_info, print_json
+from yellowdog_cli.utils.printing import (
+    print_debug,
+    print_dry_run,
+    print_error,
+    print_json,
+)
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
     USERDATA,
@@ -86,7 +91,7 @@ for key, value in os.environ.items():
         subs_list.append(f"'{key}'")
 
 if subs_list:
-    print_info(
+    print_debug(
         "Adding environment-defined variable substitution(s) for: "
         f"{', '.join(subs_list)}"
     )
@@ -114,7 +119,7 @@ if ARGS_PARSER.variables is not None:
             exit(1)  # Note: exception trap not yet in place
 
 if subs_list:
-    print_info(
+    print_debug(
         "Adding command-line-defined variable substitution(s) for: "
         f"{', '.join(subs_list)}"
     )
@@ -625,9 +630,9 @@ def load_jsonnet_file_with_variable_substitutions(
     process_variable_substitutions_insitu(dict_data, prefix, postfix)
 
     if ARGS_PARSER.jsonnet_dry_run:
-        print_info(f"Dry-run: Printing Jsonnet to JSON conversion for '{filename}'")
+        print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
         print_json(dict_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         if exit_on_dry_run:
             sys.exit(0)
 

@@ -27,7 +27,12 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import (
+    print_dry_run,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_LOCAL_PATH,
     DATA_CLIENT_UPLOAD_PATH,
@@ -621,8 +626,8 @@ class RcloneUploadedFiles:
                         f"Unable to upload '{local_file}' -> '{rclone_upload_path}': {e}"
                     )
             else:
-                print_info(
-                    f"Dry-run: Would upload '{local_file}' -> "
+                print_dry_run(
+                    f"Would upload '{local_file}' -> "
                     f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
                 )
 

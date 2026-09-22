@@ -26,8 +26,8 @@ from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
 from yellowdog_cli.utils.printing import (
+    print_debug,
     print_error,
-    print_info,
     print_warning,
 )
 from yellowdog_cli.utils.property_names import *
@@ -129,7 +129,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             target = target.setdefault(part, {})
         target[path[-1]] = value
         display_section = ".".join([section, *path[:-1]])
-        print_info(f"Property override: [{display_section}] {path[-1]} = {value!r}")
+        print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
             add_or_update_substitution(path[1], str(value))
             # Command-line-defined variables always take precedence,
@@ -164,7 +164,7 @@ CONFIG_FILE = relpath(
 
 if ARGS_PARSER.no_config:
     # Suppress use of any TOML config file
-    print_info(f"Configuration file ('{CONFIG_FILE}') ignored")
+    print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
     CONFIG_TOML = {COMMON_SECTION: {}}
     CONFIG_FILE_DIR = os.getcwd()
     if ARGS_PARSER.property_overrides:
@@ -179,7 +179,7 @@ else:
         VARIABLE_SUBSTITUTIONS.update(
             {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
         )
-        print_info(f"Loading configuration data from: '{CONFIG_FILE}'")
+        print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
         CONFIG_TOML: dict = load_toml_file_with_variable_substitutions(CONFIG_FILE)
         try:
             # Strip profile sub-tables from [dataClient] before validation;
@@ -204,7 +204,7 @@ else:
             print_error(e)
             exit(1)
         # No config file, so create a stub config dictionary
-        print_info(
+        print_debug(
             "No configuration file; expecting configuration data on command line "
             "or in environment variables"
         )
@@ -253,7 +253,7 @@ def load_config_common() -> ConfigCommon:
         ]:
             if args_parser_value is not None:
                 common_section[key_name] = args_parser_value
-                print_info(
+                print_debug(
                     f"Using '{key_name}' provided on command line "
                     "(or automatically set)"
                 )
@@ -263,20 +263,20 @@ def load_config_common() -> ConfigCommon:
                 pass  # Retain the value from the explicitly selected config file
             elif os.environ.get(env_var_name) is not None:
                 common_section[key_name] = os.environ[env_var_name]
-                print_info(f"Using '{key_name}' provided via the environment")
+                print_debug(f"Using '{key_name}' provided via the environment")
 
         # Provide default values for namespace and tag
         if common_section.get(NAMESPACE) is None:
             common_section[NAMESPACE] = "default"
             if ARGS_PARSER.namespace_required:
-                print_info(
+                print_debug(
                     "Using default value for 'namespace': "
                     f"'{common_section[NAMESPACE]}'"
                 )
         if common_section.get(NAME_TAG) is None:
             common_section[NAME_TAG] = "{{username}}"
             if ARGS_PARSER.tag_required:
-                print_info(
+                print_debug(
                     "Using default value for 'tag/prefix/name' = "
                     f"'{VARIABLE_SUBSTITUTIONS['username']}'"
                 )
@@ -285,7 +285,7 @@ def load_config_common() -> ConfigCommon:
             str, process_variable_substitutions(common_section.get(URL, DEFAULT_URL))
         )
         if url != DEFAULT_URL:
-            print_info(f"Using the YellowDog API at: {url}")
+            print_debug(f"Using the YellowDog API at: {url}")
 
         # Exhaustive variable processing for common section variables
         # Note that add_substitutions() will perform all possible
@@ -310,7 +310,7 @@ def load_config_common() -> ConfigCommon:
         if certificates is not None:
             certificates = abspath(certificates)
             requests_ca_bundle = "REQUESTS_CA_BUNDLE"
-            print_info(
+            print_debug(
                 f"Setting environment variable '{requests_ca_bundle}' to '{certificates}'"
             )
             os.environ[requests_ca_bundle] = certificates
@@ -339,7 +339,7 @@ def import_toml(filename: str) -> dict:
     filename = relpath(
         join(CONFIG_FILE_DIR, cast(str, process_variable_substitutions(filename)))
     )
-    print_info(f"Loading imported common configuration data from: '{filename}'")
+    print_debug(f"Loading imported common configuration data from: '{filename}'")
     try:
         common_config: dict = load_toml_file_with_variable_substitutions(filename)
         return common_config[COMMON_SECTION]
@@ -489,7 +489,7 @@ def load_config_data_client() -> ConfigDataClient:
         except ValueError as e:
             print_error(e)
             exit(1)
-        print_info(f"Using data client profile: '{profile_name}'")
+        print_debug(f"Using data client profile: '{profile_name}'")
     else:
         dc_section = _select_dc_section(base_section, None)
 
@@ -578,7 +578,7 @@ def load_config_data_client_for_profile(
         exit(1)
 
     if profile_name is not None:
-        print_info(f"Using destination data client profile: '{profile_name}'")
+        print_debug(f"Using destination data client profile: '{profile_name}'")
 
     for _ in range(TOML_VAR_NESTED_DEPTH):
         process_variable_substitutions_insitu(dc_section)

@@ -61,6 +61,7 @@ from yellowdog_cli.utils.load_resources import (
     load_resource_specifications,
 )
 from yellowdog_cli.utils.printing import (
+    print_dry_run,
     print_error,
     print_info,
     print_json,
@@ -146,8 +147,8 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
         resources = deepcopy(resources)  # Avoid overwriting the input argument
 
     if ARGS_PARSER.dry_run:
-        print_info(
-            "Dry-run: displaying processed JSON resource specifications. Note:"
+        print_dry_run(
+            "Displaying processed JSON resource specifications. Note:"
             " 'resource' property is removed."
         )
 

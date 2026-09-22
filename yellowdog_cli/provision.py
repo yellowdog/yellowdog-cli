@@ -29,6 +29,7 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
 )
 from yellowdog_cli.utils.printing import (
+    print_dry_run,
     print_error,
     print_info,
     print_worker_pool,
@@ -253,9 +254,9 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         raise KeyError(f"Key error in JSON Worker Pool definition: {e}")
 
     if ARGS_PARSER.dry_run:
-        print_info("Dry-run: Printing JSON Worker Pool specification")
+        print_dry_run("Printing JSON Worker Pool specification")
         print_yd_object(wp_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         return
 
     response = requests.post(
@@ -452,7 +453,7 @@ def create_worker_pool_from_toml():
         print_info("Node metrics are enabled")
 
     if ARGS_PARSER.dry_run:
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         return
 
     if ARGS_PARSER.follow:
