@@ -351,6 +351,9 @@ def submit_work_requirement(
     )
     # Lazy substitution of the Work Requirement name, now it's defined
     add_substitutions_without_overwriting(subs={L_WR_NAME: ID})
+    # Announced before its Task Groups, which announce themselves as they're
+    # generated; this is the only report of the name in a dry run
+    print_info(f"Generated Work Requirement '{ID}'")
     # Re-process substitutions in the CONFIG_WR object
     CONFIG_WR = update_config_work_requirement_object(CONFIG_WR)
     # Re-process substitutions in the wr_data dictionary
