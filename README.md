@@ -701,7 +701,8 @@ The following substitutions are automatically created and can be used in any sec
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
 | `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
 | `{{random}}`          | A random, three digit hexadecimal number (lower case)          | a1c                     |
-| `{{pid}}`             | The process discriminator: the PID mod 1296, in two base 36 digits, lower case | 4f      |
+| `{{pid}}`             | The process ID (PID) of the running command                    | 48213                   |
+| `{{pid2}}`            | The process discriminator: the PID mod 1296, in two base 36 digits, lower case | 4f      |
 | `{{namespace}}`       | The `namespace` property.                                      | my_namespace            |
 | `{{tag}}`             | The `tag` property.                                            | my_tag                  |
 | `{{key}}`             | The application `key` property.                                |                         |
@@ -710,11 +711,11 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
-For the `date`, `time`, `datetime`, `random` and `pid` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
+For the `date`, `time`, `datetime`, `random`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
 
-The `pid` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](#naming-rules)), so a hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid}}"` is disambiguated between simultaneously launched commands in exactly the way a generated one is: processes alive at the same time always have distinct PIDs, so `{{pid}}` differs between them unless 1,296 processes were spawned in between.
+The `pid2` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](#naming-rules)), so a hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid2}}"` is disambiguated between simultaneously launched commands in exactly the way a generated one is: processes alive at the same time always have distinct PIDs, so `{{pid2}}` differs between them unless 1,296 processes were spawned in between. The `pid` directive is the full PID, which is unambiguous but too long, and too variable in length, to sit comfortably in a name.
 
 ## User-Defined Variables
 

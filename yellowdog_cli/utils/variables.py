@@ -18,6 +18,7 @@ from tomli import load as toml_load
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.misc_utils import (
+    PID,
     PROCESS_DISCRIMINATOR,
     UTCNOW,
     config_file_explicitly_selected,
@@ -75,7 +76,8 @@ VARIABLE_SUBSTITUTIONS = {
     "random": (
         hex(randint(0, RAND_VAR_SIZE))[2:].lower().zfill(len(hex(RAND_VAR_SIZE)) - 2)
     ),
-    "pid": PROCESS_DISCRIMINATOR,
+    "pid": str(PID),
+    "pid2": PROCESS_DISCRIMINATOR,
 }
 
 # Load .env file before scanning os.environ so YD_VAR_* variables defined

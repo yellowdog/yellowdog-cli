@@ -21,6 +21,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.misc_utils import (
     BASE36_DIGITS,
+    PID,
     PROCESS_DISCRIMINATOR,
     Substring,
     add_batch_number_postfix,
@@ -197,6 +198,12 @@ class TestGenerateId:
         assert len(set(ids)) == 3, f"duplicate IDs among {ids}"
 
 
+class TestPid:
+    def test_is_the_pid_of_the_running_process(self):
+        # The '{{pid}}' variable substitution exposes this constant
+        assert PID == os.getpid()
+
+
 class TestProcessDiscriminator:
     def test_tracks_the_pid(self):
         pid = os.getpid() % (36 * 36)
@@ -205,8 +212,8 @@ class TestProcessDiscriminator:
         )
 
     def test_is_what_generate_id_appends(self):
-        # The '{{pid}}' variable substitution exposes this constant, so it has
-        # to be the same two characters the generated name ends with
+        # The '{{pid2}}' variable substitution exposes this constant, so it
+        # has to be the same two characters the generated name ends with
         assert generate_id("test").endswith(f"-{PROCESS_DISCRIMINATOR}")
 
     def test_two_base36_digits(self):
