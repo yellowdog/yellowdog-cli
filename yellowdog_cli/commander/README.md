@@ -48,7 +48,7 @@ Quitting with commands still running asks first, listing the commands that would
 
 Choosing **Quit and Stop** signals each command to finish and forces it to stop if it doesn't; work already accepted by the YellowDog platform continues there regardless, since stopping the CLI command does not cancel it. Launching with `-y`/`--yes` suppresses the question and quits immediately.
 
-Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-show` invocations it makes internally to read your configuration.
+Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-variables` invocations it makes internally to read your configuration.
 
 Reading the configuration is bounded by a 10-second timeout, so an unreachable API URL leaves the Namespace, Tag, and Path placeholders unresolved and reports the timeout in the Command Output window, rather than hanging the window until the platform's own timeout expires.
 

@@ -96,6 +96,8 @@ DEBUG_MARKER = "DEBUG : "
 DEBUG_STYLE = "dark_orange"
 # Marks the messages reporting what a '--dry-run' would have done
 DRY_RUN_MARKER = "DRY-RUN : "
+# Stands in for a credential that's being withheld ('--show-secrets' reveals it)
+REDACTED_VALUE = "<REDACTED>"
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [
     re.compile(r"(?P<active>ALLOCATED)"),

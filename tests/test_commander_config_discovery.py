@@ -1,5 +1,5 @@
 """
-Tests for Commander's namespace / tag discovery — the 'yd-show' run behind the
+Tests for Commander's namespace / tag discovery — the 'yd-variables' run behind the
 placeholder text — and for what happens when it fails.
 
 Written for a Windows incident: launched with a configuration file, the
@@ -8,8 +8,8 @@ The first 'yd-*' invocation of a session can take longer than the 10s budget to
 start on Windows (interpreter start, SDK imports, a virus scan), and nothing
 retried afterwards, so one slow start cost the placeholders until a restart.
 
-These drive the real _parse_yd_config, with _yd_show_command() overridden to run
-a Python one-liner instead of 'yd-show' — a real child process with a real exit
+These drive the real _parse_yd_config, with _yd_variables_command() overridden to run
+a Python one-liner instead of 'yd-variables' — a real child process with a real exit
 code, so the timeout, non-zero-exit, failed-to-start and bad-JSON branches are
 exercised as they are in production rather than stubbed past.
 """
@@ -30,8 +30,8 @@ from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 # These are the tests discovery itself is the subject of, so they opt out of
-# conftest's stub of _parse_yd_config. No 'yd-show' is spawned all the same:
-# _yd_show_command is overridden to run a Python one-liner instead.
+# conftest's stub of _parse_yd_config. No 'yd-variables' is spawned all the same:
+# _yd_variables_command is overridden to run a Python one-liner instead.
 pytestmark = pytest.mark.real_config_parse
 
 # Long enough that a slow CI node does not mistake a working retry for a stuck
@@ -52,7 +52,7 @@ def win(qapp, monkeypatch):
     """
     monkeypatch.setattr(
         YellowDogApp,
-        "_yd_show_command",
+        "_yd_variables_command",
         lambda self: (sys.executable, ["-c", "print('{}')"]),
     )
     window = YellowDogApp()
@@ -70,7 +70,7 @@ def win(qapp, monkeypatch):
 def python_commands(win, monkeypatch, *scripts: str) -> list[int | None]:
     """
     Make each successive discovery attempt run the next of 'scripts' as Python,
-    instead of running 'yd-show'. Returns the list the timeout of each attempt is
+    instead of running 'yd-variables'. Returns the list the timeout of each attempt is
     recorded in, so a test can see what budget each attempt was given.
 
     The last script is reused if there are more attempts than scripts, so a test
@@ -90,7 +90,7 @@ def python_commands(win, monkeypatch, *scripts: str) -> list[int | None]:
         timeouts.append(timeout_ms)
         return real_parse(quiet=quiet, timeout_ms=timeout_ms)
 
-    monkeypatch.setattr(win, "_yd_show_command", command)
+    monkeypatch.setattr(win, "_yd_variables_command", command)
     monkeypatch.setattr(win, "_parse_yd_config", parse)
     return timeouts
 
@@ -99,7 +99,7 @@ PRINTS_CONFIG = 'print(\'{"namespace": "yd-demo", "tag": "my-tag"}\')'
 NEVER_FINISHES = "import time; time.sleep(60)"
 EXITS_NON_ZERO = "import sys; sys.stderr.write('bad config\\n'); sys.exit(3)"
 PRINTS_RUBBISH = "print('not json at all')"
-# What 'yd-show --nc' says when the environment holds no YellowDog credentials:
+# What 'yd-variables --nc' says when the environment holds no YellowDog credentials:
 # load_common_config() raises KeyError('key') and the CLI exits 1. Built from the
 # CLI's own constant, so renaming the message cannot leave this passing against
 # wording Commander no longer recognises.
@@ -199,11 +199,13 @@ def test_a_non_zero_exit_is_reported_even_though_the_parse_is_quiet(win, monkeyp
 
 
 def test_a_command_that_cannot_be_started_is_reported(win, monkeypatch):
-    monkeypatch.setattr(win, "_yd_show_command", lambda: ("yd-show-does-not-exist", []))
+    monkeypatch.setattr(
+        win, "_yd_variables_command", lambda: ("yd-variables-does-not-exist", [])
+    )
 
     assert win._parse_yd_config(quiet=True) is False
 
-    assert "yd-show" in win.log_output.toPlainText()
+    assert "yd-variables" in win.log_output.toPlainText()
 
 
 def test_output_that_is_not_json_is_reported(win, monkeypatch):
@@ -273,7 +275,7 @@ def test_selecting_a_configuration_file_retries_a_timed_out_discovery(
     win, monkeypatch, tmp_path
 ):
     # This is the incident itself: Commander launched with a configuration file,
-    # the first 'yd-show' too slow to finish, the placeholders blank until the
+    # the first 'yd-variables' too slow to finish, the placeholders blank until the
     # next launch. _set_config_file is the path a supplied file arrives by.
     monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
     monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
@@ -320,7 +322,7 @@ def test_a_configuration_file_changing_on_disk_retries_a_timed_out_discovery(
 # --- Discovery while a user-defined variable is being typed -------------------
 # The user-variables box reparses 600ms after every keystroke, and every
 # variable is typed through states that are not yet 'name=value' — 'instances'
-# on the way to 'instances=3'. Handed one of those, 'yd-show' exits 1 with
+# on the way to 'instances=3'. Handed one of those, 'yd-variables' exits 1 with
 # "Error in variable substitution 'instances'", so simply adding a variable
 # reported an error the user had not made.
 
@@ -347,7 +349,7 @@ def test_a_half_typed_variable_does_not_run_discovery(win, monkeypatch):
 
     type_user_variables(win, "instances")
 
-    assert attempts == [], "'yd-show' cannot resolve 'instances'; do not ask it to"
+    assert attempts == [], "'yd-variables' cannot resolve 'instances'; do not ask it to"
     assert win.log_output.toPlainText() == "", "the user has not made a mistake yet"
 
 
@@ -391,7 +393,7 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
 
 
 # --- 'Nothing is configured' is not a failure ---------------------------------
-# With no configuration file selected, 'yd-show' is run with '--nc' and has only
+# With no configuration file selected, 'yd-variables' is run with '--nc' and has only
 # the environment to work from. An environment with no YellowDog credentials
 # makes it exit 1 before it can resolve anything, and that was reported as an
 # error — at startup, and again on every Deselect, to a user who had done
@@ -415,7 +417,7 @@ def test_starting_with_no_credentials_reports_nothing(qapp, monkeypatch):
     # The report this exists for arrived before the user had touched anything.
     monkeypatch.setattr(
         YellowDogApp,
-        "_yd_show_command",
+        "_yd_variables_command",
         lambda self: (sys.executable, ["-c", NO_CREDENTIALS]),
     )
     window = YellowDogApp()

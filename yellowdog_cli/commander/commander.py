@@ -134,9 +134,9 @@ SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
-CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
+CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
 # The one retry after a timeout gets a longer budget: by then it is known that a
-# 'yd-show' here is slow rather than hung, and on Windows the first 'yd-*' of a
+# 'yd-variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
 # session can legitimately need this long to start (interpreter start, SDK
 # imports, a virus scan of a freshly installed console script).
 CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
@@ -1261,7 +1261,7 @@ class YellowDogApp(QMainWindow):
             ui_object.textChanged.connect(self._invalidate_config_parse)
 
         # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables change (debounced to avoid running yd-show
+        # user-defined variables change (debounced to avoid running yd-variables
         # on every keystroke)
         self._user_vars_reparse_timer = QTimer(self)
         self._user_vars_reparse_timer.setSingleShot(True)
@@ -1272,7 +1272,7 @@ class YellowDogApp(QMainWindow):
         self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
         # Defer config parse until after the window is shown, so the GUI is
-        # visible before yd-show runs
+        # visible before yd-variables runs
         QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
@@ -1333,7 +1333,7 @@ class YellowDogApp(QMainWindow):
 
         Held back while any variable in the box is not yet 'name=value'. Every
         variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd-show' rejects one and exits 1, so the reparse
+        to 'instances=3' — and 'yd-variables' rejects one and exits 1, so the reparse
         landing on such a keystroke reported "Error in variable substitution
         'instances'" against a mistake the user had not made. Nothing is said
         about it, because at 600ms after a keystroke there is nothing to say: an
@@ -1368,7 +1368,7 @@ class YellowDogApp(QMainWindow):
 
         Only after a *timeout*: a non-zero exit or a program that cannot be
         started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd-show'
+        timeout is different — the incident this exists for was a first 'yd-variables'
         on Windows that needed longer than its budget to start, where the second
         one is warm and finishes at once. Before this, the placeholders stayed
         blank until Commander was restarted, which is what the user had to do.
@@ -1428,19 +1428,16 @@ class YellowDogApp(QMainWindow):
         self.object_path_override.setPlaceholderText(default_prefix)
         cast(QWidget, self.object_path_override.viewport()).update()
 
-    def _yd_show_command(self) -> tuple[str, list[str]]:
+    def _yd_variables_command(self) -> tuple[str, list[str]]:
         """
-        The 'yd-show' invocation that resolves the namespace and tag for the
+        The 'yd-variables' invocation that resolves the namespace and tag for the
         current configuration source, namespace/tag overrides and user variables.
         """
-        return "yd-show", (
+        return "yd-variables", (
             self._config_source_args()
             + [
                 "--nf",
-                "-q",
-                "-r",
                 NAMESPACE,
-                "-r",
                 TAG,
             ]
             + self._namespace_tag_and_user_vars()
@@ -1451,8 +1448,8 @@ class YellowDogApp(QMainWindow):
         Whether a failed discovery means 'nothing is configured yet' rather than
         'something is wrong', in which case it is not reported.
 
-        Only with no configuration file selected. 'yd-show' is then given '--nc'
-        and has nothing but the environment to work from, and an environment
+        Only with no configuration file selected. 'yd-variables' is then given
+        '--nc' and has nothing but the environment to work from, and an environment
         with no YellowDog credentials in it makes it exit 1 with "Missing
         configuration data: 'key'" before it can resolve anything. Reported, that
         put an error in the output window at startup, and again on every
@@ -1501,7 +1498,7 @@ class YellowDogApp(QMainWindow):
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
-        cmd, args = self._yd_show_command()
+        cmd, args = self._yd_variables_command()
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
@@ -1512,13 +1509,13 @@ class YellowDogApp(QMainWindow):
             self._config_parse_timed_out = True
             self._report_discovery_failure(
                 f"Timed out after {timeout_ms // 1000}s parsing"
-                f" configuration with 'yd-show'"
+                f" configuration with 'yd-variables'"
             )
             return False
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-show': {yd_process.errorString()}"
+                f"Error parsing config with 'yd-variables': {yd_process.errorString()}"
             )
             return False
 
@@ -1527,7 +1524,7 @@ class YellowDogApp(QMainWindow):
             if self._nothing_is_configured(error_output):
                 return False
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-show'"
+                f"Error parsing config with 'yd-variables'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"
             )
             return False
@@ -3487,7 +3484,7 @@ class YellowDogApp(QMainWindow):
         # Resolve template variables iteratively, innermost first, to support up
         # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
         # Each pass finds the deepest {{...}} with no further {{ inside it,
-        # resolves that single variable via yd-show, and substitutes the result.
+        # resolves that single variable via yd-variables, and substitutes the result.
         for _ in range(3):
             if "{{" not in value:
                 break
@@ -3501,11 +3498,9 @@ class YellowDogApp(QMainWindow):
             try:
                 result = subprocess.run(
                     [
-                        "yd-show",
+                        "yd-variables",
                         "-c",
                         self._config_basename(),
-                        "-q",
-                        "-r",
                         var_name,
                     ]
                     + self._namespace_tag_and_user_vars(),

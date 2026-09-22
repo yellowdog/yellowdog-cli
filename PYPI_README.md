@@ -35,6 +35,7 @@ The commands support:
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Uploading** files to a remote data store with the **`yd-upload`** command
+- **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
 - **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
 Utility commands are also provided: **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.

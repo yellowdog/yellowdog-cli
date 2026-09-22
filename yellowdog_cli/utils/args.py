@@ -1357,19 +1357,30 @@ class CLIParser:
                     "configured worker pool"
                 ),
             )
+
+        # yd-variables
+        if "variables" in module_name:
             parser.add_argument(
-                "--report-variable",
-                "-r",
+                "variable_names",
+                nargs="*",
+                default=[],
                 type=str,
-                required=False,
-                action="append",
-                help=(
-                    "report the processed value of the specified variable and exit; "
-                    "the option can be supplied multiple times, one per variable, "
-                    "or use 'all' to report all variables; use with '--quiet' for "
-                    "output in JSON"
-                ),
                 metavar="<var>",
+                help=(
+                    "the variable substitution(s) whose processed values are to be"
+                    " reported; all variables are reported if none is supplied"
+                ),
+            )
+            parser.add_argument(
+                "--show-secrets",
+                action="store_true",
+                required=False,
+                help=(
+                    "include the values of the 'key' and 'secret' variables when"
+                    " reporting all variables; they are always reported when named"
+                    " explicitly. No other variable is ever redacted: a user-defined"
+                    " variable holding a credential is reported in full"
+                ),
             )
 
         # yd-list / yd-show
@@ -2348,10 +2359,14 @@ class CLIParser:
     def show_token(self) -> bool | None:
         return self.args.show_token
 
+    # -----------------------------------------------------------------------
+    # yd-variables
+    # -----------------------------------------------------------------------
+
     @property
     @allow_missing_attribute
-    def report_variables(self) -> list[str]:
-        return self.args.report_variable
+    def variable_names(self) -> list[str]:
+        return self.args.variable_names
 
     # -----------------------------------------------------------------------
     # yd-list / yd-show
@@ -2591,6 +2606,8 @@ def lookup_module_description(module_name: str) -> str | None:
             "waiting for Work Requirements, Worker Pools, or Compute Requirements"
             " to reach a terminal state"
         )
+    elif "variables" in module_name:
+        suffix = "reporting the processed values of variable substitutions"
     elif "version" in module_name:
         suffix = "reporting version information"
     elif "help" in module_name:

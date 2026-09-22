@@ -4,6 +4,9 @@
 Command to show the JSON details of YellowDog entities via their IDs.
 """
 
+from sys import exit as sys_exit
+from typing import Any
+
 from yellowdog_client.model import ConfiguredWorkerPool
 
 from yellowdog_cli.list import get_keyring
@@ -18,8 +21,6 @@ from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
-    print_json,
-    print_simple,
     print_to_file,
     print_yd_object,
 )
@@ -36,7 +37,6 @@ from yellowdog_cli.utils.settings import (
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
 )
-from yellowdog_cli.utils.variables import get_all_user_variables, get_user_variable
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,
@@ -50,72 +50,102 @@ from yellowdog_cli.utils.ydid_utils import (
     split_instance_specification,
 )
 
+# An object to be shown, paired with any additional fields to add to its JSON
+# representation. A single YellowDog ID can yield more than one: a Configured
+# Worker Pool shown with '--show-token' yields the pool and its token.
+ShowItem = tuple[Any, dict | None]
+
 
 @main_wrapper
 def main():
+    if show_ydids(ARGS_PARSER.yellowdog_ids) > 0:
+        sys_exit(1)
 
-    if ARGS_PARSER.report_variables is not None:  # Report selected variables and return
-        _report_variables(ARGS_PARSER.report_variables)
-        return
 
-    # Generate a JSON list of resources if there are multiple YDIDs
-    # and the 'quiet' option is enabled
-    generate_json_list = len(ARGS_PARSER.yellowdog_ids) > 1 and ARGS_PARSER.quiet
-
+def show_ydids(ydids: list[str]) -> int:
+    """
+    Resolve and print the details of each of the supplied YellowDog IDs.
+    Returns the number of IDs that could not be resolved.
+    """
     if ARGS_PARSER.strip_ids:
         print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
-    if generate_json_list:
+    items: list[ShowItem] = []
+    failures = 0
+    for ydid in ydids:
+        resolved = resolve_details(ydid)
+        if resolved is None:  # The reason has already been reported
+            failures += 1
+            continue
+        items += resolved
+
+    # Whenever more than one object is to be printed, it's printed as a JSON
+    # array. More than one ID asked for is enough on its own, so that the shape
+    # of the output follows the request rather than how much of it succeeded;
+    # a single ID can also yield more than one object, a Configured Worker Pool
+    # shown with '--show-token' being the only case.
+    _print_items(items, as_json_array=len(ydids) > 1 or len(items) > 1)
+
+    return failures
+
+
+def _print_items(items: list[ShowItem], as_json_array: bool):
+    """
+    Print the resolved objects, framing them as a JSON array if required.
+    This is the only place the array's indentation and its separating commas
+    are applied.
+    """
+    if as_json_array:
         print("[")
         if ARGS_PARSER.output_file is not None:
             print_to_file("[", ARGS_PARSER.output_file)
 
-    for index, ydid in enumerate(ARGS_PARSER.yellowdog_ids):
-        if generate_json_list:
-            if index < len(ARGS_PARSER.yellowdog_ids) - 1:
-                show_details(ydid, initial_indent=2, with_final_comma=True)
-            else:
-                show_details(ydid, initial_indent=2, with_final_comma=False)
-        else:
-            show_details(ydid)
+    for index, (yd_object, add_fields) in enumerate(items):
+        print_yd_object(
+            yd_object,
+            initial_indent=2 if as_json_array else 0,
+            with_final_comma=as_json_array and index < len(items) - 1,
+            add_fields=add_fields,
+        )
 
-    if generate_json_list:
+    if as_json_array:
         print("]")
         if ARGS_PARSER.output_file is not None:
             print_to_file("]", ARGS_PARSER.output_file)
 
 
-def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = False):
+def resolve_details(ydid: str) -> list[ShowItem] | None:
     """
-    Show the details for a given YDID.
+    Resolve a YellowDog ID to the object(s) to be shown. Returns None if the ID
+    could not be resolved, having already reported why.
+
+    Resolution is deliberately separated from printing: the JSON array's
+    indentation and commas were previously threaded through each branch below,
+    applied to some of them and forgotten on the rest, which left the array
+    unparseable for most entity types.
     """
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form
     if (cr_id_instance_id := split_instance_specification(ydid)) is not None:
-        _show_instance_details(
-            cr_id_instance_id[0],
-            cr_id_instance_id[1],
-            initial_indent=initial_indent,
-            with_final_comma=with_final_comma,
-        )
-        return
+        return _resolve_instance_details(cr_id_instance_id[0], cr_id_instance_id[1])
 
     try:
         if (ydid_type := get_ydid_type(ydid)) is None:
             print_error(f"Invalid YellowDog ID '{ydid}'")
-            return
+            return None
+
         if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
             print_info(f"Showing details of Compute Source Template ID '{ydid}'")
             if ARGS_PARSER.substitute_ids:
                 print_info("Substituting Image Family ID with name")
-            print_yd_object(
-                substitute_image_family_id_for_name_in_cst(
-                    CLIENT, CLIENT.compute_client.get_compute_source_template(ydid)
-                ),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE}),
-            )
+            return [
+                (
+                    substitute_image_family_id_for_name_in_cst(
+                        CLIENT, CLIENT.compute_client.get_compute_source_template(ydid)
+                    ),
+                    {RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE},
+                )
+            ]
 
         elif ydid_type == YDIDType.COMPUTE_REQUIREMENT_TEMPLATE:
             print_info(f"Showing details of Compute Requirement Template ID '{ydid}'")
@@ -123,18 +153,19 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
                 print_info(
                     "Substituting Compute Source Template IDs and Image Family IDs with names"
                 )
-            print_yd_object(
-                substitute_ids_for_names_in_crt(
-                    CLIENT, CLIENT.compute_client.get_compute_requirement_template(ydid)
-                ),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE}),
-            )
+            return [
+                (
+                    substitute_ids_for_names_in_crt(
+                        CLIENT,
+                        CLIENT.compute_client.get_compute_requirement_template(ydid),
+                    ),
+                    {RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE},
+                )
+            ]
 
         elif ydid_type == YDIDType.COMPUTE_REQUIREMENT:
             print_info(f"Showing details of Compute Requirement ID '{ydid}'")
-            print_yd_object(CLIENT.compute_client.get_compute_requirement_by_id(ydid))
+            return [(CLIENT.compute_client.get_compute_requirement_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.COMPUTE_SOURCE:
             print_info(f"Showing details of Compute Source ID '{ydid}'")
@@ -143,35 +174,38 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             )
             for source in compute_requirement.provisionStrategy.sources or []:
                 if source.id == ydid:
-                    print_yd_object(source)
-                    return
-            else:
-                print_error(f"Compute Source ID '{ydid}' not found")
+                    return [(source, None)]
+            print_error(f"Compute Source ID '{ydid}' not found")
+            return None
 
         elif ydid_type == YDIDType.WORKER_POOL:
             print_info(f"Showing details of Worker Pool ID '{ydid}'")
             worker_pool = CLIENT.worker_pool_client.get_worker_pool_by_id(ydid)
-            print_yd_object(
-                worker_pool,
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=(
-                    {RESOURCE_PROPERTY_NAME: RN_CONFIGURED_POOL}
-                    if isinstance(worker_pool, ConfiguredWorkerPool)
-                    else {}
-                ),
-            )
+            items: list[ShowItem] = [
+                (
+                    worker_pool,
+                    (
+                        {RESOURCE_PROPERTY_NAME: RN_CONFIGURED_POOL}
+                        if isinstance(worker_pool, ConfiguredWorkerPool)
+                        else {}
+                    ),
+                )
+            ]
             if ARGS_PARSER.show_token and isinstance(worker_pool, ConfiguredWorkerPool):
                 print_info("Showing Configured Worker Pool token data")
-                print_yd_object(
-                    CLIENT.worker_pool_client.get_configured_worker_pool_token_by_id(
-                        ydid
+                items.append(
+                    (
+                        CLIENT.worker_pool_client.get_configured_worker_pool_token_by_id(
+                            ydid
+                        ),
+                        None,
                     )
                 )
+            return items
 
         elif ydid_type == YDIDType.NODE:
             print_info(f"Showing details of Node ID '{ydid}'")
-            print_yd_object(CLIENT.worker_pool_client.get_node_by_id(ydid))
+            return [(CLIENT.worker_pool_client.get_node_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.WORKER:
             print_info(f"Showing details of Worker ID '{ydid}'")
@@ -180,14 +214,13 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             )
             for worker in node.workers or []:
                 if worker.id == ydid:
-                    print_yd_object(worker)
-                    return
-            else:
-                print_error(f"Worker ID '{ydid}' not found")
+                    return [(worker, None)]
+            print_error(f"Worker ID '{ydid}' not found")
+            return None
 
         elif ydid_type == YDIDType.WORK_REQUIREMENT:
             print_info(f"Showing details of Work Requirement ID '{ydid}'")
-            print_yd_object(CLIENT.work_client.get_work_requirement_by_id(ydid))
+            return [(CLIENT.work_client.get_work_requirement_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.TASK_GROUP:
             print_info(f"Showing details of Task Group ID '{ydid}'")
@@ -196,31 +229,30 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             )
             for task_group in work_requirement.taskGroups or []:
                 if task_group.id == ydid:
-                    print_yd_object(task_group)
-                    return
-            else:
-                print_error(f"Task Group ID '{ydid}' not found")
+                    return [(task_group, None)]
+            print_error(f"Task Group ID '{ydid}' not found")
+            return None
 
         elif ydid_type == YDIDType.TASK:
             print_info(f"Showing details of Task ID '{ydid}'")
-            print_yd_object(CLIENT.work_client.get_task_by_id(ydid))
+            return [(CLIENT.work_client.get_task_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.IMAGE_FAMILY:
             print_info(f"Showing details of Image Family ID '{ydid}'")
-            print_yd_object(
-                CLIENT.images_client.get_image_family_by_id(ydid),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_IMAGE_FAMILY}),
-            )
+            return [
+                (
+                    CLIENT.images_client.get_image_family_by_id(ydid),
+                    {RESOURCE_PROPERTY_NAME: RN_IMAGE_FAMILY},
+                )
+            ]
 
         elif ydid_type == YDIDType.IMAGE_GROUP:
             print_info(f"Showing details of Image Group ID '{ydid}'")
-            print_yd_object(CLIENT.images_client.get_image_group_by_id(ydid))
+            return [(CLIENT.images_client.get_image_group_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.IMAGE:
             print_info(f"Showing details of Image ID '{ydid}'")
-            print_yd_object(CLIENT.images_client.get_image(ydid))
+            return [(CLIENT.images_client.get_image(ydid), None)]
 
         elif ydid_type == YDIDType.KEYRING:
             print_info(f"Showing details of Keyring ID '{ydid}'")
@@ -228,15 +260,14 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             for keyring in keyrings:
                 if keyring.id == ydid:
                     # This fetches additional Keyring data: credentials and accessors
-                    print_yd_object(
-                        get_keyring(keyring.name),  # type: ignore[arg-type]
-                        initial_indent=initial_indent,
-                        with_final_comma=with_final_comma,
-                        add_fields=({RESOURCE_PROPERTY_NAME: RN_KEYRING}),
-                    )
-                    return
-            else:
-                print_error(f"Keyring ID '{ydid}' not found")
+                    return [
+                        (
+                            get_keyring(keyring.name),  # type: ignore[arg-type]
+                            {RESOURCE_PROPERTY_NAME: RN_KEYRING},
+                        )
+                    ]
+            print_error(f"Keyring ID '{ydid}' not found")
+            return None
 
         elif ydid_type == YDIDType.ALLOWANCE:
             print_info(f"Showing details of Allowance ID '{ydid}'")
@@ -244,77 +275,61 @@ def show_details(ydid: str, initial_indent: int = 0, with_final_comma: bool = Fa
             if ARGS_PARSER.substitute_ids:
                 print_info("Substituting ID with name")
                 allowance = substitute_id_for_name_in_allowance(CLIENT, allowance)  # type: ignore[arg-type]
-            print_yd_object(
-                allowance,
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_ALLOWANCE}),
-            )
+            return [(allowance, {RESOURCE_PROPERTY_NAME: RN_ALLOWANCE})]
 
         elif ydid_type == YDIDType.APPLICATION:
             print_info(f"Showing details of Application ID '{ydid}'")
             group_names = [
                 group.name for group in get_application_group_summaries(CLIENT, ydid)
             ]
-            print_yd_object(
-                CLIENT.account_client.get_application(ydid),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=(
+            return [
+                (
+                    CLIENT.account_client.get_application(ydid),
                     {
                         PROP_GROUPS: group_names,
                         RESOURCE_PROPERTY_NAME: RN_APPLICATION,
-                    }
-                ),
-            )
+                    },
+                )
+            ]
 
         elif ydid_type == YDIDType.USER:
             print_info(f"Showing details of User ID '{ydid}'")
             user = CLIENT.account_client.get_user(ydid)
-            print_yd_object(
-                user,
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: user.__class__.__name__}),
-            )
+            return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
 
         elif ydid_type == YDIDType.GROUP:
             print_info(f"Showing details of Group ID '{ydid}'")
-            print_yd_object(
-                CLIENT.account_client.get_group(ydid),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_GROUP}),
-            )
+            return [
+                (
+                    CLIENT.account_client.get_group(ydid),
+                    {RESOURCE_PROPERTY_NAME: RN_GROUP},
+                )
+            ]
 
         elif ydid_type == YDIDType.ROLE:
             print_info(f"Showing details of Role ID '{ydid}'")
-            print_yd_object(
-                CLIENT.account_client.get_role(ydid),
-                initial_indent=initial_indent,
-                with_final_comma=with_final_comma,
-                add_fields=({RESOURCE_PROPERTY_NAME: RN_ROLE}),
-            )
+            return [
+                (
+                    CLIENT.account_client.get_role(ydid),
+                    {RESOURCE_PROPERTY_NAME: RN_ROLE},
+                )
+            ]
 
         else:
             print_error(f"Unknown (or unsupported) YellowDog ID type for '{ydid}'")
-            return
+            return None
 
     except Exception as e:
         if is_http_not_found(e):
             print_error(f"{ydid_type.value} ID '{ydid}' not found")  # type: ignore[union-attr]
         else:
             print_error(f"Unable to show details for '{ydid}': {e}")
+        return None
 
 
-def _show_instance_details(
-    cr_id: str,
-    instance_id: str,
-    initial_indent: int = 0,
-    with_final_comma: bool = False,
-):
+def _resolve_instance_details(cr_id: str, instance_id: str) -> list[ShowItem] | None:
     """
-    Show the details of an Instance within a Compute Requirement, supplied
+    Resolve the details of an Instance within a Compute Requirement, supplied
     in 'cr_id.instance_id' form.
     """
     print_info(
@@ -332,55 +347,21 @@ def _show_instance_details(
             print_error(f"Compute Requirement ID '{cr_id}' not found")
         else:
             print_error(f"Unable to find Compute Requirement ID '{cr_id}': {e}")
-        return
+        return None
 
     try:
         instance = get_instance_by_id(CLIENT, cr_id, instance_id)
     except Exception as e:
         print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
-        return
+        return None
 
     if instance is None:
         print_error(
             f"Instance ID '{instance_id}' not found in Compute Requirement ID '{cr_id}'"
         )
-        return
+        return None
 
-    print_yd_object(
-        instance,
-        initial_indent=initial_indent,
-        with_final_comma=with_final_comma,
-    )
-
-
-def _report_variables(variable_names: list[str]):
-    """
-    Convenience function to report the processed values of user variables.
-    """
-    if "all" in variable_names:
-        variables = get_all_user_variables()
-    else:
-        variables = {
-            variable_name: get_user_variable(variable_name)
-            for variable_name in ARGS_PARSER.report_variables
-        }
-    variables_sorted = dict(sorted(variables.items()))
-
-    if ARGS_PARSER.quiet:
-        print_json(variables_sorted)
-        return
-
-    if not variables_sorted:
-        print_info("No variables to report")
-        return
-
-    print_info("Reporting selected variable values:")
-    max_var_name = max(len(name) for name in variables_sorted)
-    for name, value in variables_sorted.items():
-        print_simple(
-            f"                      {name}{' ' * (max_var_name - len(name))} = {value}"
-        )
-    return
+    return [(instance, None)]
 
 
 # Entry point

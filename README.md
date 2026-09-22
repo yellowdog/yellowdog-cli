@@ -181,6 +181,7 @@
       * [yd-wait](#yd-wait)
       * [yd-compare](#yd-compare)
       * [yd-application](#yd-application)
+      * [yd-variables](#yd-variables)
    * [Resource Commands](#resource-commands)
       * [yd-create](#yd-create)
       * [yd-remove](#yd-remove)
@@ -198,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 22 10:18:15 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 22 11:03:21 BST 2026 -->
 
 <!--te-->
 
@@ -230,6 +231,7 @@ The commands provide the following capabilities:
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
+- **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
 - **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
@@ -3888,8 +3890,11 @@ Instances have no YellowDog ID of their own: they're identified by the combinati
 
 Key options:
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
-- `--report-variable`/`-r <var>` — report the processed value of the specified variable substitution and exit; can be supplied multiple times, or use `all` to report all variables. Combine with `--quiet` to emit the report as JSON. This is useful for debugging variable substitution setups
 - `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list)
+
+Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
+
+It exits with code 1 if any of the supplied IDs could not be shown (invalid ID, entity not found, or an API error), and 0 otherwise. The IDs that could be shown are still emitted.
 
 ```shell
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
@@ -4000,6 +4005,38 @@ yd-application --json
   "roles": {"administrator": ["GLOBAL"]}
 }
 ```
+
+### yd-variables
+
+The `yd-variables` command reports the processed values of variable substitutions, as JSON. It shows what a specification file would actually see, once the TOML configuration file, the environment, any `YD_VAR_*` variables, any `--variable`/`-v` options and the built-in defaults have all been taken into account, which makes it the quickest way to debug a variable substitution setup.
+
+```shell
+yd-variables [options] [<var> ...]
+```
+
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order, and it is the command's only output — there is no need to pass `--quiet`/`-q`. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
+
+```shell
+yd-variables                           # report every variable
+yd-variables namespace tag             # report only these two
+yd-variables -v instances=5 instances  # report a variable set on the command line
+```
+
+```json
+{"namespace": "my-namespace", "tag": "my-tag"}
+```
+
+Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`. Naming either of them reports its value — a name is an explicit request for that variable — and `--show-secrets` reports both in the full listing.
+
+```shell
+yd-variables                 # 'key' and 'secret' are reported as <REDACTED>
+yd-variables --show-secrets  # every variable, credentials included
+yd-variables key secret      # named explicitly, so reported in full
+```
+
+**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
+
+This command replaces the `--report-variable`/`-r` option of `yd-show`, which has been removed. `yd-show -q -r namespace -r tag` becomes `yd-variables namespace tag`, and `yd-show -q -r all` becomes `yd-variables`.
 
 ## Resource Commands
 

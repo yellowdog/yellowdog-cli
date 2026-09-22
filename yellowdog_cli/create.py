@@ -103,6 +103,7 @@ from yellowdog_cli.utils.settings import (
     PROP_TYPE,
     PROP_UNITS,
     PROP_USERNAME,
+    REDACTED_VALUE,
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -443,7 +444,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         keyring_password = (
             keyring_password
             if ARGS_PARSER.show_keyring_passwords or show_secrets
-            else "<REDACTED>"
+            else REDACTED_VALUE
         )
         print_info(
             f"Created Keyring '{name}' ({keyring.id}): Password = {keyring_password}"  # type: ignore[union-attr]

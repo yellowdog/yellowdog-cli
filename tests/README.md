@@ -95,6 +95,7 @@ pytest -v -n 4 --run-demos
 | `test_retry_failure_policy.py` | `utils/submit_utils.py`, `submit.py` — the `RetryPolicy`/`FailurePolicy`/`TaskErrorSelector`/`Selection` builders, and the conflict and deprecation handling around them |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
 | `test_show_instance.py` | `show.py` — the Instance (`cr_id.instance_id`) form: routing, lookup and error paths |
+| `test_show_output.py` | `show.py` — the shape of `yd-show`'s output, parsed rather than asserted argument by argument: a JSON array whenever more than one object is printed, a bare object otherwise, and the failure count behind the exit status |
 | `test_shutdown_glob.py` | `shutdown.py` — glob vs. literal name selection for `yd-shutdown`, excluding already-finished Worker Pools |
 | `test_sorted_objects.py` | `utils/printing.py` — `sorted_objects`: `--sort created` ordering of entity summaries, earliest first, with `--reverse` inverting it |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
@@ -108,6 +109,7 @@ pytest -v -n 4 --run-demos
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
 | `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
+| `test_variables_command.py` | `variables.py` — `yd-variables`: named selection, all variables when none is named, alphabetical order, `null` for a name that isn't a variable, and the redaction of `key`/`secret` in the full report (revealed by naming them or by `--show-secrets`, and no other variable redacted) |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 
 ### Commander GUI Tests (no flags required; skipped without a usable Qt)
@@ -132,7 +134,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_notices.py` | The modal notice for a missing `results` directory: shown and logged, one OK button, plain text so a Windows path survives, and log-only under `--yes` or shutdown |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
-| `test_commander_config_discovery.py` | The `yd-show` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, that every path into discovery gets that retry, that the debounced reparse waits for a half-typed user variable to be completed, and that the one failure meaning 'nothing is configured yet' is suppressed while no configuration file is selected without suppressing any other |
+| `test_commander_config_discovery.py` | The `yd-variables` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, that every path into discovery gets that retry, that the debounced reparse waits for a half-typed user variable to be completed, and that the one failure meaning 'nothing is configured yet' is suppressed while no configuration file is selected without suppressing any other |
 | `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
@@ -149,7 +151,7 @@ These are supported by three non-test modules and by fixtures in the root `conft
 | `gui_harness.py` | Generic Qt helpers: run or arm a dialog so an interaction lands inside its real modal loop, watchdogged; count visible rows; find buttons |
 | `commander_dialogs.py` | Drivers for Commander's own confirmation, chooser and notice, for the cases where production builds and execs the dialog |
 | `qt_guard.py` | `require_qt()` — the module-level skip, used instead of `pytest.importorskip` so that PyQt6-present-but-unusable skips rather than errors |
-| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
+| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-variables`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
 
 ### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
 
