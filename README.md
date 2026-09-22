@@ -198,7 +198,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 22 09:02:05 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 22 09:28:13 BST 2026 -->
 
 <!--te-->
 
@@ -1682,7 +1682,9 @@ yd-submit --add-to my-work-requirement --overwrite my-spec.json
 
 By default, `yd-submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
 
-> **Note:** `--dry-run` is not supported with `--add-to`. Dry-run the specification independently first to inspect its structure before submitting.
+`--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is not in a terminal state, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
+
+The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
 
 ### Submitting 'Raw' JSON Work Requirement Specifications
 

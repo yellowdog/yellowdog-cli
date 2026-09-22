@@ -216,17 +216,7 @@ def main():
 
     if wr_data_file is None and csv_files is not None:
         wr_data = csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
-        if ARGS_PARSER.add_to and not ARGS_PARSER.dry_run:
-            add_to_existing_work_requirement(
-                files_directory=files_directory,
-                wr_data=wr_data,
-                task_count=None,
-            )
-        else:
-            submit_work_requirement(
-                files_directory=files_directory,
-                wr_data=wr_data,
-            )
+        _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
         if ARGS_PARSER.jsonnet_dry_run and not wr_data_file.lower().endswith("jsonnet"):
@@ -289,33 +279,39 @@ def main():
             )
 
         validate_properties(wr_data, "Work Requirement JSON")
-        if ARGS_PARSER.add_to and not ARGS_PARSER.dry_run:
-            add_to_existing_work_requirement(
-                files_directory=files_directory,
-                wr_data=wr_data,
-                task_count=None,
-            )
-        else:
-            submit_work_requirement(
-                files_directory=files_directory,
-                wr_data=wr_data,
-            )
+        _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
 
     else:
-        if ARGS_PARSER.add_to and not ARGS_PARSER.dry_run:
-            add_to_existing_work_requirement(
-                files_directory=files_directory,
-                wr_data=None,
-                task_count=CONFIG_WR.task_count,
-            )
-        else:
-            submit_work_requirement(
-                files_directory=files_directory,
-                task_count=CONFIG_WR.task_count,
-            )
+        _submit_or_add_to(
+            files_directory=files_directory, task_count=CONFIG_WR.task_count
+        )
 
     if ARGS_PARSER.dry_run:
         WR_SNAPSHOT.print()
+
+
+def _submit_or_add_to(
+    files_directory: str,
+    wr_data: dict | None = None,
+    task_count: int | None = None,
+) -> None:
+    """
+    Route a submission: with '--add-to', into an existing Work Requirement;
+    otherwise into a new one. Both honour '--dry-run', though only the former
+    needs to read from the platform to do so.
+    """
+    if ARGS_PARSER.add_to:
+        add_to_existing_work_requirement(
+            files_directory=files_directory,
+            wr_data=wr_data,
+            task_count=task_count,
+        )
+    else:
+        submit_work_requirement(
+            files_directory=files_directory,
+            wr_data=wr_data,
+            task_count=task_count,
+        )
 
 
 def submit_work_requirement(
@@ -1370,9 +1366,31 @@ def add_to_existing_work_requirement(
                 " add them under a new Task Group name."
             )
 
+    all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
+
+    if ARGS_PARSER.dry_run:
+        # Seed the snapshot with every Task Group the Tasks below will attach
+        # to, or the first batch has nothing to attach to. The existing Task
+        # Groups' own Tasks can't be shown: the API's Task Group carries a
+        # summary of them, not the Tasks themselves -- hence the line saying
+        # which of the Task Groups below are already there.
+        work_requirement.taskGroups = all_task_groups
+        WR_SNAPSHOT.set_work_requirement(work_requirement)
+        if existing_tgs:
+            print_dry_run(
+                f"Work Requirement '{ID}' already contains {len(existing_tgs)}"
+                " Task Group(s), shown below without their existing Tasks: "
+                + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
+            )
+        if new_tgs:
+            print_dry_run(
+                f"Would add {len(new_tgs)} new Task Group(s) to existing"
+                f" Work Requirement '{ID}'"
+            )
+
     # If there are new TGs, update the Work Requirement with the full TG list
-    if new_tgs:
-        work_requirement.taskGroups = existing_tgs + [tg for _, tg in new_tgs]
+    elif new_tgs:
+        work_requirement.taskGroups = all_task_groups
         work_requirement = CLIENT.work_client.update_work_requirement(work_requirement)
         print_info(
             f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{ID}'"

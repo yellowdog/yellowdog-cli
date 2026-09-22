@@ -54,7 +54,7 @@ pytest -v -n 4 --run-demos
 
 | File | What it tests |
 |---|---|
-| `test_add_to.py` | `submit.py` — `--add-to` feature: offset-aware task/task-group naming and dispatch logic |
+| `test_add_to.py` | `submit.py` — `--add-to` feature: offset-aware task/task-group naming, dispatch logic, and the `--dry-run` combination (reads the target Work Requirement, writes nothing) |
 | `test_application.py` | `application.py` — the `--json` payload (Application properties plus `portalUrl`, `groups`, `roles`, each `null` when undeterminable) and the human-readable report |
 | `test_args_command_detection.py` | `utils/args.py` — command detection uses the basename of `sys.argv[0]`, not the full install path |
 | `test_arguments_assembly.py` | `utils/submit_utils.py` — `assemble_arguments` (argumentsPrefix + arguments + argumentsPostfix combination) |

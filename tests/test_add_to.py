@@ -12,6 +12,7 @@ from yellowdog_client.model import TaskGroup, WorkRequirement, WorkRequirementSt
 import yellowdog_cli.submit as submit_module
 import yellowdog_cli.utils.submit_utils as su
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
 from yellowdog_cli.utils.settings import VAR_CLOSING_DELIMITER, VAR_OPENING_DELIMITER
 
@@ -251,6 +252,8 @@ class TestAddToPartitioning:
         existing_task_count: int = 2,
         existing_task_types: dict[str, list[str]] | None = None,
         spec_task_types: dict[str, list[str]] | None = None,
+        dry_run: bool = False,
+        capsys=None,
     ) -> dict[str, Any]:
         existing_task_types = existing_task_types or {}
         spec_task_types = spec_task_types or {}
@@ -273,6 +276,7 @@ class TestAddToPartitioning:
 
         add_tasks_calls: list[dict] = []
         update_wr_calls: list = []
+        get_wr_mock = MagicMock(return_value=existing_wr)
 
         def fake_add_tasks(
             tg_number,
@@ -324,7 +328,7 @@ class TestAddToPartitioning:
             patch.object(
                 submit_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
-                return_value=existing_wr,
+                get_wr_mock,
             ),
             patch.object(submit_module, "add_substitutions_without_overwriting"),
             patch.object(
@@ -347,14 +351,22 @@ class TestAddToPartitioning:
             patch.object(
                 CLIParser, "follow", new_callable=PropertyMock, return_value=False
             ),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=dry_run
+            ),
         ):
+            submit_module.WR_SNAPSHOT = WorkRequirementSnapshot()
             submit_module.add_to_existing_work_requirement(
                 files_directory=".", wr_data=wr_data
             )
+            snapshot = submit_module.WR_SNAPSHOT
 
         return {
             "add_tasks_calls": add_tasks_calls,
             "update_wr_calls": update_wr_calls,
+            "snapshot": snapshot,
+            "output": capsys.readouterr().out if capsys is not None else "",
+            "get_wr_mock": get_wr_mock,
         }
 
     def test_all_new_tgs_triggers_update_work_requirement(self):
@@ -471,3 +483,135 @@ class TestAddToPartitioning:
             spec_task_types={"grp": ["bash", "docker"]},
         )
         assert len(result["update_wr_calls"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# --add-to with --dry-run
+# ---------------------------------------------------------------------------
+
+
+class TestAddToDryRun(TestAddToPartitioning):
+    """
+    A dry run against an existing Work Requirement reads it, works out what
+    would be added, and writes nothing. It inherits the partitioning harness,
+    which already builds an existing Work Requirement and stubs the platform.
+    """
+
+    def test_nothing_is_written(self):
+        result = self._run(
+            existing_tg_names=["existing_1"], spec_tg_names=["new_tg"], dry_run=True
+        )
+        assert result["update_wr_calls"] == []
+
+    def test_the_existing_work_requirement_is_still_read(self):
+        # The names, offsets and task counts of what would be added all come
+        # from it, so a dry run cannot be worked out offline
+        result = self._run(
+            existing_tg_names=["existing_1"], spec_tg_names=["new_tg"], dry_run=True
+        )
+        result["get_wr_mock"].assert_called_once()
+
+    def test_the_additions_are_reported_as_hypothetical(self, capsys):
+        result = self._run(
+            existing_tg_names=["existing_1"],
+            spec_tg_names=["new_tg"],
+            dry_run=True,
+            capsys=capsys,
+        )
+        output = " ".join(result["output"].split())
+        assert "Would add 1 new Task Group(s)" in output
+        assert "Added 1 new Task Group(s)" not in output
+
+    def test_the_existing_task_groups_are_named(self, capsys):
+        # Without this they appear in the spec below with no Tasks, and read
+        # as Task Groups that would be created empty
+        result = self._run(
+            existing_tg_names=["existing_1", "existing_2"],
+            spec_tg_names=["new_tg"],
+            dry_run=True,
+            capsys=capsys,
+        )
+        # The line wraps to the terminal width, so compare it collapsed
+        output = " ".join(result["output"].split())
+        assert "already contains 2 Task Group(s)" in output
+        assert "'existing_1'" in output
+        assert "'existing_2'" in output
+
+    def test_no_existing_task_groups_means_no_such_line(self, capsys):
+        result = self._run(
+            existing_tg_names=[], spec_tg_names=["new_tg"], dry_run=True, capsys=capsys
+        )
+        assert "already contains" not in result["output"]
+
+    def test_the_spec_shown_holds_the_existing_and_the_new_task_groups(self):
+        result = self._run(
+            existing_tg_names=["existing_1"],
+            spec_tg_names=["new_tg"],
+            dry_run=True,
+        )
+        names = [tg[NAME] for tg in result["snapshot"].wr_data[TASK_GROUPS]]
+        assert names == ["existing_1", "new_tg"]
+
+    def test_matched_task_groups_appear_once(self):
+        result = self._run(
+            existing_tg_names=["task_group"], spec_tg_names=["task_group"], dry_run=True
+        )
+        names = [tg[NAME] for tg in result["snapshot"].wr_data[TASK_GROUPS]]
+        assert names == ["task_group"]
+
+    def test_an_unsupported_task_type_is_still_rejected(self):
+        # The check that only a dry run against the real Work Requirement can
+        # make: the existing Task Group's taskTypes cannot be extended
+        with pytest.raises(ValueError, match="taskTypes allowlist"):
+            self._run(
+                existing_tg_names=["grp"],
+                spec_tg_names=["grp"],
+                existing_task_types={"grp": ["bash"]},
+                spec_task_types={"grp": ["docker"]},
+                dry_run=True,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Dispatch: '--add-to' routes to the existing Work Requirement in both modes
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitOrAddToDispatch:
+    def _route(self, add_to: str | None, dry_run: bool) -> str:
+        calls = []
+        with (
+            patch.object(
+                CLIParser, "add_to", new_callable=PropertyMock, return_value=add_to
+            ),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=dry_run
+            ),
+            patch.object(
+                submit_module,
+                "add_to_existing_work_requirement",
+                side_effect=lambda **kw: calls.append("add_to"),
+            ),
+            patch.object(
+                submit_module,
+                "submit_work_requirement",
+                side_effect=lambda **kw: calls.append("submit"),
+            ),
+        ):
+            submit_module._submit_or_add_to(files_directory=".", wr_data={})
+        assert len(calls) == 1
+        return calls[0]
+
+    def test_add_to_routes_to_the_existing_work_requirement(self):
+        assert self._route(add_to="my-wr", dry_run=False) == "add_to"
+
+    def test_add_to_with_dry_run_routes_there_too(self):
+        # Previously this fell through to a plain submission, silently
+        # ignoring '--add-to' and dry-running a freshly named Work Requirement
+        assert self._route(add_to="my-wr", dry_run=True) == "add_to"
+
+    def test_without_add_to_a_new_work_requirement_is_submitted(self):
+        assert self._route(add_to=None, dry_run=False) == "submit"
+
+    def test_without_add_to_a_dry_run_is_a_plain_submission(self):
+        assert self._route(add_to=None, dry_run=True) == "submit"
