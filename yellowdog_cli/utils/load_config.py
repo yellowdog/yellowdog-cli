@@ -143,7 +143,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         display_section = ".".join([section, *path[:-1]])
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
-            add_or_update_substitution(path[1], str(value))
+            add_or_update_substitution(path[1], value)
             # Command-line-defined variables always take precedence,
             # including over an explicitly selected config file
             CLI_DEFINED_VARIABLES.add(path[1])

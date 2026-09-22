@@ -645,3 +645,94 @@ class TestPidDefaultSubstitution:
         _, pid_substitution, generated_name = result[0].split()
         assert len(pid_substitution) == 2
         assert generated_name.endswith(f"-{pid_substitution}")
+
+
+# ---------------------------------------------------------------------------
+# Non-scalar variable values
+# ---------------------------------------------------------------------------
+
+
+class TestVariableValueRendering:
+    """
+    Variable values are held as strings, so a value arriving as something
+    else -- a TOML array, table, number or boolean from a configuration
+    file's '[common.variables]' section, or a '--property' override -- has
+    to be rendered as text on the way in. It is rendered as JSON rather than
+    with str()'s Python repr, because the 'array:' and 'table:' type tags
+    read the value back with json_loads(): a repr's single quotes are not
+    JSON, so ["a", "b"] defined in TOML could not be used as an array at
+    all. Strings are passed through, and a value with no JSON form falls
+    back to str().
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    def test_list_of_strings_round_trips_through_the_array_tag(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})
+        assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
+
+    def test_table_round_trips_through_the_table_tag(self):
+        var_module.add_substitutions_without_overwriting({"tbl": {"x": "y"}})
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}
+
+    def test_nested_containers_round_trip(self):
+        value = {"outer": [{"inner": "a"}, 2, True]}
+        var_module.add_substitutions_without_overwriting({"nested": value})
+        assert var_module.process_variable_substitutions("{{table:nested}}") == value
+
+    def test_variables_inside_a_non_scalar_are_substituted(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["{{myvar}}", "b"]})
+        assert var_module.process_variable_substitutions("{{array:strs}}") == [
+            "hello",
+            "b",
+        ]
+
+    def test_reported_as_json(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})
+        assert var_module.get_user_variable("strs") == '["a", "b"]'
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [(7, "7"), (3.5, "3.5"), (True, "true"), (False, "false"), (None, "null")],
+    )
+    def test_scalars_are_rendered_as_json(self, value, expected):
+        var_module.add_substitutions_without_overwriting({"scalar": value})
+        assert var_module.get_user_variable("scalar") == expected
+
+    @pytest.mark.parametrize("value", ["a", "[a", '"a"', "{{myvar}}"])
+    def test_a_string_is_never_requoted(self, value):
+        # Every value is re-rendered on each resolution pass, so a string that
+        # gained JSON quotes would gain another pair on every pass
+        var_module.add_substitutions_without_overwriting({"s": value})
+        var_module.add_substitutions_without_overwriting({"other": "x"})
+        expected = "hello" if value == "{{myvar}}" else value
+        assert var_module.get_user_variable("s") == expected
+
+    def test_toml_boolean_round_trips_through_the_bool_tag(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("[common.variables]\nb = true\n")
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.get_user_variable("b") == "true"
+        assert var_module.process_variable_substitutions("{{bool:b}}") is True
+
+    def test_toml_date_falls_back_to_its_text(self, tmp_path):
+        # TOML dates and datetimes are date/datetime objects, which have no
+        # JSON form at all: rendering them must fall back to str()
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("[common.variables]\nd = 2024-01-01\n")
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.get_user_variable("d") == "2024-01-01"
+
+    def test_toml_array_of_strings_round_trips(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text('[common.variables]\nstrs = ["a", "b"]\n')
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
+
+    def test_toml_table_round_trips(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text('[common.variables]\ntbl = { x = "y" }\n')
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from yellowdog_cli.utils import property_names
+from yellowdog_cli.utils import load_config, property_names
+from yellowdog_cli.utils import variables as var_module
 from yellowdog_cli.utils.load_config import (
     _apply_property_overrides,
     _parse_property_value,
@@ -17,6 +18,7 @@ from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
     DATA_CLIENT_SECTION,
     STRING_PROPERTIES,
+    VARIABLES,
     WORK_REQUIREMENT_SECTION,
     WORKER_POOL_SECTION,
 )
@@ -193,3 +195,34 @@ class TestStringPropertiesRegistry:
 
     def test_registry_contains_only_known_keys(self):
         assert STRING_PROPERTIES <= set(ALL_KEYS)
+
+
+class TestVariableOverridesAreHeldAsJson:
+    """
+    '--property common.variables.<name>=<value>' JSON-parses its value, so a
+    variable can arrive here as a real list or dict. It is stored as JSON
+    rather than as str()'s Python repr, so that the 'array:' and 'table:'
+    type tags can read it back.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolated_substitutions(self, monkeypatch):
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", {})
+        monkeypatch.setattr(load_config, "CLI_DEFINED_VARIABLES", set())
+
+    def test_array_variable_round_trips(self):
+        _apply_property_overrides({}, [f'{COMMON_SECTION}.{VARIABLES}.strs=["a", "b"]'])
+        assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
+
+    def test_table_variable_round_trips(self):
+        _apply_property_overrides(
+            {}, [f'{COMMON_SECTION}.{VARIABLES}.tbl={{"x": "y"}}']
+        )
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}
+
+    @pytest.mark.parametrize(
+        "override,expected", [("n=7", "7"), ("b=true", "true"), ("s=abc", "abc")]
+    )
+    def test_scalar_variable_is_rendered_as_json(self, override, expected):
+        _apply_property_overrides({}, [f"{COMMON_SECTION}.{VARIABLES}.{override}"])
+        assert var_module.get_user_variable(override.partition("=")[0]) == expected

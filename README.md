@@ -199,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 22 11:03:21 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 22 11:42:59 BST 2026 -->
 
 <!--te-->
 
@@ -688,6 +688,8 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 
 > **Note:** `array:` and `table:` values must be valid JSON. Use double-quoted strings, and `true`/`false`/`null` for booleans and null values.
 
+Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd-variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
+
 ## Default Variables
 
 The following substitutions are automatically created and can be used in any section of the configuration file, or in any JSON specification:
@@ -757,6 +759,8 @@ User-defined variable names must not start with a reserved prefix. The implement
     project_code = "pr-213a"
     run_id = "1234"
 ```
+
+TOML values that are not strings are converted to their JSON text when they're loaded, so `counts = [1, 2, 3]` can be used as `"{{array:counts}}"` exactly as `counts = "[1,2,3]"` can, and `enabled = true` substitutes as `true` rather than as Python's `True`. (TOML's date, time and datetime values have no JSON form, and are held as the text they were written as.)
 
 ### Precedence Order
 

@@ -84,7 +84,7 @@ pytest -v -n 4 --run-demos
 | `test_nodeaction_args.py` | `utils/args.py` — `yd-nodeaction` argument parsing |
 | `test_nodeaction_parsing.py` | `nodeaction.py` — parsing helpers (`_parse_node_worker_target`, etc.) |
 | `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`, `print_debug`, `print_dry_run`; the styling of output (the `--debug` preamble is coloured, ordinary and dry-run messages are not), rendered through a real Rich console so the assertions read the escape sequences; table-building helpers |
-| `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag) |
+| `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag), and that a `common.variables` override holding an array, table or boolean is stored as JSON rather than as a Python repr |
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
 | `test_rclone_version.py` | `utils/rclone_version.py` — the rclone version lookup order, parsing of `rclone --version` output, and not-installed handling |
@@ -108,7 +108,7 @@ pytest -v -n 4 --run-demos
 | `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
-| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
+| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, and that a TOML date falls back to its text |
 | `test_variables_command.py` | `variables.py` — `yd-variables`: named selection, all variables when none is named, alphabetical order, `null` for a name that isn't a variable, and the redaction of `key`/`secret` in the full report (revealed by naming them or by `--show-secrets`, and no other variable redacted) |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 

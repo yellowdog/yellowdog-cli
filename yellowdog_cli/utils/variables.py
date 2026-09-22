@@ -127,6 +127,33 @@ if subs_list:
 del subs_list
 
 
+def _stringify(value) -> str:
+    """
+    Render a variable's value as the string the substitutions dictionary
+    holds.
+
+    Values are rendered as JSON rather than with str(), whose Python repr
+    quotes strings with apostrophes and capitalises booleans: the type tags
+    read the value back as JSON -- 'array:' and 'table:' with json_loads(),
+    'bool:' as the JSON spelling -- so a repr of a list or table cannot be
+    read back at all, and a TOML array of strings would be unusable as an
+    array. Rendering the scalars the same way keeps a boolean spelled the
+    same whether it stands alone or sits inside an array.
+
+    A string is passed through untouched: every value is re-rendered on
+    each resolution pass, so a string given JSON's quotes would gain another
+    pair on every pass. A value with no JSON form at all -- TOML's date,
+    time and datetime values are date/datetime objects -- falls back to
+    str(), which renders them as the text they were written as.
+    """
+    if isinstance(value, str):
+        return value
+    try:
+        return json_dumps(value)
+    except TypeError:
+        return str(value)
+
+
 def _update_and_resolve_substitutions(merged: dict):
     """
     Replace the substitutions dictionary with 'merged' and re-resolve
@@ -143,7 +170,7 @@ def _update_and_resolve_substitutions(merged: dict):
     # variable with the '::' unset suffix), remove it entirely.
     keys_to_unset = []
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        result = process_variable_substitutions(str(value_))
+        result = process_variable_substitutions(_stringify(value_))
         if result is _UNSET:
             keys_to_unset.append(key_)
         else:
@@ -180,11 +207,11 @@ def add_substitutions_from_config_file(subs: dict):
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
-def add_or_update_substitution(key: str, value: str):
+def add_or_update_substitution(key: str, value):
     """
     Add a substitution to the dictionary, overwriting existing values.
     """
-    VARIABLE_SUBSTITUTIONS[key] = str(value)
+    VARIABLE_SUBSTITUTIONS[key] = _stringify(value)
 
 
 def get_user_variable(variable_name: str) -> str | None:
@@ -655,7 +682,7 @@ def load_toml_file_with_variable_substitutions(
         # Convert all values to strings before adding
         add_substitutions_from_config_file(
             {
-                var_name: str(var_value)
+                var_name: _stringify(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
             }
         )
