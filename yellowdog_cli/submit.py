@@ -343,7 +343,10 @@ def submit_work_requirement(
     # Overwrite the WR name?
     global ID, CONFIG_WR
     ID = format_yd_name(
-        wr_data.get(NAME, ID if CONFIG_WR.wr_name is None else CONFIG_WR.wr_name)
+        check_str(
+            wr_data.get(NAME, ID if CONFIG_WR.wr_name is None else CONFIG_WR.wr_name),
+            NAME,
+        )
     )
     # Lazy substitution of the Work Requirement name, now it's defined
     add_substitutions_without_overwriting(subs={L_WR_NAME: ID})
@@ -362,7 +365,7 @@ def submit_work_requirement(
     # Expand number of task groups if there's a single task group
     # and taskGroupCount is set
     task_group_count = check_float_or_int(
-        wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count)
+        wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count), TASK_GROUP_COUNT
     )
     if task_group_count is not None and task_group_count > 1:
         if len(wr_data[TASK_GROUPS]) == 1:
@@ -395,12 +398,13 @@ def submit_work_requirement(
         )
 
     # Create the Work Requirement
-    priority = check_float_or_int(wr_data.get(PRIORITY, CONFIG_WR.priority))
+    priority = check_float_or_int(wr_data.get(PRIORITY, CONFIG_WR.priority), PRIORITY)
     wr_tag = check_str(
         wr_data.get(
             WR_TAG,
             CONFIG_COMMON.name_tag if CONFIG_WR.wr_tag is None else CONFIG_WR.wr_tag,
-        )
+        ),
+        WR_TAG,
     )
     work_requirement = WorkRequirement(
         namespace=CONFIG_COMMON.namespace,
@@ -508,7 +512,8 @@ def create_task_group(
         _task_count = check_int(
             task_group_data.get(
                 TASK_COUNT, wr_data.get(TASK_COUNT, CONFIG_WR.task_count)
-            )
+            ),
+            TASK_COUNT,
         )
         if _task_count is not None:
             num_tasks = _task_count
@@ -521,7 +526,7 @@ def create_task_group(
         pass
     task_group_name = format_yd_name(
         get_task_group_name(
-            task_group_data.get(NAME, CONFIG_WR.task_group_name),
+            check_str(task_group_data.get(NAME, CONFIG_WR.task_group_name), NAME),
             effective_tg_number,
             num_task_groups,
             num_tasks,
@@ -543,7 +548,8 @@ def create_task_group(
     task_template_data = check_dict(
         task_group_data.get(
             TASK_TEMPLATE, wr_data.get(TASK_TEMPLATE, config_wr.task_template)
-        )
+        ),
+        TASK_TEMPLATE,
     )
 
     # Assemble the RunSpecification values for the Task Group;
@@ -551,7 +557,9 @@ def create_task_group(
     # specified in the Tasks.
     task_types: list = list(
         set(
-            check_list(task_group_data.get(TASK_TYPES, wr_data.get(TASK_TYPES, [])))
+            check_list(
+                task_group_data.get(TASK_TYPES, wr_data.get(TASK_TYPES, [])), TASK_TYPES
+            )
         ).union(task_types_from_tasks)
     )
     # Use the task type from the config file if present and task_types is empty
@@ -578,7 +586,8 @@ def create_task_group(
     )
 
     providers_data: list[str] | None = check_list(
-        task_group_data.get(PROVIDERS, wr_data.get(PROVIDERS, config_wr.providers))
+        task_group_data.get(PROVIDERS, wr_data.get(PROVIDERS, config_wr.providers)),
+        PROVIDERS,
     )
     providers: list[CloudProvider] | None = (
         None
@@ -592,14 +601,15 @@ def create_task_group(
             wr_data.get(
                 INSTANCE_PRICING_PREFERENCE, config_wr.instance_pricing_preference
             ),
-        )
+        ),
+        INSTANCE_PRICING_PREFERENCE,
     )
     instance_pricing_preference: InstancePricingPreference | None = (
         None if ipp_data is None else InstancePricingPreference(ipp_data)
     )
 
     task_timeout_minutes: float | None = check_float_or_int(
-        task_group_data.get(TASK_TIMEOUT, config_wr.task_timeout)
+        task_group_data.get(TASK_TIMEOUT, config_wr.task_timeout), TASK_TIMEOUT
     )
     task_timeout: timedelta | None = (
         None
@@ -645,7 +655,8 @@ def create_task_group(
             else check_int(
                 task_group_data.get(
                     MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries or 0)
-                )
+                ),
+                MAX_RETRIES,
             )
         ),
         retryPolicy=retry_policy,
@@ -653,30 +664,39 @@ def create_task_group(
         workerTags=check_list(
             task_group_data.get(
                 WORKER_TAGS, wr_data.get(WORKER_TAGS, config_wr.worker_tags)
-            )
+            ),
+            WORKER_TAGS,
         ),
         instanceTypes=check_list(
             task_group_data.get(
                 INSTANCE_TYPES, wr_data.get(INSTANCE_TYPES, config_wr.instance_types)
-            )
+            ),
+            INSTANCE_TYPES,
         ),
         instancePricingPreference=instance_pricing_preference,
         vcpus=vcpus,
         ram=ram,
-        minWorkers=check_int(task_group_data.get(MIN_WORKERS, config_wr.min_workers)),
-        maxWorkers=check_int(task_group_data.get(MAX_WORKERS, config_wr.max_workers)),
+        minWorkers=check_int(
+            task_group_data.get(MIN_WORKERS, config_wr.min_workers), MIN_WORKERS
+        ),
+        maxWorkers=check_int(
+            task_group_data.get(MAX_WORKERS, config_wr.max_workers), MAX_WORKERS
+        ),
         tasksPerWorker=check_int(
-            task_group_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker)
+            task_group_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
+            TASKS_PER_WORKER,
         ),
         providers=providers,
         regions=check_list(
-            task_group_data.get(REGIONS, wr_data.get(REGIONS, config_wr.regions))
+            task_group_data.get(REGIONS, wr_data.get(REGIONS, config_wr.regions)),
+            REGIONS,
         ),
         taskTimeout=task_timeout,
         namespaces=check_list(
             task_group_data.get(
                 NAMESPACES, wr_data.get(NAMESPACES, config_wr.namespaces)
-            )
+            ),
+            NAMESPACES,
         ),
         retryableErrors=(
             None
@@ -687,14 +707,16 @@ def create_task_group(
             task_group_data.get(
                 DISABLE_PREALLOCATION,
                 wr_data.get(DISABLE_PREALLOCATION, config_wr.disable_preallocation),
-            )
+            ),
+            DISABLE_PREALLOCATION,
         ),
     )
     ctttl_data = check_float_or_int(
         task_group_data.get(
             COMPLETED_TASK_TTL,
             wr_data.get(COMPLETED_TASK_TTL, config_wr.completed_task_ttl),
-        )
+        ),
+        COMPLETED_TASK_TTL,
     )
     completed_task_ttl = None if ctttl_data is None else timedelta(minutes=ctttl_data)
 
@@ -720,7 +742,8 @@ def create_task_group(
             wr_data.get(
                 FINISH_IF_ALL_TASKS_FINISHED, config_wr.finish_if_all_tasks_finished
             ),
-        )
+        ),
+        FINISH_IF_ALL_TASKS_FINISHED,
     )
     task_group = TaskGroup(
         name=task_group_name,
@@ -733,13 +756,15 @@ def create_task_group(
                 wr_data.get(
                     FINISH_IF_ANY_TASK_FAILED, config_wr.finish_if_any_task_failed
                 ),
-            )
+            ),
+            FINISH_IF_ANY_TASK_FAILED,
         )
         or False,
         priority=check_float_or_int(
             task_group_data.get(
                 PRIORITY, wr_data.get(PRIORITY, config_wr.priority or 0)
-            )
+            ),
+            PRIORITY,
         ),
         completedTaskTtl=completed_task_ttl,
         tag=task_group_data.get(TASK_GROUP_TAG),
@@ -778,7 +803,8 @@ def add_tasks_to_task_group(
     task_group_task_count = check_int(
         wr_data[TASK_GROUPS][tg_number].get(
             TASK_COUNT, wr_data.get(TASK_COUNT, CONFIG_WR.task_count)
-        )
+        ),
+        TASK_COUNT,
     )
     if task_group_task_count is not None:
         if num_tasks == 1 and task_group_task_count > 1:
@@ -960,7 +986,8 @@ def generate_batch_of_tasks_for_task_group(
                         SET_TASK_NAMES,
                         wr_data.get(SET_TASK_NAMES, CONFIG_WR.set_task_names),
                     ),
-                )
+                ),
+                SET_TASK_NAMES,
             )
             or False
         )
@@ -969,7 +996,7 @@ def generate_batch_of_tasks_for_task_group(
         display_num_tasks = task_number_offset + num_tasks
 
         task_name = get_task_name(
-            task.get(NAME, task.get(TASK_NAME, CONFIG_WR.task_name)),
+            check_str(task.get(NAME, task.get(TASK_NAME, CONFIG_WR.task_name)), NAME),
             set_task_names,
             display_task_number,
             display_num_tasks,
@@ -995,27 +1022,32 @@ def generate_batch_of_tasks_for_task_group(
             task.get(
                 ARGS,
                 wr_data.get(ARGS, task_group_data.get(ARGS, config_wr.args)),
-            )
+            ),
+            ARGS,
         )
         args_prefix = check_list(
             wr_data.get(
                 ARGS_PREFIX, task_group_data.get(ARGS_PREFIX, config_wr.args_prefix)
-            )
+            ),
+            ARGS_PREFIX,
         )
         args_postfix = check_list(
             wr_data.get(
                 ARGS_POSTFIX, task_group_data.get(ARGS_POSTFIX, config_wr.args_postfix)
-            )
+            ),
+            ARGS_POSTFIX,
         )
         arguments_list = assemble_arguments(args_prefix, arguments_list, args_postfix)
         env = check_dict(
-            task.get(ENV, task_group_data.get(ENV, wr_data.get(ENV, config_wr.env)))
+            task.get(ENV, task_group_data.get(ENV, wr_data.get(ENV, config_wr.env))),
+            ENV,
         )
         add_env = check_dict(
             wr_data.get(
                 ADD_ENVIRONMENT,
                 task_group_data.get(ADD_ENVIRONMENT, config_wr.add_environment),
-            )
+            ),
+            ADD_ENVIRONMENT,
         )
         env = merge_environment(env, add_env)
 
@@ -1027,7 +1059,8 @@ def generate_batch_of_tasks_for_task_group(
                         ADD_YD_ENV_VARS,
                         wr_data.get(ADD_YD_ENV_VARS, config_wr.add_yd_env_vars),
                     ),
-                )
+                ),
+                ADD_YD_ENV_VARS,
             )
             or False
         )
@@ -1035,7 +1068,8 @@ def generate_batch_of_tasks_for_task_group(
         # Task timeout is automatically inherited from the Task Group level
         # unless overridden by the Task
         task_timeout_minutes = check_float_or_int(
-            task.get(TASK_LEVEL_TIMEOUT, CONFIG_WR.task_level_timeout)
+            task.get(TASK_LEVEL_TIMEOUT, CONFIG_WR.task_level_timeout),
+            TASK_LEVEL_TIMEOUT,
         )
         task_timeout = (
             None
@@ -1051,7 +1085,8 @@ def generate_batch_of_tasks_for_task_group(
                     TASK_DATA_INPUTS,
                     wr_data.get(TASK_DATA_INPUTS, config_wr.task_data_inputs),
                 ),
-            )
+            ),
+            TASK_DATA_INPUTS,
         )
         task_data_outputs = check_list(
             task.get(
@@ -1060,7 +1095,8 @@ def generate_batch_of_tasks_for_task_group(
                     TASK_DATA_OUTPUTS,
                     wr_data.get(TASK_DATA_OUTPUTS, config_wr.task_data_outputs),
                 ),
-            )
+            ),
+            TASK_DATA_OUTPUTS,
         )
         # This will 'pop' any 'localFile' properties, required for the
         # following 'generate' call
@@ -1296,7 +1332,7 @@ def add_to_existing_work_requirement(
 
     # Expand task groups from taskGroupCount if needed
     task_group_count = check_float_or_int(
-        wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count)
+        wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count), TASK_GROUP_COUNT
     )
     if task_group_count is not None and task_group_count > 1:
         if len(wr_data[TASK_GROUPS]) == 1:
@@ -1451,7 +1487,7 @@ def submit_json_raw(wr_file: str):
         )
 
     # Lazy substitution of Work Requirement name
-    wr_data["name"] = format_yd_name(wr_data["name"])
+    wr_data["name"] = format_yd_name(check_str(wr_data["name"], NAME))
     wr_name = wr_data["name"]
     add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
     process_variable_substitutions_insitu(wr_data)

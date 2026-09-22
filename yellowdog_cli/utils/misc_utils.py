@@ -22,6 +22,7 @@ from yellowdog_client.model import (
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
+from yellowdog_cli.utils.type_check import check_str
 
 UTCNOW = datetime.now(timezone.utc)
 
@@ -250,6 +251,11 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     """
     Format a string to be consistent with YellowDog naming requirements.
     """
+    # A name that isn't a String -- 'name = 123' in a configuration or
+    # specification file -- is a configuration error, and is reported as one
+    # rather than failing in the substitutions below
+    check_str(yd_name)
+
     # Make obvious substitutions
     new_yd_name = yd_name.replace("/", "-").replace(" ", "_").replace(".", "_").lower()
 

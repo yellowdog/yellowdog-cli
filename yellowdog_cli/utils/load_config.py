@@ -73,15 +73,27 @@ def config_file_explicitly_selected() -> bool:
     return _config_file_explicitly_selected(ARGS_PARSER)
 
 
-def _parse_property_value(value_str: str):
+def _parse_property_value(value_str: str, property_name: str | None = None):
     """
     Parse a property value string into a Python object.
     Tries JSON first (handles bool, int, float, list, dict), falls back to str.
+
+    A property that takes a String keeps the text as supplied whenever JSON
+    would make it something else, so '--property workRequirement.name=123'
+    supplies the name '123' rather than the integer 123. JSON 'null' is the
+    exception, being the only way to unset a property set in the TOML file.
     """
     try:
-        return json.loads(value_str)
+        value = json.loads(value_str)
     except (json.JSONDecodeError, ValueError):
         return value_str
+    if (
+        property_name in STRING_PROPERTIES
+        and value is not None
+        and not isinstance(value, str)
+    ):
+        return value_str
+    return value
 
 
 def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
@@ -89,9 +101,9 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
     Apply '--property section.key=value' overrides to CONFIG_TOML in-place.
 
     Each override must be in 'section.key=value' format.  The value is parsed
-    via JSON first (handles bool, int, float, list, dict); if that fails it is
-    treated as a plain string.  Unknown section names are rejected; unknown
-    property names produce a warning.
+    via JSON first (handles bool, int, float, list, dict); if that fails, or
+    if the property takes a String, it is treated as a plain string.  Unknown
+    section names are rejected; unknown property names produce a warning.
     """
     valid_sections = {
         COMMON_SECTION,
@@ -121,7 +133,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             )
             exit(1)
         path = rest.split(".")
-        value = _parse_property_value(value_str)
+        value = _parse_property_value(value_str, path[-1])
         if section not in config:
             config[section] = {}
         target = config[section]
@@ -632,7 +644,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             except KeyError:
                 pass
         if worker_tags is not None:
-            check_list(worker_tags)
+            check_list(worker_tags, WORKER_TAGS)
             for index, worker_tag in enumerate(worker_tags):
                 worker_tags[index] = cast(
                     str, process_variable_substitutions(worker_tag)
@@ -640,7 +652,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         wr_data_file = wr_section.get(WR_DATA)
         if wr_data_file is not None:
-            check_str(wr_data_file)
+            check_str(wr_data_file, WR_DATA)
             wr_data_file = cast(str, process_variable_substitutions(wr_data_file))
             wr_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, wr_data_file
@@ -653,7 +665,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             else ARGS_PARSER.task_type
         )
         if task_type is not None:
-            check_str(task_type)
+            check_str(task_type, TASK_TYPE)
             task_type = cast(str | None, process_variable_substitutions(task_type))
 
         csv_file = wr_section.get(CSV_FILE)
@@ -719,8 +731,8 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             task_data_inputs=wr_section.get(TASK_DATA_INPUTS),
             task_data_outputs=wr_section.get(TASK_DATA_OUTPUTS),
             task_group_count=task_group_count,
-            task_group_name=wr_section.get(TASK_GROUP_NAME),
-            task_name=wr_section.get(TASK_NAME),
+            task_group_name=check_str(wr_section.get(TASK_GROUP_NAME), TASK_GROUP_NAME),
+            task_name=check_str(wr_section.get(TASK_NAME), TASK_NAME),
             task_template=wr_section.get(TASK_TEMPLATE),
             task_timeout=wr_section.get(TASK_TIMEOUT),
             task_type=task_type,
@@ -729,7 +741,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             vcpus=wr_section.get(VCPUS),
             worker_tags=worker_tags,
             wr_data_file=wr_data_file,
-            wr_name=wr_section.get(WR_NAME),
+            wr_name=check_str(wr_section.get(WR_NAME), WR_NAME),
             wr_tag=wr_section.get(WR_TAG),
         )
 
@@ -834,7 +846,9 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             min_nodes_set=(False if wp_section.get(MIN_NODES) is None else True),
             name=cast(
                 str | None,
-                process_variable_substitutions(wp_section.get(WP_NAME)),
+                process_variable_substitutions(
+                    check_str(wp_section.get(WP_NAME), WP_NAME)
+                ),
             ),
             node_boot_timeout=float(wp_section.get(NODE_BOOT_TIMEOUT, 10.0)),
             target_instance_count=int(wp_section.get(TARGET_INSTANCE_COUNT, 1)),
@@ -854,6 +868,10 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
+        exit(1)
+
+    except TypeError as e:
+        print_error(f"{e}")
         exit(1)
 
     except ValueError as e:

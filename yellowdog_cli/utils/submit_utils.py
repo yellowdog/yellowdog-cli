@@ -213,7 +213,8 @@ def generate_task_error_matchers_list(
         tg_data.get(
             RETRYABLE_ERRORS,
             wr_data.get(RETRYABLE_ERRORS, config_wr.retryable_errors),
-        )
+        ),
+        RETRYABLE_ERRORS,
     )
 
     return (
@@ -235,7 +236,7 @@ def double_range_from_list(value: object, property_name: str) -> DoubleRange | N
     TOML requires, as it has no null literal). Returns None if 'value' is None,
     or if both bounds are unset (equivalent to omitting the property).
     """
-    value_list = cast("list | None", check_list(value))
+    value_list = cast("list | None", check_list(value, property_name))
     if value_list is None:
         return None
 
@@ -266,8 +267,8 @@ def generate_dependencies(task_group_data: dict) -> list[str] | None:
     """
     Generate the contents of the 'dependencies' property of the TaskGroup.
     """
-    dependent_on = check_str(task_group_data.get(DEPENDENT_ON))
-    dependencies = check_list(task_group_data.get(DEPENDENCIES))
+    dependent_on = check_str(task_group_data.get(DEPENDENT_ON), DEPENDENT_ON)
+    dependencies = check_list(task_group_data.get(DEPENDENCIES), DEPENDENCIES)
 
     if dependent_on is not None and dependencies is not None:
         raise ValueError(
@@ -297,7 +298,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
     """
     try:
         exit_codes_str: list[int] | None = check_list(
-            task_error_matcher_data.get(PROCESS_EXIT_CODES)
+            task_error_matcher_data.get(PROCESS_EXIT_CODES), PROCESS_EXIT_CODES
         )
         try:
             # Ensure ints
@@ -310,7 +311,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
             raise ValueError(f"Unable to process error exit codes: {e}")
 
         statuses_str: list[str] | None = check_list(
-            task_error_matcher_data.get(STATUSES_AT_FAILURE)
+            task_error_matcher_data.get(STATUSES_AT_FAILURE), STATUSES_AT_FAILURE
         )
         try:
             statuses = (
@@ -322,7 +323,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
             raise ValueError(f"Unable to process error status: {e}")
 
         error_types: list[str] | None = check_list(
-            task_error_matcher_data.get(ERROR_TYPES)
+            task_error_matcher_data.get(ERROR_TYPES), ERROR_TYPES
         )
 
         return TaskErrorMatcher(
@@ -381,8 +382,8 @@ def _generate_selection(
             f"expected '{SELECTION_INCLUDES}' and optional '{SELECTION_EXCLUDES}'"
         )
 
-    includes_raw = check_list(value.get(SELECTION_INCLUDES))
-    excludes_raw = check_list(value.get(SELECTION_EXCLUDES))
+    includes_raw = check_list(value.get(SELECTION_INCLUDES), SELECTION_INCLUDES)
+    excludes_raw = check_list(value.get(SELECTION_EXCLUDES), SELECTION_EXCLUDES)
     if includes_raw is None and excludes_raw is None:
         raise ValueError(
             f"'{field_name}' must define at least one of "
@@ -455,7 +456,8 @@ def generate_retry_policy(
     no retryPolicy is defined at any level.
     """
     policy_data = check_dict(
-        tg_data.get(RETRY_POLICY, wr_data.get(RETRY_POLICY, config_wr.retry_policy))
+        tg_data.get(RETRY_POLICY, wr_data.get(RETRY_POLICY, config_wr.retry_policy)),
+        RETRY_POLICY,
     )
     if policy_data is None:
         return None
@@ -467,7 +469,7 @@ def generate_retry_policy(
             f"expected '{RETRY_MAX_RETRIES}' and optional '{RETRY_ERRORS}'"
         )
 
-    max_retries = check_int(policy_data.get(RETRY_MAX_RETRIES))
+    max_retries = check_int(policy_data.get(RETRY_MAX_RETRIES), RETRY_MAX_RETRIES)
     if max_retries is None:
         raise ValueError(f"'{RETRY_POLICY}.{RETRY_MAX_RETRIES}' is required")
     if max_retries < 0:
@@ -493,7 +495,8 @@ def generate_failure_policy(
     policy_data = check_dict(
         tg_data.get(
             FAILURE_POLICY, wr_data.get(FAILURE_POLICY, config_wr.failure_policy)
-        )
+        ),
+        FAILURE_POLICY,
     )
     if policy_data is None:
         return None
@@ -505,7 +508,9 @@ def generate_failure_policy(
             f"expected '{RESUBMISSION_DESTINATIONS}'"
         )
 
-    destinations_raw = check_list(policy_data.get(RESUBMISSION_DESTINATIONS))
+    destinations_raw = check_list(
+        policy_data.get(RESUBMISSION_DESTINATIONS), RESUBMISSION_DESTINATIONS
+    )
     if not destinations_raw:
         raise ValueError(
             f"'{FAILURE_POLICY}.{RESUBMISSION_DESTINATIONS}' must contain at "
@@ -535,7 +540,7 @@ def _generate_resubmission_destination(d: dict) -> ResubmissionDestination:
             f"'{RESUBMIT_ERRORS}'"
         )
 
-    dest = check_str(d.get(DESTINATION_TASK_GROUP))
+    dest = check_str(d.get(DESTINATION_TASK_GROUP), DESTINATION_TASK_GROUP)
     if not dest:
         raise ValueError(
             f"Each '{RESUBMISSION_DESTINATIONS}' entry must define a "

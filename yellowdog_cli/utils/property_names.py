@@ -10,11 +10,11 @@ ACTION_PATH = "path"  # String - command/file path
 ACTION_TYPE = "type"  # String - "runCommand", "writeFile", "createWorkers"
 ACTIONS = "actions"  # List - flat node actions
 ADD_ENVIRONMENT = "addEnvironment"  # Dict
-ADD_YD_ENV_VARS = "addYDEnvironment"
+ADD_YD_ENV_VARS = "addYDEnvironment"  # Boolean
 ARGS = "arguments"  # List
 ARGS_PREFIX = "argumentsPrefix"  # List
 ARGS_POSTFIX = "argumentsPostfix"  # List
-CERTIFICATES = "certificates"
+CERTIFICATES = "certificates"  # String - path to a CA bundle
 COMMON_SECTION = "common"  # No value
 COMPLETED_TASK_TTL = "completedTaskTtl"  # Float
 COMPUTE_REQUIREMENT_BATCH_SIZE = "computeRequirementBatchSize"  # Integer
@@ -33,7 +33,7 @@ DEPENDENCIES = "dependencies"  # List of Strings
 DEPENDENT_ON = "dependentOn"  # String (Deprecated)
 DESTINATION_TASK_GROUP = "destinationTaskGroup"  # String (for ResubmissionDestination)
 DIRECTORY_NAME = "directoryName"  # String
-DISABLE_PREALLOCATION = "disablePreallocation"
+DISABLE_PREALLOCATION = "disablePreallocation"  # Boolean
 ENV = "environment"  # Dictionary
 ERROR_TYPES = "errorTypes"  # List of Strings
 FAILURE_POLICY = "failurePolicy"  # Dict
@@ -255,3 +255,62 @@ ALL_KEYS = [
     WR_NAME,
     WR_TAG,
 ]
+
+
+# The properties that take a String value. A '--property section.key=value'
+# override parses its value as JSON before anything else, which would make a
+# name of '123' the integer 123 and a tag of 'true' the boolean True; for
+# these properties the supplied text is kept instead. Keyed on the property
+# name alone, since a name that appears in more than one place -- 'name',
+# 'tag' -- is a String in all of them. Checked against the types recorded in
+# the comment column above by 'tests/test_property_overrides.py'.
+STRING_PROPERTIES = frozenset(
+    {
+        ACTION_CONTENT,
+        ACTION_CONTENT_FILE,
+        ACTION_PATH,
+        ACTION_TYPE,
+        CERTIFICATES,
+        COMPUTE_REQUIREMENT_DATA_FILE,
+        CR_TAG,
+        CSV_FILE,
+        DATA_CLIENT_BUCKET,
+        DATA_CLIENT_LOCAL_PATH,
+        DATA_CLIENT_PREFIX,
+        DATA_CLIENT_REMOTE,
+        DATA_CLIENT_UPLOAD_PATH,
+        DEPENDENT_ON,
+        DESTINATION_TASK_GROUP,
+        DIRECTORY_NAME,
+        IMAGES_ID,
+        IMPORT_COMMON,
+        INSTANCE_PRICING_PREFERENCE,
+        KEY,
+        NAME,
+        NAMESPACE,
+        NAME_TAG,
+        NODE_TARGET_CUSTOM_CMD,
+        NODE_TARGET_TYPE,
+        SECRET,
+        TASK_DATA,
+        TASK_DATA_DESTINATION,
+        TASK_DATA_FILE,
+        TASK_DATA_SOURCE,
+        TASK_GROUP_NAME,
+        TASK_GROUP_TAG,
+        TASK_NAME,
+        TASK_TAG,
+        TASK_TYPE,
+        TEMPLATE_ID,
+        URL,
+        USERDATA,
+        USERDATAFILE,
+        WORKERS_CUSTOM_COMMAND,
+        WORKER_POOL_DATA_FILE,
+        WORKER_TAG,
+        WP_NAME,
+        WR_DATA,
+        WR_NAME,
+        WR_TAG,
+    }
+)

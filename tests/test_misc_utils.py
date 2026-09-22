@@ -115,6 +115,13 @@ class TestFormatYdName:
         # makes it legible as something the CLI added
         assert NAME_START_PREFIX == "yd_"
 
+    @pytest.mark.parametrize("yd_name", [123, 1.5, True, ["a"]])
+    def test_non_string_name_is_a_type_error(self, yd_name):
+        # Reached from a specification file, which nothing else type-checks;
+        # without this it failed with an AttributeError from str.replace()
+        with pytest.raises(TypeError, match="String"):
+            format_yd_name(yd_name)
+
     def test_result_only_contains_valid_chars(self):
         result = format_yd_name("weird @#$% chars!!", add_prefix=False)
         assert re.match(r"^[a-z0-9_-]*$", result)
