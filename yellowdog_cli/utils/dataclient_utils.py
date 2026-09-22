@@ -13,7 +13,7 @@ from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import print_dry_run, print_info, print_warning
 from yellowdog_cli.utils.rclone_utils import (
     make_rclone,
     make_rclone_for_copy,
@@ -120,7 +120,7 @@ def upload_file(
     Upload a single local file to the given remote path.
     """
     if dry_run:
-        print_info(f"Dry-run: Would upload '{local_path}' → '{remote_path}'")
+        print_dry_run(f"Would upload '{local_path}' → '{remote_path}'")
         return
 
     _, rclone = _rclone_for_config(config)
@@ -174,9 +174,7 @@ def upload_directory(
 
     action = "sync" if sync else "copy"
     if dry_run:
-        print_info(
-            f"Dry-run: Would {action} directory '{local_path}' → '{remote_path}'"
-        )
+        print_dry_run(f"Would {action} directory '{local_path}' → '{remote_path}'")
         return
 
     _, rclone = _rclone_for_config(config)
@@ -349,8 +347,8 @@ def download_files(
                 print_info(f"No wildcard matches for '{remote_path}'")
                 return
             names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
-            print_info(
-                f"Dry-run: Would {action} {len(matches)} matched item(s)"
+            print_dry_run(
+                f"Would {action} {len(matches)} matched item(s)"
                 f" → '{local_destination}': {', '.join(names)}"
             )
         else:
@@ -361,8 +359,8 @@ def download_files(
             n_files = len(listing.files)
             n_dirs = len(listing.dirs)
             ies = "y" if n_dirs == 1 else "ies"
-            print_info(
-                f"Dry-run: Would {action} '{remote_path}' → '{local_destination}'"
+            print_dry_run(
+                f"Would {action} '{remote_path}' → '{local_destination}'"
                 f" ({n_files} file(s), {n_dirs} director{ies})"
             )
         return
@@ -464,9 +462,8 @@ def delete_remote(
                 print_info(f"No wildcard matches for '{remote_path}'")
                 return
             names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
-            print_info(
-                f"Dry-run: Would {action} {len(matches)} matched item(s):"
-                f" {', '.join(names)}"
+            print_dry_run(
+                f"Would {action} {len(matches)} matched item(s): {', '.join(names)}"
             )
         else:
             listing = list_remote(config, remote_path)
@@ -481,14 +478,14 @@ def delete_remote(
                 )
                 return
             if is_file:
-                print_info(f"Dry-run: Would delete '{remote_path}'")
+                print_dry_run(f"Would delete '{remote_path}'")
             else:
                 rec_listing = list_remote(config, remote_path, recursive=True)
                 n_files = len(rec_listing.files)
                 n_dirs = len(rec_listing.dirs)
                 ies = "y" if n_dirs == 1 else "ies"
-                print_info(
-                    f"Dry-run: Would {action} '{remote_path}'"
+                print_dry_run(
+                    f"Would {action} '{remote_path}'"
                     f" ({n_files} file(s), {n_dirs} subdirector{ies})"
                 )
         return
@@ -635,7 +632,7 @@ def copy_remote(
     """
     if dry_run:
         action = "sync" if sync else "copy"
-        print_info(f"Dry-run: Would {action} '{src_path}' → '{dst_path}'")
+        print_dry_run(f"Would {action} '{src_path}' → '{dst_path}'")
         return
 
     src_remote_str = _require_remote(src_config)

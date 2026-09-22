@@ -54,7 +54,8 @@ pytest -v -n 4 --run-demos
 
 | File | What it tests |
 |---|---|
-| `test_add_to.py` | `submit.py` — `--add-to` feature: offset-aware task/task-group naming and dispatch logic |
+| `test_add_to.py` | `submit.py` — `--add-to` feature: offset-aware task/task-group naming, dispatch logic, and the `--dry-run` combination (reads the target Work Requirement, writes nothing) |
+| `test_application.py` | `application.py` — the `--json` payload (Application properties plus `portalUrl`, `groups`, `roles`, each `null` when undeterminable) and the human-readable report |
 | `test_args_command_detection.py` | `utils/args.py` — command detection uses the basename of `sys.argv[0]`, not the full install path |
 | `test_arguments_assembly.py` | `utils/submit_utils.py` — `assemble_arguments` (argumentsPrefix + arguments + argumentsPostfix combination) |
 | `test_build_dc_substitutions.py` | `utils/load_config.py` — `_build_dc_substitutions` (data client config merging and inheritance) |
@@ -63,6 +64,7 @@ pytest -v -n 4 --run-demos
 | `test_compact_json.py` | `utils/compact_json.py` — `CompactJSONEncoder` (inline vs. expanded formatting, float precision) |
 | `test_compare.py` | `compare.py` — pure static comparison helpers |
 | `test_compute_action_common.py` | `utils/compute_action_common.py` — `yd-compute-stop/start/restart` actions: dispatch, tag-based selection, name/ID, instance and node paths |
+| `test_config_preamble.py` | `utils/printing.py`, `utils/load_config.py`, `utils/variables.py`, `utils/misc_utils.py`, `utils/wrapper.py` — the startup preamble is silent by default and, under `--debug`, every line of it carries the `DEBUG` marker. Imports `wrapper.py` in a subprocess, per scenario, for the messages emitted at import; calls `set_proxy()` directly, with the PAC lookup stubbed, for those emitted at command time. No platform access |
 | `test_csv_data.py` | `utils/csv_data.py` — `CSVTaskData`, `CSVDataCache`, substitution helpers |
 | `test_dataclient_utils.py` | `utils/dataclient_utils.py` — `resolve_remote_path` (rclone remote path resolution, trailing-slash directory intent) |
 | `test_download_destination.py` | `download.py` — where each item lands locally: `--destination` vs. `--into` for one glob, one literal path and several literal paths |
@@ -81,8 +83,8 @@ pytest -v -n 4 --run-demos
 | `test_node_batching.py` | `provision.py`, `instantiate.py` — `_allocate_nodes_to_batches`: batch count, even distribution, remainder spreading, zero-node edge cases |
 | `test_nodeaction_args.py` | `utils/args.py` — `yd-nodeaction` argument parsing |
 | `test_nodeaction_parsing.py` | `nodeaction.py` — parsing helpers (`_parse_node_worker_target`, etc.) |
-| `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`; table-building helpers |
-| `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag) |
+| `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`, `print_debug`, `print_dry_run`; the styling of output (the `--debug` preamble is coloured, ordinary and dry-run messages are not), rendered through a real Rich console so the assertions read the escape sequences; table-building helpers |
+| `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag), and that a `common.variables` override holding an array, table or boolean is stored as JSON rather than as a Python repr |
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
 | `test_rclone_version.py` | `utils/rclone_version.py` — the rclone version lookup order, parsing of `rclone --version` output, and not-installed handling |
@@ -93,6 +95,7 @@ pytest -v -n 4 --run-demos
 | `test_retry_failure_policy.py` | `utils/submit_utils.py`, `submit.py` — the `RetryPolicy`/`FailurePolicy`/`TaskErrorSelector`/`Selection` builders, and the conflict and deprecation handling around them |
 | `test_select_dc_section.py` | `utils/load_config.py` — `_select_dc_section` (data client profile selection and merging) |
 | `test_show_instance.py` | `show.py` — the Instance (`cr_id.instance_id`) form: routing, lookup and error paths |
+| `test_show_output.py` | `show.py` — the shape of `yd-show`'s output, parsed rather than asserted argument by argument: a JSON array whenever more than one object is printed, a bare object otherwise, and the failure count behind the exit status |
 | `test_shutdown_glob.py` | `shutdown.py` — glob vs. literal name selection for `yd-shutdown`, excluding already-finished Worker Pools |
 | `test_sorted_objects.py` | `utils/printing.py` — `sorted_objects`: `--sort created` ordering of entity summaries, earliest first, with `--reverse` inverting it |
 | `test_start_hold_common.py` | `utils/start_hold_common.py` — `yd-start`/`yd-hold` named and tag-based paths |
@@ -105,7 +108,8 @@ pytest -v -n 4 --run-demos
 | `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
-| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine |
+| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, and that a TOML date falls back to its text |
+| `test_variables_command.py` | `variables.py` — `yd-variables`: named selection, all variables when none is named, alphabetical order, `null` for a name that isn't a variable, and the redaction of `key`/`secret` in the full report (revealed by naming them or by `--show-secrets`, and no other variable redacted) |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 
 ### Commander GUI Tests (no flags required; skipped without a usable Qt)
@@ -120,6 +124,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
 | `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting |
 | `test_commander_object_selection.py` | Choosing which objects a deletion removes: enumeration, object rows, and the paths that reach `yd-delete` |
+| `test_commander_check_indicator.py` | Every row of a selection list paints its own check state, on a style that places the check indicator where it is told to and on one that paints it at the painter's origin (Qt's macOS style under the macOS 26 control redesign, stood in for by a proxy — the real one draws no indicator at all under the offscreen platform) |
 | `test_commander_download_selection.py` | Choosing which objects a download fetches, and how the chooser differs from a destructive confirmation |
 | `test_commander_deselect.py` | The Deselect Files action: which of the currently-selected files get deselected |
 | `test_commander_selection_labels.py` | Selected definition files shown on their own 'Select' buttons, without widening the left-hand column |
@@ -129,7 +134,7 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_save_output.py` | Saving the output window: what is written, dismissal, and that a write failure is reported rather than swallowed |
 | `test_commander_notices.py` | The modal notice for a missing `results` directory: shown and logged, one OK button, plain text so a Windows path survives, and log-only under `--yes` or shutdown |
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
-| `test_commander_config_discovery.py` | The `yd-show` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, that every path into discovery gets that retry, that the debounced reparse waits for a half-typed user variable to be completed, and that the one failure meaning 'nothing is configured yet' is suppressed while no configuration file is selected without suppressing any other |
+| `test_commander_config_discovery.py` | The `yd-variables` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, that every path into discovery gets that retry, that the debounced reparse waits for a half-typed user variable to be completed, and that the one failure meaning 'nothing is configured yet' is suppressed while no configuration file is selected without suppressing any other |
 | `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
@@ -146,7 +151,7 @@ These are supported by three non-test modules and by fixtures in the root `conft
 | `gui_harness.py` | Generic Qt helpers: run or arm a dialog so an interaction lands inside its real modal loop, watchdogged; count visible rows; find buttons |
 | `commander_dialogs.py` | Drivers for Commander's own confirmation, chooser and notice, for the cases where production builds and execs the dialog |
 | `qt_guard.py` | `require_qt()` — the module-level skip, used instead of `pytest.importorskip` so that PyQt6-present-but-unusable skips rather than errors |
-| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-show`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
+| `conftest.py` | `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `_parse_yd_config`, so no test spawns `yd-variables`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
 
 ### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
 

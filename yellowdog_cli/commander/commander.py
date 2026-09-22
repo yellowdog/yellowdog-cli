@@ -48,6 +48,7 @@ from PyQt6.QtCore import (
     QObject,
     QProcess,
     QProcessEnvironment,
+    QRect,
     QSettings,
     QSize,
     QSortFilterProxyModel,
@@ -63,12 +64,14 @@ from PyQt6.QtGui import (
     QIcon,
     QImage,
     QImageReader,
+    QPainter,
     QPalette,
     QPixmap,
     QStyleHints,
     QTextCursor,
 )
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QBoxLayout,
     QCheckBox,
@@ -85,12 +88,16 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProxyStyle,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
     QSplitter,
     QStyle,
+    QStyleFactory,
+    QStyleOption,
     QStyleOptionButton,
+    QStyleOptionViewItem,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -127,9 +134,9 @@ SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
-CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-show' can block on an unreachable API URL
+CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
 # The one retry after a timeout gets a longer budget: by then it is known that a
-# 'yd-show' here is slow rather than hung, and on Windows the first 'yd-*' of a
+# 'yd-variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
 # session can legitimately need this long to start (interpreter start, SDK
 # imports, a virus scan of a freshly installed console script).
 CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
@@ -785,6 +792,176 @@ def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
     return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
 
 
+# The probe below paints a check indicator into a pixmap of its own: an
+# indicator-sized rect set well away from both edges, and a pixmap with room for
+# a style that draws a larger control than it was asked for.
+PROBE_INDICATOR_SIZE = 16
+PROBE_INDICATOR_ORIGIN = 32
+PROBE_PIXMAP_SIZE = 64
+
+
+def check_indicator_is_misplaced(style: QStyle, widget: QWidget | None = None) -> bool:
+    """
+    Does this style paint an item view's check indicator at the painter's origin
+    instead of at the rect it is handed?
+
+    macOS 26 redesigned the system controls, and AppKit gates the redesign on the
+    *main executable's linked SDK*. Where that is the macOS 26 SDK or later, Qt's
+    macOS style draws a checkbox or radio indicator as the new 16x16 control at
+    the painter's origin, ignoring the rect it computed; linked against an
+    earlier SDK, the same Qt draws the legacy 18x18 control in the rect. Only
+    those two indicators are affected — push buttons and combo boxes draw in
+    their rect either way.
+
+    That was established causally, one interpreter at a time, by rewriting
+    nothing but the SDK field with vtool: 26.5 -> 15.5 on a Homebrew Python's
+    Python.app fixes it, 15.5 -> 26.5 on a uv-managed interpreter breaks it, and
+    Apple's own opt-out (UIDesignRequiresCompatibility in the app's Info.plist)
+    fixes it as well.
+
+    It therefore looks like a Python or PyQt6 version problem and is neither.
+    Homebrew rebuilds its interpreters against the current SDK, so every Homebrew
+    build measured misplaces it (3.10, 3.12, 3.13, 3.14); uv-managed standalone
+    builds target an older one, so every one of those places it correctly (3.10,
+    3.12, 3.15) — same PyQt6, same Qt binaries, byte for byte. PyQt6 6.10.1 and
+    6.11.0 behave identically on either. Two earlier readings of this, as a Qt
+    6.11.0 regression and then as a framework-build difference, were both
+    artefacts of that correlation.
+
+    Qt knows: 'Qt for macOS - Specific Issues' records that its Widgets and Quick
+    macOS styles "may exhibit drawing artefacts" under Liquid Glass, and names
+    the same two escapes measured above — build with Xcode 16, or set
+    UIDesignRequiresCompatibility. Both belong to whoever builds the executable,
+    which for a Python GUI application is whoever built the interpreter, so
+    neither is available to a library running inside it. Correcting the painting
+    is the only lever this end of the problem has.
+
+    Hence measuring, rather than keying off a version, a platform or a style
+    name: nothing available at runtime names the real condition, and the
+    correction has to switch itself off when Qt adapts to the redesign or Apple
+    retires the compatibility path. Applied to a style that places the indicator
+    correctly, it would offset it twice — the same bug the other way up.
+
+    The probe paints into a transparent pixmap and asks only where the ink
+    landed, so it reads no colour and needs no display. A style that paints
+    nothing at all reads as not misplaced — which is the honest answer, since a
+    translation would have nothing to rescue. Qt's macOS style under the
+    offscreen platform is exactly that case, and is why the tests stand a proxy
+    style in for it rather than selecting it.
+    """
+    rect = QRect(
+        PROBE_INDICATOR_ORIGIN,
+        PROBE_INDICATOR_ORIGIN,
+        PROBE_INDICATOR_SIZE,
+        PROBE_INDICATOR_SIZE,
+    )
+    pixmap = QPixmap(PROBE_PIXMAP_SIZE, PROBE_PIXMAP_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    option = QStyleOptionViewItem()
+    if widget is not None:
+        option.initFrom(widget)
+    option.rect = rect
+    option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_On
+
+    painter = QPainter(pixmap)
+    style.drawPrimitive(
+        QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck, option, painter, widget
+    )
+    painter.end()
+
+    image = pixmap.toImage()
+    at_the_origin = QRect(0, 0, rect.width(), rect.height())
+    return _has_ink(image, at_the_origin) and not _has_ink(image, rect)
+
+
+def _has_ink(image: QImage, rect: QRect) -> bool:
+    """
+    Was anything painted inside this rect of an image filled with transparency?
+    """
+    for y in range(rect.top(), rect.bottom() + 1):
+        for x in range(rect.left(), rect.right() + 1):
+            if image.pixelColor(x, y).alpha() > 0:
+                return True
+    return False
+
+
+class CheckIndicatorPlacement(QProxyStyle):
+    """
+    Paint an item view's check indicator where the view asked for it, on a style
+    that ignores the position of the rect it is given (see
+    check_indicator_is_misplaced).
+
+    An item view clips each row's painting to that row, so an indicator painted
+    at the painter's origin survives only for the topmost row: a ten-row
+    selection list showed one checkbox, and the nine rows below it looked
+    unticked — and untickable — however they were clicked. Only the painting was
+    wrong; the ticking underneath it worked throughout, which is what made it
+    look like a dialog that allowed one selection.
+
+    Translating the painter is what corrects it, rather than moving the rect: it
+    is the rect's position that the style is ignoring, so the painter's own
+    transform is the only thing left to carry it.
+
+    Given the style it corrects, and owns it: QProxyStyle deletes the style it
+    wraps, so what it is handed must be an instance of its own (see
+    platform_style) and never the application's.
+    """
+
+    def drawPrimitive(
+        self,
+        element: QStyle.PrimitiveElement,
+        option: QStyleOption | None,
+        painter: QPainter | None,
+        widget: QWidget | None = None,
+    ) -> None:
+        if (
+            element != QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck
+            or option is None
+            or painter is None
+        ):
+            super().drawPrimitive(element, option, painter, widget)
+            return
+
+        painter.save()
+        painter.translate(option.rect.topLeft())
+        super().drawPrimitive(element, option, painter, widget)
+        painter.restore()
+
+
+def platform_style() -> QStyle | None:
+    """
+    A style object of this application's own style, for a proxy style to wrap and
+    take ownership of. None if the style cannot be built by name.
+
+    A function, rather than QProxyStyle's own base-less construction, for two
+    reasons. QProxyStyle without a base wraps a fresh instance of the *desktop*
+    style, not of the style the application is actually using, which on Linux is
+    Fusion under Dark Mode whatever the desktop's is. And the tests need a seam:
+    a style that misplaces its check indicators cannot be reached any other way,
+    the one that really does so drawing nothing at all under the offscreen
+    platform.
+    """
+    style = QApplication.style()
+    return None if style is None else QStyleFactory.create(style.objectName())
+
+
+def fix_check_indicator_placement(view: QAbstractItemView) -> None:
+    """
+    Correct where this view's style paints its check indicators, if it needs it.
+
+    The correction is parented to the view because setStyle() does not take
+    ownership: left unparented it would be collected while the view was still
+    painting with it.
+    """
+    style = platform_style()
+    if style is None or not check_indicator_is_misplaced(style, view):
+        return
+    correction = CheckIndicatorPlacement(style)
+    correction.setParent(view)
+    view.setStyle(correction)
+
+
 def checked_handles(listing: QListWidget) -> list[str]:
     """
     The handles of the ticked rows of a selection list, in list order.
@@ -1084,7 +1261,7 @@ class YellowDogApp(QMainWindow):
             ui_object.textChanged.connect(self._invalidate_config_parse)
 
         # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables change (debounced to avoid running yd-show
+        # user-defined variables change (debounced to avoid running yd-variables
         # on every keystroke)
         self._user_vars_reparse_timer = QTimer(self)
         self._user_vars_reparse_timer.setSingleShot(True)
@@ -1095,7 +1272,7 @@ class YellowDogApp(QMainWindow):
         self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
         # Defer config parse until after the window is shown, so the GUI is
-        # visible before yd-show runs
+        # visible before yd-variables runs
         QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
@@ -1156,7 +1333,7 @@ class YellowDogApp(QMainWindow):
 
         Held back while any variable in the box is not yet 'name=value'. Every
         variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd-show' rejects one and exits 1, so the reparse
+        to 'instances=3' — and 'yd-variables' rejects one and exits 1, so the reparse
         landing on such a keystroke reported "Error in variable substitution
         'instances'" against a mistake the user had not made. Nothing is said
         about it, because at 600ms after a keystroke there is nothing to say: an
@@ -1191,7 +1368,7 @@ class YellowDogApp(QMainWindow):
 
         Only after a *timeout*: a non-zero exit or a program that cannot be
         started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd-show'
+        timeout is different — the incident this exists for was a first 'yd-variables'
         on Windows that needed longer than its budget to start, where the second
         one is warm and finishes at once. Before this, the placeholders stayed
         blank until Commander was restarted, which is what the user had to do.
@@ -1251,19 +1428,16 @@ class YellowDogApp(QMainWindow):
         self.object_path_override.setPlaceholderText(default_prefix)
         cast(QWidget, self.object_path_override.viewport()).update()
 
-    def _yd_show_command(self) -> tuple[str, list[str]]:
+    def _yd_variables_command(self) -> tuple[str, list[str]]:
         """
-        The 'yd-show' invocation that resolves the namespace and tag for the
+        The 'yd-variables' invocation that resolves the namespace and tag for the
         current configuration source, namespace/tag overrides and user variables.
         """
-        return "yd-show", (
+        return "yd-variables", (
             self._config_source_args()
             + [
                 "--nf",
-                "-q",
-                "-r",
                 NAMESPACE,
-                "-r",
                 TAG,
             ]
             + self._namespace_tag_and_user_vars()
@@ -1274,8 +1448,8 @@ class YellowDogApp(QMainWindow):
         Whether a failed discovery means 'nothing is configured yet' rather than
         'something is wrong', in which case it is not reported.
 
-        Only with no configuration file selected. 'yd-show' is then given '--nc'
-        and has nothing but the environment to work from, and an environment
+        Only with no configuration file selected. 'yd-variables' is then given
+        '--nc' and has nothing but the environment to work from, and an environment
         with no YellowDog credentials in it makes it exit 1 with "Missing
         configuration data: 'key'" before it can resolve anything. Reported, that
         put an error in the output window at startup, and again on every
@@ -1324,7 +1498,7 @@ class YellowDogApp(QMainWindow):
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
-        cmd, args = self._yd_show_command()
+        cmd, args = self._yd_variables_command()
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
@@ -1335,13 +1509,13 @@ class YellowDogApp(QMainWindow):
             self._config_parse_timed_out = True
             self._report_discovery_failure(
                 f"Timed out after {timeout_ms // 1000}s parsing"
-                f" configuration with 'yd-show'"
+                f" configuration with 'yd-variables'"
             )
             return False
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-show': {yd_process.errorString()}"
+                f"Error parsing config with 'yd-variables': {yd_process.errorString()}"
             )
             return False
 
@@ -1350,7 +1524,7 @@ class YellowDogApp(QMainWindow):
             if self._nothing_is_configured(error_output):
                 return False
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-show'"
+                f"Error parsing config with 'yd-variables'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"
             )
             return False
@@ -1791,11 +1965,16 @@ class YellowDogApp(QMainWindow):
         namespace or bucket prefix can enumerate hundreds of items, which
         QListWidget scrolls, keyboard-navigates and repaints natively. 'rows'
         must be non-empty.
+
+        The check indicators are the point of the widget, so it is here that
+        fix_check_indicator_placement() puts them back where they belong on a
+        style that paints them somewhere else.
         """
         listing = QListWidget()
         listing.setObjectName("selection_list")
         listing.setFont(self._font)
         listing.setStyleSheet(f"QListWidget {{ padding: {ENTITY_LIST_PADDING}px; }}")
+        fix_check_indicator_placement(listing)
         listing.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for row in rows:
             item = QListWidgetItem(row.display)
@@ -3305,7 +3484,7 @@ class YellowDogApp(QMainWindow):
         # Resolve template variables iteratively, innermost first, to support up
         # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
         # Each pass finds the deepest {{...}} with no further {{ inside it,
-        # resolves that single variable via yd-show, and substitutes the result.
+        # resolves that single variable via yd-variables, and substitutes the result.
         for _ in range(3):
             if "{{" not in value:
                 break
@@ -3319,11 +3498,9 @@ class YellowDogApp(QMainWindow):
             try:
                 result = subprocess.run(
                     [
-                        "yd-show",
+                        "yd-variables",
                         "-c",
                         self._config_basename(),
-                        "-q",
-                        "-r",
                         var_name,
                     ]
                     + self._namespace_tag_and_user_vars(),

@@ -48,7 +48,7 @@ Quitting with commands still running asks first, listing the commands that would
 
 Choosing **Quit and Stop** signals each command to finish and forces it to stop if it doesn't; work already accepted by the YellowDog platform continues there regardless, since stopping the CLI command does not cancel it. Launching with `-y`/`--yes` suppresses the question and quits immediately.
 
-Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-show` invocations it makes internally to read your configuration.
+Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-variables` invocations it makes internally to read your configuration.
 
 Reading the configuration is bounded by a 10-second timeout, so an unreachable API URL leaves the Namespace, Tag, and Path placeholders unresolved and reports the timeout in the Command Output window, rather than hanging the window until the platform's own timeout expires.
 
@@ -94,7 +94,7 @@ The default is built from the discovered tag, so when no tag has been discovered
 That gives you four ways to widen or narrow the reach of a download or deletion:
 
 - **Wildcards** (`*`, `?`, `[…]`) anywhere in the path, matching files and directories — `<tag>_2607*` for one month's runs, `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
-- **A specific file or subdirectory**, with `/` separators — `myproject_260728-104500123/taskoutput.txt` retrieves a single object rather than a whole tree.
+- **A specific file or subdirectory**, with `/` separators — `myproject_260728-1045001-4f/taskoutput.txt` retrieves a single object rather than a whole tree.
 - **Variable substitution** with `{{...}}` — the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. Unlike on the command line, no quoting is needed: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
 - **An absolute rclone path** of the form `<remote>:<bucket>/<path>`, which is used verbatim and bypasses the configured prefix entirely, reaching anywhere the data store profile has access to — including objects that have nothing to do with the current namespace and tag.
 

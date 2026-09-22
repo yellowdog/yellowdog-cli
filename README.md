@@ -181,6 +181,7 @@
       * [yd-wait](#yd-wait)
       * [yd-compare](#yd-compare)
       * [yd-application](#yd-application)
+      * [yd-variables](#yd-variables)
    * [Resource Commands](#resource-commands)
       * [yd-create](#yd-create)
       * [yd-remove](#yd-remove)
@@ -198,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Sep 21 13:49:21 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 22 11:42:59 BST 2026 -->
 
 <!--te-->
 
@@ -230,6 +231,7 @@ The commands provide the following capabilities:
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
 - **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
+- **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
 - **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
@@ -420,7 +422,8 @@ options:
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error
+  --debug               display the Python stack trace on error, and the
+                        configuration preamble
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
@@ -507,9 +510,13 @@ All entity names used within the YellowDog Platform must comply with the followi
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
+Work Requirement, Task Group and Task names supplied to `yd-submit` are automatically adjusted to comply with these rules: characters are switched to lower case, spaces and full stops become underscores, forward slashes become hyphens, any remaining invalid characters are discarded, and the result is truncated to 60 characters. If the adjusted name doesn't start with a letter it is prefixed with `yd_` — e.g. `2024-run` becomes `yd_2024-run` — and a warning is printed naming both the supplied name and the one that will be used in its place. A name left with no usable characters at all is an error rather than something to correct, as is a name that isn't a string: `name = 123` is reported as a configuration error.
+
+When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd-commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer.
+
 Later sections of this document describe variable substitutions implemented with user-defined and CSV-file-defined variables. As a type modifier within these substitution expressions, the `format_name:` option is available, and works in the same manner as `num:`, `bool:`, etc. The `format_name:` modifier will convert the substituted string into one that satisfies YellowDog naming, by switching characters to lower case, etc.
 
-For example, a variable substitution `{{format_name:ligand_name}}`, with variable `ligand_name` set to `DCCCDE_00000s`, would substitute to become `dcccde_00000s`, and would be acceptable for use as a component of a YellowDog name.
+For example, a variable substitution `{{format_name:ligand_name}}`, with variable `ligand_name` set to `DCCCDE_00000s`, would substitute to become `dcccde_00000s`, and would be acceptable for use as a component of a YellowDog name. Because such a substitution is usually only one component of a name, `format_name:` does not apply the `yd_` prefix and issues no warning: a value that starts with a digit is left as it is.
 
 # Common Properties
 
@@ -566,6 +573,8 @@ The commands will respect the value of the environment variable `HTTPS_PROXY` if
 
 In addition, commands can use proxy autoconfiguration (PAC) if the `--pac` command-line option is specified, or if the `usePAC` property is set to `true` in the `[common]` section of the `config.toml` file.
 
+The proxy that a command ends up using is reported only under `--debug`, whether it came from `HTTPS_PROXY` or from PAC; PAC finding no proxy is reported there too.
+
 ## Specifying Common Properties using the Command Line or Environment Variables
 
 All the common properties can be set using command-line options, or in environment variables.
@@ -607,6 +616,8 @@ Any property in the TOML configuration file can be overridden on the command lin
 
 The `section` must be one of `common`, `dataClient`, `workRequirement`, `workerPool`, or `computeRequirement`. The `value` is interpreted as JSON first (so booleans, numbers, lists, and dicts are handled correctly), falling back to a plain string if JSON parsing fails.
 
+Properties that take a string value are the exception: their values are always used as supplied, so `--property 'workRequirement.name=123'` sets the name `123` rather than the number 123. Supplying `null` still unsets a property, whatever its type.
+
 Examples:
 
 ```bash
@@ -621,6 +632,9 @@ yd-submit --property 'workRequirement.workerTags=["gpu","large"]'
 
 # Override a boolean
 yd-provision --property 'workerPool.maintainInstanceCount=true'
+
+# Override a string property: the value is used as supplied
+yd-submit --property 'workRequirement.tag=2024'
 
 # Multiple overrides
 yd-submit --property 'workRequirement.maxRetries=3' \
@@ -674,6 +688,8 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 
 > **Note:** `array:` and `table:` values must be valid JSON. Use double-quoted strings, and `true`/`false`/`null` for booleans and null values.
 
+Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd-variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
+
 ## Default Variables
 
 The following substitutions are automatically created and can be used in any section of the configuration file, or in any JSON specification:
@@ -684,7 +700,10 @@ The following substitutions are automatically created and can be used in any sec
 | `{{date}}`            | The current date (UTC): YYMMDD                                 | 221027                  |
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
 | `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
-| `{{random}}`          | A random, three digit hexadecimal number (lower case)          | a1c                     |
+| `{{random}}`          | Three random base 36 digits (0-9, a-z), lower case             | a1c                     |
+| `{{random6}}`         | Six random base 36 digits (0-9, a-z), lower case               | a1c9z0                  |
+| `{{pid}}`             | The process ID (PID) of the running command                    | 48213                   |
+| `{{pid2}}`            | The process discriminator: the PID mod 1296, in two base 36 digits, lower case | 4f      |
 | `{{namespace}}`       | The `namespace` property.                                      | my_namespace            |
 | `{{tag}}`             | The `tag` property.                                            | my_tag                  |
 | `{{key}}`             | The application `key` property.                                |                         |
@@ -693,9 +712,13 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
-For the `date`, `time`, `datetime` and `random` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
+For the `date`, `time`, `datetime`, `random`, `random6`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
+
+The `random` and `random6` directives use base 36 digits rather than hexadecimal, base 36 being the widest alphabet a YellowDog name may be built from, so they carry the most randomness in the fewest characters: `random` has 46,656 possible values and `random6` has 2,176,782,336.
+
+The `pid2` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](#naming-rules)), so a hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid2}}"` is disambiguated between simultaneously launched commands in exactly the way a generated one is: processes alive at the same time always have distinct PIDs, so `{{pid2}}` differs between them unless 1,296 processes were spawned in between. The `pid` directive is the full PID, which is unambiguous but too long, and too variable in length, to sit comfortably in a name.
 
 ## User-Defined Variables
 
@@ -740,6 +763,8 @@ User-defined variable names must not start with a reserved prefix. The implement
     project_code = "pr-213a"
     run_id = "1234"
 ```
+
+TOML values that are not strings are converted to their JSON text when they're loaded, so `counts = [1, 2, 3]` can be used as `"{{array:counts}}"` exactly as `counts = "[1,2,3]"` can, and `enabled = true` substitutes as `true` rather than as Python's `True`. (TOML's date, time and datetime values have no JSON form, and are held as the text they were written as.)
 
 ### Precedence Order
 
@@ -1249,7 +1274,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, and a UTC timestamp: e.g. `mytag_221024-15552480`.
+- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](#naming-rules)): e.g. `mytag_221024-1555241-4f`.
 - **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
 - **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
 
@@ -1585,7 +1610,7 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 
 ```json
 {
-  "name": "pyex-docker-pwt_240424-12051160",
+  "name": "pyex-docker-pwt_240424-1205116-4f",
   "namespace": "pyexamples-pwt",
   "priority": 0,
   "tag": "pyex-docker-pwt",
@@ -1610,7 +1635,7 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
             "YD_TASK_NUMBER": "1",
             "YD_TASK_GROUP_NAME": "task_group_1",
             "YD_TASK_GROUP_NUMBER": "1",
-            "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-12051160",
+            "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-1205116-4f",
             "YD_NAMESPACE": "pyexamples-pwt"
           },
           "name": "task_1",
@@ -1672,7 +1697,9 @@ yd-submit --add-to my-work-requirement --overwrite my-spec.json
 
 By default, `yd-submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
 
-> **Note:** `--dry-run` is not supported with `--add-to`. Dry-run the specification independently first to inspect its structure before submitting.
+`--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is not in a terminal state, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
+
+The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
 
 ### Submitting 'Raw' JSON Work Requirement Specifications
 
@@ -2054,7 +2081,7 @@ The `computeRequirementBatchSize` property controls the maximum number of instan
 
 ## Automatic Properties
 
-The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of `wp_`, the `tag` property, and a UTC timestamp, e.g. `wp_mytag_221024-155524`.
+The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](#naming-rules)), e.g. `mytag_221024-1555241-4f`.
 
 ## TOML Properties in the `workerPool` Section
 
@@ -2102,7 +2129,7 @@ The example below is of a simple JSON specification of a Worker Pool with one in
 {
   "requirementTemplateUsage": {
     "maintainInstanceCount": false,
-    "requirementName": "wp_pyex-primes_230113-161528",
+    "requirementName": "pyex-primes_230113-1615283-4f",
     "requirementNamespace": "pyexamples",
     "requirementTag": "pyex-primes",
     "targetInstanceCount": 1,
@@ -3345,7 +3372,7 @@ The five [Data Client Commands](#data-client-commands) are a partial exception: 
 | `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
 | `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
 | `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
-| `--debug` | Display the Python stack trace on error, which can be useful for support purposes |
+| `--debug` | Display the Python stack trace on error, which can be useful for support purposes. Also shows the startup preamble, each line marked `DEBUG`: where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL when it is not the default, the HTTPS proxy in use, and the certificates bundle when one is set. The whole preamble is suppressed by default |
 | `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](#https-proxy-support) |
 | `--docs` | Provide a link to the documentation for this version of the CLI |
 
@@ -3587,9 +3614,9 @@ Key options:
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 
 ```shell
-yd-resize wp_pyex-slurm-pwt_230711-124356-0d6 10
+yd-resize pyex-slurm-pwt_230711-1243561-0d 10
 yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
-yd-resize --compute-requirement cr_pyex-slurm-pwt_230712-110226-04c 5
+yd-resize --compute-requirement pyex-slurm-pwt_230712-1102264-4c 5
 yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
 ```
 
@@ -3871,8 +3898,11 @@ Instances have no YellowDog ID of their own: they're identified by the combinati
 
 Key options:
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
-- `--report-variable`/`-r <var>` — report the processed value of the specified variable substitution and exit; can be supplied multiple times, or use `all` to report all variables. Combine with `--quiet` to emit the report as JSON. This is useful for debugging variable substitution setups
 - `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list)
+
+Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
+
+It exits with code 1 if any of the supplied IDs could not be shown (invalid ID, entity not found, or an API error), and 0 otherwise. The IDs that could be shown are still emitted.
 
 ```shell
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
@@ -3957,9 +3987,64 @@ yd-application [options]
 
 It takes no arguments beyond the [Universal Options](#universal-options), and is the quickest way to confirm which Application a set of credentials belongs to.
 
+Key options:
+- `--json`/`-J` — emit the Application's details as JSON instead of the readable report
+
 ```shell
 yd-application --config prod.toml
 ```
+
+The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined: `portalUrl` when the Platform API URL isn't in the standard form, and `groups` and `roles` when the Application lacks the permissions required to look them up.
+
+```shell
+yd-application --json
+```
+
+```json
+{
+  "accountId": "000000",
+  "accountName": "my-account",
+  "allNamespacesReadable": true,
+  "features": ["PLATFORM"],
+  "groups": ["administrators"],
+  "id": "ydid:app:000000:557cc657-4fca-4e00-aa7a-3f6bd59dc6f2",
+  "name": "my-app",
+  "portalUrl": "https://portal.yellowdog.ai/#/signin?account=my-account",
+  "roles": {"administrator": ["GLOBAL"]}
+}
+```
+
+### yd-variables
+
+The `yd-variables` command reports the processed values of variable substitutions, as JSON. It shows what a specification file would actually see, once the TOML configuration file, the environment, any `YD_VAR_*` variables, any `--variable`/`-v` options and the built-in defaults have all been taken into account, which makes it the quickest way to debug a variable substitution setup.
+
+```shell
+yd-variables [options] [<var> ...]
+```
+
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order, and it is the command's only output — there is no need to pass `--quiet`/`-q`. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
+
+```shell
+yd-variables                           # report every variable
+yd-variables namespace tag             # report only these two
+yd-variables -v instances=5 instances  # report a variable set on the command line
+```
+
+```json
+{"namespace": "my-namespace", "tag": "my-tag"}
+```
+
+Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`. Naming either of them reports its value — a name is an explicit request for that variable — and `--show-secrets` reports both in the full listing.
+
+```shell
+yd-variables                 # 'key' and 'secret' are reported as <REDACTED>
+yd-variables --show-secrets  # every variable, credentials included
+yd-variables key secret      # named explicitly, so reported in full
+```
+
+**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
+
+This command replaces the `--report-variable`/`-r` option of `yd-show`, which has been removed. `yd-show -q -r namespace -r tag` becomes `yd-variables namespace tag`, and `yd-show -q -r all` becomes `yd-variables`.
 
 ## Resource Commands
 

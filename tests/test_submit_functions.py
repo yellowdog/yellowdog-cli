@@ -342,6 +342,7 @@ def _run_submit_wr(
     wr_data: dict | None = None,
     config_wr: ConfigWorkRequirement | None = None,
     wr_id: str = "test-wr",
+    real_task_groups: bool = False,
 ) -> dict:
     """
     Call submit_work_requirement with all external calls mocked out.
@@ -350,6 +351,10 @@ def _run_submit_wr(
       create_tg_calls:   list of (tg_number, task_group_data) pairs
       add_tasks_calls:   list of tg_number values
       add_wr_mock:       the mock for CLIENT.work_client.add_work_requirement
+
+    Set 'real_task_groups' to let the genuine create_task_group() run, which
+    is what makes the ordering of its output against the Work Requirement's
+    observable.
     """
     if config_wr is None:
         config_wr = ConfigWorkRequirement()
@@ -364,6 +369,14 @@ def _run_submit_wr(
     def fake_create_tg(tg_number, wr_data, task_group_data, **kwargs):
         create_tg_calls.append((tg_number, task_group_data))
         return mock_tg
+
+    # Captured before the patch below replaces the module attribute
+    real_create_tg = submit_module.create_task_group
+
+    def dispatch_create_tg(*args, **kwargs):
+        if real_task_groups:
+            return real_create_tg(*args, **kwargs)
+        return fake_create_tg(*args, **kwargs)
 
     def fake_add_tasks(tg_number, *args, **kwargs):
         add_tasks_calls.append(tg_number)
@@ -384,7 +397,9 @@ def _run_submit_wr(
             side_effect=lambda x: x,
         ),
         patch.object(submit_module, "add_substitutions_without_overwriting"),
-        patch.object(submit_module, "create_task_group", side_effect=fake_create_tg),
+        patch.object(
+            submit_module, "create_task_group", side_effect=dispatch_create_tg
+        ),
         patch.object(
             submit_module, "add_tasks_to_task_group", side_effect=fake_add_tasks
         ),
@@ -585,3 +600,47 @@ class TestSubmitWRCleanupOnFailure:
             submit_module.submit_work_requirement(files_directory=".", wr_data=wr_data)
 
         cleanup_mock.assert_called_once_with(mock_wr)
+
+
+# ---------------------------------------------------------------------------
+# submit_work_requirement — announcing what was generated
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitWRGeneratedMessage:
+    """
+    The Work Requirement is announced as it is generated, as each Task Group
+    already was — so a dry run names it without having to read the JSON.
+    """
+
+    def test_the_work_requirement_is_announced(self, capsys):
+        wr_data = {
+            NAME: "from-data",
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        _run_submit_wr(wr_data=wr_data)
+        assert "Generated Work Requirement 'from-data'" in capsys.readouterr().out
+
+    def test_the_announced_name_is_the_resolved_one(self, capsys):
+        # Not the incoming default: the name actually submitted
+        _run_submit_wr(
+            wr_data={TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]},
+            wr_id="generated-fallback-id",
+        )
+        assert (
+            "Generated Work Requirement 'generated-fallback-id'"
+            in capsys.readouterr().out
+        )
+
+    def test_it_precedes_its_task_groups(self, capsys):
+        wr_data = {
+            NAME: "from-data",
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        _run_submit_wr(wr_data=wr_data, real_task_groups=True)
+        output = capsys.readouterr().out
+        assert "Generated Work Requirement 'from-data'" in output
+        assert "Generated Task Group" in output
+        assert output.index("Generated Work Requirement") < output.index(
+            "Generated Task Group"
+        ), output

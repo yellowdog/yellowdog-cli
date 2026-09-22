@@ -61,6 +61,7 @@ from yellowdog_cli.utils.load_resources import (
     load_resource_specifications,
 )
 from yellowdog_cli.utils.printing import (
+    print_dry_run,
     print_error,
     print_info,
     print_json,
@@ -102,6 +103,7 @@ from yellowdog_cli.utils.settings import (
     PROP_TYPE,
     PROP_UNITS,
     PROP_USERNAME,
+    REDACTED_VALUE,
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -146,8 +148,8 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
         resources = deepcopy(resources)  # Avoid overwriting the input argument
 
     if ARGS_PARSER.dry_run:
-        print_info(
-            "Dry-run: displaying processed JSON resource specifications. Note:"
+        print_dry_run(
+            "Displaying processed JSON resource specifications. Note:"
             " 'resource' property is removed."
         )
 
@@ -442,7 +444,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         keyring_password = (
             keyring_password
             if ARGS_PARSER.show_keyring_passwords or show_secrets
-            else "<REDACTED>"
+            else REDACTED_VALUE
         )
         print_info(
             f"Created Keyring '{name}' ({keyring.id}): Password = {keyring_password}"  # type: ignore[union-attr]

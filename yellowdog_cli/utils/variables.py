@@ -10,7 +10,6 @@ from copy import deepcopy
 from getpass import getuser
 from json import dumps as json_dumps
 from json import loads as json_loads
-from random import randint
 from typing import cast
 
 from tomli import load as toml_load
@@ -18,14 +17,22 @@ from tomli import load as toml_load
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.misc_utils import (
+    PID,
+    PROCESS_DISCRIMINATOR,
     UTCNOW,
     config_file_explicitly_selected,
     format_yd_name,
     load_dotenv_file,
+    random_base36,
     remove_outer_delimiters,
     split_delimited_string,
 )
-from yellowdog_cli.utils.printing import print_error, print_info, print_json
+from yellowdog_cli.utils.printing import (
+    print_debug,
+    print_dry_run,
+    print_error,
+    print_json,
+)
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
     USERDATA,
@@ -37,7 +44,8 @@ from yellowdog_cli.utils.settings import (
     ENV_VAR_SUB_PREFIX,
     FORMAT_NAME_TYPE_TAG,
     NUMBER_TYPE_TAG,
-    RAND_VAR_SIZE,
+    RAND_VAR_6_DIGITS,
+    RAND_VAR_DIGITS,
     TABLE_TYPE_TAG,
     TOML_VAR_NESTED_DEPTH,
     TYPE_TAG_DEFAULT_GUARD,
@@ -66,9 +74,10 @@ VARIABLE_SUBSTITUTIONS = {
     "date": UTCNOW.strftime("%y%m%d"),
     "time": UTCNOW.strftime("%H%M%S%f")[:-4],
     "datetime": UTCNOW.strftime("%y%m%d-%H%M%S"),
-    "random": (
-        hex(randint(0, RAND_VAR_SIZE))[2:].lower().zfill(len(hex(RAND_VAR_SIZE)) - 2)
-    ),
+    "random": random_base36(RAND_VAR_DIGITS),
+    "random6": random_base36(RAND_VAR_6_DIGITS),
+    "pid": str(PID),
+    "pid2": PROCESS_DISCRIMINATOR,
 }
 
 # Load .env file before scanning os.environ so YD_VAR_* variables defined
@@ -84,7 +93,7 @@ for key, value in os.environ.items():
         subs_list.append(f"'{key}'")
 
 if subs_list:
-    print_info(
+    print_debug(
         "Adding environment-defined variable substitution(s) for: "
         f"{', '.join(subs_list)}"
     )
@@ -112,12 +121,39 @@ if ARGS_PARSER.variables is not None:
             exit(1)  # Note: exception trap not yet in place
 
 if subs_list:
-    print_info(
+    print_debug(
         "Adding command-line-defined variable substitution(s) for: "
         f"{', '.join(subs_list)}"
     )
 
 del subs_list
+
+
+def _stringify(value) -> str:
+    """
+    Render a variable's value as the string the substitutions dictionary
+    holds.
+
+    Values are rendered as JSON rather than with str(), whose Python repr
+    quotes strings with apostrophes and capitalises booleans: the type tags
+    read the value back as JSON -- 'array:' and 'table:' with json_loads(),
+    'bool:' as the JSON spelling -- so a repr of a list or table cannot be
+    read back at all, and a TOML array of strings would be unusable as an
+    array. Rendering the scalars the same way keeps a boolean spelled the
+    same whether it stands alone or sits inside an array.
+
+    A string is passed through untouched: every value is re-rendered on
+    each resolution pass, so a string given JSON's quotes would gain another
+    pair on every pass. A value with no JSON form at all -- TOML's date,
+    time and datetime values are date/datetime objects -- falls back to
+    str(), which renders them as the text they were written as.
+    """
+    if isinstance(value, str):
+        return value
+    try:
+        return json_dumps(value)
+    except TypeError:
+        return str(value)
 
 
 def _update_and_resolve_substitutions(merged: dict):
@@ -136,7 +172,7 @@ def _update_and_resolve_substitutions(merged: dict):
     # variable with the '::' unset suffix), remove it entirely.
     keys_to_unset = []
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        result = process_variable_substitutions(str(value_))
+        result = process_variable_substitutions(_stringify(value_))
         if result is _UNSET:
             keys_to_unset.append(key_)
         else:
@@ -173,11 +209,11 @@ def add_substitutions_from_config_file(subs: dict):
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
-def add_or_update_substitution(key: str, value: str):
+def add_or_update_substitution(key: str, value):
     """
     Add a substitution to the dictionary, overwriting existing values.
     """
-    VARIABLE_SUBSTITUTIONS[key] = str(value)
+    VARIABLE_SUBSTITUTIONS[key] = _stringify(value)
 
 
 def get_user_variable(variable_name: str) -> str | None:
@@ -623,9 +659,9 @@ def load_jsonnet_file_with_variable_substitutions(
     process_variable_substitutions_insitu(dict_data, prefix, postfix)
 
     if ARGS_PARSER.jsonnet_dry_run:
-        print_info(f"Dry-run: Printing Jsonnet to JSON conversion for '{filename}'")
+        print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
         print_json(dict_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
         if exit_on_dry_run:
             sys.exit(0)
 
@@ -648,7 +684,7 @@ def load_toml_file_with_variable_substitutions(
         # Convert all values to strings before adding
         add_substitutions_from_config_file(
             {
-                var_name: str(var_value)
+                var_name: _stringify(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
             }
         )

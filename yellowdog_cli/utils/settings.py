@@ -25,7 +25,10 @@ YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 YD_CONF = "YD_CONF"
 ENV_VAR_SUB_PREFIX = "env:"
-RAND_VAR_SIZE = 0xFFF
+
+# Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
+RAND_VAR_DIGITS = 3
+RAND_VAR_6_DIGITS = 6
 
 # Alternative env.var names
 YD_KEY_ALT = "YD_API_KEY_ID"
@@ -46,6 +49,11 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 # event stream forever; a timeout during a quiet period just reconnects
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+
+# Prepended by format_yd_name() to a name that doesn't start with a letter.
+# The underscore is what makes the prefix visible as a prefix: bare 'yd' merges
+# into the name it is fixing, so 'yd2024-run' reads as a name the user chose.
+NAME_START_PREFIX = "yd_"
 
 NAMESPACE_PREFIX_SEPARATOR = "/"
 WP_VARIABLES_PREFIX = "__"
@@ -86,7 +94,13 @@ MAX_TABLE_DESCRIPTION = 50
 MAX_LINES_COLOURED_FORMATTING = 1024
 ERROR_STYLE = "bold red3"
 WARNING_STYLE = "red3"
+# Marks and colours the configuration/startup messages shown only under '--debug'
+DEBUG_MARKER = "DEBUG : "
 DEBUG_STYLE = "dark_orange"
+# Marks the messages reporting what a '--dry-run' would have done
+DRY_RUN_MARKER = "DRY-RUN : "
+# Stands in for a credential that's being withheld ('--show-secrets' reveals it)
+REDACTED_VALUE = "<REDACTED>"
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [
     re.compile(r"(?P<active>ALLOCATED)"),

@@ -124,19 +124,19 @@ def _no_config_discovery(request, monkeypatch):
     Keep Commander's config discovery out of the GUI unit tests.
 
     A YellowDogApp defers _set_config_file with singleShot(0), and that calls
-    _parse_yd_config, which runs 'yd-show' as a child process and blocks in a nested
+    _parse_yd_config, which runs 'yd-variables' as a child process and blocks in a nested
     event loop until it finishes. So every test that constructs a window ran a real
     CLI invocation inside whichever event loop spun first — usually a dialog's exec().
     Measured on this repo: 235 invocations across the Commander tests, 18 of their 21
     seconds, and far worse on a small CI node. It also made them depend on an
-    installed, working yd-show, and on whatever namespace and tag the environment
+    installed, working yd-variables, and on whatever namespace and tag the environment
     happened to supply.
 
     None of these tests are about discovery: they set _namespace/_tag directly or
     call _set_placeholders. The ones that do exercise discovery itself opt out with
     @pytest.mark.real_config_parse — two in test_commander_shutdown.py, and the whole
-    of test_commander_config_discovery.py, which overrides _yd_show_command instead so
-    that it still spawns no yd-show.
+    of test_commander_config_discovery.py, which overrides _yd_variables_command instead so
+    that it still spawns no yd-variables.
 
     Returning False is what the real method returns when it cannot discover anything,
     which leaves the placeholders blank — the same state as a parse that found no
@@ -535,5 +535,5 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "real_config_parse: keep Commander's real _parse_yd_config, which runs"
-        " 'yd-show' (see the '_no_config_discovery' fixture)",
+        " 'yd-variables' (see the '_no_config_discovery' fixture)",
     )

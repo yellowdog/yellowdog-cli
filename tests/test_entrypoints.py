@@ -35,6 +35,7 @@ from cli_test_helpers import shell
         ("yd-submit --help", 0),
         ("yd-terminate --help", 0),
         ("yd-upload --help", 0),
+        ("yd-variables --help", 0),
         ("yd-version", 0),
         ("yd-wait --help", 0),
     ],

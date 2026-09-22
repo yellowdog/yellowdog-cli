@@ -6,11 +6,14 @@ and process_variable_substitutions / process_variable_substitutions_in_file_cont
 (require patching the VARIABLE_SUBSTITUTIONS global).
 """
 
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 
 import yellowdog_cli.utils.variables as var_module
+from yellowdog_cli.utils.misc_utils import BASE36_DIGITS
 from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
@@ -601,3 +604,185 @@ class TestProcessVariableSubstitutionsInFileContents:
         content = "'{{array:arr}}'"
         result = var_module.process_variable_substitutions_in_file_contents(content)
         assert result == '["Alpha", "Beta"]'
+
+
+# ---------------------------------------------------------------------------
+# The '{{random}}' and '{{random6}}' default substitutions
+# ---------------------------------------------------------------------------
+
+
+class TestRandomDefaultSubstitutions:
+    """
+    Both are base 36 rather than hexadecimal, which is what gives them their
+    range: 46,656 values for '{{random}}' and 2,176,782,336 for '{{random6}}'.
+    """
+
+    def test_random_is_three_base36_digits(self):
+        value = var_module.VARIABLE_SUBSTITUTIONS["random"]
+        assert len(value) == 3
+        assert all(character in BASE36_DIGITS for character in value)
+
+    def test_random6_is_six_base36_digits(self):
+        value = var_module.VARIABLE_SUBSTITUTIONS["random6"]
+        assert len(value) == 6
+        assert all(character in BASE36_DIGITS for character in value)
+
+    def test_the_same_value_is_used_for_the_duration_of_a_command(self):
+        # Drawn once at import, so every substitution in one command agrees
+        content = "{{random}} {{random}} {{random6}} {{random6}}"
+        first, second, third, fourth = (
+            var_module.process_variable_substitutions_in_file_contents(content).split()
+        )
+        assert first == second
+        assert third == fourth
+
+
+# ---------------------------------------------------------------------------
+# The '{{pid}}' and '{{pid2}}' default substitutions
+# ---------------------------------------------------------------------------
+
+
+class TestPidDefaultSubstitutions:
+    """
+    '{{pid}}' is the full PID of the running command. '{{pid2}}' exposes the
+    process discriminator that generate_id() appends to an automatically
+    generated name, so that a hand-written name can be made to disambiguate
+    simultaneous launches in exactly the same way.
+    """
+
+    def test_are_default_substitutions(self):
+        from yellowdog_cli.utils.misc_utils import PID, PROCESS_DISCRIMINATOR
+
+        assert var_module.VARIABLE_SUBSTITUTIONS["pid"] == str(PID)
+        assert var_module.VARIABLE_SUBSTITUTIONS["pid2"] == PROCESS_DISCRIMINATOR
+
+    def test_substitutes_the_pid_of_the_running_process(self):
+        # Run in a subprocess: the PID is the *interpreter's*, so this both
+        # isolates the process-global substitutions dict and proves that the
+        # substituted value is the PID of the process doing the substituting
+        # The marker is needed because importing the module announces any
+        # environment-defined substitutions it finds on the way past
+        snippet = (
+            "import os; "
+            "from yellowdog_cli.utils.variables import "
+            "process_variable_substitutions as p; "
+            "print('RESULT', p('{{pid}}'), os.getpid())"
+        )
+        _, pid_substitution, actual_pid = self._run(snippet)
+        assert pid_substitution == actual_pid
+
+    def test_substitutes_the_discriminator_of_the_running_process(self):
+        # As above, and additionally proves that the substituted value and the
+        # generated name agree for one run
+        snippet = (
+            "from yellowdog_cli.utils.misc_utils import generate_id; "
+            "from yellowdog_cli.utils.variables import "
+            "process_variable_substitutions as p; "
+            "print('RESULT', p('{{pid2}}'), generate_id('name'))"
+        )
+        _, pid_substitution, generated_name = self._run(snippet)
+        assert len(pid_substitution) == 2
+        assert generated_name.endswith(f"-{pid_substitution}")
+
+    @staticmethod
+    def _run(snippet: str) -> list[str]:
+        output = subprocess.run(
+            [sys.executable, "-c", snippet],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=True,
+        ).stdout
+        result = [line for line in output.splitlines() if line.startswith("RESULT ")]
+        assert len(result) == 1, f"no single result line in {output!r}"
+        return result[0].split()
+
+
+# ---------------------------------------------------------------------------
+# Non-scalar variable values
+# ---------------------------------------------------------------------------
+
+
+class TestVariableValueRendering:
+    """
+    Variable values are held as strings, so a value arriving as something
+    else -- a TOML array, table, number or boolean from a configuration
+    file's '[common.variables]' section, or a '--property' override -- has
+    to be rendered as text on the way in. It is rendered as JSON rather than
+    with str()'s Python repr, because the 'array:' and 'table:' type tags
+    read the value back with json_loads(): a repr's single quotes are not
+    JSON, so ["a", "b"] defined in TOML could not be used as an array at
+    all. Strings are passed through, and a value with no JSON form falls
+    back to str().
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    def test_list_of_strings_round_trips_through_the_array_tag(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})
+        assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
+
+    def test_table_round_trips_through_the_table_tag(self):
+        var_module.add_substitutions_without_overwriting({"tbl": {"x": "y"}})
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}
+
+    def test_nested_containers_round_trip(self):
+        value = {"outer": [{"inner": "a"}, 2, True]}
+        var_module.add_substitutions_without_overwriting({"nested": value})
+        assert var_module.process_variable_substitutions("{{table:nested}}") == value
+
+    def test_variables_inside_a_non_scalar_are_substituted(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["{{myvar}}", "b"]})
+        assert var_module.process_variable_substitutions("{{array:strs}}") == [
+            "hello",
+            "b",
+        ]
+
+    def test_reported_as_json(self):
+        var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})
+        assert var_module.get_user_variable("strs") == '["a", "b"]'
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [(7, "7"), (3.5, "3.5"), (True, "true"), (False, "false"), (None, "null")],
+    )
+    def test_scalars_are_rendered_as_json(self, value, expected):
+        var_module.add_substitutions_without_overwriting({"scalar": value})
+        assert var_module.get_user_variable("scalar") == expected
+
+    @pytest.mark.parametrize("value", ["a", "[a", '"a"', "{{myvar}}"])
+    def test_a_string_is_never_requoted(self, value):
+        # Every value is re-rendered on each resolution pass, so a string that
+        # gained JSON quotes would gain another pair on every pass
+        var_module.add_substitutions_without_overwriting({"s": value})
+        var_module.add_substitutions_without_overwriting({"other": "x"})
+        expected = "hello" if value == "{{myvar}}" else value
+        assert var_module.get_user_variable("s") == expected
+
+    def test_toml_boolean_round_trips_through_the_bool_tag(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("[common.variables]\nb = true\n")
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.get_user_variable("b") == "true"
+        assert var_module.process_variable_substitutions("{{bool:b}}") is True
+
+    def test_toml_date_falls_back_to_its_text(self, tmp_path):
+        # TOML dates and datetimes are date/datetime objects, which have no
+        # JSON form at all: rendering them must fall back to str()
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text("[common.variables]\nd = 2024-01-01\n")
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.get_user_variable("d") == "2024-01-01"
+
+    def test_toml_array_of_strings_round_trips(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text('[common.variables]\nstrs = ["a", "b"]\n')
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
+
+    def test_toml_table_round_trips(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text('[common.variables]\ntbl = { x = "y" }\n')
+        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}

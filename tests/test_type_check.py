@@ -119,3 +119,50 @@ class TestCheckDict:
     def test_raises(self, value):
         with pytest.raises(Exception, match="Dict"):
             check_dict(value)
+
+
+class TestPropertyNameInMessage:
+    """
+    The property name is included in the message wherever the caller supplies
+    one, so a type error says which property is wrong.
+    """
+
+    @pytest.mark.parametrize(
+        "check,value,type_name",
+        [
+            (check_int, "5", "Integer"),
+            (check_float, "1.5", "Float"),
+            (check_bool, 1, "Boolean"),
+            (check_str, 42, "String"),
+            (check_list, {"a": 1}, "List"),
+            (check_dict, [1], "Dict"),
+        ],
+    )
+    def test_message_names_the_property(self, check, value, type_name):
+        with pytest.raises(TypeError) as excinfo:
+            check(value, "taskCount")
+        assert str(excinfo.value) == (
+            f"Property 'taskCount' value '{value}' should be of type '{type_name}'"
+        )
+
+    def test_float_or_int_message_names_the_property(self):
+        with pytest.raises(TypeError) as excinfo:
+            check_float_or_int("abc", "priority")
+        assert str(excinfo.value) == (
+            "Property 'priority' value 'abc' should be of type 'Float' or 'Integer'"
+        )
+
+    def test_message_without_a_property_name_is_unchanged(self):
+        with pytest.raises(TypeError) as excinfo:
+            check_str(42)
+        assert str(excinfo.value) == "Property value '42' should be of type 'String'"
+
+    def test_float_or_int_message_without_a_property_name_is_unchanged(self):
+        with pytest.raises(TypeError) as excinfo:
+            check_float_or_int("abc")
+        assert str(excinfo.value) == (
+            "Property value 'abc' should be of type 'Float' or 'Integer'"
+        )
+
+    def test_valid_value_is_returned_when_named(self):
+        assert check_str("abc", "name") == "abc"

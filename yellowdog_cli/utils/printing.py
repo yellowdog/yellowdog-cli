@@ -67,9 +67,11 @@ from yellowdog_cli.utils.items import Item
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASKS
 from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
 from yellowdog_cli.utils.settings import (
+    DEBUG_MARKER,
     DEBUG_STYLE,
     DEFAULT_LOG_WIDTH,
     DEFAULT_THEME,
+    DRY_RUN_MARKER,
     ERROR_STYLE,
     HIGHLIGHTED_STATES,
     JSON_INDENT,
@@ -202,10 +204,14 @@ def print_info(
     log_message: str = "",
     override_quiet: bool = False,
     no_fill: bool = False,
+    style: str | None = None,
 ):
     """
     Placeholder for logging.
     Set 'override_quiet' to print when '-q' is set.
+    A 'style' is a Rich base style for the line; the highlighter's own colours
+    still apply on top of it, and '--no-format' ignores it along with all
+    other colouring.
     """
     if (
         ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
@@ -216,27 +222,37 @@ def print_info(
         print(print_string(log_message, no_fill=no_fill), flush=True)
         return
 
-    CONSOLE.print(escape(print_string(log_message, no_fill=no_fill)))
+    CONSOLE.print(escape(print_string(log_message, no_fill=no_fill)), style=style)
 
 
 def print_debug(
     log_message: str = "",
-    _override_quiet: bool = False,
     no_fill: bool = False,
 ):
     """
-    Placeholder for debugging.
+    An informational message that's printed only when '--debug' is set:
+    used for the configuration/startup preamble, which is noise unless
+    it's what one is looking at. Marked 'DEBUG' and coloured to set it
+    apart from the command's own output; otherwise formatted, and
+    suppressed by '--quiet' and the JSON output modes, exactly as
+    print_info() is.
     """
     if not ARGS_PARSER.debug:
         return
 
-    log_message = f"DEBUG: {log_message}"
+    print_info(f"{DEBUG_MARKER}{log_message}", no_fill=no_fill, style=DEBUG_STYLE)
 
-    if ARGS_PARSER.no_format:
-        print(print_string(log_message, no_fill=no_fill), flush=True)
-        return
 
-    CONSOLE.print(escape(print_string(log_message, no_fill=no_fill)), style=DEBUG_STYLE)
+def print_dry_run(
+    log_message: str = "",
+    no_fill: bool = False,
+):
+    """
+    A message reporting what a '--dry-run' would have done. Formatted and
+    suppressed exactly as print_info() is; it does no gating of its own,
+    because every caller is already inside a dry-run branch.
+    """
+    print_info(f"{DRY_RUN_MARKER}{log_message}", no_fill=no_fill)
 
 
 def print_error(error_obj: Exception | str):
@@ -1284,7 +1300,7 @@ def print_worker_pool(
     """
     Reconstruct and print the JSON-formatted Worker Pool specification.
     """
-    print_info("Dry-run: Printing JSON Worker Pool specification")
+    print_dry_run("Printing JSON Worker Pool specification")
     wp_data = {
         "provisionedProperties": Json.dump(pwpp),
         "requirementTemplateUsage": Json.dump(crtu),
@@ -1324,9 +1340,9 @@ class WorkRequirementSnapshot:
         """
         Print the JSON representation.
         """
-        print_info("Dry-run: Printing JSON Work Requirement specification:")
+        print_dry_run("Printing JSON Work Requirement specification:")
         print_json(self.wr_data)
-        print_info("Dry-run: Complete")
+        print_dry_run("Complete")
 
 
 def print_compute_template_test_result(result: ComputeRequirementTemplateTestResult):

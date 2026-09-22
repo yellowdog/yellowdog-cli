@@ -9,7 +9,9 @@ Already covered elsewhere:
 Covers here:
   - _load_namespace_and_tag: CLI > env var > TOML [common] > default priority chain
   - load_config_common: CLI > env var > TOML precedence
-  - load_config_work_requirement: no section, basic fields, CLI overrides, csv conflict
+  - load_config_work_requirement: no section, basic fields, CLI overrides, csv
+    conflict, name type checking
+  - load_config_worker_pool: name type checking
 """
 
 import os
@@ -23,6 +25,7 @@ from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,
     load_config_common,
     load_config_work_requirement,
+    load_config_worker_pool,
 )
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
@@ -33,11 +36,17 @@ from yellowdog_cli.utils.property_names import (
     NAMESPACE,
     PRIORITY,
     SECRET,
+    TARGET_INSTANCE_COUNT,
     TASK_BATCH_SIZE,
     TASK_COUNT,
     TASK_GROUP_COUNT,
+    TASK_GROUP_NAME,
+    TASK_NAME,
     TASK_TYPE,
     WORK_REQUIREMENT_SECTION,
+    WORKER_POOL_SECTION,
+    WP_NAME,
+    WR_NAME,
 )
 from yellowdog_cli.utils.settings import (
     TASK_BATCH_SIZE_DEFAULT,
@@ -468,3 +477,85 @@ class TestLoadConfigWorkRequirement:
             pytest.raises(SystemExit),
         ):
             self._call(toml_wr_section={CSV_FILE: "x.csv", CSV_FILES: ["a.csv"]})
+
+    # --- name type checking ---
+
+    NAME_PROPERTIES = (
+        (WR_NAME, "wr_name"),
+        (TASK_GROUP_NAME, "task_group_name"),
+        (TASK_NAME, "task_name"),
+    )
+
+    @pytest.mark.parametrize("property_name,attribute", NAME_PROPERTIES)
+    @pytest.mark.parametrize("value", [123, 1.5, True, ["a"]])
+    def test_non_string_name_is_rejected(self, property_name, attribute, value):
+        # A name that isn't a String used to reach format_yd_name() and fail
+        # there with an AttributeError; it's a configuration error, and is
+        # reported as one
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit),
+        ):
+            self._call(toml_wr_section={property_name: value})
+        message = str(print_error.call_args.args[0])
+        assert f"'{property_name}'" in message and "String" in message
+
+    @pytest.mark.parametrize("property_name,attribute", NAME_PROPERTIES)
+    def test_string_name_is_accepted(self, property_name, attribute):
+        result = self._call(toml_wr_section={property_name: "123"})
+        assert getattr(result, attribute) == "123"
+
+    @pytest.mark.parametrize("property_name,attribute", NAME_PROPERTIES)
+    def test_unset_name_is_accepted(self, property_name, attribute):
+        result = self._call(toml_wr_section={})
+        assert getattr(result, attribute) is None
+
+
+# ---------------------------------------------------------------------------
+# load_config_worker_pool
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfigWorkerPool:
+    """
+    Tests for load_config_worker_pool: the Worker Pool name is type-checked
+    in the same way as the Work Requirement's names.
+    """
+
+    def _call(self, toml_wp_section=None):
+        config_toml = (
+            {} if toml_wp_section is None else {WORKER_POOL_SECTION: toml_wp_section}
+        )
+        with (
+            patch.object(lc_module, "CONFIG_TOML", config_toml),
+            patch.object(lc_module, "process_variable_substitutions_insitu"),
+            patch.object(
+                lc_module,
+                "process_variable_substitutions",
+                side_effect=lambda x: x,
+            ),
+            patch.object(
+                lc_module,
+                "pathname_relative_to_config_file",
+                side_effect=lambda base, path: path,
+            ),
+        ):
+            return load_config_worker_pool()
+
+    def test_string_name_is_accepted(self):
+        result = self._call(toml_wp_section={WP_NAME: "123"})
+        assert result.name == "123"
+
+    def test_unset_name_is_accepted(self):
+        result = self._call(toml_wp_section={TARGET_INSTANCE_COUNT: 2})
+        assert result.name is None
+
+    @pytest.mark.parametrize("value", [123, 1.5, True, ["a"]])
+    def test_non_string_name_is_rejected(self, value):
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit),
+        ):
+            self._call(toml_wp_section={WP_NAME: value})
+        message = str(print_error.call_args.args[0])
+        assert f"'{WP_NAME}'" in message and "String" in message

@@ -6,6 +6,7 @@ yd-terminate: list the entities an action would affect, without acting.
 from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils.printing import (
+    print_dry_run,
     print_info,
     print_numbered_object_list,
     print_objects_as_json,
@@ -34,5 +35,5 @@ def report_dry_run(
     if not summaries:
         print_info(f"No {noun}s would be {verb}")
         return
-    print_info(f"Dry run: {len(summaries)} {noun}(s) would be {verb}:")
+    print_dry_run(f"{len(summaries)} {noun}(s) would be {verb}:")
     print_numbered_object_list(client, summaries, object_type_name=noun)
