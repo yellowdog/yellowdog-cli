@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.utils.variables as var_module
+from yellowdog_cli.utils.misc_utils import BASE36_DIGITS
 from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
@@ -603,6 +604,37 @@ class TestProcessVariableSubstitutionsInFileContents:
         content = "'{{array:arr}}'"
         result = var_module.process_variable_substitutions_in_file_contents(content)
         assert result == '["Alpha", "Beta"]'
+
+
+# ---------------------------------------------------------------------------
+# The '{{random}}' and '{{random6}}' default substitutions
+# ---------------------------------------------------------------------------
+
+
+class TestRandomDefaultSubstitutions:
+    """
+    Both are base 36 rather than hexadecimal, which is what gives them their
+    range: 46,656 values for '{{random}}' and 2,176,782,336 for '{{random6}}'.
+    """
+
+    def test_random_is_three_base36_digits(self):
+        value = var_module.VARIABLE_SUBSTITUTIONS["random"]
+        assert len(value) == 3
+        assert all(character in BASE36_DIGITS for character in value)
+
+    def test_random6_is_six_base36_digits(self):
+        value = var_module.VARIABLE_SUBSTITUTIONS["random6"]
+        assert len(value) == 6
+        assert all(character in BASE36_DIGITS for character in value)
+
+    def test_the_same_value_is_used_for_the_duration_of_a_command(self):
+        # Drawn once at import, so every substitution in one command agrees
+        content = "{{random}} {{random}} {{random6}} {{random6}}"
+        first, second, third, fourth = (
+            var_module.process_variable_substitutions_in_file_contents(content).split()
+        )
+        assert first == second
+        assert third == fourth
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,10 @@ YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 YD_CONF = "YD_CONF"
 ENV_VAR_SUB_PREFIX = "env:"
-RAND_VAR_SIZE = 0xFFF
+
+# Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
+RAND_VAR_DIGITS = 3
+RAND_VAR_6_DIGITS = 6
 
 # Alternative env.var names
 YD_KEY_ALT = "YD_API_KEY_ID"

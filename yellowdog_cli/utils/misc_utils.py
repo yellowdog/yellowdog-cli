@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from os.path import abspath, dirname, isfile, join, normpath, relpath
+from random import choice
 from typing import TypeAlias
 from urllib.parse import urlparse
 
@@ -36,6 +37,7 @@ def pathname_relative_to_config_file(config_file_dir: str, file: str) -> str:
 
 
 # Lower case base 36, for the process discriminator added by generate_id()
+# and for random_base36()
 BASE36_DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 # The PID of the running process, behind the '{{pid}}' variable substitution.
@@ -50,6 +52,15 @@ _PID_MODULO = PID % (36 * 36)
 PROCESS_DISCRIMINATOR = (
     BASE36_DIGITS[_PID_MODULO // 36] + BASE36_DIGITS[_PID_MODULO % 36]
 )
+
+
+def random_base36(digits: int) -> str:
+    """
+    A random string of lower case base 36 digits. Base 36 rather than
+    hexadecimal because it is the widest alphabet a YellowDog name may be
+    built from, so it packs the most randomness into the fewest characters.
+    """
+    return "".join(choice(BASE36_DIGITS) for _ in range(digits))
 
 
 def generate_id(prefix: str = "", max_length: int = 60) -> str:

@@ -10,7 +10,6 @@ from copy import deepcopy
 from getpass import getuser
 from json import dumps as json_dumps
 from json import loads as json_loads
-from random import randint
 from typing import cast
 
 from tomli import load as toml_load
@@ -24,6 +23,7 @@ from yellowdog_cli.utils.misc_utils import (
     config_file_explicitly_selected,
     format_yd_name,
     load_dotenv_file,
+    random_base36,
     remove_outer_delimiters,
     split_delimited_string,
 )
@@ -44,7 +44,8 @@ from yellowdog_cli.utils.settings import (
     ENV_VAR_SUB_PREFIX,
     FORMAT_NAME_TYPE_TAG,
     NUMBER_TYPE_TAG,
-    RAND_VAR_SIZE,
+    RAND_VAR_6_DIGITS,
+    RAND_VAR_DIGITS,
     TABLE_TYPE_TAG,
     TOML_VAR_NESTED_DEPTH,
     TYPE_TAG_DEFAULT_GUARD,
@@ -73,9 +74,8 @@ VARIABLE_SUBSTITUTIONS = {
     "date": UTCNOW.strftime("%y%m%d"),
     "time": UTCNOW.strftime("%H%M%S%f")[:-4],
     "datetime": UTCNOW.strftime("%y%m%d-%H%M%S"),
-    "random": (
-        hex(randint(0, RAND_VAR_SIZE))[2:].lower().zfill(len(hex(RAND_VAR_SIZE)) - 2)
-    ),
+    "random": random_base36(RAND_VAR_DIGITS),
+    "random6": random_base36(RAND_VAR_6_DIGITS),
     "pid": str(PID),
     "pid2": PROCESS_DISCRIMINATOR,
 }

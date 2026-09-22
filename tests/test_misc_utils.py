@@ -34,6 +34,7 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
     load_dotenv_file,
     pathname_relative_to_config_file,
+    random_base36,
     split_delimited_string,
 )
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
@@ -219,6 +220,27 @@ class TestProcessDiscriminator:
     def test_two_base36_digits(self):
         assert len(PROCESS_DISCRIMINATOR) == 2
         assert all(character in BASE36_DIGITS for character in PROCESS_DISCRIMINATOR)
+
+
+class TestRandomBase36:
+    """
+    random_base36() is behind the '{{random}}' and '{{random6}}' variable
+    substitutions.
+    """
+
+    def test_length_is_the_number_of_digits_asked_for(self):
+        for digits in range(0, 10):
+            assert len(random_base36(digits)) == digits
+
+    def test_every_character_is_a_base36_digit(self):
+        assert all(character in BASE36_DIGITS for character in random_base36(1000))
+
+    def test_draws_from_the_whole_base36_alphabet(self):
+        # The hexadecimal implementation this replaced could only ever produce
+        # '0'-'9' and 'a'-'f', so a draw this large landing entirely inside
+        # that range would mean the alphabet had narrowed again
+        beyond_hexadecimal = set(BASE36_DIGITS) - set("0123456789abcdef")
+        assert beyond_hexadecimal & set(random_base36(1000))
 
 
 class TestGetDelimitedStringBoundaries:
