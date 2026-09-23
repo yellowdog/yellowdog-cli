@@ -114,7 +114,7 @@ pytest -v -n 4 --run-demos
 
 ### Commander GUI Tests (no flags required; skipped without a usable Qt)
 
-Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally. See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
+Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against; where either is missing every module below skips and the rest of the suite runs normally — except the four that test Qt-free code, `test_commander_launcher.py`, `test_commander_history.py`, `test_commander_line_buffer.py` and `test_commander_elide_path.py`, which run anyway (bar the line buffer's one end-to-end case through a real `QPlainTextEdit`, which takes `qapp` and skips with it). See [Commander GUI Tests](../DEVELOPMENT.md#commander-gui-tests) in the development guide for the libraries a minimal Linux image needs, and the *Testing Commander's GUI* section of [`CLAUDE.md`](../CLAUDE.md) for the conventions these follow — chiefly that a dialog under test runs its real `exec()`, and that geometry is asserted as relationships rather than pixel counts.
 
 | File | What it tests |
 |---|---|
@@ -137,9 +137,9 @@ Around 350 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_logging.py` | How a command is echoed into the output window; many YDIDs collapse to a count |
 | `test_commander_config_discovery.py` | The `yd-variables` run behind the placeholders: what each failure reports, that a timed-out discovery is retried once with a longer budget, that every path into discovery gets that retry, that the debounced reparse waits for a half-typed user variable to be completed, and that the one failure meaning 'nothing is configured yet' is suppressed while no configuration file is selected without suppressing any other |
 | `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
-| `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no event loop) |
-| `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries |
-| `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames |
+| `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no Qt) |
+| `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries (pure Python, no Qt) |
+| `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames (pure Python, no Qt) |
 | `test_commander_ui_loads.py` | `commander.ui` loads against the installed PyQt6, every code-referenced widget exists, and the layout holds together: the separator below the Browse Config Directory row lies between that row and the one beneath it, the paired top rows of the two columns share a grid row, the window opens tall and wide enough for its own layout, with no button squeezed below or stretched beyond its natural height, a taller window does not spread the left column's rows apart, each column's rows start at one left edge, no label is indented with leading spaces, and a style change re-aligns the checkbox indents (the indents themselves need a real platform to appear) |
 | `test_commander_resources.py` | The package data (`.ui` file and images) is present and resolvable through the installed package |
 | `test_commander_entrypoint.py` | The `yd-commander` console script is registered and has its own CLI, not the shared parser |

@@ -10,10 +10,10 @@ qt_guard.require_qt()
 
 import commander_dialogs
 
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import (
     Confirmation,
     ObjectSummary,
-    YellowDogApp,
     object_rows,
     parse_object_summaries,
 )

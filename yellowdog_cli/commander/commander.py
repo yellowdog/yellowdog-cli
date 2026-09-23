@@ -31,28 +31,20 @@ elif WINDOWS:
         startfile as os_startfile,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
-from codecs import getincrementaldecoder
 from collections.abc import Callable
-from dataclasses import dataclass
 from json import loads
-from os.path import abspath, basename, dirname, exists, getsize, isdir, join, relpath
+from os.path import abspath, basename, dirname, exists, join, relpath
 
 _PKG_DIR = dirname(abspath(__file__))
 
 from PyQt6.QtCore import (
-    QCollator,
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
-    QModelIndex,
-    QObject,
     QPoint,
     QProcess,
     QProcessEnvironment,
-    QRect,
-    QSettings,
     QSize,
-    QSortFilterProxyModel,
     Qt,
     QTimer,
 )
@@ -64,12 +56,8 @@ from PyQt6.QtGui import (
     QFont,
     QFontMetrics,
     QIcon,
-    QImage,
-    QImageReader,
     QKeySequence,
-    QPainter,
     QPalette,
-    QPixmap,
     QShortcut,
     QStyleHints,
     QTextBlock,
@@ -77,7 +65,6 @@ from PyQt6.QtGui import (
     QTextDocument,
 )
 from PyQt6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
     QBoxLayout,
     QCheckBox,
@@ -96,17 +83,11 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
-    QProxyStyle,
     QPushButton,
     QScrollBar,
-    QSizePolicy,
-    QSpacerItem,
     QSplitter,
     QStyle,
-    QStyleFactory,
-    QStyleOption,
     QStyleOptionButton,
-    QStyleOptionViewItem,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -114,8 +95,39 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.commander import file_dialogs
+from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
+from yellowdog_cli.commander.command_history import CommandHistory
+from yellowdog_cli.commander.elision import elide_middle, elide_path
+from yellowdog_cli.commander.file_dialogs import (
+    PREVIEW_PANE_WIDTH,
+    SETTING_DIALOG_SIDEBAR_WIDTH,
+    SETTING_DIALOG_VIEW_MODE,
+    FilePreview,
+    NaturalOrderProxy,
+)
+from yellowdog_cli.commander.output_model import (
+    COMMANDER_RUN,
+    LineBuffer,
+    OutputEntry,
+    OutputRun,
+    filter_description,
+)
+from yellowdog_cli.commander.selection import (
+    Confirmation,
+    EntitySummary,
+    ObjectSummary,
+    SelectableRow,
+    checked_handles,
+    entity_rows,
+    object_rows,
+    parse_entity_summaries,
+    parse_object_summaries,
+    path_would_be_globbed,
+    set_all_check_states,
+    update_selection_state,
+)
 from yellowdog_cli.commander.startup import StartupSettings, variable_is_complete
-from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
@@ -124,17 +136,13 @@ WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # drops a QLabel's 'margin' property, leaving the text against the frame.
 SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
-MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
-PATH_ELLIPSIS = "…"
 SELECTED_WR_PREFIX = "Work Requirement: "
 SELECTED_WP_PREFIX = "Worker Pool: "
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
-MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
 MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
 DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 SKIP_CONFIRMATION_BUTTON_TEXT = "Yes to All (Don't Ask Again)"
 MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
-ENTITY_ROW_GAP = 2  # spaces between the name and status columns
 ENTITY_LIST_PADDING = 6  # px of breathing room inside the entity list's frame
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # strftime for the pre-filled save-output filename. Colons are not filename-safe
@@ -142,17 +150,9 @@ MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-# The run Commander's own messages belong to in the output window; the commands it
-# launches are numbered from 1. See OutputRun.
-COMMANDER_RUN = 0
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
 PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-# What starts a new block when text is put into a QTextDocument: a line feed, a
-# carriage return (alone or before a line feed, which together make one), Unicode's
-# paragraph separator, and Qt's two frame markers. The output window's blocks are
-# tagged with the entry they came from by counting them, so the count must be Qt's.
-BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
 SHOW_ALL_OUTPUT = "Show All Output"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
@@ -168,41 +168,11 @@ CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
 CONFIG_PARSE_RETRY_DELAY_MS = 1_000  # let the event loop breathe before retrying
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
-PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
-PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
-PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
-PREVIEW_READ_BYTES = 262_144  # bytes read from the head of a file to preview it
-PREVIEW_MAX_LINES = 500  # lines of that head shown before the preview is elided
-# Characters of any one of those lines shown before it is cut. A performance cap
-# rather than a cosmetic one: QPlainTextEdit lays a single line out at superlinear
-# cost, so the 256kB head of a minified JSON file — one line, no newlines — took
-# 110ms to show, on a preview that is refilled at every arrow-key press. Cut to
-# this it is 1.4ms even with every line at the cap, and 2,000 characters is some
-# fifty screenfuls of a pane this wide.
-PREVIEW_MAX_LINE_CHARS = 2000
-# The last line of an elided preview, saying which cap stopped it. Only what is
-# knowable without reading the whole file: a total line count would mean reading
-# all of it, which is what the byte cap exists to avoid.
-PREVIEW_ELIDED_LINES = "… first {lines} lines shown"
-PREVIEW_ELIDED_BYTES = "… first {size} shown"
-PREVIEW_NO_SELECTION = "No file selected"
 SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
 # The tree, because that is the view a hierarchy can be shown in — Qt's other one
 # is a QListView, which has no disclosure. Its size/kind/date columns are hidden
 # and its header with them; see _make_listing_a_names_only_tree().
 DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
-# How the file dialogs' listing is ordered, at every level; see
-# NaturalOrderProxy. The name column, ascending, which is the order Qt's own file
-# model gives the one level it sorts — and with the header hidden there is no way
-# for a user to ask for another, so this is the only order the listing is ever in.
-LISTING_SORT_COLUMN = 0
-LISTING_SORT_ORDER = Qt.SortOrder.AscendingOrder
-# Where Commander keeps the file-dialog choices that outlive a dialog; see
-# dialog_settings().
-COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
-COMMANDER_SETTINGS_APPLICATION = "Commander"
-SETTING_DIALOG_SIDEBAR_WIDTH = "fileDialog/sidebarWidth"
-SETTING_DIALOG_VIEW_MODE = "fileDialog/viewMode"
 # What the browse dialog's button for handing over to the platform's own file
 # viewer says. Qt's dialog is read-only, so this is the route to deleting or
 # renaming anything in the directory being browsed.
@@ -231,958 +201,11 @@ WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
 
 
-@dataclass(frozen=True)
-class EntitySummary:
-    """
-    The identity of one entity in a '-D --json' enumeration: the YDID used to
-    target it on the command line, plus the name and status shown to the user.
-    """
-
-    id: str
-    name: str
-    status: str | None
-
-
-def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
-    """
-    Convert a parsed '-D --json' array into EntitySummary objects. Returns None
-    if any row is not a dict or lacks an 'id' or a 'name': without a YDID the
-    entity cannot be targeted individually, and a selection must never fall back
-    to name-based targeting, because names are not guaranteed unique and the
-    action is destructive.
-    """
-    summaries: list[EntitySummary] = []
-    for obj in parsed:
-        if not isinstance(obj, dict):
-            return None
-        entity_id, name = obj.get("id"), obj.get("name")
-        if not entity_id or not name:
-            return None
-        status = obj.get("status")
-        summaries.append(
-            EntitySummary(
-                id=str(entity_id),
-                name=str(name),
-                status=None if status is None else str(status),
-            )
-        )
-    return summaries
-
-
-@dataclass(frozen=True)
-class SelectableRow:
-    """
-    One row of a checkable listing: the text the user reads, the handle passed
-    back to the command if the row stays ticked, and the tooltip. The handle is
-    deliberately opaque — that is what lets one widget serve both entity YDIDs
-    and object storage paths.
-    """
-
-    display: str
-    handle: str
-    tooltip: str
-
-
-@dataclass(frozen=True)
-class Confirmation:
-    """
-    The outcome of a destructive-action confirmation. 'proceed' is False when the
-    user declined or dismissed the dialog. 'handles' is None when there was
-    nothing individually selectable — a suppressed confirmation, or an
-    enumeration that failed — in which case the caller acts over its whole scope.
-    Otherwise 'handles' is exactly what the user left ticked, and an empty list
-    means the user deselected everything, which must act on nothing at all.
-
-    The three states are separate fields rather than a nullable list because the
-    difference between 'whole scope' and 'nothing' is the difference between
-    destroying everything and destroying nothing.
-    """
-
-    proceed: bool
-    handles: list[str] | None
-
-    def __bool__(self) -> bool:
-        """
-        Refuse truthiness. Both 'act over the whole scope' and 'act on nothing'
-        are legitimate outcomes, so a bare 'if confirmation:' cannot mean
-        anything safe — and unlike the list sentinel this replaced, an always-
-        truthy object would proceed even when the user declined. Callers must
-        read .proceed explicitly.
-        """
-        raise TypeError("check Confirmation.proceed explicitly, not truthiness")
-
-
-def entity_rows(entities: list[EntitySummary]) -> list[SelectableRow]:
-    """
-    Rows for an entity listing: the name padded to a common width so the status
-    column lines up, with the YDID as the handle and kept out of the row text
-    (full YDIDs are long enough to push the readable columns off-screen). The
-    tooltip carries both, so a row elided by a narrow dialog still has a
-    recovery path.
-    """
-    name_width = max((len(entity.name) for entity in entities), default=0)
-    gap = " " * ENTITY_ROW_GAP
-    return [
-        SelectableRow(
-            display=(
-                f"{entity.name.ljust(name_width)}{gap}{entity.status or ''}".rstrip()
-            ),
-            handle=entity.id,
-            tooltip=f"{entity.name}\n{entity.id}",
-        )
-        for entity in entities
-    ]
-
-
-@dataclass(frozen=True)
-class ObjectSummary:
-    """
-    One item in a 'yd-delete -D --json' enumeration: the resolved remote path
-    used to delete it, its display name (directories carry a trailing '/'), and
-    whether it is a directory — which decides whether the confirmation warns
-    that a tick takes the directory's whole contents.
-    """
-
-    path: str
-    name: str
-    is_dir: bool
-
-
-def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
-    """
-    Convert a parsed 'yd-delete -D --json' array into ObjectSummary objects.
-    Returns None if any row is not a dict or lacks a 'path' or a 'name': without
-    a path the object cannot be targeted, and guessing one would delete
-    something other than what the user ticked. A missing 'isDir' defaults to
-    False rather than rejecting the row, because it affects only the display and
-    the recursion caveat, never which paths are deleted.
-    """
-    summaries: list[ObjectSummary] = []
-    for obj in parsed:
-        if not isinstance(obj, dict):
-            return None
-        path, name = obj.get("path"), obj.get("name")
-        if not path or not name:
-            return None
-        summaries.append(
-            ObjectSummary(path=str(path), name=str(name), is_dir=bool(obj.get("isDir")))
-        )
-    return summaries
-
-
-def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
-    """
-    Rows for an object listing: a single column of display names (a directory
-    keeps its trailing '/'), with the resolved remote path as the handle. No
-    column padding, unlike entity rows — there is no second column to align.
-    """
-    return [
-        SelectableRow(
-            display=obj.name,
-            handle=obj.path,
-            tooltip=f"{obj.name}\n{obj.path}",
-        )
-        for obj in objects
-    ]
-
-
-def path_would_be_globbed(remote_path: str) -> bool:
-    """
-    Whether 'yd-delete' would treat this remote path as a wildcard pattern
-    rather than a literal object. Mirrors dataclient_utils.is_glob (which
-    Commander cannot import, since that module pulls in rclone_api): strip a
-    leading 'remote:' prefix, then look for glob metacharacters.
-
-    This matters because an object whose own name contains '*', '?' or '['
-    cannot be targeted by path at all — 'yd-delete' would expand it and act on
-    whatever it matched instead, which for 'a[1].txt' is the sibling 'a1.txt'.
-    """
-    path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
-    return contains_glob_chars(path_part)
-
-
-def format_file_size(size: int) -> str:
-    """
-    A file size in the units the platform's own file viewers use — powers of
-    1000, as both Finder and Windows Explorer report — with one decimal place
-    above a kilobyte. Small files keep their exact byte count, where '87 bytes'
-    says more than '0.1 kB'.
-    """
-    if size < 1000:
-        return f"{size} byte{'' if size == 1 else 's'}"
-    scaled = float(size)
-    for unit in ("kB", "MB", "GB"):
-        scaled /= 1000
-        if scaled < 1000:
-            return f"{scaled:,.1f} {unit}"
-    return f"{scaled / 1000:,.1f} TB"
-
-
-def dialog_settings() -> QSettings:
-    """
-    Where Commander keeps the file-dialog choices that outlive a dialog: the width
-    of the places sidebar and which of Qt's two views to list files in.
-
-    Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
-    those whenever one of these dialogs closes, so every machine that has ever
-    opened one carries a value and there is no telling a width the user chose from
-    a default written back — which made a default conditional on 'nothing
-    remembered' a no-op everywhere but a brand-new profile. Keeping our own
-    removes the guess: the stored value is one a user set, and its absence means
-    they have set nothing.
-
-    A function, not a constant, so that the tests can point it at a file of their
-    own instead of the developer's real settings.
-    """
-    return QSettings(
-        QSettings.Scope.UserScope,
-        COMMANDER_SETTINGS_ORGANISATION,
-        COMMANDER_SETTINGS_APPLICATION,
-    )
-
-
-class FilePreview(QWidget):
-    """
-    The preview column added to the directory-browsing file dialog: the name of
-    whatever is highlighted, a size-and-kind line, and then either a scaled
-    thumbnail (anything Qt can decode as an image) or the head of the file as
-    text (anything that decodes as UTF-8). Anything else — a binary, an
-    unreadable file — gets the size-and-kind line alone, which is still more
-    than the bare listing says.
-
-    This exists because Qt's own file dialog has no preview, and Commander's
-    directory buttons no longer hand the directory to the platform's file
-    viewer, so Finder's Quick Look is not there to fall back on. It is a plain
-    widget driven by the dialog's currentChanged signal rather than a
-    QFileDialog subclass, so the dialog itself stays the stock one.
-
-    Its width is the user's to set (it goes into the dialog's own splitter), so
-    the pane keeps the decoded image rather than only the scaled thumbnail: a
-    widened pane rescales from the original, where rescaling the thumbnail would
-    show a magnified version of the smaller one.
-    """
-
-    def __init__(self, font: QFont, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setMinimumWidth(PREVIEW_MIN_WIDTH)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.name_label = QLabel()
-        self.name_label.setWordWrap(True)
-        name_font = self.name_label.font()
-        name_font.setBold(True)
-        self.name_label.setFont(name_font)
-        layout.addWidget(self.name_label)
-
-        self.meta_label = QLabel()
-        self.meta_label.setWordWrap(True)
-        layout.addWidget(self.meta_label)
-
-        # Pinned to the top, and to the height their own text needs. A label
-        # defaults to taking a share of any spare height and centring its text in
-        # it, and a directory — named and kinded, with no body to show — leaves
-        # the pane nothing but spare height: the two headings ended up a third
-        # and two thirds of the way down, reading as two unrelated captions.
-        for label in (self.name_label, self.meta_label):
-            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-
-        self.image_view = QLabel()
-        self.image_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Ignored in both directions: a QLabel's size hint grows with the pixmap
-        # it holds, so a label that drives the layout would widen the pane to fit
-        # the thumbnail, which rescales the thumbnail, which widens the pane.
-        self.image_view.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
-        )
-        self.image_view.setMinimumSize(1, 1)
-        layout.addWidget(self.image_view, 1)
-
-        self.text_view = QPlainTextEdit()
-        self.text_view.setReadOnly(True)
-        self.text_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.text_view.setFont(font)
-        layout.addWidget(self.text_view, 1)
-
-        # Where the spare height goes once the headings will not take it, and
-        # once both bodies are hidden. Deliberately stretch 0, unlike the two
-        # bodies: a stretch of 1 would make it an equal claimant with whichever
-        # body is on show, halving the thumbnail or the text for nothing.
-        layout.addItem(
-            QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        )
-
-        self._image: QImage | None = None  # the decoded original, for rescaling
-        self.clear()
-
-    def clear(self):
-        """Show the placeholder, as before anything has been highlighted."""
-        self._describe(PREVIEW_NO_SELECTION, "")
-
-    def show_path(self, path: str):
-        """
-        Preview whatever 'path' names. Connected to the dialog's currentChanged,
-        so it is called for directories and for paths that have since gone away
-        as well as for files, and must show something for all of them.
-        """
-        if not path or not exists(path):
-            self.clear()
-            return
-
-        if isdir(path):
-            self._describe(basename(path.rstrip("/\\")) or path, "Directory")
-            return
-
-        name = basename(path)
-        try:
-            size = getsize(path)
-        except OSError as error:
-            self._describe(name, f"Unreadable: {error.strerror or error}")
-            return
-
-        image, image_format = self._read_image(path)
-        if image is not None:
-            self._describe(
-                name,
-                f"{format_file_size(size)}  ·  {image_format} image"
-                f"  ·  {image.width()} x {image.height()}",
-            )
-            self._image = image
-            # Shown before it is filled: _thumbnail measures the label, and a
-            # layout leaves a hidden widget's geometry alone.
-            self.image_view.setVisible(True)
-            self.image_view.setPixmap(self._thumbnail(image))
-            return
-
-        head = self._decoded_head(path)
-        if head is None:
-            self._describe(name, f"{format_file_size(size)}  ·  no preview available")
-            return
-        self._describe(name, f"{format_file_size(size)}  ·  text")
-        self.text_view.setPlainText(head)
-        self.text_view.setVisible(True)
-
-    def _describe(self, name: str, meta: str):
-        """
-        Set the two heading lines and hide both preview bodies, which is the
-        state every branch of show_path starts from — one of them then reveals
-        the body it has filled in.
-        """
-        self.name_label.setText(name)
-        self.meta_label.setText(meta)
-        self._image = None
-        self.image_view.clear()
-        self.image_view.setVisible(False)
-        self.text_view.clear()
-        self.text_view.setVisible(False)
-
-    @staticmethod
-    def _read_image(path: str) -> tuple[QImage | None, str]:
-        """
-        The decoded image and the name of its format, or (None, "") if Qt cannot
-        read the file as an image. canRead() alone is not enough: it is happy
-        with a truncated or corrupt file that read() then fails on, and a
-        half-downloaded result file is exactly the case in hand.
-        """
-        reader = QImageReader(path)
-        reader.setAutoTransform(True)  # honour a JPEG's EXIF orientation
-        if not reader.canRead():
-            return None, ""
-        # Read the format first: it is the detected format of a file not yet
-        # consumed, and comes back empty once read() has been called.
-        image_format = reader.format().data().decode(errors="replace").upper()
-        image = reader.read()
-        if image.isNull():
-            return None, ""
-        return image, image_format or "unrecognised"
-
-    def resizeEvent(self, a0):
-        """
-        Rescale the thumbnail to the pane's new width. Dragging the pane wider
-        should show more of the image, not the same thumbnail with more grey
-        around it — and there is no other moment at which the new width is known.
-        """
-        super().resizeEvent(a0)
-        if self._image is not None:
-            self.image_view.setPixmap(self._thumbnail(self._image))
-
-    def _thumbnail(self, image: QImage) -> QPixmap:
-        """
-        The image scaled to fit the space the pane currently gives it,
-        downscaling only — blowing a 16x16 icon up to the width of the pane
-        makes it less recognisable, not more. Falls back to the pane's opening
-        size for a preview filled in before the pane has been laid out.
-        """
-        layout = self.layout()
-        if layout is not None:
-            # Give the label its real geometry before measuring it. A layout is
-            # otherwise activated by an event, which has not been delivered yet
-            # when the pane has only just been shown or resized — leaving the
-            # label at its default size, and the thumbnail scaled to that.
-            layout.activate()
-        available = QSize(
-            self.image_view.width() or PREVIEW_PANE_WIDTH,
-            self.image_view.height() or PREVIEW_IMAGE_HEIGHT,
-        )
-        pixmap = QPixmap.fromImage(image)
-        if (
-            pixmap.width() <= available.width()
-            and pixmap.height() <= available.height()
-        ):
-            return pixmap
-        return pixmap.scaled(
-            available,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-    @staticmethod
-    def _cut(line: str) -> str:
-        """
-        One line of a preview, cut to PREVIEW_MAX_LINE_CHARS and marked if it was
-        longer. See that constant: this is what keeps a file with no newlines in it
-        from taking a tenth of a second to show.
-        """
-        if len(line) <= PREVIEW_MAX_LINE_CHARS:
-            return line
-        return f"{line[:PREVIEW_MAX_LINE_CHARS]}…"
-
-    @classmethod
-    def _decoded_head(cls, path: str) -> str | None:
-        """
-        The first lines of a text file — ending in a line saying which cap stopped
-        it, if either did — or None if the file is not text.
-
-        That last line states only what reading the head can know: how many lines
-        were shown, or how much of the file was read. A total line count would mean
-        reading all of it, which is what the byte cap is here to avoid.
-
-        Read as bytes and decoded strictly, rather than trusted by extension:
-        task output, logs and JSON arrive with every extension and none. The
-        incremental decoder is what makes the byte cap safe — it holds back a
-        multi-byte character straddling the cap instead of declaring the file
-        binary. A NUL byte is treated as proof of binary before that, since a
-        UTF-16 file decodes as UTF-8 without complaint and would otherwise be
-        previewed as gibberish interleaved with NULs.
-        """
-        try:
-            with open(path, "rb") as file:
-                head = file.read(PREVIEW_READ_BYTES + 1)
-        except OSError:
-            return None
-
-        truncated = len(head) > PREVIEW_READ_BYTES
-        head = head[:PREVIEW_READ_BYTES]
-        if b"\0" in head:
-            return None
-        try:
-            text = getincrementaldecoder("utf-8")(errors="strict").decode(
-                head, final=not truncated
-            )
-        except UnicodeDecodeError:
-            return None
-
-        lines = text.splitlines()
-        body = "\n".join(cls._cut(line) for line in lines[:PREVIEW_MAX_LINES])
-        if len(lines) > PREVIEW_MAX_LINES:
-            # The binding cap when both bite: the reader has been given 500 lines,
-            # and the byte cap behind them is not what stopped the preview.
-            return (
-                f"{body}\n{PREVIEW_ELIDED_LINES.format(lines=f'{PREVIEW_MAX_LINES:,}')}"
-            )
-        if truncated:
-            return (
-                f"{body}\n"
-                f"{PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))}"
-            )
-        return body
-
-
-def block_count(text: str) -> int:
-    """
-    The number of blocks 'text' becomes in a QTextDocument; see BLOCK_SEPARATORS.
-    """
-    return len(BLOCK_SEPARATORS.split(text))
-
-
-@dataclass
-class OutputRun:
-    """
-    One source of text in the output window — a command Commander launched, or
-    Commander itself — which the window can be filtered to.
-
-    The output is filtered by run rather than by the PID text in each line,
-    because most of a command's output does not carry its PID: a wrapped
-    message's continuation lines, a table or a JSON document have no prefix at
-    all, and the 'Executing:' line announcing the command is printed by
-    Commander, with Commander's PID, before the command has one. Every chunk of
-    text arrives from a known QProcess, so it is attributed when it arrives.
-    """
-
-    run_id: int
-    command: str  # the program run, e.g. 'yd-submit'; empty for Commander
-    command_line: str = ""  # as echoed on the 'Executing:' line
-    # As the user would recognise it: without the config source, namespace, tag,
-    # variables and '--nf --pp' that Commander adds to every 'yd-*' command
-    user_command_line: str = ""
-    started_at: datetime | None = None
-    pid: int | None = None  # as QProcess reports it, once started
-    # 'exit N' or 'crashed' once finished, 'did not start' if it never did;
-    # None while running
-    outcome: str | None = None
-    # The PID the command printed in its own message prefixes, preferred for
-    # display because it is the one the user sees in the output; QProcess's can
-    # differ where a console-script launcher stands between the two.
-    printed_pid: int | None = None
-
-    def _subject(self, process_word: str) -> str:
-        pid = self.shown_pid
-        if pid is None:  # it never started
-            return self.command
-        return f"{process_word} {pid:06d} ({self.command})"
-
-    @property
-    def menu_text(self) -> str:
-        if self.run_id == COMMANDER_RUN:
-            return "Show Only Commander's Own Messages"
-        return f"Show Only Output from {self._subject('Process')}"
-
-    @property
-    def bar_subject(self) -> str:
-        if self.run_id == COMMANDER_RUN:
-            return "Commander's own messages"
-        return self._subject("process")
-
-    @property
-    def shown_pid(self) -> int | None:
-        return self.printed_pid if self.printed_pid is not None else self.pid
-
-    @property
-    def running(self) -> bool:
-        return self.run_id != COMMANDER_RUN and self.outcome is None
-
-
-def filter_description(runs: list[OutputRun]) -> str:
-    """
-    What the filter bar says is shown: 'Showing only' and the runs, commands
-    in the order they started and Commander's own messages last, where the
-    sentence reads better than at its start.
-    """
-    ordered = sorted(runs, key=lambda run: (run.run_id == COMMANDER_RUN, run.run_id))
-    subjects = [run.bar_subject for run in ordered]
-    listed = (
-        subjects[0]
-        if len(subjects) == 1
-        else f"{', '.join(subjects[:-1])} and {subjects[-1]}"
-    )
-    if ordered[0].run_id == COMMANDER_RUN:  # Commander's alone
-        return f"Showing only {listed}"
-    return f"Showing only output from {listed}"
-
-
-@dataclass
-class OutputEntry:
-    """
-    One call's worth of text in the output window, which may be several lines,
-    and the run it came from. The entries are the window's contents; what the
-    widget holds is the view of them the current filter allows.
-    """
-
-    run_id: int
-    text: str
-    # An 'Executing:' line, which belongs to its command's run and is also one
-    # of Commander's own messages: Commander prints it, with Commander's PID, so
-    # a user reading the PID on it can mean either.
-    announcement: bool = False
-
-    @property
-    def lines(self) -> int:
-        return block_count(self.text)
-
-    @property
-    def runs(self) -> list[int]:
-        """The runs this entry is shown under, its command's first."""
-        return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
-
-    def shown_under(self, run_ids: frozenset[int] | None) -> bool:
-        """Whether a filter to 'run_ids' shows this entry; None shows everything."""
-        return run_ids is None or any(run_id in run_ids for run_id in self.runs)
-
-
-class LineBuffer:
-    """
-    Accumulates raw bytes read from a subprocess output channel and yields
-    complete lines. Pipe reads don't respect line boundaries (or UTF-8
-    character boundaries), so any partial trailing line is held back until the
-    rest of it arrives; without this, appending each read to the log pane
-    inserts a spurious line break wherever a read boundary happens to fall.
-    """
-
-    def __init__(self):
-        self._decoder = getincrementaldecoder("utf-8")(errors="replace")
-        self._partial_line = ""
-
-    def feed(self, data: bytes) -> list[str]:
-        """
-        Add the bytes from one read and return the lines completed by them.
-        """
-        self._partial_line += self._decoder.decode(data)
-        *lines, self._partial_line = self._partial_line.split("\n")
-        return [line.rstrip("\r") for line in lines]
-
-    def flush(self) -> list[str]:
-        """
-        Return any unterminated final line. Only safe to call once no more
-        data is coming, i.e. when the process has exited.
-        """
-        self._partial_line += self._decoder.decode(b"", final=True)
-        remainder, self._partial_line = self._partial_line.rstrip("\r"), ""
-        return [remainder] if remainder else []
-
-
-class NaturalOrderProxy(QSortFilterProxyModel):
-    """
-    Keeps a file dialog's listing in order at every level, not just the one it
-    opens at.
-
-    QFileSystemModel sorts the level it is rooted at and nothing beneath it. A
-    directory expanded in place therefore arrives in filesystem order — a hash
-    order on APFS and on ext4, so 'task_005, task_002, task_003' — and stays in
-    it: verified that neither sort() on the model nor the header's own sort
-    indicator reorders such a level, and that it is still unsorted twelve seconds
-    later, so it is not a race that settles. Commander turned expansion on, which
-    is what made those levels reachable and the ordering visible; the behaviour
-    beneath is Qt's, and the same in a stock dialog.
-
-    Interposing a proxy is Qt's own answer to it (QFileDialog.setProxyModel), and
-    a dynamically sorted one orders each level as its rows arrive, which is what
-    an expanded level needs. It costs a Python comparison per pair: ~130ms of the
-    ~0.5s a 5,000-entry directory takes to list, paid once as the level opens.
-
-    The comparison is a QCollator in numeric mode, not the default string
-    compare, because that is what QFileSystemModel itself does for the level it
-    sorts: 'task_1, task_2, task_10', never 'task_1, task_10, task_2'. A plain
-    sort would put every expanded level in a different order from the directory
-    above it — worse than the bug — and would disagree with the platform's file
-    viewer, which the browse dialog hands over to.
-    """
-
-    def __init__(self, parent: QObject | None = None):
-        super().__init__(parent)
-        self._collator = QCollator()
-        self._collator.setNumericMode(True)
-        self._collator.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        # Ordered as rows arrive, rather than once when the level is opened: a
-        # level is delivered in batches, and only the first batch would be sorted.
-        self.setDynamicSortFilter(True)
-        self.sort(LISTING_SORT_COLUMN, LISTING_SORT_ORDER)
-
-    def lessThan(self, source_left: QModelIndex, source_right: QModelIndex) -> bool:
-        if source_left.column() != LISTING_SORT_COLUMN:
-            return super().lessThan(source_left, source_right)
-        return (
-            self._collator.compare(str(source_left.data()), str(source_right.data()))
-            < 0
-        )
-
-
-def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
-    """
-    Shorten a file path for display so that it doesn't stretch the layout,
-    keeping the end of the path (including the filename) visible. Paths within
-    the length limit are returned unchanged.
-    """
-    if len(path) <= max_length:
-        return path
-
-    tail = path[-(max_length - len(PATH_ELLIPSIS)) :]
-    separator_index = tail.find(os.sep)
-    if separator_index != -1:  # discard any partial leading directory name
-        tail = tail[separator_index:]
-    return f"{PATH_ELLIPSIS}{tail}"
-
-
-def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
-    """
-    Shorten text for display by removing characters from the middle, keeping
-    both ends visible. Used for filenames, where the start and the extension
-    are the informative parts.
-    """
-    if len(text) <= max_length:
-        return text
-
-    keep = max_length - len(PATH_ELLIPSIS)
-    head = keep - keep // 2
-    return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
-
-
-# The probe below paints a check indicator into a pixmap of its own: an
-# indicator-sized rect set well away from both edges, and a pixmap with room for
-# a style that draws a larger control than it was asked for.
-PROBE_INDICATOR_SIZE = 16
-PROBE_INDICATOR_ORIGIN = 32
-PROBE_PIXMAP_SIZE = 64
-
-
-def check_indicator_is_misplaced(style: QStyle, widget: QWidget | None = None) -> bool:
-    """
-    Does this style paint an item view's check indicator at the painter's origin
-    instead of at the rect it is handed?
-
-    macOS 26 redesigned the system controls, and AppKit gates the redesign on the
-    *main executable's linked SDK*. Where that is the macOS 26 SDK or later, Qt's
-    macOS style draws a checkbox or radio indicator as the new 16x16 control at
-    the painter's origin, ignoring the rect it computed; linked against an
-    earlier SDK, the same Qt draws the legacy 18x18 control in the rect. Only
-    those two indicators are affected — push buttons and combo boxes draw in
-    their rect either way.
-
-    That was established causally, one interpreter at a time, by rewriting
-    nothing but the SDK field with vtool: 26.5 -> 15.5 on a Homebrew Python's
-    Python.app fixes it, 15.5 -> 26.5 on a uv-managed interpreter breaks it, and
-    Apple's own opt-out (UIDesignRequiresCompatibility in the app's Info.plist)
-    fixes it as well.
-
-    It therefore looks like a Python or PyQt6 version problem and is neither.
-    Homebrew rebuilds its interpreters against the current SDK, so every Homebrew
-    build measured misplaces it (3.10, 3.12, 3.13, 3.14); uv-managed standalone
-    builds target an older one, so every one of those places it correctly (3.10,
-    3.12, 3.15) — same PyQt6, same Qt binaries, byte for byte. PyQt6 6.10.1 and
-    6.11.0 behave identically on either. Two earlier readings of this, as a Qt
-    6.11.0 regression and then as a framework-build difference, were both
-    artefacts of that correlation.
-
-    Qt knows: 'Qt for macOS - Specific Issues' records that its Widgets and Quick
-    macOS styles "may exhibit drawing artefacts" under Liquid Glass, and names
-    the same two escapes measured above — build with Xcode 16, or set
-    UIDesignRequiresCompatibility. Both belong to whoever builds the executable,
-    which for a Python GUI application is whoever built the interpreter, so
-    neither is available to a library running inside it. Correcting the painting
-    is the only lever this end of the problem has.
-
-    Hence measuring, rather than keying off a version, a platform or a style
-    name: nothing available at runtime names the real condition, and the
-    correction has to switch itself off when Qt adapts to the redesign or Apple
-    retires the compatibility path. Applied to a style that places the indicator
-    correctly, it would offset it twice — the same bug the other way up.
-
-    The probe paints into a transparent pixmap and asks only where the ink
-    landed, so it reads no colour and needs no display. A style that paints
-    nothing at all reads as not misplaced — which is the honest answer, since a
-    translation would have nothing to rescue. Qt's macOS style under the
-    offscreen platform is exactly that case, and is why the tests stand a proxy
-    style in for it rather than selecting it.
-    """
-    rect = QRect(
-        PROBE_INDICATOR_ORIGIN,
-        PROBE_INDICATOR_ORIGIN,
-        PROBE_INDICATOR_SIZE,
-        PROBE_INDICATOR_SIZE,
-    )
-    pixmap = QPixmap(PROBE_PIXMAP_SIZE, PROBE_PIXMAP_SIZE)
-    pixmap.fill(Qt.GlobalColor.transparent)
-
-    option = QStyleOptionViewItem()
-    if widget is not None:
-        option.initFrom(widget)
-    option.rect = rect
-    option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_On
-
-    painter = QPainter(pixmap)
-    style.drawPrimitive(
-        QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck, option, painter, widget
-    )
-    painter.end()
-
-    image = pixmap.toImage()
-    at_the_origin = QRect(0, 0, rect.width(), rect.height())
-    return _has_ink(image, at_the_origin) and not _has_ink(image, rect)
-
-
-def _has_ink(image: QImage, rect: QRect) -> bool:
-    """
-    Was anything painted inside this rect of an image filled with transparency?
-    """
-    for y in range(rect.top(), rect.bottom() + 1):
-        for x in range(rect.left(), rect.right() + 1):
-            if image.pixelColor(x, y).alpha() > 0:
-                return True
-    return False
-
-
-class CheckIndicatorPlacement(QProxyStyle):
-    """
-    Paint an item view's check indicator where the view asked for it, on a style
-    that ignores the position of the rect it is given (see
-    check_indicator_is_misplaced).
-
-    An item view clips each row's painting to that row, so an indicator painted
-    at the painter's origin survives only for the topmost row: a ten-row
-    selection list showed one checkbox, and the nine rows below it looked
-    unticked — and untickable — however they were clicked. Only the painting was
-    wrong; the ticking underneath it worked throughout, which is what made it
-    look like a dialog that allowed one selection.
-
-    Translating the painter is what corrects it, rather than moving the rect: it
-    is the rect's position that the style is ignoring, so the painter's own
-    transform is the only thing left to carry it.
-
-    Given the style it corrects, and owns it: QProxyStyle deletes the style it
-    wraps, so what it is handed must be an instance of its own (see
-    platform_style) and never the application's.
-    """
-
-    def drawPrimitive(
-        self,
-        element: QStyle.PrimitiveElement,
-        option: QStyleOption | None,
-        painter: QPainter | None,
-        widget: QWidget | None = None,
-    ) -> None:
-        if (
-            element != QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck
-            or option is None
-            or painter is None
-        ):
-            super().drawPrimitive(element, option, painter, widget)
-            return
-
-        painter.save()
-        painter.translate(option.rect.topLeft())
-        super().drawPrimitive(element, option, painter, widget)
-        painter.restore()
-
-
-def platform_style() -> QStyle | None:
-    """
-    A style object of this application's own style, for a proxy style to wrap and
-    take ownership of. None if the style cannot be built by name.
-
-    A function, rather than QProxyStyle's own base-less construction, for two
-    reasons. QProxyStyle without a base wraps a fresh instance of the *desktop*
-    style, not of the style the application is actually using, which on Linux is
-    Fusion under Dark Mode whatever the desktop's is. And the tests need a seam:
-    a style that misplaces its check indicators cannot be reached any other way,
-    the one that really does so drawing nothing at all under the offscreen
-    platform.
-    """
-    style = QApplication.style()
-    return None if style is None else QStyleFactory.create(style.objectName())
-
-
-def fix_check_indicator_placement(view: QAbstractItemView) -> None:
-    """
-    Correct where this view's style paints its check indicators, if it needs it.
-
-    The correction is parented to the view because setStyle() does not take
-    ownership: left unparented it would be collected while the view was still
-    painting with it.
-    """
-    style = platform_style()
-    if style is None or not check_indicator_is_misplaced(style, view):
-        return
-    correction = CheckIndicatorPlacement(style)
-    correction.setParent(view)
-    view.setStyle(correction)
-
-
-def checked_handles(listing: QListWidget) -> list[str]:
-    """
-    The handles of the ticked rows of a selection list, in list order.
-    """
-    handles: list[str] = []
-    for index in range(listing.count()):
-        item = listing.item(index)
-        if item is not None and item.checkState() == Qt.CheckState.Checked:
-            handles.append(item.data(Qt.ItemDataRole.UserRole))
-    return handles
-
-
-def set_all_check_states(
-    listing: QListWidget, state: Qt.CheckState, *_signal_args
-) -> None:
-    """
-    Set every row of a selection list to the same check state, for the All / None
-    buttons. Takes and ignores the trailing signal arguments so it can be
-    connected to 'clicked' directly.
-    """
-    for index in range(listing.count()):
-        item = listing.item(index)
-        if item is not None:
-            item.setCheckState(state)
-
-
-def update_selection_state(
-    listing: QListWidget,
-    count_label: QLabel,
-    yes_btn: QPushButton,
-    *_signal_args,
-) -> None:
-    """
-    Refresh the 'N of M selected' label and gate the Yes button on something
-    being selected, so the dialog cannot confirm a run that would do nothing.
-    """
-    selected = len(checked_handles(listing))
-    count_label.setText(f"{selected} of {listing.count()} selected")
-    yes_btn.setEnabled(selected > 0)
-
-
 def command_line_text(command: str, args: list[str]) -> str:
     """
     A command and its arguments as echoed to the output window.
     """
     return (command + " " + " ".join(args)).rstrip()
-
-
-class CommandHistory:
-    def __init__(self, max_size: int = 250):
-        self._max_size = max_size
-        self._ptr = 0
-        self._commands: list[str] = []
-        self._empty_string_returned = False
-
-    def save_command(self, command: str):
-        """
-        Save a command at the end of the command list.
-        Consecutive duplicates are not stored.
-        """
-        if self._commands and self._commands[-1] == command:
-            return
-        if len(self._commands) == self._max_size:
-            self._commands.pop(0)
-        self._commands.append(command)
-        self._ptr = len(self._commands) - 1
-        self._empty_string_returned = False
-
-    def step_forward(self) -> str | None:
-        """
-        Return the next (later) command in the list.
-        Return an empty string if already at the end of the list.
-        """
-        if len(self._commands) == 0:
-            return None
-        if self._ptr < len(self._commands) - 1:
-            self._ptr += 1
-        else:
-            self._empty_string_returned = True
-            return ""
-        return self._commands[self._ptr]
-
-    def step_back(self) -> str | None:
-        """
-        Return the previous (earlier) command in the list.
-        Keep returning the first command if pointer is at the start.
-        """
-        if len(self._commands) == 0:
-            return None
-        if self._ptr > 0:
-            if self._empty_string_returned:
-                self._empty_string_returned = False
-            else:
-                self._ptr -= 1
-        return self._commands[self._ptr]
 
 
 class YellowDogApp(QMainWindow):
@@ -3652,7 +2675,7 @@ class YellowDogApp(QMainWindow):
         stored is a width and a mode a user has been shown and not changed, so
         Commander need never guess whether a stored value was chosen.
         """
-        settings = dialog_settings()
+        settings = file_dialogs.dialog_settings()
         settings.setValue(SETTING_DIALOG_VIEW_MODE, dialog.viewMode().name)
         sizes = splitter.sizes()
         if sizes and sizes[0] > 0:
@@ -3668,7 +2691,7 @@ class YellowDogApp(QMainWindow):
         harmless way round: a dialog opens in Commander's own view rather than
         refusing to open.
         """
-        stored = dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
+        stored = file_dialogs.dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
         try:
             return QFileDialog.ViewMode[str(stored)]
         except KeyError:
@@ -3693,7 +2716,7 @@ class YellowDogApp(QMainWindow):
         sidebar = dialog.findChild(QListView, "sidebar")
         if sidebar is None:
             return None
-        stored = dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
+        stored = file_dialogs.dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
         try:
             width = int(stored)
         except (TypeError, ValueError):

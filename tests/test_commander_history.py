@@ -1,13 +1,9 @@
 """
-Unit tests for the Commander CommandHistory helper (pure Python; no Qt event
-loop). Guards the command-recall pointer logic against off-by-one regressions.
+Unit tests for the Commander CommandHistory helper (pure Python; no Qt, so it
+runs where PyQt6 is not installed). Guards the command-recall pointer logic against off-by-one regressions.
 """
 
-import qt_guard
-
-qt_guard.require_qt()  # commander imports QtWidgets at module top
-
-from yellowdog_cli.commander.commander import CommandHistory
+from yellowdog_cli.commander.command_history import CommandHistory
 
 
 def test_empty_history_returns_none():

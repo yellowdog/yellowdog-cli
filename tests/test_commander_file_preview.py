@@ -44,6 +44,10 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander.commander import (
     NATIVE_VIEWER_BUTTON_TEXT,
+    SIDEBAR_PANE_WIDTH,
+    YellowDogApp,
+)
+from yellowdog_cli.commander.file_dialogs import (
     PREVIEW_ELIDED_BYTES,
     PREVIEW_ELIDED_LINES,
     PREVIEW_MAX_LINE_CHARS,
@@ -54,9 +58,7 @@ from yellowdog_cli.commander.commander import (
     PREVIEW_READ_BYTES,
     SETTING_DIALOG_SIDEBAR_WIDTH,
     SETTING_DIALOG_VIEW_MODE,
-    SIDEBAR_PANE_WIDTH,
     FilePreview,
-    YellowDogApp,
     format_file_size,
 )
 

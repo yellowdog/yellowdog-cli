@@ -13,14 +13,8 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    NO_OBJECT_PATH,
-    RESULTS_DIR,
-    Confirmation,
-    EntitySummary,
-    ObjectSummary,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import NO_OBJECT_PATH, RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.selection import Confirmation, EntitySummary, ObjectSummary
 from yellowdog_cli.commander.startup import StartupSettings
 
 

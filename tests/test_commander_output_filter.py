@@ -26,10 +26,9 @@ from PyQt6.QtWidgets import QApplication, QMenu
 from yellowdog_cli.commander.commander import (
     SHOW_ALL_OUTPUT,
     SHOW_OUTPUT_FROM_PROCESS,
-    OutputRun,
     YellowDogApp,
-    block_count,
 )
+from yellowdog_cli.commander.output_model import OutputRun, block_count
 
 CHILD_TIMEOUT_MS = 10_000
 

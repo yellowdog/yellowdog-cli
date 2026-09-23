@@ -14,12 +14,8 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    Confirmation,
-    EntitySummary,
-    ObjectSummary,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import Confirmation, EntitySummary, ObjectSummary
 
 ACTIONS = [
     ("_cancel_work_requirements_action", "Cancel Work Requirements"),

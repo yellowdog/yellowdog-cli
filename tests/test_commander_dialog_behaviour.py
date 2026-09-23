@@ -16,11 +16,10 @@ import commander_dialogs
 import gui_harness
 from PyQt6.QtWidgets import QDialog, QListWidget
 
-from yellowdog_cli.commander.commander import (
-    MAX_DIALOG_LIST_ROWS,
+from yellowdog_cli.commander.commander import MAX_DIALOG_LIST_ROWS, YellowDogApp
+from yellowdog_cli.commander.selection import (
     EntitySummary,
     ObjectSummary,
-    YellowDogApp,
     entity_rows,
     object_rows,
 )

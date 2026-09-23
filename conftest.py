@@ -157,7 +157,7 @@ def _no_config_discovery(request, monkeypatch):
 
 
 # Qt's own file-dialog settings, which Commander deliberately does not read (it
-# keeps its own; see commander.dialog_settings). Named here because the only code
+# keeps its own; see file_dialogs.dialog_settings). Named here because the only code
 # that cares is the fixtures below and the one case that proves they are ignored.
 QT_SETTINGS_ORGANISATION = "QtProject"
 QT_SIDEBAR_WIDTH_SETTING = "FileDialog/sidebarWidth"
@@ -254,11 +254,11 @@ def commander_dialog_settings(request, tmp_path_factory, monkeypatch):
 
     from PyQt6.QtCore import QSettings
 
-    from yellowdog_cli.commander import commander
+    from yellowdog_cli.commander import file_dialogs
 
     path = tmp_path_factory.mktemp("commander-settings") / "commander.ini"
     settings = QSettings(str(path), QSettings.Format.IniFormat)
-    monkeypatch.setattr(commander, "dialog_settings", lambda: settings)
+    monkeypatch.setattr(file_dialogs, "dialog_settings", lambda: settings)
     return settings
 
 
