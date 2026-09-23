@@ -82,6 +82,8 @@ class TestFindDelimitedExpressions:
             ('"{{a_{{b}}}}-{{c}}"', ["{{a_{{b}}}}", "{{c}}"]),
             ("{{a}}\n{{b}}", ["{{a}}", "{{b}}"]),
             ("{{a\n}}", []),  # an expression does not span lines
+            ("{{a\n{{b}}", ["{{b}}"]),  # one left open does not swallow the next
+            ("{{{a}}}", ["{{{a}}"]),
             ("{{a}}}}", ["{{a}}"]),
             ("{{{{a}}", []),  # never closed
             ("}} {{a}}", ["{{a}}"]),
