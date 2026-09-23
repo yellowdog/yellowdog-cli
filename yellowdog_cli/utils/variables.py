@@ -21,6 +21,7 @@ from yellowdog_cli.utils.misc_utils import (
     PROCESS_DISCRIMINATOR,
     UTCNOW,
     config_file_explicitly_selected,
+    find_delimited_expressions,
     format_yd_name,
     load_dotenv_file,
     random_base36,
@@ -714,11 +715,15 @@ def process_variable_substitutions_in_file_contents(
     """
     Process substitutions in the raw contents of a complete file.
     """
-    v_expressions = set(
-        re.findall(
-            f"{re.escape(prefix)}{re.escape(VAR_OPENING_DELIMITER)}"
-            f".*{re.escape(VAR_CLOSING_DELIMITER)}{re.escape(postfix)}",
+    # Found one expression at a time: a match running from the first opening
+    # delimiter on a line to the last closing one took every expression on
+    # the line as one, which lost a type-tagged value's type and, where the
+    # line went on to close a JSON object ('}}'), failed on the delimiters
+    v_expressions = dict.fromkeys(
+        find_delimited_expressions(
             file_contents,
+            prefix + VAR_OPENING_DELIMITER,
+            VAR_CLOSING_DELIMITER + postfix,
         )
     )
 

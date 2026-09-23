@@ -606,6 +606,39 @@ class TestProcessVariableSubstitutionsInFileContents:
         result = var_module.process_variable_substitutions_in_file_contents(content)
         assert result == '["Alpha", "Beta"]'
 
+    # Several expressions on one line, which is what compact (unindented)
+    # JSON puts them on. Each has to be found as the expression it is: taken
+    # together, as one match from the first '{{' to the last '}}', a type-
+    # tagged one was substituted as text and its value came back a string
+
+    def test_typed_expressions_on_one_line(self):
+        content = '{"a":"{{num:num_var}}","b":"{{bool:bool_var}}"}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert json.loads(result) == {"a": 42, "b": True}
+
+    def test_typed_expression_followed_by_closing_braces(self):
+        # The object's own '}}' is not a closing delimiter
+        content = '{"env":{"n":"{{num:num_var}}"}}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert json.loads(result) == {"env": {"n": 42}}
+
+    def test_untyped_expression_followed_by_closing_braces(self):
+        # This one raised 'Mismatched variable delimiters' outright
+        content = '{"env":{"A":"{{myvar}}"}}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert json.loads(result) == {"env": {"A": "hello"}}
+
+    def test_nested_typed_expressions_on_one_line(self):
+        var_module.VARIABLE_SUBSTITUTIONS["which"] = "num_var"
+        content = '{"a":"{{num:{{which}}}}","b":"{{bool:bool_var}}"}'
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert json.loads(result) == {"a": 42, "b": True}
+
+    def test_typed_and_untyped_expressions_on_one_line(self):
+        content = "{a:'{{myvar}}',b:'{{num:num_var}}'}"
+        result = var_module.process_variable_substitutions_in_file_contents(content)
+        assert result == "{a:'hello',b:42}"
+
 
 # ---------------------------------------------------------------------------
 # The '{{random}}' and '{{random6}}' default substitutions
@@ -887,3 +920,45 @@ class TestNestedVariablesInEveryFormat:
         monkeypatch.setenv("YD_TEST_1", "{{env:YD_TEST_2}}")
         monkeypatch.setenv("YD_TEST_2", "{{region}}")
         assert load_spec({"t": "{{env:YD_TEST_0}}"}) == {"t": "phoenix"}
+
+
+class TestCompactSpecifications:
+    """
+    A specification written without indentation, as a program writing JSON
+    usually writes it, keeps its type-tagged values' types.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs, monkeypatch):
+        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
+
+    def test_compact_json(self, tmp_path):
+        path = tmp_path / "spec.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "taskCount": "{{num:num_var}}",
+                    "fiaft": "{{bool:bool_var}}",
+                    "name": "{{num:num_var}}-{{myvar}}",
+                    "task": {"env": {"PI": "{{num:pi}}"}},
+                }
+            )
+        )
+        assert var_module.load_json_file_with_variable_substitutions(str(path)) == {
+            "taskCount": 42,
+            "fiaft": True,
+            "name": "42-hello",
+            "task": {"env": {"PI": 3.14}},
+        }
+
+    def test_compact_jsonnet(self, tmp_path):
+        path = tmp_path / "spec.jsonnet"
+        path.write_text(
+            "{taskCount:'{{num:num_var}}',fiaft:'{{bool:bool_var}}',"
+            "task:{env:{PI:'{{num:pi}}'}}}"
+        )
+        assert _load_jsonnet(path) == {
+            "taskCount": 42,
+            "fiaft": True,
+            "task": {"env": {"PI": 3.14}},
+        }

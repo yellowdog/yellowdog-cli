@@ -203,6 +203,45 @@ def get_delimited_string_boundaries(
     return substrings
 
 
+def find_delimited_expressions(
+    s: str, opening_delimiter: str, closing_delimiter: str
+) -> list[str]:
+    """
+    Find the top-level delimited expressions in a string, each one balanced
+    and on a single line, in the order they appear.
+
+    Unlike get_delimited_string_boundaries(), this does not require the
+    delimiters to balance across the whole string, which is what lets it
+    scan the text of a specification file: there a closing delimiter with
+    nothing open, such as the '}}' ending a JSON object, is ordinary text,
+    and an expression left open at the end of its line is not an expression.
+
+    For example:
+      when called with ('{"a":{"b":"{{x_{{y}}}}"}}', "{{", "}}")
+      the result is: ['{{x_{{y}}}}']
+    """
+    expressions: list[str] = []
+    depth = 0
+    start = 0
+    index = 0
+    while index < len(s):
+        if s.startswith(opening_delimiter, index):
+            if depth == 0:
+                start = index
+            depth += 1
+            index += len(opening_delimiter)
+        elif depth > 0 and s.startswith(closing_delimiter, index):
+            depth -= 1
+            index += len(closing_delimiter)
+            if depth == 0:
+                expressions.append(s[start:index])
+        else:
+            if s[index] == "\n":
+                depth = 0
+            index += 1
+    return expressions
+
+
 def split_delimited_string(
     s: str, opening_delimiter: str, closing_delimiter: str
 ) -> list[str]:
