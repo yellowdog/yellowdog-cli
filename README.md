@@ -41,6 +41,7 @@
       * [Nested Variables](#nested-variables)
       * [Providing Default Values for User-Defined Variables](#providing-default-values-for-user-defined-variables)
       * [Removing Properties Using the Unset Suffix](#removing-properties-using-the-unset-suffix)
+      * [Undefined Variables](#undefined-variables)
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 * [Work Requirements](#work-requirements)
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
@@ -199,7 +200,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 14:25:36 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 14:37:54 BST 2026 -->
 
 <!--te-->
 
@@ -878,6 +879,18 @@ The unset suffix can also be used inside a [nested variable](#nested-variables).
 templateId = "{{template_{{region::}}}}"      # removed if 'region' is not set
 name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' nor 'default_name' is set
 ```
+
+### Undefined Variables
+
+A variable substitution for a variable that is not defined, and that has neither a default value nor the unset suffix, is left in the specification unchanged, and a warning is printed naming it and the properties it appears in, e.g.:
+
+```
+Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
+```
+
+Each undefined variable is reported once, however many properties or Tasks it appears in. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution, such as `docker ps --format '{{.ID}}'`, and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+
+A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 

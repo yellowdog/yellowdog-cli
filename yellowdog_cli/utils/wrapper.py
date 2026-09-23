@@ -15,6 +15,7 @@ from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.load_config import load_config_common
 from yellowdog_cli.utils.printing import print_debug, print_error, print_info
 from yellowdog_cli.utils.user_agent import set_user_agent
+from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
 # Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and direct)
 # before any client is created or request is made.
@@ -61,6 +62,9 @@ def set_proxy():
 
 def main_wrapper(func):
     def wrapper():
+        # The configuration is loaded, so every variable it defines exists:
+        # one still unsubstituted from here on is one nothing defines
+        enable_undefined_variable_warnings()
         if not ARGS_PARSER.debug:
             exit_code = 0
             try:

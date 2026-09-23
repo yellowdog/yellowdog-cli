@@ -28,7 +28,7 @@ from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
     load_toml_file_with_variable_substitutions,
-    process_variable_substitutions_insitu,
+    resolve_variables_insitu,
 )
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -75,7 +75,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
 
         # Secondary variable processing pass + source-dir stamp
         for resource in resources_loaded:
-            process_variable_substitutions_insitu(resource)
+            resolve_variables_insitu(resource)
             resource[RESOURCE_SOURCE_DIR] = spec_dir
 
         print_info(

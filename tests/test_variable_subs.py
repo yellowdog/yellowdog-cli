@@ -1164,3 +1164,152 @@ class TestCompactSpecifications:
             "fiaft": True,
             "task": {"env": {"PI": 3.14}},
         }
+
+
+# ---------------------------------------------------------------------------
+# Warnings for undefined variables
+# ---------------------------------------------------------------------------
+
+
+class TestUndefinedVariableWarnings:
+    """
+    Once a command's own processing has begun -- every configuration
+    variable defined -- an expression still unsubstituted after the passes
+    have settled names a variable nothing defines, and is reported, once per
+    expression, as a warning. The lazy variables yd-submit defines as it goes
+    are not, and nor is anything that does not look like a variable at all.
+    """
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, patched_subs, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", True)
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
+        warning = MagicMock()
+        monkeypatch.setattr(var_module, "print_warning", warning)
+        return warning
+
+    @staticmethod
+    def _warnings(warning: MagicMock) -> list[str]:
+        return [str(call.args[0]) for call in warning.call_args_list]
+
+    def test_undefined_variable_is_reported_with_its_property(self, enabled):
+        data = {"tasks": [{"arguments": ["run", "{{regoin}}"]}]}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"tasks": [{"arguments": ["run", "{{regoin}}"]}]}
+        [warning] = self._warnings(enabled)
+        assert "'{{regoin}}'" in warning
+        assert "'tasks[0].arguments[1]'" in warning
+
+    def test_each_expression_is_reported_once(self, enabled):
+        data = {"a": "{{nope}}", "b": "x-{{nope}}", "c": "{{other}}"}
+        var_module.resolve_variables_insitu(data)
+        var_module.resolve_variables_insitu({"d": "{{nope}}"})
+        warnings = self._warnings(enabled)
+        assert len(warnings) == 2
+        [nope] = [w for w in warnings if "{{nope}}" in w]
+        assert "'a'" in nope and "'b'" in nope
+
+    def test_many_properties_are_summarised(self, enabled):
+        data = {"tasks": [{"name": "{{nope}}"} for _ in range(8)]}
+        var_module.resolve_variables_insitu(data)
+        [warning] = self._warnings(enabled)
+        assert "and 3 more" in warning
+
+    @pytest.mark.parametrize(
+        "expression", ["{{num:nope}}", "{{env:YD_TEST_NOT_SET_XYZ}}", "{{a.b-c}}"]
+    )
+    def test_typed_env_and_dotted_forms_are_reported(self, enabled, expression):
+        var_module.resolve_variables_insitu({"t": expression})
+        [warning] = self._warnings(enabled)
+        assert f"'{expression}'" in warning
+
+    def test_undefined_inner_variable_is_reported(self, enabled):
+        var_module.resolve_variables_insitu({"t": "{{template_{{nope}}}}"})
+        [warning] = self._warnings(enabled)
+        assert "'{{nope}}'" in warning
+
+    def test_undefined_built_name_is_reported(self, enabled):
+        var_module.resolve_variables_insitu({"t": "{{template_{{myvar}}}}"})
+        [warning] = self._warnings(enabled)
+        assert "'{{template_hello}}'" in warning
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "docker ps --format '{{.ID}}'",
+            "{{ .Values.image }}",
+            "{{range .Items}}",
+            "{{#each items}}",
+        ],
+    )
+    def test_text_that_is_not_a_variable_is_not_reported(self, enabled, text):
+        var_module.resolve_variables_insitu({"t": text})
+        assert self._warnings(enabled) == []
+
+    def test_lazy_variables_are_not_reported(self, enabled):
+        from yellowdog_cli.utils.settings import L_TASK_NAME, L_WR_NAME
+
+        var_module.resolve_variables_insitu(
+            {"a": f"{{{{{L_TASK_NAME}}}}}", "b": f"{{{{{L_WR_NAME}}}}}"}
+        )
+        assert self._warnings(enabled) == []
+
+    def test_defined_and_removed_variables_are_not_reported(self, enabled):
+        data = {"a": "{{myvar}}", "b": "{{missing::}}", "c": "{{nope:=d}}"}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"a": "hello", "c": "d"}
+        assert self._warnings(enabled) == []
+
+    def test_mustache_left_for_the_server_is_not_reported(self, enabled):
+        data = {"t": "{{server_side}}", "u": "__{{nope}}__"}
+        var_module.resolve_variables_insitu(data, prefix="__", postfix="__")
+        [warning] = self._warnings(enabled)
+        assert "'__{{nope}}__'" in warning
+
+    def test_user_data_is_checked_with_its_own_delimiters(self, enabled):
+        data = {"userData": "echo {{server_side}} __{{nope}}__"}
+        var_module.resolve_variables_insitu(data)
+        [warning] = self._warnings(enabled)
+        assert "'__{{nope}}__'" in warning
+
+    def test_nothing_is_reported_until_enabled(self, enabled, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+        var_module.resolve_variables_insitu({"t": "{{nope}}"})
+        assert self._warnings(enabled) == []
+
+    def test_enabling(self, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+        var_module.enable_undefined_variable_warnings()
+        assert var_module._UNDEFINED_VARIABLE_WARNINGS is True
+
+    def test_a_circular_reference_is_still_an_error(self, enabled):
+        var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
+        with pytest.raises(ValueError, match="Circular"):
+            var_module.resolve_variables_insitu({"t": "{{s}} {{nope}}"})
+
+
+class TestWrappersEnableUndefinedVariableWarnings:
+    """Both command wrappers turn the warnings on before the command runs."""
+
+    @pytest.fixture(autouse=True)
+    def disabled(self, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+
+    @staticmethod
+    def _run(wrapped) -> list[bool]:
+        seen: list[bool] = []
+        with pytest.raises(SystemExit):
+            wrapped(lambda: seen.append(var_module._UNDEFINED_VARIABLE_WARNINGS))()
+        return seen
+
+    def test_main_wrapper(self, monkeypatch):
+        import yellowdog_cli.utils.wrapper as wrapper_module
+
+        monkeypatch.setattr(wrapper_module, "set_proxy", lambda: None)
+        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        assert self._run(wrapper_module.main_wrapper) == [True]
+
+    def test_dataclient_wrapper(self):
+        from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
+
+        assert self._run(dataclient_wrapper) == [True]

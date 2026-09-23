@@ -73,6 +73,15 @@ L_TASK_GROUP_NAME = "task_group_name"
 L_TASK_GROUP_NUMBER = "task_group_number"
 L_TASK_COUNT = "task_count"
 L_TASK_GROUP_COUNT = "task_group_count"
+LAZY_VARIABLE_NAMES = (
+    L_WR_NAME,
+    L_TASK_NAME,
+    L_TASK_NUMBER,
+    L_TASK_GROUP_NAME,
+    L_TASK_GROUP_NUMBER,
+    L_TASK_COUNT,
+    L_TASK_GROUP_COUNT,
+)
 
 TYPE_TAG_TERMINATOR = ":"
 # The character(s) of VAR_DEFAULT_SEPARATOR that follow TYPE_TAG_TERMINATOR.

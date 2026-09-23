@@ -73,8 +73,8 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variables import (
     process_variable_substitutions_in_file_contents,
-    process_variable_substitutions_insitu,
     resolve_filename,
+    resolve_variables_insitu,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER
 
@@ -126,7 +126,7 @@ def update_config_work_requirement_object(
     variable substitutions. Returns the updated object.
     """
     config_wr_dict = config_wr.__dict__
-    process_variable_substitutions_insitu(config_wr_dict)
+    resolve_variables_insitu(config_wr_dict)
     return ConfigWorkRequirement(**config_wr_dict)
 
 

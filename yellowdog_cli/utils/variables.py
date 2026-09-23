@@ -33,6 +33,7 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_json,
+    print_warning,
 )
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
@@ -44,6 +45,7 @@ from yellowdog_cli.utils.settings import (
     BOOL_TYPE_TAG,
     ENV_VAR_SUB_PREFIX,
     FORMAT_NAME_TYPE_TAG,
+    LAZY_VARIABLE_NAMES,
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
@@ -71,6 +73,46 @@ _UNSET = object()
 # there, it was. A private-use character, which no delimiter, separator or
 # regular expression below can match, and no variable value will contain.
 _UNSET_MARKER = "\ue000"
+
+# Whether an expression left unsubstituted is reported as an undefined
+# variable. Off until a command's own processing begins (the command
+# wrappers turn it on), because the configuration's own passes run while
+# its variables are still being defined -- 'namespace', 'tag', 'key',
+# 'dataClient.*' -- and would report each of them.
+_UNDEFINED_VARIABLE_WARNINGS = False
+
+# The expressions already reported, so that each is reported once however
+# many passes, Task Groups or Tasks it turns up in
+_UNDEFINED_VARIABLES_REPORTED: set[str] = set()
+
+# What an expression naming a variable looks like, once resolution has left
+# it: an optional type tag, an optional 'env:', and a name. Anything else --
+# Docker's '{{.ID}}', a Go template's '{{ .Values.x }}', Handlebars'
+# '{{#each}}' -- is text meant for something else, and is not reported.
+_VARIABLE_REFERENCE = re.compile(
+    "(?:"
+    + "|".join(
+        re.escape(tag)
+        for tag in (
+            NUMBER_TYPE_TAG,
+            BOOL_TYPE_TAG,
+            ARRAY_TYPE_TAG,
+            TABLE_TYPE_TAG,
+            FORMAT_NAME_TYPE_TAG,
+        )
+    )
+    + f")?((?:{re.escape(ENV_VAR_SUB_PREFIX)})?[A-Za-z_][A-Za-z0-9_.-]*)"
+)
+
+
+def enable_undefined_variable_warnings() -> None:
+    """
+    Report, from now on, variables left unsubstituted because nothing
+    defines them. Called by the command wrappers as a command begins.
+    """
+    global _UNDEFINED_VARIABLE_WARNINGS
+    _UNDEFINED_VARIABLE_WARNINGS = True
+
 
 # Set up default variable substitutions
 try:
@@ -340,13 +382,33 @@ def resolve_variables_insitu(
             f" variable reference, in {_list_paths(changed)}"
         )
 
-    circular = _unsubstituted_defined_variables(data, prefix=prefix, postfix=postfix)
+    circular: dict[str, list[str]] = {}
+    undefined: dict[str, list[str]] = {}
+    for expression, reference, path in _unsubstituted_references(
+        data, prefix=prefix, postfix=postfix
+    ):
+        if reference in VARIABLE_SUBSTITUTIONS:
+            circular.setdefault(reference, []).append(path)
+        elif reference not in LAZY_VARIABLE_NAMES:
+            undefined.setdefault(expression, []).append(path)
+
     if circular:
-        names = ", ".join(f"'{name}'" for name in sorted({n for n, _ in circular}))
+        names = ", ".join(f"'{name}'" for name in sorted(circular))
+        paths = [path for paths in circular.values() for path in paths]
         raise ValueError(
             f"Circular variable reference: {names} refers back to itself,"
-            f" in {_list_paths([path for _, path in circular])}"
+            f" in {_list_paths(paths)}"
         )
+
+    if _UNDEFINED_VARIABLE_WARNINGS:
+        for expression, paths in undefined.items():
+            if expression in _UNDEFINED_VARIABLES_REPORTED:
+                continue
+            _UNDEFINED_VARIABLES_REPORTED.add(expression)
+            print_warning(
+                f"Variable '{expression}' is not defined, and has been left"
+                f" unsubstituted in {_list_paths(paths)}"
+            )
 
 
 def _list_paths(paths: list[str], limit: int = 5) -> str:
@@ -355,30 +417,31 @@ def _list_paths(paths: list[str], limit: int = 5) -> str:
     return shown + more
 
 
-def _unsubstituted_defined_variables(
+def _unsubstituted_references(
     data: dict | list, prefix: str = "", postfix: str = ""
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, str]]:
     """
-    The (variable name, property path) of every expression left in 'data'
-    that is just a defined variable's name. A pass always substitutes a
-    defined variable, so once the passes have settled, one still there is
-    one whose value leads back to its own name.
-    """
-    found: list[tuple[str, str]] = []
+    The (expression, variable reference, property path) of every variable
+    reference left in 'data' in the delimiters being substituted -- the
+    Worker Pool ones for 'userData', as the passes use. The reference is the
+    expression's variable name, or 'env:' and the environment variable's,
+    without delimiters or type tag. An expression that is not a reference
+    itself but contains one ('{{template_{{x}}}}') yields the one inside.
 
-    def _check(key_, value_: str, path: str):
-        if key_ == USERDATA:
-            opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
-        else:
-            opening, closing = prefix, postfix
-        opening += VAR_OPENING_DELIMITER
-        closing = VAR_CLOSING_DELIMITER + closing
-        if opening not in value_:
-            return
+    Once the passes have settled, a reference to a defined variable is still
+    there only if its value leads back to its own name, and any other names
+    a variable nothing defines.
+    """
+    found: list[tuple[str, str, str]] = []
+
+    def _check(value_: str, opening: str, closing: str, path: str):
         for expression in find_delimited_expressions(value_, opening, closing):
-            name = expression[len(opening) : -len(closing)]
-            if name in VARIABLE_SUBSTITUTIONS:
-                found.append((name, path))
+            inner = expression[len(opening) : -len(closing)]
+            match = _VARIABLE_REFERENCE.fullmatch(inner)
+            if match is not None:
+                found.append((expression, match.group(1), path))
+            elif opening in inner:
+                _check(inner, opening, closing, path)
 
     def _walk_data(data: dict | list, path: str):
         items = (
@@ -391,7 +454,14 @@ def _unsubstituted_defined_variables(
         )
         for key_, item_path, value_ in items:
             if isinstance(value_, str):
-                _check(key_, value_, item_path)
+                if key_ == USERDATA:
+                    opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+                else:
+                    opening, closing = prefix, postfix
+                opening += VAR_OPENING_DELIMITER
+                closing = VAR_CLOSING_DELIMITER + closing
+                if opening in value_:
+                    _check(value_, opening, closing, item_path)
             elif isinstance(value_, (dict, list)):
                 _walk_data(value_, item_path)
 

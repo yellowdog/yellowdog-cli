@@ -8,11 +8,15 @@ from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
 
 def dataclient_wrapper(func):
 
     def wrapper():
+        # The configuration is loaded, so every variable it defines exists:
+        # one still unsubstituted from here on is one nothing defines
+        enable_undefined_variable_warnings()
         if not ARGS_PARSER.debug:
             exit_code = 0
             try:
