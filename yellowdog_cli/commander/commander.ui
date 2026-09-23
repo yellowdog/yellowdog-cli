@@ -739,9 +739,6 @@
       <property name="text">
        <string/>
       </property>
-      <property name="pixmap">
-       <pixmap>yellowdog.png</pixmap>
-      </property>
      </widget>
     </item>
     <item row="2" column="2" colspan="2">
