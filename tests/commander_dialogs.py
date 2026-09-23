@@ -34,6 +34,11 @@ SKIP = "skip"
 ACCEPT = "accept"
 CANCEL = "cancel"
 DISMISS = "dismiss"  # close without pressing anything
+# Press nothing and leave the dialog open, for an interaction that closes it
+# itself — a key the dialog acts on after a delay, as Return does by animating a
+# click on the default button. A dialog that does not close is still caught, by
+# the watchdog.
+NOTHING = "nothing"
 
 
 def listing(dialog) -> QListWidget:
@@ -45,11 +50,30 @@ def listing(dialog) -> QListWidget:
 
 def untick(dialog, indexes) -> None:
     """Untick rows by index, as a user clicking their checkboxes would."""
+    set_check_states(dialog, indexes, Qt.CheckState.Unchecked)
+
+
+def tick(dialog, indexes) -> None:
+    """Tick rows by index, as a user clicking their checkboxes would."""
+    set_check_states(dialog, indexes, Qt.CheckState.Checked)
+
+
+def set_check_states(dialog, indexes, state: Qt.CheckState) -> None:
     rows = listing(dialog)
     for index in indexes:
         item = rows.item(index)
         assert item is not None, f"no row at index {index}"
-        item.setCheckState(Qt.CheckState.Unchecked)
+        item.setCheckState(state)
+
+
+def ticked(dialog) -> list[int]:
+    """The indexes of the rows ticked."""
+    rows = listing(dialog)
+    return [
+        index
+        for index in range(rows.count())
+        if rows.item(index).checkState() == Qt.CheckState.Checked
+    ]
 
 
 def drive_confirmation(
@@ -110,8 +134,8 @@ def drive_chooser(
     """
     real_build = window._build_chooser_dialog
 
-    def build(title, message, accept_text, rows):
-        dialog, accept_btn = real_build(title, message, accept_text, rows)
+    def build(title, message, accept_text, rows, checked=None):
+        dialog, accept_btn = real_build(title, message, accept_text, rows, checked)
 
         def interact(open_dialog):
             if untick_rows:
@@ -159,3 +183,39 @@ def drive_notice(window, monkeypatch, inspect=None) -> dict:
 
     monkeypatch.setattr(window, "_build_notice_dialog", build)
     return shown
+
+
+def drive_process_chooser(
+    window,
+    monkeypatch,
+    press: str,
+    tick_rows: tuple = (),
+    untick_rows: tuple = (),
+    inspect=None,
+) -> None:
+    """
+    Arm the next process chooser so that, inside its real exec(), the given rows
+    are ticked and unticked and 'press' is pressed. 'inspect(dialog)' runs first
+    if given. Like the chooser it is built on, it wires its own button box.
+    """
+    real_build = window._build_process_dialog
+
+    def build(runs, ticked_runs):
+        dialog, process_list = real_build(runs, ticked_runs)
+
+        def interact(open_dialog):
+            if inspect is not None:
+                inspect(open_dialog)
+            tick(open_dialog, tick_rows)
+            untick(open_dialog, untick_rows)
+            if press == ACCEPT:
+                gui_harness.button_labelled(open_dialog, "Show Output").click()
+            elif press == CANCEL:
+                gui_harness.button_labelled(open_dialog, "Cancel").click()
+            elif press != NOTHING:
+                open_dialog.reject()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog, process_list
+
+    monkeypatch.setattr(window, "_build_process_dialog", build)

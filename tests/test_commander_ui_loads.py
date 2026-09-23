@@ -146,7 +146,9 @@ def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
     wrong = {
         button.objectName(): (button.height(), button.sizeHint().height())
         for button in win.findChildren(QPushButton)
-        if button.height() != button.sizeHint().height()
+        # A hidden button — the output filter bar's, until the output is
+        # filtered — is not laid out at all, so it has no height to be wrong
+        if button.isVisible() and button.height() != button.sizeHint().height()
     }
 
     assert not wrong, f"buttons not at their natural height: {wrong}"

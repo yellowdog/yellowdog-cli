@@ -52,6 +52,7 @@ WIRING = [
     ("run_any_command", "_run_any_command_action"),
     ("next_command", "_next_command_action"),
     ("prev_command", "_prev_command_action"),
+    ("output_filter_show_all", "_show_all_output"),
 ]
 
 
