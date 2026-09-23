@@ -108,7 +108,7 @@ pytest -v -n 4 --run-demos
 | `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters` |
-| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, and that a TOML date falls back to its text |
+| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, that a TOML date falls back to its text, and that nested variables resolve alike in JSON, Jsonnet and TOML specifications |
 | `test_variables_command.py` | `variables.py` — `yd-variables`: named selection, all variables when none is named, alphabetical order, `null` for a name that isn't a variable, and the redaction of `key`/`secret` in the full report (revealed by naming them or by `--show-secrets`, and no other variable redacted) |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 

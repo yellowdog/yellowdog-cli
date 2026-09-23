@@ -199,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 22 11:42:59 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 13:06:04 BST 2026 -->
 
 <!--te-->
 
@@ -783,7 +783,7 @@ This method can also be used to override some default variables, e.g. setting `-
 
 ### Nested Variables
 
-In the case of **TOML file properties only**, variable substitutions can be nested.
+Variable substitutions can be nested, in TOML, JSON and Jsonnet files alike.
 
 For example, if one wanted to select a different `templateId` for a Worker Pool depending on the value of a `region` variable, one could use the following:
 
@@ -799,7 +799,7 @@ For example, if one wanted to select a different `templateId` for a Worker Pool 
 
 Then, if one used `yd-provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
 
-Nesting can be up to three levels deep including the top level. Note that sequencing of properties in the TOML file does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
+Nesting can be up to three levels deep including the top level. The example is TOML, but `"templateId": "{{template_{{region}}}}"` works the same way in a JSON or Jsonnet specification. Note that sequencing of properties does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
 
 ### Providing Default Values for User-Defined Variables
 
@@ -831,7 +831,7 @@ When a JSON default contains double-quoted strings, use a TOML single-quoted (li
 workerTags = '{{array:worker_tags:=["tag1", "tag2"]}}'
 ```
 
-Default values can be used anywhere that variable substitutions are allowed. In TOML files only, nested variable substitutions can be used inside default values, e.g.:
+Default values can be used anywhere that variable substitutions are allowed, and nested variable substitutions can be used inside default values, e.g.:
 
 ```toml
 name = "{{name_var:={{tag}}-{{datetime}}}}"

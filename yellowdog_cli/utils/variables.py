@@ -47,10 +47,10 @@ from yellowdog_cli.utils.settings import (
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
     TABLE_TYPE_TAG,
-    TOML_VAR_NESTED_DEPTH,
     TYPE_TAG_DEFAULT_GUARD,
     VAR_CLOSING_DELIMITER,
     VAR_DEFAULT_SEPARATOR,
+    VAR_NESTED_DEPTH,
     VAR_OPENING_DELIMITER,
     VAR_UNSET_SUFFIX,
     WP_VARIABLES_POSTFIX,
@@ -613,6 +613,18 @@ def resolve_filename(files_directory: str, filename: str) -> str:
     return os.path.join(files_directory, filename)
 
 
+def _resolve_nested_variables_insitu(
+    data: dict, prefix: str = "", postfix: str = ""
+) -> None:
+    """
+    Repeat the in-situ pass so that a substituted value which itself
+    contains a variable reference is resolved too, to the same depth
+    whatever the specification's format.
+    """
+    for _ in range(VAR_NESTED_DEPTH):
+        process_variable_substitutions_insitu(data, prefix=prefix, postfix=postfix)
+
+
 def load_json_file_with_variable_substitutions(
     filename: str, prefix: str = "", postfix: str = "", files_directory: str = ""
 ) -> dict:
@@ -626,7 +638,7 @@ def load_json_file_with_variable_substitutions(
         file_contents, prefix=prefix, postfix=postfix
     )
     result = json_loads(file_contents)
-    process_variable_substitutions_insitu(result, prefix=prefix, postfix=postfix)
+    _resolve_nested_variables_insitu(result, prefix=prefix, postfix=postfix)
     return result
 
 
@@ -656,7 +668,7 @@ def load_jsonnet_file_with_variable_substitutions(
             raise RuntimeError(str(e).partition("\n")[0])
 
     # Secondary processing after Jsonnet expansion
-    process_variable_substitutions_insitu(dict_data, prefix, postfix)
+    _resolve_nested_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
 
     if ARGS_PARSER.jsonnet_dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
@@ -691,9 +703,7 @@ def load_toml_file_with_variable_substitutions(
     except KeyError:
         pass
 
-    # Repeat processing to resolve nested variables
-    for _ in range(TOML_VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(config, prefix=prefix, postfix=postfix)
+    _resolve_nested_variables_insitu(config, prefix=prefix, postfix=postfix)
 
     return config
 

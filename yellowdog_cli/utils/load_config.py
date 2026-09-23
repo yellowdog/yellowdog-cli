@@ -36,7 +36,7 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
     TASK_BATCH_SIZE_DEFAULT,
-    TOML_VAR_NESTED_DEPTH,
+    VAR_NESTED_DEPTH,
     YD_CONF,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
@@ -505,7 +505,7 @@ def load_config_data_client() -> ConfigDataClient:
     else:
         dc_section = _select_dc_section(base_section, None)
 
-    for _ in range(TOML_VAR_NESTED_DEPTH):
+    for _ in range(VAR_NESTED_DEPTH):
         process_variable_substitutions_insitu(dc_section)
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
@@ -592,7 +592,7 @@ def load_config_data_client_for_profile(
     if profile_name is not None:
         print_debug(f"Using destination data client profile: '{profile_name}'")
 
-    for _ in range(TOML_VAR_NESTED_DEPTH):
+    for _ in range(VAR_NESTED_DEPTH):
         process_variable_substitutions_insitu(dc_section)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
@@ -632,7 +632,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
     # Process any new substitutions after the common config
     # has been processed
-    for _ in range(TOML_VAR_NESTED_DEPTH):
+    for _ in range(VAR_NESTED_DEPTH):
         process_variable_substitutions_insitu(wr_section)
 
     try:
@@ -766,7 +766,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     # Process any new substitutions after the common config
     # has been processed
-    for _ in range(TOML_VAR_NESTED_DEPTH):
+    for _ in range(VAR_NESTED_DEPTH):
         process_variable_substitutions_insitu(wp_section)
         process_variable_substitutions_insitu(cr_section)
 

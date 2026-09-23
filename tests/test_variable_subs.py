@@ -6,6 +6,7 @@ and process_variable_substitutions / process_variable_substitutions_in_file_cont
 (require patching the VARIABLE_SUBSTITUTIONS global).
 """
 
+import json
 import subprocess
 import sys
 from unittest.mock import MagicMock
@@ -786,3 +787,103 @@ class TestVariableValueRendering:
         toml_file.write_text('[common.variables]\ntbl = { x = "y" }\n')
         var_module.load_toml_file_with_variable_substitutions(str(toml_file))
         assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}
+
+
+# ---------------------------------------------------------------------------
+# Nested variables in every specification format
+# ---------------------------------------------------------------------------
+
+
+def _write_json(path, props: dict) -> None:
+    path.write_text(json.dumps(props, indent=2))
+
+
+def _write_jsonnet(path, props: dict) -> None:
+    fields = ",\n".join(f"  {key}: '{value}'" for key, value in props.items())
+    path.write_text(f"{{\n{fields}\n}}\n")
+
+
+def _write_toml(path, props: dict) -> None:
+    lines = "".join(f"{key} = '{value}'\n" for key, value in props.items())
+    path.write_text(f"[spec]\n{lines}")
+
+
+def _load_json(path) -> dict:
+    return var_module.load_json_file_with_variable_substitutions(str(path))
+
+
+def _load_jsonnet(path) -> dict:
+    from yellowdog_cli.utils.check_imports import check_jsonnet_import
+
+    try:
+        check_jsonnet_import()
+    except ImportError as exc:
+        pytest.skip(str(exc))
+    return var_module.load_jsonnet_file_with_variable_substitutions(str(path))
+
+
+def _load_toml(path) -> dict:
+    return var_module.load_toml_file_with_variable_substitutions(str(path))["spec"]
+
+
+SPEC_FORMATS = {
+    "json": (_write_json, _load_json),
+    "jsonnet": (_write_jsonnet, _load_jsonnet),
+    "toml": (_write_toml, _load_toml),
+}
+
+
+class TestNestedVariablesInEveryFormat:
+    """
+    Nested variables are not a TOML feature: the recursion that resolves the
+    innermost expression first is in process_untyped_variable_substitutions(),
+    which every loader goes through, and each loader repeats its in-situ pass
+    VAR_NESTED_DEPTH times so that a value which substitutes in a further
+    variable reference is resolved to the same depth whatever the format.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_nesting_subs(self, patched_subs, monkeypatch):
+        var_module.VARIABLE_SUBSTITUTIONS.update(
+            {"region": "phoenix", "template_phoenix": "TP", "count_phoenix": "7"}
+        )
+        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
+
+    @pytest.fixture(params=sorted(SPEC_FORMATS))
+    def load_spec(self, request, tmp_path):
+        write, load = SPEC_FORMATS[request.param]
+
+        def _load(props: dict) -> dict:
+            path = tmp_path / f"spec.{request.param}"
+            write(path, props)
+            return load(path)
+
+        return _load
+
+    def test_variable_name_built_from_a_variable(self, load_spec):
+        assert load_spec({"t": "{{template_{{region}}}}"}) == {"t": "TP"}
+
+    def test_nested_variable_in_a_default(self, load_spec):
+        assert load_spec({"t": "{{undefined:={{region}}-x}}"}) == {"t": "phoenix-x"}
+
+    def test_three_levels(self, load_spec):
+        assert load_spec({"t": "{{template_{{reg{{undefined:=ion}}}}}}"}) == {"t": "TP"}
+
+    def test_nested_variable_with_a_type_tag(self, load_spec):
+        assert load_spec({"t": "{{num:count_{{region}}}}"}) == {"t": 7}
+
+    def test_nested_alongside_a_plain_variable(self, load_spec):
+        assert load_spec({"t": "{{template_{{region}}}}-{{region}}"}) == {
+            "t": "TP-phoenix"
+        }
+
+    def test_value_substituting_in_further_references(self, load_spec, monkeypatch):
+        # Each reference is only revealed by resolving the one before it. A
+        # single pass gets through two of these, so a chain this long needs
+        # the three passes TOML always had and JSON and Jsonnet, with one
+        # pass over the file text and one in situ, fell a pass short of:
+        # they left '{{env:YD_TEST_2}}' in the specification
+        monkeypatch.setenv("YD_TEST_0", "{{env:YD_TEST_1}}")
+        monkeypatch.setenv("YD_TEST_1", "{{env:YD_TEST_2}}")
+        monkeypatch.setenv("YD_TEST_2", "{{region}}")
+        assert load_spec({"t": "{{env:YD_TEST_0}}"}) == {"t": "phoenix"}
