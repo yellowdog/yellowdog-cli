@@ -29,6 +29,7 @@ from yellowdog_cli.commander.commander import (
     checked_handles,
     entity_rows,
 )
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -289,7 +290,7 @@ def test_no_listing_returns_none_when_dismissed(window, monkeypatch):
 
 
 def test_disabled_confirmations_return_whole_scope(qapp):
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     assert win._confirm_destructive("terminate", "t", "b") == Confirmation(
         proceed=True, handles=None
     )

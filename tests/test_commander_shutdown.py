@@ -24,6 +24,7 @@ from yellowdog_cli.commander.commander import (
     CONFIG_PARSE_TIMEOUT_MS,
     YellowDogApp,
 )
+from yellowdog_cli.commander.startup import StartupSettings
 
 SLEEP_SECONDS = "30"  # long enough that finishing on its own would be a bug
 
@@ -181,7 +182,7 @@ def test_internal_helpers_are_not_offered_as_running_commands(win):
 
 
 def test_confirmations_disabled_quits_without_asking(qapp, monkeypatch):
-    window = YellowDogApp(disable_confirmations=True)
+    window = YellowDogApp(StartupSettings(disable_confirmations=True))
     window.show()
     process = _start_sleep(window)
     pid = process.processId()

@@ -27,6 +27,7 @@ from yellowdog_cli.commander.commander import (
     YellowDogApp,
     object_rows,
 )
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -221,7 +222,7 @@ def test_enumeration_failure_downloads_the_whole_pattern(window, captured, monke
 def test_yes_skips_the_chooser_and_fetches_everything(qapp, monkeypatch):
     # '--yes' asks for unattended operation, so it skips the chooser and downloads
     # the whole pattern — consistent with the five destructive confirmations.
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     calls: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
         win,

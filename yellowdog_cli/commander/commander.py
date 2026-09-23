@@ -114,6 +114,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.commander.startup import StartupSettings, variable_is_complete
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
@@ -887,16 +888,6 @@ class NaturalOrderProxy(QSortFilterProxyModel):
         )
 
 
-def variable_is_complete(variable: str) -> bool:
-    """
-    Whether a whitespace-separated token from the user-variables box is a
-    'name=value' the CLI will accept. Mirrors the rule in utils/variables.py:
-    an '=' with a non-empty name in front of it.
-    """
-    name, separator, _ = variable.partition("=")
-    return bool(separator) and bool(name)
-
-
 def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
     """
     Shorten a file path for display so that it doesn't stretch the layout,
@@ -1248,11 +1239,11 @@ class YellowDogApp(QMainWindow):
     next_command: QPushButton
     prev_command: QPushButton
 
-    def __init__(
-        self, config_file: str | None = None, disable_confirmations: bool = False
-    ):
+    def __init__(self, settings: StartupSettings | None = None):
         super().__init__()
-        self._confirmations_disabled = disable_confirmations
+        if settings is None:
+            settings = StartupSettings()
+        self._confirmations_disabled = settings.disable_confirmations
 
         # Dynamically loads the QT UI definition
         loadUi(join(_PKG_DIR, "commander.ui"), self)
@@ -1362,6 +1353,12 @@ class YellowDogApp(QMainWindow):
         self.follow_progress.setChecked(True)
         self.follow_worker_pool.setChecked(True)
 
+        # Fill the fields given on the command line before anything is connected
+        # to them, so that the deferred config parse below is the first and only
+        # one to see them: filled afterwards, the user-variables box would also
+        # start its reparse timer and run a second, pointless parse.
+        self._apply_startup_fields(settings)
+
         # Handle specific key presses in text edit boxes
         for ui_object in [
             self.user_variables,
@@ -1430,9 +1427,14 @@ class YellowDogApp(QMainWindow):
         )
         self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
+        if settings.wr_file is not None:
+            self._set_wr_file(settings.wr_file)
+        if settings.wp_file is not None:
+            self._set_wp_file(settings.wp_file)
+
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd-variables runs
-        QTimer.singleShot(0, lambda: self._set_config_file(config_file))
+        QTimer.singleShot(0, lambda: self._set_config_file(settings.config_file))
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
@@ -1461,6 +1463,27 @@ class YellowDogApp(QMainWindow):
         self.stdin_input.textChanged.connect(
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
         )
+
+    def _apply_startup_fields(self, settings: StartupSettings):
+        """
+        Fill the text fields from the command line. The variables are joined
+        with spaces, never newlines: _edit_box_keypress_handler deletes a
+        newline, which would fuse 'a=1' and 'b=2' into the one variable
+        'a=1b=2'. launcher.py has already refused any value these fields could
+        not hold as given.
+        """
+        for field, value in [
+            (self.namespace_override, settings.namespace),
+            (self.tag_override, settings.tag),
+            (self.name_glob_override, settings.name_glob),
+            (self.object_path_override, settings.object_path),
+        ]:
+            if value:
+                field.setPlainText(value)
+                self._set_cursor_to_end(field)
+        if settings.variables:
+            self.user_variables.setPlainText(" ".join(settings.variables))
+            self._set_cursor_to_end(self.user_variables)
 
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
@@ -1962,9 +1985,7 @@ class YellowDogApp(QMainWindow):
         if file is None:
             self._log("No Work Requirement definition file selected")
         else:
-            self._wr_file = abspath(file)
-            self._log(f"Selected Work Requirement definition '{self._wr_file}'")
-            self._show_wr_selection()
+            self._set_wr_file(file)
 
     def _select_worker_pool_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
@@ -1976,9 +1997,25 @@ class YellowDogApp(QMainWindow):
         if file is None:
             self._log("No Worker Pool definition file selected")
         else:
-            self._wp_file = abspath(file)
-            self._log(f"Selected Worker Pool definition '{self._wp_file}'")
-            self._show_wp_selection()
+            self._set_wp_file(file)
+
+    def _set_wr_file(self, file: str):
+        """
+        Select a Work Requirement definition, from the Select button or the
+        command line. Stored absolute; see the note on _wr_file in __init__.
+        """
+        self._wr_file = abspath(file)
+        self._log(f"Selected Work Requirement definition '{self._wr_file}'")
+        self._show_wr_selection()
+
+    def _set_wp_file(self, file: str):
+        """
+        Select a Worker Pool definition, from the Select button or the command
+        line. Stored absolute; see the note on _wr_file in __init__.
+        """
+        self._wp_file = abspath(file)
+        self._log(f"Selected Worker Pool definition '{self._wp_file}'")
+        self._show_wp_selection()
 
     def _submit_work_requirement_action(self):
         # Generate and run the command
@@ -4434,7 +4471,7 @@ class YellowDogApp(QMainWindow):
         return self._run_file_dialog(dialog)
 
 
-def run_app(config_file: str | None = None, disable_confirmations: bool = False):
+def run_app(settings: StartupSettings | None = None):
     try:
         if WINDOWS:
             # noinspection PyUnresolvedReferences
@@ -4447,7 +4484,7 @@ def run_app(config_file: str | None = None, disable_confirmations: bool = False)
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
-        win = YellowDogApp(config_file, disable_confirmations)
+        win = YellowDogApp(settings)
         win.setWindowIcon(icon)
         # Covers quits that don't close the window first (macOS Cmd-Q, the Dock)
         app.aboutToQuit.connect(win.shutdown)

@@ -21,6 +21,7 @@ from yellowdog_cli.commander.commander import (
     ObjectSummary,
     YellowDogApp,
 )
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -522,7 +523,7 @@ def test_skip_confirmations_key_short_circuits(window, captured):
 def test_yes_flag_disables_all_confirmations(qapp):
     # Launching with disable_confirmations=True (the -y/--yes flag) makes every
     # destructive action auto-confirm with no dialog, across all action keys.
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     assert win._confirm_destructive("terminate", "t", "b") == Confirmation(
         proceed=True, handles=None
     )

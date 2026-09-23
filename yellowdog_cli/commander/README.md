@@ -26,7 +26,27 @@ Optionally pass a configuration file as the first argument:
 yd-commander path/to/config.toml
 ```
 
+The configuration file can also be given with `-c`/`--config`, as it is to the `yd-*` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
+
 Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, and the download chooser, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+
+Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd-*` commands:
+
+| Option | Fills |
+|---|---|
+| `-n`, `--namespace <namespace>` | The **Namespace** field |
+| `-t`, `--tag <tag>` | The **Tag** field |
+| `--name <glob>` | The **Name** field |
+| `-P`, `--path <object-path>` | The **Path** field |
+| `-v`, `--variable <name=value>` | The **User-Defined Variables** field; repeat it for each variable |
+| `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
+| `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
+
+```commandline
+yd-commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
+```
+
+These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), and an empty value or one containing a tab or newline for the other fields.
 
 Multiple instances can run simultaneously.
 
