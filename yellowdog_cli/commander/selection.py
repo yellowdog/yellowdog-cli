@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QLabel, QListWidget, QPushButton
 
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 
+MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
 ENTITY_ROW_GAP = 2  # spaces between the name and status columns
 
 

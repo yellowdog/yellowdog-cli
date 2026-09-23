@@ -115,7 +115,9 @@ def selected_definition(window, monkeypatch, tmp_path, name: str):
     definition.write_text('{"workRequirement": {}}\n')
 
     window._config_file = str(config_dir / "config.toml")
-    monkeypatch.setattr(window, "_select_file", lambda **kwargs: str(definition))
+    monkeypatch.setattr(
+        window._file_dialogs, "select_file", lambda **kwargs: str(definition)
+    )
     return definition
 
 
@@ -164,7 +166,9 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
         window, monkeypatch, tmp_path, "bash_with_args.json"
     )
     logged: list[str] = []
-    monkeypatch.setattr(window, "_log", lambda text, **kwargs: logged.append(text))
+    monkeypatch.setattr(
+        window._output, "log", lambda text, **kwargs: logged.append(text)
+    )
 
     window._select_work_requirement_action()
     window._show_wr_json_action()

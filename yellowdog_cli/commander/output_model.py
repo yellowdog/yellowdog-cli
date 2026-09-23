@@ -160,3 +160,11 @@ class LineBuffer:
         self._partial_line += self._decoder.decode(b"", final=True)
         remainder, self._partial_line = self._partial_line.rstrip("\r"), ""
         return [remainder] if remainder else []
+
+
+def message_prefix(pid: int) -> str:
+    """
+    The prefix the CLI gives each message it prints: the time, and the PID of
+    the process printing it.
+    """
+    return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "

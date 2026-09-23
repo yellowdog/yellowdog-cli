@@ -10,26 +10,12 @@ import subprocess
 import sys
 from datetime import datetime
 from functools import partial as functools_partial
-from platform import system as _platform_system
-from shlex import quote
 from typing import cast
 
-_system = _platform_system()
-MACOS = _system == "Darwin"
-LINUX = _system == "Linux"
-WINDOWS = _system == "Windows"
+from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS
 
-if not (MACOS or LINUX or WINDOWS):
-    print(f"Error: unrecognised platform: {_system}", file=sys.stderr)
-    sys.exit(1)
-
-if MACOS or LINUX:
-    from os import system as os_system
-elif WINDOWS:
+if WINDOWS:
     import ctypes
-    from os import (
-        startfile as os_startfile,  # pyright: ignore[reportAttributeAccessIssue]
-    )
 
 from collections.abc import Callable
 from json import loads
@@ -41,7 +27,6 @@ from PyQt6.QtCore import (
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
-    QPoint,
     QProcess,
     QProcessEnvironment,
     QSize,
@@ -49,71 +34,51 @@ from PyQt6.QtCore import (
     QTimer,
 )
 from PyQt6.QtGui import (
-    QAction,
     QClipboard,
     QCloseEvent,
     QColor,
     QFont,
     QFontMetrics,
     QIcon,
-    QKeySequence,
     QPalette,
-    QShortcut,
     QStyleHints,
-    QTextBlock,
     QTextCursor,
-    QTextDocument,
 )
 from PyQt6.QtWidgets import (
     QApplication,
-    QBoxLayout,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLayout,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QScrollBar,
-    QSplitter,
     QStyle,
     QStyleOptionButton,
-    QTreeView,
     QVBoxLayout,
     QWidget,
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.elision import elide_middle, elide_path
-from yellowdog_cli.commander.file_dialogs import (
-    PREVIEW_PANE_WIDTH,
-    SETTING_DIALOG_SIDEBAR_WIDTH,
-    SETTING_DIALOG_VIEW_MODE,
-    FilePreview,
-    NaturalOrderProxy,
-)
+from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
-    LineBuffer,
-    OutputEntry,
     OutputRun,
-    filter_description,
+    message_prefix,
 )
+from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import (
+    MAX_DIALOG_LIST_ROWS,
     Confirmation,
     EntitySummary,
     ObjectSummary,
@@ -142,7 +107,6 @@ BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
 DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 SKIP_CONFIRMATION_BUTTON_TEXT = "Yes to All (Don't Ask Again)"
-MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
 ENTITY_LIST_PADDING = 6  # px of breathing room inside the entity list's frame
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # strftime for the pre-filled save-output filename. Colons are not filename-safe
@@ -150,13 +114,6 @@ MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-# The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
-# of the process that printed it; see OutputRun.printed_pid.
-PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-SHOW_ALL_OUTPUT = "Show All Output"
-SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
-PROCESS_DIALOG_TITLE = "Show Output from Process"
-PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
@@ -168,17 +125,6 @@ CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
 CONFIG_PARSE_RETRY_DELAY_MS = 1_000  # let the event loop breathe before retrying
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
-SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
-# The tree, because that is the view a hierarchy can be shown in — Qt's other one
-# is a QListView, which has no disclosure. Its size/kind/date columns are hidden
-# and its header with them; see _make_listing_a_names_only_tree().
-DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
-# What the browse dialog's button for handing over to the platform's own file
-# viewer says. Qt's dialog is read-only, so this is the route to deleting or
-# renaming anything in the directory being browsed.
-NATIVE_VIEWER_BUTTON_TEXT = (
-    "Use Finder" if MACOS else "Use Explorer" if WINDOWS else "Use File Manager"
-)
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
 # to derive a default object path from. Better than acting on a guess: the tag is
 # interpolated into the default path, and a missing one used to produce 'None*'.
@@ -282,10 +228,6 @@ class YellowDogApp(QMainWindow):
 
         self._pid = os.getpid()
 
-        # The width of the file dialogs' preview pane, for the session: set it
-        # once by dragging, and every later dialog opens at that width.
-        self._preview_width = PREVIEW_PANE_WIDTH
-
         # Override the branding pixmap with the SVG for the current style
         self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
 
@@ -297,25 +239,24 @@ class YellowDogApp(QMainWindow):
         self._font.setWeight(500)
         self.log_output.setFont(self._font)
 
-        # The output window's contents and where they came from, so that it can
-        # be filtered to one command's output; see OutputRun
-        self._output_runs: dict[int, OutputRun] = {
-            COMMANDER_RUN: OutputRun(COMMANDER_RUN, "", pid=self._pid)
-        }
-        self._output_entries: list[OutputEntry] = []
-        self._output_line_total = 0
-        # The runs shown, or None for all of them
-        self._output_filter: frozenset[int] | None = None
-        self._hidden_line_count = 0  # arrived while filtered, and not shown
-        self.output_filter_bar.hide()
-        self.log_output.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.log_output.customContextMenuRequested.connect(self._show_output_menu)
-        self.output_filter_show_all.clicked.connect(self._show_all_output)
-        QShortcut(
-            QKeySequence(Qt.Key.Key_Escape),
-            self.log_output,
-            self._show_all_output,
-            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        # Every file dialog: selecting, saving and browsing
+        self._file_dialogs = FileDialogs(self, self._font)
+
+        # The output window, which everything below logs to. The chooser is
+        # reached late-bound, through the window, so that a test replacing
+        # _build_chooser_dialog on the window replaces the one the pane uses.
+        self._output = OutputPane(
+            window=self,
+            view=self.log_output,
+            bar=self.output_filter_bar,
+            bar_label=self.output_filter_label,
+            show_all_button=self.output_filter_show_all,
+            copy_button=self.copy_command_output,
+            save_button=self.save_command_output,
+            build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(
+                *args, **kwargs
+            ),
+            pid=self._pid,
         )
 
         # Set up action connections
@@ -586,7 +527,7 @@ class YellowDogApp(QMainWindow):
         ):
             return
         self._config_parse_retried = True
-        self._log(
+        self._output.log(
             f"Retrying namespace/tag discovery with a"
             f" {CONFIG_PARSE_RETRY_TIMEOUT_MS // 1000}s timeout; the first"
             f" 'yd-*' command of a session can be slow to start"
@@ -610,7 +551,7 @@ class YellowDogApp(QMainWindow):
         if message == self._last_discovery_failure:
             return
         self._last_discovery_failure = message
-        self._log(message)
+        self._output.log(message)
 
     def _set_placeholders(self, namespace: str, tag: str):
         """
@@ -707,7 +648,9 @@ class YellowDogApp(QMainWindow):
         cmd, args = self._yd_variables_command()
 
         if not quiet:
-            self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
+            self._output.log(
+                f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'"
+            )
         yd_process.start(cmd, args)
         if not self._run_nested(yd_process, event_loop, timeout_ms):
             if self._shutting_down:
@@ -760,7 +703,9 @@ class YellowDogApp(QMainWindow):
             if exists(abs_path) and abs_path not in self._file_watcher.files():
                 self._file_watcher.addPath(abs_path)
         self._invalidate_config_parse()
-        self._log(f"Config file '{self._config_file}' changed on disk; refreshing...")
+        self._output.log(
+            f"Config file '{self._config_file}' changed on disk; refreshing..."
+        )
         self._reparse_placeholders()
 
     def _set_config_file(self, config_file: str | None):
@@ -789,33 +734,33 @@ class YellowDogApp(QMainWindow):
             return
 
         if not exists(config_file):
-            self._log(f"Config file '{config_file}' does not exist")
+            self._output.log(f"Config file '{config_file}' does not exist")
             return
 
         selected_config_file = relpath(config_file)
         self._config_file = selected_config_file
         self._invalidate_config_parse()
-        self._log(f"Selected configuration file '{selected_config_file}'")
+        self._output.log(f"Selected configuration file '{selected_config_file}'")
         self.select_config_label.setText(elide_path(selected_config_file))
         self.select_config_label.setToolTip(abspath(selected_config_file))
         self._reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
     def _select_config_file_action(self):
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a configuration file",
             directory=(self._config_dir() if self._config_file else CWD),
             file_pattern="*.toml",
         )
         if file is None:
-            self._log(NO_SELECTED_CONFIG)
+            self._output.log(NO_SELECTED_CONFIG)
         else:
             self._set_config_file(file)
 
     def _check_config_file(self, quiet: bool = False) -> bool:
         if self._config_file is None:
             if not quiet:
-                self._log(NO_SELECTED_CONFIG)
+                self._output.log(NO_SELECTED_CONFIG)
             return False
         return True
 
@@ -1000,25 +945,25 @@ class YellowDogApp(QMainWindow):
 
     def _select_work_requirement_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a Work Requirement definition file",
             directory=directory,
             file_pattern="*.json *.jsonnet",
         )
         if file is None:
-            self._log("No Work Requirement definition file selected")
+            self._output.log("No Work Requirement definition file selected")
         else:
             self._set_wr_file(file)
 
     def _select_worker_pool_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a Worker Pool definition file",
             directory=directory,
             file_pattern="*.json *.jsonnet",
         )
         if file is None:
-            self._log("No Worker Pool definition file selected")
+            self._output.log("No Worker Pool definition file selected")
         else:
             self._set_wp_file(file)
 
@@ -1028,7 +973,7 @@ class YellowDogApp(QMainWindow):
         command line. Stored absolute; see the note on _wr_file in __init__.
         """
         self._wr_file = abspath(file)
-        self._log(f"Selected Work Requirement definition '{self._wr_file}'")
+        self._output.log(f"Selected Work Requirement definition '{self._wr_file}'")
         self._show_wr_selection()
 
     def _set_wp_file(self, file: str):
@@ -1037,7 +982,7 @@ class YellowDogApp(QMainWindow):
         line. Stored absolute; see the note on _wr_file in __init__.
         """
         self._wp_file = abspath(file)
-        self._log(f"Selected Worker Pool definition '{self._wp_file}'")
+        self._output.log(f"Selected Worker Pool definition '{self._wp_file}'")
         self._show_wp_selection()
 
     def _submit_work_requirement_action(self):
@@ -1054,14 +999,6 @@ class YellowDogApp(QMainWindow):
             args += ["-f"]
         args += self.wr_submit_options.toPlainText().split()
         self._run_command_in_subprocess("yd-submit", args)
-
-    def _prefix(self, pid: int | None = None) -> str:
-        """
-        Create a prefix the same as that used by the CLI.
-        """
-        if pid is None:
-            pid = self._pid
-        return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
 
     def _object_path(self) -> str | None:
         """
@@ -1359,7 +1296,7 @@ class YellowDogApp(QMainWindow):
         """
         if self._nested_depth == 0:
             return False
-        self._log(f"Another operation is still in progress; ignoring {action}")
+        self._output.log(f"Another operation is still in progress; ignoring {action}")
         return True
 
     def _handles_are_safe_to_target(
@@ -1385,7 +1322,7 @@ class YellowDogApp(QMainWindow):
         if not unsafe:
             return True
 
-        self._log(
+        self._output.log(
             f"Cannot {verb} by path — these names contain wildcard characters"
             " ('*', '?', '[') or a '{{' substitution placeholder:"
             f" {', '.join(unsafe)}."
@@ -1570,7 +1507,9 @@ class YellowDogApp(QMainWindow):
             return None
         summaries = parse_entity_summaries(parsed)
         if summaries is None:
-            self._log("Entity listing did not include YDIDs; cannot offer a selection")
+            self._output.log(
+                "Entity listing did not include YDIDs; cannot offer a selection"
+            )
         return summaries
 
     def _capture_dry_run_objects(
@@ -1591,7 +1530,9 @@ class YellowDogApp(QMainWindow):
             return None
         summaries = parse_object_summaries(parsed)
         if summaries is None:
-            self._log("Object listing did not include paths; cannot offer a selection")
+            self._output.log(
+                "Object listing did not include paths; cannot offer a selection"
+            )
         return summaries
 
     def _choose_objects(
@@ -1642,7 +1583,7 @@ class YellowDogApp(QMainWindow):
         dst = join(self._working_dir(), RESULTS_DIR)
         path = self._object_path()
         if path is None:
-            self._log(NO_OBJECT_PATH)
+            self._output.log(NO_OBJECT_PATH)
             return
 
         if self.dry_run_objects.isChecked():
@@ -1650,23 +1591,25 @@ class YellowDogApp(QMainWindow):
             return
 
         if self._confirmations_disabled:
-            self._log(
+            self._output.log(
                 "Selection suppressed by '--yes';"
                 f" downloading all objects matching '{path}'"
             )
             self._run_command_in_subprocess("yd-download", ["--into", dst, path])
             return
 
-        self._log(f"Checking which objects match '{path}'...")
+        self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
         objects = self._capture_dry_run_objects("yd-download", [path])
 
         if objects is not None and not objects:
-            self._log(f"No objects match '{path}'")
+            self._output.log(f"No objects match '{path}'")
             return
 
         if objects is None:
-            self._log("Could not list matching objects; downloading them all instead")
+            self._output.log(
+                "Could not list matching objects; downloading them all instead"
+            )
             self._run_command_in_subprocess("yd-download", ["--into", dst, path])
             return
 
@@ -1706,7 +1649,7 @@ class YellowDogApp(QMainWindow):
 
         path = self._object_path()
         if path is None:
-            self._log(NO_OBJECT_PATH)
+            self._output.log(NO_OBJECT_PATH)
             return
 
         if self.dry_run_objects.isChecked():
@@ -1715,19 +1658,19 @@ class YellowDogApp(QMainWindow):
             return
 
         if self._confirmations_disabled or "delete" in self._skip_confirmations:
-            self._log(
+            self._output.log(
                 f"Confirmations suppressed for 'delete';"
                 f" deleting all objects matching '{path}'"
             )
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
             return
 
-        self._log(f"Checking which objects match '{path}'...")
+        self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
         objects = self._capture_dry_run_objects("yd-delete", ["-R", path])
 
         if objects is not None and not objects:
-            self._log(f"No objects match '{path}'")
+            self._output.log(f"No objects match '{path}'")
             return
 
         body = f"Deleting objects matching '{path}'."
@@ -1735,7 +1678,9 @@ class YellowDogApp(QMainWindow):
             body += " A ticked directory is deleted with everything inside it."
         body += "\n\nThis cannot be undone."
         if objects is None:
-            self._log("Could not list affected objects; confirming by scope instead")
+            self._output.log(
+                "Could not list affected objects; confirming by scope instead"
+            )
 
         rows = object_rows(objects) if objects else None
         result = self._confirm_destructive("delete", "Delete Objects", body, rows=rows)
@@ -1751,7 +1696,7 @@ class YellowDogApp(QMainWindow):
         if not result.handles:
             # 'yd-delete -Ry' with no paths would delete the entire configured
             # prefix, so an empty selection must never reach the command.
-            self._log("Nothing selected to delete; no objects removed")
+            self._output.log("Nothing selected to delete; no objects removed")
             return
 
         if not self._handles_are_safe_to_target(result.handles, "delete", "removed"):
@@ -1764,17 +1709,7 @@ class YellowDogApp(QMainWindow):
         )
 
     def _clear_output_action(self):
-        """
-        Clear everything, filtered out or not, and so end any filter: clearing
-        only what is shown, or only what is hidden, would leave the window's
-        contents a surprise when the filter is lifted.
-        """
-        self._output_entries.clear()
-        self._output_line_total = 0
-        self._output_filter = None
-        self._hidden_line_count = 0
-        self.log_output.setPlainText("")
-        self._update_output_filter_bar()
+        self._output.clear()
 
     def _copy_output_action(self):
         cast(QClipboard, QApplication.clipboard()).setText(
@@ -1793,11 +1728,11 @@ class YellowDogApp(QMainWindow):
         """
         text = self.log_output.toPlainText()
         if not text:
-            self._log("No command output to save")
+            self._output.log("No command output to save")
             return
 
         default_name = datetime.now().strftime(SAVED_OUTPUT_NAME_FORMAT)
-        path = self._save_file(
+        path = self._file_dialogs.save_file(
             caption="Save Command Output",
             directory=join(self._working_dir(), default_name),
             file_pattern=SAVED_OUTPUT_FILTER,
@@ -1812,10 +1747,10 @@ class YellowDogApp(QMainWindow):
             with open(path, "w", encoding="utf-8") as output_file:
                 output_file.write(text if text.endswith("\n") else f"{text}\n")
         except OSError as e:
-            self._log(f"Could not save command output to '{path}': {e}")
+            self._output.log(f"Could not save command output to '{path}': {e}")
             return
 
-        self._log(f"Saved command output to '{path}'")
+        self._output.log(f"Saved command output to '{path}'")
 
     def _name_glob_args(self) -> list[str]:
         """
@@ -1888,25 +1823,27 @@ class YellowDogApp(QMainWindow):
             scope = self._scope_phrase(match_word)
 
         if self._confirmations_disabled or action_key in self._skip_confirmations:
-            self._log(
+            self._output.log(
                 f"Confirmations suppressed for '{action_key}';"
                 f" acting on all {plural}{scope}"
             )
             self._run_command_in_subprocess(command, run_args + name_args)
             return
 
-        self._log(f"Checking which {plural} would be affected...")
+        self._output.log(f"Checking which {plural} would be affected...")
         self.log_output.repaint()
         entities = self._capture_dry_run_summaries(command, extra_args=name_args)
 
         if entities is not None and not entities:
-            self._log(f"No matching {plural}{scope}")
+            self._output.log(f"No matching {plural}{scope}")
             return
 
         abort_clause = ", and aborting their running tasks" if and_abort else ""
         body = f"{gerund} {plural}{scope}{abort_clause}.\n\nThis cannot be undone."
         if entities is None:
-            self._log("Could not list affected entities; confirming by scope instead")
+            self._output.log(
+                "Could not list affected entities; confirming by scope instead"
+            )
 
         rows = entity_rows(entities) if entities else None
         result = self._confirm_destructive(action_key, title, body, rows=rows)
@@ -1922,7 +1859,7 @@ class YellowDogApp(QMainWindow):
         if not result.handles:
             # 'run_args + []' IS the whole-scope command, so an empty selection
             # must never fall through to the run below.
-            self._log(f"Nothing selected to act on; no {plural} affected")
+            self._output.log(f"Nothing selected to act on; no {plural} affected")
             return
 
         self._run_command_in_subprocess(
@@ -2081,40 +2018,19 @@ class YellowDogApp(QMainWindow):
             process_env.insert("PYTHONIOENCODING", "utf-8")
 
         process.setProcessEnvironment(process_env)
-        stdout_buffer = LineBuffer()
-        stderr_buffer = LineBuffer()
-        run = OutputRun(
-            len(self._output_runs),
+        run = self._output.start_run(
             command,
             command_line_text(command, display_args),
-            user_command_line=command_line_text(
-                command, raw_args if log_args is None else log_args
-            ),
-            started_at=datetime.now(),
+            command_line_text(command, raw_args if log_args is None else log_args),
         )
-        self._output_runs[run.run_id] = run
-        process.readyReadStandardOutput.connect(
-            functools_partial(self._on_stdout, process, run, stdout_buffer)
-        )
-        process.readyReadStandardError.connect(
-            functools_partial(self._on_stderr, process, run, stderr_buffer)
-        )
-        process.finished.connect(
-            functools_partial(
-                self._on_process_output_finished,
-                process,
-                run,
-                stdout_buffer,
-                stderr_buffer,
-            )
-        )
+        self._output.attach(process, run)
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
         process.finished.connect(functools_partial(self._record_outcome, run))
 
         # Part of the command's run, although printed by Commander with its own
         # PID, since it is the line saying what the command was
-        self._log(
+        self._output.log(
             f"Executing: '{run.command_line}' in directory '{self._working_dir()}'",
             run=run.run_id,
             announcement=True,
@@ -2125,7 +2041,7 @@ class YellowDogApp(QMainWindow):
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
             run.outcome = "did not start"
-            self._log(
+            self._output.log(
                 f"Error running command: '{process.errorString()}'", run=run.run_id
             )
         else:
@@ -2258,7 +2174,7 @@ class YellowDogApp(QMainWindow):
             for process in list(self._processes) + list(self._helper_processes)
         )
         if stopped:
-            self._log(f"Stopped {stopped} running command(s) on exit")
+            self._output.log(f"Stopped {stopped} running command(s) on exit")
         self._processes.clear()
         self._helper_processes.clear()
 
@@ -2311,7 +2227,7 @@ class YellowDogApp(QMainWindow):
         '--yes' says nobody is there to press OK and a modal would hang, and
         shutdown, where the widgets are going away.
         """
-        self._log(message)
+        self._output.log(message)
         if self._confirmations_disabled or self._shutting_down:
             return
         dialog = self._build_notice_dialog(message)
@@ -2404,7 +2320,9 @@ class YellowDogApp(QMainWindow):
             return
         pid = self._active_process.processId()
         self._active_process.write((text + "\n").encode())
-        self._log(f"{self._prefix(pid)}<-- {text}", prefix=False, run=self._active_run)
+        self._output.log(
+            f"{message_prefix(pid)}<-- {text}", prefix=False, run=self._active_run
+        )
         self.stdin_input.setPlainText("")
 
     def _browse_results_directory_action(self):
@@ -2432,337 +2350,18 @@ class YellowDogApp(QMainWindow):
         default application for its type; dismissing the dialog does nothing.
         """
         if not exists(directory):
-            self._log(f"Directory '{directory}' does not (yet) exist")
+            self._output.log(f"Directory '{directory}' does not (yet) exist")
             return
-        file_name = self._browse_with_preview(f"Browse '{directory}'", directory)
+        file_name = self._file_dialogs.browse(f"Browse '{directory}'", directory)
         if file_name is not None:
-            self._open_with_default_application(file_name)
-
-    def _build_browse_dialog(self, caption: str, directory: str) -> QFileDialog:
-        """
-        Build (but do not show) the read-only browse dialog: Qt's own file
-        dialog rooted at 'directory', previewing whatever is highlighted.
-
-        Read-only because this is a viewer, not a file manager: Qt's dialog
-        otherwise offers renaming, deleting and creating folders inside the
-        results directory, none of which is what the button promises.
-        """
-        dialog = QFileDialog(self, caption, directory)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setOption(QFileDialog.Option.ReadOnly, True)
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
-        self._add_preview_pane(dialog)
-        self._apply_dialog_preferences(dialog)
-        self._add_platform_viewer_button(dialog)
-        return dialog
-
-    def _add_platform_viewer_button(self, dialog: QFileDialog):
-        """
-        Add a button handing the directory being browsed to the platform's own
-        file viewer (Finder, Explorer, the desktop's file manager) and closing
-        this dialog.
-
-        Qt's dialog is deliberately read-only, so this is the route to deleting or
-        renaming something in the results directory — which is what the platform
-        viewer was worth keeping a way back to for. Closing rather than staying
-        open: the viewer is where the contents get changed, and a listing left
-        behind it would be showing a directory that no longer looks like that.
-
-        ActionRole so Qt does not read the click as accepting or rejecting, and
-        autoDefault off so Return still means Open — an autoDefault button that
-        gains focus takes the default role from the accept button. The handler
-        rejects explicitly, which is what makes _run_file_dialog report no chosen
-        file: switching to the viewer is not picking something to open.
-        """
-        button_box = dialog.findChild(QDialogButtonBox)
-        if button_box is None:
-            return  # no button box to attach to: leave the dialog as Qt built it
-        button = cast(
-            QPushButton,
-            button_box.addButton(
-                NATIVE_VIEWER_BUTTON_TEXT, QDialogButtonBox.ButtonRole.ActionRole
-            ),
-        )
-        button.setAutoDefault(False)
-        button.clicked.connect(lambda: self._switch_to_platform_viewer(dialog))
-
-        # Placed explicitly at the head of the box rather than left where the
-        # style put it: each style appends an ActionRole button somewhere of its
-        # own choosing — macOS after Cancel, Fusion before Open — so the button
-        # moved about between platforms. First means above Open in the vertical
-        # column macOS lays out, and leftmost in the row Windows and Linux do,
-        # which in both cases keeps it clear of the accept and reject buttons
-        # rather than trailing after them. The button stays a member of the box
-        # with its role and wiring intact; only its position in the layout moves.
-        box_layout = button_box.layout()
-        if box_layout is not None:
-            box_layout.removeWidget(button)
-            cast(QBoxLayout, box_layout).insertWidget(0, button)
-
-    def _switch_to_platform_viewer(self, dialog: QFileDialog):
-        """
-        Hand the directory currently on screen to the platform's file viewer and
-        close the dialog. The current directory, not the one the dialog opened
-        at, so navigating into a subdirectory first hands over what is displayed.
-        """
-        self._open_with_default_application(dialog.directory().absolutePath())
-        dialog.reject()
-
-    def _add_preview_pane(self, dialog: QFileDialog) -> FilePreview | None:
-        """
-        Add a FilePreview to a non-native file dialog and wire it to the
-        dialog's currentChanged signal, returning it — or None if there was
-        nowhere to put it.
-
-        It goes into the splitter that already holds the dialog's sidebar and
-        listing, which is what makes the width draggable, and what puts the
-        handle where a user looks for one. That splitter is Qt's own, so it is
-        reached defensively: a preview parented to the dialog but never placed
-        would be drawn on top of the listing rather than beside it, so with no
-        splitter to hold it the dialog is left exactly as Qt built it.
-
-        How wide it opens is _apply_dialog_preferences's business, called once the
-        pane is in place; what is set here is that it is deliberately not
-        collapsible, a pane dragged shut leaving a handle flush against the
-        dialog's edge, which is a poor thing to have to find again. The width the
-        user drags it to is remembered for the session, on the dialog's own
-        finished signal.
-        """
-        splitter = dialog.findChild(QSplitter, "splitter")
-        if splitter is None:
-            return None
-
-        preview = FilePreview(self._font, dialog)
-        preview.setObjectName("file_preview")
-        splitter.addWidget(preview)
-        index = splitter.indexOf(preview)
-        splitter.setCollapsible(index, False)
-        splitter.setStretchFactor(index, 0)
-
-        dialog.currentChanged.connect(preview.show_path)
-        dialog.finished.connect(
-            lambda _result: self._remember_preview_width(splitter, index)
-        )
-        return preview
-
-    def _remember_preview_width(self, splitter: QSplitter, index: int):
-        """
-        Keep the width the preview pane ended up at, for the next dialog. Read
-        on the dialog's own finished signal, which is emitted while the splitter
-        is still alive — a width read after deleteLater() would not be.
-        """
-        sizes = splitter.sizes()
-        if 0 <= index < len(sizes) and sizes[index] > 0:
-            self._preview_width = sizes[index]
-
-    @staticmethod
-    def _make_listing_a_names_only_tree(dialog: QFileDialog):
-        """
-        Turn Qt's Detail listing into the names-only hierarchy Commander shows: a
-        directory expands in place rather than having to be navigated into and back
-        out of, and the name gets the width the other columns were using.
-
-        Qt ships the tree flat — `rootIsDecorated` and `itemsExpandable` both off —
-        though the model under it (`QFileSystemModel`) has always been hierarchical.
-        Turning them on is all the hierarchy needs, and it costs nothing that was
-        there before: double-clicking a directory still navigates into it, so the
-        triangle and the double-click each keep their own job. A file picked inside
-        an expanded directory comes back with its full path, since the selection is
-        the model's, not the listed directory's.
-
-        That double-click behaviour is worth being sure of rather than assuming,
-        since a QTreeView with expandable items can consume a double-click to
-        expand instead of activating the row. Measured on macOS with a collapsed
-        directory: it navigated and did not expand, with `expandsOnDoubleClick`
-        either way, QFileDialog's own activation winning. It is not covered by a
-        test because the offscreen platform delivers neither a double-click nor a
-        Return to an item view — a stock dialog does not navigate there either.
-
-        Size, kind and date go because between them they take most of the width and
-        leave the name — the one column that says which file this is — elided. The
-        header goes with them, having one column left to sort. Stretching that
-        column is not cosmetic either: left at its own width the name still elides,
-        now with empty space beside it, which is the worst of both.
-
-        Applied when the dialog is built rather than when the tree is shown, so a
-        user who switches views mid-dialog finds it set up either way.
-        """
-        tree = dialog.findChild(QTreeView, "treeView")
-        if tree is None:
-            return
-
-        tree.setRootIsDecorated(True)
-        tree.setItemsExpandable(True)
-
-        header = tree.header()
-        if header is None:
-            return
-        for column in range(1, header.count()):
-            tree.setColumnHidden(column, True)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
-        header.hide()
-
-    def _apply_dialog_preferences(self, dialog: QFileDialog):
-        """
-        Set up a non-native file dialog the way the user last left one: listing
-        files in their chosen view, with the places sidebar at their width and the
-        preview pane — if this dialog has one — at the width the session left it
-        at. Called by all three dialogs, once the pane is in place.
-
-        The widths go in one setSizes, and every pane's is stated except the
-        listing's. Both matter, because this runs on a dialog that has not been
-        shown: the splitter reports placeholder sizes rather than the widths it
-        has been given, so a second call throws the first call's away, and a pane
-        left out of the list is squashed to its minimum. The listing is the pane
-        left to the splitter, being the one that should take what is over.
-
-        The dialog grows by whatever the panes gain, rather than the panes taking
-        it out of the listing — the listing is the part the user came for.
-
-        The sorting proxy goes in before the listing is set up, not after: it
-        replaces the views' model, and the hidden columns and the stretched name
-        are properties of the view against that model.
-        """
-        dialog.setProxyModel(NaturalOrderProxy())
-        self._make_listing_a_names_only_tree(dialog)
-        dialog.setViewMode(self._preferred_view_mode())
-
-        splitter = dialog.findChild(QSplitter, "splitter")
-        if splitter is None:
-            return
-
-        # Placeholders, and no use for measuring how much wider the dialog should
-        # be, so each pane says that for itself: the preview counts its whole
-        # width, being a pane nothing has given any width up for yet, and the
-        # sidebar only what it gains on the width Qt would have opened it at.
-        sizes = splitter.sizes()
-        widened = 0
-        stated = False
-
-        widening = self._sidebar_widening(dialog)
-        if widening is not None:
-            sizes[0], extra = widening
-            widened += extra
-            stated = True
-
-        preview = dialog.findChild(FilePreview, "file_preview")
-        if preview is not None:
-            sizes[splitter.indexOf(preview)] = self._preview_width
-            widened += self._preview_width
-            stated = True
-
-        dialog.finished.connect(
-            lambda _result: self._remember_dialog_preferences(dialog, splitter)
-        )
-
-        if not stated:
-            # Nothing to say about any pane, and the sizes read above are
-            # placeholders — setting them would be setting nonsense.
-            return
-        dialog.resize(dialog.width() + widened, dialog.height())
-        splitter.setSizes(sizes)
-
-    @staticmethod
-    def _remember_dialog_preferences(dialog: QFileDialog, splitter: QSplitter):
-        """
-        Keep the view mode and sidebar width a dialog is closing with, so the next
-        one opens the way the user left this one. Read on the dialog's own finished
-        signal, which is emitted while the splitter is still alive.
-
-        Written even when they are the defaults, and that is the point: what is
-        stored is a width and a mode a user has been shown and not changed, so
-        Commander need never guess whether a stored value was chosen.
-        """
-        settings = file_dialogs.dialog_settings()
-        settings.setValue(SETTING_DIALOG_VIEW_MODE, dialog.viewMode().name)
-        sizes = splitter.sizes()
-        if sizes and sizes[0] > 0:
-            settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, sizes[0])
-
-    @staticmethod
-    def _preferred_view_mode() -> QFileDialog.ViewMode:
-        """
-        Which of Qt's two views to list files in: whichever the user last left a
-        dialog in, or DIALOG_VIEW_MODE — names only — if they have not switched.
-
-        Anything unreadable in the setting reads as 'not switched', which is the
-        harmless way round: a dialog opens in Commander's own view rather than
-        refusing to open.
-        """
-        stored = file_dialogs.dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
-        try:
-            return QFileDialog.ViewMode[str(stored)]
-        except KeyError:
-            return DIALOG_VIEW_MODE
-
-    @classmethod
-    def _sidebar_widening(cls, dialog: QFileDialog) -> tuple[int, int] | None:
-        """
-        How wide to open the dialog's places sidebar — 'Computer', the home
-        directory, whatever the user has dropped there — and how much wider the
-        dialog must be for the listing not to pay for it. None if the dialog has
-        no sidebar to size.
-
-        Qt opens the sidebar at its own size hint, which elides even 'Computer' to
-        'Co...', so SIDEBAR_PANE_WIDTH is the width to start from; from then on it
-        is whatever the user last dragged one to.
-
-        The dialog pays for the width Commander chose and no more: a sidebar
-        dragged wider than SIDEBAR_PANE_WIDTH is a listing the user has chosen to
-        shrink, and re-widening the dialog would be undoing that.
-        """
-        sidebar = dialog.findChild(QListView, "sidebar")
-        if sidebar is None:
-            return None
-        stored = file_dialogs.dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
-        try:
-            width = int(stored)
-        except (TypeError, ValueError):
-            width = SIDEBAR_PANE_WIDTH
-        natural = sidebar.sizeHint().width()
-        return width, max(0, min(width, SIDEBAR_PANE_WIDTH) - natural)
-
-    def _browse_with_preview(self, caption: str, directory: str) -> str | None:
-        """
-        Browse 'directory' and return the file the user opened, or None if the
-        dialog was dismissed.
-        """
-        return self._run_file_dialog(self._build_browse_dialog(caption, directory))
-
-    @staticmethod
-    def _run_file_dialog(dialog: QFileDialog) -> str | None:
-        """
-        Run a file dialog and return the single path chosen, or None if it was
-        dismissed. Shared by browsing, selecting and saving, which differ in how
-        the dialog is set up and not at all in how it is run.
-        """
-        try:
-            if dialog.exec() != QDialog.DialogCode.Accepted.value:
-                return None
-            selected = dialog.selectedFiles()
-            return selected[0] if selected else None
-        finally:
-            # Parented to the main window, so without this every dialog — and
-            # the file-system model behind it — would live for the session.
-            dialog.deleteLater()
-
-    @staticmethod
-    def _open_with_default_application(path: str):
-        if MACOS:
-            os_system(f"open {quote(path)}")
-        elif LINUX:
-            os_system(f"xdg-open {quote(path)} &")
-        elif WINDOWS:
-            os_startfile(path)
+            self._file_dialogs.open_with_default_application(file_name)
 
     def _show_config_action(self):
         if not self._check_config_file():
             return
-        self._log(f"Displaying contents of '{self._config_file}':\n")
+        self._output.log(f"Displaying contents of '{self._config_file}':\n")
         with open(cast(str, self._config_file)) as f:
-            self._log(f.read(), prefix=False)
+            self._output.log(f.read(), prefix=False)
 
     def _get_config_data_file(self, key: str) -> str | None:
         """
@@ -2826,26 +2425,26 @@ class YellowDogApp(QMainWindow):
     def _show_wr_json_action(self):
         path = self._wr_file or self._get_config_data_file(WR_DATA)
         if path is None:
-            self._log("No Work Requirement definition file selected")
+            self._output.log("No Work Requirement definition file selected")
             return
         try:
             with open(path) as f:
-                self._log(f"Displaying contents of '{path}':\n")
-                self._log(f.read(), prefix=False)
+                self._output.log(f"Displaying contents of '{path}':\n")
+                self._output.log(f.read(), prefix=False)
         except OSError as e:
-            self._log(f"Cannot open Work Requirement file '{path}': {e}")
+            self._output.log(f"Cannot open Work Requirement file '{path}': {e}")
 
     def _show_wp_json_action(self):
         path = self._wp_file or self._get_config_data_file(WP_DATA)
         if path is None:
-            self._log("No Worker Pool definition file selected")
+            self._output.log("No Worker Pool definition file selected")
             return
         try:
             with open(path) as f:
-                self._log(f"Displaying contents of '{path}':\n")
-                self._log(f.read(), prefix=False)
+                self._output.log(f"Displaying contents of '{path}':\n")
+                self._output.log(f.read(), prefix=False)
         except OSError as e:
-            self._log(f"Cannot open Worker Pool file '{path}': {e}")
+            self._output.log(f"Cannot open Worker Pool file '{path}': {e}")
 
     def _deselect_files_action(self):
         """
@@ -2866,7 +2465,7 @@ class YellowDogApp(QMainWindow):
             entries.append(("Worker Pool", self._wp_file, self._deselect_wp_file))
 
         if not entries:
-            self._log("No configuration or definition files to deselect")
+            self._output.log("No configuration or definition files to deselect")
             return
 
         # Always ask, even with '--yes': this dialog chooses what to act on
@@ -2876,10 +2475,10 @@ class YellowDogApp(QMainWindow):
             [(label, path) for label, path, _ in entries]
         )
         if chosen is None:
-            self._log("Cancelled: no files deselected")
+            self._output.log("Cancelled: no files deselected")
             return
         if not chosen:
-            self._log("No files chosen: nothing deselected")
+            self._output.log("No files chosen: nothing deselected")
             return
 
         for index in chosen:
@@ -2887,17 +2486,17 @@ class YellowDogApp(QMainWindow):
 
     def _deselect_config_file(self):
         self._set_config_file(None)
-        self._log("Deselected configuration file")
+        self._output.log("Deselected configuration file")
 
     def _deselect_wr_file(self):
         self._wr_file = None
         self._show_wr_selection()
-        self._log("Deselected Work Requirement definition file")
+        self._output.log("Deselected Work Requirement definition file")
 
     def _deselect_wp_file(self):
         self._wp_file = None
         self._show_wp_selection()
-        self._log("Deselected Worker Pool definition file")
+        self._output.log("Deselected Worker Pool definition file")
 
     def _choose_files_to_deselect(
         self, entries: list[tuple[str, str]]
@@ -2958,350 +2557,6 @@ class YellowDogApp(QMainWindow):
         layout.addWidget(button_box)
 
         return dialog, checkboxes
-
-    def _on_stdout(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()), run)
-
-    def _on_stderr(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardError().data()), run)
-
-    def _on_process_output_finished(
-        self,
-        process: QProcess,
-        run: OutputRun,
-        stdout_buffer: LineBuffer,
-        stderr_buffer: LineBuffer,
-        *_signal_args,
-    ):
-        """
-        Drain both output channels when the process exits, and display any
-        final line that wasn't terminated by a newline.
-        """
-        self._log_lines(
-            stdout_buffer.feed(process.readAllStandardOutput().data())
-            + stdout_buffer.flush(),
-            run,
-        )
-        self._log_lines(
-            stderr_buffer.feed(process.readAllStandardError().data())
-            + stderr_buffer.flush(),
-            run,
-        )
-
-    def _log_lines(self, lines: list[str], run: OutputRun):
-        if not lines:
-            return
-        if run.printed_pid is None:
-            for line in lines:
-                if match := PREFIXED_PID.match(line):
-                    run.printed_pid = int(match.group(1))
-                    break
-        self._log("\n".join(lines), prefix=False, run=run.run_id)
-
-    def _log(
-        self,
-        output: str,
-        prefix: bool = True,
-        run: int = COMMANDER_RUN,
-        announcement: bool = False,
-    ):
-        """
-        Add text to the output window, attributed to the run it came from:
-        Commander's own messages unless a command's run is named. While the
-        window is filtered to another run it is kept but not shown, and counted
-        in the filter bar. An announcement is a command's 'Executing:' line; see
-        OutputEntry.
-        """
-        entry = OutputEntry(
-            run, f"{self._prefix() if prefix else ''}{output}", announcement
-        )
-        self._output_entries.append(entry)
-        self._output_line_total += entry.lines
-        if entry.shown_under(self._output_filter):
-            self.log_output.appendPlainText(entry.text)
-            # Tag the blocks just added with their entry, which is how a
-            # right-click finds the run of the line under it
-            block = cast(QTextDocument, self.log_output.document()).lastBlock()
-            for _ in range(entry.lines):
-                block.setUserState(len(self._output_entries) - 1)
-                block = block.previous()
-        else:
-            self._hidden_line_count += entry.lines
-        self._update_output_filter_bar()
-
-    def _show_output_menu(self, position: QPoint):
-        menu = self._build_output_menu(position)
-        try:
-            menu.exec(cast(QWidget, self.log_output.viewport()).mapToGlobal(position))
-        finally:
-            menu.deleteLater()
-
-    def _build_output_menu(self, position: QPoint) -> QMenu:
-        """
-        Build (but do not show) the output window's context menu: the standard
-        Copy and Select All, then the filter actions. The runs offered are those
-        of the line under the pointer, so nothing has to be selected first — two
-        of them for an 'Executing:' line, its command's and Commander's.
-        """
-        menu = cast(QMenu, self.log_output.createStandardContextMenu(position))
-        block = self.log_output.cursorForPosition(position).block()
-        entry = self._entry_of(block)
-        actions: list[tuple[str, Callable[[], None]]] = [
-            (
-                self._output_runs[run_id].menu_text,
-                functools_partial(
-                    self._filter_output, frozenset({run_id}), block.blockNumber()
-                ),
-            )
-            for run_id in (entry.runs if entry is not None else [])
-            if frozenset({run_id}) != self._output_filter
-        ]
-        if self._output_filter is not None:
-            actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
-        menu.addSeparator()
-        for text, slot in actions:
-            cast(QAction, menu.addAction(text)).triggered.connect(slot)
-        choose = cast(QAction, menu.addAction(SHOW_OUTPUT_FROM_PROCESS))
-        choose.setEnabled(bool(self._choosable_runs()))
-        choose.triggered.connect(
-            functools_partial(
-                self._choose_output_run,
-                entry.run_id if entry is not None else None,
-                block.blockNumber() if entry is not None else None,
-            )
-        )
-        return menu
-
-    def _choosable_runs(self) -> list[OutputRun]:
-        """
-        The runs the process chooser lists: those with something in the output
-        window, and those still running, whose output is worth filtering to even
-        when Clear has emptied the window. Commander first, then the commands in
-        the order they started, which is the order of their output.
-        """
-        with_output = {
-            run_id for entry in self._output_entries for run_id in entry.runs
-        }
-        return [
-            run
-            for run in self._output_runs.values()
-            if run.run_id in with_output or run.running
-        ]
-
-    def _choose_output_run(
-        self, clicked_run: int | None = None, anchor_block: int | None = None
-    ):
-        """
-        Offer the process chooser, and filter the output to the runs ticked.
-        Ticked at the start: the runs being shown, otherwise that of the line
-        right-clicked (its command's, for an 'Executing:' line), otherwise the
-        latest. The line right-clicked is kept in place, as the menu's own
-        Show Only items keep it, when it is among the runs chosen.
-        """
-        runs = self._choosable_runs()
-        if not runs:
-            return
-        run_ids = {run.run_id for run in runs}
-        preferred = [
-            self._output_filter & run_ids if self._output_filter else frozenset(),
-            frozenset({clicked_run}) & run_ids,
-            frozenset({runs[-1].run_id}),
-        ]
-        ticked = next(choice for choice in preferred if choice)
-        dialog, listing = self._build_process_dialog(runs, ticked)
-        try:
-            if dialog.exec() != QDialog.DialogCode.Accepted.value:
-                return
-            chosen = frozenset(int(handle) for handle in checked_handles(listing))
-        finally:
-            dialog.deleteLater()
-        if chosen and chosen != self._output_filter:
-            self._filter_output(chosen, anchor_block)
-
-    def _process_rows(self, runs: list[OutputRun]) -> list[str]:
-        """
-        One line per run for the process chooser: PID, command line, start time,
-        outcome and line count, in columns padded to line up (the listing is in
-        the monospaced output font).
-        """
-        lines = {
-            run.run_id: sum(
-                entry.lines
-                for entry in self._output_entries
-                if run.run_id in entry.runs
-            )
-            for run in runs
-        }
-        cells = [
-            (
-                "" if run.shown_pid is None else f"{run.shown_pid:06d}",
-                "Commander's own messages"
-                if run.run_id == COMMANDER_RUN
-                else run.user_command_line,
-                "" if run.started_at is None else run.started_at.strftime("%H:%M:%S"),
-                ""
-                if run.run_id == COMMANDER_RUN
-                else "running"
-                if run.outcome is None
-                else run.outcome,
-                f"{lines[run.run_id]:,} line{'' if lines[run.run_id] == 1 else 's'}",
-            )
-            for run in runs
-        ]
-        widths = [max(len(row[column]) for row in cells) for column in range(4)]
-        return [
-            PROCESS_ROW_GAP.join(
-                [cell.ljust(width) for cell, width in zip(row[:4], widths)]
-                + [row[4].rjust(max(len(r[4]) for r in cells))]
-            )
-            for row in cells
-        ]
-
-    def _build_process_dialog(
-        self, runs: list[OutputRun], ticked: frozenset[int]
-    ) -> tuple[QDialog, QListWidget]:
-        """
-        Build (but do not show) the process chooser: the non-destructive
-        chooser over the runs, those in 'ticked' ticked, with Show Output as its
-        accept button. Returns the dialog and its listing, whose ticked rows'
-        handles are the chosen runs' IDs.
-
-        The listing opens wide enough for its longest row, up to the main
-        window's width, since a row is mostly a command line and the other
-        choosers' rows are short; beyond that a row is elided, and its tooltip
-        has the whole command line.
-        """
-        rows = [
-            SelectableRow(
-                display=text, handle=str(run.run_id), tooltip=run.command_line or text
-            )
-            for run, text in zip(runs, self._process_rows(runs))
-        ]
-        dialog, _show_btn = self._build_chooser_dialog(
-            PROCESS_DIALOG_TITLE,
-            "Choose the processes whose output to show:",
-            "Show Output",
-            rows,
-            checked={str(run_id) for run_id in ticked},
-        )
-        listing = cast(QListWidget, dialog.findChild(QListWidget, "selection_list"))
-        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
-        listing.setMinimumWidth(
-            min(
-                listing.sizeHintForColumn(0)
-                + 2 * listing.frameWidth()
-                + (
-                    scrollbar.sizeHint().width()
-                    if listing.count() > MAX_DIALOG_LIST_ROWS
-                    else 0
-                ),
-                self.width(),
-            )
-        )
-        return dialog, listing
-
-    def _entry_of(self, block: QTextBlock) -> OutputEntry | None:
-        """
-        The entry a block of the output window was added from, or None for a
-        block with no entry: one put there other than by _log.
-        """
-        index = block.userState()
-        if 0 <= index < len(self._output_entries):
-            return self._output_entries[index]
-        return None
-
-    def _show_all_output(self):
-        if self._output_filter is not None:
-            self._filter_output(None)
-
-    def _filter_output(
-        self, run_ids: frozenset[int] | None, anchor_block: int | None = None
-    ):
-        """
-        Show only the output of 'run_ids', or (with None) all of it. The line being read
-        stays where it was on screen — the line right-clicked, when there was one,
-        otherwise the top line — unless the window was following the output at
-        its end, in which case it still is.
-        """
-        scrollbar = cast(QScrollBar, self.log_output.verticalScrollBar())
-        following = scrollbar.value() == scrollbar.maximum()
-        top = self.log_output.firstVisibleBlock().blockNumber()
-        document = cast(QTextDocument, self.log_output.document())
-        anchor = document.findBlockByNumber(
-            top if anchor_block is None else anchor_block
-        )
-        anchor_index = anchor.userState()
-        # Anchor on the first line of the anchor's entry, the one the rebuilt
-        # view can locate, keeping its offset from the top of the window
-        while anchor.previous().isValid() and (
-            anchor.previous().userState() == anchor_index
-        ):
-            anchor = anchor.previous()
-        anchor_row = anchor.blockNumber() - top
-
-        self._output_filter = run_ids
-        self._hidden_line_count = 0
-        # Show or hide the bar before scrolling, and lay it out now rather than
-        # at the next event: it takes its height from the output window, and a
-        # window that loses rows after being scrolled to its end no longer is.
-        self.output_filter_bar.setVisible(run_ids is not None)
-        cast(QLayout, cast(QWidget, self.centralWidget()).layout()).activate()
-        shown = [
-            (index, entry)
-            for index, entry in enumerate(self._output_entries)
-            if entry.shown_under(run_ids)
-        ]
-        self.log_output.setPlainText("\n".join(entry.text for _, entry in shown))
-        block = document.firstBlock()
-        anchor_line: int | None = None
-        for index, entry in shown:
-            if index == anchor_index:
-                anchor_line = block.blockNumber()
-            for _ in range(entry.lines):
-                block.setUserState(index)
-                block = block.next()
-
-        if following or anchor_line is None:
-            scrollbar.setValue(scrollbar.maximum())
-        else:
-            scrollbar.setValue(max(0, anchor_line - anchor_row))
-        self._update_output_filter_bar()
-
-    def _update_output_filter_bar(self):
-        """
-        Show the filter bar while the output window is filtered, saying what it
-        is filtered to and how much is not being shown, and hide it otherwise.
-        Copy and Save take what is shown, so their tooltips say so while it is.
-        """
-        self.output_filter_bar.setVisible(self._output_filter is not None)
-        if self._output_filter is None:
-            for button in (self.copy_command_output, self.save_command_output):
-                button.setToolTip("")
-            return
-
-        runs = [self._output_runs[run_id] for run_id in self._output_filter]
-        description = filter_description(runs)
-        document = cast(QTextDocument, self.log_output.document())
-        shown = 0 if document.isEmpty() else document.blockCount()
-        # The count of hidden new lines is text rather than a button: clicking
-        # it could only do what Show All Output beside it does, and a button
-        # labelled with a status does not say that
-        hidden = self._hidden_line_count
-        self.output_filter_label.setText(
-            f"{description} · {shown:,} of {self._output_line_total:,} lines"
-            + (
-                f" · {hidden:,} new line{'' if hidden == 1 else 's'} hidden"
-                if hidden
-                else ""
-            )
-        )
-        self.output_filter_label.setToolTip(
-            "\n".join(run.command_line for run in runs if run.command_line)
-        )
-        for button in (self.copy_command_output, self.save_command_output):
-            button.setToolTip(
-                f"Only the lines shown: {description[0].lower()}{description[1:]}"
-            )
 
     def _follow_progress_set(self, checked_state: Qt.CheckState):
         if self.dry_run.isChecked() and checked_state == Qt.CheckState.Checked:
@@ -3376,7 +2631,7 @@ class YellowDogApp(QMainWindow):
     def _run_any_command_core(self, command_text: str):
         command_and_args = command_text.split()
         if len(command_and_args) == 0:
-            self._log("No command to run")
+            self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
         if (
@@ -3441,57 +2696,6 @@ class YellowDogApp(QMainWindow):
         if cmd is not None:
             self.any_command.setPlainText(cmd)
             self._set_cursor_to_end(self.any_command)
-
-    def _select_file(
-        self,
-        caption: str = "",
-        directory: str = ".",
-        file_pattern: str = "*",
-    ) -> str | None:
-        """
-        Ask for an existing file to read, returning None if the dialog was
-        dismissed. Carries the same preview pane as the browse dialog: picking
-        the right configuration or definition file out of several similarly
-        named ones is exactly the case a preview answers.
-        """
-        dialog = QFileDialog(self, caption, directory, file_pattern)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setOption(QFileDialog.Option.ReadOnly, True)
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
-        # 'Select', not Qt's 'Open': these dialogs nominate a file for a later
-        # command to read, and nothing is opened by pressing the button.
-        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
-        self._add_preview_pane(dialog)
-        self._apply_dialog_preferences(dialog)
-        return self._run_file_dialog(dialog)
-
-    def _save_file(
-        self,
-        caption: str = "",
-        directory: str = ".",
-        file_pattern: str = "*",
-    ) -> str | None:
-        """
-        Ask for a file to write to, returning None if the dialog was dismissed.
-        'directory' may name a file rather than a directory, which the dialog
-        pre-fills as the suggested target.
-
-        Mirrors _select_file, including DontUseNativeDialog, so the two dialogs
-        look and behave alike; Qt's own dialog also prompts before overwriting an
-        existing file, which is why no separate overwrite check is needed here.
-        ReadOnly is deliberately absent — unlike _select_file, this one writes.
-
-        No preview pane, unlike every other file dialog here: this one names a
-        file that does not exist yet, so all a preview could show is a file the
-        user is not saving to, at the cost of the width the pane takes up.
-        """
-        dialog = QFileDialog(self, caption, directory, file_pattern)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        dialog.setFileMode(QFileDialog.FileMode.AnyFile)
-        self._apply_dialog_preferences(dialog)
-        return self._run_file_dialog(dialog)
 
 
 def run_app(settings: StartupSettings | None = None):

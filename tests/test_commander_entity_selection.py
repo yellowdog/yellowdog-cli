@@ -21,11 +21,11 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander.commander import (
     ENTITY_LIST_PADDING,
-    MAX_DIALOG_LIST_ROWS,
     SKIP_CONFIRMATION_BUTTON_TEXT,
     YellowDogApp,
 )
 from yellowdog_cli.commander.selection import (
+    MAX_DIALOG_LIST_ROWS,
     Confirmation,
     EntitySummary,
     checked_handles,
