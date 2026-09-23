@@ -208,7 +208,13 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         display_section = ".".join([section, *path[:-1]])
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
-            add_or_update_substitution(path[1], value)
+            try:
+                add_or_update_substitution(
+                    path[1], value, source=f"'--property {override}'"
+                )
+            except ValueError as e:
+                print_error(e)
+                exit(1)
             # Command-line-defined variables always take precedence,
             # including over an explicitly selected config file
             CLI_DEFINED_VARIABLES.add(path[1])
@@ -532,7 +538,14 @@ def register_dc_substitutions() -> None:
         return
     subs = _build_dc_substitutions(base)
     if subs:
-        add_substitutions_without_overwriting(subs)
+        try:
+            # A profile's name is part of its variables' names
+            add_substitutions_without_overwriting(
+                subs, source=f"the '[{DATA_CLIENT_SECTION}]' profile names"
+            )
+        except ValueError as e:
+            print_error(e)
+            exit(1)
 
 
 def _select_dc_section(base: dict, profile_name: str | None) -> dict:

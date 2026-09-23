@@ -44,6 +44,7 @@ from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
     ENV_VAR_SUB_PREFIX,
+    ENV_VARIABLE_NAME_PATTERN,
     FORMAT_NAME_TYPE_TAG,
     LAZY_VARIABLE_NAMES,
     NUMBER_TYPE_TAG,
@@ -56,6 +57,8 @@ from yellowdog_cli.utils.settings import (
     VAR_OPENING_DELIMITER,
     VAR_SUBSTITUTION_MAX_PASSES,
     VAR_UNSET_SUFFIX,
+    VARIABLE_NAME_PATTERN,
+    VARIABLE_NAME_RULE,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
     YD_ENV_VAR_PREFIX,
@@ -86,9 +89,10 @@ _UNDEFINED_VARIABLE_WARNINGS = False
 _UNDEFINED_VARIABLES_REPORTED: set[str] = set()
 
 # What an expression naming a variable looks like, once resolution has left
-# it: an optional type tag, an optional 'env:', and a name. Anything else --
-# Docker's '{{.ID}}', a Go template's '{{ .Values.x }}', Handlebars'
-# '{{#each}}' -- is text meant for something else, and is not reported.
+# it: an optional type tag, then either 'env:' and an environment variable's
+# name, or a variable name. Anything else -- Docker's '{{.ID}}', a Go
+# template's '{{ .Values.x }}', Handlebars' '{{#each}}' -- is text meant for
+# something else, since no variable can be defined with such a name.
 _TYPE_TAGS = (
     NUMBER_TYPE_TAG,
     BOOL_TYPE_TAG,
@@ -99,8 +103,21 @@ _TYPE_TAGS = (
 _VARIABLE_REFERENCE = re.compile(
     "(?:"
     + "|".join(re.escape(tag) for tag in _TYPE_TAGS)
-    + f")?((?:{re.escape(ENV_VAR_SUB_PREFIX)})?[A-Za-z_][A-Za-z0-9_.-]*)"
+    + f")?({re.escape(ENV_VAR_SUB_PREFIX)}{ENV_VARIABLE_NAME_PATTERN}"
+    + f"|{VARIABLE_NAME_PATTERN})"
 )
+_VARIABLE_NAME = re.compile(VARIABLE_NAME_PATTERN)
+
+
+def check_variable_name(name: str, source: str) -> None:
+    """
+    Raise ValueError if 'name' is not a valid variable name, naming 'source'
+    -- where the definition came from -- and the rule.
+    """
+    if not _VARIABLE_NAME.fullmatch(name):
+        raise ValueError(
+            f"Invalid variable name '{name}' in {source}: {VARIABLE_NAME_RULE}"
+        )
 
 
 def enable_undefined_variable_warnings() -> None:
@@ -137,6 +154,13 @@ load_dotenv_file()
 subs_list = []
 for key, value in os.environ.items():
     if key.startswith(YD_ENV_VAR_PREFIX):
+        try:
+            check_variable_name(
+                key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
+            )
+        except ValueError as e:
+            print_error(e)
+            exit(1)  # Note: exception trap not yet in place
         key = key[len(YD_ENV_VAR_PREFIX) :]
         VARIABLE_SUBSTITUTIONS[key] = value
         subs_list.append(f"'{key}'")
@@ -160,6 +184,11 @@ if ARGS_PARSER.variables is not None:
         # Split on the first '=' only: values may themselves contain '='
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
+            try:
+                check_variable_name(key_value[0], f"'--variable {variable}'")
+            except ValueError as e:
+                print_error(e)
+                exit(1)  # Note: exception trap not yet in place
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
             CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
@@ -230,17 +259,24 @@ def _update_and_resolve_substitutions(merged: dict):
         del VARIABLE_SUBSTITUTIONS[key_]
 
 
-def add_substitutions_without_overwriting(subs: dict):
+def add_substitutions_without_overwriting(
+    subs: dict, source: str = "a variable definition"
+):
     """
     Add a dictionary of substitutions. Do not overwrite existing values, but
-    resolve remaining variables if possible.
+    resolve remaining variables if possible. Raises ValueError, naming
+    'source', for a name that is not a valid variable name.
     """
+    for name in subs:
+        check_variable_name(name, source)
     # Merge: existing entries (CLI / env vars) take priority over incoming
     # ones
     _update_and_resolve_substitutions({**subs, **VARIABLE_SUBSTITUTIONS})
 
 
-def add_substitutions_from_config_file(subs: dict):
+def add_substitutions_from_config_file(
+    subs: dict, source: str = "'[common.variables]'"
+):
     """
     Add variable substitutions from a TOML configuration file's
     [common.variables] section.
@@ -250,18 +286,22 @@ def add_substitutions_from_config_file(subs: dict):
     set on the command line); otherwise existing definitions take
     precedence as usual.
     """
+    for name in subs:
+        check_variable_name(name, source)
     if not config_file_explicitly_selected(ARGS_PARSER):
-        add_substitutions_without_overwriting(subs)
+        add_substitutions_without_overwriting(subs, source)
         return
 
     subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
-def add_or_update_substitution(key: str, value):
+def add_or_update_substitution(key: str, value, source: str = "a variable definition"):
     """
-    Add a substitution to the dictionary, overwriting existing values.
+    Add a substitution to the dictionary, overwriting existing values. Raises
+    ValueError, naming 'source', for a name that is not a valid variable name.
     """
+    check_variable_name(key, source)
     VARIABLE_SUBSTITUTIONS[key] = _stringify(value)
 
 
@@ -944,7 +984,8 @@ def load_toml_file_with_variable_substitutions(
             {
                 var_name: _stringify(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
-            }
+            },
+            source=f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}'",
         )
     except KeyError:
         pass

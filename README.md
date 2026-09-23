@@ -200,7 +200,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 15:10:11 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 15:19:01 BST 2026 -->
 
 <!--te-->
 
@@ -727,24 +727,13 @@ User-defined variables can be supplied using an option on the command line, by s
 
 ### Variable Naming
 
-User-defined variable names must not start with a reserved prefix. The implementation does not enforce any other restrictions on characters (including spaces), but by convention names should be simple identifiers without spaces. When enclosing a variable name in curly brackets, don't insert spaces between the variable name and the brackets.
+A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
 
-**Reserved prefixes** — the following prefixes have special meaning and must not be used as the start of a variable name:
+The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
-| Prefix         | Purpose                                          |
-|----------------|--------------------------------------------------|
-| `num:`         | Type tag: interpret value as a number            |
-| `bool:`        | Type tag: interpret value as a boolean           |
-| `array:`       | Type tag: interpret value as an array            |
-| `table:`       | Type tag: interpret value as a table (dict)      |
-| `format_name:` | Type tag: convert value to a YellowDog-safe name |
-| `env:`         | Look up a general environment variable           |
+The rule excludes the substitution syntax itself (`}}`, the `:=` default-value separator and the `::` unset suffix) and the type-tag prefixes (`num:`, `bool:`, `array:`, `table:`, `format_name:`) and `env:`, which have special meaning at the start of a substitution. The exception is the name of a general environment variable in an `{{env:NAME}}` substitution, which is the operating system's to decide, and may contain anything but whitespace and the substitution syntax, e.g. `{{env:ProgramFiles(x86)}}`.
 
-**Other constraints:**
-
-- Variable names cannot contain `}}` (closing delimiter), `:=` (default-value separator), or `::` (unset suffix), as these are parsed as syntax.
-- `YD_VAR_` environment variables create variable names with the **exact case** of the suffix — `YD_VAR_SUFFIX` creates `SUFFIX`, not `suffix`. On Windows, environment variable names are uppercased by the OS, so use uppercase names only.
-- When defining variables in `[common.variables]` in TOML, names follow TOML bare-key rules (`a-z`, `A-Z`, `0-9`, `-`, `_`) unless quoted.
+`YD_VAR_` environment variables create variable names with the **exact case** of the suffix — `YD_VAR_SUFFIX` creates `SUFFIX`, not `suffix`. On Windows, environment variable names are uppercased by the OS, so use uppercase names only.
 
 ### Setting Variable Values
 
@@ -890,7 +879,7 @@ Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted i
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
-Each undefined variable is reported once, however many properties or Tasks it appears in. Only substitutions whose variable names are made of letters, digits, `_`, `.` and `-` (optionally preceded by a type tag or `env:`) are checked, which is what keeps text meant for other tools out of the warnings: an undefined variable whose name contains any other character, such as a space (see [Variable Naming](#variable-naming)), is passed through without a warning, and is not checked for circular references either. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution, such as `docker ps --format '{{.ID}}'`, and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+Each undefined variable is reported once, however many properties or Tasks it appears in. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 

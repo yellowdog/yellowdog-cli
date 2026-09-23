@@ -64,6 +64,20 @@ VAR_OPENING_DELIMITER = "{{"
 VAR_CLOSING_DELIMITER = "}}"
 VAR_DEFAULT_SEPARATOR = ":="
 VAR_UNSET_SUFFIX = "::"
+# A variable name: a letter, digit or '_', then letters, digits, '_', '.' and
+# '-'. Enforced wherever a variable is defined, and what decides whether a
+# '{{...}}' expression refers to a variable at all: one that breaks it (Docker's
+# '{{.ID}}', Go's '{{- .Values }}') is text. '.' and '-' may not come first for
+# that reason. The rule rules out the substitution syntax ('}}', ':=', '::', a
+# type tag's ':') by construction.
+VARIABLE_NAME_PATTERN = r"[A-Za-z0-9_][A-Za-z0-9_.-]*"
+VARIABLE_NAME_RULE = (
+    "a name must start with a letter, digit or '_', and contain only letters,"
+    " digits, '_', '.' and '-'"
+)
+# An 'env:' name belongs to the operating system rather than to us (Windows has
+# 'ProgramFiles(x86)'), so it may hold anything but whitespace and the syntax
+ENV_VARIABLE_NAME_PATTERN = r"[^\s{}:=]+"
 
 # Lazy variable substitution names (used in submit/task naming)
 L_WR_NAME = "wr_name"
