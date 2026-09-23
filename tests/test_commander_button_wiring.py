@@ -54,6 +54,7 @@ WIRING = [
     ("next_command", "_next_command_action"),
     ("prev_command", "_prev_command_action"),
     ("output_filter_show_all", "_show_all_output"),
+    ("show_help", "_show_help_action"),
 ]
 
 # The class an action belongs to, where that is not the window: a collaborator

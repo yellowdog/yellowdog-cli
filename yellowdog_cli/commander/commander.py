@@ -40,7 +40,9 @@ from PyQt6.QtGui import (
     QFont,
     QFontMetrics,
     QIcon,
+    QKeySequence,
     QPalette,
+    QShortcut,
     QStyleHints,
     QTextCursor,
 )
@@ -71,6 +73,7 @@ from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.commander.elision import elide_middle, elide_path
 from yellowdog_cli.commander.file_dialogs import FileDialogs
+from yellowdog_cli.commander.help_viewer import HelpDialog
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
     OutputRun,
@@ -197,6 +200,7 @@ class YellowDogApp(QMainWindow):
     run_any_command: QPushButton
     next_command: QPushButton
     prev_command: QPushButton
+    show_help: QPushButton
 
     def __init__(self, settings: StartupSettings | None = None):
         super().__init__()
@@ -290,6 +294,14 @@ class YellowDogApp(QMainWindow):
 
         self.next_command.clicked.connect(self._next_command_action)
         self.prev_command.clicked.connect(self._prev_command_action)
+
+        # Help: the button, the platform's help key (Cmd+? on macOS, F1
+        # elsewhere) and F1 everywhere, all opening the one modeless dialog
+        self._help_dialog: HelpDialog | None = None
+        self.show_help.clicked.connect(self._show_help_action)
+        help_keys = QKeySequence.keyBindings(QKeySequence.StandardKey.HelpContents)
+        for key in {*help_keys, QKeySequence(Qt.Key.Key_F1)}:
+            QShortcut(key, self).activated.connect(self._show_help_action)
 
         # Handle state toggle exclusivity; the 'exclusive' property on the
         # containing button group doesn't allow a state where no boxes are
@@ -2356,6 +2368,17 @@ class YellowDogApp(QMainWindow):
         else:
             self.setStyleSheet("")
         self._update_branding_icon(is_dark)
+
+    def _show_help_action(self):
+        """
+        Show the help, creating it the first time and raising it after that, so
+        that it keeps the place the user had reached in it.
+        """
+        if self._help_dialog is None:
+            self._help_dialog = HelpDialog(self, _PKG_DIR)
+        self._help_dialog.show()
+        self._help_dialog.raise_()
+        self._help_dialog.activateWindow()
 
     def _run_any_command_action(self):
         self._run_any_command_core(self.any_command.toPlainText())
