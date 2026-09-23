@@ -352,9 +352,12 @@ class YellowDogApp(QMainWindow):
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
 
-        # Original 'Select' button labels, restored when a file is deselected
+        # Original 'Select' button labels and tooltips, restored when a file is
+        # deselected (while one is selected, the tooltip is its full path)
         self._select_wr_default_text = self.select_work_requirement.text()
         self._select_wp_default_text = self.select_worker_pool.text()
+        self._select_wr_default_tooltip = self.select_work_requirement.toolTip()
+        self._select_wp_default_tooltip = self.select_worker_pool.toolTip()
 
         # Watch the selected config file for on-disk changes
         self._file_watcher = QFileSystemWatcher(self)
@@ -645,18 +648,23 @@ class YellowDogApp(QMainWindow):
         return cast(QStyleHints, QApplication.styleHints()).colorScheme()
 
     def _show_selection_on_button(
-        self, button: QPushButton, prefix: str, default_text: str, file: str | None
+        self,
+        button: QPushButton,
+        prefix: str,
+        default_text: str,
+        default_tooltip: str,
+        file: str | None,
     ):
         """
         Indicate the selected definition file on its own 'Select' button, so
         that the selection is visible without adding a widget to the left-hand
         column. The filename is elided to fit the button's current width, so a
         long name never widens the column; the full path becomes the tooltip.
-        Passing file=None restores the button's original label.
+        Passing file=None restores the button's original label and tooltip.
         """
         if file is None:
             button.setText(default_text)
-            button.setToolTip("")
+            button.setToolTip(default_tooltip)
             return
 
         name = basename(file)
@@ -676,6 +684,7 @@ class YellowDogApp(QMainWindow):
             self.select_work_requirement,
             SELECTED_WR_PREFIX,
             self._select_wr_default_text,
+            self._select_wr_default_tooltip,
             self._wr_file,
         )
 
@@ -684,6 +693,7 @@ class YellowDogApp(QMainWindow):
             self.select_worker_pool,
             SELECTED_WP_PREFIX,
             self._select_wp_default_text,
+            self._select_wp_default_tooltip,
             self._wp_file,
         )
 

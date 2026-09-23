@@ -62,6 +62,8 @@ Because `--no-config` is passed explicitly, any `config.toml` present in the lau
 
 With no configuration file selected and no YellowDog credentials in the environment either, there is nothing to resolve the Namespace, Tag, and Path placeholders from: they are simply left blank, and nothing is reported, since nothing is wrong yet. Any other failure to resolve them is still reported in the Command Output window, whether or not a configuration file is selected.
 
+Hover over any button, checkbox or field for a one-line description of what it does; the sections below give the detail.
+
 ## Quitting
 
 Quitting with commands still running asks first, listing the commands that would be stopped, with **Cancel** as the default — stopping a submission part-way is usually worse than waiting for it.

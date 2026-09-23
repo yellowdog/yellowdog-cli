@@ -184,7 +184,7 @@ def test_deselecting_a_definition_restores_its_button_label(all_selected, monkey
     all_selected._deselect_files_action()
 
     assert all_selected.select_worker_pool.text() == "Select Worker Pool JSON"
-    assert all_selected.select_worker_pool.toolTip() == ""
+    assert all_selected.select_worker_pool.toolTip().startswith("Choose a Worker Pool")
 
 
 def test_cancelling_deselects_nothing(all_selected, monkeypatch):
