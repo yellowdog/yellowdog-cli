@@ -200,7 +200,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 14:53:00 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 15:10:11 BST 2026 -->
 
 <!--te-->
 
@@ -859,7 +859,7 @@ maxRetries    = "{{num:retries::}}"  # removed if 'retries' is not set
 
 If `tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `tag` is supplied, e.g. via `-v tag=my-tag`, it will be used as the value.
 
-This also works inside JSON/Jsonnet specifications and for list elements.
+This also works inside JSON/Jsonnet specifications and for list elements. In the contents of files that are substituted as text — User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `writeFile` content files — there is no property to remove, so an unset substitution for an undefined variable is left in the text exactly as written.
 
 The `env:` prefix can be combined with the unset suffix to make a property conditional on an environment variable being set:
 
@@ -890,7 +890,7 @@ Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted i
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
-Each undefined variable is reported once, however many properties or Tasks it appears in. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution, such as `docker ps --format '{{.ID}}'`, and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+Each undefined variable is reported once, however many properties or Tasks it appears in. Only substitutions whose variable names are made of letters, digits, `_`, `.` and `-` (optionally preceded by a type tag or `env:`) are checked, which is what keeps text meant for other tools out of the warnings: an undefined variable whose name contains any other character, such as a space (see [Variable Naming](#variable-naming)), is passed through without a warning, and is not checked for circular references either. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution, such as `docker ps --format '{{.ID}}'`, and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 
@@ -3242,7 +3242,7 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 The scripts provide full support for variable substitutions in Jsonnet files, using the same rules as for the JSON specifications. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"`.
 
-Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion.
+Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion. Variables are fully resolved before the expansion, including those whose values themselves contain variable references, so Jsonnet code can compute with their values, e.g. `local count = std.parseInt('{{count}}');`.
 
 ## Checking Jsonnet Processing
 

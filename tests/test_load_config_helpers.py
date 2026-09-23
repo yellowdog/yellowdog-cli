@@ -123,8 +123,8 @@ class TestLoadNamespaceAndTag:
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -265,8 +265,8 @@ class TestLoadConfigCommonPrecedence:
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(lc_module, "add_substitutions_without_overwriting"),
             patch.object(lc_module, "register_dc_substitutions"),
@@ -379,8 +379,8 @@ class TestLoadConfigWorkRequirement:
             patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -534,8 +534,8 @@ class TestLoadConfigWorkerPool:
             patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -650,3 +650,27 @@ class TestWorkerPoolUndefinedVariables:
     def test_nothing_to_report_without_sections(self, warnings):
         self._load({})
         assert warnings.call_count == 0
+
+
+class TestResolveValue:
+    """
+    The configuration values substituted one at a time resolve chains and
+    exit on a circular reference, as the sections do.
+    """
+
+    def test_a_chain_resolves(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_C}}")
+        monkeypatch.setenv("YD_TEST_C", "end")
+        assert lc_module._resolve_value("t-{{env:YD_TEST_A}}", "common.tag") == "t-end"
+
+    def test_circular_reference_exits_with_the_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            lc_module._resolve_value("{{env:YD_TEST_A}}", "common.tag")
+        assert exc.value.code == 1
+        assert "'common.tag'" in str(print_error.call_args.args[0])

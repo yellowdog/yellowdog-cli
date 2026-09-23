@@ -171,3 +171,14 @@ class TestDataClientPaths:
         resolve_remote_path(ConfigDataClient(remote="r"), **{arg: "x/{{nope}}"})
         [message] = _messages(warnings)
         assert "'{{nope}}'" in message and "x/{{nope}}" in message
+
+
+class TestDataClientPathChains:
+    def test_a_chain_resolves_and_is_not_reported(self, warnings, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "data")
+        path = resolve_remote_path(
+            ConfigDataClient(remote="r"), relative_path="{{env:YD_TEST_A}}/x"
+        )
+        assert path.endswith("data/x")
+        assert _messages(warnings) == []

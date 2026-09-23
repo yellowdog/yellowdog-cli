@@ -58,7 +58,7 @@ from yellowdog_cli.utils.variables import (
     add_or_update_substitution,
     add_substitutions_without_overwriting,
     load_toml_file_with_variable_substitutions,
-    process_variable_substitutions,
+    resolve_variables_in_string,
     resolve_variables_insitu,
     warn_of_undefined_variables,
 )
@@ -101,6 +101,20 @@ def warn_of_undefined_config_variables() -> None:
         }
     )
     warn_of_undefined_variables(values)
+
+
+def _resolve_value(value, source: str | None = None):
+    """
+    Resolve the variables in a single configuration value, exiting with the
+    error if they cannot be (a circular reference, a malformed default).
+    'source' names the value in that error, and in an undefined-variable
+    warning; the value itself names it where it is not given.
+    """
+    try:
+        return resolve_variables_in_string(value, source=source)
+    except ValueError as e:
+        print_error(e)
+        exit(1)
 
 
 def _resolve_section_variables(section: dict) -> None:
@@ -345,7 +359,10 @@ def load_config_common() -> ConfigCommon:
                 )
 
         url = cast(
-            str, process_variable_substitutions(common_section.get(URL, DEFAULT_URL))
+            str,
+            _resolve_value(
+                common_section.get(URL, DEFAULT_URL), f"{COMMON_SECTION}.{URL}"
+            ),
         )
         if url != DEFAULT_URL:
             print_debug(f"Using the YellowDog API at: {url}")
@@ -355,20 +372,30 @@ def load_config_common() -> ConfigCommon:
         # substitutions for the items in its dictionary each time it's
         # called
         add_substitutions_without_overwriting(subs={URL: url})
-        key = cast(str, process_variable_substitutions(common_section[KEY]))
+        key = cast(str, _resolve_value(common_section[KEY], f"{COMMON_SECTION}.{KEY}"))
         add_substitutions_without_overwriting(subs={KEY: key})
-        secret = cast(str, process_variable_substitutions(common_section[SECRET]))
+        secret = cast(
+            str, _resolve_value(common_section[SECRET], f"{COMMON_SECTION}.{SECRET}")
+        )
         add_substitutions_without_overwriting(subs={SECRET: secret})
-        namespace = cast(str, process_variable_substitutions(common_section[NAMESPACE]))
+        namespace = cast(
+            str,
+            _resolve_value(common_section[NAMESPACE], f"{COMMON_SECTION}.{NAMESPACE}"),
+        )
         add_substitutions_without_overwriting(subs={NAMESPACE: namespace})
-        name_tag = cast(str, process_variable_substitutions(common_section[NAME_TAG]))
+        name_tag = cast(
+            str,
+            _resolve_value(common_section[NAME_TAG], f"{COMMON_SECTION}.{NAME_TAG}"),
+        )
         add_substitutions_without_overwriting(subs={NAME_TAG: name_tag})
 
         # Specify a certificates bundle directly by setting the requests
         # environment variable; this will override the default certificates
         certificates = cast(
             str | None,
-            process_variable_substitutions(common_section.get(CERTIFICATES)),
+            _resolve_value(
+                common_section.get(CERTIFICATES), f"{COMMON_SECTION}.{CERTIFICATES}"
+            ),
         )
         if certificates is not None:
             certificates = abspath(certificates)
@@ -399,9 +426,7 @@ def load_config_common() -> ConfigCommon:
 
 
 def import_toml(filename: str) -> dict:
-    filename = relpath(
-        join(CONFIG_FILE_DIR, cast(str, process_variable_substitutions(filename)))
-    )
+    filename = relpath(join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename))))
     print_debug(f"Loading imported common configuration data from: '{filename}'")
     try:
         common_config: dict = load_toml_file_with_variable_substitutions(filename)
@@ -440,7 +465,7 @@ def _load_namespace_and_tag() -> None:
         namespace = str(common_section[NAMESPACE])
     else:
         namespace = "default"
-    namespace = process_variable_substitutions(namespace)
+    namespace = _resolve_value(namespace, f"{COMMON_SECTION}.{NAMESPACE}")
 
     if ARGS_PARSER.tag is not None:
         name_tag = ARGS_PARSER.tag
@@ -452,7 +477,7 @@ def _load_namespace_and_tag() -> None:
         name_tag = str(common_section[NAME_TAG])
     else:
         name_tag = "{{username}}"
-    name_tag = process_variable_substitutions(name_tag)
+    name_tag = _resolve_value(name_tag, f"{COMMON_SECTION}.{NAME_TAG}")
 
     add_substitutions_without_overwriting(
         subs={NAMESPACE: namespace, NAME_TAG: name_tag}
@@ -560,15 +585,27 @@ def load_config_data_client() -> ConfigDataClient:
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
         if cli_value is not None:
-            return cast(str | None, process_variable_substitutions(cli_value))
+            return cast(
+                str | None,
+                _resolve_value(cli_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         toml_value = dc_section.get(toml_key)
         if config_file_explicitly_selected() and toml_value is not None:
-            return cast(str | None, process_variable_substitutions(str(toml_value)))
+            return cast(
+                str | None,
+                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         env_value = os.environ.get(env_var)
         if env_value is not None:
-            return cast(str | None, process_variable_substitutions(env_value))
+            return cast(
+                str | None,
+                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         if toml_value is not None:
-            return cast(str | None, process_variable_substitutions(str(toml_value)))
+            return cast(
+                str | None,
+                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         return None
 
     remote = _resolve(
@@ -587,9 +624,7 @@ def load_config_data_client() -> ConfigDataClient:
             DATA_CLIENT_PREFIX,
         )
         if prefix is None:
-            prefix = cast(
-                str | None, process_variable_substitutions("{{namespace}}/{{tag}}")
-            )
+            prefix = cast(str | None, _resolve_value("{{namespace}}/{{tag}}"))
 
     # Register legacy {{remote/bucket/prefix}} names (backward compat).
     add_substitutions_without_overwriting(
@@ -647,25 +682,32 @@ def load_config_data_client_for_profile(
     def _resolve(env_var: str, toml_key: str) -> str | None:
         toml_value = dc_section.get(toml_key)
         if config_file_explicitly_selected() and toml_value is not None:
-            return cast(str | None, process_variable_substitutions(str(toml_value)))
+            return cast(
+                str | None,
+                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         env_value = os.environ.get(env_var)
         if env_value is not None:
-            return cast(str | None, process_variable_substitutions(env_value))
+            return cast(
+                str | None,
+                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         if toml_value is not None:
-            return cast(str | None, process_variable_substitutions(str(toml_value)))
+            return cast(
+                str | None,
+                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
+            )
         return None
 
     remote = _resolve(YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE)
     bucket = _resolve(YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET)
 
     if dst_prefix_override is not None:
-        prefix = cast(str | None, process_variable_substitutions(dst_prefix_override))
+        prefix = cast(str | None, _resolve_value(dst_prefix_override, "--dst-prefix"))
     else:
         prefix = _resolve(YD_DATA_CLIENT_PREFIX, DATA_CLIENT_PREFIX)
         if prefix is None:
-            prefix = cast(
-                str | None, process_variable_substitutions("{{namespace}}/{{tag}}")
-            )
+            prefix = cast(str | None, _resolve_value("{{namespace}}/{{tag}}"))
 
     return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
 
@@ -694,14 +736,12 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         if worker_tags is not None:
             check_list(worker_tags, WORKER_TAGS)
             for index, worker_tag in enumerate(worker_tags):
-                worker_tags[index] = cast(
-                    str, process_variable_substitutions(worker_tag)
-                )
+                worker_tags[index] = cast(str, _resolve_value(worker_tag))
 
         wr_data_file = wr_section.get(WR_DATA)
         if wr_data_file is not None:
             check_str(wr_data_file, WR_DATA)
-            wr_data_file = cast(str, process_variable_substitutions(wr_data_file))
+            wr_data_file = cast(str, _resolve_value(wr_data_file))
             wr_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, wr_data_file
             )
@@ -714,7 +754,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         )
         if task_type is not None:
             check_str(task_type, TASK_TYPE)
-            task_type = cast(str | None, process_variable_substitutions(task_type))
+            task_type = cast(str | None, _resolve_value(task_type))
 
         csv_file = wr_section.get(CSV_FILE)
         csv_files = wr_section.get(CSV_FILES)
@@ -841,18 +881,14 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         return ConfigWorkerPool()
 
     try:
-        worker_tag = cast(
-            str | None, process_variable_substitutions(wp_section.get(WORKER_TAG))
-        )
+        worker_tag = cast(str | None, _resolve_value(wp_section.get(WORKER_TAG)))
         worker_pool_data_file = cast(
             str | None,
-            process_variable_substitutions(wp_section.get(WORKER_POOL_DATA_FILE)),
+            _resolve_value(wp_section.get(WORKER_POOL_DATA_FILE)),
         )
         compute_requirement_data_file = cast(
             str | None,
-            process_variable_substitutions(
-                wp_section.get(COMPUTE_REQUIREMENT_DATA_FILE)
-            ),
+            _resolve_value(wp_section.get(COMPUTE_REQUIREMENT_DATA_FILE)),
         )
         if (
             worker_pool_data_file is not None
@@ -904,9 +940,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             min_nodes_set=(False if wp_section.get(MIN_NODES) is None else True),
             name=cast(
                 str | None,
-                process_variable_substitutions(
-                    check_str(wp_section.get(WP_NAME), WP_NAME)
-                ),
+                _resolve_value(check_str(wp_section.get(WP_NAME), WP_NAME)),
             ),
             node_boot_timeout=float(wp_section.get(NODE_BOOT_TIMEOUT, 10.0)),
             target_instance_count=int(wp_section.get(TARGET_INSTANCE_COUNT, 1)),

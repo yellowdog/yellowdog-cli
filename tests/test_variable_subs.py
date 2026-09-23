@@ -1441,3 +1441,90 @@ class TestFileContentsPasses:
         data = tmp_path / "input.txt"
         data.write_text("{{env:YD_TEST_0}}")
         assert resolve_task_data({TASK_DATA_FILE: str(data)}) == "end"
+
+
+class TestStringResolution:
+    """
+    resolve_variables_in_string() is resolve_variables_insitu() for a single
+    value: the configuration values and data client paths substituted one at
+    a time. It used to be a single process_variable_substitutions() call,
+    which stopped a chain after a link and let the undefined-variable warning
+    call a defined variable undefined.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    @pytest.fixture()
+    def warnings(self, monkeypatch) -> MagicMock:
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", True)
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
+        warning = MagicMock()
+        monkeypatch.setattr(var_module, "print_warning", warning)
+        return warning
+
+    def test_a_chain_resolves(self, monkeypatch):
+        _chain_env_vars(monkeypatch, 8)
+        var_module.VARIABLE_SUBSTITUTIONS["region"] = "end"
+        assert var_module.resolve_variables_in_string("t-{{env:YD_TEST_0}}") == "t-end"
+
+    def test_a_type_tag_revealed_by_a_pass_takes_effect(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_TYPED", "{{num:num_var}}")
+        assert var_module.resolve_variables_in_string("{{env:YD_TEST_TYPED}}") == 42
+
+    @pytest.mark.parametrize("value", [None, 7, True, ["{{myvar}}"]])
+    def test_a_value_that_is_not_a_string_is_returned_as_it_is(self, value):
+        assert var_module.resolve_variables_in_string(value) == value
+
+    def test_the_unset_marker_is_passed_through(self):
+        result = var_module.resolve_variables_in_string("{{missing::}}")
+        assert result is var_module._UNSET
+
+    def test_mutually_referring_variables_are_an_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with pytest.raises(ValueError, match=r"did not settle.*'common\.tag'"):
+            var_module.resolve_variables_in_string(
+                "{{env:YD_TEST_A}}", source="common.tag"
+            )
+
+    def test_circular_table_variables_are_an_error(self):
+        var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
+        with pytest.raises(ValueError, match="Circular variable reference: 's'"):
+            var_module.resolve_variables_in_string("{{s}}")
+
+    def test_an_undefined_variable_is_reported_by_its_source(self, warnings):
+        var_module.resolve_variables_in_string("x-{{nope}}", source="common.tag")
+        [call] = warnings.call_args_list
+        assert "'{{nope}}'" in call.args[0] and "'common.tag'" in call.args[0]
+
+    def test_the_source_defaults_to_the_value(self, warnings):
+        var_module.resolve_variables_in_string("x/{{nope}}")
+        [call] = warnings.call_args_list
+        assert "'x/{{nope}}'" in call.args[0]
+
+    def test_a_chained_variable_is_not_reported_as_undefined(
+        self, warnings, monkeypatch
+    ):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "end")
+        assert var_module.resolve_variables_in_string("{{env:YD_TEST_A}}") == "end"
+        assert warnings.call_count == 0
+
+    def test_no_single_value_substitution_outside_variables_py(self):
+        # Every value substituted outside variables.py goes through a
+        # resolving call; a bare process_variable_substitutions() brings the
+        # one-link chains, and the misreported variables, back
+        from pathlib import Path
+
+        import yellowdog_cli
+
+        package = Path(yellowdog_cli.__file__).parent
+        callers = [
+            str(path.relative_to(package))
+            for path in package.rglob("*.py")
+            if path.name != "variables.py"
+            and "process_variable_substitutions(" in path.read_text()
+        ]
+        assert callers == []

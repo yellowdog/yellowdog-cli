@@ -414,6 +414,40 @@ def _undefined_unless_circular(
     return undefined
 
 
+def resolve_variables_in_string(
+    value: str | int | bool | float | list | dict | None, source: str | None = None
+) -> str | int | bool | float | list | dict | None:
+    """
+    resolve_variables_insitu() for a single value: repeat the substitution
+    until it changes nothing, so that a chain of references resolves however
+    long it is, then raise ValueError for a circular reference and warn of
+    an undefined variable, naming 'source' (the property, or the value itself
+    where there is no better name). A type-tagged result, a value that is not
+    a string, and the unset marker are returned as they are.
+    """
+    result = value
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        if not isinstance(result, str):
+            return result
+        substituted = process_variable_substitutions(result)
+        if substituted == result:
+            break
+        result = substituted
+    else:
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in '{source if source is not None else value}'"
+        )
+
+    if isinstance(result, str):
+        label = source if source is not None else str(value)
+        _warn_of_undefined(
+            _undefined_unless_circular(_unsubstituted_references({label: result}))
+        )
+    return result
+
+
 def warn_of_undefined_variables(
     data: dict | list, prefix: str = "", postfix: str = ""
 ) -> None:
