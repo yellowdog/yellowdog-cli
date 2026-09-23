@@ -1,5 +1,30 @@
 # YellowDog Commander
 
+<!--ts-->
+   * [Installation](#installation)
+   * [Running](#running)
+   * [How It Works](#how-it-works)
+   * [Quitting](#quitting)
+   * [Naming and Matching Assumptions](#naming-and-matching-assumptions)
+      * [Object Naming and Matching](#object-naming-and-matching)
+   * [File Dialogs](#file-dialogs)
+   * [Selecting a Configuration (Panel 1)](#selecting-a-configuration-panel-1)
+   * [Submitting and Managing Work (Panel 2)](#submitting-and-managing-work-panel-2)
+   * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
+   * [Collecting and Managing Results (Panel 4)](#collecting-and-managing-results-panel-4)
+   * [Namespace, Tag, and Name Overrides](#namespace-tag-and-name-overrides)
+   * [User-Defined Variables](#user-defined-variables)
+   * [Utility Actions](#utility-actions)
+   * [Filtering the Command Output](#filtering-the-command-output)
+   * [Running Arbitrary Commands](#running-arbitrary-commands)
+   * [Sending Input to a Running Command](#sending-input-to-a-running-command)
+   * [A Note on Confirmations](#a-note-on-confirmations)
+
+<!-- Created by https://github.com/ekalinin/github-markdown-toc -->
+<!-- Added by: pwt, at: Wed Sep 23 15:41:56 BST 2026 -->
+
+<!--te-->
+
 YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
 
 Commander is offered as a useful adjunct to the CLI, but is not formally supported.

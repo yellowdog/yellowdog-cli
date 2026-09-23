@@ -3,13 +3,19 @@ Commander's online help (HelpDialog): its own README, shipped in the package and
 rendered by Qt's Markdown importer, so that the guide on GitHub and the guide in
 the application are one file and the latter always matches the installed version.
 
-Qt's importer needs three corrections, which build_help_document() makes:
+Qt's importer needs four corrections, which build_help_document() makes:
 
 - It gives headings no anchor names, so the README's '[...](#section)' links
   went nowhere. Each heading is given the anchor GitHub derives from its text
   (heading_anchor()), which is what those links are written against.
 - It renders a fenced code block as plain paragraphs, unshaded and with no space
-  around them, so a command ran straight into the heading below it.
+  around them, and leaves no space around headings either, so a command ran
+  straight into the heading below it.
+- It spaces every list item like a paragraph, which spread the table of contents
+  over two screens, and draws a '*' list with hollow bullets where the README's
+  own '-' lists get discs. A list item that is nothing but a link to a section
+  (section_link_item()) is drawn tight and with a disc; prose lists keep their
+  spacing, which suits items that run to several lines.
 - The README's screenshot shows at its natural size, cut off at the pane's right
   edge, and a fixed width scales it jaggedly. It is dropped rather than fixed: a
   reader of this help is looking at the real window anyway.
@@ -19,7 +25,14 @@ import re
 from os.path import join
 
 from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor, QTextDocument
+from PyQt6.QtGui import (
+    QColor,
+    QTextBlock,
+    QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
+    QTextListFormat,
+)
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -33,6 +46,7 @@ HELP_FILE = "README.md"  # in the package directory, beside commander.ui
 HELP_TITLE = "YellowDog Commander Help"
 HELP_DOCUMENT_MARGIN = 16  # px: between the text and the pane's edges
 HELP_HEADING_TOP_MARGIN = 18  # px: above each heading, which Qt leaves at 0
+HELP_HEADING_BOTTOM_MARGIN = 6  # px: below each heading, likewise
 HELP_CODE_MARGIN = 8  # px: code block indent, and the space below one
 # Translucent, so the one shade reads against a light or a dark background
 HELP_CODE_BACKGROUND = QColor(128, 128, 128, 40)
@@ -57,6 +71,22 @@ def heading_anchor(text: str, used: dict[str, int] | None = None) -> str:
     return anchor if count == 0 else f"{anchor}-{count}"
 
 
+def section_link_item(block: QTextBlock) -> bool:
+    """
+    Whether a block is a list item consisting of one link to a section of this
+    document and nothing else: an entry in a table of contents.
+    """
+    if block.textList() is None or not block.text().strip():
+        return False
+    fragments = block.begin()
+    while not fragments.atEnd():
+        char_format = fragments.fragment().charFormat()
+        if not (char_format.isAnchor() and char_format.anchorHref().startswith("#")):
+            return False
+        fragments += 1
+    return True
+
+
 def build_help_document(markdown: str, parent: QWidget | None = None) -> QTextDocument:
     """
     The README as a document, with the corrections described above.
@@ -79,7 +109,15 @@ def build_help_document(markdown: str, parent: QWidget | None = None) -> QTextDo
             anchor.setAnchorNames([heading_anchor(block.text(), used)])
             cursor.mergeCharFormat(anchor)
             block_format.setTopMargin(HELP_HEADING_TOP_MARGIN)
+            block_format.setBottomMargin(HELP_HEADING_BOTTOM_MARGIN)
             cursor.setBlockFormat(block_format)
+        elif (text_list := block.textList()) is not None and section_link_item(block):
+            block_format.setTopMargin(0)
+            block_format.setBottomMargin(0)
+            cursor.setBlockFormat(block_format)
+            list_format = text_list.format()
+            list_format.setStyle(QTextListFormat.Style.ListDisc)
+            text_list.setFormat(list_format)
         elif block_format.nonBreakableLines():  # a fenced code block's line
             block_format.setBackground(HELP_CODE_BACKGROUND)
             block_format.setLeftMargin(HELP_CODE_MARGIN)
