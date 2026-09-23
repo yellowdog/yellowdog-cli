@@ -400,15 +400,44 @@ def resolve_variables_insitu(
             f" in {_list_paths(paths)}"
         )
 
-    if _UNDEFINED_VARIABLE_WARNINGS:
-        for expression, paths in undefined.items():
-            if expression in _UNDEFINED_VARIABLES_REPORTED:
-                continue
-            _UNDEFINED_VARIABLES_REPORTED.add(expression)
-            print_warning(
-                f"Variable '{expression}' is not defined, and has been left"
-                f" unsubstituted in {_list_paths(paths)}"
-            )
+    _warn_of_undefined(undefined)
+
+
+def warn_of_undefined_variables(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> None:
+    """
+    Report the undefined variables left in 'data', as resolve_variables_insitu()
+    does, without substituting anything: for data resolved before the warnings
+    were enabled, which would otherwise never be checked.
+    """
+    undefined: dict[str, list[str]] = {}
+    for expression, reference, path in _unsubstituted_references(
+        data, prefix=prefix, postfix=postfix
+    ):
+        if (
+            reference not in VARIABLE_SUBSTITUTIONS
+            and reference not in LAZY_VARIABLE_NAMES
+        ):
+            undefined.setdefault(expression, []).append(path)
+    _warn_of_undefined(undefined)
+
+
+def _warn_of_undefined(undefined: dict[str, list[str]]) -> None:
+    """
+    Warn of each undefined variable expression, with the properties it was
+    found in, unless warnings are not yet enabled or it was reported before.
+    """
+    if not _UNDEFINED_VARIABLE_WARNINGS:
+        return
+    for expression, paths in undefined.items():
+        if expression in _UNDEFINED_VARIABLES_REPORTED:
+            continue
+        _UNDEFINED_VARIABLES_REPORTED.add(expression)
+        print_warning(
+            f"Variable '{expression}' is not defined, and has been left"
+            f" unsubstituted in {_list_paths(paths)}"
+        )
 
 
 def _list_paths(paths: list[str], limit: int = 5) -> str:

@@ -60,7 +60,22 @@ from yellowdog_cli.utils.variables import (
     load_toml_file_with_variable_substitutions,
     process_variable_substitutions,
     resolve_variables_insitu,
+    warn_of_undefined_variables,
 )
+
+# The Worker Pool sections as load_config_worker_pool() resolved them, before
+# 'computeRequirement' was merged into 'workerPool', for the undefined-variable
+# re-check the commands make once warnings are enabled
+_WORKER_POOL_SECTIONS_AS_LOADED: dict[str, dict] = {}
+
+
+def warn_of_undefined_worker_pool_variables() -> None:
+    """
+    Warn of undefined variables left in the Worker Pool sections. They are
+    resolved at import, before the warnings are enabled, and nothing resolves
+    them again, so yd-provision and yd-instantiate call this as they start.
+    """
+    warn_of_undefined_variables(_WORKER_POOL_SECTIONS_AS_LOADED)
 
 
 def _resolve_section_variables(section: dict) -> None:
@@ -776,6 +791,17 @@ def load_config_worker_pool() -> ConfigWorkerPool:
     # has been processed
     _resolve_section_variables(wp_section)
     _resolve_section_variables(cr_section)
+    _WORKER_POOL_SECTIONS_AS_LOADED.clear()
+    _WORKER_POOL_SECTIONS_AS_LOADED.update(
+        {
+            name: dict(section)
+            for name, section in (
+                (WORKER_POOL_SECTION, wp_section),
+                (COMPUTE_REQUIREMENT_SECTION, cr_section),
+            )
+            if section
+        }
+    )
 
     duplicate_keys = set(wp_section.keys()).intersection(set(cr_section.keys()))
     if duplicate_keys:

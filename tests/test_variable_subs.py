@@ -1313,3 +1313,36 @@ class TestWrappersEnableUndefinedVariableWarnings:
         from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 
         assert self._run(dataclient_wrapper) == [True]
+
+
+class TestWarnOfUndefinedVariables:
+    """
+    warn_of_undefined_variables() reports, without substituting, what
+    resolve_variables_insitu() would: for data resolved before the warnings
+    were enabled, such as the configuration's Worker Pool sections.
+    """
+
+    @pytest.fixture(autouse=True)
+    def enabled(self, patched_subs, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", True)
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
+        warning = MagicMock()
+        monkeypatch.setattr(var_module, "print_warning", warning)
+        return warning
+
+    def test_reports_without_substituting(self, enabled):
+        data = {"a": "{{nope}}", "b": "{{myvar}}"}
+        var_module.warn_of_undefined_variables(data)
+        assert data == {"a": "{{nope}}", "b": "{{myvar}}"}
+        [call] = enabled.call_args_list
+        assert "'{{nope}}'" in call.args[0] and "'a'" in call.args[0]
+
+    def test_shares_the_once_only_record(self, enabled):
+        var_module.resolve_variables_insitu({"a": "{{nope}}"})
+        var_module.warn_of_undefined_variables({"b": "{{nope}}"})
+        assert enabled.call_count == 1
+
+    def test_nothing_until_enabled(self, enabled, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+        var_module.warn_of_undefined_variables({"a": "{{nope}}"})
+        assert enabled.call_count == 0
