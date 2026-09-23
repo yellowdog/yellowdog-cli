@@ -78,6 +78,31 @@ def warn_of_undefined_worker_pool_variables() -> None:
     warn_of_undefined_variables(_WORKER_POOL_SECTIONS_AS_LOADED)
 
 
+def warn_of_undefined_config_variables() -> None:
+    """
+    Warn of undefined variables left in the configuration values resolved one
+    string at a time at import -- the namespace, tag and URL, and every
+    '{{dataClient.*}}' value, profiles included -- which the substitution
+    passes never walk. Read from the variables they were registered as, which
+    hold them resolved. The credentials are left out: their text is not for
+    a warning, and a wrong one fails on its own. Called by the command
+    wrappers as a command starts.
+    """
+    values = {
+        f"{COMMON_SECTION}.{name}": VARIABLE_SUBSTITUTIONS[name]
+        for name in (NAMESPACE, NAME_TAG, URL)
+        if name in VARIABLE_SUBSTITUTIONS
+    }
+    values.update(
+        {
+            name: value
+            for name, value in VARIABLE_SUBSTITUTIONS.items()
+            if name.startswith(f"{DATA_CLIENT_SECTION}.")
+        }
+    )
+    warn_of_undefined_variables(values)
+
+
 def _resolve_section_variables(section: dict) -> None:
     """
     Resolve the variables in a configuration section, in-situ, exiting with

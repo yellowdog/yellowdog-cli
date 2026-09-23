@@ -7,6 +7,7 @@ run without YellowDog API credentials.
 from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.load_config import warn_of_undefined_config_variables
 from yellowdog_cli.utils.printing import print_error, print_info
 from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
@@ -17,6 +18,7 @@ def dataclient_wrapper(func):
         # The configuration is loaded, so every variable it defines exists:
         # one still unsubstituted from here on is one nothing defines
         enable_undefined_variable_warnings()
+        warn_of_undefined_config_variables()
         if not ARGS_PARSER.debug:
             exit_code = 0
             try:

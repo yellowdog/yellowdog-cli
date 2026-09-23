@@ -12,7 +12,10 @@ from yellowdog_client.model import ApiKey, ServicesSchema
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigCommon
-from yellowdog_cli.utils.load_config import load_config_common
+from yellowdog_cli.utils.load_config import (
+    load_config_common,
+    warn_of_undefined_config_variables,
+)
 from yellowdog_cli.utils.printing import print_debug, print_error, print_info
 from yellowdog_cli.utils.user_agent import set_user_agent
 from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
@@ -65,6 +68,7 @@ def main_wrapper(func):
         # The configuration is loaded, so every variable it defines exists:
         # one still unsubstituted from here on is one nothing defines
         enable_undefined_variable_warnings()
+        warn_of_undefined_config_variables()
         if not ARGS_PARSER.debug:
             exit_code = 0
             try:

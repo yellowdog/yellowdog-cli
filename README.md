@@ -200,7 +200,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 14:37:54 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 14:53:00 BST 2026 -->
 
 <!--te-->
 
@@ -887,6 +887,8 @@ A variable substitution for a variable that is not defined, and that has neither
 ```
 Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
 ```
+
+This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
 Each undefined variable is reported once, however many properties or Tasks it appears in. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution, such as `docker ps --format '{{.ID}}'`, and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 

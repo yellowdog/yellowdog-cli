@@ -104,6 +104,7 @@ pytest -v -n 4 --run-demos
 | `test_submit_utils.py` | `utils/submit_utils.py` — task/task-group naming, `get_task_data_property`, `create_task`, and that the late substitution passes (those run once the lazy Task variables are defined) resolve chains and report circular references like the loaders' |
 | `test_terminate_glob.py` | `terminate.py` — name/ID selection for `yd-terminate`: glob filtering, literal names, and the Instance (`cr_id.instance_id`) form |
 | `test_type_check.py` | `utils/type_check.py` — `check_int/float/bool/str/list/dict` |
+| `test_undefined_variable_warnings.py` | Undefined-variable warnings for what the substitution passes never walk: the `[common]` namespace, tag and URL and the `{{dataClient.*}}` values (checked by both command wrappers as a command starts, credentials excluded), User Data files, `yd-nodeaction` content files, Task Data files, and data client paths |
 | `test_upload_destination.py` | `upload.py` — `--destination` handling for single vs. multiple files and `dir/` destinations |
 | `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
