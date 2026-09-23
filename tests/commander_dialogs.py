@@ -34,6 +34,11 @@ SKIP = "skip"
 ACCEPT = "accept"
 CANCEL = "cancel"
 DISMISS = "dismiss"  # close without pressing anything
+# Press nothing and leave the dialog open, for an interaction that closes it
+# itself — a key the dialog acts on after a delay, as Return does by animating a
+# click on the default button. A dialog that does not close is still caught, by
+# the watchdog.
+NOTHING = "nothing"
 
 
 def listing(dialog) -> QListWidget:
@@ -159,3 +164,38 @@ def drive_notice(window, monkeypatch, inspect=None) -> dict:
 
     monkeypatch.setattr(window, "_build_notice_dialog", build)
     return shown
+
+
+def drive_process_chooser(
+    window,
+    monkeypatch,
+    press: str,
+    choose_row: int | None = None,
+    inspect=None,
+) -> None:
+    """
+    Arm the next process chooser so that, inside its real exec(), row 'choose_row'
+    is made current (if given) and 'press' is pressed. 'inspect(dialog, listing)'
+    runs first if given. Like the chooser, it wires its own button box.
+    """
+    real_build = window._build_process_dialog
+
+    def build(runs, current):
+        dialog, process_list = real_build(runs, current)
+
+        def interact(open_dialog):
+            if inspect is not None:
+                inspect(open_dialog, process_list)
+            if choose_row is not None:
+                process_list.setCurrentRow(choose_row)
+            if press == ACCEPT:
+                gui_harness.button_labelled(open_dialog, "Show Output").click()
+            elif press == CANCEL:
+                gui_harness.button_labelled(open_dialog, "Cancel").click()
+            elif press != NOTHING:
+                open_dialog.reject()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog, process_list
+
+    monkeypatch.setattr(window, "_build_process_dialog", build)

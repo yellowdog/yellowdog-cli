@@ -951,9 +951,6 @@
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="output_filter_hidden_lines"/>
-         </item>
-         <item>
           <widget class="QPushButton" name="output_filter_show_all">
            <property name="text">
             <string>Show All Output</string>

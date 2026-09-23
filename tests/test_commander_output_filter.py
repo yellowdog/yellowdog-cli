@@ -16,6 +16,7 @@ import qt_guard
 
 qt_guard.require_qt()
 
+import commander_dialogs
 import gui_harness
 from PyQt6.QtCore import QEventLoop, QPoint, QProcess, Qt, QTimer
 from PyQt6.QtGui import QTextCursor, QTextDocument
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import QApplication, QMenu
 
 from yellowdog_cli.commander.commander import (
     SHOW_ALL_OUTPUT,
+    SHOW_OUTPUT_FROM_PROCESS,
     OutputRun,
     YellowDogApp,
     block_count,
@@ -187,7 +189,7 @@ def test_an_executing_line_arriving_while_filtered_to_commander_is_shown(two_run
 
     assert shown(two_runs).count("Executing:") == 3
     assert "a third command's message" not in shown(two_runs)
-    assert two_runs.output_filter_hidden_lines.text() == "+1 new line hidden"
+    assert two_runs.output_filter_label.text().endswith(" · 1 new line hidden")
 
 
 def test_the_menu_names_the_pid_the_command_printed(two_runs):
@@ -224,7 +226,7 @@ def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
     label = two_runs.output_filter_label.text()
     assert "process 654321" in label
     assert f"2 of {everything.count(chr(10)) + 1} lines" in label
-    assert not two_runs.output_filter_hidden_lines.isVisible()
+    assert "hidden" not in label, "nothing new has arrived"
 
     two_runs.output_filter_show_all.click()
 
@@ -256,6 +258,8 @@ def test_escape_ends_the_filter(two_runs):
 
 
 def test_output_arriving_while_filtered(two_runs):
+    # Counted on the bar's label, and shown by Show All Output: the bar's only
+    # button, because a second one doing the same would say nothing more.
     filter_to_line_containing(two_runs, "second command")
     second_run = two_runs._output_filter
     assert second_run is not None
@@ -265,13 +269,12 @@ def test_output_arriving_while_filtered(two_runs):
 
     assert "more from Commander" not in shown(two_runs)
     assert "more from the second command" in shown(two_runs)
-    assert two_runs.output_filter_hidden_lines.isVisible()
-    assert two_runs.output_filter_hidden_lines.text() == "+1 new line hidden"
+    assert two_runs.output_filter_label.text().endswith(" · 1 new line hidden")
 
     run_child(two_runs, "a third command's message", "and another line")
-    assert two_runs.output_filter_hidden_lines.text() == "+4 new lines hidden"
+    assert two_runs.output_filter_label.text().endswith(" · 4 new lines hidden")
 
-    two_runs.output_filter_hidden_lines.click()
+    two_runs.output_filter_show_all.click()
     assert "more from Commander" in shown(two_runs)
     assert "a third command's message" in shown(two_runs)
 
@@ -417,3 +420,278 @@ def test_right_clicking_opens_the_menu(window, monkeypatch):
     assert chosen
     assert "a001" not in shown(window)
     assert "b001" in shown(window)
+
+
+# The process chooser: 'Show Output from Process…' on the same menu.
+
+
+def chooser_rows(window: YellowDogApp) -> list[str]:
+    """The chooser's rows, read from inside its real exec() and then cancelled."""
+    rows: list[str] = []
+
+    def inspect(_dialog, process_list):
+        rows.extend(process_list.item(n).text() for n in range(process_list.count()))
+
+    return rows, inspect
+
+
+def open_chooser_from(window: YellowDogApp, text: str):
+    menu = window._build_output_menu(position_of(window, text))
+    menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).trigger()
+
+
+def test_the_chooser_lists_commander_then_the_commands_in_order(two_runs, monkeypatch):
+    rows, inspect = chooser_rows(two_runs)
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
+    )
+
+    open_chooser_from(two_runs, "Commander says hello")
+
+    assert len(rows) == 3
+    assert "Commander's own messages" in rows[0]
+    assert f"{two_runs._pid:06d}" in rows[0]
+    assert rows[1].startswith("123456"), "the PID the command printed"
+    assert rows[2].startswith("654321")
+    assert all("exit 0" in row for row in rows[1:])
+    assert rows[1].rstrip().endswith("4 lines"), "Executing line + three printed"
+    assert rows[2].rstrip().endswith("2 lines")
+    assert rows[0].rstrip().endswith("3 lines"), "its message and two Executing lines"
+
+
+def test_the_chooser_shows_the_command_line_as_the_user_gave_it(window, monkeypatch):
+    # Not the echoed one, with the config source and '--nf --pp' Commander adds.
+    window._build_command_args = lambda command, args, yd_command: (
+        ["--nc", "--nf", "--pp", *args]
+    )
+    run_child(window, "hello")
+    rows, inspect = chooser_rows(window)
+    commander_dialogs.drive_process_chooser(
+        window, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
+    )
+
+    window._choose_output_run()
+
+    assert "--nf" in shown(window), "the echo still carries them"
+    assert "--nf" not in rows[1]
+    assert sys.executable in rows[1]
+
+
+def test_the_rows_line_up(two_runs, monkeypatch):
+    rows, inspect = chooser_rows(two_runs)
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
+    )
+
+    two_runs._choose_output_run()
+
+    assert len({len(row) for row in rows}) == 1, "padded to a common width"
+
+
+def test_choosing_a_row_filters_to_it(two_runs, monkeypatch):
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.ACCEPT, choose_row=1
+    )
+
+    open_chooser_from(two_runs, "second command")
+
+    assert "first message" in shown(two_runs)
+    assert "second command" not in shown(two_runs)
+    assert two_runs.output_filter_bar.isVisible()
+
+
+def test_cancel_changes_nothing(two_runs, monkeypatch):
+    before = shown(two_runs)
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.CANCEL, choose_row=1
+    )
+
+    open_chooser_from(two_runs, "second command")
+
+    assert shown(two_runs) == before
+    assert not two_runs.output_filter_bar.isVisible()
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_return_on_a_row_accepts_it(two_runs, monkeypatch, key):
+    def inspect(_dialog, process_list):
+        process_list.setCurrentRow(2)
+        process_list.setFocus()
+        QTest.keyClick(process_list, key)
+
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.NOTHING, inspect=inspect
+    )
+
+    two_runs._choose_output_run()
+
+    assert "second command" in shown(two_runs)
+    assert "first message" not in shown(two_runs)
+
+
+def test_activating_a_row_accepts_it(two_runs, monkeypatch):
+    # What a double-click does; the offscreen platform does not deliver one to
+    # an item view, so the activation it produces is what is driven.
+    def inspect(_dialog, process_list):
+        process_list.itemActivated.emit(process_list.item(2))
+
+    commander_dialogs.drive_process_chooser(
+        two_runs, monkeypatch, commander_dialogs.NOTHING, inspect=inspect
+    )
+
+    two_runs._choose_output_run()
+
+    assert "second command" in shown(two_runs)
+
+
+def current_row_when_opened(window, monkeypatch, open_it) -> int:
+    seen: list[int] = []
+    commander_dialogs.drive_process_chooser(
+        window,
+        monkeypatch,
+        commander_dialogs.CANCEL,
+        inspect=lambda _dialog, process_list: seen.append(process_list.currentRow()),
+    )
+    open_it()
+    return seen[0]
+
+
+def test_the_latest_is_selected_by_default(two_runs, monkeypatch):
+    assert (
+        current_row_when_opened(two_runs, monkeypatch, two_runs._choose_output_run) == 2
+    )
+
+
+def test_the_line_right_clicked_is_selected(two_runs, monkeypatch):
+    assert (
+        current_row_when_opened(
+            two_runs, monkeypatch, lambda: open_chooser_from(two_runs, "first message")
+        )
+        == 1
+    )
+
+
+def test_an_executing_line_selects_its_command(two_runs, monkeypatch):
+    assert (
+        current_row_when_opened(
+            two_runs, monkeypatch, lambda: open_chooser_from(two_runs, "Executing:")
+        )
+        == 1
+    )
+
+
+def test_the_filter_shown_is_selected(two_runs, monkeypatch):
+    filter_to_line_containing(two_runs, "first message")
+    assert (
+        current_row_when_opened(
+            two_runs, monkeypatch, lambda: open_chooser_from(two_runs, "first message")
+        )
+        == 1
+    )
+    two_runs._filter_output(0)
+    assert (
+        current_row_when_opened(
+            two_runs, monkeypatch, lambda: open_chooser_from(two_runs, "Executing:")
+        )
+        == 0
+    )
+
+
+def test_show_output_is_the_default_button(two_runs, monkeypatch):
+    defaults: list = []
+    commander_dialogs.drive_process_chooser(
+        two_runs,
+        monkeypatch,
+        commander_dialogs.CANCEL,
+        inspect=lambda dialog, _list: defaults.append(
+            gui_harness.default_button(dialog)
+        ),
+    )
+
+    two_runs._choose_output_run()
+
+    assert defaults[0] is not None and defaults[0].text() == "Show Output"
+
+
+def listing_widths(window, monkeypatch) -> tuple[int, int, int]:
+    """The chooser listing's viewport width and its rows', and the window's."""
+    widths: list[tuple[int, int]] = []
+    commander_dialogs.drive_process_chooser(
+        window,
+        monkeypatch,
+        commander_dialogs.CANCEL,
+        inspect=lambda _dialog, process_list: widths.append(
+            (process_list.viewport().width(), process_list.sizeHintForColumn(0))
+        ),
+    )
+    window._choose_output_run()
+    return (*widths[0], window.width())
+
+
+def test_the_listing_is_wide_enough_for_its_rows(window, monkeypatch):
+    interleaved(window, runs=2)
+
+    viewport, content, _ = listing_widths(window, monkeypatch)
+
+    assert viewport >= content, "a row elided in a window with room for it"
+
+
+def test_the_listing_is_no_wider_than_the_window(window, monkeypatch):
+    window._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
+    window._output_runs[1].user_command_line = "yd-a " + "x" * 2000
+    window._log("a line", prefix=False, run=1)
+
+    viewport, content, window_width = listing_widths(window, monkeypatch)
+
+    assert content > window_width, "the row is too long to fit, as intended"
+    assert viewport < window_width, "elided rather than stretching the dialog"
+
+
+def test_a_cleared_finished_run_is_not_listed_but_a_running_one_is(
+    two_runs, monkeypatch
+):
+    two_runs._run_command_in_subprocess(
+        sys.executable, ["-c", "import time; time.sleep(30)"], yd_command=False
+    )
+    try:
+        two_runs.clear_command_output.click()
+        rows, inspect = chooser_rows(two_runs)
+        commander_dialogs.drive_process_chooser(
+            two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
+        )
+
+        two_runs._choose_output_run()
+
+        assert len(rows) == 1
+        assert "time.sleep" in rows[0]
+        assert "running" in rows[0]
+    finally:
+        two_runs.shutdown()
+
+
+def test_a_command_that_did_not_start(window, monkeypatch):
+    window._run_command_in_subprocess("no-such-command-here", [], yd_command=False)
+    rows, inspect = chooser_rows(window)
+    commander_dialogs.drive_process_chooser(
+        window, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
+    )
+
+    window._choose_output_run()
+
+    assert "did not start" in rows[1]
+
+
+def test_the_menu_item_is_greyed_with_nothing_to_choose(window):
+    window.clear_command_output.click()
+
+    menu = window._build_output_menu(QPoint(5, 5))
+
+    assert not menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).isEnabled()
+
+
+def test_the_menu_item_is_there_while_filtered(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+
+    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+
+    assert menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).isEnabled()
