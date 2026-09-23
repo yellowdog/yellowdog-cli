@@ -1,7 +1,6 @@
 # YellowDog Command-Line Interface
 
 <!--ts-->
-* [YellowDog Command-Line Interface](#yellowdog-command-line-interface)
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
 * [Installation](#installation)
@@ -200,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 15:19:01 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 15:47:46 BST 2026 -->
 
 <!--te-->
 
