@@ -199,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 13:06:04 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 13:46:35 BST 2026 -->
 
 <!--te-->
 
@@ -870,6 +870,13 @@ The bare `{{::}}` (no variable name) always removes the property unconditionally
 
 ```toml
 taskType = "{{::}}"   # always removed
+```
+
+The unset suffix can also be used inside a [nested variable](#nested-variables). The property is removed if the unset variable's value is needed, and kept if it is not:
+
+```toml
+templateId = "{{template_{{region::}}}}"      # removed if 'region' is not set
+name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' nor 'default_name' is set
 ```
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data

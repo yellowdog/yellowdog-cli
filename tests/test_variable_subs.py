@@ -400,6 +400,71 @@ class TestUnsetSuffix:
         var_module.process_variable_substitutions_insitu(data)
         assert data["items"] == ["keep", "also-keep"]
 
+    # Nested: an unset expression inside another one. The property is removed
+    # when the unset expression's value would be needed -- to build a
+    # variable's name, or as a default that is used -- and kept when it would
+    # not. Its token used to be left in place instead, so the outer
+    # expression looked up a name with '{{missing::}}' in it, found nothing,
+    # and the whole expression reached the specification unresolved
+
+    def test_nested_unset_in_a_variable_name(self):
+        var_module.VARIABLE_SUBSTITUTIONS["template_hello"] = "T"
+        result = var_module.process_variable_substitutions("{{template_{{missing::}}}}")
+        assert result is var_module._UNSET
+
+    def test_nested_unset_in_a_variable_name_when_defined(self):
+        var_module.VARIABLE_SUBSTITUTIONS["template_hello"] = "T"
+        result = var_module.process_variable_substitutions("{{template_{{myvar::}}}}")
+        assert result == "T"
+
+    def test_nested_unset_two_levels_down(self):
+        result = var_module.process_variable_substitutions("{{a_{{b_{{missing::}}}}}}")
+        assert result is var_module._UNSET
+
+    def test_nested_bare_unset(self):
+        result = var_module.process_variable_substitutions("{{template_{{::}}}}")
+        assert result is var_module._UNSET
+
+    def test_nested_unset_in_a_larger_string(self):
+        result = var_module.process_variable_substitutions(
+            "x-{{template_{{missing::}}}}"
+        )
+        assert result is var_module._UNSET
+
+    def test_nested_unset_with_a_type_tag(self):
+        result = var_module.process_variable_substitutions(
+            "{{num:count_{{missing::}}}}"
+        )
+        assert result is var_module._UNSET
+
+    def test_nested_unset_as_a_default_that_is_used(self):
+        result = var_module.process_variable_substitutions(
+            "{{undefined:={{missing::}}}}"
+        )
+        assert result is var_module._UNSET
+
+    def test_nested_unset_as_a_default_that_is_not_used(self):
+        result = var_module.process_variable_substitutions("{{myvar:={{missing::}}}}")
+        assert result == "hello"
+
+    def test_nested_unset_removes_dict_key(self):
+        data = {"name": "job", "templateId": "{{template_{{missing::}}}}"}
+        var_module.process_variable_substitutions_insitu(data)
+        assert data == {"name": "job"}
+
+    def test_nested_unset_removes_list_element(self):
+        data = {"items": ["keep", "{{template_{{missing::}}}}"]}
+        var_module.process_variable_substitutions_insitu(data)
+        assert data["items"] == ["keep"]
+
+    def test_variable_defined_with_a_nested_unset_is_removed(self):
+        # A variable whose value needs an unset expression is itself unset,
+        # as a variable whose value is '{{missing::}}' already is
+        var_module.add_substitutions_without_overwriting(
+            {"derived": "{{template_{{missing::}}}}"}
+        )
+        assert var_module.get_user_variable("derived") is None
+
     # JSON file content path
 
     def test_unset_in_file_contents_leaves_token_intact(self):
@@ -909,6 +974,14 @@ class TestNestedVariablesInEveryFormat:
         assert load_spec({"t": "{{template_{{region}}}}-{{region}}"}) == {
             "t": "TP-phoenix"
         }
+
+    def test_nested_unset_removes_the_property(self, load_spec):
+        assert load_spec({"keep": "k", "t": "{{template_{{missing::}}}}"}) == {
+            "keep": "k"
+        }
+
+    def test_nested_unset_keeps_the_property_when_defined(self, load_spec):
+        assert load_spec({"t": "{{template_{{region::}}}}"}) == {"t": "TP"}
 
     def test_value_substituting_in_further_references(self, load_spec, monkeypatch):
         # Each reference is only revealed by resolving the one before it. A

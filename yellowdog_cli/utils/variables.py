@@ -64,6 +64,14 @@ from yellowdog_cli.utils.settings import (
 # a dict/list (i.e. _walk_data) use this to delete the property entirely.
 _UNSET = object()
 
+# Stands in for an unset expression nested inside another one while the outer
+# expression is resolved. Whether the outer one is then unset too depends on
+# whether the value was needed -- to build a name, or as a default that is
+# used -- which is known only once it is resolved: if the marker is still
+# there, it was. A private-use character, which no delimiter, separator or
+# regular expression below can match, and no variable value will contain.
+_UNSET_MARKER = "\ue000"
+
 # Set up default variable substitutions
 try:
     USERNAME = getuser().replace(" ", "_").lower()
@@ -389,7 +397,9 @@ def process_untyped_variable_substitutions(
     Algorithm (in order):
     1. Nesting: if the variable name itself contains '{{...}}', resolve the
        innermost expression first — e.g. '{{{{key_var}}}}' where key_var='x'
-       becomes '{{x}}' before the outer substitution runs.
+       becomes '{{x}}' before the outer substitution runs. An unset inner
+       expression is replaced by _UNSET_MARKER, and if the marker survives
+       the steps below the whole expression is unset (step 9).
     2. Unset suffix ('::') — '{{varname::}}' returns the variable's value if
        defined, otherwise returns _UNSET to signal the caller to remove the
        property entirely.
@@ -407,6 +417,8 @@ def process_untyped_variable_substitutions(
        defaults have been stripped.
     8. Apply defaults: for any '{{varname}}' still unresolved, substitute its
        collected default value.
+    9. Unset propagation: if an unset inner expression's marker is still in
+       the result, its value was needed, so return _UNSET.
     """
     if input_string is None:
         return None
@@ -428,9 +440,7 @@ def process_untyped_variable_substitutions(
                 element, opening_delimiter, closing_delimiter
             )
             if result is _UNSET:
-                # An unset inner variable: leave its token intact so the
-                # caller's dict-level processing can remove the property
-                processed_string += element
+                processed_string += _UNSET_MARKER
             else:
                 processed_string += result or ""
         input_string = opening_delimiter + processed_string + closing_delimiter
@@ -544,6 +554,9 @@ def process_untyped_variable_substitutions(
             str(default_value),
             1,
         )
+
+    if _UNSET_MARKER in s:
+        return _UNSET  # type: ignore
 
     return s
 
