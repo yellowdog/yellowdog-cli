@@ -132,8 +132,9 @@ def _no_config_discovery(request, monkeypatch):
     installed, working yd-variables, and on whatever namespace and tag the environment
     happened to supply.
 
-    None of these tests are about discovery: they set _namespace/_tag directly or
-    call _set_placeholders. The ones that do exercise discovery itself opt out with
+    None of these tests are about discovery: they set _discovery.namespace/tag
+    directly or call _discovery._set_placeholders. The stub is on ConfigDiscovery,
+    the class, so it is in place before any window builds one. The ones that do exercise discovery itself opt out with
     @pytest.mark.real_config_parse — two in test_commander_shutdown.py, and the whole
     of test_commander_config_discovery.py, which overrides _yd_variables_command instead so
     that it still spawns no yd-variables.
@@ -147,10 +148,10 @@ def _no_config_discovery(request, monkeypatch):
     if "real_config_parse" in request.keywords:
         return
 
-    from yellowdog_cli.commander.commander import YellowDogApp
+    from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 
     monkeypatch.setattr(
-        YellowDogApp,
+        ConfigDiscovery,
         "_parse_yd_config",
         lambda self, quiet=False, timeout_ms=None: False,
     )

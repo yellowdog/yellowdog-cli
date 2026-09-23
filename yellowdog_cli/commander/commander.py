@@ -62,13 +62,13 @@ from PyQt6.QtWidgets import (
     QStyle,
     QStyleOptionButton,
     QVBoxLayout,
-    QWidget,
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
 from yellowdog_cli.commander.command_history import CommandHistory
+from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.commander.elision import elide_middle, elide_path
 from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.output_model import (
@@ -92,8 +92,7 @@ from yellowdog_cli.commander.selection import (
     set_all_check_states,
     update_selection_state,
 )
-from yellowdog_cli.commander.startup import StartupSettings, variable_is_complete
-from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
+from yellowdog_cli.commander.startup import StartupSettings
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # px: inset between the selected-configuration label's frame and its text.
@@ -116,13 +115,6 @@ SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
-CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
-# The one retry after a timeout gets a longer budget: by then it is known that a
-# 'yd-variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
-# session can legitimately need this long to start (interpreter start, SDK
-# imports, a virus scan of a freshly installed console script).
-CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
-CONFIG_PARSE_RETRY_DELAY_MS = 1_000  # let the event loop breathe before retrying
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
@@ -141,8 +133,6 @@ BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
 
-NAMESPACE = "namespace"
-TAG = "tag"
 WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
 
@@ -354,42 +344,29 @@ class YellowDogApp(QMainWindow):
         self._select_wr_default_text = self.select_work_requirement.text()
         self._select_wp_default_text = self.select_worker_pool.text()
 
-        self._namespace: str | None = None
-        self._tag: str | None = None
-        self._config_parse_invalid = True  # nothing discovered yet
-        self._config_parse_timed_out = False
-        self._config_parse_retried = False
-        self._last_discovery_failure: str | None = None
-
-        # One retry of namespace/tag discovery, a moment after a timeout. Timers
-        # here are parented to the window so they die with it; a bare
-        # QTimer.singleShot would fire into destroyed widgets.
-        self._discovery_retry_timer = QTimer(self)
-        self._discovery_retry_timer.setSingleShot(True)
-        self._discovery_retry_timer.timeout.connect(self._retry_discovery)
-
         # Watch the selected config file for on-disk changes
         self._file_watcher = QFileSystemWatcher(self)
         self._file_watcher.fileChanged.connect(self._on_config_file_changed)
 
-        # Invalidate the config parse cache when inputs that affect it change
-        for ui_object in [
-            self.namespace_override,
-            self.tag_override,
-            self.user_variables,
-        ]:
-            ui_object.textChanged.connect(self._invalidate_config_parse)
-
-        # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables change (debounced to avoid running yd-variables
-        # on every keystroke)
-        self._user_vars_reparse_timer = QTimer(self)
-        self._user_vars_reparse_timer.setSingleShot(True)
-        self._user_vars_reparse_timer.setInterval(600)
-        self._user_vars_reparse_timer.timeout.connect(
-            self._reparse_placeholders_after_edit
+        # Namespace/tag discovery and the placeholders showing what it found,
+        # connected to the fields after they are filled (_apply_startup_fields).
+        # The window's methods are handed over as lambdas, not bound methods, so
+        # that a test replacing one on the window — _run_nested, say — replaces
+        # the one discovery calls.
+        self._discovery = ConfigDiscovery(
+            parent=self,
+            namespace_field=self.namespace_override,
+            tag_field=self.tag_override,
+            object_path_field=self.object_path_override,
+            user_variables=self.user_variables,
+            config_selected=lambda: self._config_file is not None,
+            config_source_args=lambda: self._config_source_args(),
+            override_args=lambda: self._namespace_tag_and_user_vars(),
+            working_dir=lambda: self._working_dir(),
+            run_nested=lambda *args, **kwargs: self._run_nested(*args, **kwargs),
+            shutting_down=lambda: self._shutting_down,
+            log=lambda message: self._output.log(message),
         )
-        self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
 
         if settings.wr_file is not None:
             self._set_wr_file(settings.wr_file)
@@ -455,242 +432,6 @@ class YellowDogApp(QMainWindow):
             QIcon(path).pixmap(QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE))
         )
 
-    def _invalidate_config_parse(self):
-        """
-        Mark the discovered namespace/tag stale, and give the next discovery a
-        fresh retry. The retry budget is per parse, not per session: a new
-        configuration file must not inherit the exhausted budget of the last one.
-
-        The same goes for what _report_discovery_failure will say next. It
-        suppresses a repeat of the message it said last, for the user-variables
-        box that reparses after every edit — but a configuration file being
-        deselected and selected again is not a repeat, and a failure suppressed
-        in between (see _nothing_is_configured) would otherwise leave the last
-        message said no longer the last failure there was. Only the three
-        configuration-file paths reach here; an edit to the user variables does
-        not, which is what keeps that suppression doing its job.
-        """
-        self._config_parse_invalid = True
-        self._config_parse_retried = False
-        self._last_discovery_failure = None
-
-    def _reparse_placeholders_after_edit(self):
-        """
-        The debounced reparse behind an edit to the user-variables box.
-
-        Held back while any variable in the box is not yet 'name=value'. Every
-        variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd-variables' rejects one and exits 1, so the reparse
-        landing on such a keystroke reported "Error in variable substitution
-        'instances'" against a mistake the user had not made. Nothing is said
-        about it, because at 600ms after a keystroke there is nothing to say: an
-        unfinished variable and a wrong one are the same text. The parse stays
-        marked invalid, so the edit that completes the variable reparses as
-        usual.
-
-        Only this path is held back. A malformed variable still reaches the CLI
-        when the user runs a command, which is where it is a real error rather
-        than an unfinished one, and where they are there to read it.
-        """
-        if all(
-            variable_is_complete(variable)
-            for variable in self.user_variables.toPlainText().split()
-        ):
-            self._reparse_placeholders()
-
-    def _reparse_placeholders(self, timeout_ms: int | None = None):
-        """
-        Re-run discovery and show what it found, scheduling one retry if it timed
-        out. The single place that pairs a parse with the placeholders, so a
-        caller cannot get the retry by accident and lose it by accident.
-        """
-        if self._parse_yd_config(quiet=True, timeout_ms=timeout_ms):
-            self._set_placeholders(self._namespace or "", self._tag or "")
-            return
-        self._schedule_discovery_retry()
-
-    def _schedule_discovery_retry(self):
-        """
-        Queue the one retry allowed after a timed-out discovery.
-
-        Only after a *timeout*: a non-zero exit or a program that cannot be
-        started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd-variables'
-        on Windows that needed longer than its budget to start, where the second
-        one is warm and finishes at once. Before this, the placeholders stayed
-        blank until Commander was restarted, which is what the user had to do.
-        """
-        if (
-            self._shutting_down
-            or self._config_parse_retried
-            or not self._config_parse_timed_out
-        ):
-            return
-        self._config_parse_retried = True
-        self._output.log(
-            f"Retrying namespace/tag discovery with a"
-            f" {CONFIG_PARSE_RETRY_TIMEOUT_MS // 1000}s timeout; the first"
-            f" 'yd-*' command of a session can be slow to start"
-        )
-        self._discovery_retry_timer.start(CONFIG_PARSE_RETRY_DELAY_MS)
-
-    def _retry_discovery(self):
-        self._reparse_placeholders(timeout_ms=CONFIG_PARSE_RETRY_TIMEOUT_MS)
-
-    def _report_discovery_failure(self, message: str):
-        """
-        Say why namespace/tag discovery failed. Logged however quiet the parse
-        was: blank placeholders with nothing in the output window to explain them
-        is what left a Windows incident with no evidence to diagnose.
-
-        Consecutive identical messages are suppressed, because the user-variables
-        box reparses 600ms after every edit and a broken configuration would
-        otherwise fill the window with one line over and over. A success clears
-        the memory, so the same failure recurring is reported again.
-        """
-        if message == self._last_discovery_failure:
-            return
-        self._last_discovery_failure = message
-        self._output.log(message)
-
-    def _set_placeholders(self, namespace: str, tag: str):
-        """
-        Update the placeholder text showing the namespace, tag and object path
-        that will be used if those fields are left blank.
-
-        The viewport repaints are scheduled with update() rather than forced
-        with repaint(): callers reach this immediately after _parse_yd_config
-        has run a nested event loop, and forcing a synchronous paint of a text
-        widget from there is what appears to make macOS log bursts of
-        'TSMSendMessageToUIServer ... FAILED(-1)'. Control returns to the event
-        loop directly afterwards, so the placeholders still appear at once.
-        It has to be the viewport, not the widget: QPlainTextEdit is a scroll
-        area, and the placeholder text is painted by its viewport.
-        """
-        self.namespace_override.setPlaceholderText(namespace)
-        cast(QWidget, self.namespace_override.viewport()).update()
-        self.tag_override.setPlaceholderText(tag)
-        cast(QWidget, self.tag_override.viewport()).update()
-        default_prefix = f"{tag}*" if tag else ""
-        self.object_path_override.setPlaceholderText(default_prefix)
-        cast(QWidget, self.object_path_override.viewport()).update()
-
-    def _yd_variables_command(self) -> tuple[str, list[str]]:
-        """
-        The 'yd-variables' invocation that resolves the namespace and tag for the
-        current configuration source, namespace/tag overrides and user variables.
-        """
-        return "yd-variables", (
-            self._config_source_args()
-            + [
-                "--nf",
-                NAMESPACE,
-                TAG,
-            ]
-            + self._namespace_tag_and_user_vars()
-        )
-
-    def _nothing_is_configured(self, error_output: str) -> bool:
-        """
-        Whether a failed discovery means 'nothing is configured yet' rather than
-        'something is wrong', in which case it is not reported.
-
-        Only with no configuration file selected. 'yd-variables' is then given
-        '--nc' and has nothing but the environment to work from, and an environment
-        with no YellowDog credentials in it makes it exit 1 with "Missing
-        configuration data: 'key'" before it can resolve anything. Reported, that
-        put an error in the output window at startup, and again on every
-        Deselect, in front of a user who had done nothing wrong.
-
-        Deliberately narrow in both directions. With a configuration file
-        selected the same message means the selected file cannot be used, which
-        is the user's to see. And with none selected every *other* failure is
-        still reported, because discovery from the environment alone is a
-        supported way to run Commander — credentials and namespace/tag in YD_*
-        variables, with the definition files nominated by hand — and its
-        failures are as worth seeing as any other.
-
-        Matched on the message, the CLI having one exit code for everything.
-        MISSING_CONFIG_DATA is the CLI's own definition of it, imported rather
-        than written out again here, so the two cannot drift apart silently.
-        """
-        return self._config_file is None and MISSING_CONFIG_DATA in error_output
-
-    def _parse_yd_config(
-        self, quiet: bool = False, timeout_ms: int | None = None
-    ) -> bool:
-        """
-        Parse the configuration file to obtain the CLI-processed values of the
-        namespace and tag variables, used to populate placeholder text.
-
-        'timeout_ms' defaults to CONFIG_PARSE_TIMEOUT_MS; the retry after a
-        timeout passes a longer one. Every failure is reported through
-        _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
-        announcement of a routine reparse, not the reason one failed. The one
-        exception is _nothing_is_configured() above.
-        """
-        if not self._config_parse_invalid:
-            return True
-        if timeout_ms is None:
-            timeout_ms = CONFIG_PARSE_TIMEOUT_MS
-        self._config_parse_timed_out = False
-
-        yd_process = QProcess()
-        event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
-        yd_process.finished.connect(event_loop.quit)
-        yd_process.errorOccurred.connect(event_loop.quit)
-
-        cmd, args = self._yd_variables_command()
-
-        if not quiet:
-            self._output.log(
-                f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'"
-            )
-        yd_process.start(cmd, args)
-        if not self._run_nested(yd_process, event_loop, timeout_ms):
-            if self._shutting_down:
-                return False  # the widgets are going away; don't touch them
-            self._config_parse_timed_out = True
-            self._report_discovery_failure(
-                f"Timed out after {timeout_ms // 1000}s parsing"
-                f" configuration with 'yd-variables'"
-            )
-            return False
-
-        if yd_process.error() != QProcess.ProcessError.UnknownError:
-            self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables': {yd_process.errorString()}"
-            )
-            return False
-
-        if yd_process.exitCode() != 0:
-            error_output = yd_process.readAllStandardError().data().decode().strip()
-            if self._nothing_is_configured(error_output):
-                return False
-            self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables'"
-                f" (Exit {yd_process.exitCode()}): {error_output}"
-            )
-            return False
-
-        output = yd_process.readAllStandardOutput().data().decode().strip()
-        try:
-            parsed_data = loads(output)
-            self._namespace = parsed_data.get(NAMESPACE)
-            self._tag = parsed_data.get(TAG)
-        except Exception as e:
-            self._report_discovery_failure(f"Error reading config variables: {e}")
-            return False
-
-        self._config_parse_invalid = False
-        self._last_discovery_failure = None  # a recurrence is worth reporting again
-        return True
-
     def _on_config_file_changed(self, _path: str):
         """
         Called by QFileSystemWatcher when the config file is modified on disk.
@@ -702,11 +443,11 @@ class YellowDogApp(QMainWindow):
             abs_path = abspath(self._config_file)
             if exists(abs_path) and abs_path not in self._file_watcher.files():
                 self._file_watcher.addPath(abs_path)
-        self._invalidate_config_parse()
+        self._discovery.invalidate()
         self._output.log(
             f"Config file '{self._config_file}' changed on disk; refreshing..."
         )
-        self._reparse_placeholders()
+        self._discovery.reparse_placeholders()
 
     def _set_config_file(self, config_file: str | None):
         """
@@ -720,17 +461,8 @@ class YellowDogApp(QMainWindow):
             self._config_file = None
             self.select_config_label.setText(NO_SELECTED_CONFIG)
             self.select_config_label.setToolTip("")
-            self._invalidate_config_parse()
-            # Cleared first, then filled in again by whatever discovery finds
-            # without a config file (environment variables, or nothing at all):
-            # the previous file's namespace and tag must not linger either way.
-            # _namespace and _tag are cleared as well as the placeholders they
-            # are shown in, because _object_path() builds the default download
-            # and delete path out of the tag, so a stale one is a path acted on.
-            self._namespace = None
-            self._tag = None
-            self._set_placeholders("", "")
-            self._reparse_placeholders()
+            self._discovery.clear()
+            self._discovery.reparse_placeholders()
             return
 
         if not exists(config_file):
@@ -739,11 +471,11 @@ class YellowDogApp(QMainWindow):
 
         selected_config_file = relpath(config_file)
         self._config_file = selected_config_file
-        self._invalidate_config_parse()
+        self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")
         self.select_config_label.setText(elide_path(selected_config_file))
         self.select_config_label.setToolTip(abspath(selected_config_file))
-        self._reparse_placeholders()
+        self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
     def _select_config_file_action(self):
@@ -1014,7 +746,7 @@ class YellowDogApp(QMainWindow):
         override = self.object_path_override.toPlainText().strip()
         if override:
             return override
-        return f"{self._tag}*" if self._tag else None
+        return f"{self._discovery.tag}*" if self._discovery.tag else None
 
     def _scope_phrase(self, match_word: str) -> str:
         """
@@ -1023,15 +755,15 @@ class YellowDogApp(QMainWindow):
         Requirements are matched by tag ('tags'), Worker Pools by name ('names').
         Uses the discovered namespace/tag, degrading gracefully when unknown.
         """
-        if self._namespace and self._tag:
+        if self._discovery.namespace and self._discovery.tag:
             return (
-                f" in namespace '{self._namespace}'"
-                f" with {match_word} including '{self._tag}'"
+                f" in namespace '{self._discovery.namespace}'"
+                f" with {match_word} including '{self._discovery.tag}'"
             )
-        if self._namespace:
-            return f" in namespace '{self._namespace}'"
-        if self._tag:
-            return f" with {match_word} including '{self._tag}'"
+        if self._discovery.namespace:
+            return f" in namespace '{self._discovery.namespace}'"
+        if self._discovery.tag:
+            return f" with {match_word} including '{self._discovery.tag}'"
         return " in the current namespace and tag"
 
     def _confirm_destructive(
@@ -1817,8 +1549,8 @@ class YellowDogApp(QMainWindow):
         # than by tag/name-substring, so describe the scope accordingly.
         if name_args:
             scope = f" matching name pattern '{name_args[0]}'"
-            if self._namespace:
-                scope = f" in namespace '{self._namespace}'{scope}"
+            if self._discovery.namespace:
+                scope = f" in namespace '{self._discovery.namespace}'{scope}"
         else:
             scope = self._scope_phrase(match_word)
 

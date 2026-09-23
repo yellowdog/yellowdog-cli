@@ -25,8 +25,9 @@ qt_guard.require_qt()
 from PyQt6.QtCore import QEventLoop
 from PyQt6.QtWidgets import QApplication
 
-from yellowdog_cli.commander import commander as commander_module
+from yellowdog_cli.commander import config_discovery
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 # These are the tests discovery itself is the subject of, so they opt out of
@@ -51,17 +52,19 @@ def win(qapp, monkeypatch):
     is given a harmless command and let run here, before anything is counted.
     """
     monkeypatch.setattr(
-        YellowDogApp,
+        ConfigDiscovery,
         "_yd_variables_command",
         lambda self: (sys.executable, ["-c", "print('{}')"]),
     )
     window = YellowDogApp()
     deadline = monotonic() + SETTLE_TIMEOUT_S
-    while window._config_parse_invalid and monotonic() < deadline:
+    while window._discovery._config_parse_invalid and monotonic() < deadline:
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
-    assert not window._config_parse_invalid, "the startup discovery never ran"
+    assert not window._discovery._config_parse_invalid, (
+        "the startup discovery never ran"
+    )
 
-    window._invalidate_config_parse()
+    window._discovery.invalidate()
     window.log_output.setPlainText("")
     yield window
     window.close()
@@ -84,14 +87,14 @@ def python_commands(win, monkeypatch, *scripts: str) -> list[int | None]:
         script = remaining.pop(0) if len(remaining) > 1 else remaining[0]
         return sys.executable, ["-c", script]
 
-    real_parse = win._parse_yd_config
+    real_parse = win._discovery._parse_yd_config
 
     def parse(quiet=False, timeout_ms=None):
         timeouts.append(timeout_ms)
         return real_parse(quiet=quiet, timeout_ms=timeout_ms)
 
-    monkeypatch.setattr(win, "_yd_variables_command", command)
-    monkeypatch.setattr(win, "_parse_yd_config", parse)
+    monkeypatch.setattr(win._discovery, "_yd_variables_command", command)
+    monkeypatch.setattr(win._discovery, "_parse_yd_config", parse)
     return timeouts
 
 
@@ -126,7 +129,7 @@ def settle(win, attempts: list, expected: int) -> None:
 def test_discovery_fills_in_the_placeholders(win, monkeypatch):
     python_commands(win, monkeypatch, PRINTS_CONFIG)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert win.namespace_override.placeholderText() == "yd-demo"
     assert win.tag_override.placeholderText() == "my-tag"
@@ -136,12 +139,12 @@ def test_discovery_fills_in_the_placeholders(win, monkeypatch):
 def test_a_timed_out_discovery_is_retried_with_a_longer_budget(win, monkeypatch):
     # The incident: the first attempt does not finish in time. The retry is what
     # a user got by restarting Commander, and should not need a restart.
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     attempts = python_commands(win, monkeypatch, NEVER_FINISHES, PRINTS_CONFIG)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
     settle(win, attempts, 2)
 
     assert attempts == [None, 9000], "the retry should get the longer budget"
@@ -153,12 +156,12 @@ def test_a_timed_out_discovery_is_retried_with_a_longer_budget(win, monkeypatch)
 
 
 def test_a_retry_that_also_times_out_is_not_retried_again(win, monkeypatch):
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     attempts = python_commands(win, monkeypatch, NEVER_FINISHES)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
     settle(win, attempts, 2)
     # Give a third attempt every chance to appear before concluding there is none.
     deadline = monotonic() + 1.0
@@ -172,16 +175,16 @@ def test_a_retry_that_also_times_out_is_not_retried_again(win, monkeypatch):
 def test_a_new_configuration_file_gets_a_fresh_retry(win, monkeypatch, tmp_path):
     # The retry budget is per parse, not per session: selecting another config
     # file must not inherit the exhausted budget of the previous one.
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     attempts = python_commands(win, monkeypatch, NEVER_FINISHES)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
     settle(win, attempts, 2)
 
-    win._invalidate_config_parse()
-    win._reparse_placeholders()
+    win._discovery.invalidate()
+    win._discovery.reparse_placeholders()
     settle(win, attempts, 4)
 
 
@@ -190,7 +193,7 @@ def test_a_non_zero_exit_is_reported_even_though_the_parse_is_quiet(win, monkeyp
     # window to say why, which is what made the incident undiagnosable.
     attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     log = win.log_output.toPlainText()
     assert "Exit 3" in log
@@ -200,10 +203,12 @@ def test_a_non_zero_exit_is_reported_even_though_the_parse_is_quiet(win, monkeyp
 
 def test_a_command_that_cannot_be_started_is_reported(win, monkeypatch):
     monkeypatch.setattr(
-        win, "_yd_variables_command", lambda: ("yd-variables-does-not-exist", [])
+        win._discovery,
+        "_yd_variables_command",
+        lambda: ("yd-variables-does-not-exist", []),
     )
 
-    assert win._parse_yd_config(quiet=True) is False
+    assert win._discovery._parse_yd_config(quiet=True) is False
 
     assert "yd-variables" in win.log_output.toPlainText()
 
@@ -211,7 +216,7 @@ def test_a_command_that_cannot_be_started_is_reported(win, monkeypatch):
 def test_output_that_is_not_json_is_reported(win, monkeypatch):
     python_commands(win, monkeypatch, PRINTS_RUBBISH)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert "Error reading config variables" in win.log_output.toPlainText()
 
@@ -228,8 +233,8 @@ def test_the_same_failure_is_not_reported_over_and_over(win, monkeypatch):
     # have.
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
 
-    win._reparse_placeholders()
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert win.log_output.toPlainText().count("Exit 3") == 1
 
@@ -238,26 +243,26 @@ def test_a_failure_after_a_success_is_reported_again(win, monkeypatch):
     # Suppressing repeats must not suppress a recurrence: the config being fixed
     # and broken again is two things the user needs to see.
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
-    win._reparse_placeholders()
-    win._invalidate_config_parse()
+    win._discovery.reparse_placeholders()
+    win._discovery.invalidate()
 
     python_commands(win, monkeypatch, PRINTS_CONFIG)
-    win._reparse_placeholders()
-    win._invalidate_config_parse()
+    win._discovery.reparse_placeholders()
+    win._discovery.invalidate()
 
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert win.log_output.toPlainText().count("Exit 3") == 2
 
 
 def test_nothing_is_reported_or_retried_while_shutting_down(win, monkeypatch):
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     attempts = python_commands(win, monkeypatch, NEVER_FINISHES)
     win._shutting_down = True
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
     deadline = monotonic() + 1.0
     while monotonic() < deadline:
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
@@ -277,9 +282,9 @@ def test_selecting_a_configuration_file_retries_a_timed_out_discovery(
     # This is the incident itself: Commander launched with a configuration file,
     # the first 'yd-variables' too slow to finish, the placeholders blank until the
     # next launch. _set_config_file is the path a supplied file arrives by.
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     config_file = tmp_path / "config.toml"
     config_file.write_text('[common]\nnamespace = "yd-demo"\ntag = "my-tag"\n')
     attempts = python_commands(win, monkeypatch, NEVER_FINISHES, PRINTS_CONFIG)
@@ -293,7 +298,7 @@ def test_selecting_a_configuration_file_retries_a_timed_out_discovery(
 
 def test_deselecting_a_configuration_file_clears_the_placeholders(win, monkeypatch):
     attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
-    win._set_placeholders("yd-demo", "my-tag")
+    win._discovery._set_placeholders("yd-demo", "my-tag")
 
     win._set_config_file(None)
 
@@ -305,9 +310,9 @@ def test_deselecting_a_configuration_file_clears_the_placeholders(win, monkeypat
 def test_a_configuration_file_changing_on_disk_retries_a_timed_out_discovery(
     win, monkeypatch, tmp_path
 ):
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_TIMEOUT_MS", 300)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
-    monkeypatch.setattr(commander_module, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_TIMEOUT_MS", 300)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_TIMEOUT_MS", 9000)
+    monkeypatch.setattr(config_discovery, "CONFIG_PARSE_RETRY_DELAY_MS", 0)
     config_file = tmp_path / "config.toml"
     config_file.write_text('[common]\nnamespace = "yd-demo"\n')
     win._config_file = str(config_file)
@@ -334,13 +339,17 @@ def type_user_variables(win, text: str) -> None:
     with the debounce interval taken down to nothing so the test does not wait
     it out.
     """
-    win._user_vars_reparse_timer.setInterval(0)
+    win._discovery._user_vars_reparse_timer.setInterval(0)
     win.user_variables.setPlainText(text)
-    assert win._user_vars_reparse_timer.isActive(), "editing should schedule a reparse"
+    assert win._discovery._user_vars_reparse_timer.isActive(), (
+        "editing should schedule a reparse"
+    )
     deadline = monotonic() + SETTLE_TIMEOUT_S
-    while win._user_vars_reparse_timer.isActive() and monotonic() < deadline:
+    while win._discovery._user_vars_reparse_timer.isActive() and monotonic() < deadline:
         QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
-    assert not win._user_vars_reparse_timer.isActive(), "the reparse never ran"
+    assert not win._discovery._user_vars_reparse_timer.isActive(), (
+        "the reparse never ran"
+    )
     QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
 
 
@@ -385,7 +394,7 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
     # Filled in and then emptied again, since setting the text of an already
     # empty box emits nothing and so schedules no reparse to observe.
     win.user_variables.setPlainText("instances=3")
-    win._user_vars_reparse_timer.stop()
+    win._discovery._user_vars_reparse_timer.stop()
 
     type_user_variables(win, "")
 
@@ -407,7 +416,7 @@ def test_no_credentials_and_no_configuration_file_reports_nothing(win, monkeypat
     assert win._config_file is None
     python_commands(win, monkeypatch, NO_CREDENTIALS)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert win.log_output.toPlainText() == ""
     assert win.namespace_override.placeholderText() == ""
@@ -416,14 +425,14 @@ def test_no_credentials_and_no_configuration_file_reports_nothing(win, monkeypat
 def test_starting_with_no_credentials_reports_nothing(qapp, monkeypatch):
     # The report this exists for arrived before the user had touched anything.
     monkeypatch.setattr(
-        YellowDogApp,
+        ConfigDiscovery,
         "_yd_variables_command",
         lambda self: (sys.executable, ["-c", NO_CREDENTIALS]),
     )
     window = YellowDogApp()
     try:
         deadline = monotonic() + SETTLE_TIMEOUT_S
-        while window._config_parse_invalid and monotonic() < deadline:
+        while window._discovery._config_parse_invalid and monotonic() < deadline:
             QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
 
         assert window.log_output.toPlainText() == ""
@@ -437,7 +446,7 @@ def test_the_environment_alone_still_fills_in_the_placeholders(win, monkeypatch)
     assert win._config_file is None
     python_commands(win, monkeypatch, PRINTS_CONFIG)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert win.namespace_override.placeholderText() == "yd-demo"
     assert win.tag_override.placeholderText() == "my-tag"
@@ -450,7 +459,7 @@ def test_any_other_failure_is_still_reported_with_nothing_selected(win, monkeypa
     # are as worth seeing as any other.
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
 
-    win._reparse_placeholders()
+    win._discovery.reparse_placeholders()
 
     assert "Exit 3" in win.log_output.toPlainText()
 
@@ -491,10 +500,10 @@ def test_deselecting_a_configuration_file_clears_the_discovered_tag(win, monkeyp
     # delete path out of the tag, so a stale one is a path acted on.
     python_commands(win, monkeypatch, PRINTS_CONFIG, NO_CREDENTIALS)
     win._set_config_file(None)  # a no-op selection-wise, to run the first script
-    assert win._tag == "my-tag"
+    assert win._discovery.tag == "my-tag"
 
     win._set_config_file(None)
 
-    assert win._namespace is None
-    assert win._tag is None
+    assert win._discovery.namespace is None
+    assert win._discovery.tag is None
     assert win._object_path() is None

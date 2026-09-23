@@ -20,10 +20,8 @@ qt_guard.require_qt()
 from PyQt6.QtCore import QEventLoop, QProcess, QTimer
 from PyQt6.QtWidgets import QDialogButtonBox, QPlainTextEdit
 
-from yellowdog_cli.commander.commander import (
-    CONFIG_PARSE_TIMEOUT_MS,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.config_discovery import CONFIG_PARSE_TIMEOUT_MS
 from yellowdog_cli.commander.startup import StartupSettings
 
 SLEEP_SECONDS = "30"  # long enough that finishing on its own would be a bug
@@ -295,10 +293,10 @@ def test_config_parse_timeout_is_bounded(win, monkeypatch):
         return False  # as if it had timed out
 
     monkeypatch.setattr(win, "_run_nested", fake_run_nested)
-    win._config_parse_invalid = True
+    win._discovery._config_parse_invalid = True
     win.log_output.setPlainText("")
 
-    assert win._parse_yd_config(quiet=True) is False
+    assert win._discovery._parse_yd_config(quiet=True) is False
     assert seen["timeout_ms"] == CONFIG_PARSE_TIMEOUT_MS
     # Reported even though quiet=True
     assert "Timed out after 10s parsing configuration" in win.log_output.toPlainText()
@@ -309,11 +307,11 @@ def test_config_parse_stays_quiet_when_shutting_down(win, monkeypatch):
     monkeypatch.setattr(
         win, "_run_nested", lambda process, loop, timeout_ms=None: False
     )
-    win._config_parse_invalid = True
+    win._discovery._config_parse_invalid = True
     win._shutting_down = True
     win.log_output.setPlainText("")
 
-    assert win._parse_yd_config(quiet=True) is False
+    assert win._discovery._parse_yd_config(quiet=True) is False
     assert win.log_output.toPlainText() == ""
 
 

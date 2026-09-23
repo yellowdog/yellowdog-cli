@@ -490,7 +490,7 @@ def test_entities_are_passed_to_the_confirmation(window, captured, monkeypatch):
             or Confirmation(proceed=True, handles=[row.handle for row in rows])
         ),
     )
-    window._namespace, window._tag = "yd-demo", "pyex"
+    window._discovery.namespace, window._discovery.tag = "yd-demo", "pyex"
     window._cancel_work_requirements_action()
     body, passed = seen[0]
     assert "Cancelling Work Requirements in namespace 'yd-demo'" in body

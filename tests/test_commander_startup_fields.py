@@ -14,6 +14,7 @@ qt_guard.require_qt()
 from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander.commander import SELECTED_WR_PREFIX, YellowDogApp
+from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.commander.startup import StartupSettings
 
 
@@ -71,22 +72,24 @@ def test_the_variables_survive_a_later_edit(make_window):
 def test_the_first_discovery_is_the_only_one_and_sees_the_fields(
     make_window, monkeypatch
 ):
-    seen: list[tuple[YellowDogApp, list[str]]] = []
+    seen: list[tuple[ConfigDiscovery, list[str]]] = []
     monkeypatch.setattr(
-        YellowDogApp,
+        ConfigDiscovery,
         "_parse_yd_config",
         lambda self, quiet=False, timeout_ms=None: (
-            seen.append((self, self._namespace_tag_and_user_vars())) or False
+            seen.append((self, self._override_args())) or False
         ),
     )
     window = make_window(StartupSettings(tag="tag", variables=("a=1",)))
     QApplication.processEvents()  # runs the deferred _set_config_file
     # Filtered to this window: an earlier test's window, closed but not yet
     # deleted, can have its own deferred parse still to run
-    assert [args for w, args in seen if w is window] == [["-t", "tag", "-v", "a=1"]]
+    assert [args for d, args in seen if d is window._discovery] == [
+        ["-t", "tag", "-v", "a=1"]
+    ]
     # Filled after the connections, the user-variables box would have started
     # its reparse timer and run a second parse 600ms later
-    assert not window._user_vars_reparse_timer.isActive()
+    assert not window._discovery._user_vars_reparse_timer.isActive()
 
 
 def test_the_definition_files_are_selected(make_window, tmp_path):
