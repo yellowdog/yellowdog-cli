@@ -46,6 +46,7 @@ from PyQt6.QtCore import (
     QFileSystemWatcher,
     QModelIndex,
     QObject,
+    QPoint,
     QProcess,
     QProcessEnvironment,
     QRect,
@@ -56,6 +57,7 @@ from PyQt6.QtCore import (
     QTimer,
 )
 from PyQt6.QtGui import (
+    QAction,
     QClipboard,
     QCloseEvent,
     QColor,
@@ -64,11 +66,15 @@ from PyQt6.QtGui import (
     QIcon,
     QImage,
     QImageReader,
+    QKeySequence,
     QPainter,
     QPalette,
     QPixmap,
+    QShortcut,
     QStyleHints,
+    QTextBlock,
     QTextCursor,
+    QTextDocument,
 )
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -78,6 +84,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -86,10 +93,12 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProxyStyle,
     QPushButton,
+    QScrollBar,
     QSizePolicy,
     QSpacerItem,
     QSplitter,
@@ -132,6 +141,18 @@ MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
+# The run Commander's own messages belong to in the output window; the commands it
+# launches are numbered from 1. See OutputRun.
+COMMANDER_RUN = 0
+# The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
+# of the process that printed it; see OutputRun.printed_pid.
+PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
+# What starts a new block when text is put into a QTextDocument: a line feed, a
+# carriage return (alone or before a line feed, which together make one), Unicode's
+# paragraph separator, and Qt's two frame markers. The output window's blocks are
+# tagged with the entry they came from by counting them, so the count must be Qt's.
+BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
+SHOW_ALL_OUTPUT = "Show All Output"
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
@@ -675,6 +696,83 @@ class FilePreview(QWidget):
         return body
 
 
+def block_count(text: str) -> int:
+    """
+    The number of blocks 'text' becomes in a QTextDocument; see BLOCK_SEPARATORS.
+    """
+    return len(BLOCK_SEPARATORS.split(text))
+
+
+@dataclass
+class OutputRun:
+    """
+    One source of text in the output window — a command Commander launched, or
+    Commander itself — which the window can be filtered to.
+
+    The output is filtered by run rather than by the PID text in each line,
+    because most of a command's output does not carry its PID: a wrapped
+    message's continuation lines, a table or a JSON document have no prefix at
+    all, and the 'Executing:' line announcing the command is printed by
+    Commander, with Commander's PID, before the command has one. Every chunk of
+    text arrives from a known QProcess, so it is attributed when it arrives.
+    """
+
+    run_id: int
+    command: str  # the program run, e.g. 'yd-submit'; empty for Commander
+    command_line: str = ""  # as echoed on the 'Executing:' line
+    pid: int | None = None  # as QProcess reports it, once started
+    # The PID the command printed in its own message prefixes, preferred for
+    # display because it is the one the user sees in the output; QProcess's can
+    # differ where a console-script launcher stands between the two.
+    printed_pid: int | None = None
+
+    def _subject(self, process_word: str) -> str:
+        pid = self.printed_pid if self.printed_pid is not None else self.pid
+        if pid is None:  # it never started
+            return self.command
+        return f"{process_word} {pid:06d} ({self.command})"
+
+    @property
+    def menu_text(self) -> str:
+        if self.run_id == COMMANDER_RUN:
+            return "Show Only Commander's Own Messages"
+        return f"Show Only Output from {self._subject('Process')}"
+
+    @property
+    def bar_text(self) -> str:
+        if self.run_id == COMMANDER_RUN:
+            return "Showing only Commander's own messages"
+        return f"Showing only output from {self._subject('process')}"
+
+
+@dataclass
+class OutputEntry:
+    """
+    One call's worth of text in the output window, which may be several lines,
+    and the run it came from. The entries are the window's contents; what the
+    widget holds is the view of them the current filter allows.
+    """
+
+    run_id: int
+    text: str
+    # An 'Executing:' line, which belongs to its command's run and is also one
+    # of Commander's own messages: Commander prints it, with Commander's PID, so
+    # a user reading the PID on it can mean either.
+    announcement: bool = False
+
+    @property
+    def lines(self) -> int:
+        return block_count(self.text)
+
+    @property
+    def runs(self) -> list[int]:
+        """The runs this entry is shown under, its command's first."""
+        return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
+
+    def shown_under(self, run_id: int | None) -> bool:
+        return run_id is None or run_id in self.runs
+
+
 class LineBuffer:
     """
     Accumulates raw bytes read from a subprocess output channel and yields
@@ -1069,6 +1167,8 @@ class YellowDogApp(QMainWindow):
     object_path_label: QLabel
 
     log_output: QPlainTextEdit
+    output_filter_bar: QFrame
+    output_filter_label: QLabel
     user_variables: QPlainTextEdit
     wr_submit_options: QPlainTextEdit
     wp_provision_options: QPlainTextEdit
@@ -1093,6 +1193,8 @@ class YellowDogApp(QMainWindow):
     clear_command_output: QPushButton
     copy_command_output: QPushButton
     save_command_output: QPushButton
+    output_filter_hidden_lines: QPushButton
+    output_filter_show_all: QPushButton
     delete_objects: QPushButton
     cancel_work_requirements: QPushButton
     cancel_work_requirements_and_abort: QPushButton
@@ -1144,6 +1246,27 @@ class YellowDogApp(QMainWindow):
         self._font.setFamily("Courier New")
         self._font.setWeight(500)
         self.log_output.setFont(self._font)
+
+        # The output window's contents and where they came from, so that it can
+        # be filtered to one command's output; see OutputRun
+        self._output_runs: dict[int, OutputRun] = {
+            COMMANDER_RUN: OutputRun(COMMANDER_RUN, "", pid=self._pid)
+        }
+        self._output_entries: list[OutputEntry] = []
+        self._output_line_total = 0
+        self._output_filter: int | None = None  # the run shown, or None for all
+        self._hidden_line_count = 0  # arrived while filtered, and not shown
+        self.output_filter_bar.hide()
+        self.log_output.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.log_output.customContextMenuRequested.connect(self._show_output_menu)
+        self.output_filter_show_all.clicked.connect(self._show_all_output)
+        self.output_filter_hidden_lines.clicked.connect(self._show_all_output)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_Escape),
+            self.log_output,
+            self._show_all_output,
+            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        )
 
         # Set up action connections
         self.select_config_file.clicked.connect(self._select_config_file_action)
@@ -1277,6 +1400,7 @@ class YellowDogApp(QMainWindow):
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
+        self._active_run = COMMANDER_RUN  # the output run of _active_process
 
         # Live child processes and nested event loops, so that shutdown() can
         # stop them deterministically instead of leaving them to be torn down
@@ -2505,7 +2629,17 @@ class YellowDogApp(QMainWindow):
         )
 
     def _clear_output_action(self):
+        """
+        Clear everything, filtered out or not, and so end any filter: clearing
+        only what is shown, or only what is hidden, would leave the window's
+        contents a surprise when the filter is lifted.
+        """
+        self._output_entries.clear()
+        self._output_line_total = 0
+        self._output_filter = None
+        self._hidden_line_count = 0
         self.log_output.setPlainText("")
+        self._update_output_filter_bar()
 
     def _copy_output_action(self):
         cast(QClipboard, QApplication.clipboard()).setText(
@@ -2813,33 +2947,48 @@ class YellowDogApp(QMainWindow):
         process.setProcessEnvironment(process_env)
         stdout_buffer = LineBuffer()
         stderr_buffer = LineBuffer()
+        run = OutputRun(
+            len(self._output_runs), command, command_line_text(command, display_args)
+        )
+        self._output_runs[run.run_id] = run
         process.readyReadStandardOutput.connect(
-            functools_partial(self._on_stdout, process, stdout_buffer)
+            functools_partial(self._on_stdout, process, run, stdout_buffer)
         )
         process.readyReadStandardError.connect(
-            functools_partial(self._on_stderr, process, stderr_buffer)
+            functools_partial(self._on_stderr, process, run, stderr_buffer)
         )
         process.finished.connect(
             functools_partial(
-                self._on_process_output_finished, process, stdout_buffer, stderr_buffer
+                self._on_process_output_finished,
+                process,
+                run,
+                stdout_buffer,
+                stderr_buffer,
             )
         )
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
 
+        # Part of the command's run, although printed by Commander with its own
+        # PID, since it is the line saying what the command was
         self._log(
-            f"Executing: '{command_line_text(command, display_args)}'"
-            f" in directory '{self._working_dir()}'"
+            f"Executing: '{run.command_line}' in directory '{self._working_dir()}'",
+            run=run.run_id,
+            announcement=True,
         )
 
         process.setWorkingDirectory(self._working_dir())
         process.start(command, args)
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
-            self._log(f"Error running command: '{process.errorString()}'")
+            self._log(
+                f"Error running command: '{process.errorString()}'", run=run.run_id
+            )
         else:
+            run.pid = process.processId()
             if accept_stdin:
                 self._active_process = process
+                self._active_run = run.run_id
                 self.stdin_input.setEnabled(True)
                 self.stdin_input.setPlaceholderText("Send input to process...")
                 process.finished.connect(self._on_active_process_finished)
@@ -3101,7 +3250,7 @@ class YellowDogApp(QMainWindow):
             return
         pid = self._active_process.processId()
         self._active_process.write((text + "\n").encode())
-        self._log(f"{self._prefix(pid)}<-- {text}", prefix=False)
+        self._log(f"{self._prefix(pid)}<-- {text}", prefix=False, run=self._active_run)
         self.stdin_input.setPlainText("")
 
     def _browse_results_directory_action(self):
@@ -3656,15 +3805,16 @@ class YellowDogApp(QMainWindow):
 
         return dialog, checkboxes
 
-    def _on_stdout(self, process: QProcess, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()))
+    def _on_stdout(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
+        self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()), run)
 
-    def _on_stderr(self, process: QProcess, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardError().data()))
+    def _on_stderr(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
+        self._log_lines(line_buffer.feed(process.readAllStandardError().data()), run)
 
     def _on_process_output_finished(
         self,
         process: QProcess,
+        run: OutputRun,
         stdout_buffer: LineBuffer,
         stderr_buffer: LineBuffer,
         *_signal_args,
@@ -3675,19 +3825,182 @@ class YellowDogApp(QMainWindow):
         """
         self._log_lines(
             stdout_buffer.feed(process.readAllStandardOutput().data())
-            + stdout_buffer.flush()
+            + stdout_buffer.flush(),
+            run,
         )
         self._log_lines(
             stderr_buffer.feed(process.readAllStandardError().data())
-            + stderr_buffer.flush()
+            + stderr_buffer.flush(),
+            run,
         )
 
-    def _log_lines(self, lines: list[str]):
-        if lines:
-            self._log("\n".join(lines), prefix=False)
+    def _log_lines(self, lines: list[str], run: OutputRun):
+        if not lines:
+            return
+        if run.printed_pid is None:
+            for line in lines:
+                if match := PREFIXED_PID.match(line):
+                    run.printed_pid = int(match.group(1))
+                    break
+        self._log("\n".join(lines), prefix=False, run=run.run_id)
 
-    def _log(self, output: str, prefix: bool = True):
-        self.log_output.appendPlainText(f"{self._prefix() if prefix else ''}{output}")
+    def _log(
+        self,
+        output: str,
+        prefix: bool = True,
+        run: int = COMMANDER_RUN,
+        announcement: bool = False,
+    ):
+        """
+        Add text to the output window, attributed to the run it came from:
+        Commander's own messages unless a command's run is named. While the
+        window is filtered to another run it is kept but not shown, and counted
+        in the filter bar. An announcement is a command's 'Executing:' line; see
+        OutputEntry.
+        """
+        entry = OutputEntry(
+            run, f"{self._prefix() if prefix else ''}{output}", announcement
+        )
+        self._output_entries.append(entry)
+        self._output_line_total += entry.lines
+        if entry.shown_under(self._output_filter):
+            self.log_output.appendPlainText(entry.text)
+            # Tag the blocks just added with their entry, which is how a
+            # right-click finds the run of the line under it
+            block = cast(QTextDocument, self.log_output.document()).lastBlock()
+            for _ in range(entry.lines):
+                block.setUserState(len(self._output_entries) - 1)
+                block = block.previous()
+        else:
+            self._hidden_line_count += entry.lines
+        self._update_output_filter_bar()
+
+    def _show_output_menu(self, position: QPoint):
+        menu = self._build_output_menu(position)
+        try:
+            menu.exec(cast(QWidget, self.log_output.viewport()).mapToGlobal(position))
+        finally:
+            menu.deleteLater()
+
+    def _build_output_menu(self, position: QPoint) -> QMenu:
+        """
+        Build (but do not show) the output window's context menu: the standard
+        Copy and Select All, then the filter actions. The runs offered are those
+        of the line under the pointer, so nothing has to be selected first — two
+        of them for an 'Executing:' line, its command's and Commander's.
+        """
+        menu = cast(QMenu, self.log_output.createStandardContextMenu(position))
+        block = self.log_output.cursorForPosition(position).block()
+        entry = self._entry_of(block)
+        actions: list[tuple[str, Callable[[], None]]] = [
+            (
+                self._output_runs[run_id].menu_text,
+                functools_partial(self._filter_output, run_id, block.blockNumber()),
+            )
+            for run_id in (entry.runs if entry is not None else [])
+            if run_id != self._output_filter
+        ]
+        if self._output_filter is not None:
+            actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
+        if actions:
+            menu.addSeparator()
+            for text, slot in actions:
+                cast(QAction, menu.addAction(text)).triggered.connect(slot)
+        return menu
+
+    def _entry_of(self, block: QTextBlock) -> OutputEntry | None:
+        """
+        The entry a block of the output window was added from, or None for a
+        block with no entry: one put there other than by _log.
+        """
+        index = block.userState()
+        if 0 <= index < len(self._output_entries):
+            return self._output_entries[index]
+        return None
+
+    def _show_all_output(self):
+        if self._output_filter is not None:
+            self._filter_output(None)
+
+    def _filter_output(self, run_id: int | None, anchor_block: int | None = None):
+        """
+        Show only one run's output, or (with None) all of it. The line being read
+        stays where it was on screen — the line right-clicked, when there was one,
+        otherwise the top line — unless the window was following the output at
+        its end, in which case it still is.
+        """
+        scrollbar = cast(QScrollBar, self.log_output.verticalScrollBar())
+        following = scrollbar.value() == scrollbar.maximum()
+        top = self.log_output.firstVisibleBlock().blockNumber()
+        document = cast(QTextDocument, self.log_output.document())
+        anchor = document.findBlockByNumber(
+            top if anchor_block is None else anchor_block
+        )
+        anchor_index = anchor.userState()
+        # Anchor on the first line of the anchor's entry, the one the rebuilt
+        # view can locate, keeping its offset from the top of the window
+        while anchor.previous().isValid() and (
+            anchor.previous().userState() == anchor_index
+        ):
+            anchor = anchor.previous()
+        anchor_row = anchor.blockNumber() - top
+
+        self._output_filter = run_id
+        self._hidden_line_count = 0
+        # Show or hide the bar before scrolling, and lay it out now rather than
+        # at the next event: it takes its height from the output window, and a
+        # window that loses rows after being scrolled to its end no longer is.
+        self.output_filter_bar.setVisible(run_id is not None)
+        cast(QLayout, cast(QWidget, self.centralWidget()).layout()).activate()
+        shown = [
+            (index, entry)
+            for index, entry in enumerate(self._output_entries)
+            if entry.shown_under(run_id)
+        ]
+        self.log_output.setPlainText("\n".join(entry.text for _, entry in shown))
+        block = document.firstBlock()
+        anchor_line: int | None = None
+        for index, entry in shown:
+            if index == anchor_index:
+                anchor_line = block.blockNumber()
+            for _ in range(entry.lines):
+                block.setUserState(index)
+                block = block.next()
+
+        if following or anchor_line is None:
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(max(0, anchor_line - anchor_row))
+        self._update_output_filter_bar()
+
+    def _update_output_filter_bar(self):
+        """
+        Show the filter bar while the output window is filtered, saying what it
+        is filtered to and how much is not being shown, and hide it otherwise.
+        Copy and Save take what is shown, so their tooltips say so while it is.
+        """
+        self.output_filter_bar.setVisible(self._output_filter is not None)
+        if self._output_filter is None:
+            for button in (self.copy_command_output, self.save_command_output):
+                button.setToolTip("")
+            return
+
+        run = self._output_runs[self._output_filter]
+        document = cast(QTextDocument, self.log_output.document())
+        shown = 0 if document.isEmpty() else document.blockCount()
+        self.output_filter_label.setText(
+            f"{run.bar_text} · {shown:,} of {self._output_line_total:,} lines"
+        )
+        self.output_filter_label.setToolTip(run.command_line)
+        self.output_filter_hidden_lines.setVisible(self._hidden_line_count > 0)
+        self.output_filter_hidden_lines.setText(
+            f"+{self._hidden_line_count:,} new"
+            f" line{'' if self._hidden_line_count == 1 else 's'} hidden"
+        )
+        for button in (self.copy_command_output, self.save_command_output):
+            button.setToolTip(
+                f"Only the lines shown: {run.bar_text[0].lower()}{run.bar_text[1:]}"
+            )
 
     def _follow_progress_set(self, checked_state: Qt.CheckState):
         if self.dry_run.isChecked() and checked_state == Qt.CheckState.Checked:

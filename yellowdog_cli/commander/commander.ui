@@ -923,6 +923,47 @@
        </widget>
       </item>
       <item>
+       <widget class="QFrame" name="output_filter_bar">
+        <property name="frameShape">
+         <enum>QFrame::Shape::StyledPanel</enum>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_output_filter">
+         <property name="leftMargin">
+          <number>6</number>
+         </property>
+         <property name="topMargin">
+          <number>2</number>
+         </property>
+         <property name="rightMargin">
+          <number>2</number>
+         </property>
+         <property name="bottomMargin">
+          <number>2</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="output_filter_label">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+             <horstretch>1</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="output_filter_hidden_lines"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="output_filter_show_all">
+           <property name="text">
+            <string>Show All Output</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
        <widget class="QPlainTextEdit" name="log_output">
         <property name="font">
          <font>

@@ -1,0 +1,419 @@
+"""
+Tests for filtering Commander's output window to one command's output.
+
+The commands are real child processes, run through _run_command_in_subprocess, so
+their output reaches the window the way a yd-* command's does — by the QProcess
+signals, in whatever chunks the pipe delivers — and is attributed to its run on the
+way in. That attribution is what the filter depends on: most of a command's output
+carries no PID (continuation lines, tables, JSON), and the 'Executing:' line
+announcing it carries Commander's.
+"""
+
+import sys
+
+import pytest
+import qt_guard
+
+qt_guard.require_qt()
+
+import gui_harness
+from PyQt6.QtCore import QEventLoop, QPoint, QProcess, Qt, QTimer
+from PyQt6.QtGui import QTextCursor, QTextDocument
+from PyQt6.QtTest import QTest
+from PyQt6.QtWidgets import QApplication, QMenu
+
+from yellowdog_cli.commander.commander import (
+    SHOW_ALL_OUTPUT,
+    OutputRun,
+    YellowDogApp,
+    block_count,
+)
+
+CHILD_TIMEOUT_MS = 10_000
+
+
+@pytest.fixture
+def window(qapp):
+    return gui_harness.shown(YellowDogApp())
+
+
+def run_child(window: YellowDogApp, *lines: str):
+    """
+    Run a child process printing 'lines' through Commander, and wait for its
+    output to have been delivered.
+    """
+    # Hex-encoded, so that the 'Executing:' line echoing the command line does
+    # not contain the text the command prints, which the tests search for
+    window._run_command_in_subprocess(
+        sys.executable,
+        [
+            "-c",
+            "import sys; print(bytes.fromhex(sys.argv[1]).decode())",
+            "\n".join(lines).encode().hex(),
+        ],
+        yd_command=False,
+    )
+    process: QProcess = window._processes[-1]
+    loop = QEventLoop()
+    process.finished.connect(loop.quit)
+    QTimer.singleShot(CHILD_TIMEOUT_MS, loop.quit)
+    if process.state() != QProcess.ProcessState.NotRunning:
+        loop.exec()
+    assert process.state() == QProcess.ProcessState.NotRunning, "child hung"
+
+
+def shown(window: YellowDogApp) -> str:
+    return window.log_output.toPlainText()
+
+
+def position_of(window: YellowDogApp, text: str) -> QPoint:
+    """Where, in the output window's viewport, the line containing 'text' is."""
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    assert block.isValid(), f"{text!r} is not shown"
+    window.log_output.setTextCursor(QTextCursor(block))
+    window.log_output.ensureCursorVisible()
+    return window.log_output.cursorRect(QTextCursor(block)).center()
+
+
+def menu_action(menu: QMenu, text: str):
+    matching = [action for action in menu.actions() if action.text() == text]
+    assert matching, f"no {text!r} in {[a.text() for a in menu.actions()]}"
+    return matching[0]
+
+
+def filter_to_line_containing(window: YellowDogApp, text: str):
+    """Filter the way a user does: right-click the line, choose the Show Only item."""
+    menu = window._build_output_menu(position_of(window, text))
+    show_only = [a for a in menu.actions() if a.text().startswith("Show Only")]
+    assert len(show_only) == 1, [a.text() for a in menu.actions()]
+    show_only[0].trigger()
+
+
+@pytest.fixture
+def two_runs(window):
+    window._log("Commander says hello")
+    run_child(
+        window,
+        "2026-09-23 10:00:00 (123456) : first command, first message",
+        "                              which wraps onto a second line",
+        "| a | table |",
+    )
+    run_child(window, "2026-09-23 10:00:01 (654321) : second command's message")
+    return window
+
+
+@pytest.mark.parametrize(
+    "text", ["one", "", "a\nb", "a\n", "a\r\nb", "a\rb", "a\u2029b", "a\u2028b"]
+)
+def test_block_count_is_qts(qapp, text):
+    # The window's blocks are tagged with their entry by counting, so a count
+    # that disagreed with Qt's would misattribute every line after it.
+    document = QTextDocument()
+    document.setPlainText(text)
+    assert block_count(text) == document.blockCount()
+
+
+def test_filtering_keeps_the_whole_of_the_run(two_runs):
+    filter_to_line_containing(two_runs, "first message")
+
+    text = shown(two_runs)
+    assert "Executing:" in text, "the line saying what the command was"
+    assert "first message" in text
+    assert "which wraps onto a second line" in text, "a line with no PID"
+    assert "| a | table |" in text
+    assert "second command" not in text
+    assert "Commander says hello" not in text
+    assert text.count("Executing:") == 1
+
+
+def test_any_line_of_a_run_selects_it_not_just_a_prefixed_one(two_runs):
+    filter_to_line_containing(two_runs, "| a | table |")
+
+    assert "first message" in shown(two_runs)
+    assert "second command" not in shown(two_runs)
+
+
+def show_only_texts(menu: QMenu) -> list[str]:
+    return [a.text() for a in menu.actions() if a.text().startswith("Show Only")]
+
+
+def test_the_executing_line_offers_its_command_and_commander(two_runs):
+    # It belongs to the command, but it is printed with Commander's PID, so a
+    # user reading the PID on it could mean either.
+    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+
+    assert show_only_texts(menu) == [
+        f"Show Only Output from Process 123456 ({sys.executable})",
+        "Show Only Commander's Own Messages",
+    ], "the command first: it is what the line is about"
+
+
+def test_the_executing_line_selects_its_command(two_runs):
+    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu_action(menu, show_only_texts(menu)[0]).trigger()
+
+    assert "first message" in shown(two_runs)
+    assert "Commander says hello" not in shown(two_runs)
+
+
+def test_the_executing_line_selects_commander(two_runs):
+    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu_action(menu, "Show Only Commander's Own Messages").trigger()
+
+    text = shown(two_runs)
+    assert "Commander says hello" in text
+    assert text.count("Executing:") == 2, "every command's, not just the one clicked"
+    assert "first message" not in text
+
+
+def test_filtered_to_commander_an_executing_line_offers_its_command(two_runs):
+    filter_to_line_containing(two_runs, "Commander says hello")
+
+    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+
+    assert show_only_texts(menu) == [
+        f"Show Only Output from Process 123456 ({sys.executable})"
+    ]
+    menu_action(menu, show_only_texts(menu)[0]).trigger()
+    assert "first message" in shown(two_runs)
+
+
+def test_an_executing_line_arriving_while_filtered_to_commander_is_shown(two_runs):
+    filter_to_line_containing(two_runs, "Commander says hello")
+
+    run_child(two_runs, "a third command's message")
+
+    assert shown(two_runs).count("Executing:") == 3
+    assert "a third command's message" not in shown(two_runs)
+    assert two_runs.output_filter_hidden_lines.text() == "+1 new line hidden"
+
+
+def test_the_menu_names_the_pid_the_command_printed(two_runs):
+    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+
+    menu_action(menu, "Show Only Output from Process 654321 (" + sys.executable + ")")
+
+
+def test_commanders_own_messages_can_be_filtered_to(two_runs):
+    menu = two_runs._build_output_menu(position_of(two_runs, "Commander says hello"))
+    menu_action(menu, "Show Only Commander's Own Messages").trigger()
+
+    assert "Commander says hello" in shown(two_runs)
+    assert "first message" not in shown(two_runs)
+    assert "second command" not in shown(two_runs)
+
+
+def test_the_menu_keeps_the_standard_actions(two_runs):
+    menu = two_runs._build_output_menu(position_of(two_runs, "first message"))
+
+    texts = [action.text() for action in menu.actions()]
+    assert any("Copy" in text for text in texts)
+    assert any("Select All" in text for text in texts)
+    assert SHOW_ALL_OUTPUT not in texts, "nothing to show all of yet"
+
+
+def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
+    assert not two_runs.output_filter_bar.isVisible()
+    everything = shown(two_runs)
+
+    filter_to_line_containing(two_runs, "second command")
+
+    assert two_runs.output_filter_bar.isVisible()
+    label = two_runs.output_filter_label.text()
+    assert "process 654321" in label
+    assert f"2 of {everything.count(chr(10)) + 1} lines" in label
+    assert not two_runs.output_filter_hidden_lines.isVisible()
+
+    two_runs.output_filter_show_all.click()
+
+    assert not two_runs.output_filter_bar.isVisible()
+    assert shown(two_runs) == everything, "in the original order"
+
+
+def test_the_menu_offers_show_all_while_filtered(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+
+    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+    texts = [action.text() for action in menu.actions()]
+    assert not any(text.startswith("Show Only") for text in texts), (
+        "already showing only that"
+    )
+    menu_action(menu, SHOW_ALL_OUTPUT).trigger()
+
+    assert "first message" in shown(two_runs)
+
+
+def test_escape_ends_the_filter(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+    two_runs.log_output.setFocus()
+
+    QTest.keyClick(two_runs.log_output, Qt.Key.Key_Escape)
+
+    assert "first message" in shown(two_runs)
+    assert not two_runs.output_filter_bar.isVisible()
+
+
+def test_output_arriving_while_filtered(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+    second_run = two_runs._output_filter
+    assert second_run is not None
+
+    two_runs._log("more from Commander")
+    two_runs._log("more from the second command", prefix=False, run=second_run)
+
+    assert "more from Commander" not in shown(two_runs)
+    assert "more from the second command" in shown(two_runs)
+    assert two_runs.output_filter_hidden_lines.isVisible()
+    assert two_runs.output_filter_hidden_lines.text() == "+1 new line hidden"
+
+    run_child(two_runs, "a third command's message", "and another line")
+    assert two_runs.output_filter_hidden_lines.text() == "+4 new lines hidden"
+
+    two_runs.output_filter_hidden_lines.click()
+    assert "more from Commander" in shown(two_runs)
+    assert "a third command's message" in shown(two_runs)
+
+
+def test_a_line_arriving_while_filtered_can_itself_be_filtered_to(two_runs):
+    # Appended to a filtered view, it must be tagged like any other line.
+    filter_to_line_containing(two_runs, "second command")
+    second_run = two_runs._output_filter
+    assert second_run is not None
+    two_runs._log("more from the second command", prefix=False, run=second_run)
+    two_runs._show_all_output()
+
+    filter_to_line_containing(two_runs, "more from the second command")
+
+    assert "second command's message" in shown(two_runs)
+    assert "first message" not in shown(two_runs)
+
+
+def test_clear_clears_everything_and_ends_the_filter(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+
+    two_runs.clear_command_output.click()
+
+    assert shown(two_runs) == ""
+    assert not two_runs.output_filter_bar.isVisible()
+    two_runs._log("after the clear")
+    assert shown(two_runs).endswith("after the clear")
+    assert "first message" not in shown(two_runs)
+
+
+def test_copy_takes_what_is_shown(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+
+    two_runs.copy_command_output.click()
+
+    clipboard = QApplication.clipboard()
+    assert clipboard is not None
+    assert clipboard.text() == shown(two_runs)
+    assert "first message" not in clipboard.text()
+    assert "Only the lines shown" in two_runs.copy_command_output.toolTip()
+
+
+def test_save_takes_what_is_shown(two_runs, tmp_path, monkeypatch):
+    target = tmp_path / "saved.txt"
+    monkeypatch.setattr(two_runs, "_save_file", lambda **kwargs: str(target))
+    filter_to_line_containing(two_runs, "second command")
+    expected = shown(two_runs)
+
+    two_runs.save_command_output.click()
+
+    assert target.read_text(encoding="utf-8") == f"{expected}\n"
+
+
+def interleaved(window: YellowDogApp, runs: int = 60):
+    """Many short runs, interleaved with Commander's messages, to scroll through."""
+    window._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
+    window._output_runs[2] = OutputRun(2, "yd-b", pid=222222)
+    for n in range(runs):
+        window._log(f"a{n:03d}", prefix=False, run=1)
+        window._log(f"b{n:03d}", prefix=False, run=2)
+
+
+def row_on_screen(window: YellowDogApp, text: str) -> int:
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    return block.blockNumber() - window.log_output.firstVisibleBlock().blockNumber()
+
+
+def test_the_line_right_clicked_stays_where_it_was(window):
+    interleaved(window)
+    scrollbar = window.log_output.verticalScrollBar()
+    assert scrollbar is not None
+    scrollbar.setValue(scrollbar.maximum() // 2)
+    # An 'a' line a few rows down from the top, so that its row is not trivially 0
+    block = window.log_output.firstVisibleBlock().next().next().next()
+    if not block.text().startswith("a"):
+        block = block.next()
+    target = block.text()
+    before = row_on_screen(window, target)
+    assert before > 0
+
+    menu = window._build_output_menu(
+        window.log_output.cursorRect(
+            QTextCursor(window.log_output.document().find(target).block())
+        ).center()
+    )
+    menu_action(menu, "Show Only Output from Process 111111 (yd-a)").trigger()
+
+    assert row_on_screen(window, target) == before
+
+
+def test_ending_the_filter_keeps_the_top_line_in_view(window):
+    interleaved(window)
+    window._filter_output(1)
+    scrollbar = window.log_output.verticalScrollBar()
+    assert scrollbar is not None
+    scrollbar.setValue(scrollbar.maximum() // 2)
+    top = window.log_output.firstVisibleBlock().text()
+
+    window._show_all_output()
+
+    assert window.log_output.firstVisibleBlock().text() == top
+
+
+def test_following_the_end_keeps_following(window):
+    interleaved(window)
+    scrollbar = window.log_output.verticalScrollBar()
+    assert scrollbar is not None
+    scrollbar.setValue(scrollbar.maximum())
+
+    window._filter_output(1)
+
+    assert scrollbar.value() == scrollbar.maximum()
+    window._log("a-late", prefix=False, run=1)
+    assert scrollbar.value() == scrollbar.maximum()
+
+
+def test_right_clicking_opens_the_menu(window, monkeypatch):
+    # The wiring from the widget's context-menu signal to the menu Commander
+    # builds; the menu itself is driven inside its real exec().
+    interleaved(window, runs=3)
+    point = position_of(window, "b001")
+    chosen: list[str] = []
+
+    def choose():
+        popup = QApplication.activePopupWidget()
+        assert isinstance(popup, QMenu), "no menu was shown"
+        action = menu_action(popup, "Show Only Output from Process 222222 (yd-b)")
+        chosen.append(action.text())
+        action.trigger()
+        popup.close()
+
+    def watchdog():
+        popup = QApplication.activePopupWidget()
+        if popup is not None:
+            popup.close()
+
+    QTimer.singleShot(0, choose)
+    QTimer.singleShot(gui_harness.MODAL_WATCHDOG_MS, watchdog)
+    window.log_output.customContextMenuRequested.emit(point)
+
+    assert chosen
+    assert "a001" not in shown(window)
+    assert "b001" in shown(window)
