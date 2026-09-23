@@ -36,7 +36,6 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
     TASK_BATCH_SIZE_DEFAULT,
-    VAR_NESTED_DEPTH,
     YD_CONF,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
@@ -60,8 +59,20 @@ from yellowdog_cli.utils.variables import (
     add_substitutions_without_overwriting,
     load_toml_file_with_variable_substitutions,
     process_variable_substitutions,
-    process_variable_substitutions_insitu,
+    resolve_variables_insitu,
 )
+
+
+def _resolve_section_variables(section: dict) -> None:
+    """
+    Resolve the variables in a configuration section, in-situ, exiting with
+    the error if they cannot be (a circular reference, a malformed default).
+    """
+    try:
+        resolve_variables_insitu(section)
+    except ValueError as e:
+        print_error(e)
+        exit(1)
 
 
 def config_file_explicitly_selected() -> bool:
@@ -355,7 +366,7 @@ def import_toml(filename: str) -> dict:
     try:
         common_config: dict = load_toml_file_with_variable_substitutions(filename)
         return common_config[COMMON_SECTION]
-    except (FileNotFoundError, PermissionError, TOMLDecodeError) as e:
+    except (FileNotFoundError, PermissionError, TOMLDecodeError, ValueError) as e:
         print_error(f"Unable to load imported common configuration data: {e}")
         exit(1)
 
@@ -505,8 +516,7 @@ def load_config_data_client() -> ConfigDataClient:
     else:
         dc_section = _select_dc_section(base_section, None)
 
-    for _ in range(VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(dc_section)
+    _resolve_section_variables(dc_section)
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
         if cli_value is not None:
@@ -592,8 +602,7 @@ def load_config_data_client_for_profile(
     if profile_name is not None:
         print_debug(f"Using destination data client profile: '{profile_name}'")
 
-    for _ in range(VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(dc_section)
+    _resolve_section_variables(dc_section)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
         toml_value = dc_section.get(toml_key)
@@ -632,8 +641,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
     # Process any new substitutions after the common config
     # has been processed
-    for _ in range(VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(wr_section)
+    _resolve_section_variables(wr_section)
 
     try:
         # Allow WORKER_TAG if WORKER_TAGS is empty
@@ -766,9 +774,8 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     # Process any new substitutions after the common config
     # has been processed
-    for _ in range(VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(wp_section)
-        process_variable_substitutions_insitu(cr_section)
+    _resolve_section_variables(wp_section)
+    _resolve_section_variables(cr_section)
 
     duplicate_keys = set(wp_section.keys()).intersection(set(cr_section.keys()))
     if duplicate_keys:

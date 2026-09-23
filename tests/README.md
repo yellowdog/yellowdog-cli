@@ -76,7 +76,7 @@ pytest -v -n 4 --run-demos
 | `test_instance_pricing_preference.py` | `instancePricingPreference` enum, config field, and `load_config_work_requirement()` mapping |
 | `test_interactive.py` | `utils/interactive.py` — `confirmed` (--yes / YD_YES shortcuts), `get_selected_list_items` (range parsing: comma, dash, `*`, error recovery) |
 | `test_list_name_glob.py` | `list.py` — `yd-list --name` glob filtering for every entity type that supports it, rejection for those that don't, and the warnings for unnamed items |
-| `test_load_config_helpers.py` | `utils/load_config.py` — helpers not covered by other test files |
+| `test_load_config_helpers.py` | `utils/load_config.py` — helpers not covered by other test files, including a circular variable reference in a configuration section exiting with the error |
 | `test_ls_formatting.py` | `ls.py` — `_print_listing`, `_print_flat`, `_print_tree` output formatting |
 | `test_matched_item_rows.py` | `utils/dataclient_utils.py` — `matched_item_rows`, the enumeration behind `yd-delete`/`yd-download --dry-run --json`: each row's path must be usable verbatim and joined to the directory it came from |
 | `test_misc_utils.py` | `utils/misc_utils.py` — name formatting, ID generation, delimiter parsing, etc. |
@@ -108,7 +108,7 @@ pytest -v -n 4 --run-demos
 | `test_user_agent.py` | `utils/user_agent.py` — direct CLI calls carry a CLI-only User-Agent, SDK calls additionally advertise the SDK version |
 | `test_validate_properties.py` | `utils/validate_properties.py` — `validate_properties` (key validation, deprecated and excluded keys) |
 | `test_variable_processing.py` | `utils/misc_utils.py` — `split_delimited_string`, `remove_outer_delimiters`, `find_delimited_expressions` |
-| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, that a TOML date falls back to its text, that nested variables resolve alike in JSON, Jsonnet and TOML specifications, that a compact (unindented) specification keeps its type-tagged values' types, and that an unset (`::`) expression nested in another removes the property when its value is needed |
+| `test_variable_subs.py` | `utils/variables.py` — `{{variable}}` substitution engine, including the rendering of non-string variable values as JSON so that they round-trip through the type tags, that a string is never requoted, that a TOML date falls back to its text, that nested variables resolve alike in JSON, Jsonnet and TOML specifications, that a compact (unindented) specification keeps its type-tagged values' types, that an unset (`::`) expression nested in another removes the property when its value is needed, and that substitution passes repeat until nothing changes, reporting a circular reference as an error |
 | `test_variables_command.py` | `variables.py` — `yd-variables`: named selection, all variables when none is named, alphabetical order, `null` for a name that isn't a variable, and the redaction of `key`/`secret` in the full report (revealed by naming them or by `--show-secrets`, and no other variable redacted) |
 | `test_ydid_utils.py` | `utils/ydid_utils.py` — `get_ydid_type`, `split_instance_specification` (the `cr_id.instance_id` form, including dotted instance IDs), type constants |
 

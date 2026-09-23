@@ -936,8 +936,10 @@ class TestNestedVariablesInEveryFormat:
     Nested variables are not a TOML feature: the recursion that resolves the
     innermost expression first is in process_untyped_variable_substitutions(),
     which every loader goes through, and each loader repeats its in-situ pass
-    VAR_NESTED_DEPTH times so that a value which substitutes in a further
-    variable reference is resolved to the same depth whatever the format.
+    until a pass changes nothing, so that a value which substitutes in a
+    further variable reference is resolved however long the chain. A chain
+    that never settles is circular, and is an error at the pass cap,
+    VAR_SUBSTITUTION_MAX_PASSES.
     """
 
     @pytest.fixture(autouse=True)
@@ -984,15 +986,142 @@ class TestNestedVariablesInEveryFormat:
         assert load_spec({"t": "{{template_{{region::}}}}"}) == {"t": "TP"}
 
     def test_value_substituting_in_further_references(self, load_spec, monkeypatch):
-        # Each reference is only revealed by resolving the one before it. A
-        # single pass gets through two of these, so a chain this long needs
-        # the three passes TOML always had and JSON and Jsonnet, with one
-        # pass over the file text and one in situ, fell a pass short of:
-        # they left '{{env:YD_TEST_2}}' in the specification
-        monkeypatch.setenv("YD_TEST_0", "{{env:YD_TEST_1}}")
-        monkeypatch.setenv("YD_TEST_1", "{{env:YD_TEST_2}}")
-        monkeypatch.setenv("YD_TEST_2", "{{region}}")
+        # Each reference is only revealed by resolving the one before it,
+        # about a link a pass. A fixed three passes stopped at three or four
+        # links, leaving '{{env:YD_TEST_n}}' in the specification
+        _chain_env_vars(monkeypatch, 8)
         assert load_spec({"t": "{{env:YD_TEST_0}}"}) == {"t": "phoenix"}
+
+    def test_undefined_variable_is_not_a_cycle(self, load_spec):
+        # Unchanged after the first pass, so the passes stop and it is passed
+        # through as it always was
+        assert load_spec({"t": "{{undefined}}"}) == {"t": "{{undefined}}"}
+
+    def test_mutually_referring_variables_are_an_error(self, load_spec, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with pytest.raises(ValueError, match=r"circular.*'(spec\.)?loop'"):
+            load_spec({"fine": "{{region}}", "loop": "{{env:YD_TEST_A}}"})
+
+    def test_self_referring_variable_is_an_error(self, load_spec, monkeypatch):
+        # Never repeats itself, but grows on every pass, so never settles
+        monkeypatch.setenv("YD_TEST_G", "x{{env:YD_TEST_G}}")
+        with pytest.raises(ValueError, match=r"circular.*'(spec\.)?grows'"):
+            load_spec({"grows": "{{env:YD_TEST_G}}"})
+
+    @pytest.mark.parametrize("order", [("p", "q"), ("q", "p")])
+    def test_circular_table_variables_are_an_error(self, load_spec, order):
+        # Defined, each resolves to its own token, which every pass then
+        # substitutes back to itself: settled, but never resolved. Checked in
+        # both definition orders, which decide what the values settle to
+        values = {"p": "{{q}}", "q": "{{p}}"}
+        var_module.add_substitutions_without_overwriting(
+            {name: values[name] for name in order}
+        )
+        with pytest.raises(ValueError, match=r"(?i)circular.*'(spec\.)?t'"):
+            load_spec({"t": "{{p}}"})
+
+    def test_self_referring_table_variable_is_an_error(self, load_spec):
+        var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
+        with pytest.raises(ValueError, match="Circular variable reference: 's'"):
+            load_spec({"t": "x-{{s}}"})
+
+
+def _chain_env_vars(monkeypatch, links: int) -> None:
+    """YD_TEST_0 -> '{{env:YD_TEST_1}}' -> ... -> '{{region}}'."""
+    for i in range(links):
+        monkeypatch.setenv(
+            f"YD_TEST_{i}",
+            f"{{{{env:YD_TEST_{i + 1}}}}}" if i < links - 1 else "{{region}}",
+        )
+
+
+class TestSubstitutionPasses:
+    """
+    resolve_variables_insitu() repeats the in-situ pass until one changes
+    nothing, and raises at VAR_SUBSTITUTION_MAX_PASSES.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    @pytest.fixture()
+    def pass_count(self, monkeypatch):
+        passes = []
+        real_pass = var_module._substitute_insitu_pass
+
+        def _counting_pass(*args, **kwargs):
+            passes.append(None)
+            return real_pass(*args, **kwargs)
+
+        monkeypatch.setattr(var_module, "_substitute_insitu_pass", _counting_pass)
+        return passes
+
+    def test_nothing_to_substitute_takes_one_pass(self, pass_count):
+        var_module.resolve_variables_insitu({"a": "plain", "b": ["x", 1]})
+        assert len(pass_count) == 1
+
+    def test_plain_substitution_takes_two_passes(self, pass_count):
+        # One to substitute, one to find there is nothing more to do
+        data = {"a": "{{myvar}}"}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"a": "hello"}
+        assert len(pass_count) == 2
+
+    def test_a_removed_property_is_a_change(self, pass_count):
+        data = {"a": "{{missing::}}", "b": ["{{missing::}}"]}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"b": []}
+        assert len(pass_count) == 2
+
+    @staticmethod
+    def _passes_that_change(monkeypatch, changing: int) -> None:
+        """Stand in for a pass: the first 'changing' passes change 'p'."""
+        calls = []
+
+        def _pass(data, prefix="", postfix=""):
+            calls.append(None)
+            return ["p"] if len(calls) <= changing else []
+
+        monkeypatch.setattr(var_module, "_substitute_insitu_pass", _pass)
+
+    def test_settling_on_the_last_pass_is_not_an_error(self, monkeypatch):
+        cap = var_module.VAR_SUBSTITUTION_MAX_PASSES
+        self._passes_that_change(monkeypatch, cap - 1)
+        var_module.resolve_variables_insitu({})
+
+    def test_still_changing_on_the_last_pass_is_an_error(self, monkeypatch):
+        cap = var_module.VAR_SUBSTITUTION_MAX_PASSES
+        self._passes_that_change(monkeypatch, cap)
+        with pytest.raises(ValueError, match="circular"):
+            var_module.resolve_variables_insitu({})
+
+    def test_mustache_left_for_the_server_is_not_circular(self):
+        # Only expressions in the delimiters being substituted are checked: a
+        # Worker Pool specification's '__{{v}}__' is substituted and its
+        # '{{v}}' left to the platform, whether or not 'v' is defined
+        var_module.VARIABLE_SUBSTITUTIONS["v"] = "{{v}}"
+        data = {"t": "{{v}}", "u": "__{{myvar}}__"}
+        var_module.resolve_variables_insitu(data, prefix="__", postfix="__")
+        assert data == {"t": "{{v}}", "u": "hello"}
+
+    def test_a_long_chain_resolves(self, monkeypatch):
+        _chain_env_vars(monkeypatch, 8)
+        var_module.VARIABLE_SUBSTITUTIONS["region"] = "end"
+        data = {"t": "{{env:YD_TEST_0}}"}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"t": "end"}
+
+    def test_the_cap_is_an_error_naming_the_property(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        data = {"tasks": [{"name": "{{env:YD_TEST_A}}"}]}
+        with pytest.raises(ValueError) as exc:
+            var_module.resolve_variables_insitu(data)
+        message = str(exc.value)
+        assert f"{var_module.VAR_SUBSTITUTION_MAX_PASSES} passes" in message
+        assert "'tasks[0].name'" in message
 
 
 class TestCompactSpecifications:

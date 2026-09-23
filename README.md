@@ -199,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 13:46:35 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 23 14:25:36 BST 2026 -->
 
 <!--te-->
 
@@ -799,7 +799,7 @@ For example, if one wanted to select a different `templateId` for a Worker Pool 
 
 Then, if one used `yd-provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
 
-Nesting can be up to three levels deep including the top level. The example is TOML, but `"templateId": "{{template_{{region}}}}"` works the same way in a JSON or Jsonnet specification. Note that sequencing of properties does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
+There is no limit on how deeply variables can be nested, and a variable whose value itself contains variable references is resolved however long the chain. A circular reference, where a variable refers back to itself either directly or through other variables, is reported as an error. The example is TOML, but `"templateId": "{{template_{{region}}}}"` works the same way in a JSON or Jsonnet specification. Note that sequencing of properties does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
 
 ### Providing Default Values for User-Defined Variables
 

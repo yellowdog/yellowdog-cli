@@ -84,7 +84,10 @@ BOOL_TYPE_TAG = "bool" + TYPE_TAG_TERMINATOR
 ARRAY_TYPE_TAG = "array" + TYPE_TAG_TERMINATOR
 TABLE_TYPE_TAG = "table" + TYPE_TAG_TERMINATOR
 FORMAT_NAME_TYPE_TAG = "format_name" + TYPE_TAG_TERMINATOR
-VAR_NESTED_DEPTH = 3
+# The most in-situ substitution passes a specification is given to settle; a
+# pass that changes nothing ends them. Real chains of references settle in two
+# or three, so reaching this means a circular one.
+VAR_SUBSTITUTION_MAX_PASSES = 10
 RCLONE_PREFIX = "rclone:"
 
 VAR_NAME_OF_UNNAMED_TASK = "none"

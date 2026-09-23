@@ -12,6 +12,8 @@ Covers here:
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
   - load_config_worker_pool: name type checking
+  - _resolve_section_variables: a circular variable reference in a section
+    is reported and exits
 """
 
 import os
@@ -373,7 +375,7 @@ class TestLoadConfigWorkRequirement:
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
             patch.object(lc_module, "ARGS_PARSER", args),
-            patch.object(lc_module, "process_variable_substitutions_insitu"),
+            patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
                 "process_variable_substitutions",
@@ -528,7 +530,7 @@ class TestLoadConfigWorkerPool:
         )
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
-            patch.object(lc_module, "process_variable_substitutions_insitu"),
+            patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
                 "process_variable_substitutions",
@@ -559,3 +561,44 @@ class TestLoadConfigWorkerPool:
             self._call(toml_wp_section={WP_NAME: value})
         message = str(print_error.call_args.args[0])
         assert f"'{WP_NAME}'" in message and "String" in message
+
+
+class TestResolveSectionVariables:
+    """
+    A configuration section whose variables never settle -- a circular
+    reference -- is reported as an error and exits, as the section loaders'
+    other configuration errors are.
+    """
+
+    def test_resolves_in_place(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_SECTION_VAR", "value")
+        section = {"name": "{{env:YD_TEST_SECTION_VAR}}"}
+        lc_module._resolve_section_variables(section)
+        assert section == {"name": "value"}
+
+    def test_circular_reference_exits_with_the_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            lc_module._resolve_section_variables({"name": "{{env:YD_TEST_A}}"})
+        assert exc.value.code == 1
+        message = str(print_error.call_args.args[0])
+        assert "circular" in message
+        assert "'name'" in message
+
+    def test_work_requirement_section_uses_it(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(
+                lc_module,
+                "CONFIG_TOML",
+                {WORK_REQUIREMENT_SECTION: {"name": "{{env:YD_TEST_A}}"}},
+            ),
+            patch.object(lc_module, "print_error"),
+            pytest.raises(SystemExit),
+        ):
+            load_config_work_requirement()

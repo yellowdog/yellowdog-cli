@@ -51,8 +51,8 @@ from yellowdog_cli.utils.settings import (
     TYPE_TAG_DEFAULT_GUARD,
     VAR_CLOSING_DELIMITER,
     VAR_DEFAULT_SEPARATOR,
-    VAR_NESTED_DEPTH,
     VAR_OPENING_DELIMITER,
+    VAR_SUBSTITUTION_MAX_PASSES,
     VAR_UNSET_SUFFIX,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -250,8 +250,34 @@ def process_variable_substitutions_insitu(
     for client-side processing to be disambiguated from those to be passed
     through for server-side processing.
     """
+    _substitute_insitu_pass(data, prefix=prefix, postfix=postfix)
+    return data
 
-    def _walk_data(data: dict | list):
+
+def _substitute_insitu_pass(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[str]:
+    """
+    One substitution pass over 'data', in-situ, returning the paths of the
+    properties it changed or removed (e.g. 'taskGroups[0].name').
+    """
+    changed: list[str] = []
+
+    def _substitute(key_, value_: str, path: str):
+        # Require the use of post/prefix only for userData in TOML
+        if key_ == USERDATA:
+            result = process_variable_substitutions(
+                value_, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+            )
+        else:
+            result = process_variable_substitutions(
+                value_, prefix=prefix, postfix=postfix
+            )
+        if result is _UNSET or result != value_:
+            changed.append(path)
+        return result
+
+    def _walk_data(data: dict | list, path: str):
         """
         Helper function to walk the data structure performing
         variable substitutions.
@@ -259,44 +285,118 @@ def process_variable_substitutions_insitu(
         if isinstance(data, dict):
             keys_to_delete = []
             for key_, value_ in data.items():
+                key_path = f"{path}.{key_}" if path else str(key_)
                 if isinstance(value_, str):
-                    # Require the use of post/prefix only for userData in TOML
-                    if key_ == USERDATA:
-                        result = process_variable_substitutions(
-                            value_,
-                            prefix=WP_VARIABLES_PREFIX,
-                            postfix=WP_VARIABLES_POSTFIX,
-                        )
-                    else:
-                        result = process_variable_substitutions(
-                            value_, prefix=prefix, postfix=postfix
-                        )
+                    result = _substitute(key_, value_, key_path)
                     if result is _UNSET:
                         keys_to_delete.append(key_)
                     else:
                         data[key_] = result
                 elif isinstance(value_, dict) or isinstance(value_, list):
-                    _walk_data(value_)
+                    _walk_data(value_, key_path)
             for key_ in keys_to_delete:
                 del data[key_]
         elif isinstance(data, list):
             indices_to_delete = []
             for index, item in enumerate(data):
+                index_path = f"{path}[{index}]"
                 if isinstance(item, str):
-                    result = process_variable_substitutions(
-                        item, prefix=prefix, postfix=postfix
-                    )
+                    # A list element is never userData, so no key applies
+                    result = _substitute(None, item, index_path)
                     if result is _UNSET:
                         indices_to_delete.append(index)
                     else:
                         data[index] = result
                 elif isinstance(item, dict) or isinstance(item, list):
-                    _walk_data(item)
+                    _walk_data(item, index_path)
             for index in reversed(indices_to_delete):
                 del data[index]
 
-    _walk_data(data)
-    return data
+    _walk_data(data, "")
+    return changed
+
+
+def resolve_variables_insitu(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> None:
+    """
+    Repeat the in-situ pass until one changes nothing, so that a substituted
+    value which itself contains a variable reference is resolved too, however
+    long the chain. A circular reference -- a variable that refers back to
+    itself, directly or through others -- raises ValueError: either the
+    values are still changing after VAR_SUBSTITUTION_MAX_PASSES passes, or
+    they have settled with a defined variable still unsubstituted, which only
+    a circular one can be. An undefined variable is neither: it is unchanged
+    by the first pass and is passed through as it stands.
+    """
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        changed = _substitute_insitu_pass(data, prefix=prefix, postfix=postfix)
+        if not changed:
+            break
+    else:
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in {_list_paths(changed)}"
+        )
+
+    circular = _unsubstituted_defined_variables(data, prefix=prefix, postfix=postfix)
+    if circular:
+        names = ", ".join(f"'{name}'" for name in sorted({n for n, _ in circular}))
+        raise ValueError(
+            f"Circular variable reference: {names} refers back to itself,"
+            f" in {_list_paths([path for _, path in circular])}"
+        )
+
+
+def _list_paths(paths: list[str], limit: int = 5) -> str:
+    shown = ", ".join(f"'{path}'" for path in paths[:limit])
+    more = f" and {len(paths) - limit} more" if len(paths) > limit else ""
+    return shown + more
+
+
+def _unsubstituted_defined_variables(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[tuple[str, str]]:
+    """
+    The (variable name, property path) of every expression left in 'data'
+    that is just a defined variable's name. A pass always substitutes a
+    defined variable, so once the passes have settled, one still there is
+    one whose value leads back to its own name.
+    """
+    found: list[tuple[str, str]] = []
+
+    def _check(key_, value_: str, path: str):
+        if key_ == USERDATA:
+            opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+        else:
+            opening, closing = prefix, postfix
+        opening += VAR_OPENING_DELIMITER
+        closing = VAR_CLOSING_DELIMITER + closing
+        if opening not in value_:
+            return
+        for expression in find_delimited_expressions(value_, opening, closing):
+            name = expression[len(opening) : -len(closing)]
+            if name in VARIABLE_SUBSTITUTIONS:
+                found.append((name, path))
+
+    def _walk_data(data: dict | list, path: str):
+        items = (
+            (
+                (key_, f"{path}.{key_}" if path else str(key_), value_)
+                for key_, value_ in data.items()
+            )
+            if isinstance(data, dict)
+            else ((None, f"{path}[{index}]", item) for index, item in enumerate(data))
+        )
+        for key_, item_path, value_ in items:
+            if isinstance(value_, str):
+                _check(key_, value_, item_path)
+            elif isinstance(value_, (dict, list)):
+                _walk_data(value_, item_path)
+
+    _walk_data(data, "")
+    return found
 
 
 def process_variable_substitutions(
@@ -627,18 +727,6 @@ def resolve_filename(files_directory: str, filename: str) -> str:
     return os.path.join(files_directory, filename)
 
 
-def _resolve_nested_variables_insitu(
-    data: dict, prefix: str = "", postfix: str = ""
-) -> None:
-    """
-    Repeat the in-situ pass so that a substituted value which itself
-    contains a variable reference is resolved too, to the same depth
-    whatever the specification's format.
-    """
-    for _ in range(VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(data, prefix=prefix, postfix=postfix)
-
-
 def load_json_file_with_variable_substitutions(
     filename: str, prefix: str = "", postfix: str = "", files_directory: str = ""
 ) -> dict:
@@ -652,7 +740,7 @@ def load_json_file_with_variable_substitutions(
         file_contents, prefix=prefix, postfix=postfix
     )
     result = json_loads(file_contents)
-    _resolve_nested_variables_insitu(result, prefix=prefix, postfix=postfix)
+    resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
     return result
 
 
@@ -682,7 +770,7 @@ def load_jsonnet_file_with_variable_substitutions(
             raise RuntimeError(str(e).partition("\n")[0])
 
     # Secondary processing after Jsonnet expansion
-    _resolve_nested_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
+    resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
 
     if ARGS_PARSER.jsonnet_dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
@@ -717,7 +805,7 @@ def load_toml_file_with_variable_substitutions(
     except KeyError:
         pass
 
-    _resolve_nested_variables_insitu(config, prefix=prefix, postfix=postfix)
+    resolve_variables_insitu(config, prefix=prefix, postfix=postfix)
 
     return config
 
