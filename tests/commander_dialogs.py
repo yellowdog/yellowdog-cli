@@ -50,11 +50,30 @@ def listing(dialog) -> QListWidget:
 
 def untick(dialog, indexes) -> None:
     """Untick rows by index, as a user clicking their checkboxes would."""
+    set_check_states(dialog, indexes, Qt.CheckState.Unchecked)
+
+
+def tick(dialog, indexes) -> None:
+    """Tick rows by index, as a user clicking their checkboxes would."""
+    set_check_states(dialog, indexes, Qt.CheckState.Checked)
+
+
+def set_check_states(dialog, indexes, state: Qt.CheckState) -> None:
     rows = listing(dialog)
     for index in indexes:
         item = rows.item(index)
         assert item is not None, f"no row at index {index}"
-        item.setCheckState(Qt.CheckState.Unchecked)
+        item.setCheckState(state)
+
+
+def ticked(dialog) -> list[int]:
+    """The indexes of the rows ticked."""
+    rows = listing(dialog)
+    return [
+        index
+        for index in range(rows.count())
+        if rows.item(index).checkState() == Qt.CheckState.Checked
+    ]
 
 
 def drive_confirmation(
@@ -115,8 +134,8 @@ def drive_chooser(
     """
     real_build = window._build_chooser_dialog
 
-    def build(title, message, accept_text, rows):
-        dialog, accept_btn = real_build(title, message, accept_text, rows)
+    def build(title, message, accept_text, rows, checked=None):
+        dialog, accept_btn = real_build(title, message, accept_text, rows, checked)
 
         def interact(open_dialog):
             if untick_rows:
@@ -170,24 +189,25 @@ def drive_process_chooser(
     window,
     monkeypatch,
     press: str,
-    choose_row: int | None = None,
+    tick_rows: tuple = (),
+    untick_rows: tuple = (),
     inspect=None,
 ) -> None:
     """
-    Arm the next process chooser so that, inside its real exec(), row 'choose_row'
-    is made current (if given) and 'press' is pressed. 'inspect(dialog, listing)'
-    runs first if given. Like the chooser, it wires its own button box.
+    Arm the next process chooser so that, inside its real exec(), the given rows
+    are ticked and unticked and 'press' is pressed. 'inspect(dialog)' runs first
+    if given. Like the chooser it is built on, it wires its own button box.
     """
     real_build = window._build_process_dialog
 
-    def build(runs, current):
-        dialog, process_list = real_build(runs, current)
+    def build(runs, ticked_runs):
+        dialog, process_list = real_build(runs, ticked_runs)
 
         def interact(open_dialog):
             if inspect is not None:
-                inspect(open_dialog, process_list)
-            if choose_row is not None:
-                process_list.setCurrentRow(choose_row)
+                inspect(open_dialog)
+            tick(open_dialog, tick_rows)
+            untick(open_dialog, untick_rows)
             if press == ACCEPT:
                 gui_harness.button_labelled(open_dialog, "Show Output").click()
             elif press == CANCEL:

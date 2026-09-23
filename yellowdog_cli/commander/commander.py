@@ -749,10 +749,10 @@ class OutputRun:
         return f"Show Only Output from {self._subject('Process')}"
 
     @property
-    def bar_text(self) -> str:
+    def bar_subject(self) -> str:
         if self.run_id == COMMANDER_RUN:
-            return "Showing only Commander's own messages"
-        return f"Showing only output from {self._subject('process')}"
+            return "Commander's own messages"
+        return self._subject("process")
 
     @property
     def shown_pid(self) -> int | None:
@@ -761,6 +761,24 @@ class OutputRun:
     @property
     def running(self) -> bool:
         return self.run_id != COMMANDER_RUN and self.outcome is None
+
+
+def filter_description(runs: list[OutputRun]) -> str:
+    """
+    What the filter bar says is shown: 'Showing only' and the runs, commands
+    in the order they started and Commander's own messages last, where the
+    sentence reads better than at its start.
+    """
+    ordered = sorted(runs, key=lambda run: (run.run_id == COMMANDER_RUN, run.run_id))
+    subjects = [run.bar_subject for run in ordered]
+    listed = (
+        subjects[0]
+        if len(subjects) == 1
+        else f"{', '.join(subjects[:-1])} and {subjects[-1]}"
+    )
+    if ordered[0].run_id == COMMANDER_RUN:  # Commander's alone
+        return f"Showing only {listed}"
+    return f"Showing only output from {listed}"
 
 
 @dataclass
@@ -787,8 +805,9 @@ class OutputEntry:
         """The runs this entry is shown under, its command's first."""
         return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
 
-    def shown_under(self, run_id: int | None) -> bool:
-        return run_id is None or run_id in self.runs
+    def shown_under(self, run_ids: frozenset[int] | None) -> bool:
+        """Whether a filter to 'run_ids' shows this entry; None shows everything."""
+        return run_ids is None or any(run_id in run_ids for run_id in self.runs)
 
 
 class LineBuffer:
@@ -1271,7 +1290,8 @@ class YellowDogApp(QMainWindow):
         }
         self._output_entries: list[OutputEntry] = []
         self._output_line_total = 0
-        self._output_filter: int | None = None  # the run shown, or None for all
+        # The runs shown, or None for all of them
+        self._output_filter: frozenset[int] | None = None
         self._hidden_line_count = 0  # arrived while filtered, and not shown
         self.output_filter_bar.hide()
         self.log_output.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -2076,9 +2096,12 @@ class YellowDogApp(QMainWindow):
             # for the rest of the session.
             dialog.deleteLater()
 
-    def _build_selection_list_widget(self, rows: list[SelectableRow]) -> QListWidget:
+    def _build_selection_list_widget(
+        self, rows: list[SelectableRow], checked: set[str] | None = None
+    ) -> QListWidget:
         """
-        A checkable list, every row ticked. Each row shows its display text in
+        A checkable list, every row ticked unless 'checked' names the handles
+        that are. Each row shows its display text in
         the monospaced output font and holds its handle in UserRole, which is
         where the run arguments are read from; the tooltip carries the fuller
         text so a row elided by a narrow dialog (QListWidget's default
@@ -2115,7 +2138,11 @@ class YellowDogApp(QMainWindow):
         for row in rows:
             item = QListWidgetItem(row.display)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if checked is None or row.handle in checked
+                else Qt.CheckState.Unchecked
+            )
             item.setToolTip(row.tooltip)
             item.setData(Qt.ItemDataRole.UserRole, row.handle)
             listing.addItem(item)
@@ -2308,7 +2335,10 @@ class YellowDogApp(QMainWindow):
         return False
 
     def _add_selection_listing(
-        self, layout: QVBoxLayout, rows: list[SelectableRow] | None
+        self,
+        layout: QVBoxLayout,
+        rows: list[SelectableRow] | None,
+        checked: set[str] | None = None,
     ) -> tuple[QListWidget | None, QLabel | None]:
         """
         Add the checkable listing and its All / None buttons and count label to a
@@ -2323,7 +2353,7 @@ class YellowDogApp(QMainWindow):
         if not rows:
             return None, None
 
-        listing = self._build_selection_list_widget(rows)
+        listing = self._build_selection_list_widget(rows, checked)
         count_label = QLabel()
         count_label.setObjectName("selection_count")
         all_btn = QPushButton("All")
@@ -2378,10 +2408,12 @@ class YellowDogApp(QMainWindow):
         message: str,
         accept_text: str,
         rows: list[SelectableRow],
+        checked: set[str] | None = None,
     ) -> tuple[QDialog, QPushButton]:
         """
         Build (but do not show) a non-destructive chooser: a message, the same
-        checkable listing the confirmation dialog uses, and Cancel / <accept_text>
+        checkable listing the confirmation dialog uses (every row ticked unless
+        'checked' names the handles that are), and Cancel / <accept_text>
         buttons with the accept button as the default. Returns the dialog and that
         button so the caller can tell acceptance from dismissal.
 
@@ -2400,7 +2432,7 @@ class YellowDogApp(QMainWindow):
         message_label.setWordWrap(True)
         layout.addWidget(message_label)
 
-        listing, count_label = self._add_selection_listing(layout, rows)
+        listing, count_label = self._add_selection_listing(layout, rows, checked)
 
         button_box = QDialogButtonBox(dialog)
         button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
@@ -3957,10 +3989,12 @@ class YellowDogApp(QMainWindow):
         actions: list[tuple[str, Callable[[], None]]] = [
             (
                 self._output_runs[run_id].menu_text,
-                functools_partial(self._filter_output, run_id, block.blockNumber()),
+                functools_partial(
+                    self._filter_output, frozenset({run_id}), block.blockNumber()
+                ),
             )
             for run_id in (entry.runs if entry is not None else [])
-            if run_id != self._output_filter
+            if frozenset({run_id}) != self._output_filter
         ]
         if self._output_filter is not None:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
@@ -3998,29 +4032,30 @@ class YellowDogApp(QMainWindow):
         self, clicked_run: int | None = None, anchor_block: int | None = None
     ):
         """
-        Offer the process chooser, and filter the output to the run chosen.
-        Selected at the start: the run being shown, otherwise that of the line
+        Offer the process chooser, and filter the output to the runs ticked.
+        Ticked at the start: the runs being shown, otherwise that of the line
         right-clicked (its command's, for an 'Executing:' line), otherwise the
         latest. The line right-clicked is kept in place, as the menu's own
-        Show Only items keep it.
+        Show Only items keep it, when it is among the runs chosen.
         """
         runs = self._choosable_runs()
         if not runs:
             return
-        run_ids = [run.run_id for run in runs]
-        preferred = [self._output_filter, clicked_run, run_ids[-1]]
-        current = next(run_id for run_id in preferred if run_id in run_ids)
-        dialog, listing = self._build_process_dialog(runs, current)
+        run_ids = {run.run_id for run in runs}
+        preferred = [
+            self._output_filter & run_ids if self._output_filter else frozenset(),
+            frozenset({clicked_run}) & run_ids,
+            frozenset({runs[-1].run_id}),
+        ]
+        ticked = next(choice for choice in preferred if choice)
+        dialog, listing = self._build_process_dialog(runs, ticked)
         try:
             if dialog.exec() != QDialog.DialogCode.Accepted.value:
                 return
-            item = listing.currentItem()
-            if item is None:
-                return
-            chosen = cast(int, item.data(Qt.ItemDataRole.UserRole))
+            chosen = frozenset(int(handle) for handle in checked_handles(listing))
         finally:
             dialog.deleteLater()
-        if chosen != self._output_filter:
+        if chosen and chosen != self._output_filter:
             self._filter_output(chosen, anchor_block)
 
     def _process_rows(self, runs: list[OutputRun]) -> list[str]:
@@ -4063,39 +4098,33 @@ class YellowDogApp(QMainWindow):
         ]
 
     def _build_process_dialog(
-        self, runs: list[OutputRun], current: int
+        self, runs: list[OutputRun], ticked: frozenset[int]
     ) -> tuple[QDialog, QListWidget]:
         """
-        Build (but do not show) the process chooser: a list of the runs, one of
-        them selected, and Cancel / Show Output (default). A double-click or
-        Return on a row accepts it too. Returns the dialog and the list, whose
-        current item's UserRole is the chosen run.
+        Build (but do not show) the process chooser: the non-destructive
+        chooser over the runs, those in 'ticked' ticked, with Show Output as its
+        accept button. Returns the dialog and its listing, whose ticked rows'
+        handles are the chosen runs' IDs.
 
-        Single selection by highlighting, deliberately without radio buttons:
-        it is how a single choice from a list is normally made, and it keeps
-        clear of the misplaced check and radio indicators that
-        fix_check_indicator_placement() exists to correct. A multiple selection
-        would move to _build_selection_list_widget's checkable rows.
-
-        The dialog opens wide enough for its longest row, up to the main
-        window's width; beyond that a row is elided, and its tooltip has the
-        whole command line.
+        The listing opens wide enough for its longest row, up to the main
+        window's width, since a row is mostly a command line and the other
+        choosers' rows are short; beyond that a row is elided, and its tooltip
+        has the whole command line.
         """
-        dialog = QDialog(self)
-        dialog.setWindowTitle(PROCESS_DIALOG_TITLE)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Choose the process whose output to show:"))
-
-        listing = self._new_dialog_listing("process_list")
-        listing.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        for run, text in zip(runs, self._process_rows(runs)):
-            item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, run.run_id)
-            item.setToolTip(run.command_line or text)
-            listing.addItem(item)
-            if run.run_id == current:
-                listing.setCurrentItem(item)
-        self._fit_dialog_listing_height(listing)
+        rows = [
+            SelectableRow(
+                display=text, handle=str(run.run_id), tooltip=run.command_line or text
+            )
+            for run, text in zip(runs, self._process_rows(runs))
+        ]
+        dialog, _show_btn = self._build_chooser_dialog(
+            PROCESS_DIALOG_TITLE,
+            "Choose the processes whose output to show:",
+            "Show Output",
+            rows,
+            checked={str(run_id) for run_id in ticked},
+        )
+        listing = cast(QListWidget, dialog.findChild(QListWidget, "selection_list"))
         scrollbar = cast(QScrollBar, listing.verticalScrollBar())
         listing.setMinimumWidth(
             min(
@@ -4109,20 +4138,6 @@ class YellowDogApp(QMainWindow):
                 self.width(),
             )
         )
-        listing.itemActivated.connect(dialog.accept)
-        layout.addWidget(listing)
-
-        button_box = QDialogButtonBox(dialog)
-        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
-        show_btn = cast(
-            QPushButton,
-            button_box.addButton("Show Output", QDialogButtonBox.ButtonRole.AcceptRole),
-        )
-        show_btn.setDefault(True)
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        layout.addWidget(button_box)
-        listing.setFocus()
         return dialog, listing
 
     def _entry_of(self, block: QTextBlock) -> OutputEntry | None:
@@ -4139,9 +4154,11 @@ class YellowDogApp(QMainWindow):
         if self._output_filter is not None:
             self._filter_output(None)
 
-    def _filter_output(self, run_id: int | None, anchor_block: int | None = None):
+    def _filter_output(
+        self, run_ids: frozenset[int] | None, anchor_block: int | None = None
+    ):
         """
-        Show only one run's output, or (with None) all of it. The line being read
+        Show only the output of 'run_ids', or (with None) all of it. The line being read
         stays where it was on screen — the line right-clicked, when there was one,
         otherwise the top line — unless the window was following the output at
         its end, in which case it still is.
@@ -4162,17 +4179,17 @@ class YellowDogApp(QMainWindow):
             anchor = anchor.previous()
         anchor_row = anchor.blockNumber() - top
 
-        self._output_filter = run_id
+        self._output_filter = run_ids
         self._hidden_line_count = 0
         # Show or hide the bar before scrolling, and lay it out now rather than
         # at the next event: it takes its height from the output window, and a
         # window that loses rows after being scrolled to its end no longer is.
-        self.output_filter_bar.setVisible(run_id is not None)
+        self.output_filter_bar.setVisible(run_ids is not None)
         cast(QLayout, cast(QWidget, self.centralWidget()).layout()).activate()
         shown = [
             (index, entry)
             for index, entry in enumerate(self._output_entries)
-            if entry.shown_under(run_id)
+            if entry.shown_under(run_ids)
         ]
         self.log_output.setPlainText("\n".join(entry.text for _, entry in shown))
         block = document.firstBlock()
@@ -4202,7 +4219,8 @@ class YellowDogApp(QMainWindow):
                 button.setToolTip("")
             return
 
-        run = self._output_runs[self._output_filter]
+        runs = [self._output_runs[run_id] for run_id in self._output_filter]
+        description = filter_description(runs)
         document = cast(QTextDocument, self.log_output.document())
         shown = 0 if document.isEmpty() else document.blockCount()
         # The count of hidden new lines is text rather than a button: clicking
@@ -4210,17 +4228,19 @@ class YellowDogApp(QMainWindow):
         # labelled with a status does not say that
         hidden = self._hidden_line_count
         self.output_filter_label.setText(
-            f"{run.bar_text} · {shown:,} of {self._output_line_total:,} lines"
+            f"{description} · {shown:,} of {self._output_line_total:,} lines"
             + (
                 f" · {hidden:,} new line{'' if hidden == 1 else 's'} hidden"
                 if hidden
                 else ""
             )
         )
-        self.output_filter_label.setToolTip(run.command_line)
+        self.output_filter_label.setToolTip(
+            "\n".join(run.command_line for run in runs if run.command_line)
+        )
         for button in (self.copy_command_output, self.save_command_output):
             button.setToolTip(
-                f"Only the lines shown: {run.bar_text[0].lower()}{run.bar_text[1:]}"
+                f"Only the lines shown: {description[0].lower()}{description[1:]}"
             )
 
     def _follow_progress_set(self, checked_state: Qt.CheckState):
