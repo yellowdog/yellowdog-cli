@@ -89,18 +89,16 @@ _UNDEFINED_VARIABLES_REPORTED: set[str] = set()
 # it: an optional type tag, an optional 'env:', and a name. Anything else --
 # Docker's '{{.ID}}', a Go template's '{{ .Values.x }}', Handlebars'
 # '{{#each}}' -- is text meant for something else, and is not reported.
+_TYPE_TAGS = (
+    NUMBER_TYPE_TAG,
+    BOOL_TYPE_TAG,
+    ARRAY_TYPE_TAG,
+    TABLE_TYPE_TAG,
+    FORMAT_NAME_TYPE_TAG,
+)
 _VARIABLE_REFERENCE = re.compile(
     "(?:"
-    + "|".join(
-        re.escape(tag)
-        for tag in (
-            NUMBER_TYPE_TAG,
-            BOOL_TYPE_TAG,
-            ARRAY_TYPE_TAG,
-            TABLE_TYPE_TAG,
-            FORMAT_NAME_TYPE_TAG,
-        )
-    )
+    + "|".join(re.escape(tag) for tag in _TYPE_TAGS)
     + f")?((?:{re.escape(ENV_VAR_SUB_PREFIX)})?[A-Za-z_][A-Za-z0-9_.-]*)"
 )
 
@@ -382,11 +380,25 @@ def resolve_variables_insitu(
             f" variable reference, in {_list_paths(changed)}"
         )
 
+    _warn_of_undefined(
+        _undefined_unless_circular(
+            _unsubstituted_references(data, prefix=prefix, postfix=postfix)
+        )
+    )
+
+
+def _undefined_unless_circular(
+    references: list[tuple[str, str, str]],
+) -> dict[str, list[str]]:
+    """
+    Sort the references left once the passes have settled: raise ValueError
+    for any to a defined variable, which is still there only because it is
+    circular, and return the rest -- the undefined ones, lazy variables
+    aside -- as the properties each expression was found in.
+    """
     circular: dict[str, list[str]] = {}
     undefined: dict[str, list[str]] = {}
-    for expression, reference, path in _unsubstituted_references(
-        data, prefix=prefix, postfix=postfix
-    ):
+    for expression, reference, path in references:
         if reference in VARIABLE_SUBSTITUTIONS:
             circular.setdefault(reference, []).append(path)
         elif reference not in LAZY_VARIABLE_NAMES:
@@ -399,8 +411,7 @@ def resolve_variables_insitu(
             f"Circular variable reference: {names} refers back to itself,"
             f" in {_list_paths(paths)}"
         )
-
-    _warn_of_undefined(undefined)
+    return undefined
 
 
 def warn_of_undefined_variables(
@@ -836,7 +847,7 @@ def load_json_file_with_variable_substitutions(
     with open(resolve_filename(files_directory, filename)) as f:
         file_contents = f.read()
     file_contents = process_variable_substitutions_in_file_contents(
-        file_contents, prefix=prefix, postfix=postfix
+        file_contents, prefix=prefix, postfix=postfix, source=filename
     )
     result = json_loads(file_contents)
     resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
@@ -910,10 +921,60 @@ def load_toml_file_with_variable_substitutions(
 
 
 def process_variable_substitutions_in_file_contents(
+    file_contents: str,
+    prefix: str = "",
+    postfix: str = "",
+    source: str | None = None,
+) -> str:
+    """
+    Process substitutions in the raw contents of a complete file, repeating
+    the pass until one changes nothing, as resolve_variables_insitu() does:
+    a substituted value that itself contains a variable reference is
+    resolved too, and a circular reference raises ValueError, naming
+    'source' (the file) where it is given. An unset ('::') token is left in
+    place, for the in-situ processing of a parsed specification to remove.
+    """
+    label = source if source is not None else "file contents"
+    opening = prefix + VAR_OPENING_DELIMITER
+    closing = VAR_CLOSING_DELIMITER + postfix
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        substituted = _substitute_file_contents_pass(file_contents, prefix, postfix)
+        if substituted == file_contents:
+            break
+        previous, file_contents = file_contents, substituted
+    else:
+        # Name what is still changing: the expressions the last pass made
+        changing = sorted(
+            set(find_delimited_expressions(file_contents, opening, closing))
+            - set(find_delimited_expressions(previous, opening, closing))
+        )
+        expressions = f" ({', '.join(repr(e) for e in changing)})" if changing else ""
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in '{label}'{expressions}"
+        )
+
+    # A type-tagged expression inside a longer string is not substituted here
+    # but left for the in-situ pass to substitute as text, so one still here
+    # is not a sign of a circular reference
+    _undefined_unless_circular(
+        [
+            reference
+            for reference in _unsubstituted_references(
+                {label: file_contents}, prefix=prefix, postfix=postfix
+            )
+            if not reference[0][len(opening) :].startswith(_TYPE_TAGS)
+        ]
+    )
+    return file_contents
+
+
+def _substitute_file_contents_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
     """
-    Process substitutions in the raw contents of a complete file.
+    One substitution pass over the raw contents of a complete file.
     """
     # Found one expression at a time: a match running from the first opening
     # delimiter on a line to the last closing one took every expression on
@@ -969,7 +1030,7 @@ class VariableSubstitutedJsonnetFile:
         with open(self.filename) as file:
             file_contents = file.read()
         processed_file_contents: str = process_variable_substitutions_in_file_contents(
-            file_contents, self.prefix, self.postfix
+            file_contents, self.prefix, self.postfix, source=self.filename
         )
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, dir=os.getcwd()

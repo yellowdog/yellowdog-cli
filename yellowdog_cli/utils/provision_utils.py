@@ -64,15 +64,7 @@ def _read_user_data(
     finally:
         chdir(original_directory)
 
-    try:
-        content = process_variable_substitutions_in_file_contents(
-            content, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
-        )
-    except Exception as e:
-        raise RuntimeError(f"Error processing variable substitutions: {e}")
-
-    # Substituted as text, so no substitution pass walks it; named by where
-    # it came from
+    # Named by where it came from, in an error or a warning
     source = (
         user_data_file
         if user_data_file is not None
@@ -80,6 +72,17 @@ def _read_user_data(
         if user_data_files is not None
         else USERDATA
     )
+    try:
+        content = process_variable_substitutions_in_file_contents(
+            content,
+            prefix=WP_VARIABLES_PREFIX,
+            postfix=WP_VARIABLES_POSTFIX,
+            source=source,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Error processing variable substitutions: {e}")
+
+    # Substituted as text, so no substitution pass walks it
     warn_of_undefined_variables(
         {source: content}, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
     )

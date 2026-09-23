@@ -902,7 +902,9 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
     is reported here, by file.
     """
     with open(resolve_filename(files_directory, filename)) as f:
-        contents = process_variable_substitutions_in_file_contents(f.read())
+        contents = process_variable_substitutions_in_file_contents(
+            f.read(), source=filename
+        )
     warn_of_undefined_variables({filename: contents})
     return contents
 

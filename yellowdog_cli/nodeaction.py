@@ -272,7 +272,10 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                     with open(path_join(source_dir, cast(str, content_file))) as f:
                         raw = f.read()
                     content_val = process_variable_substitutions_in_file_contents(
-                        raw, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+                        raw,
+                        prefix=WP_VARIABLES_PREFIX,
+                        postfix=WP_VARIABLES_POSTFIX,
+                        source=str(content_file),
                     )
                     warn_of_undefined_variables(
                         {str(content_file): content_val},
@@ -295,6 +298,7 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                             raw,
                             prefix=WP_VARIABLES_PREFIX,
                             postfix=WP_VARIABLES_POSTFIX,
+                            source=str(file_path),
                         )
                         warn_of_undefined_variables(
                             {str(file_path): part},

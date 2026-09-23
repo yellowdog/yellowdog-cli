@@ -1000,13 +1000,17 @@ class TestNestedVariablesInEveryFormat:
     def test_mutually_referring_variables_are_an_error(self, load_spec, monkeypatch):
         monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
         monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
-        with pytest.raises(ValueError, match=r"circular.*'(spec\.)?loop'"):
+        with pytest.raises(
+            ValueError, match=r"circular.*(spec\.jsonnet|spec\.json|loop)'"
+        ):
             load_spec({"fine": "{{region}}", "loop": "{{env:YD_TEST_A}}"})
 
     def test_self_referring_variable_is_an_error(self, load_spec, monkeypatch):
         # Never repeats itself, but grows on every pass, so never settles
         monkeypatch.setenv("YD_TEST_G", "x{{env:YD_TEST_G}}")
-        with pytest.raises(ValueError, match=r"circular.*'(spec\.)?grows'"):
+        with pytest.raises(
+            ValueError, match=r"circular.*(spec\.jsonnet|spec\.json|grows)'"
+        ):
             load_spec({"grows": "{{env:YD_TEST_G}}"})
 
     @pytest.mark.parametrize("order", [("p", "q"), ("q", "p")])
@@ -1018,7 +1022,9 @@ class TestNestedVariablesInEveryFormat:
         var_module.add_substitutions_without_overwriting(
             {name: values[name] for name in order}
         )
-        with pytest.raises(ValueError, match=r"(?i)circular.*'(spec\.)?t'"):
+        with pytest.raises(
+            ValueError, match=r"(?i)circular.*(spec\.jsonnet|spec\.json|t)'"
+        ):
             load_spec({"t": "{{p}}"})
 
     def test_self_referring_table_variable_is_an_error(self, load_spec):
@@ -1346,3 +1352,92 @@ class TestWarnOfUndefinedVariables:
         monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
         var_module.warn_of_undefined_variables({"a": "{{nope}}"})
         assert enabled.call_count == 0
+
+
+class TestFileContentsPasses:
+    """
+    process_variable_substitutions_in_file_contents() repeats its pass over
+    the text until one changes nothing, as the in-situ passes do, with the
+    same cap and the same circular-reference check, naming the file. It
+    serves User Data, Task Data and 'writeFile' content files, which nothing
+    walks afterwards, and the text of a JSON or Jsonnet specification before
+    it is parsed -- which for Jsonnet is before it is evaluated, so a chain
+    has to be resolved here for the Jsonnet code to compute with its value.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs, monkeypatch):
+        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
+
+    def test_a_chain_resolves(self, monkeypatch):
+        _chain_env_vars(monkeypatch, 8)
+        var_module.VARIABLE_SUBSTITUTIONS["region"] = "end"
+        result = var_module.process_variable_substitutions_in_file_contents(
+            "echo {{env:YD_TEST_0}}\n"
+        )
+        assert result == "echo end\n"
+
+    def test_a_type_tag_revealed_by_a_pass_takes_effect(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_TYPED", "{{num:num_var}}")
+        result = var_module.process_variable_substitutions_in_file_contents(
+            '{"n": "{{env:YD_TEST_TYPED}}"}'
+        )
+        assert json.loads(result) == {"n": 42}
+
+    def test_nothing_to_substitute_is_returned_unchanged(self):
+        text = "no variables, {{undefined}}, {{missing::}}"
+        assert var_module.process_variable_substitutions_in_file_contents(text) == text
+
+    def test_mutually_referring_variables_are_an_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with pytest.raises(ValueError, match=r"circular.*'setup\.sh'"):
+            var_module.process_variable_substitutions_in_file_contents(
+                "echo {{env:YD_TEST_A}}", source="setup.sh"
+            )
+
+    def test_circular_table_variables_are_an_error(self):
+        var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
+        with pytest.raises(
+            ValueError, match=r"Circular variable reference: 's'.*'setup\.sh'"
+        ):
+            var_module.process_variable_substitutions_in_file_contents(
+                "echo {{s}}", source="setup.sh"
+            )
+
+    def test_the_error_names_the_file_contents_without_a_source(self, monkeypatch):
+        var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
+        with pytest.raises(ValueError, match="Circular"):
+            var_module.process_variable_substitutions_in_file_contents("{{s}}")
+
+    def test_only_the_delimiters_being_substituted_are_checked(self):
+        var_module.VARIABLE_SUBSTITUTIONS["v"] = "{{v}}"
+        text = "echo {{v}} __{{myvar}}__"
+        result = var_module.process_variable_substitutions_in_file_contents(
+            text, prefix="__", postfix="__"
+        )
+        assert result == "echo {{v}} hello"
+
+    def test_a_typed_expression_left_for_the_in_situ_pass_is_not_circular(self):
+        # Inside a longer string, a type-tagged expression is substituted as
+        # text by the in-situ pass, not here
+        text = '{"name": "{{num:num_var}}-{{myvar}}"}'
+        result = var_module.process_variable_substitutions_in_file_contents(text)
+        assert result == '{"name": "{{num:num_var}}-hello"}'
+
+    def test_jsonnet_computes_with_a_chained_value(self, tmp_path, monkeypatch):
+        _chain_env_vars(monkeypatch, 4)
+        var_module.VARIABLE_SUBSTITUTIONS["region"] = "41"
+        path = tmp_path / "spec.jsonnet"
+        path.write_text("local n = std.parseInt('{{env:YD_TEST_0}}');\n{x: n + 1}\n")
+        assert _load_jsonnet(path) == {"x": 42}
+
+    def test_task_data_file_chain_resolves(self, tmp_path, monkeypatch):
+        from yellowdog_cli.utils.property_names import TASK_DATA_FILE
+        from yellowdog_cli.utils.submit_utils import resolve_task_data
+
+        _chain_env_vars(monkeypatch, 6)
+        var_module.VARIABLE_SUBSTITUTIONS["region"] = "end"
+        data = tmp_path / "input.txt"
+        data.write_text("{{env:YD_TEST_0}}")
+        assert resolve_task_data({TASK_DATA_FILE: str(data)}) == "end"
