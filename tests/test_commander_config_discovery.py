@@ -16,6 +16,7 @@ exercised as they are in production rather than stubbed past.
 
 import sys
 from time import monotonic
+from types import SimpleNamespace
 
 import pytest
 import qt_guard
@@ -507,3 +508,18 @@ def test_deselecting_a_configuration_file_clears_the_discovered_tag(win, monkeyp
     assert win._discovery.namespace is None
     assert win._discovery.tag is None
     assert win._object_path() is None
+
+
+def test_the_real_command_is_quiet():
+    # yd-variables prints its undefined- and unset-variable warnings on stdout
+    # ahead of the JSON, so without '--quiet' any one of them breaks the parse.
+    # The real method, not the fixture's override; test_variables_command.py
+    # runs this shape of command with a warning due and parses what it prints
+    stand_in = SimpleNamespace(
+        _config_source_args=lambda: ["--nc"], _override_args=lambda: []
+    )
+
+    command, args = ConfigDiscovery._yd_variables_command(stand_in)  # type: ignore[arg-type]
+
+    assert command == "yd-variables"
+    assert "--quiet" in args

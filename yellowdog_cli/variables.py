@@ -4,11 +4,7 @@
 Command to report the processed values of variable substitutions.
 """
 
-from yellowdog_cli.utils.printing import (
-    print_json,
-    print_warning,
-    send_warnings_to_stderr,
-)
+from yellowdog_cli.utils.printing import print_json, print_warning
 from yellowdog_cli.utils.property_names import KEY, SECRET
 from yellowdog_cli.utils.settings import REDACTED_VALUE
 from yellowdog_cli.utils.variables import (
@@ -29,23 +25,12 @@ from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 SECRET_VARIABLES = (KEY, SECRET)
 
 
-def main():
-    # Stdout is the JSON report, which Commander parses, so the undefined-
-    # variable warnings go to stderr -- including the ones main_wrapper prints
-    # for the '[common]' values before _report() runs, which is why this is
-    # done outside it. Not at import, where it would reach whatever else runs
-    # in the same process (the tests)
-    send_warnings_to_stderr()
-    _report()
-
-
 @main_wrapper
-def _report():
-    # This command's only output is its JSON, so the status messages -- and the
-    # wrapper's trailing 'Done' -- are suppressed without the caller having to
-    # ask for it: print_info() already gates on 'json_output'
-    ARGS_PARSER.json_output = True
-
+def main():
+    # Like yd-show, whose output is also always JSON, the warnings and the
+    # wrapper's trailing 'Done' are printed around it unless '--quiet' is
+    # given, which is how a caller needing the JSON alone asks for it (as
+    # Commander does)
     variables = report_variables(
         ARGS_PARSER.variable_names, show_secrets=bool(ARGS_PARSER.show_secrets)
     )

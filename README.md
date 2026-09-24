@@ -4040,7 +4040,7 @@ The `yd-variables` command reports the processed values of variable substitution
 yd-variables [options] [<var> ...]
 ```
 
-Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order, and it is the command's only output — there is no need to pass `--quiet`/`-q`. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd-show`, it is preceded by any warnings and followed by `Done`; pass `--quiet`/`-q` to get the JSON alone, for example to pipe it into another program. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
 
 ```shell
 yd-variables                           # report every variable
@@ -4060,7 +4060,7 @@ yd-variables --show-secrets  # every variable, credentials included
 yd-variables key secret      # named explicitly, so reported in full
 ```
 
-A reported variable whose value still contains a reference to a variable that is not defined is reported as it stands, and a [warning](#undefined-variables) naming it is printed to **stderr**, so the JSON on stdout is unaffected. The same applies to the configuration's `namespace`, `tag` and `url`. The warnings are suppressed by `--quiet`, and `key` and `secret` are never checked.
+A reported variable whose value still contains a reference to a variable that is not defined is reported as it stands, and a [warning](#undefined-variables) naming it is printed ahead of the JSON. The same applies to the configuration's `namespace`, `tag` and `url`; `key` and `secret` are never checked. `--quiet` suppresses the warnings along with `Done`.
 
 ```shell
 yd-variables -v 'bucket=s3://{{regoin}}' bucket
@@ -4070,7 +4070,7 @@ yd-variables -v 'bucket=s3://{{regoin}}' bucket
 Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
 ```
 
-A variable that was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, the reason is also printed to stderr, following each `{{name::}}` reference to a variable that was itself unset:
+A variable that was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, a warning also gives the reason, following each `{{name::}}` reference to a variable that was itself unset:
 
 ```shell
 yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
@@ -4081,8 +4081,6 @@ Warning: Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is 
 ```
 
 **No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
-
-This command replaces the `--report-variable`/`-r` option of `yd-show`, which has been removed. `yd-show -q -r namespace -r tag` becomes `yd-variables namespace tag`, and `yd-show -q -r all` becomes `yd-variables`.
 
 ## Resource Commands
 

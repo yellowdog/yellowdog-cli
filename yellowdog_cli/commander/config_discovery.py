@@ -241,8 +241,11 @@ class ConfigDiscovery:
         The 'yd-variables' invocation that resolves the namespace and tag for the
         current configuration source, namespace/tag overrides and user variables.
         """
+        # '--quiet': the output is parsed as JSON, and yd-variables prints its
+        # undefined- and unset-variable warnings on stdout ahead of it
         return "yd-variables", [
             *self._config_source_args(),
+            "--quiet",
             "--nf",
             NAMESPACE,
             TAG,

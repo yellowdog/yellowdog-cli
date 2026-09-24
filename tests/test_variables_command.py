@@ -2,9 +2,9 @@
 Tests for variables.py — the 'yd-variables' command.
 
 report_variables() is exercised directly against a substituted variable table;
-the JSON-only output is exercised through a real child process, because that is
-the property Commander depends on: it parses stdout, so a status message or the
-wrapper's trailing 'Done' appearing there would break it.
+the output through a real child process. Like yd-show's, it is JSON with the
+warnings ahead of it and the wrapper's 'Done' after it, and only JSON under
+'--quiet', which is what Commander depends on: it parses stdout.
 """
 
 import os
@@ -174,10 +174,18 @@ def _run(*args: str, cwd) -> subprocess.CompletedProcess:
 
 
 class TestCommandOutput:
-    def test_stdout_is_json_and_nothing_else(self, tmp_path):
-        # No '--quiet' is passed: the command suppresses the status messages and
-        # the wrapper's 'Done' itself, which is what lets Commander parse stdout
+    def test_without_quiet_the_json_is_followed_by_done(self, tmp_path):
+        # As yd-show's is: the command does not select JSON output to hide it
         result = _run("namespace", "tag", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert _stdout(result).startswith(
+            '{"namespace": "my-namespace", "tag": "my-tag"}'
+        )
+        assert _stdout(result).endswith("Done")
+
+    def test_quiet_leaves_only_the_json(self, tmp_path):
+        result = _run("-q", "namespace", "tag", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {
@@ -186,7 +194,7 @@ class TestCommandOutput:
         }
 
     def test_a_command_line_variable_is_reported(self, tmp_path):
-        result = _run("-v", "instances=5", "instances", cwd=tmp_path)
+        result = _run("-q", "-v", "instances=5", "instances", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"instances": "5"}
@@ -197,6 +205,7 @@ class TestCommandOutput:
         # variable overrides. argparse has to end the '*' positional at the
         # first option that follows it
         result = _run(
+            "-q",
             "--nf",
             "namespace",
             "tag",
@@ -216,7 +225,7 @@ class TestCommandOutput:
         }
 
     def test_the_credentials_are_redacted_in_the_full_report(self, tmp_path):
-        result = _run(cwd=tmp_path)
+        result = _run("-q", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         reported = loads(result.stdout)
@@ -224,7 +233,7 @@ class TestCommandOutput:
         assert reported["secret"] == REDACTED_VALUE
 
     def test_show_secrets_reveals_them(self, tmp_path):
-        result = _run("--show-secrets", cwd=tmp_path)
+        result = _run("-q", "--show-secrets", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         reported = loads(result.stdout)
@@ -232,13 +241,13 @@ class TestCommandOutput:
         assert reported["secret"] == "a-secret"
 
     def test_naming_them_reveals_them(self, tmp_path):
-        result = _run("key", "secret", cwd=tmp_path)
+        result = _run("-q", "key", "secret", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"key": "a-key", "secret": "a-secret"}
 
     def test_every_variable_includes_the_configured_ones(self, tmp_path):
-        result = _run(cwd=tmp_path)
+        result = _run("-q", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         reported = loads(result.stdout)
@@ -247,51 +256,76 @@ class TestCommandOutput:
         assert list(reported) == sorted(reported)
 
 
-def _stderr(result: subprocess.CompletedProcess) -> str:
+def _stdout(result: subprocess.CompletedProcess) -> str:
     """
-    Stderr with its whitespace collapsed, since the warnings are wrapped to
+    Stdout with its whitespace collapsed, since the warnings are wrapped to
     the terminal's width and a phrase may be split over two lines.
     """
-    return " ".join(result.stderr.split())
+    return " ".join(result.stdout.split())
 
 
 class TestUndefinedVariableWarnings:
-    # The warnings go to stderr, so the JSON on stdout stays parseable: before
-    # they did, the one main_wrapper prints for the '[common]' values landed on
-    # stdout ahead of the JSON, and the table's own variables went unchecked
+    # The warnings go to stdout, ahead of the JSON, as every command's do;
+    # '--quiet' leaves the JSON alone, and is what Commander passes
 
     def test_a_reported_variable_is_checked(self, tmp_path):
         result = _run("-v", "a=x-{{missing}}", "a", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert loads(result.stdout) == {"a": "x-{{missing}}"}
-        assert "'{{missing}}' is not defined" in _stderr(result)
+        assert "'{{missing}}' is not defined" in _stdout(result)
 
     def test_every_variable_is_checked_in_the_full_report(self, tmp_path):
         result = _run("-v", "a=x-{{missing}}", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert loads(result.stdout)["a"] == "x-{{missing}}"
-        assert "'{{missing}}' is not defined" in _stderr(result)
+        assert "'{{missing}}' is not defined" in _stdout(result)
 
     def test_a_variable_not_asked_for_is_not_checked(self, tmp_path):
         result = _run("-v", "a=x-{{missing}}", "tag", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "{{missing}}" not in _stderr(result)
+        assert "{{missing}}" not in _stdout(result)
 
-    def test_a_configuration_value_warning_does_not_reach_stdout(self, tmp_path):
+    def test_a_configuration_value_is_checked(self, tmp_path):
+        # Printed by main_wrapper, before the command itself runs
         result = _run("-n", "ns-{{nope}}", "namespace", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert loads(result.stdout) == {"namespace": "ns-{{nope}}"}
-        assert "'{{nope}}' is not defined" in _stderr(result)
+        assert "'{{nope}}' is not defined" in _stdout(result)
 
     def test_quiet_suppresses_them(self, tmp_path):
-        result = _run("-q", "-v", "a=x-{{missing}}", "a", cwd=tmp_path)
+        result = _run(
+            "-q",
+            "-n",
+            "ns-{{nope}}",
+            "-v",
+            "a=x-{{missing}}",
+            "namespace",
+            "a",
+            cwd=tmp_path,
+        )
 
         assert result.returncode == 0, result.stderr
-        assert "Warning" not in _stderr(result)
+        assert loads(result.stdout) == {
+            "a": "x-{{missing}}",
+            "namespace": "ns-{{nope}}",
+        }
+
+    def test_commanders_invocation_parses_despite_a_warning(self, tmp_path):
+        # The shape _yd_variables_command() builds, '--quiet' included (which
+        # test_commander_config_discovery.py holds it to), with a warning due
+        result = _run(
+            "--quiet",
+            "--nf",
+            "namespace",
+            "tag",
+            "-n",
+            "ns-{{nope}}",
+            cwd=tmp_path,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"namespace": "ns-{{nope}}", "tag": "my-tag"}
 
     def test_the_credentials_are_not_checked(self, tmp_path):
         # Their text is not for a warning, as for the configuration values
@@ -312,7 +346,7 @@ class TestUndefinedVariableWarnings:
         )
 
         assert result.returncode == 0, result.stderr
-        assert "{{missing}}" not in _stderr(result)
+        assert "Warning" not in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -456,28 +490,28 @@ class TestUnsetExplanationsInTheCommand:
         )
 
         assert result.returncode == 0, result.stderr
-        assert loads(result.stdout) == {"pool": None}
-        assert "Variable 'pool' is unset" in _stderr(result)
-        assert "'site' is '{{::}}'" in _stderr(result)
+        assert '{"pool": null}' in _stdout(result)
+        assert "Variable 'pool' is unset" in _stdout(result)
+        assert "'site' is '{{::}}'" in _stdout(result)
 
     def test_every_unset_variable_is_explained_in_the_full_report(self, tmp_path):
         result = _run("-v", "site={{::}}", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "site" not in loads(result.stdout)
-        assert "Variable 'site' is unset" in _stderr(result)
+        assert '"site":' not in result.stdout
+        assert "Variable 'site' is unset" in _stdout(result)
 
     def test_a_name_never_defined_is_not_explained(self, tmp_path):
         result = _run("nonexistent", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "unset" not in _stderr(result)
+        assert "unset" not in _stdout(result)
 
     def test_quiet_suppresses_them(self, tmp_path):
         result = _run("-q", "-v", "site={{::}}", "site", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "unset" not in _stderr(result)
+        assert "unset" not in _stdout(result)
 
     def test_a_reference_to_an_unset_variable_is_warned_of_as_unset(self, tmp_path):
         result = _run(
@@ -485,7 +519,7 @@ class TestUnsetExplanationsInTheCommand:
         )
 
         assert result.returncode == 0, result.stderr
-        assert loads(result.stdout) == {"pool": "{{site}}-p"}
-        assert "'{{site}}' is unset, and has been left unsubstituted" in _stderr(result)
-        assert "'site' is '{{::}}'" in _stderr(result)
-        assert "not defined" not in _stderr(result)
+        assert '{"pool": "{{site}}-p"}' in _stdout(result)
+        assert "'{{site}}' is unset, and has been left unsubstituted" in _stdout(result)
+        assert "'site' is '{{::}}'" in _stdout(result)
+        assert "not defined" not in _stdout(result)
