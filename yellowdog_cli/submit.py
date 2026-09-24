@@ -159,7 +159,9 @@ from yellowdog_cli.utils.ydid_utils import YDIDType
 CONFIG_WR: ConfigWorkRequirement = load_config_work_requirement()
 
 
-ID = generate_id(CONFIG_COMMON.name_tag)
+# Generated in main() rather than at import, so that a name tag too long for
+# it is reported as an error by main_wrapper rather than as a traceback
+ID: str = ""
 TASK_BATCH_SIZE = CONFIG_WR.task_batch_size
 
 if ARGS_PARSER.dry_run:
@@ -178,6 +180,9 @@ def main():
     if ARGS_PARSER.which_rclone:
         which_rclone()
         return
+
+    global ID
+    ID = generate_id(CONFIG_COMMON.name_tag)
 
     if not 1 <= TASK_BATCH_SIZE <= 10000:
         raise ValueError("Task batch size must be between 1 and 10,000")

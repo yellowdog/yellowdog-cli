@@ -81,8 +81,7 @@ def generate_id(prefix: str = "", max_length: int = 60) -> str:
     )
     if len(generated_id) > max_length:
         raise ValueError(
-            f"Error: Generated ID '{generated_id}' would exceed "
-            f"maximum length ({max_length})"
+            f"Generated ID '{generated_id}' would exceed maximum length ({max_length})"
         )
     return generated_id
 

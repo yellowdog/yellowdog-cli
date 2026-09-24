@@ -54,14 +54,17 @@ class CRBatch:
 
 
 CONFIG_WP: ConfigWorkerPool = load_config_worker_pool()
-GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
+# Generated in main() rather than at import, so that a name tag too long for
+# it is reported as an error by main_wrapper rather than as a traceback
+GENERATED_ID: str = ""
 
 
 @main_wrapper
 def main():
-    global CONFIG_WP
+    global CONFIG_WP, GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
+    GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
 
     if ARGS_PARSER.target is not None:
         CONFIG_WP.target_instance_count = ARGS_PARSER.target
