@@ -4052,6 +4052,16 @@ yd-variables --show-secrets  # every variable, credentials included
 yd-variables key secret      # named explicitly, so reported in full
 ```
 
+A reported variable whose value still contains a reference to a variable that is not defined is reported as it stands, and a [warning](#undefined-variables) naming it is printed to **stderr**, so the JSON on stdout is unaffected. The same applies to the configuration's `namespace`, `tag` and `url`. The warnings are suppressed by `--quiet`, and `key` and `secret` are never checked.
+
+```shell
+yd-variables -v 'bucket=s3://{{regoin}}' bucket
+```
+
+```
+Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
+```
+
 **No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
 
 This command replaces the `--report-variable`/`-r` option of `yd-show`, which has been removed. `yd-show -q -r namespace -r tag` becomes `yd-variables namespace tag`, and `yd-show -q -r all` becomes `yd-variables`.

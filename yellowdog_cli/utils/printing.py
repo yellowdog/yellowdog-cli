@@ -266,6 +266,22 @@ def print_error(error_obj: Exception | str):
     CONSOLE_ERR.print(escape(print_string(f"Error: {error_obj}")), style=ERROR_STYLE)
 
 
+# Whether warnings go to stderr rather than stdout. Set by a command whose
+# stdout is data for another program to parse (yd-variables), so that a
+# warning neither corrupts that data nor is discarded with the status
+# messages its JSON output suppresses
+_WARNINGS_TO_STDERR = False
+
+
+def send_warnings_to_stderr() -> None:
+    """
+    Print warnings to stderr from now on, and print them whatever the output
+    format; only '--quiet' still suppresses them.
+    """
+    global _WARNINGS_TO_STDERR
+    _WARNINGS_TO_STDERR = True
+
+
 def print_warning(
     warning: str,
     override_quiet: bool = False,
@@ -275,17 +291,22 @@ def print_warning(
     Print a warning.
     """
     if (
-        ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
+        ARGS_PARSER.quiet
+        or (
+            not _WARNINGS_TO_STDERR
+            and (ARGS_PARSER.json_output or ARGS_PARSER.count_only)
+        )
     ) and override_quiet is False:
         return
 
+    message = print_string(f"Warning: {warning}", no_fill=no_fill)
     if ARGS_PARSER.no_format:
-        print(print_string(f"Warning: {warning}", no_fill=no_fill), flush=True)
+        # 'file=None' is stdout
+        print(message, flush=True, file=stderr if _WARNINGS_TO_STDERR else None)
         return
 
-    CONSOLE.print(
-        escape(print_string(f"Warning: {warning}", no_fill=no_fill)),
-        style=WARNING_STYLE,
+    (CONSOLE_ERR if _WARNINGS_TO_STDERR else CONSOLE).print(
+        escape(message), style=WARNING_STYLE
     )
 
 

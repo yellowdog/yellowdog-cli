@@ -245,3 +245,63 @@ class TestCommandOutput:
         assert reported["namespace"] == "my-namespace"
         assert reported["tag"] == "my-tag"
         assert list(reported) == sorted(reported)
+
+
+class TestUndefinedVariableWarnings:
+    # The warnings go to stderr, so the JSON on stdout stays parseable: before
+    # they did, the one main_wrapper prints for the '[common]' values landed on
+    # stdout ahead of the JSON, and the table's own variables went unchecked
+
+    def test_a_reported_variable_is_checked(self, tmp_path):
+        result = _run("-v", "a=x-{{missing}}", "a", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"a": "x-{{missing}}"}
+        assert "'{{missing}}' is not defined" in result.stderr
+
+    def test_every_variable_is_checked_in_the_full_report(self, tmp_path):
+        result = _run("-v", "a=x-{{missing}}", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout)["a"] == "x-{{missing}}"
+        assert "'{{missing}}' is not defined" in result.stderr
+
+    def test_a_variable_not_asked_for_is_not_checked(self, tmp_path):
+        result = _run("-v", "a=x-{{missing}}", "tag", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "{{missing}}" not in result.stderr
+
+    def test_a_configuration_value_warning_does_not_reach_stdout(self, tmp_path):
+        result = _run("-n", "ns-{{nope}}", "namespace", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"namespace": "ns-{{nope}}"}
+        assert "'{{nope}}' is not defined" in result.stderr
+
+    def test_quiet_suppresses_them(self, tmp_path):
+        result = _run("-q", "-v", "a=x-{{missing}}", "a", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Warning" not in result.stderr
+
+    def test_the_credentials_are_not_checked(self, tmp_path):
+        # Their text is not for a warning, as for the configuration values
+        env_secret = "s-{{missing}}"
+        result = subprocess.run(
+            ["yd-variables", "--nc", "secret"],
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "YD_KEY": "a-key",
+                "YD_SECRET": env_secret,
+                "YD_NAMESPACE": "my-namespace",
+                "YD_TAG": "my-tag",
+            },
+            cwd=tmp_path,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "{{missing}}" not in result.stderr
