@@ -4,11 +4,17 @@
 Command to report the processed values of variable substitutions.
 """
 
-from yellowdog_cli.utils.printing import print_json, send_warnings_to_stderr
+from yellowdog_cli.utils.printing import (
+    print_json,
+    print_warning,
+    send_warnings_to_stderr,
+)
 from yellowdog_cli.utils.property_names import KEY, SECRET
 from yellowdog_cli.utils.settings import REDACTED_VALUE
 from yellowdog_cli.utils.variables import (
+    explain_unset_variable,
     get_all_user_variables,
+    get_unset_variable_names,
     get_user_variable,
     warn_of_undefined_variables,
 )
@@ -50,7 +56,24 @@ def _report():
             if name not in SECRET_VARIABLES
         }
     )
+    explain_unset_variables(ARGS_PARSER.variable_names)
     print_json(variables)
+
+
+def explain_unset_variables(variable_names: list[str]) -> None:
+    """
+    Say why each variable asked for -- every variable, if none is named --
+    was defined and yet has no value, because the '::' unset syntax removed
+    it. Otherwise a named one reports 'null' exactly as one never defined
+    does, and one of every variable is simply missing from the report.
+    """
+    names = variable_names if variable_names else get_unset_variable_names()
+    for name in dict.fromkeys(names):
+        if name in SECRET_VARIABLES:
+            continue
+        explanation = explain_unset_variable(name)
+        if explanation is not None:
+            print_warning(explanation)
 
 
 def report_variables(variable_names: list[str], show_secrets: bool = False) -> dict:

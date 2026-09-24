@@ -206,6 +206,14 @@ if subs_list:
 
 del subs_list
 
+# Each variable's definition as written, before any substitution, which is
+# what explain_unset_variable() works from: once the '::' syntax has removed
+# a variable from the table, nothing left there says why -- a variable that
+# referred to an unset one holds that one's '{{::}}' as text by then, and is
+# removed on the next pass for that. Kept in step with the table by
+# _update_and_resolve_substitutions() and add_or_update_substitution().
+_DEFINITIONS: dict[str, str] = dict(VARIABLE_SUBSTITUTIONS)
+
 
 def _stringify(value) -> str:
     """
@@ -241,6 +249,14 @@ def _update_and_resolve_substitutions(merged: dict):
     reference to it see the change (rebinding the name would silently
     break imported references).
     """
+    # A value the table already holds is a definition already recorded (its
+    # resolved value, which is not the definition); anything else is new
+    for key_, value_ in merged.items():
+        if key_ in VARIABLE_SUBSTITUTIONS and VARIABLE_SUBSTITUTIONS[key_] == value_:
+            _DEFINITIONS.setdefault(key_, _stringify(value_))
+        else:
+            _DEFINITIONS[key_] = _stringify(value_)
+
     VARIABLE_SUBSTITUTIONS.clear()
     VARIABLE_SUBSTITUTIONS.update(merged)
 
@@ -302,7 +318,7 @@ def add_or_update_substitution(key: str, value, source: str = "a variable defini
     ValueError, naming 'source', for a name that is not a valid variable name.
     """
     check_variable_name(key, source)
-    VARIABLE_SUBSTITUTIONS[key] = _stringify(value)
+    VARIABLE_SUBSTITUTIONS[key] = _DEFINITIONS[key] = _stringify(value)
 
 
 def get_user_variable(variable_name: str) -> str | None:
@@ -310,6 +326,109 @@ def get_user_variable(variable_name: str) -> str | None:
     Get the value of a variable.
     """
     return VARIABLE_SUBSTITUTIONS.get(variable_name)
+
+
+def get_unset_variable_names() -> list[str]:
+    """
+    The variables that were defined but are not in the table, because the
+    '::' unset syntax removed them, in alphabetical order.
+    """
+    return sorted(name for name in _DEFINITIONS if name not in VARIABLE_SUBSTITUTIONS)
+
+
+def explain_unset_variable(name: str) -> str | None:
+    """
+    Why the variable 'name' was defined and yet has no value: what in its
+    definition unset it, following each variable it refers to that was
+    itself unset, down to the '{{::}}' or the undefined '{{x::}}' at the end
+    of the chain. None if the variable has a value or was never defined.
+    """
+    if name in VARIABLE_SUBSTITUTIONS or name not in _DEFINITIONS:
+        return None
+
+    clauses: list[str] = []
+    explained: set[str] = set()
+    pending = [name]
+    while pending:
+        name_ = pending.pop(0)
+        if name_ in explained:
+            continue
+        explained.add(name_)
+        definition = _DEFINITIONS[name_]
+        causes = _unset_causes(definition)
+        if not causes:
+            clauses.append(
+                f"'{name_}' is unset by the '{VAR_UNSET_SUFFIX}' in its"
+                f" definition, '{definition}'"
+            )
+        for clause, unset_reference in causes:
+            clauses.append(f"'{name_}' {clause}")
+            if unset_reference is not None:
+                pending.append(unset_reference)
+
+    return f"Variable '{name}' is unset: " + "; ".join(clauses)
+
+
+def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
+    """
+    The expressions in a variable's definition that can unset it, each as a
+    clause saying why, with the name of the unset variable it refers to
+    where that is the reason, so that the chain can be followed. An
+    expression with a default is never one: its default is used instead.
+    """
+    causes: list[tuple[str, str | None]] = []
+
+    def _check(text: str):
+        for expression in find_delimited_expressions(
+            text, VAR_OPENING_DELIMITER, VAR_CLOSING_DELIMITER
+        ):
+            inner = expression[len(VAR_OPENING_DELIMITER) : -len(VAR_CLOSING_DELIMITER)]
+            if VAR_OPENING_DELIMITER in inner:
+                _check(inner)
+                continue
+            for tag in _TYPE_TAGS:
+                if inner.startswith(tag):
+                    inner = inner[len(tag) :]
+                    break
+            if inner.endswith(VAR_UNSET_SUFFIX):
+                reference = inner[: -len(VAR_UNSET_SUFFIX)]
+                if reference == "":
+                    verb = "is" if expression == definition else "contains"
+                    causes.append(
+                        (f"{verb} '{expression}', which always unsets it", None)
+                    )
+                elif reference.startswith(ENV_VAR_SUB_PREFIX):
+                    env_name = reference[len(ENV_VAR_SUB_PREFIX) :]
+                    if os.getenv(env_name) is None:
+                        causes.append(
+                            (
+                                f"refers to '{expression}', and the environment"
+                                f" variable '{env_name}' is not set",
+                                None,
+                            )
+                        )
+                elif reference not in VARIABLE_SUBSTITUTIONS:
+                    if reference in _DEFINITIONS:
+                        causes.append(
+                            (f"refers to '{reference}', which is unset", reference)
+                        )
+                    else:
+                        causes.append(
+                            (
+                                f"refers to '{expression}', and '{reference}' is"
+                                " not defined",
+                                None,
+                            )
+                        )
+            elif (
+                VAR_DEFAULT_SEPARATOR not in inner
+                and inner not in VARIABLE_SUBSTITUTIONS
+                and inner in _DEFINITIONS
+            ):
+                causes.append((f"refers to '{inner}', which is unset", inner))
+
+    _check(definition)
+    return causes
 
 
 def get_all_user_variables() -> dict:

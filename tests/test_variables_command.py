@@ -305,3 +305,135 @@ class TestUndefinedVariableWarnings:
 
         assert result.returncode == 0, result.stderr
         assert "{{missing}}" not in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Explaining unset variables
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def definitions(monkeypatch):
+    """
+    An empty table and record of definitions, filled through the real
+    definition path so that the record is kept the way the CLI keeps it.
+    Two sweeps, as every command makes several: the first leaves a variable
+    referring to an unset one holding its '{{::}}' as text, the second
+    removes it.
+    """
+    monkeypatch.setattr(variables_module, "VARIABLE_SUBSTITUTIONS", {})
+    monkeypatch.setattr(variables_module, "_DEFINITIONS", {})
+
+    def define(**subs):
+        variables_module.add_substitutions_without_overwriting(subs)
+        variables_module.add_substitutions_without_overwriting({})
+
+    return define
+
+
+class TestExplainUnsetVariable:
+    def test_bare_unset(self, definitions):
+        definitions(site="{{::}}")
+
+        assert variables_module.explain_unset_variable("site") == (
+            "Variable 'site' is unset: 'site' is '{{::}}', which always unsets it"
+        )
+
+    def test_bare_unset_inside_a_longer_value(self, definitions):
+        definitions(site="a-{{::}}")
+
+        assert "'site' contains '{{::}}'" in variables_module.explain_unset_variable(
+            "site"
+        )
+
+    def test_the_chain_is_followed_to_its_end(self, definitions):
+        definitions(site="{{::}}", pool="{{site}}-p", summary="{{pool}} s")
+
+        assert variables_module.explain_unset_variable("summary") == (
+            "Variable 'summary' is unset: 'summary' refers to 'pool', which is"
+            " unset; 'pool' refers to 'site', which is unset; 'site' is '{{::}}',"
+            " which always unsets it"
+        )
+
+    def test_an_undefined_variable_with_the_unset_suffix(self, definitions):
+        definitions(site="a-{{nope::}}")
+
+        assert variables_module.explain_unset_variable("site") == (
+            "Variable 'site' is unset: 'site' refers to '{{nope::}}', and 'nope'"
+            " is not defined"
+        )
+
+    def test_a_type_tag_is_seen_through(self, definitions):
+        definitions(count="{{num:nope::}}")
+
+        assert "'nope' is not defined" in variables_module.explain_unset_variable(
+            "count"
+        )
+
+    def test_an_unset_environment_variable(self, definitions, monkeypatch):
+        monkeypatch.delenv("YD_TEST_NOT_SET", raising=False)
+        definitions(home="{{env:YD_TEST_NOT_SET::}}")
+
+        assert (
+            "the environment variable 'YD_TEST_NOT_SET' is not set"
+            in variables_module.explain_unset_variable("home")
+        )
+
+    def test_a_reference_inside_a_nested_expression(self, definitions):
+        definitions(site="{{::}}", name="{{prefix_{{site}}}}")
+
+        assert "'name' refers to 'site', which is unset" in (
+            variables_module.explain_unset_variable("name")
+        )
+
+    def test_a_variable_with_a_value_has_no_explanation(self, definitions):
+        definitions(site="x", pool="{{site}}-p")
+
+        assert variables_module.explain_unset_variable("pool") is None
+
+    def test_a_variable_never_defined_has_no_explanation(self, definitions):
+        definitions(site="x")
+
+        assert variables_module.explain_unset_variable("nonexistent") is None
+
+    def test_the_unset_variables_are_listed(self, definitions):
+        definitions(site="{{::}}", pool="{{site}}-p", other="x")
+
+        assert variables_module.get_unset_variable_names() == ["pool", "site"]
+
+    def test_a_redefinition_replaces_the_recorded_definition(self, definitions):
+        definitions(site="{{::}}")
+        variables_module.add_or_update_substitution("site", "x")
+
+        assert variables_module.explain_unset_variable("site") is None
+
+
+class TestUnsetExplanationsInTheCommand:
+    def test_a_named_unset_variable_is_explained(self, tmp_path):
+        result = _run(
+            "-v", "site={{::}}", "-v", "pool={{site}}-p", "pool", cwd=tmp_path
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"pool": None}
+        assert "Variable 'pool' is unset" in result.stderr
+        assert "'site' is '{{::}}'" in result.stderr
+
+    def test_every_unset_variable_is_explained_in_the_full_report(self, tmp_path):
+        result = _run("-v", "site={{::}}", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "site" not in loads(result.stdout)
+        assert "Variable 'site' is unset" in result.stderr
+
+    def test_a_name_never_defined_is_not_explained(self, tmp_path):
+        result = _run("nonexistent", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "unset" not in result.stderr
+
+    def test_quiet_suppresses_them(self, tmp_path):
+        result = _run("-q", "-v", "site={{::}}", "site", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "unset" not in result.stderr
