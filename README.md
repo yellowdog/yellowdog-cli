@@ -712,6 +712,8 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
+The `namespace`, `tag`, `key`, `secret` and `url` variables always hold the values the command is using, and cannot be redefined or unset as user-defined variables (see [Variable Naming](#variable-naming)); the other default variables can be overridden, as described in [Precedence Order](#precedence-order).
+
 For the `date`, `time`, `datetime`, `random`, `random6`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
@@ -727,6 +729,8 @@ User-defined variables can be supplied using an option on the command line, by s
 ### Variable Naming
 
 A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
+
+The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration. Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
 
 The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
@@ -841,11 +845,11 @@ For example, in a TOML file:
 ```toml
 [workRequirement]
 name          = "my-job"
-tag           = "{{tag::}}"          # removed if 'tag' is not set
+tag           = "{{wr_tag::}}"       # removed if 'wr_tag' is not set
 maxRetries    = "{{num:retries::}}"  # removed if 'retries' is not set
 ```
 
-If `tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `tag` is supplied, e.g. via `-v tag=my-tag`, it will be used as the value.
+If `wr_tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `wr_tag` is supplied, e.g. via `-v wr_tag=my-tag`, it will be used as the value.
 
 This also works inside JSON/Jsonnet specifications and for list elements. In the contents of files that are substituted as text — User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `writeFile` content files — there is no property to remove, so an unset substitution for an undefined variable is left in the text exactly as written.
 

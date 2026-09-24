@@ -54,7 +54,8 @@
     # JSON text, so a value defined here as an array, table, number or boolean
     # can be read back by the corresponding type tag (num:, bool:, array:,
     # table:). A name starts with a letter, digit or '_', and contains only
-    # letters, digits, '_', '.' and '-'.
+    # letters, digits, '_', '.' and '-'. The names namespace, tag, key, secret
+    # and url are reserved: set those with the [common] properties above.
     # Optional
     # [common.variables]
     #     my_var    = "some_value"

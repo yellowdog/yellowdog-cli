@@ -75,6 +75,19 @@ VARIABLE_NAME_RULE = (
     "a name must start with a letter, digit or '_', and contain only letters,"
     " digits, '_', '.' and '-'"
 )
+# Variables the CLI defines itself from its configuration ('[common]', the
+# YD_* environment variables, the options), mapped to where each is set. They
+# are not user variables: defined as one, only '{{name}}' would change, not the
+# namespace, tag or credentials the command acts on -- and one unset with
+# '{{::}}' would simply be defined again from the configuration -- so each is an
+# error wherever a user variable is defined
+RESERVED_VARIABLE_NAMES = {
+    "namespace": "'namespace' in '[common]', 'YD_NAMESPACE' or '--namespace'",
+    "tag": "'tag' in '[common]', 'YD_TAG' or '--tag'",
+    "key": "'key' in '[common]', 'YD_KEY' or '--key'",
+    "secret": "'secret' in '[common]', 'YD_SECRET' or '--secret'",
+    "url": "'url' in '[common]', 'YD_URL' or '--url'",
+}
 # An 'env:' name belongs to the operating system rather than to us (Windows has
 # 'ProgramFiles(x86)'), so it may hold anything but whitespace and the syntax
 ENV_VARIABLE_NAME_PATTERN = r"[^\s{}:=]+"

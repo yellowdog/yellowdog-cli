@@ -57,6 +57,7 @@ from yellowdog_cli.utils.variables import (
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,
     add_substitutions_without_overwriting,
+    check_user_variable_name,
     load_toml_file_with_variable_substitutions,
     resolve_variables_in_string,
     resolve_variables_insitu,
@@ -209,6 +210,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
             try:
+                check_user_variable_name(path[1], f"'--property {override}'")
                 add_or_update_substitution(
                     path[1], value, source=f"'--property {override}'"
                 )

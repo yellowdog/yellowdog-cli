@@ -50,6 +50,7 @@ from yellowdog_cli.utils.settings import (
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
+    RESERVED_VARIABLE_NAMES,
     TABLE_TYPE_TAG,
     TYPE_TAG_DEFAULT_GUARD,
     VAR_CLOSING_DELIMITER,
@@ -120,6 +121,22 @@ def check_variable_name(name: str, source: str) -> None:
         )
 
 
+def check_user_variable_name(name: str, source: str) -> None:
+    """
+    As check_variable_name(), and also raise ValueError if 'name' is one of
+    the variables the CLI defines from its configuration, saying where it is
+    set instead. For the definitions a user writes -- '-v', 'YD_VAR_*',
+    '[common.variables]' and '--property common.variables.<name>' -- never for
+    the CLI's own registration of those values.
+    """
+    check_variable_name(name, source)
+    if name in RESERVED_VARIABLE_NAMES:
+        raise ValueError(
+            f"Variable '{name}' in {source} cannot be defined: it is set by the"
+            f" configuration, using {RESERVED_VARIABLE_NAMES[name]}"
+        )
+
+
 def enable_undefined_variable_warnings() -> None:
     """
     Report, from now on, variables left unsubstituted because nothing
@@ -155,7 +172,7 @@ subs_list = []
 for key, value in os.environ.items():
     if key.startswith(YD_ENV_VAR_PREFIX):
         try:
-            check_variable_name(
+            check_user_variable_name(
                 key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
             )
         except ValueError as e:
@@ -185,7 +202,7 @@ if ARGS_PARSER.variables is not None:
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
             try:
-                check_variable_name(key_value[0], f"'--variable {variable}'")
+                check_user_variable_name(key_value[0], f"'--variable {variable}'")
             except ValueError as e:
                 print_error(e)
                 exit(1)  # Note: exception trap not yet in place
@@ -312,7 +329,7 @@ def add_substitutions_from_config_file(
     precedence as usual.
     """
     for name in subs:
-        check_variable_name(name, source)
+        check_user_variable_name(name, source)
     if not config_file_explicitly_selected(ARGS_PARSER):
         add_substitutions_without_overwriting(subs, source)
         return
