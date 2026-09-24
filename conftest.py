@@ -39,6 +39,9 @@ def pytest_addoption(parser):
 
 
 def pytest_collection_modifyitems(config, items):
+    # By marker, not by "name" in item.keywords: keywords also hold every test,
+    # class, module and parameter name, so a parametrize ID such as "system"
+    # would silently gate an ordinary test behind --run-system.
     run_system = config.getoption("--run-system") or config.getoption(
         "--run-system-compute"
     )
@@ -46,19 +49,19 @@ def pytest_collection_modifyitems(config, items):
     if not config.getoption("--run-demos"):
         skipper = pytest.mark.skip(reason="Only run when '--run-demos' is given")
         for item in items:
-            if "demos" in item.keywords:
+            if item.get_closest_marker("demos"):
                 item.add_marker(skipper)
 
     if not config.getoption("--run-dryruns"):
         skipper = pytest.mark.skip(reason="Only run when '--run-dryruns' is given")
         for item in items:
-            if "dryruns" in item.keywords:
+            if item.get_closest_marker("dryruns"):
                 item.add_marker(skipper)
 
     if not run_system:
         skipper = pytest.mark.skip(reason="Only run when '--run-system' is given")
         for item in items:
-            if "system" in item.keywords:
+            if item.get_closest_marker("system"):
                 item.add_marker(skipper)
 
     if not config.getoption("--run-system-compute"):
@@ -66,7 +69,7 @@ def pytest_collection_modifyitems(config, items):
             reason="Only run when '--run-system-compute' is given"
         )
         for item in items:
-            if "system_compute" in item.keywords:
+            if item.get_closest_marker("system_compute"):
                 item.add_marker(skipper)
 
 

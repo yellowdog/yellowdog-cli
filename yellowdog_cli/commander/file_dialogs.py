@@ -4,6 +4,7 @@ preview pane, the proxy that keeps every level of the listing in order, and the
 store the dialogs' preferences are kept in.
 """
 
+import re
 from codecs import getincrementaldecoder
 from os.path import basename, exists, getsize, isdir
 from shlex import quote
@@ -402,6 +403,16 @@ class NaturalOrderProxy(QSortFilterProxyModel):
     sort would put every expanded level in a different order from the directory
     above it — worse than the bug — and would disagree with the platform's file
     viewer, which the browse dialog hands over to.
+
+    Except where the collator will not order numerically, which is under the C
+    locale — what a Linux session with LANG unset runs in, a headless test node
+    included. There Qt ignores numeric mode and compares plain strings, so the
+    proxy asks the collator once whether '2' comes before '10' and, if not,
+    orders by natural_sort_key() instead. Measured rather than keyed off the
+    locale's name, since whether a locale collates numerically is Qt's backend's
+    business (ICU, macOS, Windows, POSIX), not something the name says. Qt's
+    own sort of the level it opens at is subject to the same limitation, but
+    the proxy orders that level too, so every level agrees either way.
     """
 
     def __init__(self, parent: QObject | None = None):
@@ -409,6 +420,7 @@ class NaturalOrderProxy(QSortFilterProxyModel):
         self._collator = QCollator()
         self._collator.setNumericMode(True)
         self._collator.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._collator_is_numeric = self._collator.compare("2", "10") < 0
         # Ordered as rows arrive, rather than once when the level is opened: a
         # level is delivered in batches, and only the first batch would be sorted.
         self.setDynamicSortFilter(True)
@@ -417,10 +429,25 @@ class NaturalOrderProxy(QSortFilterProxyModel):
     def lessThan(self, source_left: QModelIndex, source_right: QModelIndex) -> bool:
         if source_left.column() != LISTING_SORT_COLUMN:
             return super().lessThan(source_left, source_right)
-        return (
-            self._collator.compare(str(source_left.data()), str(source_right.data()))
-            < 0
-        )
+        left, right = str(source_left.data()), str(source_right.data())
+        if self._collator_is_numeric:
+            return self._collator.compare(left, right) < 0
+        return natural_sort_key(left) < natural_sort_key(right)
+
+
+_DIGIT_RUNS = re.compile(r"(\d+)")
+
+
+def natural_sort_key(name: str) -> list[str | int]:
+    """
+    A key ordering names as a numeric-mode, case-insensitive collator does:
+    'task_2' before 'task_10'. The split always yields text at even indices and
+    numbers at odd ones, so two keys never compare a str against an int.
+    """
+    return [
+        int(part) if index % 2 else part
+        for index, part in enumerate(_DIGIT_RUNS.split(name.casefold()))
+    ]
 
 
 SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at

@@ -24,7 +24,7 @@ from pathlib import Path
 from time import monotonic
 
 import gui_harness
-from PyQt6.QtCore import QEventLoop, QPoint, QRect, QSortFilterProxyModel
+from PyQt6.QtCore import QEventLoop, QLocale, QPoint, QRect, QSortFilterProxyModel
 from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -58,6 +58,7 @@ from yellowdog_cli.commander.file_dialogs import (
     SIDEBAR_PANE_WIDTH,
     FilePreview,
     format_file_size,
+    natural_sort_key,
 )
 
 # QFileSystemModel populates on its own thread, so a freshly opened dialog does
@@ -1063,8 +1064,42 @@ def test_an_expanded_directory_lists_its_contents_in_order(
     assert listed == PADDED_TASKS
 
 
+@pytest.fixture(params=["default", "C"])
+def collation_locale(request):
+    """
+    Run under the system's locale and under the C locale, which is what a Linux
+    session with LANG unset gets and in which Qt's collator ignores numeric
+    mode. Setting Qt's default locale reproduces that on any platform — macOS
+    takes its locale from the system preferences rather than from LANG, so the
+    environment alone would never show it here.
+    """
+    if request.param == "default":
+        yield
+        return
+    previous = QLocale()
+    QLocale.setDefault(QLocale.c())
+    try:
+        yield
+    finally:
+        QLocale.setDefault(previous)
+
+
+def test_natural_sort_key_orders_numbers_by_value_and_ignores_case():
+    names = ["Task_10", "task_2", "TASK_1", "task_1a", "task_", "task_100", "a"]
+
+    assert sorted(names, key=natural_sort_key) == [
+        "a",
+        "task_",
+        "TASK_1",
+        "task_1a",
+        "task_2",
+        "Task_10",
+        "task_100",
+    ]
+
+
 def test_an_expanded_directory_numbers_names_the_way_a_file_viewer_does(
-    window, tmp_path, monkeypatch, commander_dialog_settings
+    window, tmp_path, monkeypatch, commander_dialog_settings, collation_locale
 ):
     # Natural order, which is what Qt's own file model gives the level it opens
     # at, so the levels below it are not ordered differently from the one above.
@@ -1076,7 +1111,7 @@ def test_an_expanded_directory_numbers_names_the_way_a_file_viewer_does(
 
 
 def test_the_directory_the_dialog_opens_at_is_still_in_order(
-    window, tmp_path, monkeypatch, commander_dialog_settings
+    window, tmp_path, monkeypatch, commander_dialog_settings, collation_locale
 ):
     # The level Qt already ordered, and ordered naturally. Whatever orders the
     # expanded levels must not reorder this one — a plain string sort would list
