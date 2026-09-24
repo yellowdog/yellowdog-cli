@@ -14,7 +14,7 @@ from tomli import load as toml_load
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.misc_utils import format_yd_name
-from yellowdog_cli.utils.printing import print_info, print_json
+from yellowdog_cli.utils.printing import print_info, print_json, print_warning
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
     BOOL_TYPE_TAG,
@@ -22,7 +22,6 @@ from yellowdog_cli.utils.settings import (
     CSV_VAR_OPENING_DELIMITER,
     FORMAT_NAME_TYPE_TAG,
     NUMBER_TYPE_TAG,
-    WARNING_MARKER,
 )
 from yellowdog_cli.utils.variables import (
     load_jsonnet_file_with_variable_substitutions,
@@ -209,8 +208,8 @@ def perform_csv_task_expansion(
         task_prototype = task_group[TASKS][0]
 
         if not substitutions_present(csv_data.var_names, str(task_prototype)):
-            print_info(
-                f"{WARNING_MARKER}No CSV substitutions to apply to Task Group "
+            print_warning(
+                "No CSV substitutions to apply to Task Group "
                 f"{index + 1}; not expanding Task list"
             )
             continue
@@ -326,9 +325,7 @@ def get_csv_file_index(
     # Invalid Task Group naming?
     split_name = csv_filename.split(":")
     if len(split_name) > 1:
-        print_info(
-            f"{WARNING_MARKER}Possible invalid Task Group name/number '{split_name[-1]}'?"
-        )
+        print_warning(f"Possible invalid Task Group name/number '{split_name[-1]}'?")
 
     return csv_filename, None
 

@@ -60,8 +60,8 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_error, print_info
-from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR, WARNING_MARKER
+from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
     TYPE_IMGGRP,
@@ -1185,8 +1185,8 @@ def get_image_family_summaries(
     except Exception as e:
         if namespace is not None and "MissingPermissionException" in str(e):
             # Caching will prevent this warning appearing multiple times
-            print_info(
-                f"{WARNING_MARKER}Possible 'IMAGE_READ' permission missing if "
+            print_warning(
+                "Possible 'IMAGE_READ' permission missing if "
                 f"'{namespace}' is meant as an Image namespace?"
             )
         else:

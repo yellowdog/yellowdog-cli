@@ -36,6 +36,7 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
+    print_warning,
     print_worker_pool,
     print_yd_object,
 )
@@ -57,7 +58,6 @@ from yellowdog_cli.utils.provision_utils import (
     get_user_data_property,
 )
 from yellowdog_cli.utils.settings import (
-    WARNING_MARKER,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
@@ -343,8 +343,8 @@ def create_worker_pool_from_toml():
         node_workers = NodeWorkerTarget.per_node(CONFIG_WP.workers_per_node)
 
     if CONFIG_WP.maintainInstanceCount:
-        print_info(
-            f"{WARNING_MARKER}Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
+        print_warning(
+            f"Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
             "'false' when creating a Worker Pool"
         )
 
