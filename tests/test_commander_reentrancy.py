@@ -14,12 +14,8 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    Confirmation,
-    EntitySummary,
-    ObjectSummary,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import Confirmation, EntitySummary, ObjectSummary
 
 ACTIONS = [
     ("_cancel_work_requirements_action", "Cancel Work Requirements"),
@@ -61,7 +57,7 @@ def test_no_action_starts_while_a_nested_loop_is_blocking(
     monkeypatch.setattr(window, "_capture_dry_run_objects", fail)
     monkeypatch.setattr(window, "_capture_dry_run_json", fail)
     window._nested_depth = 1  # as _run_nested holds it
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
 
     getattr(window, method)()
@@ -146,7 +142,7 @@ def test_the_guard_precedes_the_dry_run_shortcut(window, captured, monkeypatch):
     # the guard just because they skip the enumeration.
     window._nested_depth = 1
     window.dry_run_objects.setChecked(True)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._download_results_action()
     window._delete_objects_action()
@@ -165,7 +161,7 @@ def test_normal_operation_is_unaffected(window, captured, monkeypatch):
         "_confirm_destructive",
         lambda *a, **k: Confirmation(proceed=True, handles=["S3:b/pfx/o"]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._delete_objects_action()
 

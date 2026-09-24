@@ -42,7 +42,7 @@ def never_browses(window, monkeypatch):
     def refuse(*_args, **_kwargs):
         raise AssertionError("a browse dialog was opened for a missing directory")
 
-    monkeypatch.setattr(window, "_browse_with_preview", refuse)
+    monkeypatch.setattr(window._file_dialogs, "browse", refuse)
 
 
 def test_a_missing_results_directory_is_reported_in_a_dialog(
@@ -105,8 +105,8 @@ def test_an_existing_results_directory_browses_instead_of_notifying(
     (tmp_path / RESULTS_DIR).mkdir()
     browsed: list[str] = []
     monkeypatch.setattr(
-        window,
-        "_browse_with_preview",
+        window._file_dialogs,
+        "browse",
         lambda caption, directory: browsed.append(directory) or None,
     )
     shown = commander_dialogs.drive_notice(window, monkeypatch)

@@ -4,11 +4,7 @@ read from a pipe. Guards against spurious line breaks in the log pane where a
 read boundary falls part-way through a line.
 """
 
-import qt_guard
-
-qt_guard.require_qt()  # commander imports QtWidgets at module top
-
-from yellowdog_cli.commander.commander import LineBuffer
+from yellowdog_cli.commander.output_model import LineBuffer
 
 
 def test_complete_lines_are_returned():

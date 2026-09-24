@@ -13,14 +13,9 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    NO_OBJECT_PATH,
-    RESULTS_DIR,
-    Confirmation,
-    EntitySummary,
-    ObjectSummary,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import NO_OBJECT_PATH, RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.selection import Confirmation, EntitySummary, ObjectSummary
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -120,7 +115,9 @@ def selected_definition(window, monkeypatch, tmp_path, name: str):
     definition.write_text('{"workRequirement": {}}\n')
 
     window._config_file = str(config_dir / "config.toml")
-    monkeypatch.setattr(window, "_select_file", lambda **kwargs: str(definition))
+    monkeypatch.setattr(
+        window._file_dialogs, "select_file", lambda **kwargs: str(definition)
+    )
     return definition
 
 
@@ -169,7 +166,9 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
         window, monkeypatch, tmp_path, "bash_with_args.json"
     )
     logged: list[str] = []
-    monkeypatch.setattr(window, "_log", lambda text, **kwargs: logged.append(text))
+    monkeypatch.setattr(
+        window._output, "log", lambda text, **kwargs: logged.append(text)
+    )
 
     window._select_work_requirement_action()
     window._show_wr_json_action()
@@ -341,7 +340,7 @@ def test_destructive_confirmation_body_reflects_name_glob(
             calls.append(body) or Confirmation(proceed=True, handles=["ydid:x:1"])
         ),
     )
-    window._namespace, window._tag = "yd-demo", "pyex"
+    window._discovery.namespace, window._discovery.tag = "yd-demo", "pyex"
     window.name_glob_override.setPlainText("ci-*")
     window._terminate_all_compute_requirements_action()
     body = calls[0]
@@ -407,7 +406,7 @@ def test_delete_runs_when_confirmed(window, captured, monkeypatch):
         "_confirm_destructive",
         lambda *a, **k: Confirmation(proceed=True, handles=["S3:b/pfx/obj"]),
     )
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "S3:b/pfx/obj"])]
 
@@ -433,7 +432,7 @@ def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: []
     )
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window.log_output.setPlainText("")
     window._delete_objects_action()
     assert captured == []
@@ -445,7 +444,7 @@ def test_delete_refuses_when_there_is_no_tag_and_no_path(window, captured):
     # tag to build the default '<tag>*' path from — and with confirmations
     # suppressed 'yd-delete -Ry None*' is what acting on a guess would mean.
     window._config_file = None
-    window._tag = None
+    window._discovery.tag = None
     window.log_output.setPlainText("")
 
     window._delete_objects_action()
@@ -456,7 +455,7 @@ def test_delete_refuses_when_there_is_no_tag_and_no_path(window, captured):
 
 def test_download_refuses_when_there_is_no_tag_and_no_path(window, captured):
     window._config_file = None
-    window._tag = None
+    window._discovery.tag = None
     window.log_output.setPlainText("")
 
     window._download_results_action()
@@ -477,7 +476,7 @@ def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
             calls.append(rows) or Confirmation(proceed=True, handles=None)
         ),
     )
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
     assert calls[0] is None
@@ -490,7 +489,7 @@ def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
         "_confirm_destructive",
         lambda *a, **k: Confirmation(proceed=False, handles=None),
     )
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "my-tag*", "-D"])]
@@ -501,7 +500,7 @@ def test_delete_bypass_logs_the_suppression(window, captured, monkeypatch):
     # log matters most, so it must log the suppression the same way the
     # entity-based destructive actions do.
     window._skip_confirmations = {"delete"}
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window.log_output.setPlainText("")
     window._delete_objects_action()
     assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
@@ -522,7 +521,7 @@ def test_skip_confirmations_key_short_circuits(window, captured):
 def test_yes_flag_disables_all_confirmations(qapp):
     # Launching with disable_confirmations=True (the -y/--yes flag) makes every
     # destructive action auto-confirm with no dialog, across all action keys.
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     assert win._confirm_destructive("terminate", "t", "b") == Confirmation(
         proceed=True, handles=None
     )
@@ -548,7 +547,7 @@ def test_skip_confirmations_is_per_action(window):
 
 
 def test_scope_phrase_tags_and_names(window):
-    window._namespace, window._tag = "ns", "tg"
+    window._discovery.namespace, window._discovery.tag = "ns", "tg"
     assert window._scope_phrase("tags") == " in namespace 'ns' with tags including 'tg'"
     assert (
         window._scope_phrase("names") == " in namespace 'ns' with names including 'tg'"
@@ -556,8 +555,8 @@ def test_scope_phrase_tags_and_names(window):
 
 
 def test_scope_phrase_generic_when_unknown(window):
-    window._namespace = None
-    window._tag = None
+    window._discovery.namespace = None
+    window._discovery.tag = None
     assert window._scope_phrase("tags") == " in the current namespace and tag"
 
 
@@ -572,7 +571,7 @@ def test_download(window, captured, monkeypatch):
         window, "_capture_dry_run_objects", lambda command, extra_args: None
     )
     window._config_file = "cfg/config.toml"
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window._download_results_action()
     expected_dst = join(dirname(abspath("cfg/config.toml")), RESULTS_DIR)
     assert captured == [("yd-download", ["--into", expected_dst, "my-tag*"])]
@@ -593,7 +592,7 @@ def test_download_results_no_config_uses_cwd(window, captured, monkeypatch):
         window, "_capture_dry_run_objects", lambda command, extra_args: None
     )
     window._config_file = None
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     expected_path = window._object_path()
     window._download_results_action()
     assert captured == [
@@ -631,12 +630,12 @@ def test_namespace_tag_and_user_vars_empty(window):
 
 
 def test_object_path_defaults_to_tag_glob(window):
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     assert window._object_path() == "my-tag*"
 
 
 def test_object_path_uses_override(window):
-    window._tag = "my-tag"
+    window._discovery.tag = "my-tag"
     window.object_path_override.setPlainText("custom/path/*")
     assert window._object_path() == "custom/path/*"
 
@@ -644,18 +643,18 @@ def test_object_path_uses_override(window):
 def test_object_path_is_unknown_without_a_tag_or_override(window):
     # It used to interpolate the missing tag, producing the literal 'None*' and
     # handing that to yd-download / yd-delete as the scope to act on.
-    window._tag = None
+    window._discovery.tag = None
     assert window._object_path() is None
 
 
 def test_object_path_uses_the_override_even_without_a_tag(window):
-    window._tag = None
+    window._discovery.tag = None
     window.object_path_override.setPlainText("custom/path/*")
     assert window._object_path() == "custom/path/*"
 
 
 def test_download_refuses_when_no_object_path_can_be_worked_out(window, captured):
-    window._tag = None
+    window._discovery.tag = None
 
     window._download_results_action()
 
@@ -664,7 +663,7 @@ def test_download_refuses_when_no_object_path_can_be_worked_out(window, captured
 
 
 def test_delete_refuses_when_no_object_path_can_be_worked_out(window, captured):
-    window._tag = None
+    window._discovery.tag = None
 
     window._delete_objects_action()
 
@@ -675,7 +674,7 @@ def test_delete_refuses_when_no_object_path_can_be_worked_out(window, captured):
 def test_delete_refuses_even_with_confirmations_suppressed(window, captured):
     # The dangerous combination: '--yes' skips the confirmation, so 'None*' would
     # have gone straight to 'yd-delete -Ry', deleting anything named 'None...'.
-    window._tag = None
+    window._discovery.tag = None
     window._confirmations_disabled = True
 
     window._delete_objects_action()
@@ -686,7 +685,7 @@ def test_delete_refuses_even_with_confirmations_suppressed(window, captured):
 def test_dry_run_refuses_too_when_no_object_path_can_be_worked_out(window, captured):
     # A dry run reporting on 'None*' says 'nothing matches', which reads as
     # reassurance about the wrong question.
-    window._tag = None
+    window._discovery.tag = None
     window.dry_run_objects.setChecked(True)
 
     window._download_results_action()

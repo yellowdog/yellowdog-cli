@@ -869,6 +869,7 @@ class TestWriteFileVariableSubstitution:
             "raw content\n",
             prefix="__",
             postfix="__",
+            source="script.sh",
         )
         assert result.content == "substituted content\n"
 

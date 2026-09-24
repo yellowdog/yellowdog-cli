@@ -52,11 +52,13 @@
     # throughout this file and in resource specifications.
     # Values are held as strings: a value that isn't a string is held as its
     # JSON text, so a value defined here as an array, table, number or boolean
-    # can be read back by the corresponding type tag.
+    # can be read back by the corresponding type tag (num:, bool:, array:,
+    # table:). A name starts with a letter, digit or '_', and contains only
+    # letters, digits, '_', '.' and '-'.
     # Optional
     # [common.variables]
     #     my_var    = "some_value"
-    #     my_count  = "{{num:42}}"   # type tags: num:, bool:, array:, table:
+    #     my_count  = 42             # used as "{{num:my_count}}"
     #     my_array  = [1, 2, 3]      # used as "{{array:my_array}}"
     #     my_flag   = true           # used as "{{bool:my_flag}}"
 

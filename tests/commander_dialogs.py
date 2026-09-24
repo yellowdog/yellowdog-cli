@@ -198,7 +198,7 @@ def drive_process_chooser(
     are ticked and unticked and 'press' is pressed. 'inspect(dialog)' runs first
     if given. Like the chooser it is built on, it wires its own button box.
     """
-    real_build = window._build_process_dialog
+    real_build = window._output._build_process_dialog
 
     def build(runs, ticked_runs):
         dialog, process_list = real_build(runs, ticked_runs)
@@ -218,4 +218,4 @@ def drive_process_chooser(
         gui_harness.arm_modal(dialog, interact)
         return dialog, process_list
 
-    monkeypatch.setattr(window, "_build_process_dialog", build)
+    monkeypatch.setattr(window._output, "_build_process_dialog", build)

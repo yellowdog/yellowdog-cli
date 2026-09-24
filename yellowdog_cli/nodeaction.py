@@ -64,6 +64,7 @@ from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
     process_variable_substitutions_in_file_contents,
+    warn_of_undefined_variables,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -271,7 +272,15 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                     with open(path_join(source_dir, cast(str, content_file))) as f:
                         raw = f.read()
                     content_val = process_variable_substitutions_in_file_contents(
-                        raw, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+                        raw,
+                        prefix=WP_VARIABLES_PREFIX,
+                        postfix=WP_VARIABLES_POSTFIX,
+                        source=str(content_file),
+                    )
+                    warn_of_undefined_variables(
+                        {str(content_file): content_val},
+                        prefix=WP_VARIABLES_PREFIX,
+                        postfix=WP_VARIABLES_POSTFIX,
                     )
                 except OSError as e:
                     print_error(f"Cannot read '{ACTION_CONTENT_FILE}' file: {e}")
@@ -285,13 +294,18 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                     try:
                         with open(path_join(source_dir, file_path)) as f:
                             raw = f.read()
-                        parts.append(
-                            process_variable_substitutions_in_file_contents(
-                                raw,
-                                prefix=WP_VARIABLES_PREFIX,
-                                postfix=WP_VARIABLES_POSTFIX,
-                            )
+                        part = process_variable_substitutions_in_file_contents(
+                            raw,
+                            prefix=WP_VARIABLES_PREFIX,
+                            postfix=WP_VARIABLES_POSTFIX,
+                            source=str(file_path),
                         )
+                        warn_of_undefined_variables(
+                            {str(file_path): part},
+                            prefix=WP_VARIABLES_PREFIX,
+                            postfix=WP_VARIABLES_POSTFIX,
+                        )
+                        parts.append(part)
                     except OSError as e:
                         print_error(f"Cannot read '{ACTION_CONTENT_FILES}' file: {e}")
                         return None

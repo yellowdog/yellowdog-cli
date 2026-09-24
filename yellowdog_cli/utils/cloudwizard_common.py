@@ -21,7 +21,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.settings import RN_KEYRING, RN_REQUIREMENT_TEMPLATE
-from yellowdog_cli.utils.variables import process_variable_substitutions_insitu
+from yellowdog_cli.utils.variables import resolve_variables_insitu
 
 CLOUDWIZARD_NAMESPACE_PREFIX = "cloudwizard"
 
@@ -324,11 +324,9 @@ class CommonCloudConfig(ABC):
         ]
 
         print_info("Creating YellowDog Compute Requirement Templates")
-        create_resources(
-            process_variable_substitutions_insitu(  # type: ignore[arg-type]
-                deepcopy(self._requirement_template_resources)
-            )
-        )
+        resources = deepcopy(self._requirement_template_resources)
+        resolve_variables_insitu(resources)
+        create_resources(resources)
 
     def _create_keyring(self, keyring_name: str):
         """

@@ -1,7 +1,6 @@
 # YellowDog Command-Line Interface
 
 <!--ts-->
-* [YellowDog Command-Line Interface](#yellowdog-command-line-interface)
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
 * [Installation](#installation)
@@ -41,6 +40,7 @@
       * [Nested Variables](#nested-variables)
       * [Providing Default Values for User-Defined Variables](#providing-default-values-for-user-defined-variables)
       * [Removing Properties Using the Unset Suffix](#removing-properties-using-the-unset-suffix)
+      * [Undefined Variables](#undefined-variables)
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 * [Work Requirements](#work-requirements)
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
@@ -199,7 +199,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 22 11:42:59 BST 2026 -->
+<!-- Added by: pwt, at: Thu Sep 24 09:41:30 BST 2026 -->
 
 <!--te-->
 
@@ -726,24 +726,13 @@ User-defined variables can be supplied using an option on the command line, by s
 
 ### Variable Naming
 
-User-defined variable names must not start with a reserved prefix. The implementation does not enforce any other restrictions on characters (including spaces), but by convention names should be simple identifiers without spaces. When enclosing a variable name in curly brackets, don't insert spaces between the variable name and the brackets.
+A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
 
-**Reserved prefixes** — the following prefixes have special meaning and must not be used as the start of a variable name:
+The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
-| Prefix         | Purpose                                          |
-|----------------|--------------------------------------------------|
-| `num:`         | Type tag: interpret value as a number            |
-| `bool:`        | Type tag: interpret value as a boolean           |
-| `array:`       | Type tag: interpret value as an array            |
-| `table:`       | Type tag: interpret value as a table (dict)      |
-| `format_name:` | Type tag: convert value to a YellowDog-safe name |
-| `env:`         | Look up a general environment variable           |
+The rule excludes the substitution syntax itself (`}}`, the `:=` default-value separator and the `::` unset suffix) and the type-tag prefixes (`num:`, `bool:`, `array:`, `table:`, `format_name:`) and `env:`, which have special meaning at the start of a substitution. The exception is the name of a general environment variable in an `{{env:NAME}}` substitution, which is the operating system's to decide, and may contain anything but whitespace and the substitution syntax, e.g. `{{env:ProgramFiles(x86)}}`.
 
-**Other constraints:**
-
-- Variable names cannot contain `}}` (closing delimiter), `:=` (default-value separator), or `::` (unset suffix), as these are parsed as syntax.
-- `YD_VAR_` environment variables create variable names with the **exact case** of the suffix — `YD_VAR_SUFFIX` creates `SUFFIX`, not `suffix`. On Windows, environment variable names are uppercased by the OS, so use uppercase names only.
-- When defining variables in `[common.variables]` in TOML, names follow TOML bare-key rules (`a-z`, `A-Z`, `0-9`, `-`, `_`) unless quoted.
+`YD_VAR_` environment variables create variable names with the **exact case** of the suffix — `YD_VAR_SUFFIX` creates `SUFFIX`, not `suffix`. On Windows, environment variable names are uppercased by the OS, so use uppercase names only.
 
 ### Setting Variable Values
 
@@ -783,7 +772,7 @@ This method can also be used to override some default variables, e.g. setting `-
 
 ### Nested Variables
 
-In the case of **TOML file properties only**, variable substitutions can be nested.
+Variable substitutions can be nested, in TOML, JSON and Jsonnet files alike.
 
 For example, if one wanted to select a different `templateId` for a Worker Pool depending on the value of a `region` variable, one could use the following:
 
@@ -799,7 +788,7 @@ For example, if one wanted to select a different `templateId` for a Worker Pool 
 
 Then, if one used `yd-provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
 
-Nesting can be up to three levels deep including the top level. Note that sequencing of properties in the TOML file does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
+There is no limit on how deeply variables can be nested, and a variable whose value itself contains variable references is resolved however long the chain. A circular reference, where a variable refers back to itself either directly or through other variables, is reported as an error. The example is TOML, but `"templateId": "{{template_{{region}}}}"` works the same way in a JSON or Jsonnet specification. Note that sequencing of properties does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
 
 ### Providing Default Values for User-Defined Variables
 
@@ -831,7 +820,7 @@ When a JSON default contains double-quoted strings, use a TOML single-quoted (li
 workerTags = '{{array:worker_tags:=["tag1", "tag2"]}}'
 ```
 
-Default values can be used anywhere that variable substitutions are allowed. In TOML files only, nested variable substitutions can be used inside default values, e.g.:
+Default values can be used anywhere that variable substitutions are allowed, and nested variable substitutions can be used inside default values, e.g.:
 
 ```toml
 name = "{{name_var:={{tag}}-{{datetime}}}}"
@@ -858,7 +847,7 @@ maxRetries    = "{{num:retries::}}"  # removed if 'retries' is not set
 
 If `tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `tag` is supplied, e.g. via `-v tag=my-tag`, it will be used as the value.
 
-This also works inside JSON/Jsonnet specifications and for list elements.
+This also works inside JSON/Jsonnet specifications and for list elements. In the contents of files that are substituted as text — User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `writeFile` content files — there is no property to remove, so an unset substitution for an undefined variable is left in the text exactly as written.
 
 The `env:` prefix can be combined with the unset suffix to make a property conditional on an environment variable being set:
 
@@ -871,6 +860,35 @@ The bare `{{::}}` (no variable name) always removes the property unconditionally
 ```toml
 taskType = "{{::}}"   # always removed
 ```
+
+The unset suffix can also be used inside a [nested variable](#nested-variables). The property is removed if the unset variable's value is needed, and kept if it is not:
+
+```toml
+templateId = "{{template_{{region::}}}}"      # removed if 'region' is not set
+name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' nor 'default_name' is set
+```
+
+A variable defined with the unset syntax, in `[common.variables]` or elsewhere, is itself removed: `region = "{{::}}"`, or `region = "{{env:MY_REGION::}}"` with `MY_REGION` not set, leaves `region` undefined. A plain reference to it, `{{region}}`, is then treated like a reference to any undefined variable: it is left unsubstituted, with a [warning](#undefined-variables), and the property or variable containing it is kept. To make a property or variable conditional on it too, use the suffix there as well: `zone = "{{region::}}a"` is removed along with `region`.
+
+### Undefined Variables
+
+A variable substitution for a variable that is not defined, and that has neither a default value nor the unset suffix, is left in the specification unchanged, and a warning is printed naming it and the properties it appears in, e.g.:
+
+```
+Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
+```
+
+Where the variable was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix), the warning says so, and why:
+
+```
+Warning: Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
+```
+
+This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
+
+Each undefined variable is reported once, however many properties or Tasks it appears in. The Task and Task Group variables that `yd-submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+
+A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
@@ -3220,7 +3238,7 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 The scripts provide full support for variable substitutions in Jsonnet files, using the same rules as for the JSON specifications. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"`.
 
-Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion.
+Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion. Variables are fully resolved before the expansion, including those whose values themselves contain variable references, so Jsonnet code can compute with their values, e.g. `local count = std.parseInt('{{count}}');`.
 
 ## Checking Jsonnet Processing
 
@@ -4022,7 +4040,7 @@ The `yd-variables` command reports the processed values of variable substitution
 yd-variables [options] [<var> ...]
 ```
 
-Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order, and it is the command's only output — there is no need to pass `--quiet`/`-q`. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd-show`, it is preceded by any warnings and followed by `Done`; pass `--quiet`/`-q` to get the JSON alone, for example to pipe it into another program. A name that isn't the name of a variable reports `null`, so the command also answers whether a variable is set at all.
 
 ```shell
 yd-variables                           # report every variable
@@ -4042,9 +4060,27 @@ yd-variables --show-secrets  # every variable, credentials included
 yd-variables key secret      # named explicitly, so reported in full
 ```
 
-**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
+A reported variable whose value still contains a reference to a variable that is not defined is reported as it stands, and a [warning](#undefined-variables) naming it is printed ahead of the JSON. The same applies to the configuration's `namespace`, `tag` and `url`; `key` and `secret` are never checked. `--quiet` suppresses the warnings along with `Done`.
 
-This command replaces the `--report-variable`/`-r` option of `yd-show`, which has been removed. `yd-show -q -r namespace -r tag` becomes `yd-variables namespace tag`, and `yd-show -q -r all` becomes `yd-variables`.
+```shell
+yd-variables -v 'bucket=s3://{{regoin}}' bucket
+```
+
+```
+Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
+```
+
+A variable that was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, a warning also gives the reason, following each `{{name::}}` reference to a variable that was itself unset:
+
+```shell
+yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
+```
+
+```
+Warning: Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
+```
+
+**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
 
 ## Resource Commands
 

@@ -12,6 +12,8 @@ Covers here:
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
   - load_config_worker_pool: name type checking
+  - _resolve_section_variables: a circular variable reference in a section
+    is reported and exits
 """
 
 import os
@@ -20,6 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.utils.load_config as lc_module
+import yellowdog_cli.utils.variables as var_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,
@@ -120,8 +123,8 @@ class TestLoadNamespaceAndTag:
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -262,8 +265,8 @@ class TestLoadConfigCommonPrecedence:
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(lc_module, "add_substitutions_without_overwriting"),
             patch.object(lc_module, "register_dc_substitutions"),
@@ -373,11 +376,11 @@ class TestLoadConfigWorkRequirement:
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
             patch.object(lc_module, "ARGS_PARSER", args),
-            patch.object(lc_module, "process_variable_substitutions_insitu"),
+            patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -528,11 +531,11 @@ class TestLoadConfigWorkerPool:
         )
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
-            patch.object(lc_module, "process_variable_substitutions_insitu"),
+            patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
-                "process_variable_substitutions",
-                side_effect=lambda x: x,
+                "_resolve_value",
+                side_effect=lambda x, source=None: x,
             ),
             patch.object(
                 lc_module,
@@ -559,3 +562,115 @@ class TestLoadConfigWorkerPool:
             self._call(toml_wp_section={WP_NAME: value})
         message = str(print_error.call_args.args[0])
         assert f"'{WP_NAME}'" in message and "String" in message
+
+
+class TestResolveSectionVariables:
+    """
+    A configuration section whose variables never settle -- a circular
+    reference -- is reported as an error and exits, as the section loaders'
+    other configuration errors are.
+    """
+
+    def test_resolves_in_place(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_SECTION_VAR", "value")
+        section = {"name": "{{env:YD_TEST_SECTION_VAR}}"}
+        lc_module._resolve_section_variables(section)
+        assert section == {"name": "value"}
+
+    def test_circular_reference_exits_with_the_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            lc_module._resolve_section_variables({"name": "{{env:YD_TEST_A}}"})
+        assert exc.value.code == 1
+        message = str(print_error.call_args.args[0])
+        assert "circular" in message
+        assert "'name'" in message
+
+    def test_work_requirement_section_uses_it(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(
+                lc_module,
+                "CONFIG_TOML",
+                {WORK_REQUIREMENT_SECTION: {"name": "{{env:YD_TEST_A}}"}},
+            ),
+            patch.object(lc_module, "print_error"),
+            pytest.raises(SystemExit),
+        ):
+            load_config_work_requirement()
+
+
+class TestWorkerPoolUndefinedVariables:
+    """
+    The Worker Pool sections are resolved at import, before the undefined-
+    variable warnings are enabled, so yd-provision and yd-instantiate re-check
+    them as they start: each section as written, the Compute Requirement
+    synonym not listed twice for having been merged into 'workerPool'.
+    """
+
+    @pytest.fixture()
+    def warnings(self, monkeypatch):
+        # Off while the configuration loads, as it is at import
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
+        warning = MagicMock()
+        monkeypatch.setattr(var_module, "print_warning", warning)
+        return warning
+
+    def _load(self, toml: dict):
+        with patch.object(lc_module, "CONFIG_TOML", toml):
+            load_config_worker_pool()
+        var_module.enable_undefined_variable_warnings()
+        lc_module.warn_of_undefined_worker_pool_variables()
+
+    def test_reports_each_section_by_its_own_name(self, warnings):
+        self._load(
+            {
+                WORKER_POOL_SECTION: {"templateId": "{{wp_nope}}"},
+                "computeRequirement": {"imagesId": "{{cr_nope}}"},
+            }
+        )
+        messages = [str(call.args[0]) for call in warnings.call_args_list]
+        assert len(messages) == 2
+        [wp] = [m for m in messages if "{{wp_nope}}" in m]
+        [cr] = [m for m in messages if "{{cr_nope}}" in m]
+        assert "'workerPool.templateId'" in wp
+        assert "'computeRequirement.imagesId'" in cr
+        assert "workerPool" not in cr
+
+    def test_user_data_mustache_is_not_reported(self, warnings):
+        self._load({WORKER_POOL_SECTION: {"userData": "echo {{server_side}}"}})
+        assert warnings.call_count == 0
+
+    def test_nothing_to_report_without_sections(self, warnings):
+        self._load({})
+        assert warnings.call_count == 0
+
+
+class TestResolveValue:
+    """
+    The configuration values substituted one at a time resolve chains and
+    exit on a circular reference, as the sections do.
+    """
+
+    def test_a_chain_resolves(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_C}}")
+        monkeypatch.setenv("YD_TEST_C", "end")
+        assert lc_module._resolve_value("t-{{env:YD_TEST_A}}", "common.tag") == "t-end"
+
+    def test_circular_reference_exits_with_the_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            lc_module._resolve_value("{{env:YD_TEST_A}}", "common.tag")
+        assert exc.value.code == 1
+        assert "'common.tag'" in str(print_error.call_args.args[0])

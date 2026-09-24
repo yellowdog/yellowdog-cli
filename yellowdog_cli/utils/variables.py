@@ -21,6 +21,7 @@ from yellowdog_cli.utils.misc_utils import (
     PROCESS_DISCRIMINATOR,
     UTCNOW,
     config_file_explicitly_selected,
+    find_delimited_expressions,
     format_yd_name,
     load_dotenv_file,
     random_base36,
@@ -32,6 +33,7 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_json,
+    print_warning,
 )
 from yellowdog_cli.utils.property_names import (
     COMMON_SECTION,
@@ -42,17 +44,21 @@ from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
     ENV_VAR_SUB_PREFIX,
+    ENV_VARIABLE_NAME_PATTERN,
     FORMAT_NAME_TYPE_TAG,
+    LAZY_VARIABLE_NAMES,
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
     TABLE_TYPE_TAG,
-    TOML_VAR_NESTED_DEPTH,
     TYPE_TAG_DEFAULT_GUARD,
     VAR_CLOSING_DELIMITER,
     VAR_DEFAULT_SEPARATOR,
     VAR_OPENING_DELIMITER,
+    VAR_SUBSTITUTION_MAX_PASSES,
     VAR_UNSET_SUFFIX,
+    VARIABLE_NAME_PATTERN,
+    VARIABLE_NAME_RULE,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
     YD_ENV_VAR_PREFIX,
@@ -62,6 +68,66 @@ from yellowdog_cli.utils.settings import (
 # bearing the '::' unset suffix has no value defined; callers that walk
 # a dict/list (i.e. _walk_data) use this to delete the property entirely.
 _UNSET = object()
+
+# Stands in for an unset expression nested inside another one while the outer
+# expression is resolved. Whether the outer one is then unset too depends on
+# whether the value was needed -- to build a name, or as a default that is
+# used -- which is known only once it is resolved: if the marker is still
+# there, it was. A private-use character, which no delimiter, separator or
+# regular expression below can match, and no variable value will contain.
+_UNSET_MARKER = "\ue000"
+
+# Whether an expression left unsubstituted is reported as an undefined
+# variable. Off until a command's own processing begins (the command
+# wrappers turn it on), because the configuration's own passes run while
+# its variables are still being defined -- 'namespace', 'tag', 'key',
+# 'dataClient.*' -- and would report each of them.
+_UNDEFINED_VARIABLE_WARNINGS = False
+
+# The expressions already reported, so that each is reported once however
+# many passes, Task Groups or Tasks it turns up in
+_UNDEFINED_VARIABLES_REPORTED: set[str] = set()
+
+# What an expression naming a variable looks like, once resolution has left
+# it: an optional type tag, then either 'env:' and an environment variable's
+# name, or a variable name. Anything else -- Docker's '{{.ID}}', a Go
+# template's '{{ .Values.x }}', Handlebars' '{{#each}}' -- is text meant for
+# something else, since no variable can be defined with such a name.
+_TYPE_TAGS = (
+    NUMBER_TYPE_TAG,
+    BOOL_TYPE_TAG,
+    ARRAY_TYPE_TAG,
+    TABLE_TYPE_TAG,
+    FORMAT_NAME_TYPE_TAG,
+)
+_VARIABLE_REFERENCE = re.compile(
+    "(?:"
+    + "|".join(re.escape(tag) for tag in _TYPE_TAGS)
+    + f")?({re.escape(ENV_VAR_SUB_PREFIX)}{ENV_VARIABLE_NAME_PATTERN}"
+    + f"|{VARIABLE_NAME_PATTERN})"
+)
+_VARIABLE_NAME = re.compile(VARIABLE_NAME_PATTERN)
+
+
+def check_variable_name(name: str, source: str) -> None:
+    """
+    Raise ValueError if 'name' is not a valid variable name, naming 'source'
+    -- where the definition came from -- and the rule.
+    """
+    if not _VARIABLE_NAME.fullmatch(name):
+        raise ValueError(
+            f"Invalid variable name '{name}' in {source}: {VARIABLE_NAME_RULE}"
+        )
+
+
+def enable_undefined_variable_warnings() -> None:
+    """
+    Report, from now on, variables left unsubstituted because nothing
+    defines them. Called by the command wrappers as a command begins.
+    """
+    global _UNDEFINED_VARIABLE_WARNINGS
+    _UNDEFINED_VARIABLE_WARNINGS = True
+
 
 # Set up default variable substitutions
 try:
@@ -88,6 +154,13 @@ load_dotenv_file()
 subs_list = []
 for key, value in os.environ.items():
     if key.startswith(YD_ENV_VAR_PREFIX):
+        try:
+            check_variable_name(
+                key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
+            )
+        except ValueError as e:
+            print_error(e)
+            exit(1)  # Note: exception trap not yet in place
         key = key[len(YD_ENV_VAR_PREFIX) :]
         VARIABLE_SUBSTITUTIONS[key] = value
         subs_list.append(f"'{key}'")
@@ -111,6 +184,11 @@ if ARGS_PARSER.variables is not None:
         # Split on the first '=' only: values may themselves contain '='
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
+            try:
+                check_variable_name(key_value[0], f"'--variable {variable}'")
+            except ValueError as e:
+                print_error(e)
+                exit(1)  # Note: exception trap not yet in place
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
             CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
@@ -127,6 +205,14 @@ if subs_list:
     )
 
 del subs_list
+
+# Each variable's definition as written, before any substitution, which is
+# what explain_unset_variable() works from: once the '::' syntax has removed
+# a variable from the table, nothing left there says why -- a variable that
+# referred to an unset one holds that one's '{{::}}' as text by then, and is
+# removed on the next pass for that. Kept in step with the table by
+# _update_and_resolve_substitutions() and add_or_update_substitution().
+_DEFINITIONS: dict[str, str] = dict(VARIABLE_SUBSTITUTIONS)
 
 
 def _stringify(value) -> str:
@@ -163,35 +249,59 @@ def _update_and_resolve_substitutions(merged: dict):
     reference to it see the change (rebinding the name would silently
     break imported references).
     """
+    # A value the table already holds is a definition already recorded (its
+    # resolved value, which is not the definition); anything else is new
+    for key_, value_ in merged.items():
+        if key_ in VARIABLE_SUBSTITUTIONS and VARIABLE_SUBSTITUTIONS[key_] == value_:
+            _DEFINITIONS.setdefault(key_, _stringify(value_))
+        else:
+            _DEFINITIONS[key_] = _stringify(value_)
+
     VARIABLE_SUBSTITUTIONS.clear()
     VARIABLE_SUBSTITUTIONS.update(merged)
 
-    # Populate variables that can now be substituted.
-    # Ensure that the value is stored as a string.
-    # If a variable resolves to _UNSET (e.g. it references an undefined
-    # variable with the '::' unset suffix), remove it entirely.
-    keys_to_unset = []
+    # A variable that resolves to _UNSET (it is '{{::}}', or refers to an
+    # undefined variable with the '::' unset suffix) is removed entirely --
+    # and removed before anything else is substituted, since while it is
+    # still in the table a reference to it would take in its '{{::}}' as
+    # text, and so be unset in turn by the next pass: an unset that spreads
+    # to every variable merely referring to it, but only to those resolved
+    # in the same pass as it. Removed first, it is simply undefined, as it
+    # is to everything resolved later. Repeated, because a removal can
+    # unset a variable referring to it with the '::' suffix.
+    while unset := [
+        key_
+        for key_, value_ in VARIABLE_SUBSTITUTIONS.items()
+        if process_variable_substitutions(_stringify(value_)) is _UNSET
+    ]:
+        for key_ in unset:
+            del VARIABLE_SUBSTITUTIONS[key_]
+
+    # Populate variables that can now be substituted, stored as strings
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        result = process_variable_substitutions(_stringify(value_))
-        if result is _UNSET:
-            keys_to_unset.append(key_)
-        else:
-            VARIABLE_SUBSTITUTIONS[key_] = cast(str, result)
-    for key_ in keys_to_unset:
-        del VARIABLE_SUBSTITUTIONS[key_]
+        VARIABLE_SUBSTITUTIONS[key_] = cast(
+            str, process_variable_substitutions(_stringify(value_))
+        )
 
 
-def add_substitutions_without_overwriting(subs: dict):
+def add_substitutions_without_overwriting(
+    subs: dict, source: str = "a variable definition"
+):
     """
     Add a dictionary of substitutions. Do not overwrite existing values, but
-    resolve remaining variables if possible.
+    resolve remaining variables if possible. Raises ValueError, naming
+    'source', for a name that is not a valid variable name.
     """
+    for name in subs:
+        check_variable_name(name, source)
     # Merge: existing entries (CLI / env vars) take priority over incoming
     # ones
     _update_and_resolve_substitutions({**subs, **VARIABLE_SUBSTITUTIONS})
 
 
-def add_substitutions_from_config_file(subs: dict):
+def add_substitutions_from_config_file(
+    subs: dict, source: str = "'[common.variables]'"
+):
     """
     Add variable substitutions from a TOML configuration file's
     [common.variables] section.
@@ -201,19 +311,23 @@ def add_substitutions_from_config_file(subs: dict):
     set on the command line); otherwise existing definitions take
     precedence as usual.
     """
+    for name in subs:
+        check_variable_name(name, source)
     if not config_file_explicitly_selected(ARGS_PARSER):
-        add_substitutions_without_overwriting(subs)
+        add_substitutions_without_overwriting(subs, source)
         return
 
     subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 
-def add_or_update_substitution(key: str, value):
+def add_or_update_substitution(key: str, value, source: str = "a variable definition"):
     """
-    Add a substitution to the dictionary, overwriting existing values.
+    Add a substitution to the dictionary, overwriting existing values. Raises
+    ValueError, naming 'source', for a name that is not a valid variable name.
     """
-    VARIABLE_SUBSTITUTIONS[key] = _stringify(value)
+    check_variable_name(key, source)
+    VARIABLE_SUBSTITUTIONS[key] = _DEFINITIONS[key] = _stringify(value)
 
 
 def get_user_variable(variable_name: str) -> str | None:
@@ -221,6 +335,107 @@ def get_user_variable(variable_name: str) -> str | None:
     Get the value of a variable.
     """
     return VARIABLE_SUBSTITUTIONS.get(variable_name)
+
+
+def get_unset_variable_names() -> list[str]:
+    """
+    The variables that were defined but are not in the table, because the
+    '::' unset syntax removed them, in alphabetical order.
+    """
+    return sorted(name for name in _DEFINITIONS if name not in VARIABLE_SUBSTITUTIONS)
+
+
+def explain_unset_variable(name: str) -> str | None:
+    """
+    Why the variable 'name' was defined and yet has no value, or None if it
+    has a value or was never defined.
+    """
+    if name in VARIABLE_SUBSTITUTIONS or name not in _DEFINITIONS:
+        return None
+    return f"Variable '{name}' is unset: " + "; ".join(_unset_reasons(name))
+
+
+def _unset_reasons(name: str) -> list[str]:
+    """
+    What in the definition of the unset variable 'name' unset it. Only its
+    own definition can have: a plain reference to an unset variable leaves
+    that reference unsubstituted, as one to any undefined variable does. A
+    '{{x::}}' reference to an unset 'x' is followed to what unset 'x', and
+    so on to the '{{::}}' or undefined '{{y::}}' at the end of the chain.
+    """
+    reasons: list[str] = []
+    explained: set[str] = set()
+    pending = [name]
+    while pending:
+        name_ = pending.pop(0)
+        if name_ in explained:
+            continue
+        explained.add(name_)
+        definition = _DEFINITIONS[name_]
+        causes = _unset_causes(definition)
+        if not causes:
+            reasons.append(
+                f"'{name_}' is unset by the '{VAR_UNSET_SUFFIX}' in its"
+                f" definition, '{definition}'"
+            )
+        for clause, unset_reference in causes:
+            reasons.append(f"'{name_}' {clause}")
+            if unset_reference is not None:
+                pending.append(unset_reference)
+    return reasons
+
+
+def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
+    """
+    The expressions in a variable's definition that can unset it -- a
+    '{{::}}', or a '{{x::}}' with no 'x' to substitute -- each as a clause
+    saying why, with the name of the variable it refers to where that was
+    defined and is itself unset, so that the chain can be followed.
+    """
+    causes: list[tuple[str, str | None]] = []
+
+    def _check(text: str):
+        for expression in find_delimited_expressions(
+            text, VAR_OPENING_DELIMITER, VAR_CLOSING_DELIMITER
+        ):
+            inner = expression[len(VAR_OPENING_DELIMITER) : -len(VAR_CLOSING_DELIMITER)]
+            if VAR_OPENING_DELIMITER in inner:
+                _check(inner)
+                continue
+            for tag in _TYPE_TAGS:
+                if inner.startswith(tag):
+                    inner = inner[len(tag) :]
+                    break
+            if not inner.endswith(VAR_UNSET_SUFFIX):
+                continue
+            reference = inner[: -len(VAR_UNSET_SUFFIX)]
+            if reference == "":
+                verb = "is" if expression == definition else "contains"
+                causes.append((f"{verb} '{expression}', which always unsets it", None))
+            elif reference.startswith(ENV_VAR_SUB_PREFIX):
+                env_name = reference[len(ENV_VAR_SUB_PREFIX) :]
+                if os.getenv(env_name) is None:
+                    causes.append(
+                        (
+                            f"refers to '{expression}', and the environment"
+                            f" variable '{env_name}' is not set",
+                            None,
+                        )
+                    )
+            elif reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
+                causes.append(
+                    (f"refers to '{expression}', and '{reference}' is unset", reference)
+                )
+            elif reference not in VARIABLE_SUBSTITUTIONS:
+                causes.append(
+                    (
+                        f"refers to '{expression}', and '{reference}' is not defined",
+                        None,
+                    )
+                )
+
+    _check(definition)
+    return causes
 
 
 def get_all_user_variables() -> dict:
@@ -241,8 +456,34 @@ def process_variable_substitutions_insitu(
     for client-side processing to be disambiguated from those to be passed
     through for server-side processing.
     """
+    _substitute_insitu_pass(data, prefix=prefix, postfix=postfix)
+    return data
 
-    def _walk_data(data: dict | list):
+
+def _substitute_insitu_pass(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[str]:
+    """
+    One substitution pass over 'data', in-situ, returning the paths of the
+    properties it changed or removed (e.g. 'taskGroups[0].name').
+    """
+    changed: list[str] = []
+
+    def _substitute(key_, value_: str, path: str):
+        # Require the use of post/prefix only for userData in TOML
+        if key_ == USERDATA:
+            result = process_variable_substitutions(
+                value_, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+            )
+        else:
+            result = process_variable_substitutions(
+                value_, prefix=prefix, postfix=postfix
+            )
+        if result is _UNSET or result != value_:
+            changed.append(path)
+        return result
+
+    def _walk_data(data: dict | list, path: str):
         """
         Helper function to walk the data structure performing
         variable substitutions.
@@ -250,44 +491,246 @@ def process_variable_substitutions_insitu(
         if isinstance(data, dict):
             keys_to_delete = []
             for key_, value_ in data.items():
+                key_path = f"{path}.{key_}" if path else str(key_)
                 if isinstance(value_, str):
-                    # Require the use of post/prefix only for userData in TOML
-                    if key_ == USERDATA:
-                        result = process_variable_substitutions(
-                            value_,
-                            prefix=WP_VARIABLES_PREFIX,
-                            postfix=WP_VARIABLES_POSTFIX,
-                        )
-                    else:
-                        result = process_variable_substitutions(
-                            value_, prefix=prefix, postfix=postfix
-                        )
+                    result = _substitute(key_, value_, key_path)
                     if result is _UNSET:
                         keys_to_delete.append(key_)
                     else:
                         data[key_] = result
                 elif isinstance(value_, dict) or isinstance(value_, list):
-                    _walk_data(value_)
+                    _walk_data(value_, key_path)
             for key_ in keys_to_delete:
                 del data[key_]
         elif isinstance(data, list):
             indices_to_delete = []
             for index, item in enumerate(data):
+                index_path = f"{path}[{index}]"
                 if isinstance(item, str):
-                    result = process_variable_substitutions(
-                        item, prefix=prefix, postfix=postfix
-                    )
+                    # A list element is never userData, so no key applies
+                    result = _substitute(None, item, index_path)
                     if result is _UNSET:
                         indices_to_delete.append(index)
                     else:
                         data[index] = result
                 elif isinstance(item, dict) or isinstance(item, list):
-                    _walk_data(item)
+                    _walk_data(item, index_path)
             for index in reversed(indices_to_delete):
                 del data[index]
 
-    _walk_data(data)
-    return data
+    _walk_data(data, "")
+    return changed
+
+
+def resolve_variables_insitu(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> None:
+    """
+    Repeat the in-situ pass until one changes nothing, so that a substituted
+    value which itself contains a variable reference is resolved too, however
+    long the chain. A circular reference -- a variable that refers back to
+    itself, directly or through others -- raises ValueError: either the
+    values are still changing after VAR_SUBSTITUTION_MAX_PASSES passes, or
+    they have settled with a defined variable still unsubstituted, which only
+    a circular one can be. An undefined variable is neither: it is unchanged
+    by the first pass and is passed through as it stands.
+    """
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        changed = _substitute_insitu_pass(data, prefix=prefix, postfix=postfix)
+        if not changed:
+            break
+    else:
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in {_list_paths(changed)}"
+        )
+
+    _warn_of_undefined(
+        _undefined_unless_circular(
+            _unsubstituted_references(data, prefix=prefix, postfix=postfix)
+        )
+    )
+
+
+def _undefined_unless_circular(
+    references: list[tuple[str, str, str]],
+) -> dict[str, list[str]]:
+    """
+    Sort the references left once the passes have settled: raise ValueError
+    for any to a defined variable, which is still there only because it is
+    circular, and return the rest -- the undefined ones, lazy variables
+    aside -- as the properties each expression was found in.
+    """
+    circular: dict[str, list[str]] = {}
+    undefined: dict[str, list[str]] = {}
+    for expression, reference, path in references:
+        if reference in VARIABLE_SUBSTITUTIONS:
+            circular.setdefault(reference, []).append(path)
+        elif reference not in LAZY_VARIABLE_NAMES:
+            undefined.setdefault(expression, []).append(path)
+
+    if circular:
+        names = ", ".join(f"'{name}'" for name in sorted(circular))
+        paths = [path for paths in circular.values() for path in paths]
+        raise ValueError(
+            f"Circular variable reference: {names} refers back to itself,"
+            f" in {_list_paths(paths)}"
+        )
+    return undefined
+
+
+def resolve_variables_in_string(
+    value: str | int | bool | float | list | dict | None, source: str | None = None
+) -> str | int | bool | float | list | dict | None:
+    """
+    resolve_variables_insitu() for a single value: repeat the substitution
+    until it changes nothing, so that a chain of references resolves however
+    long it is, then raise ValueError for a circular reference and warn of
+    an undefined variable, naming 'source' (the property, or the value itself
+    where there is no better name). A type-tagged result, a value that is not
+    a string, and the unset marker are returned as they are.
+    """
+    result = value
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        if not isinstance(result, str):
+            return result
+        substituted = process_variable_substitutions(result)
+        if substituted == result:
+            break
+        result = substituted
+    else:
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in '{source if source is not None else value}'"
+        )
+
+    if isinstance(result, str):
+        label = source if source is not None else str(value)
+        _warn_of_undefined(
+            _undefined_unless_circular(_unsubstituted_references({label: result}))
+        )
+    return result
+
+
+def warn_of_undefined_variables(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> None:
+    """
+    Report the undefined variables left in 'data', as resolve_variables_insitu()
+    does, without substituting anything: for data resolved before the warnings
+    were enabled, which would otherwise never be checked.
+    """
+    undefined: dict[str, list[str]] = {}
+    for expression, reference, path in _unsubstituted_references(
+        data, prefix=prefix, postfix=postfix
+    ):
+        if (
+            reference not in VARIABLE_SUBSTITUTIONS
+            and reference not in LAZY_VARIABLE_NAMES
+        ):
+            undefined.setdefault(expression, []).append(path)
+    _warn_of_undefined(undefined)
+
+
+def _warn_of_undefined(undefined: dict[str, list[str]]) -> None:
+    """
+    Warn of each undefined variable expression, with the properties it was
+    found in, unless warnings are not yet enabled or it was reported before.
+    """
+    if not _UNDEFINED_VARIABLE_WARNINGS:
+        return
+    for expression, paths in undefined.items():
+        if expression in _UNDEFINED_VARIABLES_REPORTED:
+            continue
+        _UNDEFINED_VARIABLES_REPORTED.add(expression)
+        reference = _reference_of(expression)
+        if reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
+            # Defined, but removed by the unset syntax, which is what anyone
+            # looking for the typo that 'not defined' implies needs to know
+            print_warning(
+                f"Variable '{expression}' is unset, and has been left"
+                f" unsubstituted in {_list_paths(paths)}: "
+                + "; ".join(_unset_reasons(reference))
+            )
+        else:
+            print_warning(
+                f"Variable '{expression}' is not defined, and has been left"
+                f" unsubstituted in {_list_paths(paths)}"
+            )
+
+
+def _reference_of(expression: str) -> str | None:
+    """
+    The variable name an expression refers to ('site' for '{{site}}',
+    '{{num:site}}' or '__{{site}}__'), or None if it is not a reference to
+    a variable by name.
+    """
+    inner = expression[
+        expression.index(VAR_OPENING_DELIMITER)
+        + len(VAR_OPENING_DELIMITER) : expression.rindex(VAR_CLOSING_DELIMITER)
+    ]
+    match = _VARIABLE_REFERENCE.fullmatch(inner)
+    return match.group(1) if match is not None else None
+
+
+def _list_paths(paths: list[str], limit: int = 5) -> str:
+    shown = ", ".join(f"'{path}'" for path in paths[:limit])
+    more = f" and {len(paths) - limit} more" if len(paths) > limit else ""
+    return shown + more
+
+
+def _unsubstituted_references(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[tuple[str, str, str]]:
+    """
+    The (expression, variable reference, property path) of every variable
+    reference left in 'data' in the delimiters being substituted -- the
+    Worker Pool ones for 'userData', as the passes use. The reference is the
+    expression's variable name, or 'env:' and the environment variable's,
+    without delimiters or type tag. An expression that is not a reference
+    itself but contains one ('{{template_{{x}}}}') yields the one inside.
+
+    Once the passes have settled, a reference to a defined variable is still
+    there only if its value leads back to its own name, and any other names
+    a variable nothing defines.
+    """
+    found: list[tuple[str, str, str]] = []
+
+    def _check(value_: str, opening: str, closing: str, path: str):
+        for expression in find_delimited_expressions(value_, opening, closing):
+            inner = expression[len(opening) : -len(closing)]
+            match = _VARIABLE_REFERENCE.fullmatch(inner)
+            if match is not None:
+                found.append((expression, match.group(1), path))
+            elif opening in inner:
+                _check(inner, opening, closing, path)
+
+    def _walk_data(data: dict | list, path: str):
+        items = (
+            (
+                (key_, f"{path}.{key_}" if path else str(key_), value_)
+                for key_, value_ in data.items()
+            )
+            if isinstance(data, dict)
+            else ((None, f"{path}[{index}]", item) for index, item in enumerate(data))
+        )
+        for key_, item_path, value_ in items:
+            if isinstance(value_, str):
+                if key_ == USERDATA:
+                    opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+                else:
+                    opening, closing = prefix, postfix
+                opening += VAR_OPENING_DELIMITER
+                closing = VAR_CLOSING_DELIMITER + closing
+                if opening in value_:
+                    _check(value_, opening, closing, item_path)
+            elif isinstance(value_, (dict, list)):
+                _walk_data(value_, item_path)
+
+    _walk_data(data, "")
+    return found
 
 
 def process_variable_substitutions(
@@ -388,7 +831,9 @@ def process_untyped_variable_substitutions(
     Algorithm (in order):
     1. Nesting: if the variable name itself contains '{{...}}', resolve the
        innermost expression first — e.g. '{{{{key_var}}}}' where key_var='x'
-       becomes '{{x}}' before the outer substitution runs.
+       becomes '{{x}}' before the outer substitution runs. An unset inner
+       expression is replaced by _UNSET_MARKER, and if the marker survives
+       the steps below the whole expression is unset (step 9).
     2. Unset suffix ('::') — '{{varname::}}' returns the variable's value if
        defined, otherwise returns _UNSET to signal the caller to remove the
        property entirely.
@@ -406,6 +851,8 @@ def process_untyped_variable_substitutions(
        defaults have been stripped.
     8. Apply defaults: for any '{{varname}}' still unresolved, substitute its
        collected default value.
+    9. Unset propagation: if an unset inner expression's marker is still in
+       the result, its value was needed, so return _UNSET.
     """
     if input_string is None:
         return None
@@ -427,9 +874,7 @@ def process_untyped_variable_substitutions(
                 element, opening_delimiter, closing_delimiter
             )
             if result is _UNSET:
-                # An unset inner variable: leave its token intact so the
-                # caller's dict-level processing can remove the property
-                processed_string += element
+                processed_string += _UNSET_MARKER
             else:
                 processed_string += result or ""
         input_string = opening_delimiter + processed_string + closing_delimiter
@@ -544,6 +989,9 @@ def process_untyped_variable_substitutions(
             1,
         )
 
+    if _UNSET_MARKER in s:
+        return _UNSET  # type: ignore
+
     return s
 
 
@@ -623,10 +1071,10 @@ def load_json_file_with_variable_substitutions(
     with open(resolve_filename(files_directory, filename)) as f:
         file_contents = f.read()
     file_contents = process_variable_substitutions_in_file_contents(
-        file_contents, prefix=prefix, postfix=postfix
+        file_contents, prefix=prefix, postfix=postfix, source=filename
     )
     result = json_loads(file_contents)
-    process_variable_substitutions_insitu(result, prefix=prefix, postfix=postfix)
+    resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
     return result
 
 
@@ -656,7 +1104,7 @@ def load_jsonnet_file_with_variable_substitutions(
             raise RuntimeError(str(e).partition("\n")[0])
 
     # Secondary processing after Jsonnet expansion
-    process_variable_substitutions_insitu(dict_data, prefix, postfix)
+    resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
 
     if ARGS_PARSER.jsonnet_dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
@@ -686,29 +1134,82 @@ def load_toml_file_with_variable_substitutions(
             {
                 var_name: _stringify(var_value)
                 for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
-            }
+            },
+            source=f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}'",
         )
     except KeyError:
         pass
 
-    # Repeat processing to resolve nested variables
-    for _ in range(TOML_VAR_NESTED_DEPTH):
-        process_variable_substitutions_insitu(config, prefix=prefix, postfix=postfix)
+    resolve_variables_insitu(config, prefix=prefix, postfix=postfix)
 
     return config
 
 
 def process_variable_substitutions_in_file_contents(
+    file_contents: str,
+    prefix: str = "",
+    postfix: str = "",
+    source: str | None = None,
+) -> str:
+    """
+    Process substitutions in the raw contents of a complete file, repeating
+    the pass until one changes nothing, as resolve_variables_insitu() does:
+    a substituted value that itself contains a variable reference is
+    resolved too, and a circular reference raises ValueError, naming
+    'source' (the file) where it is given. An unset ('::') token is left in
+    place, for the in-situ processing of a parsed specification to remove.
+    """
+    label = source if source is not None else "file contents"
+    opening = prefix + VAR_OPENING_DELIMITER
+    closing = VAR_CLOSING_DELIMITER + postfix
+    for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
+        substituted = _substitute_file_contents_pass(file_contents, prefix, postfix)
+        if substituted == file_contents:
+            break
+        previous, file_contents = file_contents, substituted
+    else:
+        # Name what is still changing: the expressions the last pass made
+        changing = sorted(
+            set(find_delimited_expressions(file_contents, opening, closing))
+            - set(find_delimited_expressions(previous, opening, closing))
+        )
+        expressions = f" ({', '.join(repr(e) for e in changing)})" if changing else ""
+        raise ValueError(
+            "Variable substitution did not settle after"
+            f" {VAR_SUBSTITUTION_MAX_PASSES} passes, which suggests a circular"
+            f" variable reference, in '{label}'{expressions}"
+        )
+
+    # A type-tagged expression inside a longer string is not substituted here
+    # but left for the in-situ pass to substitute as text, so one still here
+    # is not a sign of a circular reference
+    _undefined_unless_circular(
+        [
+            reference
+            for reference in _unsubstituted_references(
+                {label: file_contents}, prefix=prefix, postfix=postfix
+            )
+            if not reference[0][len(opening) :].startswith(_TYPE_TAGS)
+        ]
+    )
+    return file_contents
+
+
+def _substitute_file_contents_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
     """
-    Process substitutions in the raw contents of a complete file.
+    One substitution pass over the raw contents of a complete file.
     """
-    v_expressions = set(
-        re.findall(
-            f"{re.escape(prefix)}{re.escape(VAR_OPENING_DELIMITER)}"
-            f".*{re.escape(VAR_CLOSING_DELIMITER)}{re.escape(postfix)}",
+    # Found one expression at a time: a match running from the first opening
+    # delimiter on a line to the last closing one took every expression on
+    # the line as one, which lost a type-tagged value's type and, where the
+    # line went on to close a JSON object ('}}'), failed on the delimiters
+    v_expressions = dict.fromkeys(
+        find_delimited_expressions(
             file_contents,
+            prefix + VAR_OPENING_DELIMITER,
+            VAR_CLOSING_DELIMITER + postfix,
         )
     )
 
@@ -754,7 +1255,7 @@ class VariableSubstitutedJsonnetFile:
         with open(self.filename) as file:
             file_contents = file.read()
         processed_file_contents: str = process_variable_substitutions_in_file_contents(
-            file_contents, self.prefix, self.postfix
+            file_contents, self.prefix, self.postfix, source=self.filename
         )
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, dir=os.getcwd()

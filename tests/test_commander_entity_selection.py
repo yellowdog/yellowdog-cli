@@ -21,14 +21,17 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander.commander import (
     ENTITY_LIST_PADDING,
-    MAX_DIALOG_LIST_ROWS,
     SKIP_CONFIRMATION_BUTTON_TEXT,
+    YellowDogApp,
+)
+from yellowdog_cli.commander.selection import (
+    MAX_DIALOG_LIST_ROWS,
     Confirmation,
     EntitySummary,
-    YellowDogApp,
     checked_handles,
     entity_rows,
 )
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -289,7 +292,7 @@ def test_no_listing_returns_none_when_dismissed(window, monkeypatch):
 
 
 def test_disabled_confirmations_return_whole_scope(qapp):
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     assert win._confirm_destructive("terminate", "t", "b") == Confirmation(
         proceed=True, handles=None
     )
@@ -487,7 +490,7 @@ def test_entities_are_passed_to_the_confirmation(window, captured, monkeypatch):
             or Confirmation(proceed=True, handles=[row.handle for row in rows])
         ),
     )
-    window._namespace, window._tag = "yd-demo", "pyex"
+    window._discovery.namespace, window._discovery.tag = "yd-demo", "pyex"
     window._cancel_work_requirements_action()
     body, passed = seen[0]
     assert "Cancelling Work Requirements in namespace 'yd-demo'" in body

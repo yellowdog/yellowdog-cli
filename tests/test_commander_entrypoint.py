@@ -16,13 +16,16 @@ def test_commander_entrypoint_registered():
 
 def test_commander_help_is_commander_specific():
     # `--help` must show Commander's own usage (an optional config-file
-    # argument), NOT the shared CLI parser's options. It must also exit before
-    # launching the GUI. Options like --secret/--pac/--print-pid belong to the
-    # CLI parser and must not leak into the GUI's interface.
+    # argument, and the options that fill its fields), NOT the shared CLI
+    # parser's options. It must also exit before launching the GUI. Options like
+    # --secret/--pac/--print-pid belong to the CLI parser and must not leak into
+    # the GUI's interface. (--namespace is Commander's own now: it fills the
+    # Namespace field.)
     result = shell("yd-commander --help")
     assert result.exit_code == 0
     out = result.stdout + result.stderr
     assert "yd-commander" in out
     assert "config_file" in out
-    for cli_only in ("--secret", "--pac", "--print-pid", "--namespace"):
+    assert "--work-requirement" in out
+    for cli_only in ("--secret", "--pac", "--print-pid", "--no-config"):
         assert cli_only not in out

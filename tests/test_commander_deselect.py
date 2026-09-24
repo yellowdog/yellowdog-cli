@@ -13,6 +13,7 @@ qt_guard.require_qt()
 from PyQt6.QtWidgets import QCheckBox, QDialogButtonBox, QLabel, QPushButton
 
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.startup import StartupSettings
 
 CONFIG = "configs/config.toml"
 WR = "definitions/mytasks.jsonnet"
@@ -183,7 +184,7 @@ def test_deselecting_a_definition_restores_its_button_label(all_selected, monkey
     all_selected._deselect_files_action()
 
     assert all_selected.select_worker_pool.text() == "Select Worker Pool JSON"
-    assert all_selected.select_worker_pool.toolTip() == ""
+    assert all_selected.select_worker_pool.toolTip().startswith("Choose a Worker Pool")
 
 
 def test_cancelling_deselects_nothing(all_selected, monkeypatch):
@@ -213,7 +214,7 @@ def test_dialog_is_shown_even_with_confirmations_disabled(qapp, monkeypatch):
     '--yes' suppresses the destructive-action confirmations, but not this
     dialog: it is the only way to deselect one file and not the others.
     """
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     win._config_file = CONFIG
     win._wr_file = WR
     win._wp_file = WP
@@ -230,7 +231,7 @@ def test_dialog_is_shown_even_with_confirmations_disabled(qapp, monkeypatch):
 
 
 def test_cancelling_with_confirmations_disabled_deselects_nothing(qapp, monkeypatch):
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     win._config_file = CONFIG
     win._wr_file = WR
 

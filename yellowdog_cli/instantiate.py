@@ -17,7 +17,10 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
-from yellowdog_cli.utils.load_config import load_config_worker_pool
+from yellowdog_cli.utils.load_config import (
+    load_config_worker_pool,
+    warn_of_undefined_worker_pool_variables,
+)
 from yellowdog_cli.utils.misc_utils import (
     add_batch_number_postfix,
     generate_id,
@@ -57,6 +60,8 @@ GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
 @main_wrapper
 def main():
     global CONFIG_WP
+
+    warn_of_undefined_worker_pool_variables()
 
     if ARGS_PARSER.target is not None:
         CONFIG_WP.target_instance_count = ARGS_PARSER.target

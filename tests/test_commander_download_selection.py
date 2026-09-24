@@ -21,12 +21,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from yellowdog_cli.commander.commander import (
-    RESULTS_DIR,
-    ObjectSummary,
-    YellowDogApp,
-    object_rows,
-)
+from yellowdog_cli.commander.commander import RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.selection import ObjectSummary, object_rows
+from yellowdog_cli.commander.startup import StartupSettings
 
 
 @pytest.fixture
@@ -162,7 +159,7 @@ def test_only_the_ticked_objects_are_downloaded(window, captured, monkeypatch):
     stub_enumeration(window, monkeypatch, objects())
     drive_chooser(window, monkeypatch, accept=True, uncheck=(0,))
     window._config_file = None
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._download_results_action()
 
@@ -177,7 +174,7 @@ def test_only_the_ticked_objects_are_downloaded(window, captured, monkeypatch):
 def test_dismissing_the_chooser_downloads_nothing(window, captured, monkeypatch):
     stub_enumeration(window, monkeypatch, objects())
     drive_chooser(window, monkeypatch, accept=False)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._download_results_action()
 
@@ -190,7 +187,7 @@ def test_nothing_matching_logs_and_shows_no_chooser(window, captured, monkeypatc
 
     stub_enumeration(window, monkeypatch, [])
     monkeypatch.setattr(window, "_build_chooser_dialog", fail)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
 
     window._download_results_action()
@@ -208,7 +205,7 @@ def test_enumeration_failure_downloads_the_whole_pattern(window, captured, monke
 
     stub_enumeration(window, monkeypatch, None)
     monkeypatch.setattr(window, "_build_chooser_dialog", fail)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
 
     window._download_results_action()
@@ -221,7 +218,7 @@ def test_enumeration_failure_downloads_the_whole_pattern(window, captured, monke
 def test_yes_skips_the_chooser_and_fetches_everything(qapp, monkeypatch):
     # '--yes' asks for unattended operation, so it skips the chooser and downloads
     # the whole pattern — consistent with the five destructive confirmations.
-    win = YellowDogApp(disable_confirmations=True)
+    win = YellowDogApp(StartupSettings(disable_confirmations=True))
     calls: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
         win,
@@ -234,7 +231,7 @@ def test_yes_skips_the_chooser_and_fetches_everything(qapp, monkeypatch):
 
     monkeypatch.setattr(win, "_capture_dry_run_objects", fail)
     monkeypatch.setattr(win, "_build_chooser_dialog", fail)
-    win._tag = "pyex"
+    win._discovery.tag = "pyex"
     win.log_output.setPlainText("")
 
     win._download_results_action()
@@ -250,7 +247,7 @@ def test_the_dry_run_checkbox_skips_the_chooser(window, captured, monkeypatch):
 
     monkeypatch.setattr(window, "_capture_dry_run_objects", fail)
     monkeypatch.setattr(window, "_build_chooser_dialog", fail)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.dry_run_objects.setChecked(True)
 
     window._download_results_action()
@@ -264,7 +261,7 @@ def test_the_chooser_enumerates_with_yd_download(window, captured, monkeypatch):
     # agree in shape but not necessarily in what they match.
     seen = stub_enumeration(window, monkeypatch, objects())
     drive_chooser(window, monkeypatch, accept=True)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._download_results_action()
 
@@ -282,7 +279,7 @@ def test_a_directory_match_adds_the_recursion_note(window, captured, monkeypatch
         return dialog, accept_btn
 
     monkeypatch.setattr(window, "_build_chooser_dialog", build)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     stub_enumeration(window, monkeypatch, objects())
     window._download_results_action()
@@ -301,7 +298,7 @@ def test_a_wildcard_named_object_is_refused(window, captured, monkeypatch):
     unsafe = [ObjectSummary(path="S3:b/pfx/a[1].txt", name="a[1].txt", is_dir=False)]
     stub_enumeration(window, monkeypatch, unsafe)
     drive_chooser(window, monkeypatch, accept=True)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
 
     window._download_results_action()
@@ -318,7 +315,7 @@ def test_a_substitution_placeholder_is_refused(window, captured, monkeypatch):
     ]
     stub_enumeration(window, monkeypatch, unsafe)
     drive_chooser(window, monkeypatch, accept=True)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
 
     window._download_results_action()
@@ -334,7 +331,7 @@ def test_a_large_selection_is_echoed_as_a_count(window, captured, monkeypatch):
     ]
     stub_enumeration(window, monkeypatch, many)
     drive_chooser(window, monkeypatch, accept=True)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
 
     window._download_results_action()
 

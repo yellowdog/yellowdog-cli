@@ -19,7 +19,7 @@ from yellowdog_cli.utils.rclone_utils import (
     make_rclone_for_copy,
     parse_rclone_config,
 )
-from yellowdog_cli.utils.variables import process_variable_substitutions
+from yellowdog_cli.utils.variables import resolve_variables_in_string
 
 
 def is_glob(path: str) -> bool:
@@ -84,10 +84,12 @@ def resolve_remote_path(
     remote_str = _require_remote(config)
     remote_name, _ = parse_rclone_config(remote_str)
 
+    # Each named, in an error or a warning, by the path itself, which is all
+    # there is to name it by
     if relative_path is not None:
-        relative_path = cast(str, process_variable_substitutions(relative_path))
+        relative_path = cast(str, resolve_variables_in_string(relative_path))
     if filename is not None:
-        filename = cast(str, process_variable_substitutions(filename))
+        filename = cast(str, resolve_variables_in_string(filename))
 
     # Absolute rclone path — use verbatim
     if relative_path is not None and relative_path.startswith(f"{remote_name}:"):

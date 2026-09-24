@@ -25,8 +25,8 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.variables import (
     load_jsonnet_file_with_variable_substitutions,
-    process_variable_substitutions_insitu,
     resolve_filename,
+    resolve_variables_insitu,
 )
 
 
@@ -230,7 +230,7 @@ def perform_csv_task_expansion(
         exit(0)
 
     # Process remaining substitutions
-    process_variable_substitutions_insitu(wr_data)
+    resolve_variables_insitu(wr_data)
     return wr_data
 
 

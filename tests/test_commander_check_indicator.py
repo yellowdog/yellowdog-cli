@@ -28,11 +28,11 @@ from PyQt6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from yellowdog_cli.commander import commander
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander import check_indicator
+from yellowdog_cli.commander.check_indicator import check_indicator_is_misplaced
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import (
     EntitySummary,
-    YellowDogApp,
-    check_indicator_is_misplaced,
     entity_rows,
     set_all_check_states,
 )
@@ -92,7 +92,7 @@ def misplacing_style(qapp, monkeypatch):
     """
     previous = qapp.style().objectName()
     qapp.setStyle(misplacing())
-    monkeypatch.setattr(commander, "platform_style", misplacing)
+    monkeypatch.setattr(check_indicator, "platform_style", misplacing)
     yield
     qapp.setStyle(QStyleFactory.create(previous))
 

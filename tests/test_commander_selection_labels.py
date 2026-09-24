@@ -31,8 +31,20 @@ def win(qapp):
 def test_buttons_start_with_their_original_labels(win):
     assert win.select_work_requirement.text() == "Select Work Requirement JSON"
     assert win.select_worker_pool.text() == "Select Worker Pool JSON"
-    assert win.select_work_requirement.toolTip() == ""
-    assert win.select_worker_pool.toolTip() == ""
+    # Their tooltips say what they do, rather than naming a file
+    assert win.select_work_requirement.toolTip().startswith("Choose a Work Requirement")
+    assert win.select_worker_pool.toolTip().startswith("Choose a Worker Pool")
+
+
+def test_deselecting_restores_the_original_tooltip(win):
+    original = win.select_work_requirement.toolTip()
+    win._wr_file = "definitions/mytasks.jsonnet"
+    win._show_wr_selection()
+    assert win.select_work_requirement.toolTip() != original
+
+    win._wr_file = None
+    win._show_wr_selection()
+    assert win.select_work_requirement.toolTip() == original
 
 
 def test_selected_work_requirement_is_shown_on_its_button(win):
@@ -100,8 +112,20 @@ def test_deselecting_restores_the_original_labels(win, monkeypatch):
 
     assert win.select_work_requirement.text() == "Select Work Requirement JSON"
     assert win.select_worker_pool.text() == "Select Worker Pool JSON"
-    assert win.select_work_requirement.toolTip() == ""
-    assert win.select_worker_pool.toolTip() == ""
+    # Their tooltips say what they do, rather than naming a file
+    assert win.select_work_requirement.toolTip().startswith("Choose a Work Requirement")
+    assert win.select_worker_pool.toolTip().startswith("Choose a Worker Pool")
+
+
+def test_deselecting_restores_the_original_tooltip(win):
+    original = win.select_work_requirement.toolTip()
+    win._wr_file = "definitions/mytasks.jsonnet"
+    win._show_wr_selection()
+    assert win.select_work_requirement.toolTip() != original
+
+    win._wr_file = None
+    win._show_wr_selection()
+    assert win.select_work_requirement.toolTip() == original
 
 
 def test_selection_survives_being_replaced(win):

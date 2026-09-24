@@ -10,10 +10,10 @@ qt_guard.require_qt()
 
 import commander_dialogs
 
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import (
     Confirmation,
     ObjectSummary,
-    YellowDogApp,
     object_rows,
     parse_object_summaries,
 )
@@ -162,7 +162,7 @@ def test_unticked_object_is_not_deleted(window, captured, monkeypatch):
         window, "_capture_dry_run_objects", lambda command, extra_args: all_objects
     )
     drive_dialog(window, monkeypatch, "yes", uncheck=(0,))
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     command, args, _kwargs = captured[0]
     assert (command, args) == ("yd-delete", ["-Ry", "S3:b/pfx/pyex-logs"])
@@ -176,7 +176,7 @@ def test_delete_targets_only_the_selected_paths(window, captured, monkeypatch):
         all_objects,
         Confirmation(proceed=True, handles=["S3:b/pfx/pyex-logs"]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     command, args, _kwargs = captured[0]
     # the glob is replaced by the chosen paths, not appended to them
@@ -188,7 +188,7 @@ def test_delete_nothing_selected_removes_nothing(window, captured, monkeypatch):
     stub_delete_flow(
         window, monkeypatch, objects(), Confirmation(proceed=True, handles=[])
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
     window._delete_objects_action()
     assert captured == []
@@ -199,7 +199,7 @@ def test_delete_declined_removes_nothing(window, captured, monkeypatch):
     stub_delete_flow(
         window, monkeypatch, objects(), Confirmation(proceed=False, handles=None)
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     assert captured == []
 
@@ -210,7 +210,7 @@ def test_delete_enumeration_failure_falls_back_to_the_pattern(
     stub_delete_flow(
         window, monkeypatch, None, Confirmation(proceed=True, handles=None)
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     _command, args, _kwargs = captured[0]
     assert args == ["-Ry", "pyex*"]
@@ -225,7 +225,7 @@ def test_directory_caveat_appears_only_when_a_directory_matched(
         bodies.append(body)
         return Confirmation(proceed=False, handles=None)
 
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     monkeypatch.setattr(window, "_confirm_destructive", capture_body)
 
     monkeypatch.setattr(
@@ -254,7 +254,7 @@ def test_delete_passes_object_rows_to_the_confirmation(window, captured, monkeyp
         window, "_capture_dry_run_objects", lambda command, extra_args: objects()
     )
     monkeypatch.setattr(window, "_confirm_destructive", capture_rows)
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     assert [row.handle for row in seen[0]] == [obj.path for obj in objects()]
     assert seen[0] is not None
@@ -271,7 +271,7 @@ def test_large_delete_selection_is_echoed_as_a_count(window, captured, monkeypat
         many,
         Confirmation(proceed=True, handles=[obj.path for obj in many]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     _command, args, kwargs = captured[0]
     assert args == ["-Ry"] + [obj.path for obj in many]
@@ -294,7 +294,7 @@ def test_delete_refuses_a_selection_with_glob_metacharacters(
         unsafe_objects,
         Confirmation(proceed=True, handles=[obj.path for obj in unsafe_objects]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
     window._delete_objects_action()
     assert captured == []
@@ -322,7 +322,7 @@ def test_delete_refuses_a_selection_with_a_substitution_placeholder(
         unsafe_objects,
         Confirmation(proceed=True, handles=[obj.path for obj in unsafe_objects]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window.log_output.setPlainText("")
     window._delete_objects_action()
     assert captured == []
@@ -340,7 +340,7 @@ def test_delete_runs_when_selected_paths_have_no_glob_metacharacters(
         objects(),
         Confirmation(proceed=True, handles=[obj.path for obj in objects()]),
     )
-    window._tag = "pyex"
+    window._discovery.tag = "pyex"
     window._delete_objects_action()
     _command, args, _kwargs = captured[0]
     assert args == ["-Ry"] + [obj.path for obj in objects()]

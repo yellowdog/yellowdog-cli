@@ -1,16 +1,13 @@
 """
 Unit tests for the Commander display-elision helpers used to cap the length of
 text shown in the left-hand column: the selected configuration file path, and
-the selected definition filenames shown on the 'Select' buttons.
+the selected definition filenames shown on the 'Select' buttons. Qt-free, so
+it runs where PyQt6 is not installed.
 """
 
 import os
 
-import qt_guard
-
-qt_guard.require_qt()  # commander imports QtWidgets at module top
-
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander.elision import (
     MAX_DISPLAYED_NAME_LENGTH,
     MAX_DISPLAYED_PATH_LENGTH,
     PATH_ELLIPSIS,

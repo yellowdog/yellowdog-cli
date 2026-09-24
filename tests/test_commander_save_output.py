@@ -29,7 +29,7 @@ def test_save_button_exists_and_is_wired(window):
 
 def test_saves_the_output_to_the_chosen_file(window, tmp_path, monkeypatch):
     target = tmp_path / "chosen.txt"
-    monkeypatch.setattr(window, "_save_file", lambda **kwargs: str(target))
+    monkeypatch.setattr(window._file_dialogs, "save_file", lambda **kwargs: str(target))
     window.log_output.setPlainText("first line\nsecond line")
 
     window._save_output_action()
@@ -40,7 +40,7 @@ def test_saves_the_output_to_the_chosen_file(window, tmp_path, monkeypatch):
 
 def test_does_not_double_up_a_trailing_newline(window, tmp_path, monkeypatch):
     target = tmp_path / "chosen.txt"
-    monkeypatch.setattr(window, "_save_file", lambda **kwargs: str(target))
+    monkeypatch.setattr(window._file_dialogs, "save_file", lambda **kwargs: str(target))
     window.log_output.setPlainText("already newline-terminated\n")
 
     window._save_output_action()
@@ -52,7 +52,7 @@ def test_non_ascii_output_survives_the_round_trip(window, tmp_path, monkeypatch)
     # yd-* commands emit non-ASCII (the '—' in Commander's own messages, entity
     # names, remote paths), and Windows would default to a narrower encoding.
     target = tmp_path / "chosen.txt"
-    monkeypatch.setattr(window, "_save_file", lambda **kwargs: str(target))
+    monkeypatch.setattr(window._file_dialogs, "save_file", lambda **kwargs: str(target))
     window.log_output.setPlainText("cannot delete by path — wildcard: pyex-ünïcode")
 
     window._save_output_action()
@@ -64,7 +64,7 @@ def test_empty_output_writes_nothing_and_never_opens_the_dialog(window, monkeypa
     def fail(**kwargs):
         raise AssertionError("the dialog must not open when there is no output")
 
-    monkeypatch.setattr(window, "_save_file", fail)
+    monkeypatch.setattr(window._file_dialogs, "save_file", fail)
     window.log_output.setPlainText("")
 
     window._save_output_action()
@@ -74,7 +74,7 @@ def test_empty_output_writes_nothing_and_never_opens_the_dialog(window, monkeypa
 
 def test_dismissing_the_dialog_writes_nothing(window, tmp_path, monkeypatch):
     target = tmp_path / "untouched.txt"
-    monkeypatch.setattr(window, "_save_file", lambda **kwargs: None)
+    monkeypatch.setattr(window._file_dialogs, "save_file", lambda **kwargs: None)
     window.log_output.setPlainText("some output")
 
     window._save_output_action()
@@ -87,7 +87,7 @@ def test_a_write_failure_is_reported_not_swallowed(window, tmp_path, monkeypatch
     # A directory that does not exist: open() raises OSError. The user must be
     # told, rather than being left believing the save succeeded.
     target = tmp_path / "no-such-dir" / "out.txt"
-    monkeypatch.setattr(window, "_save_file", lambda **kwargs: str(target))
+    monkeypatch.setattr(window._file_dialogs, "save_file", lambda **kwargs: str(target))
     window.log_output.setPlainText("some output")
 
     window._save_output_action()
@@ -102,7 +102,7 @@ def test_the_dialog_is_prefilled_with_a_timestamped_name_in_the_working_dir(
 ):
     seen: dict = {}
     monkeypatch.setattr(
-        window, "_save_file", lambda **kwargs: seen.update(kwargs) or None
+        window._file_dialogs, "save_file", lambda **kwargs: seen.update(kwargs) or None
     )
     window.log_output.setPlainText("some output")
 

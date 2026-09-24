@@ -10,112 +10,92 @@ import subprocess
 import sys
 from datetime import datetime
 from functools import partial as functools_partial
-from platform import system as _platform_system
-from shlex import quote
 from typing import cast
 
-_system = _platform_system()
-MACOS = _system == "Darwin"
-LINUX = _system == "Linux"
-WINDOWS = _system == "Windows"
+from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS
 
-if not (MACOS or LINUX or WINDOWS):
-    print(f"Error: unrecognised platform: {_system}", file=sys.stderr)
-    sys.exit(1)
-
-if MACOS or LINUX:
-    from os import system as os_system
-elif WINDOWS:
+if WINDOWS:
     import ctypes
-    from os import (
-        startfile as os_startfile,  # pyright: ignore[reportAttributeAccessIssue]
-    )
 
-from codecs import getincrementaldecoder
 from collections.abc import Callable
-from dataclasses import dataclass
 from json import loads
-from os.path import abspath, basename, dirname, exists, getsize, isdir, join, relpath
+from os.path import abspath, basename, dirname, exists, join, relpath
 
 _PKG_DIR = dirname(abspath(__file__))
 
 from PyQt6.QtCore import (
-    QCollator,
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
-    QModelIndex,
-    QObject,
-    QPoint,
     QProcess,
     QProcessEnvironment,
-    QRect,
-    QSettings,
     QSize,
-    QSortFilterProxyModel,
     Qt,
     QTimer,
 )
 from PyQt6.QtGui import (
-    QAction,
     QClipboard,
     QCloseEvent,
     QColor,
     QFont,
     QFontMetrics,
     QIcon,
-    QImage,
-    QImageReader,
     QKeySequence,
-    QPainter,
     QPalette,
-    QPixmap,
     QShortcut,
     QStyleHints,
-    QTextBlock,
     QTextCursor,
-    QTextDocument,
 )
 from PyQt6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
-    QBoxLayout,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLayout,
-    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QPlainTextEdit,
-    QProxyStyle,
     QPushButton,
-    QScrollBar,
-    QSizePolicy,
-    QSpacerItem,
-    QSplitter,
     QStyle,
-    QStyleFactory,
-    QStyleOption,
     QStyleOptionButton,
-    QStyleOptionViewItem,
-    QTreeView,
     QVBoxLayout,
-    QWidget,
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.utils.glob_utils import contains_glob_chars
-from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
+from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
+from yellowdog_cli.commander.command_history import CommandHistory
+from yellowdog_cli.commander.config_discovery import ConfigDiscovery
+from yellowdog_cli.commander.elision import elide_middle, elide_path
+from yellowdog_cli.commander.file_dialogs import FileDialogs
+from yellowdog_cli.commander.help_viewer import HelpDialog
+from yellowdog_cli.commander.output_model import (
+    COMMANDER_RUN,
+    OutputRun,
+    message_prefix,
+)
+from yellowdog_cli.commander.output_pane import OutputPane
+from yellowdog_cli.commander.selection import (
+    MAX_DIALOG_LIST_ROWS,
+    Confirmation,
+    EntitySummary,
+    ObjectSummary,
+    SelectableRow,
+    checked_handles,
+    entity_rows,
+    object_rows,
+    parse_entity_summaries,
+    parse_object_summaries,
+    path_would_be_globbed,
+    set_all_check_states,
+    update_selection_state,
+)
+from yellowdog_cli.commander.startup import StartupSettings
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # px: inset between the selected-configuration label's frame and its text.
@@ -123,17 +103,12 @@ WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # drops a QLabel's 'margin' property, leaving the text against the frame.
 SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
-MAX_DISPLAYED_PATH_LENGTH = 45  # longer paths are elided in the config label
-PATH_ELLIPSIS = "…"
 SELECTED_WR_PREFIX = "Work Requirement: "
 SELECTED_WP_PREFIX = "Worker Pool: "
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
-MAX_DISPLAYED_NAME_LENGTH = 20  # fallback cap before the button has a width
 MAX_DIALOG_PATH_LENGTH = 60  # dialogs are wider than the left-hand column
 DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 SKIP_CONFIRMATION_BUTTON_TEXT = "Yes to All (Don't Ask Again)"
-MAX_DIALOG_LIST_ROWS = 12  # visible entity rows before the list scrolls
-ENTITY_ROW_GAP = 2  # spaces between the name and status columns
 ENTITY_LIST_PADDING = 6  # px of breathing room inside the entity list's frame
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # strftime for the pre-filled save-output filename. Colons are not filename-safe
@@ -141,73 +116,10 @@ MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-# The run Commander's own messages belong to in the output window; the commands it
-# launches are numbered from 1. See OutputRun.
-COMMANDER_RUN = 0
-# The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
-# of the process that printed it; see OutputRun.printed_pid.
-PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-# What starts a new block when text is put into a QTextDocument: a line feed, a
-# carriage return (alone or before a line feed, which together make one), Unicode's
-# paragraph separator, and Qt's two frame markers. The output window's blocks are
-# tagged with the entry they came from by counting them, so the count must be Qt's.
-BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
-SHOW_ALL_OUTPUT = "Show All Output"
-SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
-PROCESS_DIALOG_TITLE = "Show Output from Process"
-PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
-CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
-# The one retry after a timeout gets a longer budget: by then it is known that a
-# 'yd-variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
-# session can legitimately need this long to start (interpreter start, SDK
-# imports, a virus scan of a freshly installed console script).
-CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
-CONFIG_PARSE_RETRY_DELAY_MS = 1_000  # let the event loop breathe before retrying
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 RESULTS_DIR = "results"
-PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
-PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
-PREVIEW_IMAGE_HEIGHT = 220  # px: fallback thumbnail height, before layout
-PREVIEW_READ_BYTES = 262_144  # bytes read from the head of a file to preview it
-PREVIEW_MAX_LINES = 500  # lines of that head shown before the preview is elided
-# Characters of any one of those lines shown before it is cut. A performance cap
-# rather than a cosmetic one: QPlainTextEdit lays a single line out at superlinear
-# cost, so the 256kB head of a minified JSON file — one line, no newlines — took
-# 110ms to show, on a preview that is refilled at every arrow-key press. Cut to
-# this it is 1.4ms even with every line at the cap, and 2,000 characters is some
-# fifty screenfuls of a pane this wide.
-PREVIEW_MAX_LINE_CHARS = 2000
-# The last line of an elided preview, saying which cap stopped it. Only what is
-# knowable without reading the whole file: a total line count would mean reading
-# all of it, which is what the byte cap exists to avoid.
-PREVIEW_ELIDED_LINES = "… first {lines} lines shown"
-PREVIEW_ELIDED_BYTES = "… first {size} shown"
-PREVIEW_NO_SELECTION = "No file selected"
-SIDEBAR_PANE_WIDTH = 180  # px: the width a file dialog's places sidebar opens at
-# The tree, because that is the view a hierarchy can be shown in — Qt's other one
-# is a QListView, which has no disclosure. Its size/kind/date columns are hidden
-# and its header with them; see _make_listing_a_names_only_tree().
-DIALOG_VIEW_MODE = QFileDialog.ViewMode.Detail
-# How the file dialogs' listing is ordered, at every level; see
-# NaturalOrderProxy. The name column, ascending, which is the order Qt's own file
-# model gives the one level it sorts — and with the header hidden there is no way
-# for a user to ask for another, so this is the only order the listing is ever in.
-LISTING_SORT_COLUMN = 0
-LISTING_SORT_ORDER = Qt.SortOrder.AscendingOrder
-# Where Commander keeps the file-dialog choices that outlive a dialog; see
-# dialog_settings().
-COMMANDER_SETTINGS_ORGANISATION = "YellowDog"
-COMMANDER_SETTINGS_APPLICATION = "Commander"
-SETTING_DIALOG_SIDEBAR_WIDTH = "fileDialog/sidebarWidth"
-SETTING_DIALOG_VIEW_MODE = "fileDialog/viewMode"
-# What the browse dialog's button for handing over to the platform's own file
-# viewer says. Qt's dialog is read-only, so this is the route to deleting or
-# renaming anything in the directory being browsed.
-NATIVE_VIEWER_BUTTON_TEXT = (
-    "Use Finder" if MACOS else "Use Explorer" if WINDOWS else "Use File Manager"
-)
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
 # to derive a default object path from. Better than acting on a guess: the tag is
 # interpolated into the default path, and a missing one used to produce 'None*'.
@@ -224,918 +136,8 @@ BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
 
-NAMESPACE = "namespace"
-TAG = "tag"
 WP_DATA = "workerPoolData"
 WR_DATA = "workRequirementData"
-
-
-@dataclass(frozen=True)
-class EntitySummary:
-    """
-    The identity of one entity in a '-D --json' enumeration: the YDID used to
-    target it on the command line, plus the name and status shown to the user.
-    """
-
-    id: str
-    name: str
-    status: str | None
-
-
-def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
-    """
-    Convert a parsed '-D --json' array into EntitySummary objects. Returns None
-    if any row is not a dict or lacks an 'id' or a 'name': without a YDID the
-    entity cannot be targeted individually, and a selection must never fall back
-    to name-based targeting, because names are not guaranteed unique and the
-    action is destructive.
-    """
-    summaries: list[EntitySummary] = []
-    for obj in parsed:
-        if not isinstance(obj, dict):
-            return None
-        entity_id, name = obj.get("id"), obj.get("name")
-        if not entity_id or not name:
-            return None
-        status = obj.get("status")
-        summaries.append(
-            EntitySummary(
-                id=str(entity_id),
-                name=str(name),
-                status=None if status is None else str(status),
-            )
-        )
-    return summaries
-
-
-@dataclass(frozen=True)
-class SelectableRow:
-    """
-    One row of a checkable listing: the text the user reads, the handle passed
-    back to the command if the row stays ticked, and the tooltip. The handle is
-    deliberately opaque — that is what lets one widget serve both entity YDIDs
-    and object storage paths.
-    """
-
-    display: str
-    handle: str
-    tooltip: str
-
-
-@dataclass(frozen=True)
-class Confirmation:
-    """
-    The outcome of a destructive-action confirmation. 'proceed' is False when the
-    user declined or dismissed the dialog. 'handles' is None when there was
-    nothing individually selectable — a suppressed confirmation, or an
-    enumeration that failed — in which case the caller acts over its whole scope.
-    Otherwise 'handles' is exactly what the user left ticked, and an empty list
-    means the user deselected everything, which must act on nothing at all.
-
-    The three states are separate fields rather than a nullable list because the
-    difference between 'whole scope' and 'nothing' is the difference between
-    destroying everything and destroying nothing.
-    """
-
-    proceed: bool
-    handles: list[str] | None
-
-    def __bool__(self) -> bool:
-        """
-        Refuse truthiness. Both 'act over the whole scope' and 'act on nothing'
-        are legitimate outcomes, so a bare 'if confirmation:' cannot mean
-        anything safe — and unlike the list sentinel this replaced, an always-
-        truthy object would proceed even when the user declined. Callers must
-        read .proceed explicitly.
-        """
-        raise TypeError("check Confirmation.proceed explicitly, not truthiness")
-
-
-def entity_rows(entities: list[EntitySummary]) -> list[SelectableRow]:
-    """
-    Rows for an entity listing: the name padded to a common width so the status
-    column lines up, with the YDID as the handle and kept out of the row text
-    (full YDIDs are long enough to push the readable columns off-screen). The
-    tooltip carries both, so a row elided by a narrow dialog still has a
-    recovery path.
-    """
-    name_width = max((len(entity.name) for entity in entities), default=0)
-    gap = " " * ENTITY_ROW_GAP
-    return [
-        SelectableRow(
-            display=(
-                f"{entity.name.ljust(name_width)}{gap}{entity.status or ''}".rstrip()
-            ),
-            handle=entity.id,
-            tooltip=f"{entity.name}\n{entity.id}",
-        )
-        for entity in entities
-    ]
-
-
-@dataclass(frozen=True)
-class ObjectSummary:
-    """
-    One item in a 'yd-delete -D --json' enumeration: the resolved remote path
-    used to delete it, its display name (directories carry a trailing '/'), and
-    whether it is a directory — which decides whether the confirmation warns
-    that a tick takes the directory's whole contents.
-    """
-
-    path: str
-    name: str
-    is_dir: bool
-
-
-def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
-    """
-    Convert a parsed 'yd-delete -D --json' array into ObjectSummary objects.
-    Returns None if any row is not a dict or lacks a 'path' or a 'name': without
-    a path the object cannot be targeted, and guessing one would delete
-    something other than what the user ticked. A missing 'isDir' defaults to
-    False rather than rejecting the row, because it affects only the display and
-    the recursion caveat, never which paths are deleted.
-    """
-    summaries: list[ObjectSummary] = []
-    for obj in parsed:
-        if not isinstance(obj, dict):
-            return None
-        path, name = obj.get("path"), obj.get("name")
-        if not path or not name:
-            return None
-        summaries.append(
-            ObjectSummary(path=str(path), name=str(name), is_dir=bool(obj.get("isDir")))
-        )
-    return summaries
-
-
-def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
-    """
-    Rows for an object listing: a single column of display names (a directory
-    keeps its trailing '/'), with the resolved remote path as the handle. No
-    column padding, unlike entity rows — there is no second column to align.
-    """
-    return [
-        SelectableRow(
-            display=obj.name,
-            handle=obj.path,
-            tooltip=f"{obj.name}\n{obj.path}",
-        )
-        for obj in objects
-    ]
-
-
-def path_would_be_globbed(remote_path: str) -> bool:
-    """
-    Whether 'yd-delete' would treat this remote path as a wildcard pattern
-    rather than a literal object. Mirrors dataclient_utils.is_glob (which
-    Commander cannot import, since that module pulls in rclone_api): strip a
-    leading 'remote:' prefix, then look for glob metacharacters.
-
-    This matters because an object whose own name contains '*', '?' or '['
-    cannot be targeted by path at all — 'yd-delete' would expand it and act on
-    whatever it matched instead, which for 'a[1].txt' is the sibling 'a1.txt'.
-    """
-    path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
-    return contains_glob_chars(path_part)
-
-
-def format_file_size(size: int) -> str:
-    """
-    A file size in the units the platform's own file viewers use — powers of
-    1000, as both Finder and Windows Explorer report — with one decimal place
-    above a kilobyte. Small files keep their exact byte count, where '87 bytes'
-    says more than '0.1 kB'.
-    """
-    if size < 1000:
-        return f"{size} byte{'' if size == 1 else 's'}"
-    scaled = float(size)
-    for unit in ("kB", "MB", "GB"):
-        scaled /= 1000
-        if scaled < 1000:
-            return f"{scaled:,.1f} {unit}"
-    return f"{scaled / 1000:,.1f} TB"
-
-
-def dialog_settings() -> QSettings:
-    """
-    Where Commander keeps the file-dialog choices that outlive a dialog: the width
-    of the places sidebar and which of Qt's two views to list files in.
-
-    Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
-    those whenever one of these dialogs closes, so every machine that has ever
-    opened one carries a value and there is no telling a width the user chose from
-    a default written back — which made a default conditional on 'nothing
-    remembered' a no-op everywhere but a brand-new profile. Keeping our own
-    removes the guess: the stored value is one a user set, and its absence means
-    they have set nothing.
-
-    A function, not a constant, so that the tests can point it at a file of their
-    own instead of the developer's real settings.
-    """
-    return QSettings(
-        QSettings.Scope.UserScope,
-        COMMANDER_SETTINGS_ORGANISATION,
-        COMMANDER_SETTINGS_APPLICATION,
-    )
-
-
-class FilePreview(QWidget):
-    """
-    The preview column added to the directory-browsing file dialog: the name of
-    whatever is highlighted, a size-and-kind line, and then either a scaled
-    thumbnail (anything Qt can decode as an image) or the head of the file as
-    text (anything that decodes as UTF-8). Anything else — a binary, an
-    unreadable file — gets the size-and-kind line alone, which is still more
-    than the bare listing says.
-
-    This exists because Qt's own file dialog has no preview, and Commander's
-    directory buttons no longer hand the directory to the platform's file
-    viewer, so Finder's Quick Look is not there to fall back on. It is a plain
-    widget driven by the dialog's currentChanged signal rather than a
-    QFileDialog subclass, so the dialog itself stays the stock one.
-
-    Its width is the user's to set (it goes into the dialog's own splitter), so
-    the pane keeps the decoded image rather than only the scaled thumbnail: a
-    widened pane rescales from the original, where rescaling the thumbnail would
-    show a magnified version of the smaller one.
-    """
-
-    def __init__(self, font: QFont, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setMinimumWidth(PREVIEW_MIN_WIDTH)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.name_label = QLabel()
-        self.name_label.setWordWrap(True)
-        name_font = self.name_label.font()
-        name_font.setBold(True)
-        self.name_label.setFont(name_font)
-        layout.addWidget(self.name_label)
-
-        self.meta_label = QLabel()
-        self.meta_label.setWordWrap(True)
-        layout.addWidget(self.meta_label)
-
-        # Pinned to the top, and to the height their own text needs. A label
-        # defaults to taking a share of any spare height and centring its text in
-        # it, and a directory — named and kinded, with no body to show — leaves
-        # the pane nothing but spare height: the two headings ended up a third
-        # and two thirds of the way down, reading as two unrelated captions.
-        for label in (self.name_label, self.meta_label):
-            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-
-        self.image_view = QLabel()
-        self.image_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Ignored in both directions: a QLabel's size hint grows with the pixmap
-        # it holds, so a label that drives the layout would widen the pane to fit
-        # the thumbnail, which rescales the thumbnail, which widens the pane.
-        self.image_view.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
-        )
-        self.image_view.setMinimumSize(1, 1)
-        layout.addWidget(self.image_view, 1)
-
-        self.text_view = QPlainTextEdit()
-        self.text_view.setReadOnly(True)
-        self.text_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.text_view.setFont(font)
-        layout.addWidget(self.text_view, 1)
-
-        # Where the spare height goes once the headings will not take it, and
-        # once both bodies are hidden. Deliberately stretch 0, unlike the two
-        # bodies: a stretch of 1 would make it an equal claimant with whichever
-        # body is on show, halving the thumbnail or the text for nothing.
-        layout.addItem(
-            QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        )
-
-        self._image: QImage | None = None  # the decoded original, for rescaling
-        self.clear()
-
-    def clear(self):
-        """Show the placeholder, as before anything has been highlighted."""
-        self._describe(PREVIEW_NO_SELECTION, "")
-
-    def show_path(self, path: str):
-        """
-        Preview whatever 'path' names. Connected to the dialog's currentChanged,
-        so it is called for directories and for paths that have since gone away
-        as well as for files, and must show something for all of them.
-        """
-        if not path or not exists(path):
-            self.clear()
-            return
-
-        if isdir(path):
-            self._describe(basename(path.rstrip("/\\")) or path, "Directory")
-            return
-
-        name = basename(path)
-        try:
-            size = getsize(path)
-        except OSError as error:
-            self._describe(name, f"Unreadable: {error.strerror or error}")
-            return
-
-        image, image_format = self._read_image(path)
-        if image is not None:
-            self._describe(
-                name,
-                f"{format_file_size(size)}  ·  {image_format} image"
-                f"  ·  {image.width()} x {image.height()}",
-            )
-            self._image = image
-            # Shown before it is filled: _thumbnail measures the label, and a
-            # layout leaves a hidden widget's geometry alone.
-            self.image_view.setVisible(True)
-            self.image_view.setPixmap(self._thumbnail(image))
-            return
-
-        head = self._decoded_head(path)
-        if head is None:
-            self._describe(name, f"{format_file_size(size)}  ·  no preview available")
-            return
-        self._describe(name, f"{format_file_size(size)}  ·  text")
-        self.text_view.setPlainText(head)
-        self.text_view.setVisible(True)
-
-    def _describe(self, name: str, meta: str):
-        """
-        Set the two heading lines and hide both preview bodies, which is the
-        state every branch of show_path starts from — one of them then reveals
-        the body it has filled in.
-        """
-        self.name_label.setText(name)
-        self.meta_label.setText(meta)
-        self._image = None
-        self.image_view.clear()
-        self.image_view.setVisible(False)
-        self.text_view.clear()
-        self.text_view.setVisible(False)
-
-    @staticmethod
-    def _read_image(path: str) -> tuple[QImage | None, str]:
-        """
-        The decoded image and the name of its format, or (None, "") if Qt cannot
-        read the file as an image. canRead() alone is not enough: it is happy
-        with a truncated or corrupt file that read() then fails on, and a
-        half-downloaded result file is exactly the case in hand.
-        """
-        reader = QImageReader(path)
-        reader.setAutoTransform(True)  # honour a JPEG's EXIF orientation
-        if not reader.canRead():
-            return None, ""
-        # Read the format first: it is the detected format of a file not yet
-        # consumed, and comes back empty once read() has been called.
-        image_format = reader.format().data().decode(errors="replace").upper()
-        image = reader.read()
-        if image.isNull():
-            return None, ""
-        return image, image_format or "unrecognised"
-
-    def resizeEvent(self, a0):
-        """
-        Rescale the thumbnail to the pane's new width. Dragging the pane wider
-        should show more of the image, not the same thumbnail with more grey
-        around it — and there is no other moment at which the new width is known.
-        """
-        super().resizeEvent(a0)
-        if self._image is not None:
-            self.image_view.setPixmap(self._thumbnail(self._image))
-
-    def _thumbnail(self, image: QImage) -> QPixmap:
-        """
-        The image scaled to fit the space the pane currently gives it,
-        downscaling only — blowing a 16x16 icon up to the width of the pane
-        makes it less recognisable, not more. Falls back to the pane's opening
-        size for a preview filled in before the pane has been laid out.
-        """
-        layout = self.layout()
-        if layout is not None:
-            # Give the label its real geometry before measuring it. A layout is
-            # otherwise activated by an event, which has not been delivered yet
-            # when the pane has only just been shown or resized — leaving the
-            # label at its default size, and the thumbnail scaled to that.
-            layout.activate()
-        available = QSize(
-            self.image_view.width() or PREVIEW_PANE_WIDTH,
-            self.image_view.height() or PREVIEW_IMAGE_HEIGHT,
-        )
-        pixmap = QPixmap.fromImage(image)
-        if (
-            pixmap.width() <= available.width()
-            and pixmap.height() <= available.height()
-        ):
-            return pixmap
-        return pixmap.scaled(
-            available,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-    @staticmethod
-    def _cut(line: str) -> str:
-        """
-        One line of a preview, cut to PREVIEW_MAX_LINE_CHARS and marked if it was
-        longer. See that constant: this is what keeps a file with no newlines in it
-        from taking a tenth of a second to show.
-        """
-        if len(line) <= PREVIEW_MAX_LINE_CHARS:
-            return line
-        return f"{line[:PREVIEW_MAX_LINE_CHARS]}…"
-
-    @classmethod
-    def _decoded_head(cls, path: str) -> str | None:
-        """
-        The first lines of a text file — ending in a line saying which cap stopped
-        it, if either did — or None if the file is not text.
-
-        That last line states only what reading the head can know: how many lines
-        were shown, or how much of the file was read. A total line count would mean
-        reading all of it, which is what the byte cap is here to avoid.
-
-        Read as bytes and decoded strictly, rather than trusted by extension:
-        task output, logs and JSON arrive with every extension and none. The
-        incremental decoder is what makes the byte cap safe — it holds back a
-        multi-byte character straddling the cap instead of declaring the file
-        binary. A NUL byte is treated as proof of binary before that, since a
-        UTF-16 file decodes as UTF-8 without complaint and would otherwise be
-        previewed as gibberish interleaved with NULs.
-        """
-        try:
-            with open(path, "rb") as file:
-                head = file.read(PREVIEW_READ_BYTES + 1)
-        except OSError:
-            return None
-
-        truncated = len(head) > PREVIEW_READ_BYTES
-        head = head[:PREVIEW_READ_BYTES]
-        if b"\0" in head:
-            return None
-        try:
-            text = getincrementaldecoder("utf-8")(errors="strict").decode(
-                head, final=not truncated
-            )
-        except UnicodeDecodeError:
-            return None
-
-        lines = text.splitlines()
-        body = "\n".join(cls._cut(line) for line in lines[:PREVIEW_MAX_LINES])
-        if len(lines) > PREVIEW_MAX_LINES:
-            # The binding cap when both bite: the reader has been given 500 lines,
-            # and the byte cap behind them is not what stopped the preview.
-            return (
-                f"{body}\n{PREVIEW_ELIDED_LINES.format(lines=f'{PREVIEW_MAX_LINES:,}')}"
-            )
-        if truncated:
-            return (
-                f"{body}\n"
-                f"{PREVIEW_ELIDED_BYTES.format(size=format_file_size(PREVIEW_READ_BYTES))}"
-            )
-        return body
-
-
-def block_count(text: str) -> int:
-    """
-    The number of blocks 'text' becomes in a QTextDocument; see BLOCK_SEPARATORS.
-    """
-    return len(BLOCK_SEPARATORS.split(text))
-
-
-@dataclass
-class OutputRun:
-    """
-    One source of text in the output window — a command Commander launched, or
-    Commander itself — which the window can be filtered to.
-
-    The output is filtered by run rather than by the PID text in each line,
-    because most of a command's output does not carry its PID: a wrapped
-    message's continuation lines, a table or a JSON document have no prefix at
-    all, and the 'Executing:' line announcing the command is printed by
-    Commander, with Commander's PID, before the command has one. Every chunk of
-    text arrives from a known QProcess, so it is attributed when it arrives.
-    """
-
-    run_id: int
-    command: str  # the program run, e.g. 'yd-submit'; empty for Commander
-    command_line: str = ""  # as echoed on the 'Executing:' line
-    # As the user would recognise it: without the config source, namespace, tag,
-    # variables and '--nf --pp' that Commander adds to every 'yd-*' command
-    user_command_line: str = ""
-    started_at: datetime | None = None
-    pid: int | None = None  # as QProcess reports it, once started
-    # 'exit N' or 'crashed' once finished, 'did not start' if it never did;
-    # None while running
-    outcome: str | None = None
-    # The PID the command printed in its own message prefixes, preferred for
-    # display because it is the one the user sees in the output; QProcess's can
-    # differ where a console-script launcher stands between the two.
-    printed_pid: int | None = None
-
-    def _subject(self, process_word: str) -> str:
-        pid = self.shown_pid
-        if pid is None:  # it never started
-            return self.command
-        return f"{process_word} {pid:06d} ({self.command})"
-
-    @property
-    def menu_text(self) -> str:
-        if self.run_id == COMMANDER_RUN:
-            return "Show Only Commander's Own Messages"
-        return f"Show Only Output from {self._subject('Process')}"
-
-    @property
-    def bar_subject(self) -> str:
-        if self.run_id == COMMANDER_RUN:
-            return "Commander's own messages"
-        return self._subject("process")
-
-    @property
-    def shown_pid(self) -> int | None:
-        return self.printed_pid if self.printed_pid is not None else self.pid
-
-    @property
-    def running(self) -> bool:
-        return self.run_id != COMMANDER_RUN and self.outcome is None
-
-
-def filter_description(runs: list[OutputRun]) -> str:
-    """
-    What the filter bar says is shown: 'Showing only' and the runs, commands
-    in the order they started and Commander's own messages last, where the
-    sentence reads better than at its start.
-    """
-    ordered = sorted(runs, key=lambda run: (run.run_id == COMMANDER_RUN, run.run_id))
-    subjects = [run.bar_subject for run in ordered]
-    listed = (
-        subjects[0]
-        if len(subjects) == 1
-        else f"{', '.join(subjects[:-1])} and {subjects[-1]}"
-    )
-    if ordered[0].run_id == COMMANDER_RUN:  # Commander's alone
-        return f"Showing only {listed}"
-    return f"Showing only output from {listed}"
-
-
-@dataclass
-class OutputEntry:
-    """
-    One call's worth of text in the output window, which may be several lines,
-    and the run it came from. The entries are the window's contents; what the
-    widget holds is the view of them the current filter allows.
-    """
-
-    run_id: int
-    text: str
-    # An 'Executing:' line, which belongs to its command's run and is also one
-    # of Commander's own messages: Commander prints it, with Commander's PID, so
-    # a user reading the PID on it can mean either.
-    announcement: bool = False
-
-    @property
-    def lines(self) -> int:
-        return block_count(self.text)
-
-    @property
-    def runs(self) -> list[int]:
-        """The runs this entry is shown under, its command's first."""
-        return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
-
-    def shown_under(self, run_ids: frozenset[int] | None) -> bool:
-        """Whether a filter to 'run_ids' shows this entry; None shows everything."""
-        return run_ids is None or any(run_id in run_ids for run_id in self.runs)
-
-
-class LineBuffer:
-    """
-    Accumulates raw bytes read from a subprocess output channel and yields
-    complete lines. Pipe reads don't respect line boundaries (or UTF-8
-    character boundaries), so any partial trailing line is held back until the
-    rest of it arrives; without this, appending each read to the log pane
-    inserts a spurious line break wherever a read boundary happens to fall.
-    """
-
-    def __init__(self):
-        self._decoder = getincrementaldecoder("utf-8")(errors="replace")
-        self._partial_line = ""
-
-    def feed(self, data: bytes) -> list[str]:
-        """
-        Add the bytes from one read and return the lines completed by them.
-        """
-        self._partial_line += self._decoder.decode(data)
-        *lines, self._partial_line = self._partial_line.split("\n")
-        return [line.rstrip("\r") for line in lines]
-
-    def flush(self) -> list[str]:
-        """
-        Return any unterminated final line. Only safe to call once no more
-        data is coming, i.e. when the process has exited.
-        """
-        self._partial_line += self._decoder.decode(b"", final=True)
-        remainder, self._partial_line = self._partial_line.rstrip("\r"), ""
-        return [remainder] if remainder else []
-
-
-class NaturalOrderProxy(QSortFilterProxyModel):
-    """
-    Keeps a file dialog's listing in order at every level, not just the one it
-    opens at.
-
-    QFileSystemModel sorts the level it is rooted at and nothing beneath it. A
-    directory expanded in place therefore arrives in filesystem order — a hash
-    order on APFS and on ext4, so 'task_005, task_002, task_003' — and stays in
-    it: verified that neither sort() on the model nor the header's own sort
-    indicator reorders such a level, and that it is still unsorted twelve seconds
-    later, so it is not a race that settles. Commander turned expansion on, which
-    is what made those levels reachable and the ordering visible; the behaviour
-    beneath is Qt's, and the same in a stock dialog.
-
-    Interposing a proxy is Qt's own answer to it (QFileDialog.setProxyModel), and
-    a dynamically sorted one orders each level as its rows arrive, which is what
-    an expanded level needs. It costs a Python comparison per pair: ~130ms of the
-    ~0.5s a 5,000-entry directory takes to list, paid once as the level opens.
-
-    The comparison is a QCollator in numeric mode, not the default string
-    compare, because that is what QFileSystemModel itself does for the level it
-    sorts: 'task_1, task_2, task_10', never 'task_1, task_10, task_2'. A plain
-    sort would put every expanded level in a different order from the directory
-    above it — worse than the bug — and would disagree with the platform's file
-    viewer, which the browse dialog hands over to.
-    """
-
-    def __init__(self, parent: QObject | None = None):
-        super().__init__(parent)
-        self._collator = QCollator()
-        self._collator.setNumericMode(True)
-        self._collator.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        # Ordered as rows arrive, rather than once when the level is opened: a
-        # level is delivered in batches, and only the first batch would be sorted.
-        self.setDynamicSortFilter(True)
-        self.sort(LISTING_SORT_COLUMN, LISTING_SORT_ORDER)
-
-    def lessThan(self, source_left: QModelIndex, source_right: QModelIndex) -> bool:
-        if source_left.column() != LISTING_SORT_COLUMN:
-            return super().lessThan(source_left, source_right)
-        return (
-            self._collator.compare(str(source_left.data()), str(source_right.data()))
-            < 0
-        )
-
-
-def variable_is_complete(variable: str) -> bool:
-    """
-    Whether a whitespace-separated token from the user-variables box is a
-    'name=value' the CLI will accept. Mirrors the rule in utils/variables.py:
-    an '=' with a non-empty name in front of it.
-    """
-    name, separator, _ = variable.partition("=")
-    return bool(separator) and bool(name)
-
-
-def elide_path(path: str, max_length: int = MAX_DISPLAYED_PATH_LENGTH) -> str:
-    """
-    Shorten a file path for display so that it doesn't stretch the layout,
-    keeping the end of the path (including the filename) visible. Paths within
-    the length limit are returned unchanged.
-    """
-    if len(path) <= max_length:
-        return path
-
-    tail = path[-(max_length - len(PATH_ELLIPSIS)) :]
-    separator_index = tail.find(os.sep)
-    if separator_index != -1:  # discard any partial leading directory name
-        tail = tail[separator_index:]
-    return f"{PATH_ELLIPSIS}{tail}"
-
-
-def elide_middle(text: str, max_length: int = MAX_DISPLAYED_NAME_LENGTH) -> str:
-    """
-    Shorten text for display by removing characters from the middle, keeping
-    both ends visible. Used for filenames, where the start and the extension
-    are the informative parts.
-    """
-    if len(text) <= max_length:
-        return text
-
-    keep = max_length - len(PATH_ELLIPSIS)
-    head = keep - keep // 2
-    return f"{text[:head]}{PATH_ELLIPSIS}{text[len(text) - keep // 2 :]}"
-
-
-# The probe below paints a check indicator into a pixmap of its own: an
-# indicator-sized rect set well away from both edges, and a pixmap with room for
-# a style that draws a larger control than it was asked for.
-PROBE_INDICATOR_SIZE = 16
-PROBE_INDICATOR_ORIGIN = 32
-PROBE_PIXMAP_SIZE = 64
-
-
-def check_indicator_is_misplaced(style: QStyle, widget: QWidget | None = None) -> bool:
-    """
-    Does this style paint an item view's check indicator at the painter's origin
-    instead of at the rect it is handed?
-
-    macOS 26 redesigned the system controls, and AppKit gates the redesign on the
-    *main executable's linked SDK*. Where that is the macOS 26 SDK or later, Qt's
-    macOS style draws a checkbox or radio indicator as the new 16x16 control at
-    the painter's origin, ignoring the rect it computed; linked against an
-    earlier SDK, the same Qt draws the legacy 18x18 control in the rect. Only
-    those two indicators are affected — push buttons and combo boxes draw in
-    their rect either way.
-
-    That was established causally, one interpreter at a time, by rewriting
-    nothing but the SDK field with vtool: 26.5 -> 15.5 on a Homebrew Python's
-    Python.app fixes it, 15.5 -> 26.5 on a uv-managed interpreter breaks it, and
-    Apple's own opt-out (UIDesignRequiresCompatibility in the app's Info.plist)
-    fixes it as well.
-
-    It therefore looks like a Python or PyQt6 version problem and is neither.
-    Homebrew rebuilds its interpreters against the current SDK, so every Homebrew
-    build measured misplaces it (3.10, 3.12, 3.13, 3.14); uv-managed standalone
-    builds target an older one, so every one of those places it correctly (3.10,
-    3.12, 3.15) — same PyQt6, same Qt binaries, byte for byte. PyQt6 6.10.1 and
-    6.11.0 behave identically on either. Two earlier readings of this, as a Qt
-    6.11.0 regression and then as a framework-build difference, were both
-    artefacts of that correlation.
-
-    Qt knows: 'Qt for macOS - Specific Issues' records that its Widgets and Quick
-    macOS styles "may exhibit drawing artefacts" under Liquid Glass, and names
-    the same two escapes measured above — build with Xcode 16, or set
-    UIDesignRequiresCompatibility. Both belong to whoever builds the executable,
-    which for a Python GUI application is whoever built the interpreter, so
-    neither is available to a library running inside it. Correcting the painting
-    is the only lever this end of the problem has.
-
-    Hence measuring, rather than keying off a version, a platform or a style
-    name: nothing available at runtime names the real condition, and the
-    correction has to switch itself off when Qt adapts to the redesign or Apple
-    retires the compatibility path. Applied to a style that places the indicator
-    correctly, it would offset it twice — the same bug the other way up.
-
-    The probe paints into a transparent pixmap and asks only where the ink
-    landed, so it reads no colour and needs no display. A style that paints
-    nothing at all reads as not misplaced — which is the honest answer, since a
-    translation would have nothing to rescue. Qt's macOS style under the
-    offscreen platform is exactly that case, and is why the tests stand a proxy
-    style in for it rather than selecting it.
-    """
-    rect = QRect(
-        PROBE_INDICATOR_ORIGIN,
-        PROBE_INDICATOR_ORIGIN,
-        PROBE_INDICATOR_SIZE,
-        PROBE_INDICATOR_SIZE,
-    )
-    pixmap = QPixmap(PROBE_PIXMAP_SIZE, PROBE_PIXMAP_SIZE)
-    pixmap.fill(Qt.GlobalColor.transparent)
-
-    option = QStyleOptionViewItem()
-    if widget is not None:
-        option.initFrom(widget)
-    option.rect = rect
-    option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_On
-
-    painter = QPainter(pixmap)
-    style.drawPrimitive(
-        QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck, option, painter, widget
-    )
-    painter.end()
-
-    image = pixmap.toImage()
-    at_the_origin = QRect(0, 0, rect.width(), rect.height())
-    return _has_ink(image, at_the_origin) and not _has_ink(image, rect)
-
-
-def _has_ink(image: QImage, rect: QRect) -> bool:
-    """
-    Was anything painted inside this rect of an image filled with transparency?
-    """
-    for y in range(rect.top(), rect.bottom() + 1):
-        for x in range(rect.left(), rect.right() + 1):
-            if image.pixelColor(x, y).alpha() > 0:
-                return True
-    return False
-
-
-class CheckIndicatorPlacement(QProxyStyle):
-    """
-    Paint an item view's check indicator where the view asked for it, on a style
-    that ignores the position of the rect it is given (see
-    check_indicator_is_misplaced).
-
-    An item view clips each row's painting to that row, so an indicator painted
-    at the painter's origin survives only for the topmost row: a ten-row
-    selection list showed one checkbox, and the nine rows below it looked
-    unticked — and untickable — however they were clicked. Only the painting was
-    wrong; the ticking underneath it worked throughout, which is what made it
-    look like a dialog that allowed one selection.
-
-    Translating the painter is what corrects it, rather than moving the rect: it
-    is the rect's position that the style is ignoring, so the painter's own
-    transform is the only thing left to carry it.
-
-    Given the style it corrects, and owns it: QProxyStyle deletes the style it
-    wraps, so what it is handed must be an instance of its own (see
-    platform_style) and never the application's.
-    """
-
-    def drawPrimitive(
-        self,
-        element: QStyle.PrimitiveElement,
-        option: QStyleOption | None,
-        painter: QPainter | None,
-        widget: QWidget | None = None,
-    ) -> None:
-        if (
-            element != QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck
-            or option is None
-            or painter is None
-        ):
-            super().drawPrimitive(element, option, painter, widget)
-            return
-
-        painter.save()
-        painter.translate(option.rect.topLeft())
-        super().drawPrimitive(element, option, painter, widget)
-        painter.restore()
-
-
-def platform_style() -> QStyle | None:
-    """
-    A style object of this application's own style, for a proxy style to wrap and
-    take ownership of. None if the style cannot be built by name.
-
-    A function, rather than QProxyStyle's own base-less construction, for two
-    reasons. QProxyStyle without a base wraps a fresh instance of the *desktop*
-    style, not of the style the application is actually using, which on Linux is
-    Fusion under Dark Mode whatever the desktop's is. And the tests need a seam:
-    a style that misplaces its check indicators cannot be reached any other way,
-    the one that really does so drawing nothing at all under the offscreen
-    platform.
-    """
-    style = QApplication.style()
-    return None if style is None else QStyleFactory.create(style.objectName())
-
-
-def fix_check_indicator_placement(view: QAbstractItemView) -> None:
-    """
-    Correct where this view's style paints its check indicators, if it needs it.
-
-    The correction is parented to the view because setStyle() does not take
-    ownership: left unparented it would be collected while the view was still
-    painting with it.
-    """
-    style = platform_style()
-    if style is None or not check_indicator_is_misplaced(style, view):
-        return
-    correction = CheckIndicatorPlacement(style)
-    correction.setParent(view)
-    view.setStyle(correction)
-
-
-def checked_handles(listing: QListWidget) -> list[str]:
-    """
-    The handles of the ticked rows of a selection list, in list order.
-    """
-    handles: list[str] = []
-    for index in range(listing.count()):
-        item = listing.item(index)
-        if item is not None and item.checkState() == Qt.CheckState.Checked:
-            handles.append(item.data(Qt.ItemDataRole.UserRole))
-    return handles
-
-
-def set_all_check_states(
-    listing: QListWidget, state: Qt.CheckState, *_signal_args
-) -> None:
-    """
-    Set every row of a selection list to the same check state, for the All / None
-    buttons. Takes and ignores the trailing signal arguments so it can be
-    connected to 'clicked' directly.
-    """
-    for index in range(listing.count()):
-        item = listing.item(index)
-        if item is not None:
-            item.setCheckState(state)
-
-
-def update_selection_state(
-    listing: QListWidget,
-    count_label: QLabel,
-    yes_btn: QPushButton,
-    *_signal_args,
-) -> None:
-    """
-    Refresh the 'N of M selected' label and gate the Yes button on something
-    being selected, so the dialog cannot confirm a run that would do nothing.
-    """
-    selected = len(checked_handles(listing))
-    count_label.setText(f"{selected} of {listing.count()} selected")
-    yes_btn.setEnabled(selected > 0)
 
 
 def command_line_text(command: str, args: list[str]) -> str:
@@ -1143,55 +145,6 @@ def command_line_text(command: str, args: list[str]) -> str:
     A command and its arguments as echoed to the output window.
     """
     return (command + " " + " ".join(args)).rstrip()
-
-
-class CommandHistory:
-    def __init__(self, max_size: int = 250):
-        self._max_size = max_size
-        self._ptr = 0
-        self._commands: list[str] = []
-        self._empty_string_returned = False
-
-    def save_command(self, command: str):
-        """
-        Save a command at the end of the command list.
-        Consecutive duplicates are not stored.
-        """
-        if self._commands and self._commands[-1] == command:
-            return
-        if len(self._commands) == self._max_size:
-            self._commands.pop(0)
-        self._commands.append(command)
-        self._ptr = len(self._commands) - 1
-        self._empty_string_returned = False
-
-    def step_forward(self) -> str | None:
-        """
-        Return the next (later) command in the list.
-        Return an empty string if already at the end of the list.
-        """
-        if len(self._commands) == 0:
-            return None
-        if self._ptr < len(self._commands) - 1:
-            self._ptr += 1
-        else:
-            self._empty_string_returned = True
-            return ""
-        return self._commands[self._ptr]
-
-    def step_back(self) -> str | None:
-        """
-        Return the previous (earlier) command in the list.
-        Keep returning the first command if pointer is at the start.
-        """
-        if len(self._commands) == 0:
-            return None
-        if self._ptr > 0:
-            if self._empty_string_returned:
-                self._empty_string_returned = False
-            else:
-                self._ptr -= 1
-        return self._commands[self._ptr]
 
 
 class YellowDogApp(QMainWindow):
@@ -1247,12 +200,13 @@ class YellowDogApp(QMainWindow):
     run_any_command: QPushButton
     next_command: QPushButton
     prev_command: QPushButton
+    show_help: QPushButton
 
-    def __init__(
-        self, config_file: str | None = None, disable_confirmations: bool = False
-    ):
+    def __init__(self, settings: StartupSettings | None = None):
         super().__init__()
-        self._confirmations_disabled = disable_confirmations
+        if settings is None:
+            settings = StartupSettings()
+        self._confirmations_disabled = settings.disable_confirmations
 
         # Dynamically loads the QT UI definition
         loadUi(join(_PKG_DIR, "commander.ui"), self)
@@ -1268,10 +222,6 @@ class YellowDogApp(QMainWindow):
 
         self._pid = os.getpid()
 
-        # The width of the file dialogs' preview pane, for the session: set it
-        # once by dragging, and every later dialog opens at that width.
-        self._preview_width = PREVIEW_PANE_WIDTH
-
         # Override the branding pixmap with the SVG for the current style
         self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
 
@@ -1283,25 +233,24 @@ class YellowDogApp(QMainWindow):
         self._font.setWeight(500)
         self.log_output.setFont(self._font)
 
-        # The output window's contents and where they came from, so that it can
-        # be filtered to one command's output; see OutputRun
-        self._output_runs: dict[int, OutputRun] = {
-            COMMANDER_RUN: OutputRun(COMMANDER_RUN, "", pid=self._pid)
-        }
-        self._output_entries: list[OutputEntry] = []
-        self._output_line_total = 0
-        # The runs shown, or None for all of them
-        self._output_filter: frozenset[int] | None = None
-        self._hidden_line_count = 0  # arrived while filtered, and not shown
-        self.output_filter_bar.hide()
-        self.log_output.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.log_output.customContextMenuRequested.connect(self._show_output_menu)
-        self.output_filter_show_all.clicked.connect(self._show_all_output)
-        QShortcut(
-            QKeySequence(Qt.Key.Key_Escape),
-            self.log_output,
-            self._show_all_output,
-            context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
+        # Every file dialog: selecting, saving and browsing
+        self._file_dialogs = FileDialogs(self, self._font)
+
+        # The output window, which everything below logs to. The chooser is
+        # reached late-bound, through the window, so that a test replacing
+        # _build_chooser_dialog on the window replaces the one the pane uses.
+        self._output = OutputPane(
+            window=self,
+            view=self.log_output,
+            bar=self.output_filter_bar,
+            bar_label=self.output_filter_label,
+            show_all_button=self.output_filter_show_all,
+            copy_button=self.copy_command_output,
+            save_button=self.save_command_output,
+            build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(
+                *args, **kwargs
+            ),
+            pid=self._pid,
         )
 
         # Set up action connections
@@ -1346,6 +295,14 @@ class YellowDogApp(QMainWindow):
         self.next_command.clicked.connect(self._next_command_action)
         self.prev_command.clicked.connect(self._prev_command_action)
 
+        # Help: the button, the platform's help key (Cmd+? on macOS, F1
+        # elsewhere) and F1 everywhere, all opening the one modeless dialog
+        self._help_dialog: HelpDialog | None = None
+        self.show_help.clicked.connect(self._show_help_action)
+        help_keys = QKeySequence.keyBindings(QKeySequence.StandardKey.HelpContents)
+        for key in {*help_keys, QKeySequence(Qt.Key.Key_F1)}:
+            QShortcut(key, self).activated.connect(self._show_help_action)
+
         # Handle state toggle exclusivity; the 'exclusive' property on the
         # containing button group doesn't allow a state where no boxes are
         # checked
@@ -1361,6 +318,12 @@ class YellowDogApp(QMainWindow):
         # Default the 'follow' checkboxes
         self.follow_progress.setChecked(True)
         self.follow_worker_pool.setChecked(True)
+
+        # Fill the fields given on the command line before anything is connected
+        # to them, so that the deferred config parse below is the first and only
+        # one to see them: filled afterwards, the user-variables box would also
+        # start its reparse timer and run a second, pointless parse.
+        self._apply_startup_fields(settings)
 
         # Handle specific key presses in text edit boxes
         for ui_object in [
@@ -1389,50 +352,45 @@ class YellowDogApp(QMainWindow):
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
 
-        # Original 'Select' button labels, restored when a file is deselected
+        # Original 'Select' button labels and tooltips, restored when a file is
+        # deselected (while one is selected, the tooltip is its full path)
         self._select_wr_default_text = self.select_work_requirement.text()
         self._select_wp_default_text = self.select_worker_pool.text()
-
-        self._namespace: str | None = None
-        self._tag: str | None = None
-        self._config_parse_invalid = True  # nothing discovered yet
-        self._config_parse_timed_out = False
-        self._config_parse_retried = False
-        self._last_discovery_failure: str | None = None
-
-        # One retry of namespace/tag discovery, a moment after a timeout. Timers
-        # here are parented to the window so they die with it; a bare
-        # QTimer.singleShot would fire into destroyed widgets.
-        self._discovery_retry_timer = QTimer(self)
-        self._discovery_retry_timer.setSingleShot(True)
-        self._discovery_retry_timer.timeout.connect(self._retry_discovery)
+        self._select_wr_default_tooltip = self.select_work_requirement.toolTip()
+        self._select_wp_default_tooltip = self.select_worker_pool.toolTip()
 
         # Watch the selected config file for on-disk changes
         self._file_watcher = QFileSystemWatcher(self)
         self._file_watcher.fileChanged.connect(self._on_config_file_changed)
 
-        # Invalidate the config parse cache when inputs that affect it change
-        for ui_object in [
-            self.namespace_override,
-            self.tag_override,
-            self.user_variables,
-        ]:
-            ui_object.textChanged.connect(self._invalidate_config_parse)
-
-        # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables change (debounced to avoid running yd-variables
-        # on every keystroke)
-        self._user_vars_reparse_timer = QTimer(self)
-        self._user_vars_reparse_timer.setSingleShot(True)
-        self._user_vars_reparse_timer.setInterval(600)
-        self._user_vars_reparse_timer.timeout.connect(
-            self._reparse_placeholders_after_edit
+        # Namespace/tag discovery and the placeholders showing what it found,
+        # connected to the fields after they are filled (_apply_startup_fields).
+        # The window's methods are handed over as lambdas, not bound methods, so
+        # that a test replacing one on the window — _run_nested, say — replaces
+        # the one discovery calls.
+        self._discovery = ConfigDiscovery(
+            parent=self,
+            namespace_field=self.namespace_override,
+            tag_field=self.tag_override,
+            object_path_field=self.object_path_override,
+            user_variables=self.user_variables,
+            config_selected=lambda: self._config_file is not None,
+            config_source_args=lambda: self._config_source_args(),
+            override_args=lambda: self._namespace_tag_and_user_vars(),
+            working_dir=lambda: self._working_dir(),
+            run_nested=lambda *args, **kwargs: self._run_nested(*args, **kwargs),
+            shutting_down=lambda: self._shutting_down,
+            log=lambda message: self._output.log(message),
         )
-        self.user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
+
+        if settings.wr_file is not None:
+            self._set_wr_file(settings.wr_file)
+        if settings.wp_file is not None:
+            self._set_wp_file(settings.wp_file)
 
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd-variables runs
-        QTimer.singleShot(0, lambda: self._set_config_file(config_file))
+        QTimer.singleShot(0, lambda: self._set_config_file(settings.config_file))
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
@@ -1462,245 +420,32 @@ class YellowDogApp(QMainWindow):
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
         )
 
+    def _apply_startup_fields(self, settings: StartupSettings):
+        """
+        Fill the text fields from the command line. The variables are joined
+        with spaces, never newlines: _edit_box_keypress_handler deletes a
+        newline, which would fuse 'a=1' and 'b=2' into the one variable
+        'a=1b=2'. launcher.py has already refused any value these fields could
+        not hold as given.
+        """
+        for field, value in [
+            (self.namespace_override, settings.namespace),
+            (self.tag_override, settings.tag),
+            (self.name_glob_override, settings.name_glob),
+            (self.object_path_override, settings.object_path),
+        ]:
+            if value:
+                field.setPlainText(value)
+                self._set_cursor_to_end(field)
+        if settings.variables:
+            self.user_variables.setPlainText(" ".join(settings.variables))
+            self._set_cursor_to_end(self.user_variables)
+
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
         self.branding.setPixmap(
             QIcon(path).pixmap(QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE))
         )
-
-    def _invalidate_config_parse(self):
-        """
-        Mark the discovered namespace/tag stale, and give the next discovery a
-        fresh retry. The retry budget is per parse, not per session: a new
-        configuration file must not inherit the exhausted budget of the last one.
-
-        The same goes for what _report_discovery_failure will say next. It
-        suppresses a repeat of the message it said last, for the user-variables
-        box that reparses after every edit — but a configuration file being
-        deselected and selected again is not a repeat, and a failure suppressed
-        in between (see _nothing_is_configured) would otherwise leave the last
-        message said no longer the last failure there was. Only the three
-        configuration-file paths reach here; an edit to the user variables does
-        not, which is what keeps that suppression doing its job.
-        """
-        self._config_parse_invalid = True
-        self._config_parse_retried = False
-        self._last_discovery_failure = None
-
-    def _reparse_placeholders_after_edit(self):
-        """
-        The debounced reparse behind an edit to the user-variables box.
-
-        Held back while any variable in the box is not yet 'name=value'. Every
-        variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd-variables' rejects one and exits 1, so the reparse
-        landing on such a keystroke reported "Error in variable substitution
-        'instances'" against a mistake the user had not made. Nothing is said
-        about it, because at 600ms after a keystroke there is nothing to say: an
-        unfinished variable and a wrong one are the same text. The parse stays
-        marked invalid, so the edit that completes the variable reparses as
-        usual.
-
-        Only this path is held back. A malformed variable still reaches the CLI
-        when the user runs a command, which is where it is a real error rather
-        than an unfinished one, and where they are there to read it.
-        """
-        if all(
-            variable_is_complete(variable)
-            for variable in self.user_variables.toPlainText().split()
-        ):
-            self._reparse_placeholders()
-
-    def _reparse_placeholders(self, timeout_ms: int | None = None):
-        """
-        Re-run discovery and show what it found, scheduling one retry if it timed
-        out. The single place that pairs a parse with the placeholders, so a
-        caller cannot get the retry by accident and lose it by accident.
-        """
-        if self._parse_yd_config(quiet=True, timeout_ms=timeout_ms):
-            self._set_placeholders(self._namespace or "", self._tag or "")
-            return
-        self._schedule_discovery_retry()
-
-    def _schedule_discovery_retry(self):
-        """
-        Queue the one retry allowed after a timed-out discovery.
-
-        Only after a *timeout*: a non-zero exit or a program that cannot be
-        started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd-variables'
-        on Windows that needed longer than its budget to start, where the second
-        one is warm and finishes at once. Before this, the placeholders stayed
-        blank until Commander was restarted, which is what the user had to do.
-        """
-        if (
-            self._shutting_down
-            or self._config_parse_retried
-            or not self._config_parse_timed_out
-        ):
-            return
-        self._config_parse_retried = True
-        self._log(
-            f"Retrying namespace/tag discovery with a"
-            f" {CONFIG_PARSE_RETRY_TIMEOUT_MS // 1000}s timeout; the first"
-            f" 'yd-*' command of a session can be slow to start"
-        )
-        self._discovery_retry_timer.start(CONFIG_PARSE_RETRY_DELAY_MS)
-
-    def _retry_discovery(self):
-        self._reparse_placeholders(timeout_ms=CONFIG_PARSE_RETRY_TIMEOUT_MS)
-
-    def _report_discovery_failure(self, message: str):
-        """
-        Say why namespace/tag discovery failed. Logged however quiet the parse
-        was: blank placeholders with nothing in the output window to explain them
-        is what left a Windows incident with no evidence to diagnose.
-
-        Consecutive identical messages are suppressed, because the user-variables
-        box reparses 600ms after every edit and a broken configuration would
-        otherwise fill the window with one line over and over. A success clears
-        the memory, so the same failure recurring is reported again.
-        """
-        if message == self._last_discovery_failure:
-            return
-        self._last_discovery_failure = message
-        self._log(message)
-
-    def _set_placeholders(self, namespace: str, tag: str):
-        """
-        Update the placeholder text showing the namespace, tag and object path
-        that will be used if those fields are left blank.
-
-        The viewport repaints are scheduled with update() rather than forced
-        with repaint(): callers reach this immediately after _parse_yd_config
-        has run a nested event loop, and forcing a synchronous paint of a text
-        widget from there is what appears to make macOS log bursts of
-        'TSMSendMessageToUIServer ... FAILED(-1)'. Control returns to the event
-        loop directly afterwards, so the placeholders still appear at once.
-        It has to be the viewport, not the widget: QPlainTextEdit is a scroll
-        area, and the placeholder text is painted by its viewport.
-        """
-        self.namespace_override.setPlaceholderText(namespace)
-        cast(QWidget, self.namespace_override.viewport()).update()
-        self.tag_override.setPlaceholderText(tag)
-        cast(QWidget, self.tag_override.viewport()).update()
-        default_prefix = f"{tag}*" if tag else ""
-        self.object_path_override.setPlaceholderText(default_prefix)
-        cast(QWidget, self.object_path_override.viewport()).update()
-
-    def _yd_variables_command(self) -> tuple[str, list[str]]:
-        """
-        The 'yd-variables' invocation that resolves the namespace and tag for the
-        current configuration source, namespace/tag overrides and user variables.
-        """
-        return "yd-variables", (
-            self._config_source_args()
-            + [
-                "--nf",
-                NAMESPACE,
-                TAG,
-            ]
-            + self._namespace_tag_and_user_vars()
-        )
-
-    def _nothing_is_configured(self, error_output: str) -> bool:
-        """
-        Whether a failed discovery means 'nothing is configured yet' rather than
-        'something is wrong', in which case it is not reported.
-
-        Only with no configuration file selected. 'yd-variables' is then given
-        '--nc' and has nothing but the environment to work from, and an environment
-        with no YellowDog credentials in it makes it exit 1 with "Missing
-        configuration data: 'key'" before it can resolve anything. Reported, that
-        put an error in the output window at startup, and again on every
-        Deselect, in front of a user who had done nothing wrong.
-
-        Deliberately narrow in both directions. With a configuration file
-        selected the same message means the selected file cannot be used, which
-        is the user's to see. And with none selected every *other* failure is
-        still reported, because discovery from the environment alone is a
-        supported way to run Commander — credentials and namespace/tag in YD_*
-        variables, with the definition files nominated by hand — and its
-        failures are as worth seeing as any other.
-
-        Matched on the message, the CLI having one exit code for everything.
-        MISSING_CONFIG_DATA is the CLI's own definition of it, imported rather
-        than written out again here, so the two cannot drift apart silently.
-        """
-        return self._config_file is None and MISSING_CONFIG_DATA in error_output
-
-    def _parse_yd_config(
-        self, quiet: bool = False, timeout_ms: int | None = None
-    ) -> bool:
-        """
-        Parse the configuration file to obtain the CLI-processed values of the
-        namespace and tag variables, used to populate placeholder text.
-
-        'timeout_ms' defaults to CONFIG_PARSE_TIMEOUT_MS; the retry after a
-        timeout passes a longer one. Every failure is reported through
-        _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
-        announcement of a routine reparse, not the reason one failed. The one
-        exception is _nothing_is_configured() above.
-        """
-        if not self._config_parse_invalid:
-            return True
-        if timeout_ms is None:
-            timeout_ms = CONFIG_PARSE_TIMEOUT_MS
-        self._config_parse_timed_out = False
-
-        yd_process = QProcess()
-        event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
-        yd_process.finished.connect(event_loop.quit)
-        yd_process.errorOccurred.connect(event_loop.quit)
-
-        cmd, args = self._yd_variables_command()
-
-        if not quiet:
-            self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
-        yd_process.start(cmd, args)
-        if not self._run_nested(yd_process, event_loop, timeout_ms):
-            if self._shutting_down:
-                return False  # the widgets are going away; don't touch them
-            self._config_parse_timed_out = True
-            self._report_discovery_failure(
-                f"Timed out after {timeout_ms // 1000}s parsing"
-                f" configuration with 'yd-variables'"
-            )
-            return False
-
-        if yd_process.error() != QProcess.ProcessError.UnknownError:
-            self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables': {yd_process.errorString()}"
-            )
-            return False
-
-        if yd_process.exitCode() != 0:
-            error_output = yd_process.readAllStandardError().data().decode().strip()
-            if self._nothing_is_configured(error_output):
-                return False
-            self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables'"
-                f" (Exit {yd_process.exitCode()}): {error_output}"
-            )
-            return False
-
-        output = yd_process.readAllStandardOutput().data().decode().strip()
-        try:
-            parsed_data = loads(output)
-            self._namespace = parsed_data.get(NAMESPACE)
-            self._tag = parsed_data.get(TAG)
-        except Exception as e:
-            self._report_discovery_failure(f"Error reading config variables: {e}")
-            return False
-
-        self._config_parse_invalid = False
-        self._last_discovery_failure = None  # a recurrence is worth reporting again
-        return True
 
     def _on_config_file_changed(self, _path: str):
         """
@@ -1713,9 +458,11 @@ class YellowDogApp(QMainWindow):
             abs_path = abspath(self._config_file)
             if exists(abs_path) and abs_path not in self._file_watcher.files():
                 self._file_watcher.addPath(abs_path)
-        self._invalidate_config_parse()
-        self._log(f"Config file '{self._config_file}' changed on disk; refreshing...")
-        self._reparse_placeholders()
+        self._discovery.invalidate()
+        self._output.log(
+            f"Config file '{self._config_file}' changed on disk; refreshing..."
+        )
+        self._discovery.reparse_placeholders()
 
     def _set_config_file(self, config_file: str | None):
         """
@@ -1729,47 +476,38 @@ class YellowDogApp(QMainWindow):
             self._config_file = None
             self.select_config_label.setText(NO_SELECTED_CONFIG)
             self.select_config_label.setToolTip("")
-            self._invalidate_config_parse()
-            # Cleared first, then filled in again by whatever discovery finds
-            # without a config file (environment variables, or nothing at all):
-            # the previous file's namespace and tag must not linger either way.
-            # _namespace and _tag are cleared as well as the placeholders they
-            # are shown in, because _object_path() builds the default download
-            # and delete path out of the tag, so a stale one is a path acted on.
-            self._namespace = None
-            self._tag = None
-            self._set_placeholders("", "")
-            self._reparse_placeholders()
+            self._discovery.clear()
+            self._discovery.reparse_placeholders()
             return
 
         if not exists(config_file):
-            self._log(f"Config file '{config_file}' does not exist")
+            self._output.log(f"Config file '{config_file}' does not exist")
             return
 
         selected_config_file = relpath(config_file)
         self._config_file = selected_config_file
-        self._invalidate_config_parse()
-        self._log(f"Selected configuration file '{selected_config_file}'")
+        self._discovery.invalidate()
+        self._output.log(f"Selected configuration file '{selected_config_file}'")
         self.select_config_label.setText(elide_path(selected_config_file))
         self.select_config_label.setToolTip(abspath(selected_config_file))
-        self._reparse_placeholders()
+        self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
     def _select_config_file_action(self):
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a configuration file",
             directory=(self._config_dir() if self._config_file else CWD),
             file_pattern="*.toml",
         )
         if file is None:
-            self._log(NO_SELECTED_CONFIG)
+            self._output.log(NO_SELECTED_CONFIG)
         else:
             self._set_config_file(file)
 
     def _check_config_file(self, quiet: bool = False) -> bool:
         if self._config_file is None:
             if not quiet:
-                self._log(NO_SELECTED_CONFIG)
+                self._output.log(NO_SELECTED_CONFIG)
             return False
         return True
 
@@ -1910,18 +648,23 @@ class YellowDogApp(QMainWindow):
         return cast(QStyleHints, QApplication.styleHints()).colorScheme()
 
     def _show_selection_on_button(
-        self, button: QPushButton, prefix: str, default_text: str, file: str | None
+        self,
+        button: QPushButton,
+        prefix: str,
+        default_text: str,
+        default_tooltip: str,
+        file: str | None,
     ):
         """
         Indicate the selected definition file on its own 'Select' button, so
         that the selection is visible without adding a widget to the left-hand
         column. The filename is elided to fit the button's current width, so a
         long name never widens the column; the full path becomes the tooltip.
-        Passing file=None restores the button's original label.
+        Passing file=None restores the button's original label and tooltip.
         """
         if file is None:
             button.setText(default_text)
-            button.setToolTip("")
+            button.setToolTip(default_tooltip)
             return
 
         name = basename(file)
@@ -1941,6 +684,7 @@ class YellowDogApp(QMainWindow):
             self.select_work_requirement,
             SELECTED_WR_PREFIX,
             self._select_wr_default_text,
+            self._select_wr_default_tooltip,
             self._wr_file,
         )
 
@@ -1949,36 +693,51 @@ class YellowDogApp(QMainWindow):
             self.select_worker_pool,
             SELECTED_WP_PREFIX,
             self._select_wp_default_text,
+            self._select_wp_default_tooltip,
             self._wp_file,
         )
 
     def _select_work_requirement_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a Work Requirement definition file",
             directory=directory,
             file_pattern="*.json *.jsonnet",
         )
         if file is None:
-            self._log("No Work Requirement definition file selected")
+            self._output.log("No Work Requirement definition file selected")
         else:
-            self._wr_file = abspath(file)
-            self._log(f"Selected Work Requirement definition '{self._wr_file}'")
-            self._show_wr_selection()
+            self._set_wr_file(file)
 
     def _select_worker_pool_action(self):
         directory = CWD if self._config_file is None else self._config_dir()
-        file = self._select_file(
+        file = self._file_dialogs.select_file(
             caption="Please select a Worker Pool definition file",
             directory=directory,
             file_pattern="*.json *.jsonnet",
         )
         if file is None:
-            self._log("No Worker Pool definition file selected")
+            self._output.log("No Worker Pool definition file selected")
         else:
-            self._wp_file = abspath(file)
-            self._log(f"Selected Worker Pool definition '{self._wp_file}'")
-            self._show_wp_selection()
+            self._set_wp_file(file)
+
+    def _set_wr_file(self, file: str):
+        """
+        Select a Work Requirement definition, from the Select button or the
+        command line. Stored absolute; see the note on _wr_file in __init__.
+        """
+        self._wr_file = abspath(file)
+        self._output.log(f"Selected Work Requirement definition '{self._wr_file}'")
+        self._show_wr_selection()
+
+    def _set_wp_file(self, file: str):
+        """
+        Select a Worker Pool definition, from the Select button or the command
+        line. Stored absolute; see the note on _wr_file in __init__.
+        """
+        self._wp_file = abspath(file)
+        self._output.log(f"Selected Worker Pool definition '{self._wp_file}'")
+        self._show_wp_selection()
 
     def _submit_work_requirement_action(self):
         # Generate and run the command
@@ -1995,14 +754,6 @@ class YellowDogApp(QMainWindow):
         args += self.wr_submit_options.toPlainText().split()
         self._run_command_in_subprocess("yd-submit", args)
 
-    def _prefix(self, pid: int | None = None) -> str:
-        """
-        Create a prefix the same as that used by the CLI.
-        """
-        if pid is None:
-            pid = self._pid
-        return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
-
     def _object_path(self) -> str | None:
         """
         The object path the download and delete actions work on: the Path field
@@ -2017,7 +768,7 @@ class YellowDogApp(QMainWindow):
         override = self.object_path_override.toPlainText().strip()
         if override:
             return override
-        return f"{self._tag}*" if self._tag else None
+        return f"{self._discovery.tag}*" if self._discovery.tag else None
 
     def _scope_phrase(self, match_word: str) -> str:
         """
@@ -2026,15 +777,15 @@ class YellowDogApp(QMainWindow):
         Requirements are matched by tag ('tags'), Worker Pools by name ('names').
         Uses the discovered namespace/tag, degrading gracefully when unknown.
         """
-        if self._namespace and self._tag:
+        if self._discovery.namespace and self._discovery.tag:
             return (
-                f" in namespace '{self._namespace}'"
-                f" with {match_word} including '{self._tag}'"
+                f" in namespace '{self._discovery.namespace}'"
+                f" with {match_word} including '{self._discovery.tag}'"
             )
-        if self._namespace:
-            return f" in namespace '{self._namespace}'"
-        if self._tag:
-            return f" with {match_word} including '{self._tag}'"
+        if self._discovery.namespace:
+            return f" in namespace '{self._discovery.namespace}'"
+        if self._discovery.tag:
+            return f" with {match_word} including '{self._discovery.tag}'"
         return " in the current namespace and tag"
 
     def _confirm_destructive(
@@ -2299,7 +1050,7 @@ class YellowDogApp(QMainWindow):
         """
         if self._nested_depth == 0:
             return False
-        self._log(f"Another operation is still in progress; ignoring {action}")
+        self._output.log(f"Another operation is still in progress; ignoring {action}")
         return True
 
     def _handles_are_safe_to_target(
@@ -2325,7 +1076,7 @@ class YellowDogApp(QMainWindow):
         if not unsafe:
             return True
 
-        self._log(
+        self._output.log(
             f"Cannot {verb} by path — these names contain wildcard characters"
             " ('*', '?', '[') or a '{{' substitution placeholder:"
             f" {', '.join(unsafe)}."
@@ -2510,7 +1261,9 @@ class YellowDogApp(QMainWindow):
             return None
         summaries = parse_entity_summaries(parsed)
         if summaries is None:
-            self._log("Entity listing did not include YDIDs; cannot offer a selection")
+            self._output.log(
+                "Entity listing did not include YDIDs; cannot offer a selection"
+            )
         return summaries
 
     def _capture_dry_run_objects(
@@ -2531,7 +1284,9 @@ class YellowDogApp(QMainWindow):
             return None
         summaries = parse_object_summaries(parsed)
         if summaries is None:
-            self._log("Object listing did not include paths; cannot offer a selection")
+            self._output.log(
+                "Object listing did not include paths; cannot offer a selection"
+            )
         return summaries
 
     def _choose_objects(
@@ -2582,7 +1337,7 @@ class YellowDogApp(QMainWindow):
         dst = join(self._working_dir(), RESULTS_DIR)
         path = self._object_path()
         if path is None:
-            self._log(NO_OBJECT_PATH)
+            self._output.log(NO_OBJECT_PATH)
             return
 
         if self.dry_run_objects.isChecked():
@@ -2590,23 +1345,25 @@ class YellowDogApp(QMainWindow):
             return
 
         if self._confirmations_disabled:
-            self._log(
+            self._output.log(
                 "Selection suppressed by '--yes';"
                 f" downloading all objects matching '{path}'"
             )
             self._run_command_in_subprocess("yd-download", ["--into", dst, path])
             return
 
-        self._log(f"Checking which objects match '{path}'...")
+        self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
         objects = self._capture_dry_run_objects("yd-download", [path])
 
         if objects is not None and not objects:
-            self._log(f"No objects match '{path}'")
+            self._output.log(f"No objects match '{path}'")
             return
 
         if objects is None:
-            self._log("Could not list matching objects; downloading them all instead")
+            self._output.log(
+                "Could not list matching objects; downloading them all instead"
+            )
             self._run_command_in_subprocess("yd-download", ["--into", dst, path])
             return
 
@@ -2646,7 +1403,7 @@ class YellowDogApp(QMainWindow):
 
         path = self._object_path()
         if path is None:
-            self._log(NO_OBJECT_PATH)
+            self._output.log(NO_OBJECT_PATH)
             return
 
         if self.dry_run_objects.isChecked():
@@ -2655,19 +1412,19 @@ class YellowDogApp(QMainWindow):
             return
 
         if self._confirmations_disabled or "delete" in self._skip_confirmations:
-            self._log(
+            self._output.log(
                 f"Confirmations suppressed for 'delete';"
                 f" deleting all objects matching '{path}'"
             )
             self._run_command_in_subprocess("yd-delete", ["-Ry", path])
             return
 
-        self._log(f"Checking which objects match '{path}'...")
+        self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
         objects = self._capture_dry_run_objects("yd-delete", ["-R", path])
 
         if objects is not None and not objects:
-            self._log(f"No objects match '{path}'")
+            self._output.log(f"No objects match '{path}'")
             return
 
         body = f"Deleting objects matching '{path}'."
@@ -2675,7 +1432,9 @@ class YellowDogApp(QMainWindow):
             body += " A ticked directory is deleted with everything inside it."
         body += "\n\nThis cannot be undone."
         if objects is None:
-            self._log("Could not list affected objects; confirming by scope instead")
+            self._output.log(
+                "Could not list affected objects; confirming by scope instead"
+            )
 
         rows = object_rows(objects) if objects else None
         result = self._confirm_destructive("delete", "Delete Objects", body, rows=rows)
@@ -2691,7 +1450,7 @@ class YellowDogApp(QMainWindow):
         if not result.handles:
             # 'yd-delete -Ry' with no paths would delete the entire configured
             # prefix, so an empty selection must never reach the command.
-            self._log("Nothing selected to delete; no objects removed")
+            self._output.log("Nothing selected to delete; no objects removed")
             return
 
         if not self._handles_are_safe_to_target(result.handles, "delete", "removed"):
@@ -2704,17 +1463,7 @@ class YellowDogApp(QMainWindow):
         )
 
     def _clear_output_action(self):
-        """
-        Clear everything, filtered out or not, and so end any filter: clearing
-        only what is shown, or only what is hidden, would leave the window's
-        contents a surprise when the filter is lifted.
-        """
-        self._output_entries.clear()
-        self._output_line_total = 0
-        self._output_filter = None
-        self._hidden_line_count = 0
-        self.log_output.setPlainText("")
-        self._update_output_filter_bar()
+        self._output.clear()
 
     def _copy_output_action(self):
         cast(QClipboard, QApplication.clipboard()).setText(
@@ -2733,11 +1482,11 @@ class YellowDogApp(QMainWindow):
         """
         text = self.log_output.toPlainText()
         if not text:
-            self._log("No command output to save")
+            self._output.log("No command output to save")
             return
 
         default_name = datetime.now().strftime(SAVED_OUTPUT_NAME_FORMAT)
-        path = self._save_file(
+        path = self._file_dialogs.save_file(
             caption="Save Command Output",
             directory=join(self._working_dir(), default_name),
             file_pattern=SAVED_OUTPUT_FILTER,
@@ -2752,10 +1501,10 @@ class YellowDogApp(QMainWindow):
             with open(path, "w", encoding="utf-8") as output_file:
                 output_file.write(text if text.endswith("\n") else f"{text}\n")
         except OSError as e:
-            self._log(f"Could not save command output to '{path}': {e}")
+            self._output.log(f"Could not save command output to '{path}': {e}")
             return
 
-        self._log(f"Saved command output to '{path}'")
+        self._output.log(f"Saved command output to '{path}'")
 
     def _name_glob_args(self) -> list[str]:
         """
@@ -2822,31 +1571,33 @@ class YellowDogApp(QMainWindow):
         # than by tag/name-substring, so describe the scope accordingly.
         if name_args:
             scope = f" matching name pattern '{name_args[0]}'"
-            if self._namespace:
-                scope = f" in namespace '{self._namespace}'{scope}"
+            if self._discovery.namespace:
+                scope = f" in namespace '{self._discovery.namespace}'{scope}"
         else:
             scope = self._scope_phrase(match_word)
 
         if self._confirmations_disabled or action_key in self._skip_confirmations:
-            self._log(
+            self._output.log(
                 f"Confirmations suppressed for '{action_key}';"
                 f" acting on all {plural}{scope}"
             )
             self._run_command_in_subprocess(command, run_args + name_args)
             return
 
-        self._log(f"Checking which {plural} would be affected...")
+        self._output.log(f"Checking which {plural} would be affected...")
         self.log_output.repaint()
         entities = self._capture_dry_run_summaries(command, extra_args=name_args)
 
         if entities is not None and not entities:
-            self._log(f"No matching {plural}{scope}")
+            self._output.log(f"No matching {plural}{scope}")
             return
 
         abort_clause = ", and aborting their running tasks" if and_abort else ""
         body = f"{gerund} {plural}{scope}{abort_clause}.\n\nThis cannot be undone."
         if entities is None:
-            self._log("Could not list affected entities; confirming by scope instead")
+            self._output.log(
+                "Could not list affected entities; confirming by scope instead"
+            )
 
         rows = entity_rows(entities) if entities else None
         result = self._confirm_destructive(action_key, title, body, rows=rows)
@@ -2862,7 +1613,7 @@ class YellowDogApp(QMainWindow):
         if not result.handles:
             # 'run_args + []' IS the whole-scope command, so an empty selection
             # must never fall through to the run below.
-            self._log(f"Nothing selected to act on; no {plural} affected")
+            self._output.log(f"Nothing selected to act on; no {plural} affected")
             return
 
         self._run_command_in_subprocess(
@@ -3021,40 +1772,19 @@ class YellowDogApp(QMainWindow):
             process_env.insert("PYTHONIOENCODING", "utf-8")
 
         process.setProcessEnvironment(process_env)
-        stdout_buffer = LineBuffer()
-        stderr_buffer = LineBuffer()
-        run = OutputRun(
-            len(self._output_runs),
+        run = self._output.start_run(
             command,
             command_line_text(command, display_args),
-            user_command_line=command_line_text(
-                command, raw_args if log_args is None else log_args
-            ),
-            started_at=datetime.now(),
+            command_line_text(command, raw_args if log_args is None else log_args),
         )
-        self._output_runs[run.run_id] = run
-        process.readyReadStandardOutput.connect(
-            functools_partial(self._on_stdout, process, run, stdout_buffer)
-        )
-        process.readyReadStandardError.connect(
-            functools_partial(self._on_stderr, process, run, stderr_buffer)
-        )
-        process.finished.connect(
-            functools_partial(
-                self._on_process_output_finished,
-                process,
-                run,
-                stdout_buffer,
-                stderr_buffer,
-            )
-        )
+        self._output.attach(process, run)
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
         process.finished.connect(functools_partial(self._record_outcome, run))
 
         # Part of the command's run, although printed by Commander with its own
         # PID, since it is the line saying what the command was
-        self._log(
+        self._output.log(
             f"Executing: '{run.command_line}' in directory '{self._working_dir()}'",
             run=run.run_id,
             announcement=True,
@@ -3065,7 +1795,7 @@ class YellowDogApp(QMainWindow):
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
             run.outcome = "did not start"
-            self._log(
+            self._output.log(
                 f"Error running command: '{process.errorString()}'", run=run.run_id
             )
         else:
@@ -3198,7 +1928,7 @@ class YellowDogApp(QMainWindow):
             for process in list(self._processes) + list(self._helper_processes)
         )
         if stopped:
-            self._log(f"Stopped {stopped} running command(s) on exit")
+            self._output.log(f"Stopped {stopped} running command(s) on exit")
         self._processes.clear()
         self._helper_processes.clear()
 
@@ -3251,7 +1981,7 @@ class YellowDogApp(QMainWindow):
         '--yes' says nobody is there to press OK and a modal would hang, and
         shutdown, where the widgets are going away.
         """
-        self._log(message)
+        self._output.log(message)
         if self._confirmations_disabled or self._shutting_down:
             return
         dialog = self._build_notice_dialog(message)
@@ -3344,7 +2074,9 @@ class YellowDogApp(QMainWindow):
             return
         pid = self._active_process.processId()
         self._active_process.write((text + "\n").encode())
-        self._log(f"{self._prefix(pid)}<-- {text}", prefix=False, run=self._active_run)
+        self._output.log(
+            f"{message_prefix(pid)}<-- {text}", prefix=False, run=self._active_run
+        )
         self.stdin_input.setPlainText("")
 
     def _browse_results_directory_action(self):
@@ -3372,337 +2104,18 @@ class YellowDogApp(QMainWindow):
         default application for its type; dismissing the dialog does nothing.
         """
         if not exists(directory):
-            self._log(f"Directory '{directory}' does not (yet) exist")
+            self._output.log(f"Directory '{directory}' does not (yet) exist")
             return
-        file_name = self._browse_with_preview(f"Browse '{directory}'", directory)
+        file_name = self._file_dialogs.browse(f"Browse '{directory}'", directory)
         if file_name is not None:
-            self._open_with_default_application(file_name)
-
-    def _build_browse_dialog(self, caption: str, directory: str) -> QFileDialog:
-        """
-        Build (but do not show) the read-only browse dialog: Qt's own file
-        dialog rooted at 'directory', previewing whatever is highlighted.
-
-        Read-only because this is a viewer, not a file manager: Qt's dialog
-        otherwise offers renaming, deleting and creating folders inside the
-        results directory, none of which is what the button promises.
-        """
-        dialog = QFileDialog(self, caption, directory)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setOption(QFileDialog.Option.ReadOnly, True)
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Open")
-        self._add_preview_pane(dialog)
-        self._apply_dialog_preferences(dialog)
-        self._add_platform_viewer_button(dialog)
-        return dialog
-
-    def _add_platform_viewer_button(self, dialog: QFileDialog):
-        """
-        Add a button handing the directory being browsed to the platform's own
-        file viewer (Finder, Explorer, the desktop's file manager) and closing
-        this dialog.
-
-        Qt's dialog is deliberately read-only, so this is the route to deleting or
-        renaming something in the results directory — which is what the platform
-        viewer was worth keeping a way back to for. Closing rather than staying
-        open: the viewer is where the contents get changed, and a listing left
-        behind it would be showing a directory that no longer looks like that.
-
-        ActionRole so Qt does not read the click as accepting or rejecting, and
-        autoDefault off so Return still means Open — an autoDefault button that
-        gains focus takes the default role from the accept button. The handler
-        rejects explicitly, which is what makes _run_file_dialog report no chosen
-        file: switching to the viewer is not picking something to open.
-        """
-        button_box = dialog.findChild(QDialogButtonBox)
-        if button_box is None:
-            return  # no button box to attach to: leave the dialog as Qt built it
-        button = cast(
-            QPushButton,
-            button_box.addButton(
-                NATIVE_VIEWER_BUTTON_TEXT, QDialogButtonBox.ButtonRole.ActionRole
-            ),
-        )
-        button.setAutoDefault(False)
-        button.clicked.connect(lambda: self._switch_to_platform_viewer(dialog))
-
-        # Placed explicitly at the head of the box rather than left where the
-        # style put it: each style appends an ActionRole button somewhere of its
-        # own choosing — macOS after Cancel, Fusion before Open — so the button
-        # moved about between platforms. First means above Open in the vertical
-        # column macOS lays out, and leftmost in the row Windows and Linux do,
-        # which in both cases keeps it clear of the accept and reject buttons
-        # rather than trailing after them. The button stays a member of the box
-        # with its role and wiring intact; only its position in the layout moves.
-        box_layout = button_box.layout()
-        if box_layout is not None:
-            box_layout.removeWidget(button)
-            cast(QBoxLayout, box_layout).insertWidget(0, button)
-
-    def _switch_to_platform_viewer(self, dialog: QFileDialog):
-        """
-        Hand the directory currently on screen to the platform's file viewer and
-        close the dialog. The current directory, not the one the dialog opened
-        at, so navigating into a subdirectory first hands over what is displayed.
-        """
-        self._open_with_default_application(dialog.directory().absolutePath())
-        dialog.reject()
-
-    def _add_preview_pane(self, dialog: QFileDialog) -> FilePreview | None:
-        """
-        Add a FilePreview to a non-native file dialog and wire it to the
-        dialog's currentChanged signal, returning it — or None if there was
-        nowhere to put it.
-
-        It goes into the splitter that already holds the dialog's sidebar and
-        listing, which is what makes the width draggable, and what puts the
-        handle where a user looks for one. That splitter is Qt's own, so it is
-        reached defensively: a preview parented to the dialog but never placed
-        would be drawn on top of the listing rather than beside it, so with no
-        splitter to hold it the dialog is left exactly as Qt built it.
-
-        How wide it opens is _apply_dialog_preferences's business, called once the
-        pane is in place; what is set here is that it is deliberately not
-        collapsible, a pane dragged shut leaving a handle flush against the
-        dialog's edge, which is a poor thing to have to find again. The width the
-        user drags it to is remembered for the session, on the dialog's own
-        finished signal.
-        """
-        splitter = dialog.findChild(QSplitter, "splitter")
-        if splitter is None:
-            return None
-
-        preview = FilePreview(self._font, dialog)
-        preview.setObjectName("file_preview")
-        splitter.addWidget(preview)
-        index = splitter.indexOf(preview)
-        splitter.setCollapsible(index, False)
-        splitter.setStretchFactor(index, 0)
-
-        dialog.currentChanged.connect(preview.show_path)
-        dialog.finished.connect(
-            lambda _result: self._remember_preview_width(splitter, index)
-        )
-        return preview
-
-    def _remember_preview_width(self, splitter: QSplitter, index: int):
-        """
-        Keep the width the preview pane ended up at, for the next dialog. Read
-        on the dialog's own finished signal, which is emitted while the splitter
-        is still alive — a width read after deleteLater() would not be.
-        """
-        sizes = splitter.sizes()
-        if 0 <= index < len(sizes) and sizes[index] > 0:
-            self._preview_width = sizes[index]
-
-    @staticmethod
-    def _make_listing_a_names_only_tree(dialog: QFileDialog):
-        """
-        Turn Qt's Detail listing into the names-only hierarchy Commander shows: a
-        directory expands in place rather than having to be navigated into and back
-        out of, and the name gets the width the other columns were using.
-
-        Qt ships the tree flat — `rootIsDecorated` and `itemsExpandable` both off —
-        though the model under it (`QFileSystemModel`) has always been hierarchical.
-        Turning them on is all the hierarchy needs, and it costs nothing that was
-        there before: double-clicking a directory still navigates into it, so the
-        triangle and the double-click each keep their own job. A file picked inside
-        an expanded directory comes back with its full path, since the selection is
-        the model's, not the listed directory's.
-
-        That double-click behaviour is worth being sure of rather than assuming,
-        since a QTreeView with expandable items can consume a double-click to
-        expand instead of activating the row. Measured on macOS with a collapsed
-        directory: it navigated and did not expand, with `expandsOnDoubleClick`
-        either way, QFileDialog's own activation winning. It is not covered by a
-        test because the offscreen platform delivers neither a double-click nor a
-        Return to an item view — a stock dialog does not navigate there either.
-
-        Size, kind and date go because between them they take most of the width and
-        leave the name — the one column that says which file this is — elided. The
-        header goes with them, having one column left to sort. Stretching that
-        column is not cosmetic either: left at its own width the name still elides,
-        now with empty space beside it, which is the worst of both.
-
-        Applied when the dialog is built rather than when the tree is shown, so a
-        user who switches views mid-dialog finds it set up either way.
-        """
-        tree = dialog.findChild(QTreeView, "treeView")
-        if tree is None:
-            return
-
-        tree.setRootIsDecorated(True)
-        tree.setItemsExpandable(True)
-
-        header = tree.header()
-        if header is None:
-            return
-        for column in range(1, header.count()):
-            tree.setColumnHidden(column, True)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
-        header.hide()
-
-    def _apply_dialog_preferences(self, dialog: QFileDialog):
-        """
-        Set up a non-native file dialog the way the user last left one: listing
-        files in their chosen view, with the places sidebar at their width and the
-        preview pane — if this dialog has one — at the width the session left it
-        at. Called by all three dialogs, once the pane is in place.
-
-        The widths go in one setSizes, and every pane's is stated except the
-        listing's. Both matter, because this runs on a dialog that has not been
-        shown: the splitter reports placeholder sizes rather than the widths it
-        has been given, so a second call throws the first call's away, and a pane
-        left out of the list is squashed to its minimum. The listing is the pane
-        left to the splitter, being the one that should take what is over.
-
-        The dialog grows by whatever the panes gain, rather than the panes taking
-        it out of the listing — the listing is the part the user came for.
-
-        The sorting proxy goes in before the listing is set up, not after: it
-        replaces the views' model, and the hidden columns and the stretched name
-        are properties of the view against that model.
-        """
-        dialog.setProxyModel(NaturalOrderProxy())
-        self._make_listing_a_names_only_tree(dialog)
-        dialog.setViewMode(self._preferred_view_mode())
-
-        splitter = dialog.findChild(QSplitter, "splitter")
-        if splitter is None:
-            return
-
-        # Placeholders, and no use for measuring how much wider the dialog should
-        # be, so each pane says that for itself: the preview counts its whole
-        # width, being a pane nothing has given any width up for yet, and the
-        # sidebar only what it gains on the width Qt would have opened it at.
-        sizes = splitter.sizes()
-        widened = 0
-        stated = False
-
-        widening = self._sidebar_widening(dialog)
-        if widening is not None:
-            sizes[0], extra = widening
-            widened += extra
-            stated = True
-
-        preview = dialog.findChild(FilePreview, "file_preview")
-        if preview is not None:
-            sizes[splitter.indexOf(preview)] = self._preview_width
-            widened += self._preview_width
-            stated = True
-
-        dialog.finished.connect(
-            lambda _result: self._remember_dialog_preferences(dialog, splitter)
-        )
-
-        if not stated:
-            # Nothing to say about any pane, and the sizes read above are
-            # placeholders — setting them would be setting nonsense.
-            return
-        dialog.resize(dialog.width() + widened, dialog.height())
-        splitter.setSizes(sizes)
-
-    @staticmethod
-    def _remember_dialog_preferences(dialog: QFileDialog, splitter: QSplitter):
-        """
-        Keep the view mode and sidebar width a dialog is closing with, so the next
-        one opens the way the user left this one. Read on the dialog's own finished
-        signal, which is emitted while the splitter is still alive.
-
-        Written even when they are the defaults, and that is the point: what is
-        stored is a width and a mode a user has been shown and not changed, so
-        Commander need never guess whether a stored value was chosen.
-        """
-        settings = dialog_settings()
-        settings.setValue(SETTING_DIALOG_VIEW_MODE, dialog.viewMode().name)
-        sizes = splitter.sizes()
-        if sizes and sizes[0] > 0:
-            settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, sizes[0])
-
-    @staticmethod
-    def _preferred_view_mode() -> QFileDialog.ViewMode:
-        """
-        Which of Qt's two views to list files in: whichever the user last left a
-        dialog in, or DIALOG_VIEW_MODE — names only — if they have not switched.
-
-        Anything unreadable in the setting reads as 'not switched', which is the
-        harmless way round: a dialog opens in Commander's own view rather than
-        refusing to open.
-        """
-        stored = dialog_settings().value(SETTING_DIALOG_VIEW_MODE)
-        try:
-            return QFileDialog.ViewMode[str(stored)]
-        except KeyError:
-            return DIALOG_VIEW_MODE
-
-    @classmethod
-    def _sidebar_widening(cls, dialog: QFileDialog) -> tuple[int, int] | None:
-        """
-        How wide to open the dialog's places sidebar — 'Computer', the home
-        directory, whatever the user has dropped there — and how much wider the
-        dialog must be for the listing not to pay for it. None if the dialog has
-        no sidebar to size.
-
-        Qt opens the sidebar at its own size hint, which elides even 'Computer' to
-        'Co...', so SIDEBAR_PANE_WIDTH is the width to start from; from then on it
-        is whatever the user last dragged one to.
-
-        The dialog pays for the width Commander chose and no more: a sidebar
-        dragged wider than SIDEBAR_PANE_WIDTH is a listing the user has chosen to
-        shrink, and re-widening the dialog would be undoing that.
-        """
-        sidebar = dialog.findChild(QListView, "sidebar")
-        if sidebar is None:
-            return None
-        stored = dialog_settings().value(SETTING_DIALOG_SIDEBAR_WIDTH)
-        try:
-            width = int(stored)
-        except (TypeError, ValueError):
-            width = SIDEBAR_PANE_WIDTH
-        natural = sidebar.sizeHint().width()
-        return width, max(0, min(width, SIDEBAR_PANE_WIDTH) - natural)
-
-    def _browse_with_preview(self, caption: str, directory: str) -> str | None:
-        """
-        Browse 'directory' and return the file the user opened, or None if the
-        dialog was dismissed.
-        """
-        return self._run_file_dialog(self._build_browse_dialog(caption, directory))
-
-    @staticmethod
-    def _run_file_dialog(dialog: QFileDialog) -> str | None:
-        """
-        Run a file dialog and return the single path chosen, or None if it was
-        dismissed. Shared by browsing, selecting and saving, which differ in how
-        the dialog is set up and not at all in how it is run.
-        """
-        try:
-            if dialog.exec() != QDialog.DialogCode.Accepted.value:
-                return None
-            selected = dialog.selectedFiles()
-            return selected[0] if selected else None
-        finally:
-            # Parented to the main window, so without this every dialog — and
-            # the file-system model behind it — would live for the session.
-            dialog.deleteLater()
-
-    @staticmethod
-    def _open_with_default_application(path: str):
-        if MACOS:
-            os_system(f"open {quote(path)}")
-        elif LINUX:
-            os_system(f"xdg-open {quote(path)} &")
-        elif WINDOWS:
-            os_startfile(path)
+            self._file_dialogs.open_with_default_application(file_name)
 
     def _show_config_action(self):
         if not self._check_config_file():
             return
-        self._log(f"Displaying contents of '{self._config_file}':\n")
+        self._output.log(f"Displaying contents of '{self._config_file}':\n")
         with open(cast(str, self._config_file)) as f:
-            self._log(f.read(), prefix=False)
+            self._output.log(f.read(), prefix=False)
 
     def _get_config_data_file(self, key: str) -> str | None:
         """
@@ -3766,26 +2179,26 @@ class YellowDogApp(QMainWindow):
     def _show_wr_json_action(self):
         path = self._wr_file or self._get_config_data_file(WR_DATA)
         if path is None:
-            self._log("No Work Requirement definition file selected")
+            self._output.log("No Work Requirement definition file selected")
             return
         try:
             with open(path) as f:
-                self._log(f"Displaying contents of '{path}':\n")
-                self._log(f.read(), prefix=False)
+                self._output.log(f"Displaying contents of '{path}':\n")
+                self._output.log(f.read(), prefix=False)
         except OSError as e:
-            self._log(f"Cannot open Work Requirement file '{path}': {e}")
+            self._output.log(f"Cannot open Work Requirement file '{path}': {e}")
 
     def _show_wp_json_action(self):
         path = self._wp_file or self._get_config_data_file(WP_DATA)
         if path is None:
-            self._log("No Worker Pool definition file selected")
+            self._output.log("No Worker Pool definition file selected")
             return
         try:
             with open(path) as f:
-                self._log(f"Displaying contents of '{path}':\n")
-                self._log(f.read(), prefix=False)
+                self._output.log(f"Displaying contents of '{path}':\n")
+                self._output.log(f.read(), prefix=False)
         except OSError as e:
-            self._log(f"Cannot open Worker Pool file '{path}': {e}")
+            self._output.log(f"Cannot open Worker Pool file '{path}': {e}")
 
     def _deselect_files_action(self):
         """
@@ -3806,7 +2219,7 @@ class YellowDogApp(QMainWindow):
             entries.append(("Worker Pool", self._wp_file, self._deselect_wp_file))
 
         if not entries:
-            self._log("No configuration or definition files to deselect")
+            self._output.log("No configuration or definition files to deselect")
             return
 
         # Always ask, even with '--yes': this dialog chooses what to act on
@@ -3816,10 +2229,10 @@ class YellowDogApp(QMainWindow):
             [(label, path) for label, path, _ in entries]
         )
         if chosen is None:
-            self._log("Cancelled: no files deselected")
+            self._output.log("Cancelled: no files deselected")
             return
         if not chosen:
-            self._log("No files chosen: nothing deselected")
+            self._output.log("No files chosen: nothing deselected")
             return
 
         for index in chosen:
@@ -3827,17 +2240,17 @@ class YellowDogApp(QMainWindow):
 
     def _deselect_config_file(self):
         self._set_config_file(None)
-        self._log("Deselected configuration file")
+        self._output.log("Deselected configuration file")
 
     def _deselect_wr_file(self):
         self._wr_file = None
         self._show_wr_selection()
-        self._log("Deselected Work Requirement definition file")
+        self._output.log("Deselected Work Requirement definition file")
 
     def _deselect_wp_file(self):
         self._wp_file = None
         self._show_wp_selection()
-        self._log("Deselected Worker Pool definition file")
+        self._output.log("Deselected Worker Pool definition file")
 
     def _choose_files_to_deselect(
         self, entries: list[tuple[str, str]]
@@ -3898,350 +2311,6 @@ class YellowDogApp(QMainWindow):
         layout.addWidget(button_box)
 
         return dialog, checkboxes
-
-    def _on_stdout(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()), run)
-
-    def _on_stderr(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
-        self._log_lines(line_buffer.feed(process.readAllStandardError().data()), run)
-
-    def _on_process_output_finished(
-        self,
-        process: QProcess,
-        run: OutputRun,
-        stdout_buffer: LineBuffer,
-        stderr_buffer: LineBuffer,
-        *_signal_args,
-    ):
-        """
-        Drain both output channels when the process exits, and display any
-        final line that wasn't terminated by a newline.
-        """
-        self._log_lines(
-            stdout_buffer.feed(process.readAllStandardOutput().data())
-            + stdout_buffer.flush(),
-            run,
-        )
-        self._log_lines(
-            stderr_buffer.feed(process.readAllStandardError().data())
-            + stderr_buffer.flush(),
-            run,
-        )
-
-    def _log_lines(self, lines: list[str], run: OutputRun):
-        if not lines:
-            return
-        if run.printed_pid is None:
-            for line in lines:
-                if match := PREFIXED_PID.match(line):
-                    run.printed_pid = int(match.group(1))
-                    break
-        self._log("\n".join(lines), prefix=False, run=run.run_id)
-
-    def _log(
-        self,
-        output: str,
-        prefix: bool = True,
-        run: int = COMMANDER_RUN,
-        announcement: bool = False,
-    ):
-        """
-        Add text to the output window, attributed to the run it came from:
-        Commander's own messages unless a command's run is named. While the
-        window is filtered to another run it is kept but not shown, and counted
-        in the filter bar. An announcement is a command's 'Executing:' line; see
-        OutputEntry.
-        """
-        entry = OutputEntry(
-            run, f"{self._prefix() if prefix else ''}{output}", announcement
-        )
-        self._output_entries.append(entry)
-        self._output_line_total += entry.lines
-        if entry.shown_under(self._output_filter):
-            self.log_output.appendPlainText(entry.text)
-            # Tag the blocks just added with their entry, which is how a
-            # right-click finds the run of the line under it
-            block = cast(QTextDocument, self.log_output.document()).lastBlock()
-            for _ in range(entry.lines):
-                block.setUserState(len(self._output_entries) - 1)
-                block = block.previous()
-        else:
-            self._hidden_line_count += entry.lines
-        self._update_output_filter_bar()
-
-    def _show_output_menu(self, position: QPoint):
-        menu = self._build_output_menu(position)
-        try:
-            menu.exec(cast(QWidget, self.log_output.viewport()).mapToGlobal(position))
-        finally:
-            menu.deleteLater()
-
-    def _build_output_menu(self, position: QPoint) -> QMenu:
-        """
-        Build (but do not show) the output window's context menu: the standard
-        Copy and Select All, then the filter actions. The runs offered are those
-        of the line under the pointer, so nothing has to be selected first — two
-        of them for an 'Executing:' line, its command's and Commander's.
-        """
-        menu = cast(QMenu, self.log_output.createStandardContextMenu(position))
-        block = self.log_output.cursorForPosition(position).block()
-        entry = self._entry_of(block)
-        actions: list[tuple[str, Callable[[], None]]] = [
-            (
-                self._output_runs[run_id].menu_text,
-                functools_partial(
-                    self._filter_output, frozenset({run_id}), block.blockNumber()
-                ),
-            )
-            for run_id in (entry.runs if entry is not None else [])
-            if frozenset({run_id}) != self._output_filter
-        ]
-        if self._output_filter is not None:
-            actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
-        menu.addSeparator()
-        for text, slot in actions:
-            cast(QAction, menu.addAction(text)).triggered.connect(slot)
-        choose = cast(QAction, menu.addAction(SHOW_OUTPUT_FROM_PROCESS))
-        choose.setEnabled(bool(self._choosable_runs()))
-        choose.triggered.connect(
-            functools_partial(
-                self._choose_output_run,
-                entry.run_id if entry is not None else None,
-                block.blockNumber() if entry is not None else None,
-            )
-        )
-        return menu
-
-    def _choosable_runs(self) -> list[OutputRun]:
-        """
-        The runs the process chooser lists: those with something in the output
-        window, and those still running, whose output is worth filtering to even
-        when Clear has emptied the window. Commander first, then the commands in
-        the order they started, which is the order of their output.
-        """
-        with_output = {
-            run_id for entry in self._output_entries for run_id in entry.runs
-        }
-        return [
-            run
-            for run in self._output_runs.values()
-            if run.run_id in with_output or run.running
-        ]
-
-    def _choose_output_run(
-        self, clicked_run: int | None = None, anchor_block: int | None = None
-    ):
-        """
-        Offer the process chooser, and filter the output to the runs ticked.
-        Ticked at the start: the runs being shown, otherwise that of the line
-        right-clicked (its command's, for an 'Executing:' line), otherwise the
-        latest. The line right-clicked is kept in place, as the menu's own
-        Show Only items keep it, when it is among the runs chosen.
-        """
-        runs = self._choosable_runs()
-        if not runs:
-            return
-        run_ids = {run.run_id for run in runs}
-        preferred = [
-            self._output_filter & run_ids if self._output_filter else frozenset(),
-            frozenset({clicked_run}) & run_ids,
-            frozenset({runs[-1].run_id}),
-        ]
-        ticked = next(choice for choice in preferred if choice)
-        dialog, listing = self._build_process_dialog(runs, ticked)
-        try:
-            if dialog.exec() != QDialog.DialogCode.Accepted.value:
-                return
-            chosen = frozenset(int(handle) for handle in checked_handles(listing))
-        finally:
-            dialog.deleteLater()
-        if chosen and chosen != self._output_filter:
-            self._filter_output(chosen, anchor_block)
-
-    def _process_rows(self, runs: list[OutputRun]) -> list[str]:
-        """
-        One line per run for the process chooser: PID, command line, start time,
-        outcome and line count, in columns padded to line up (the listing is in
-        the monospaced output font).
-        """
-        lines = {
-            run.run_id: sum(
-                entry.lines
-                for entry in self._output_entries
-                if run.run_id in entry.runs
-            )
-            for run in runs
-        }
-        cells = [
-            (
-                "" if run.shown_pid is None else f"{run.shown_pid:06d}",
-                "Commander's own messages"
-                if run.run_id == COMMANDER_RUN
-                else run.user_command_line,
-                "" if run.started_at is None else run.started_at.strftime("%H:%M:%S"),
-                ""
-                if run.run_id == COMMANDER_RUN
-                else "running"
-                if run.outcome is None
-                else run.outcome,
-                f"{lines[run.run_id]:,} line{'' if lines[run.run_id] == 1 else 's'}",
-            )
-            for run in runs
-        ]
-        widths = [max(len(row[column]) for row in cells) for column in range(4)]
-        return [
-            PROCESS_ROW_GAP.join(
-                [cell.ljust(width) for cell, width in zip(row[:4], widths)]
-                + [row[4].rjust(max(len(r[4]) for r in cells))]
-            )
-            for row in cells
-        ]
-
-    def _build_process_dialog(
-        self, runs: list[OutputRun], ticked: frozenset[int]
-    ) -> tuple[QDialog, QListWidget]:
-        """
-        Build (but do not show) the process chooser: the non-destructive
-        chooser over the runs, those in 'ticked' ticked, with Show Output as its
-        accept button. Returns the dialog and its listing, whose ticked rows'
-        handles are the chosen runs' IDs.
-
-        The listing opens wide enough for its longest row, up to the main
-        window's width, since a row is mostly a command line and the other
-        choosers' rows are short; beyond that a row is elided, and its tooltip
-        has the whole command line.
-        """
-        rows = [
-            SelectableRow(
-                display=text, handle=str(run.run_id), tooltip=run.command_line or text
-            )
-            for run, text in zip(runs, self._process_rows(runs))
-        ]
-        dialog, _show_btn = self._build_chooser_dialog(
-            PROCESS_DIALOG_TITLE,
-            "Choose the processes whose output to show:",
-            "Show Output",
-            rows,
-            checked={str(run_id) for run_id in ticked},
-        )
-        listing = cast(QListWidget, dialog.findChild(QListWidget, "selection_list"))
-        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
-        listing.setMinimumWidth(
-            min(
-                listing.sizeHintForColumn(0)
-                + 2 * listing.frameWidth()
-                + (
-                    scrollbar.sizeHint().width()
-                    if listing.count() > MAX_DIALOG_LIST_ROWS
-                    else 0
-                ),
-                self.width(),
-            )
-        )
-        return dialog, listing
-
-    def _entry_of(self, block: QTextBlock) -> OutputEntry | None:
-        """
-        The entry a block of the output window was added from, or None for a
-        block with no entry: one put there other than by _log.
-        """
-        index = block.userState()
-        if 0 <= index < len(self._output_entries):
-            return self._output_entries[index]
-        return None
-
-    def _show_all_output(self):
-        if self._output_filter is not None:
-            self._filter_output(None)
-
-    def _filter_output(
-        self, run_ids: frozenset[int] | None, anchor_block: int | None = None
-    ):
-        """
-        Show only the output of 'run_ids', or (with None) all of it. The line being read
-        stays where it was on screen — the line right-clicked, when there was one,
-        otherwise the top line — unless the window was following the output at
-        its end, in which case it still is.
-        """
-        scrollbar = cast(QScrollBar, self.log_output.verticalScrollBar())
-        following = scrollbar.value() == scrollbar.maximum()
-        top = self.log_output.firstVisibleBlock().blockNumber()
-        document = cast(QTextDocument, self.log_output.document())
-        anchor = document.findBlockByNumber(
-            top if anchor_block is None else anchor_block
-        )
-        anchor_index = anchor.userState()
-        # Anchor on the first line of the anchor's entry, the one the rebuilt
-        # view can locate, keeping its offset from the top of the window
-        while anchor.previous().isValid() and (
-            anchor.previous().userState() == anchor_index
-        ):
-            anchor = anchor.previous()
-        anchor_row = anchor.blockNumber() - top
-
-        self._output_filter = run_ids
-        self._hidden_line_count = 0
-        # Show or hide the bar before scrolling, and lay it out now rather than
-        # at the next event: it takes its height from the output window, and a
-        # window that loses rows after being scrolled to its end no longer is.
-        self.output_filter_bar.setVisible(run_ids is not None)
-        cast(QLayout, cast(QWidget, self.centralWidget()).layout()).activate()
-        shown = [
-            (index, entry)
-            for index, entry in enumerate(self._output_entries)
-            if entry.shown_under(run_ids)
-        ]
-        self.log_output.setPlainText("\n".join(entry.text for _, entry in shown))
-        block = document.firstBlock()
-        anchor_line: int | None = None
-        for index, entry in shown:
-            if index == anchor_index:
-                anchor_line = block.blockNumber()
-            for _ in range(entry.lines):
-                block.setUserState(index)
-                block = block.next()
-
-        if following or anchor_line is None:
-            scrollbar.setValue(scrollbar.maximum())
-        else:
-            scrollbar.setValue(max(0, anchor_line - anchor_row))
-        self._update_output_filter_bar()
-
-    def _update_output_filter_bar(self):
-        """
-        Show the filter bar while the output window is filtered, saying what it
-        is filtered to and how much is not being shown, and hide it otherwise.
-        Copy and Save take what is shown, so their tooltips say so while it is.
-        """
-        self.output_filter_bar.setVisible(self._output_filter is not None)
-        if self._output_filter is None:
-            for button in (self.copy_command_output, self.save_command_output):
-                button.setToolTip("")
-            return
-
-        runs = [self._output_runs[run_id] for run_id in self._output_filter]
-        description = filter_description(runs)
-        document = cast(QTextDocument, self.log_output.document())
-        shown = 0 if document.isEmpty() else document.blockCount()
-        # The count of hidden new lines is text rather than a button: clicking
-        # it could only do what Show All Output beside it does, and a button
-        # labelled with a status does not say that
-        hidden = self._hidden_line_count
-        self.output_filter_label.setText(
-            f"{description} · {shown:,} of {self._output_line_total:,} lines"
-            + (
-                f" · {hidden:,} new line{'' if hidden == 1 else 's'} hidden"
-                if hidden
-                else ""
-            )
-        )
-        self.output_filter_label.setToolTip(
-            "\n".join(run.command_line for run in runs if run.command_line)
-        )
-        for button in (self.copy_command_output, self.save_command_output):
-            button.setToolTip(
-                f"Only the lines shown: {description[0].lower()}{description[1:]}"
-            )
 
     def _follow_progress_set(self, checked_state: Qt.CheckState):
         if self.dry_run.isChecked() and checked_state == Qt.CheckState.Checked:
@@ -4310,13 +2379,24 @@ class YellowDogApp(QMainWindow):
             self.setStyleSheet("")
         self._update_branding_icon(is_dark)
 
+    def _show_help_action(self):
+        """
+        Show the help, creating it the first time and raising it after that, so
+        that it keeps the place the user had reached in it.
+        """
+        if self._help_dialog is None:
+            self._help_dialog = HelpDialog(self, _PKG_DIR)
+        self._help_dialog.show()
+        self._help_dialog.raise_()
+        self._help_dialog.activateWindow()
+
     def _run_any_command_action(self):
         self._run_any_command_core(self.any_command.toPlainText())
 
     def _run_any_command_core(self, command_text: str):
         command_and_args = command_text.split()
         if len(command_and_args) == 0:
-            self._log("No command to run")
+            self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
         if (
@@ -4382,59 +2462,8 @@ class YellowDogApp(QMainWindow):
             self.any_command.setPlainText(cmd)
             self._set_cursor_to_end(self.any_command)
 
-    def _select_file(
-        self,
-        caption: str = "",
-        directory: str = ".",
-        file_pattern: str = "*",
-    ) -> str | None:
-        """
-        Ask for an existing file to read, returning None if the dialog was
-        dismissed. Carries the same preview pane as the browse dialog: picking
-        the right configuration or definition file out of several similarly
-        named ones is exactly the case a preview answers.
-        """
-        dialog = QFileDialog(self, caption, directory, file_pattern)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setOption(QFileDialog.Option.ReadOnly, True)
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
-        # 'Select', not Qt's 'Open': these dialogs nominate a file for a later
-        # command to read, and nothing is opened by pressing the button.
-        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Select")
-        self._add_preview_pane(dialog)
-        self._apply_dialog_preferences(dialog)
-        return self._run_file_dialog(dialog)
 
-    def _save_file(
-        self,
-        caption: str = "",
-        directory: str = ".",
-        file_pattern: str = "*",
-    ) -> str | None:
-        """
-        Ask for a file to write to, returning None if the dialog was dismissed.
-        'directory' may name a file rather than a directory, which the dialog
-        pre-fills as the suggested target.
-
-        Mirrors _select_file, including DontUseNativeDialog, so the two dialogs
-        look and behave alike; Qt's own dialog also prompts before overwriting an
-        existing file, which is why no separate overwrite check is needed here.
-        ReadOnly is deliberately absent — unlike _select_file, this one writes.
-
-        No preview pane, unlike every other file dialog here: this one names a
-        file that does not exist yet, so all a preview could show is a file the
-        user is not saving to, at the cost of the width the pane takes up.
-        """
-        dialog = QFileDialog(self, caption, directory, file_pattern)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        dialog.setFileMode(QFileDialog.FileMode.AnyFile)
-        self._apply_dialog_preferences(dialog)
-        return self._run_file_dialog(dialog)
-
-
-def run_app(config_file: str | None = None, disable_confirmations: bool = False):
+def run_app(settings: StartupSettings | None = None):
     try:
         if WINDOWS:
             # noinspection PyUnresolvedReferences
@@ -4447,7 +2476,7 @@ def run_app(config_file: str | None = None, disable_confirmations: bool = False)
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
-        win = YellowDogApp(config_file, disable_confirmations)
+        win = YellowDogApp(settings)
         win.setWindowIcon(icon)
         # Covers quits that don't close the window first (macOS Cmd-Q, the Dock)
         app.aboutToQuit.connect(win.shutdown)

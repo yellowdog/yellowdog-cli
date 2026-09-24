@@ -14,6 +14,7 @@ import gui_harness
 from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFrame,
     QLabel,
     QLayout,
@@ -295,3 +296,36 @@ def test_dark_mode_draws_every_separator_alike(qapp):
     assert len(set(heights.values())) == 1, (
         f"separators are drawn at different thicknesses in Dark Mode: {heights}"
     )
+
+
+# The output window is excluded: a tooltip there would pop up over the text
+# every time the pointer rested on it, which is most of the time.
+NO_TOOLTIP = {"log_output"}
+TOOLTIP_MAX_LINES = 2
+TOOLTIP_MAX_LINE_CHARS = 80
+
+
+def test_every_control_has_a_short_tooltip(qapp):
+    # A control added to commander.ui without one fails here, rather than
+    # quietly being the one thing in the window that explains nothing. Plain
+    # text tooltips do not wrap, hence the line limits: a long one is a strip
+    # across the screen, and more than a line or two belongs in the Help.
+    win = YellowDogApp()
+    controls = [
+        widget
+        for kind in (QPushButton, QCheckBox, QPlainTextEdit)
+        for widget in win.findChildren(kind)
+        if widget.objectName() and widget.objectName() not in NO_TOOLTIP
+    ]
+    assert controls
+
+    missing = sorted(w.objectName() for w in controls if not w.toolTip().strip())
+    assert not missing, f"controls with no tooltip: {missing}"
+
+    too_long = {
+        w.objectName(): w.toolTip()
+        for w in controls
+        if len(w.toolTip().splitlines()) > TOOLTIP_MAX_LINES
+        or any(len(line) > TOOLTIP_MAX_LINE_CHARS for line in w.toolTip().splitlines())
+    }
+    assert not too_long, f"tooltips over {TOOLTIP_MAX_LINES} short lines: {too_long}"

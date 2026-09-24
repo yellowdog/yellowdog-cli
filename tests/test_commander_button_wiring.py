@@ -20,6 +20,7 @@ qt_guard.require_qt()
 from PyQt6.QtWidgets import QPushButton
 
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.output_pane import OutputPane
 
 # (button attribute in commander.ui, action method it must invoke).
 WIRING = [
@@ -53,7 +54,12 @@ WIRING = [
     ("next_command", "_next_command_action"),
     ("prev_command", "_prev_command_action"),
     ("output_filter_show_all", "_show_all_output"),
+    ("show_help", "_show_help_action"),
 ]
+
+# The class an action belongs to, where that is not the window: a collaborator
+# that connects its own buttons, and so is the class to patch before building.
+OWNERS = {"_show_all_output": OutputPane}
 
 
 @pytest.mark.parametrize("button_name,action_name", WIRING)
@@ -62,7 +68,7 @@ def test_clicking_the_button_invokes_its_action(
 ):
     fired: list[str] = []
     monkeypatch.setattr(
-        YellowDogApp,
+        OWNERS.get(action_name, YellowDogApp),
         action_name,
         lambda self, *args, **kwargs: fired.append(action_name),
     )

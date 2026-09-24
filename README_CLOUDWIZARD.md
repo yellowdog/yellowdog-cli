@@ -1,7 +1,6 @@
 # YellowDog Cloud Wizard
 
 <!--ts-->
-* [YellowDog Cloud Wizard](#yellowdog-cloud-wizard)
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
 * [Cloud Wizard for AWS](#cloud-wizard-for-aws)
@@ -45,7 +44,7 @@
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Jun 11 08:44:42 BST 2024 -->
+<!-- Added by: pwt, at: Wed Sep 23 15:47:47 BST 2026 -->
 
 <!--te-->
 

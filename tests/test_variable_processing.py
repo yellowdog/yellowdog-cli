@@ -5,6 +5,7 @@ Unit tests for variable processing
 import pytest
 
 from yellowdog_cli.utils.misc_utils import (
+    find_delimited_expressions,
     remove_outer_delimiters,
     split_delimited_string,
 )
@@ -68,3 +69,30 @@ class TestVariableProcessing:
                 opening_delimiter="{{",
                 closing_delimiter="}}",
             )
+
+
+class TestFindDelimitedExpressions:
+    @pytest.mark.parametrize(
+        "s, expected",
+        [
+            ("no expressions", []),
+            ('"{{a}}"', ["{{a}}"]),
+            ('{"a":"{{a}}","b":"{{b}}"}', ["{{a}}", "{{b}}"]),
+            ('{"env":{"a":"{{a}}"}}', ["{{a}}"]),  # the object's '}}' is not one
+            ('"{{a_{{b}}}}-{{c}}"', ["{{a_{{b}}}}", "{{c}}"]),
+            ("{{a}}\n{{b}}", ["{{a}}", "{{b}}"]),
+            ("{{a\n}}", []),  # an expression does not span lines
+            ("{{a\n{{b}}", ["{{b}}"]),  # one left open does not swallow the next
+            ("{{{a}}}", ["{{{a}}"]),
+            ("{{a}}}}", ["{{a}}"]),
+            ("{{{{a}}", []),  # never closed
+            ("}} {{a}}", ["{{a}}"]),
+        ],
+    )
+    def test_finds_top_level_expressions(self, s, expected):
+        assert find_delimited_expressions(s, "{{", "}}") == expected
+
+    def test_prefixed_delimiters(self):
+        assert find_delimited_expressions(
+            '{"a":"__{{a}}__","b":"{{b}}"}}', "__{{", "}}__"
+        ) == ["__{{a}}__"]

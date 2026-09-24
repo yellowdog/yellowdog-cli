@@ -48,7 +48,7 @@ def _fields(win):
 
 
 def test_placeholders_show_the_namespace_tag_and_object_path(win):
-    win._set_placeholders("yd-demo", "my-tag")
+    win._discovery._set_placeholders("yd-demo", "my-tag")
 
     assert [field.placeholderText() for field in _fields(win)] == [
         "yd-demo",
@@ -58,14 +58,14 @@ def test_placeholders_show_the_namespace_tag_and_object_path(win):
 
 
 def test_object_path_placeholder_is_empty_without_a_tag(win):
-    win._set_placeholders("yd-demo", "")
+    win._discovery._set_placeholders("yd-demo", "")
 
     assert win.object_path_override.placeholderText() == ""
 
 
 def test_placeholders_can_be_cleared(win):
-    win._set_placeholders("yd-demo", "my-tag")
-    win._set_placeholders("", "")
+    win._discovery._set_placeholders("yd-demo", "my-tag")
+    win._discovery._set_placeholders("", "")
 
     assert [field.placeholderText() for field in _fields(win)] == ["", "", ""]
 
@@ -90,7 +90,7 @@ def test_repaint_is_scheduled_not_forced(win, qapp):
     assert all(count >= 1 for count in counts())
     counter.counts.clear()
 
-    win._set_placeholders("yd-demo", "my-tag")
+    win._discovery._set_placeholders("yd-demo", "my-tag")
     assert counts() == [0, 0, 0], "painting should be deferred, not forced"
 
     qapp.processEvents()

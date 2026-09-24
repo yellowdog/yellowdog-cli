@@ -1,5 +1,30 @@
 # YellowDog Commander
 
+<!--ts-->
+   * [Installation](#installation)
+   * [Running](#running)
+   * [How It Works](#how-it-works)
+   * [Quitting](#quitting)
+   * [Naming and Matching Assumptions](#naming-and-matching-assumptions)
+      * [Object Naming and Matching](#object-naming-and-matching)
+   * [File Dialogs](#file-dialogs)
+   * [Selecting a Configuration (Panel 1)](#selecting-a-configuration-panel-1)
+   * [Submitting and Managing Work (Panel 2)](#submitting-and-managing-work-panel-2)
+   * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
+   * [Collecting and Managing Results (Panel 4)](#collecting-and-managing-results-panel-4)
+   * [Namespace, Tag, and Name Overrides](#namespace-tag-and-name-overrides)
+   * [User-Defined Variables](#user-defined-variables)
+   * [Utility Actions](#utility-actions)
+   * [Filtering the Command Output](#filtering-the-command-output)
+   * [Running Arbitrary Commands](#running-arbitrary-commands)
+   * [Sending Input to a Running Command](#sending-input-to-a-running-command)
+   * [A Note on Confirmations](#a-note-on-confirmations)
+
+<!-- Created by https://github.com/ekalinin/github-markdown-toc -->
+<!-- Added by: pwt, at: Wed Sep 23 15:47:47 BST 2026 -->
+
+<!--te-->
+
 YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
 
 Commander is offered as a useful adjunct to the CLI, but is not formally supported.
@@ -26,7 +51,27 @@ Optionally pass a configuration file as the first argument:
 yd-commander path/to/config.toml
 ```
 
+The configuration file can also be given with `-c`/`--config`, as it is to the `yd-*` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
+
 Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, and the download chooser, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+
+Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd-*` commands:
+
+| Option | Fills |
+|---|---|
+| `-n`, `--namespace <namespace>` | The **Namespace** field |
+| `-t`, `--tag <tag>` | The **Tag** field |
+| `--name <glob>` | The **Name** field |
+| `-P`, `--path <object-path>` | The **Path** field |
+| `-v`, `--variable <name=value>` | The **User-Defined Variables** field; repeat it for each variable |
+| `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
+| `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
+
+```commandline
+yd-commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
+```
+
+These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), and an empty value or one containing a tab or newline for the other fields.
 
 Multiple instances can run simultaneously.
 
@@ -41,6 +86,8 @@ A configuration file is optional: if none is selected, Commander runs the `yd-*`
 Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
 With no configuration file selected and no YellowDog credentials in the environment either, there is nothing to resolve the Namespace, Tag, and Path placeholders from: they are simply left blank, and nothing is reported, since nothing is wrong yet. Any other failure to resolve them is still reported in the Command Output window, whether or not a configuration file is selected.
+
+Hover over any button, checkbox or field for a one-line description of what it does; the sections below give the detail.
 
 ## Quitting
 
@@ -194,6 +241,7 @@ Editing the field re-resolves the Namespace, Tag, and Path placeholders shortly 
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate. While the output is [filtered to one command](#filtering-the-command-output), Copy and Save take only the lines shown, and Clear clears everything and ends the filter. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
 - **Dark Mode** — toggle between light and dark appearance.
+- **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. Section links jump within it, and **Back** returns to where you followed one from. **F1** opens it too (as does **Cmd+?** on macOS), and closing and reopening it keeps your place.
 
 ## Filtering the Command Output
 

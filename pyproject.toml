@@ -111,7 +111,7 @@
     packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander"]
 
 [tool.setuptools.package-data]
-    "yellowdog_cli.commander" = ["*.ui", "images/*"]
+    "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]
 
 [tool.setuptools.dynamic.version]
     attr = "yellowdog_cli._version.__version__"

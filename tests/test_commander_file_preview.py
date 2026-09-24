@@ -42,7 +42,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.file_dialogs import (
     NATIVE_VIEWER_BUTTON_TEXT,
     PREVIEW_ELIDED_BYTES,
     PREVIEW_ELIDED_LINES,
@@ -56,7 +57,6 @@ from yellowdog_cli.commander.commander import (
     SETTING_DIALOG_VIEW_MODE,
     SIDEBAR_PANE_WIDTH,
     FilePreview,
-    YellowDogApp,
     format_file_size,
 )
 
@@ -318,14 +318,14 @@ def drive_file_dialog(window, monkeypatch, interact) -> dict:
     that the dialog is recorded in, for assertions after it has closed.
     """
     captured: dict = {}
-    real_run = window._run_file_dialog
+    real_run = window._file_dialogs._run_file_dialog
 
     def run(dialog):
         captured["dialog"] = dialog
         gui_harness.arm_modal(dialog, interact)
         return real_run(dialog)
 
-    monkeypatch.setattr(window, "_run_file_dialog", run)
+    monkeypatch.setattr(window._file_dialogs, "_run_file_dialog", run)
     return captured
 
 
@@ -637,7 +637,7 @@ def test_moving_between_kinds_leaves_no_trace_of_the_previous_one(preview, tmp_p
 
 def test_highlighting_a_file_in_the_real_dialog_fills_the_preview(window, tmp_path):
     (tmp_path / "task_1.log").write_text("Task started\nDone in 4.1s\n")
-    dialog = window._build_browse_dialog("Browse", str(tmp_path))
+    dialog = window._file_dialogs.build_browse_dialog("Browse", str(tmp_path))
     seen = {}
 
     def interact(open_dialog):
@@ -657,7 +657,7 @@ def test_highlighting_a_file_in_the_real_dialog_fills_the_preview(window, tmp_pa
 
 def test_the_preview_sits_beside_the_listing_rather_than_over_it(window, tmp_path):
     (tmp_path / "task_1.log").write_text("Task started\n")
-    dialog = window._build_browse_dialog("Browse", str(tmp_path))
+    dialog = window._file_dialogs.build_browse_dialog("Browse", str(tmp_path))
     geometry = {}
 
     def interact(open_dialog):
@@ -685,9 +685,11 @@ def test_the_file_the_user_opens_is_handed_to_the_default_application(
     (tmp_path / "task_1.log").write_text("Task started\n")
     (tmp_path / "task_2.log").write_text("Task started\n")
     opened: list[str] = []
-    monkeypatch.setattr(window, "_open_with_default_application", opened.append)
+    monkeypatch.setattr(
+        window._file_dialogs, "open_with_default_application", opened.append
+    )
 
-    real_build = window._build_browse_dialog
+    real_build = window._file_dialogs.build_browse_dialog
 
     def build(caption, directory):
         dialog = real_build(caption, directory)
@@ -699,7 +701,7 @@ def test_the_file_the_user_opens_is_handed_to_the_default_application(
         gui_harness.arm_modal(dialog, interact)
         return dialog
 
-    monkeypatch.setattr(window, "_build_browse_dialog", build)
+    monkeypatch.setattr(window._file_dialogs, "build_browse_dialog", build)
 
     window._open_file_viewer(str(tmp_path))
 
@@ -709,9 +711,11 @@ def test_the_file_the_user_opens_is_handed_to_the_default_application(
 def test_dismissing_the_dialog_opens_nothing(window, tmp_path, monkeypatch):
     (tmp_path / "task_1.log").write_text("Task started\n")
     opened: list[str] = []
-    monkeypatch.setattr(window, "_open_with_default_application", opened.append)
+    monkeypatch.setattr(
+        window._file_dialogs, "open_with_default_application", opened.append
+    )
 
-    real_build = window._build_browse_dialog
+    real_build = window._file_dialogs.build_browse_dialog
 
     def build(caption, directory):
         dialog = real_build(caption, directory)
@@ -723,7 +727,7 @@ def test_dismissing_the_dialog_opens_nothing(window, tmp_path, monkeypatch):
         gui_harness.arm_modal(dialog, interact)
         return dialog
 
-    monkeypatch.setattr(window, "_build_browse_dialog", build)
+    monkeypatch.setattr(window._file_dialogs, "build_browse_dialog", build)
 
     window._open_file_viewer(str(tmp_path))
 
@@ -736,7 +740,7 @@ def test_a_directory_that_does_not_exist_is_reported_and_no_dialog_opens(
     def refuse(*_args, **_kwargs):
         raise AssertionError("a dialog was opened for a non-existent directory")
 
-    monkeypatch.setattr(window, "_build_browse_dialog", refuse)
+    monkeypatch.setattr(window._file_dialogs, "build_browse_dialog", refuse)
     missing = tmp_path / "results"
 
     window._open_file_viewer(str(missing))
@@ -747,7 +751,7 @@ def test_a_directory_that_does_not_exist_is_reported_and_no_dialog_opens(
 
 
 def test_the_browse_dialog_is_read_only_and_opens_only_existing_files(window, tmp_path):
-    dialog = window._build_browse_dialog("Browse", str(tmp_path))
+    dialog = window._file_dialogs.build_browse_dialog("Browse", str(tmp_path))
 
     # Read-only because this is a viewer: Qt's dialog otherwise offers renaming,
     # deleting and creating folders inside the results directory.
@@ -772,7 +776,7 @@ def test_the_file_selector_previews_the_highlighted_file(window, tmp_path, monke
     drive_file_dialog(window, monkeypatch, interact)
 
     assert (
-        window._select_file(
+        window._file_dialogs.select_file(
             caption="Pick", directory=str(tmp_path), file_pattern="*.toml"
         )
         is None
@@ -792,7 +796,7 @@ def test_the_file_selector_returns_the_file_the_user_selected(
 
     drive_file_dialog(window, monkeypatch, interact)
 
-    chosen = window._select_file(caption="Pick", directory=str(tmp_path))
+    chosen = window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert chosen == str(tmp_path / "wr.jsonnet")
 
@@ -810,7 +814,7 @@ def test_the_file_selector_accepts_with_select_not_open(window, tmp_path, monkey
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert "Select" in labels["buttons"]
     assert "Open" not in labels["buttons"]
@@ -829,7 +833,7 @@ def test_the_browse_dialog_still_says_open(window, tmp_path, monkeypatch):
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._browse_with_preview("Browse", str(tmp_path))
+    window._file_dialogs.browse("Browse", str(tmp_path))
 
     assert "Open" in labels["buttons"]
 
@@ -853,7 +857,7 @@ def test_the_save_dialog_has_no_preview_and_still_suggests_its_name(
 
     drive_file_dialog(window, monkeypatch, interact)
 
-    chosen = window._save_file(
+    chosen = window._file_dialogs.save_file(
         caption="Save Command Output",
         directory=str(suggested),
         file_pattern="Text files (*.txt);;All files (*)",
@@ -876,7 +880,7 @@ def test_the_pane_opens_at_its_default_width_and_cannot_be_dragged_shut(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert measured["width"] == PREVIEW_PANE_WIDTH
     assert not measured["collapsible"], "a pane dragged shut cannot be found again"
@@ -900,12 +904,14 @@ def test_the_preview_is_added_beside_the_listing_not_out_of_it(
         return interact
 
     with monkeypatch.context() as no_preview:
-        no_preview.setattr(window, "_add_preview_pane", lambda dialog: None)
+        no_preview.setattr(
+            window._file_dialogs, "_add_preview_pane", lambda dialog: None
+        )
         drive_file_dialog(window, no_preview, measure("plain"))
-        window._select_file(caption="Pick", directory=str(tmp_path))
+        window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     drive_file_dialog(window, monkeypatch, measure("with_preview"))
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     # All the listing gives up is the new splitter handle itself, which has to
     # come from somewhere; the pane's own width comes from the wider dialog.
@@ -966,7 +972,7 @@ def test_the_listing_shows_names_only_by_default(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert seen["view"] == "treeView"
     assert seen["visible_columns"] == [0], "only the name column should be shown"
@@ -1098,7 +1104,9 @@ def test_a_file_inside_an_expanded_directory_is_opened_by_its_full_path(
     # this is the case that would hand a command the wrong path.
     output = downloaded_results(tmp_path)
     opened: list[str] = []
-    monkeypatch.setattr(window, "_open_with_default_application", opened.append)
+    monkeypatch.setattr(
+        window._file_dialogs, "open_with_default_application", opened.append
+    )
 
     def interact(dialog):
         index = expand_to(dialog, output)
@@ -1131,7 +1139,7 @@ def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, switch)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     drive_file_dialog(window, monkeypatch, reopen)
     window._open_file_viewer(str(tmp_path))
@@ -1157,7 +1165,7 @@ def test_the_places_sidebar_opens_wide_enough_to_read_its_entries(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert plain_sidebar < SIDEBAR_PANE_WIDTH, (
         "Qt already opens the sidebar wide enough, so this proves nothing"
@@ -1178,7 +1186,7 @@ def test_the_save_dialog_widens_its_sidebar_too(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._save_file(
+    window._file_dialogs.save_file(
         caption="Save",
         directory=str(tmp_path / "output.txt"),
         file_pattern="All files (*)",
@@ -1208,7 +1216,7 @@ def test_a_sidebar_width_commander_remembers_is_used_as_it_stands(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert measured["sidebar"] == remembered
     # A width that happens to be the pane's minimum is the one width a squashed
@@ -1237,7 +1245,7 @@ def test_the_sidebar_width_the_user_drags_to_is_used_by_the_next_dialog(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, drag)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
     assert commander_dialog_settings.value(SETTING_DIALOG_SIDEBAR_WIDTH) is not None
 
     drive_file_dialog(window, monkeypatch, reopen)
@@ -1261,7 +1269,7 @@ def test_qts_own_remembered_sidebar_width_is_ignored(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert measured["sidebar"] == SIDEBAR_PANE_WIDTH
 
@@ -1283,7 +1291,7 @@ def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     # All the listing gives up is the preview pane's own splitter handle, which
     # has to come from somewhere; both panes' widths come from the wider dialog.
@@ -1310,7 +1318,7 @@ def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert plain_listing - measured["listing"] <= measured["handle"]
 
@@ -1335,8 +1343,8 @@ def test_the_width_the_user_drags_the_pane_to_is_used_by_the_next_dialog(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, drag)
-    window._select_file(caption="Pick", directory=str(tmp_path))
-    assert window._preview_width == dragged_to
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
+    assert window._file_dialogs._preview_width == dragged_to
 
     drive_file_dialog(window, monkeypatch, reopen)
     window._open_file_viewer(str(tmp_path))
@@ -1355,12 +1363,14 @@ def test_the_browse_dialog_offers_the_platform_file_viewer(
     window, tmp_path, monkeypatch
 ):
     handed: list[str] = []
-    monkeypatch.setattr(window, "_open_with_default_application", handed.append)
+    monkeypatch.setattr(
+        window._file_dialogs, "open_with_default_application", handed.append
+    )
     drive_file_dialog(
         window, monkeypatch, lambda dialog: press(dialog, NATIVE_VIEWER_BUTTON_TEXT)
     )
 
-    chosen = window._browse_with_preview("Browse", str(tmp_path))
+    chosen = window._file_dialogs.browse("Browse", str(tmp_path))
 
     assert [realpath(path) for path in handed] == [realpath(str(tmp_path))]
     # Switching hands over; it does not also report a file the user never picked.
@@ -1374,14 +1384,16 @@ def test_the_platform_viewer_is_given_the_directory_on_screen(
     # at, not wherever the dialog happened to open.
     (tmp_path / "task_1").mkdir()
     handed: list[str] = []
-    monkeypatch.setattr(window, "_open_with_default_application", handed.append)
+    monkeypatch.setattr(
+        window._file_dialogs, "open_with_default_application", handed.append
+    )
 
     def interact(dialog):
         dialog.setDirectory(str(tmp_path / "task_1"))
         press(dialog, NATIVE_VIEWER_BUTTON_TEXT)
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._browse_with_preview("Browse", str(tmp_path))
+    window._file_dialogs.browse("Browse", str(tmp_path))
 
     assert [realpath(path) for path in handed] == [realpath(str(tmp_path / "task_1"))]
 
@@ -1406,7 +1418,7 @@ def test_the_platform_viewer_button_does_not_steal_the_default(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._browse_with_preview("Browse", str(tmp_path))
+    window._file_dialogs.browse("Browse", str(tmp_path))
 
     assert seen["default"] == "Open"
 
@@ -1424,7 +1436,7 @@ def test_the_file_selector_has_no_platform_viewer_button(window, tmp_path, monke
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._select_file(caption="Pick", directory=str(tmp_path))
+    window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert NATIVE_VIEWER_BUTTON_TEXT not in labels["buttons"]
 
@@ -1446,7 +1458,7 @@ def test_the_platform_viewer_button_comes_ahead_of_the_accept_button(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._browse_with_preview("Browse", str(tmp_path))
+    window._file_dialogs.browse("Browse", str(tmp_path))
 
     finder, accept = corners[NATIVE_VIEWER_BUTTON_TEXT], corners["Open"]
     assert finder.y() < accept.y(), "the button trails the dialog's own answers"
@@ -1475,7 +1487,7 @@ def test_the_platform_viewer_button_is_first_in_the_button_box(
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
-    window._browse_with_preview("Browse", str(tmp_path))
+    window._file_dialogs.browse("Browse", str(tmp_path))
 
     assert order["index"] == 0
     assert order["role"] == QDialogButtonBox.ButtonRole.ActionRole

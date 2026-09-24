@@ -73,8 +73,9 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variables import (
     process_variable_substitutions_in_file_contents,
-    process_variable_substitutions_insitu,
     resolve_filename,
+    resolve_variables_insitu,
+    warn_of_undefined_variables,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER
 
@@ -126,7 +127,7 @@ def update_config_work_requirement_object(
     variable substitutions. Returns the updated object.
     """
     config_wr_dict = config_wr.__dict__
-    process_variable_substitutions_insitu(config_wr_dict)
+    resolve_variables_insitu(config_wr_dict)
     return ConfigWorkRequirement(**config_wr_dict)
 
 
@@ -884,16 +885,28 @@ def resolve_task_data(
     if task_data:
         return task_data
     if task_data_file:
-        with open(resolve_filename(files_directory, task_data_file)) as f:
-            return process_variable_substitutions_in_file_contents(f.read())
+        return _substituted_task_data_file(task_data_file, files_directory)
     if task_data_files:
         result = ""
         for filename in task_data_files:
-            with open(resolve_filename(files_directory, filename)) as f:
-                result += process_variable_substitutions_in_file_contents(f.read())
-                result += "\n"
+            result += _substituted_task_data_file(filename, files_directory)
+            result += "\n"
         return result
     return None
+
+
+def _substituted_task_data_file(filename: str, files_directory: str) -> str:
+    """
+    A Task Data file's contents with variables substituted. Substituted as
+    text, so no substitution pass walks it: an undefined variable left in it
+    is reported here, by file.
+    """
+    with open(resolve_filename(files_directory, filename)) as f:
+        contents = process_variable_substitutions_in_file_contents(
+            f.read(), source=filename
+        )
+    warn_of_undefined_variables({filename: contents})
+    return contents
 
 
 def get_task_data_property(

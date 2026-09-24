@@ -61,6 +61,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="select_config_file">
+        <property name="toolTip">
+         <string>Choose the configuration file (config.toml) that every command runs with</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -148,6 +151,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="submit_work_requirement">
+        <property name="toolTip">
+         <string>Submit the Work Requirement with yd-submit</string>
+        </property>
         <property name="font">
          <font>
           <bold>true</bold>
@@ -160,6 +166,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="select_work_requirement">
+        <property name="toolTip">
+         <string>Choose a Work Requirement definition (.json or .jsonnet) to submit
+instead of the one the configuration file names</string>
+        </property>
         <property name="font">
          <font>
           <italic>false</italic>
@@ -173,6 +183,9 @@
       </item>
       <item>
        <widget class="QCheckBox" name="dry_run">
+        <property name="toolTip">
+         <string>Validate and print the Work Requirement without submitting it</string>
+        </property>
         <property name="enabled">
          <bool>true</bool>
         </property>
@@ -183,6 +196,9 @@
       </item>
       <item>
        <widget class="QCheckBox" name="follow_progress">
+        <property name="toolTip">
+         <string>Follow the Work Requirement's progress until it finishes</string>
+        </property>
         <property name="text">
          <string>Follow Work Requirement Progress</string>
         </property>
@@ -214,6 +230,9 @@
         </item>
         <item>
          <widget class="QPlainTextEdit" name="wr_submit_options">
+          <property name="toolTip">
+           <string>Extra command-line options added to yd-submit</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -247,6 +266,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="cancel_work_requirements">
+        <property name="toolTip">
+         <string>Cancel the matching Work Requirements
+(by tag, or by the Name field if it is set)</string>
+        </property>
         <property name="text">
          <string>Cancel Work Requirements</string>
         </property>
@@ -254,6 +277,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="cancel_work_requirements_and_abort">
+        <property name="toolTip">
+         <string>Cancel the matching Work Requirements and abort their running tasks
+(by tag, or by the Name field if it is set)</string>
+        </property>
         <property name="text">
          <string>Cancel Work Requirements &amp;&amp; Abort Tasks</string>
         </property>
@@ -302,6 +329,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="create_worker_pool">
+        <property name="toolTip">
+         <string>Provision a Worker Pool with yd-provision</string>
+        </property>
         <property name="font">
          <font>
           <bold>true</bold>
@@ -314,6 +344,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="select_worker_pool">
+        <property name="toolTip">
+         <string>Choose a Worker Pool definition (.json or .jsonnet) to provision
+instead of the one the configuration file names</string>
+        </property>
         <property name="text">
          <string>Select Worker Pool JSON</string>
         </property>
@@ -321,6 +355,9 @@
       </item>
       <item>
        <widget class="QCheckBox" name="dry_run_worker_pool">
+        <property name="toolTip">
+         <string>Validate and print the Worker Pool without provisioning it</string>
+        </property>
         <property name="text">
          <string>Dry Run Worker Pool Creation</string>
         </property>
@@ -328,6 +365,9 @@
       </item>
       <item>
        <widget class="QCheckBox" name="follow_worker_pool">
+        <property name="toolTip">
+         <string>Follow the Worker Pool's progress after provisioning</string>
+        </property>
         <property name="text">
          <string>Follow Worker Pool Progress</string>
         </property>
@@ -359,6 +399,9 @@
         </item>
         <item>
          <widget class="QPlainTextEdit" name="wp_provision_options">
+          <property name="toolTip">
+           <string>Extra command-line options added to yd-provision</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -392,6 +435,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="shutdown_all_worker_pools">
+        <property name="toolTip">
+         <string>Shut down the matching Worker Pools
+(by tag, or by the Name field if it is set)</string>
+        </property>
         <property name="text">
          <string>Shutdown Worker Pools</string>
         </property>
@@ -399,6 +446,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="terminate_all_compute_requirements">
+        <property name="toolTip">
+         <string>Terminate the matching Compute Requirements
+(by tag, or by the Name field if it is set)</string>
+        </property>
         <property name="text">
          <string>Terminate Compute Requirements</string>
         </property>
@@ -471,6 +522,10 @@
         </item>
         <item>
          <widget class="QPlainTextEdit" name="object_path_override">
+          <property name="toolTip">
+           <string>The objects to download or delete: wildcards, {{variables}} and rclone
+paths are accepted. Left blank, everything under the tag</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -504,6 +559,10 @@
       </item>
       <item>
        <widget class="QPushButton" name="download_results">
+        <property name="toolTip">
+         <string>Download the matching objects into 'results' beside the configuration
+file, choosing which ones first</string>
+        </property>
         <property name="font">
          <font>
           <bold>true</bold>
@@ -516,6 +575,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="delete_objects">
+        <property name="toolTip">
+         <string>Delete the matching objects from remote storage, choosing which ones first</string>
+        </property>
         <property name="text">
          <string>Delete Matching Objects</string>
         </property>
@@ -523,6 +585,9 @@
       </item>
       <item>
        <widget class="QCheckBox" name="dry_run_objects">
+        <property name="toolTip">
+         <string>Report what would be downloaded or deleted, without doing either</string>
+        </property>
         <property name="text">
          <string>Dry-Run Download/Deletion</string>
         </property>
@@ -530,6 +595,9 @@
       </item>
       <item>
        <widget class="QPushButton" name="browse_results_directory">
+        <property name="toolTip">
+         <string>Browse the downloaded results</string>
+        </property>
         <property name="text">
          <string>Browse Results Directory</string>
         </property>
@@ -579,6 +647,10 @@
       </item>
       <item>
        <widget class="QPlainTextEdit" name="namespace_override">
+        <property name="toolTip">
+         <string>Override the namespace for every command;
+the placeholder shows the one otherwise used</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -613,6 +685,10 @@
       </item>
       <item>
        <widget class="QPlainTextEdit" name="tag_override">
+        <property name="toolTip">
+         <string>Override the tag for every command;
+the placeholder shows the one otherwise used</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -647,6 +723,10 @@
       </item>
       <item>
        <widget class="QPlainTextEdit" name="name_glob_override">
+        <property name="toolTip">
+         <string>A glob pattern selecting entities by name rather than by tag,
+for Cancel, Shut Down and Terminate</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -697,6 +777,10 @@
       </item>
       <item>
        <widget class="QPlainTextEdit" name="user_variables">
+        <property name="toolTip">
+         <string>Variables for substitution in specifications,
+as name=value pairs separated by spaces</string>
+        </property>
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -739,9 +823,6 @@
       <property name="text">
        <string/>
       </property>
-      <property name="pixmap">
-       <pixmap>yellowdog.png</pixmap>
-      </property>
      </widget>
     </item>
     <item row="2" column="2" colspan="2">
@@ -775,6 +856,9 @@
         </property>
         <item>
          <widget class="QPushButton" name="browse_config_directory">
+          <property name="toolTip">
+           <string>Browse the configuration file's directory</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -794,6 +878,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="show_config">
+          <property name="toolTip">
+           <string>Print the configuration file in the output window</string>
+          </property>
           <property name="minimumSize">
            <size>
             <width>0</width>
@@ -807,6 +894,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="show_wr_json">
+          <property name="toolTip">
+           <string>Print the Work Requirement definition in the output window</string>
+          </property>
           <property name="text">
            <string> Show WR JSON </string>
           </property>
@@ -814,6 +904,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="show_wp_json">
+          <property name="toolTip">
+           <string>Print the Worker Pool definition in the output window</string>
+          </property>
           <property name="text">
            <string> Show WP JSON </string>
           </property>
@@ -821,6 +914,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="deselect_files">
+          <property name="toolTip">
+           <string>Deselect the configuration file or the chosen definition files</string>
+          </property>
           <property name="text">
            <string> Deselect... </string>
           </property>
@@ -858,6 +954,10 @@
         </property>
         <item>
          <widget class="QPushButton" name="run_any_command">
+          <property name="toolTip">
+           <string>Run the command in the field in the configuration file's directory;
+a yd-* command has the configuration, overrides and variables added</string>
+          </property>
           <property name="text">
            <string> Run Command in Config Directory: </string>
           </property>
@@ -865,6 +965,10 @@
         </item>
         <item>
          <widget class="QPlainTextEdit" name="any_command">
+          <property name="toolTip">
+           <string>A command to run in the configuration file's directory;
+press Enter to run it</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -896,6 +1000,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="prev_command">
+          <property name="toolTip">
+           <string>The previous command in the history</string>
+          </property>
           <property name="text">
            <string>&lt;</string>
           </property>
@@ -903,6 +1010,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="next_command">
+          <property name="toolTip">
+           <string>The next command in the history</string>
+          </property>
           <property name="text">
            <string>&gt;</string>
           </property>
@@ -952,6 +1062,9 @@
          </item>
          <item>
           <widget class="QPushButton" name="output_filter_show_all">
+           <property name="toolTip">
+            <string>Show every command's output again (Esc)</string>
+           </property>
            <property name="text">
             <string>Show All Output</string>
            </property>
@@ -988,6 +1101,9 @@
         </item>
         <item>
          <widget class="QPlainTextEdit" name="stdin_input">
+          <property name="toolTip">
+           <string>Press Enter to send a line to the running command's standard input</string>
+          </property>
           <property name="enabled">
            <bool>false</bool>
           </property>
@@ -1020,6 +1136,9 @@
        <layout class="QHBoxLayout" name="horizontalLayout_9">
         <item>
          <widget class="QPushButton" name="clear_command_output">
+          <property name="toolTip">
+           <string>Clear the output window</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -1033,6 +1152,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="copy_command_output">
+          <property name="toolTip">
+           <string>Copy the output shown to the clipboard</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -1046,6 +1168,9 @@
         </item>
         <item>
          <widget class="QPushButton" name="save_command_output">
+          <property name="toolTip">
+           <string>Save the output shown to a file</string>
+          </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -1059,8 +1184,27 @@
         </item>
         <item>
          <widget class="QCheckBox" name="dark_mode">
+          <property name="toolTip">
+           <string>Switch between light and dark appearance</string>
+          </property>
           <property name="text">
            <string>Dark Mode</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="show_help">
+          <property name="toolTip">
+           <string>Open the Commander guide (F1)</string>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Help</string>
           </property>
          </widget>
         </item>

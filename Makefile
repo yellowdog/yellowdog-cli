@@ -5,7 +5,7 @@ TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
 PYCACHE = __pycache__ yellowdog_cli/__pycache__ yellowdog_cli/utils/__pycache__
-TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.*
+TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.* yellowdog_cli/commander/README.md.*
 
 build: $(SRC) $(MANIFEST)
 	uv build
@@ -33,13 +33,16 @@ pypi_test_upload: clean build
 pypi_check: build
 	twine check dist/*
 
-toc_all: toc toc_cloudwizard
+toc_all: toc toc_cloudwizard toc_commander
 
 toc: README.md
-	./gh-md-toc --insert README.md
+	./gh-md-toc --insert --skip-header README.md
 
 toc_cloudwizard: README_CLOUDWIZARD.md
-	./gh-md-toc --insert README_CLOUDWIZARD.md
+	./gh-md-toc --insert --skip-header README_CLOUDWIZARD.md
+
+toc_commander: yellowdog_cli/commander/README.md
+	./gh-md-toc --insert --skip-header yellowdog_cli/commander/README.md
 
 test:
 	pytest -v

@@ -64,6 +64,20 @@ VAR_OPENING_DELIMITER = "{{"
 VAR_CLOSING_DELIMITER = "}}"
 VAR_DEFAULT_SEPARATOR = ":="
 VAR_UNSET_SUFFIX = "::"
+# A variable name: a letter, digit or '_', then letters, digits, '_', '.' and
+# '-'. Enforced wherever a variable is defined, and what decides whether a
+# '{{...}}' expression refers to a variable at all: one that breaks it (Docker's
+# '{{.ID}}', Go's '{{- .Values }}') is text. '.' and '-' may not come first for
+# that reason. The rule rules out the substitution syntax ('}}', ':=', '::', a
+# type tag's ':') by construction.
+VARIABLE_NAME_PATTERN = r"[A-Za-z0-9_][A-Za-z0-9_.-]*"
+VARIABLE_NAME_RULE = (
+    "a name must start with a letter, digit or '_', and contain only letters,"
+    " digits, '_', '.' and '-'"
+)
+# An 'env:' name belongs to the operating system rather than to us (Windows has
+# 'ProgramFiles(x86)'), so it may hold anything but whitespace and the syntax
+ENV_VARIABLE_NAME_PATTERN = r"[^\s{}:=]+"
 
 # Lazy variable substitution names (used in submit/task naming)
 L_WR_NAME = "wr_name"
@@ -73,6 +87,15 @@ L_TASK_GROUP_NAME = "task_group_name"
 L_TASK_GROUP_NUMBER = "task_group_number"
 L_TASK_COUNT = "task_count"
 L_TASK_GROUP_COUNT = "task_group_count"
+LAZY_VARIABLE_NAMES = (
+    L_WR_NAME,
+    L_TASK_NAME,
+    L_TASK_NUMBER,
+    L_TASK_GROUP_NAME,
+    L_TASK_GROUP_NUMBER,
+    L_TASK_COUNT,
+    L_TASK_GROUP_COUNT,
+)
 
 TYPE_TAG_TERMINATOR = ":"
 # The character(s) of VAR_DEFAULT_SEPARATOR that follow TYPE_TAG_TERMINATOR.
@@ -84,7 +107,10 @@ BOOL_TYPE_TAG = "bool" + TYPE_TAG_TERMINATOR
 ARRAY_TYPE_TAG = "array" + TYPE_TAG_TERMINATOR
 TABLE_TYPE_TAG = "table" + TYPE_TAG_TERMINATOR
 FORMAT_NAME_TYPE_TAG = "format_name" + TYPE_TAG_TERMINATOR
-TOML_VAR_NESTED_DEPTH = 3
+# The most in-situ substitution passes a specification is given to settle; a
+# pass that changes nothing ends them. Real chains of references settle in two
+# or three, so reaching this means a circular one.
+VAR_SUBSTITUTION_MAX_PASSES = 10
 RCLONE_PREFIX = "rclone:"
 
 VAR_NAME_OF_UNNAMED_TASK = "none"

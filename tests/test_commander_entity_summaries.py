@@ -9,11 +9,8 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    EntitySummary,
-    YellowDogApp,
-    parse_entity_summaries,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.selection import EntitySummary, parse_entity_summaries
 
 
 @pytest.fixture

@@ -635,3 +635,56 @@ class TestUploadRcloneFileCore:
         ):
             mock_path.return_value.resolve.return_value = "/resolved/file.txt"
             instance._upload_rclone_file_core(uploaded_file)
+
+
+# ---------------------------------------------------------------------------
+# The late substitution passes
+# ---------------------------------------------------------------------------
+
+
+class TestLateSubstitutionPasses:
+    """
+    The passes made once the lazy variables are defined go through
+    resolve_variables_insitu(), as the loaders' do: a chain of references
+    resolves however long it is, and a circular one is an error. They used
+    to be a single pass each, which stopped a chain after a link or two.
+    """
+
+    @staticmethod
+    def _chain(monkeypatch, links: int) -> None:
+        for i in range(links):
+            monkeypatch.setenv(
+                f"YD_TEST_{i}",
+                f"{{{{env:YD_TEST_{i + 1}}}}}" if i < links - 1 else "end",
+            )
+
+    def test_config_work_requirement_chain_resolves(self, monkeypatch):
+        self._chain(monkeypatch, 6)
+        config = su.update_config_work_requirement_object(
+            ConfigWorkRequirement(task_type="{{env:YD_TEST_0}}")
+        )
+        assert config.task_type == "end"
+
+    def test_config_work_requirement_circular_reference_is_an_error(self, monkeypatch):
+        monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
+        monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
+        with pytest.raises(ValueError, match="circular"):
+            su.update_config_work_requirement_object(
+                ConfigWorkRequirement(task_type="{{env:YD_TEST_A}}")
+            )
+
+    def test_no_late_pass_is_a_single_pass(self):
+        # Every in-situ pass outside variables.py is a resolving one; a
+        # single pass reintroduced anywhere brings the short chains back
+        from pathlib import Path
+
+        import yellowdog_cli
+
+        package = Path(yellowdog_cli.__file__).parent
+        callers = [
+            str(path.relative_to(package))
+            for path in package.rglob("*.py")
+            if path.name != "variables.py"
+            and "process_variable_substitutions_insitu" in path.read_text()
+        ]
+        assert callers == []

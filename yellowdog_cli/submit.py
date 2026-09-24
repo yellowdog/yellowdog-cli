@@ -150,7 +150,7 @@ from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
     load_toml_file_with_variable_substitutions,
-    process_variable_substitutions_insitu,
+    resolve_variables_insitu,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType
@@ -356,7 +356,7 @@ def submit_work_requirement(
     # Re-process substitutions in the CONFIG_WR object
     CONFIG_WR = update_config_work_requirement_object(CONFIG_WR)
     # Re-process substitutions in the wr_data dictionary
-    process_variable_substitutions_insitu(wr_data)
+    resolve_variables_insitu(wr_data)
 
     # Handle any files that need to be uploaded
     global RCLONE_UPLOADED_FILES
@@ -540,7 +540,7 @@ def create_task_group(
         L_TASK_GROUP_NUMBER, formatted_number_str(effective_tg_number, num_task_groups)
     )
     add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
-    process_variable_substitutions_insitu(task_group_data)
+    resolve_variables_insitu(task_group_data)
     # Create a copy of global CONFIG_WR and apply lazy substitutions
     config_wr = update_config_work_requirement_object(deepcopy(CONFIG_WR))
 
@@ -1015,7 +1015,7 @@ def generate_batch_of_tasks_for_task_group(
             L_TASK_NUMBER,
             formatted_number_str(display_task_number, display_num_tasks),
         )
-        process_variable_substitutions_insitu(task)
+        resolve_variables_insitu(task)
         config_wr = update_config_work_requirement_object(deepcopy(CONFIG_WR))
 
         arguments_list = check_list(
@@ -1328,7 +1328,7 @@ def add_to_existing_work_requirement(
         if wr_data.get(TASK_TYPES) is None:
             wr_data[TASK_TYPES] = [wr_data[TASK_TYPE]]
 
-    process_variable_substitutions_insitu(cast(dict, wr_data))
+    resolve_variables_insitu(cast(dict, wr_data))
 
     # Expand task groups from taskGroupCount if needed
     task_group_count = check_float_or_int(
@@ -1490,7 +1490,7 @@ def submit_json_raw(wr_file: str):
     wr_data["name"] = format_yd_name(check_str(wr_data["name"], NAME))
     wr_name = wr_data["name"]
     add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
-    process_variable_substitutions_insitu(wr_data)
+    resolve_variables_insitu(wr_data)
 
     if ARGS_PARSER.dry_run:
         # This will show the results of any variable substitutions

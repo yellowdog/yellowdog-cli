@@ -17,6 +17,7 @@ from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAF
 from yellowdog_cli.utils.settings import WP_VARIABLES_POSTFIX, WP_VARIABLES_PREFIX
 from yellowdog_cli.utils.variables import (
     process_variable_substitutions_in_file_contents,
+    warn_of_undefined_variables,
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -63,12 +64,29 @@ def _read_user_data(
     finally:
         chdir(original_directory)
 
+    # Named by where it came from, in an error or a warning
+    source = (
+        user_data_file
+        if user_data_file is not None
+        else ", ".join(user_data_files)
+        if user_data_files is not None
+        else USERDATA
+    )
     try:
-        return process_variable_substitutions_in_file_contents(
-            content, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+        content = process_variable_substitutions_in_file_contents(
+            content,
+            prefix=WP_VARIABLES_PREFIX,
+            postfix=WP_VARIABLES_POSTFIX,
+            source=source,
         )
     except Exception as e:
         raise RuntimeError(f"Error processing variable substitutions: {e}")
+
+    # Substituted as text, so no substitution pass walks it
+    warn_of_undefined_variables(
+        {source: content}, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+    )
+    return content
 
 
 def get_user_data_property(

@@ -23,12 +23,11 @@ from PyQt6.QtGui import QTextCursor, QTextDocument
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMenu
 
-from yellowdog_cli.commander.commander import (
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.output_model import OutputRun, block_count
+from yellowdog_cli.commander.output_pane import (
     SHOW_ALL_OUTPUT,
     SHOW_OUTPUT_FROM_PROCESS,
-    OutputRun,
-    YellowDogApp,
-    block_count,
 )
 
 CHILD_TIMEOUT_MS = 10_000
@@ -87,7 +86,7 @@ def menu_action(menu: QMenu, text: str):
 
 def filter_to_line_containing(window: YellowDogApp, text: str):
     """Filter the way a user does: right-click the line, choose the Show Only item."""
-    menu = window._build_output_menu(position_of(window, text))
+    menu = window._output._build_output_menu(position_of(window, text))
     show_only = [a for a in menu.actions() if a.text().startswith("Show Only")]
     assert len(show_only) == 1, [a.text() for a in menu.actions()]
     show_only[0].trigger()
@@ -95,7 +94,7 @@ def filter_to_line_containing(window: YellowDogApp, text: str):
 
 @pytest.fixture
 def two_runs(window):
-    window._log("Commander says hello")
+    window._output.log("Commander says hello")
     run_child(
         window,
         "2026-09-23 10:00:00 (123456) : first command, first message",
@@ -144,7 +143,7 @@ def show_only_texts(menu: QMenu) -> list[str]:
 def test_the_executing_line_offers_its_command_and_commander(two_runs):
     # It belongs to the command, but it is printed with Commander's PID, so a
     # user reading the PID on it could mean either.
-    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "Executing:"))
 
     assert show_only_texts(menu) == [
         f"Show Only Output from Process 123456 ({sys.executable})",
@@ -153,7 +152,7 @@ def test_the_executing_line_offers_its_command_and_commander(two_runs):
 
 
 def test_the_executing_line_selects_its_command(two_runs):
-    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "Executing:"))
     menu_action(menu, show_only_texts(menu)[0]).trigger()
 
     assert "first message" in shown(two_runs)
@@ -161,7 +160,7 @@ def test_the_executing_line_selects_its_command(two_runs):
 
 
 def test_the_executing_line_selects_commander(two_runs):
-    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "Executing:"))
     menu_action(menu, "Show Only Commander's Own Messages").trigger()
 
     text = shown(two_runs)
@@ -173,7 +172,7 @@ def test_the_executing_line_selects_commander(two_runs):
 def test_filtered_to_commander_an_executing_line_offers_its_command(two_runs):
     filter_to_line_containing(two_runs, "Commander says hello")
 
-    menu = two_runs._build_output_menu(position_of(two_runs, "Executing:"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "Executing:"))
 
     assert show_only_texts(menu) == [
         f"Show Only Output from Process 123456 ({sys.executable})"
@@ -193,13 +192,15 @@ def test_an_executing_line_arriving_while_filtered_to_commander_is_shown(two_run
 
 
 def test_the_menu_names_the_pid_the_command_printed(two_runs):
-    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "second command"))
 
     menu_action(menu, "Show Only Output from Process 654321 (" + sys.executable + ")")
 
 
 def test_commanders_own_messages_can_be_filtered_to(two_runs):
-    menu = two_runs._build_output_menu(position_of(two_runs, "Commander says hello"))
+    menu = two_runs._output._build_output_menu(
+        position_of(two_runs, "Commander says hello")
+    )
     menu_action(menu, "Show Only Commander's Own Messages").trigger()
 
     assert "Commander says hello" in shown(two_runs)
@@ -208,7 +209,7 @@ def test_commanders_own_messages_can_be_filtered_to(two_runs):
 
 
 def test_the_menu_keeps_the_standard_actions(two_runs):
-    menu = two_runs._build_output_menu(position_of(two_runs, "first message"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "first message"))
 
     texts = [action.text() for action in menu.actions()]
     assert any("Copy" in text for text in texts)
@@ -237,7 +238,7 @@ def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
 def test_the_menu_offers_show_all_while_filtered(two_runs):
     filter_to_line_containing(two_runs, "second command")
 
-    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "second command"))
     texts = [action.text() for action in menu.actions()]
     assert not any(text.startswith("Show Only") for text in texts), (
         "already showing only that"
@@ -261,11 +262,11 @@ def test_output_arriving_while_filtered(two_runs):
     # Counted on the bar's label, and shown by Show All Output: the bar's only
     # button, because a second one doing the same would say nothing more.
     filter_to_line_containing(two_runs, "second command")
-    assert two_runs._output_filter is not None
-    (second_run,) = two_runs._output_filter
+    assert two_runs._output._output_filter is not None
+    (second_run,) = two_runs._output._output_filter
 
-    two_runs._log("more from Commander")
-    two_runs._log("more from the second command", prefix=False, run=second_run)
+    two_runs._output.log("more from Commander")
+    two_runs._output.log("more from the second command", prefix=False, run=second_run)
 
     assert "more from Commander" not in shown(two_runs)
     assert "more from the second command" in shown(two_runs)
@@ -282,10 +283,10 @@ def test_output_arriving_while_filtered(two_runs):
 def test_a_line_arriving_while_filtered_can_itself_be_filtered_to(two_runs):
     # Appended to a filtered view, it must be tagged like any other line.
     filter_to_line_containing(two_runs, "second command")
-    assert two_runs._output_filter is not None
-    (second_run,) = two_runs._output_filter
-    two_runs._log("more from the second command", prefix=False, run=second_run)
-    two_runs._show_all_output()
+    assert two_runs._output._output_filter is not None
+    (second_run,) = two_runs._output._output_filter
+    two_runs._output.log("more from the second command", prefix=False, run=second_run)
+    two_runs._output._show_all_output()
 
     filter_to_line_containing(two_runs, "more from the second command")
 
@@ -300,7 +301,7 @@ def test_clear_clears_everything_and_ends_the_filter(two_runs):
 
     assert shown(two_runs) == ""
     assert not two_runs.output_filter_bar.isVisible()
-    two_runs._log("after the clear")
+    two_runs._output.log("after the clear")
     assert shown(two_runs).endswith("after the clear")
     assert "first message" not in shown(two_runs)
 
@@ -319,7 +320,9 @@ def test_copy_takes_what_is_shown(two_runs):
 
 def test_save_takes_what_is_shown(two_runs, tmp_path, monkeypatch):
     target = tmp_path / "saved.txt"
-    monkeypatch.setattr(two_runs, "_save_file", lambda **kwargs: str(target))
+    monkeypatch.setattr(
+        two_runs._file_dialogs, "save_file", lambda **kwargs: str(target)
+    )
     filter_to_line_containing(two_runs, "second command")
     expected = shown(two_runs)
 
@@ -330,11 +333,11 @@ def test_save_takes_what_is_shown(two_runs, tmp_path, monkeypatch):
 
 def interleaved(window: YellowDogApp, runs: int = 60):
     """Many short runs, interleaved with Commander's messages, to scroll through."""
-    window._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
-    window._output_runs[2] = OutputRun(2, "yd-b", pid=222222)
+    window._output._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
+    window._output._output_runs[2] = OutputRun(2, "yd-b", pid=222222)
     for n in range(runs):
-        window._log(f"a{n:03d}", prefix=False, run=1)
-        window._log(f"b{n:03d}", prefix=False, run=2)
+        window._output.log(f"a{n:03d}", prefix=False, run=1)
+        window._output.log(f"b{n:03d}", prefix=False, run=2)
 
 
 def row_on_screen(window: YellowDogApp, text: str) -> int:
@@ -357,7 +360,7 @@ def test_the_line_right_clicked_stays_where_it_was(window):
     before = row_on_screen(window, target)
     assert before > 0
 
-    menu = window._build_output_menu(
+    menu = window._output._build_output_menu(
         window.log_output.cursorRect(
             QTextCursor(window.log_output.document().find(target).block())
         ).center()
@@ -369,13 +372,13 @@ def test_the_line_right_clicked_stays_where_it_was(window):
 
 def test_ending_the_filter_keeps_the_top_line_in_view(window):
     interleaved(window)
-    window._filter_output(frozenset({1}))
+    window._output._filter_output(frozenset({1}))
     scrollbar = window.log_output.verticalScrollBar()
     assert scrollbar is not None
     scrollbar.setValue(scrollbar.maximum() // 2)
     top = window.log_output.firstVisibleBlock().text()
 
-    window._show_all_output()
+    window._output._show_all_output()
 
     assert window.log_output.firstVisibleBlock().text() == top
 
@@ -386,10 +389,10 @@ def test_following_the_end_keeps_following(window):
     assert scrollbar is not None
     scrollbar.setValue(scrollbar.maximum())
 
-    window._filter_output(frozenset({1}))
+    window._output._filter_output(frozenset({1}))
 
     assert scrollbar.value() == scrollbar.maximum()
-    window._log("a-late", prefix=False, run=1)
+    window._output.log("a-late", prefix=False, run=1)
     assert scrollbar.value() == scrollbar.maximum()
 
 
@@ -437,7 +440,7 @@ def chooser_rows(window: YellowDogApp):
 
 
 def open_chooser_from(window: YellowDogApp, text: str):
-    menu = window._build_output_menu(position_of(window, text))
+    menu = window._output._build_output_menu(position_of(window, text))
     menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).trigger()
 
 
@@ -471,7 +474,7 @@ def test_the_chooser_shows_the_command_line_as_the_user_gave_it(window, monkeypa
         window, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
     )
 
-    window._choose_output_run()
+    window._output._choose_output_run()
 
     assert "--nf" in shown(window), "the echo still carries them"
     assert "--nf" not in rows[1]
@@ -484,7 +487,7 @@ def test_the_rows_line_up(two_runs, monkeypatch):
         two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     assert len({len(row) for row in rows}) == 1, "padded to a common width"
 
@@ -528,7 +531,7 @@ def test_two_commands_and_commander(two_runs, monkeypatch):
         two_runs, monkeypatch, commander_dialogs.ACCEPT, tick_rows=(0, 1, 2)
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     assert shown(two_runs).count("Executing:") == 2, "once each, not twice"
     assert "Commander says hello" in shown(two_runs)
@@ -545,7 +548,7 @@ def test_the_bar_names_every_process_shown(two_runs, monkeypatch):
         two_runs, monkeypatch, commander_dialogs.ACCEPT, tick_rows=(1, 2)
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     label = two_runs.output_filter_label.text()
     assert label.startswith(
@@ -561,12 +564,12 @@ def test_output_arriving_for_either_is_shown(two_runs, monkeypatch):
     commander_dialogs.drive_process_chooser(
         two_runs, monkeypatch, commander_dialogs.ACCEPT, tick_rows=(1, 2)
     )
-    two_runs._choose_output_run()
-    first, second = sorted(two_runs._output_filter or ())
+    two_runs._output._choose_output_run()
+    first, second = sorted(two_runs._output._output_filter or ())
 
-    two_runs._log("late from the first", prefix=False, run=first)
-    two_runs._log("late from the second", prefix=False, run=second)
-    two_runs._log("late from Commander")
+    two_runs._output.log("late from the first", prefix=False, run=first)
+    two_runs._output.log("late from the second", prefix=False, run=second)
+    two_runs._output.log("late from Commander")
 
     assert "late from the first" in shown(two_runs)
     assert "late from the second" in shown(two_runs)
@@ -578,7 +581,7 @@ def test_the_menu_offers_one_of_several_shown(two_runs, monkeypatch):
     commander_dialogs.drive_process_chooser(
         two_runs, monkeypatch, commander_dialogs.ACCEPT, tick_rows=(1, 2)
     )
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     filter_to_line_containing(two_runs, "second command's message")
 
@@ -597,7 +600,7 @@ def test_show_output_is_greyed_with_nothing_ticked(two_runs, monkeypatch):
         two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     assert enabled == [False]
 
@@ -625,7 +628,7 @@ def test_return_accepts(two_runs, monkeypatch, key):
         two_runs, monkeypatch, commander_dialogs.NOTHING, inspect=inspect
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     assert "second command" in shown(two_runs)
     assert "first message" not in shown(two_runs)
@@ -644,7 +647,9 @@ def ticked_when_opened(window, monkeypatch, open_it) -> list[int]:
 
 
 def test_the_latest_is_ticked_by_default(two_runs, monkeypatch):
-    assert ticked_when_opened(two_runs, monkeypatch, two_runs._choose_output_run) == [2]
+    assert ticked_when_opened(
+        two_runs, monkeypatch, two_runs._output._choose_output_run
+    ) == [2]
 
 
 def test_the_line_right_clicked_is_ticked(two_runs, monkeypatch):
@@ -660,7 +665,7 @@ def test_an_executing_line_ticks_its_command(two_runs, monkeypatch):
 
 
 def test_the_runs_shown_are_ticked(two_runs, monkeypatch):
-    two_runs._filter_output(frozenset({0, 2}))
+    two_runs._output._filter_output(frozenset({0, 2}))
     assert ticked_when_opened(
         two_runs, monkeypatch, lambda: open_chooser_from(two_runs, "Executing:")
     ) == [0, 2]
@@ -675,7 +680,7 @@ def test_show_output_is_the_default_button(two_runs, monkeypatch):
         inspect=lambda dialog: defaults.append(gui_harness.default_button(dialog)),
     )
 
-    two_runs._choose_output_run()
+    two_runs._output._choose_output_run()
 
     assert defaults[0] is not None and defaults[0].text() == "Show Output"
 
@@ -693,7 +698,7 @@ def listing_widths(window, monkeypatch) -> tuple[int, int, int]:
     commander_dialogs.drive_process_chooser(
         window, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
     )
-    window._choose_output_run()
+    window._output._choose_output_run()
     return (*widths[0], window.width())
 
 
@@ -706,9 +711,9 @@ def test_the_listing_is_wide_enough_for_its_rows(window, monkeypatch):
 
 
 def test_the_listing_is_no_wider_than_the_window(window, monkeypatch):
-    window._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
-    window._output_runs[1].user_command_line = "yd-a " + "x" * 2000
-    window._log("a line", prefix=False, run=1)
+    window._output._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
+    window._output._output_runs[1].user_command_line = "yd-a " + "x" * 2000
+    window._output.log("a line", prefix=False, run=1)
 
     viewport, content, window_width = listing_widths(window, monkeypatch)
 
@@ -729,7 +734,7 @@ def test_a_cleared_finished_run_is_not_listed_but_a_running_one_is(
             two_runs, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
         )
 
-        two_runs._choose_output_run()
+        two_runs._output._choose_output_run()
 
         assert len(rows) == 1
         assert "time.sleep" in rows[0]
@@ -745,7 +750,7 @@ def test_a_command_that_did_not_start(window, monkeypatch):
         window, monkeypatch, commander_dialogs.CANCEL, inspect=inspect
     )
 
-    window._choose_output_run()
+    window._output._choose_output_run()
 
     assert "did not start" in rows[1]
 
@@ -753,7 +758,7 @@ def test_a_command_that_did_not_start(window, monkeypatch):
 def test_the_menu_item_is_greyed_with_nothing_to_choose(window):
     window.clear_command_output.click()
 
-    menu = window._build_output_menu(QPoint(5, 5))
+    menu = window._output._build_output_menu(QPoint(5, 5))
 
     assert not menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).isEnabled()
 
@@ -761,6 +766,6 @@ def test_the_menu_item_is_greyed_with_nothing_to_choose(window):
 def test_the_menu_item_is_there_while_filtered(two_runs):
     filter_to_line_containing(two_runs, "second command")
 
-    menu = two_runs._build_output_menu(position_of(two_runs, "second command"))
+    menu = two_runs._output._build_output_menu(position_of(two_runs, "second command"))
 
     assert menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).isEnabled()

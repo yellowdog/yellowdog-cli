@@ -132,8 +132,9 @@ def _no_config_discovery(request, monkeypatch):
     installed, working yd-variables, and on whatever namespace and tag the environment
     happened to supply.
 
-    None of these tests are about discovery: they set _namespace/_tag directly or
-    call _set_placeholders. The ones that do exercise discovery itself opt out with
+    None of these tests are about discovery: they set _discovery.namespace/tag
+    directly or call _discovery._set_placeholders. The stub is on ConfigDiscovery,
+    the class, so it is in place before any window builds one. The ones that do exercise discovery itself opt out with
     @pytest.mark.real_config_parse — two in test_commander_shutdown.py, and the whole
     of test_commander_config_discovery.py, which overrides _yd_variables_command instead so
     that it still spawns no yd-variables.
@@ -147,17 +148,17 @@ def _no_config_discovery(request, monkeypatch):
     if "real_config_parse" in request.keywords:
         return
 
-    from yellowdog_cli.commander.commander import YellowDogApp
+    from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 
     monkeypatch.setattr(
-        YellowDogApp,
+        ConfigDiscovery,
         "_parse_yd_config",
         lambda self, quiet=False, timeout_ms=None: False,
     )
 
 
 # Qt's own file-dialog settings, which Commander deliberately does not read (it
-# keeps its own; see commander.dialog_settings). Named here because the only code
+# keeps its own; see file_dialogs.dialog_settings). Named here because the only code
 # that cares is the fixtures below and the one case that proves they are ignored.
 QT_SETTINGS_ORGANISATION = "QtProject"
 QT_SIDEBAR_WIDTH_SETTING = "FileDialog/sidebarWidth"
@@ -254,11 +255,11 @@ def commander_dialog_settings(request, tmp_path_factory, monkeypatch):
 
     from PyQt6.QtCore import QSettings
 
-    from yellowdog_cli.commander import commander
+    from yellowdog_cli.commander import file_dialogs
 
     path = tmp_path_factory.mktemp("commander-settings") / "commander.ini"
     settings = QSettings(str(path), QSettings.Format.IniFormat)
-    monkeypatch.setattr(commander, "dialog_settings", lambda: settings)
+    monkeypatch.setattr(file_dialogs, "dialog_settings", lambda: settings)
     return settings
 
 
