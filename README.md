@@ -861,6 +861,14 @@ The bare `{{::}}` (no variable name) always removes the property unconditionally
 taskType = "{{::}}"   # always removed
 ```
 
+An unset expression does not have to be the whole value. Wherever it appears in a string, it removes the **entire** property, list element or variable containing it, not just the expression itself; the rest of the string is discarded with it:
+
+```toml
+imageId   = "ami-{{region::}}-base"          # removed entirely if 'region' is not set
+arguments = ["--user", "{{user::}}", "--zone={{region::}}a"]  # each element removed separately
+site      = "{{app}}-{{zone}} {{::}}"        # always removed, whatever 'app' and 'zone' are
+```
+
 The unset suffix can also be used inside a [nested variable](#nested-variables). The property is removed if the unset variable's value is needed, and kept if it is not:
 
 ```toml
