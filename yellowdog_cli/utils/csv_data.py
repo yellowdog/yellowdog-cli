@@ -22,6 +22,7 @@ from yellowdog_cli.utils.settings import (
     CSV_VAR_OPENING_DELIMITER,
     FORMAT_NAME_TYPE_TAG,
     NUMBER_TYPE_TAG,
+    WARNING_MARKER,
 )
 from yellowdog_cli.utils.variables import (
     load_jsonnet_file_with_variable_substitutions,
@@ -209,7 +210,7 @@ def perform_csv_task_expansion(
 
         if not substitutions_present(csv_data.var_names, str(task_prototype)):
             print_info(
-                "Warning: No CSV substitutions to apply to Task Group "
+                f"{WARNING_MARKER}No CSV substitutions to apply to Task Group "
                 f"{index + 1}; not expanding Task list"
             )
             continue
@@ -326,7 +327,7 @@ def get_csv_file_index(
     split_name = csv_filename.split(":")
     if len(split_name) > 1:
         print_info(
-            f"Warning: Possible invalid Task Group name/number '{split_name[-1]}'?"
+            f"{WARNING_MARKER}Possible invalid Task Group name/number '{split_name[-1]}'?"
         )
 
     return csv_filename, None

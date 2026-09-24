@@ -56,7 +56,11 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
 )
-from yellowdog_cli.utils.settings import WP_VARIABLES_POSTFIX, WP_VARIABLES_PREFIX
+from yellowdog_cli.utils.settings import (
+    WARNING_MARKER,
+    WP_VARIABLES_POSTFIX,
+    WP_VARIABLES_PREFIX,
+)
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -340,7 +344,7 @@ def create_worker_pool_from_toml():
 
     if CONFIG_WP.maintainInstanceCount:
         print_info(
-            f"Warning: Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
+            f"{WARNING_MARKER}Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
             "'false' when creating a Worker Pool"
         )
 

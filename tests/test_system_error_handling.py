@@ -6,9 +6,9 @@ Two distinct failure modes exist in the CLI:
   Hard failures (exit code 1):
     Raised by an unhandled exception inside @main_wrapper (e.g. file not
     found, JSON parse error, bad variable syntax). The process exits 1 and
-    "Error:" appears in stderr.
+    the error marker appears in stderr.
 
-  Soft failures (exit code 0, "Error:" in stderr):
+  Soft failures (exit code 0, the error marker in stderr):
     The command processes a list of items (YDIDs, resource specs) and reports
     individual errors without aborting the overall run. Exit code is 0 even
     though something went wrong. Examples: unknown YDID type, nonexistent
@@ -23,16 +23,17 @@ Run with: pytest --run-system tests/test_system_error_handling.py
 import pytest
 from cli_test_helpers import shell
 
+from yellowdog_cli.utils.settings import ERROR_MARKER
 from yellowdog_cli.utils.ydid_utils import TYPE_KEYRING, YDID
 
 
 def _output(result) -> str:
-    """Combined stdout + stderr — the CLI writes 'Error:' lines to stderr."""
+    """Combined stdout + stderr — the CLI writes error lines to stderr."""
     return result.stdout + result.stderr
 
 
 def _has_error(result) -> bool:
-    return "Error:" in _output(result)
+    return ERROR_MARKER in _output(result)
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +84,7 @@ class TestHardFailures:
 
 
 # ---------------------------------------------------------------------------
-# Soft failures (exit code 0, "Error:" in stderr)
+# Soft failures (exit code 0, the error marker in stderr)
 # ---------------------------------------------------------------------------
 
 
@@ -116,4 +117,4 @@ class TestSoftFailures:
         result = shell(f"yd-show {fake} {bad_format}")
         assert result.exit_code == 0
         # Both errors should be reported
-        assert _output(result).count("Error:") >= 2
+        assert _output(result).count(ERROR_MARKER) >= 2

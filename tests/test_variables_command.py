@@ -14,7 +14,7 @@ from json import loads
 import pytest
 
 import yellowdog_cli.utils.variables as variables_module
-from yellowdog_cli.utils.settings import REDACTED_VALUE
+from yellowdog_cli.utils.settings import REDACTED_VALUE, WARNING_MARKER
 from yellowdog_cli.variables import report_variables
 
 SUBSTITUTIONS = {
@@ -346,7 +346,7 @@ class TestUndefinedVariableWarnings:
         )
 
         assert result.returncode == 0, result.stderr
-        assert "Warning" not in result.stdout
+        assert WARNING_MARKER not in result.stdout
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,7 @@ from yellowdog_cli.commander.selection import (
     update_selection_state,
 )
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.utils.settings import ERROR_MARKER
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 # px: inset between the selected-configuration label's frame and its text.
@@ -2490,7 +2491,7 @@ def run_app(settings: StartupSettings | None = None):
         sys.exit(app.exec())
 
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"{ERROR_MARKER}{exc}", file=sys.stderr)
         sys.exit(1)
 
 

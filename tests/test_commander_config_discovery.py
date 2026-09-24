@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import QApplication
 from yellowdog_cli.commander import config_discovery
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
-from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
+from yellowdog_cli.utils.settings import ERROR_MARKER, MISSING_CONFIG_DATA
 
 # These are the tests discovery itself is the subject of, so they opt out of
 # conftest's stub of _parse_yd_config. No 'yd-variables' is spawned all the same:
@@ -107,7 +107,9 @@ PRINTS_RUBBISH = "print('not json at all')"
 # load_common_config() raises KeyError('key') and the CLI exits 1. Built from the
 # CLI's own constant, so renaming the message cannot leave this passing against
 # wording Commander no longer recognises.
-NO_CREDENTIALS_STDERR = f"2026-01-01 00:00:00 : Error: {MISSING_CONFIG_DATA}: 'key'"
+NO_CREDENTIALS_STDERR = (
+    f"2026-01-01 00:00:00 : {ERROR_MARKER}{MISSING_CONFIG_DATA}: 'key'"
+)
 NO_CREDENTIALS = (
     f"import sys; sys.stderr.write({NO_CREDENTIALS_STDERR!r} + chr(10)); sys.exit(1)"
 )

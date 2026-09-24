@@ -72,6 +72,7 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_LOG_WIDTH,
     DEFAULT_THEME,
     DRY_RUN_MARKER,
+    ERROR_MARKER,
     ERROR_STYLE,
     HIGHLIGHTED_STATES,
     JSON_INDENT,
@@ -90,6 +91,7 @@ from yellowdog_cli.utils.settings import (
     PROP_SOURCE,
     PROP_SUPPORTING_RESOURCE_CREATED,
     PROP_TRAITS,
+    WARNING_MARKER,
     WARNING_STYLE,
 )
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType
@@ -260,10 +262,12 @@ def print_error(error_obj: Exception | str):
     Print an error message to stderr.
     """
     if ARGS_PARSER.no_format:
-        print(print_string(f"Error: {error_obj}"), flush=True, file=stderr)
+        print(print_string(f"{ERROR_MARKER}{error_obj}"), flush=True, file=stderr)
         return
 
-    CONSOLE_ERR.print(escape(print_string(f"Error: {error_obj}")), style=ERROR_STYLE)
+    CONSOLE_ERR.print(
+        escape(print_string(f"{ERROR_MARKER}{error_obj}")), style=ERROR_STYLE
+    )
 
 
 def print_warning(
@@ -280,11 +284,11 @@ def print_warning(
         return
 
     if ARGS_PARSER.no_format:
-        print(print_string(f"Warning: {warning}", no_fill=no_fill), flush=True)
+        print(print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill), flush=True)
         return
 
     CONSOLE.print(
-        escape(print_string(f"Warning: {warning}", no_fill=no_fill)),
+        escape(print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill)),
         style=WARNING_STYLE,
     )
 

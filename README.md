@@ -883,13 +883,13 @@ A variable defined with the unset syntax, in `[common.variables]` or elsewhere, 
 A variable substitution for a variable that is not defined, and that has neither a default value nor the unset suffix, is left in the specification unchanged, and a warning is printed naming it and the properties it appears in, e.g.:
 
 ```
-Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
+WARNING : Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
 ```
 
 Where the variable was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix), the warning says so, and why:
 
 ```
-Warning: Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
+WARNING : Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
 ```
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
@@ -4075,7 +4075,7 @@ yd-variables -v 'bucket=s3://{{regoin}}' bucket
 ```
 
 ```
-Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
+WARNING : Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
 ```
 
 A variable that was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, a warning also gives the reason, following each `{{name::}}` reference to a variable that was itself unset:
@@ -4085,7 +4085,7 @@ yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
 ```
 
 ```
-Warning: Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
+WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
 ```
 
 **No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
