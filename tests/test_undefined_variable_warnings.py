@@ -182,3 +182,33 @@ class TestDataClientPathChains:
         )
         assert path.endswith("data/x")
         assert _messages(warnings) == []
+
+
+# ---------------------------------------------------------------------------
+# A reference to a variable the '::' syntax removed
+# ---------------------------------------------------------------------------
+
+
+class TestUnsetVariables:
+    def test_is_reported_as_unset_with_the_reason(self, warnings, monkeypatch):
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", {})
+        monkeypatch.setattr(var_module, "_DEFINITIONS", {})
+        var_module.add_substitutions_without_overwriting({"site": "{{::}}"})
+        spec = {"name": "pool-{{site}}"}
+
+        var_module.resolve_variables_insitu(spec)
+
+        assert spec == {"name": "pool-{{site}}"}
+        assert _messages(warnings) == [
+            "Variable '{{site}}' is unset, and has been left unsubstituted in"
+            " 'name': 'site' is '{{::}}', which always unsets it"
+        ]
+
+    def test_a_variable_never_defined_is_still_not_defined(self, warnings, monkeypatch):
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", {})
+        monkeypatch.setattr(var_module, "_DEFINITIONS", {})
+        spec = {"name": "pool-{{site}}"}
+
+        var_module.resolve_variables_insitu(spec)
+
+        assert "is not defined" in _messages(warnings)[0]

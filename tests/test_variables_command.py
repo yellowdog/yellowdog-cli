@@ -247,6 +247,14 @@ class TestCommandOutput:
         assert list(reported) == sorted(reported)
 
 
+def _stderr(result: subprocess.CompletedProcess) -> str:
+    """
+    Stderr with its whitespace collapsed, since the warnings are wrapped to
+    the terminal's width and a phrase may be split over two lines.
+    """
+    return " ".join(result.stderr.split())
+
+
 class TestUndefinedVariableWarnings:
     # The warnings go to stderr, so the JSON on stdout stays parseable: before
     # they did, the one main_wrapper prints for the '[common]' values landed on
@@ -257,33 +265,33 @@ class TestUndefinedVariableWarnings:
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"a": "x-{{missing}}"}
-        assert "'{{missing}}' is not defined" in result.stderr
+        assert "'{{missing}}' is not defined" in _stderr(result)
 
     def test_every_variable_is_checked_in_the_full_report(self, tmp_path):
         result = _run("-v", "a=x-{{missing}}", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout)["a"] == "x-{{missing}}"
-        assert "'{{missing}}' is not defined" in result.stderr
+        assert "'{{missing}}' is not defined" in _stderr(result)
 
     def test_a_variable_not_asked_for_is_not_checked(self, tmp_path):
         result = _run("-v", "a=x-{{missing}}", "tag", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "{{missing}}" not in result.stderr
+        assert "{{missing}}" not in _stderr(result)
 
     def test_a_configuration_value_warning_does_not_reach_stdout(self, tmp_path):
         result = _run("-n", "ns-{{nope}}", "namespace", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"namespace": "ns-{{nope}}"}
-        assert "'{{nope}}' is not defined" in result.stderr
+        assert "'{{nope}}' is not defined" in _stderr(result)
 
     def test_quiet_suppresses_them(self, tmp_path):
         result = _run("-q", "-v", "a=x-{{missing}}", "a", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "Warning" not in result.stderr
+        assert "Warning" not in _stderr(result)
 
     def test_the_credentials_are_not_checked(self, tmp_path):
         # Their text is not for a warning, as for the configuration values
@@ -304,7 +312,7 @@ class TestUndefinedVariableWarnings:
         )
 
         assert result.returncode == 0, result.stderr
-        assert "{{missing}}" not in result.stderr
+        assert "{{missing}}" not in _stderr(result)
 
 
 # ---------------------------------------------------------------------------
@@ -317,9 +325,8 @@ def definitions(monkeypatch):
     """
     An empty table and record of definitions, filled through the real
     definition path so that the record is kept the way the CLI keeps it.
-    Two sweeps, as every command makes several: the first leaves a variable
-    referring to an unset one holding its '{{::}}' as text, the second
-    removes it.
+    Two sweeps, as every command makes several, so that a test cannot pass
+    only because the effect of an unset takes a second one to show.
     """
     monkeypatch.setattr(variables_module, "VARIABLE_SUBSTITUTIONS", {})
     monkeypatch.setattr(variables_module, "_DEFINITIONS", {})
@@ -346,13 +353,13 @@ class TestExplainUnsetVariable:
             "site"
         )
 
-    def test_the_chain_is_followed_to_its_end(self, definitions):
-        definitions(site="{{::}}", pool="{{site}}-p", summary="{{pool}} s")
+    def test_an_unset_suffix_chain_is_followed_to_its_end(self, definitions):
+        definitions(site="{{::}}", pool="{{site::}}-p", summary="{{pool::}} s")
 
         assert variables_module.explain_unset_variable("summary") == (
-            "Variable 'summary' is unset: 'summary' refers to 'pool', which is"
-            " unset; 'pool' refers to 'site', which is unset; 'site' is '{{::}}',"
-            " which always unsets it"
+            "Variable 'summary' is unset: 'summary' refers to '{{pool::}}', and"
+            " 'pool' is unset; 'pool' refers to '{{site::}}', and 'site' is"
+            " unset; 'site' is '{{::}}', which always unsets it"
         )
 
     def test_an_undefined_variable_with_the_unset_suffix(self, definitions):
@@ -380,9 +387,9 @@ class TestExplainUnsetVariable:
         )
 
     def test_a_reference_inside_a_nested_expression(self, definitions):
-        definitions(site="{{::}}", name="{{prefix_{{site}}}}")
+        definitions(site="{{::}}", name="{{prefix_{{site::}}}}")
 
-        assert "'name' refers to 'site', which is unset" in (
+        assert "'name' refers to '{{site::}}', and 'site' is unset" in (
             variables_module.explain_unset_variable("name")
         )
 
@@ -397,7 +404,7 @@ class TestExplainUnsetVariable:
         assert variables_module.explain_unset_variable("nonexistent") is None
 
     def test_the_unset_variables_are_listed(self, definitions):
-        definitions(site="{{::}}", pool="{{site}}-p", other="x")
+        definitions(site="{{::}}", pool="{{site::}}-p", other="x")
 
         assert variables_module.get_unset_variable_names() == ["pool", "site"]
 
@@ -408,32 +415,77 @@ class TestExplainUnsetVariable:
         assert variables_module.explain_unset_variable("site") is None
 
 
+class TestUnsetIsNotTransitive:
+    # A plain reference to an unset variable is left unsubstituted, as one to
+    # any undefined variable is. It once unset the referring variable too,
+    # but only one resolved in the same sweep as the unset one, which took in
+    # its '{{::}}' as text before it was removed: a '[common]' value referring
+    # to it, or a specification property, was left unsubstituted instead
+
+    def test_a_plain_reference_is_left_unsubstituted(self, definitions):
+        definitions(site="{{::}}", pool="{{site}}-p", summary="{{pool}} s")
+
+        assert variables_module.get_user_variable("pool") == "{{site}}-p"
+        assert variables_module.get_user_variable("summary") == "{{site}}-p s"
+        assert variables_module.get_unset_variable_names() == ["site"]
+
+    def test_whatever_the_order_of_definition(self, definitions):
+        definitions(pool="{{site}}-p", site="{{::}}")
+
+        assert variables_module.get_user_variable("pool") == "{{site}}-p"
+
+    def test_an_unset_suffix_reference_still_unsets(self, definitions):
+        definitions(site="{{::}}", pool="{{site::}}-p", summary="{{pool::}} s")
+
+        assert variables_module.get_unset_variable_names() == [
+            "pool",
+            "site",
+            "summary",
+        ]
+
+    def test_the_referring_variable_has_no_explanation(self, definitions):
+        definitions(site="{{::}}", pool="{{site}}-p")
+
+        assert variables_module.explain_unset_variable("pool") is None
+
+
 class TestUnsetExplanationsInTheCommand:
     def test_a_named_unset_variable_is_explained(self, tmp_path):
         result = _run(
-            "-v", "site={{::}}", "-v", "pool={{site}}-p", "pool", cwd=tmp_path
+            "-v", "site={{::}}", "-v", "pool={{site::}}-p", "pool", cwd=tmp_path
         )
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"pool": None}
-        assert "Variable 'pool' is unset" in result.stderr
-        assert "'site' is '{{::}}'" in result.stderr
+        assert "Variable 'pool' is unset" in _stderr(result)
+        assert "'site' is '{{::}}'" in _stderr(result)
 
     def test_every_unset_variable_is_explained_in_the_full_report(self, tmp_path):
         result = _run("-v", "site={{::}}", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert "site" not in loads(result.stdout)
-        assert "Variable 'site' is unset" in result.stderr
+        assert "Variable 'site' is unset" in _stderr(result)
 
     def test_a_name_never_defined_is_not_explained(self, tmp_path):
         result = _run("nonexistent", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "unset" not in result.stderr
+        assert "unset" not in _stderr(result)
 
     def test_quiet_suppresses_them(self, tmp_path):
         result = _run("-q", "-v", "site={{::}}", "site", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "unset" not in result.stderr
+        assert "unset" not in _stderr(result)
+
+    def test_a_reference_to_an_unset_variable_is_warned_of_as_unset(self, tmp_path):
+        result = _run(
+            "-v", "site={{::}}", "-v", "pool={{site}}-p", "pool", cwd=tmp_path
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"pool": "{{site}}-p"}
+        assert "'{{site}}' is unset, and has been left unsubstituted" in _stderr(result)
+        assert "'site' is '{{::}}'" in _stderr(result)
+        assert "not defined" not in _stderr(result)

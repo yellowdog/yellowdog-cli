@@ -260,19 +260,28 @@ def _update_and_resolve_substitutions(merged: dict):
     VARIABLE_SUBSTITUTIONS.clear()
     VARIABLE_SUBSTITUTIONS.update(merged)
 
-    # Populate variables that can now be substituted.
-    # Ensure that the value is stored as a string.
-    # If a variable resolves to _UNSET (e.g. it references an undefined
-    # variable with the '::' unset suffix), remove it entirely.
-    keys_to_unset = []
+    # A variable that resolves to _UNSET (it is '{{::}}', or refers to an
+    # undefined variable with the '::' unset suffix) is removed entirely --
+    # and removed before anything else is substituted, since while it is
+    # still in the table a reference to it would take in its '{{::}}' as
+    # text, and so be unset in turn by the next pass: an unset that spreads
+    # to every variable merely referring to it, but only to those resolved
+    # in the same pass as it. Removed first, it is simply undefined, as it
+    # is to everything resolved later. Repeated, because a removal can
+    # unset a variable referring to it with the '::' suffix.
+    while unset := [
+        key_
+        for key_, value_ in VARIABLE_SUBSTITUTIONS.items()
+        if process_variable_substitutions(_stringify(value_)) is _UNSET
+    ]:
+        for key_ in unset:
+            del VARIABLE_SUBSTITUTIONS[key_]
+
+    # Populate variables that can now be substituted, stored as strings
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        result = process_variable_substitutions(_stringify(value_))
-        if result is _UNSET:
-            keys_to_unset.append(key_)
-        else:
-            VARIABLE_SUBSTITUTIONS[key_] = cast(str, result)
-    for key_ in keys_to_unset:
-        del VARIABLE_SUBSTITUTIONS[key_]
+        VARIABLE_SUBSTITUTIONS[key_] = cast(
+            str, process_variable_substitutions(_stringify(value_))
+        )
 
 
 def add_substitutions_without_overwriting(
@@ -338,15 +347,23 @@ def get_unset_variable_names() -> list[str]:
 
 def explain_unset_variable(name: str) -> str | None:
     """
-    Why the variable 'name' was defined and yet has no value: what in its
-    definition unset it, following each variable it refers to that was
-    itself unset, down to the '{{::}}' or the undefined '{{x::}}' at the end
-    of the chain. None if the variable has a value or was never defined.
+    Why the variable 'name' was defined and yet has no value, or None if it
+    has a value or was never defined.
     """
     if name in VARIABLE_SUBSTITUTIONS or name not in _DEFINITIONS:
         return None
+    return f"Variable '{name}' is unset: " + "; ".join(_unset_reasons(name))
 
-    clauses: list[str] = []
+
+def _unset_reasons(name: str) -> list[str]:
+    """
+    What in the definition of the unset variable 'name' unset it. Only its
+    own definition can have: a plain reference to an unset variable leaves
+    that reference unsubstituted, as one to any undefined variable does. A
+    '{{x::}}' reference to an unset 'x' is followed to what unset 'x', and
+    so on to the '{{::}}' or undefined '{{y::}}' at the end of the chain.
+    """
+    reasons: list[str] = []
     explained: set[str] = set()
     pending = [name]
     while pending:
@@ -357,24 +374,23 @@ def explain_unset_variable(name: str) -> str | None:
         definition = _DEFINITIONS[name_]
         causes = _unset_causes(definition)
         if not causes:
-            clauses.append(
+            reasons.append(
                 f"'{name_}' is unset by the '{VAR_UNSET_SUFFIX}' in its"
                 f" definition, '{definition}'"
             )
         for clause, unset_reference in causes:
-            clauses.append(f"'{name_}' {clause}")
+            reasons.append(f"'{name_}' {clause}")
             if unset_reference is not None:
                 pending.append(unset_reference)
-
-    return f"Variable '{name}' is unset: " + "; ".join(clauses)
+    return reasons
 
 
 def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
     """
-    The expressions in a variable's definition that can unset it, each as a
-    clause saying why, with the name of the unset variable it refers to
-    where that is the reason, so that the chain can be followed. An
-    expression with a default is never one: its default is used instead.
+    The expressions in a variable's definition that can unset it -- a
+    '{{::}}', or a '{{x::}}' with no 'x' to substitute -- each as a clause
+    saying why, with the name of the variable it refers to where that was
+    defined and is itself unset, so that the chain can be followed.
     """
     causes: list[tuple[str, str | None]] = []
 
@@ -390,42 +406,33 @@ def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
                 if inner.startswith(tag):
                     inner = inner[len(tag) :]
                     break
-            if inner.endswith(VAR_UNSET_SUFFIX):
-                reference = inner[: -len(VAR_UNSET_SUFFIX)]
-                if reference == "":
-                    verb = "is" if expression == definition else "contains"
+            if not inner.endswith(VAR_UNSET_SUFFIX):
+                continue
+            reference = inner[: -len(VAR_UNSET_SUFFIX)]
+            if reference == "":
+                verb = "is" if expression == definition else "contains"
+                causes.append((f"{verb} '{expression}', which always unsets it", None))
+            elif reference.startswith(ENV_VAR_SUB_PREFIX):
+                env_name = reference[len(ENV_VAR_SUB_PREFIX) :]
+                if os.getenv(env_name) is None:
                     causes.append(
-                        (f"{verb} '{expression}', which always unsets it", None)
+                        (
+                            f"refers to '{expression}', and the environment"
+                            f" variable '{env_name}' is not set",
+                            None,
+                        )
                     )
-                elif reference.startswith(ENV_VAR_SUB_PREFIX):
-                    env_name = reference[len(ENV_VAR_SUB_PREFIX) :]
-                    if os.getenv(env_name) is None:
-                        causes.append(
-                            (
-                                f"refers to '{expression}', and the environment"
-                                f" variable '{env_name}' is not set",
-                                None,
-                            )
-                        )
-                elif reference not in VARIABLE_SUBSTITUTIONS:
-                    if reference in _DEFINITIONS:
-                        causes.append(
-                            (f"refers to '{reference}', which is unset", reference)
-                        )
-                    else:
-                        causes.append(
-                            (
-                                f"refers to '{expression}', and '{reference}' is"
-                                " not defined",
-                                None,
-                            )
-                        )
-            elif (
-                VAR_DEFAULT_SEPARATOR not in inner
-                and inner not in VARIABLE_SUBSTITUTIONS
-                and inner in _DEFINITIONS
-            ):
-                causes.append((f"refers to '{inner}', which is unset", inner))
+            elif reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
+                causes.append(
+                    (f"refers to '{expression}', and '{reference}' is unset", reference)
+                )
+            elif reference not in VARIABLE_SUBSTITUTIONS:
+                causes.append(
+                    (
+                        f"refers to '{expression}', and '{reference}' is not defined",
+                        None,
+                    )
+                )
 
     _check(definition)
     return causes
@@ -638,10 +645,34 @@ def _warn_of_undefined(undefined: dict[str, list[str]]) -> None:
         if expression in _UNDEFINED_VARIABLES_REPORTED:
             continue
         _UNDEFINED_VARIABLES_REPORTED.add(expression)
-        print_warning(
-            f"Variable '{expression}' is not defined, and has been left"
-            f" unsubstituted in {_list_paths(paths)}"
-        )
+        reference = _reference_of(expression)
+        if reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
+            # Defined, but removed by the unset syntax, which is what anyone
+            # looking for the typo that 'not defined' implies needs to know
+            print_warning(
+                f"Variable '{expression}' is unset, and has been left"
+                f" unsubstituted in {_list_paths(paths)}: "
+                + "; ".join(_unset_reasons(reference))
+            )
+        else:
+            print_warning(
+                f"Variable '{expression}' is not defined, and has been left"
+                f" unsubstituted in {_list_paths(paths)}"
+            )
+
+
+def _reference_of(expression: str) -> str | None:
+    """
+    The variable name an expression refers to ('site' for '{{site}}',
+    '{{num:site}}' or '__{{site}}__'), or None if it is not a reference to
+    a variable by name.
+    """
+    inner = expression[
+        expression.index(VAR_OPENING_DELIMITER)
+        + len(VAR_OPENING_DELIMITER) : expression.rindex(VAR_CLOSING_DELIMITER)
+    ]
+    match = _VARIABLE_REFERENCE.fullmatch(inner)
+    return match.group(1) if match is not None else None
 
 
 def _list_paths(paths: list[str], limit: int = 5) -> str:
