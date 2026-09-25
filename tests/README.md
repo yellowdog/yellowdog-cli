@@ -56,11 +56,12 @@ pytest -v -n 4 --run-demos
 |---|---|
 | `test_add_to.py` | `submit.py` — `--add-to` feature: offset-aware task/task-group naming, dispatch logic, and the `--dry-run` combination (reads the target Work Requirement, writes nothing) |
 | `test_application.py` | `application.py` — the `--json` payload (Application properties plus `portalUrl`, `groups`, `roles`, each `null` when undeterminable) and the human-readable report |
-| `test_args_command_detection.py` | `utils/args.py` — command detection uses the basename of `sys.argv[0]`, not the full install path |
+| `test_args_command_detection.py` | `utils/args.py` — command detection uses the basename of `sys.argv[0]`, not the full install path; `CLIParser(command=..., argv=...)` builds for a named command |
 | `test_arguments_assembly.py` | `utils/submit_utils.py` — `assemble_arguments` (argumentsPrefix + arguments + argumentsPostfix combination) |
 | `test_build_dc_substitutions.py` | `utils/load_config.py` — `_build_dc_substitutions` (data client config merging and inheritance) |
 | `test_cancel_glob.py` | `cancel.py` — glob vs. literal name/YDID selection for `yd-cancel`: dry-run reporting of the matched Work Requirements, exclusion of terminal statuses |
 | `test_check_imports.py` | `utils/check_imports.py` — the optional-import guards (jsonnet, Cloud Wizard, Commander) and their install hints |
+| `test_command_registry.py` | `utils/command_registry.py` — the option/command data model, `command_from_argv0()`, `build_parser()`, the registry matching `pyproject.toml`'s entry points, and `yd-help`'s listing |
 | `test_compact_json.py` | `utils/compact_json.py` — `CompactJSONEncoder` (inline vs. expanded formatting, float precision) |
 | `test_compare.py` | `compare.py` — pure static comparison helpers |
 | `test_compute_action_common.py` | `utils/compute_action_common.py` — `yd-compute-stop/start/restart` actions: dispatch, tag-based selection, name/ID, instance and node paths |
@@ -68,7 +69,7 @@ pytest -v -n 4 --run-demos
 | `test_csv_data.py` | `utils/csv_data.py` — `CSVTaskData`, `CSVDataCache`, substitution helpers |
 | `test_dataclient_utils.py` | `utils/dataclient_utils.py` — `resolve_remote_path` (rclone remote path resolution, trailing-slash directory intent) |
 | `test_download_destination.py` | `download.py` — where each item lands locally: `--destination` vs. `--into` for one glob, one literal path and several literal paths |
-| `test_dryrun_flags.py` | `utils/args.py` — the dry-run flags on `yd-cancel`/`yd-shutdown`/`yd-terminate`: presence in `--help` and the parse-time by-name guard (no platform contact) |
+| `test_dryrun_flags.py` | `utils/command_registry.py` — the dry-run flags on `yd-cancel`/`yd-shutdown`/`yd-terminate`: presence in `--help` and the parse-time by-name guard (no platform contact) |
 | `test_dryrun_utils.py` | `utils/dryrun_utils.py` — `report_dry_run` (human table via `yd-list`'s renderer, JSON output, empty match set) |
 | `test_environment_merge.py` | `utils/submit_utils.py` — `merge_environment` (addEnvironment merging and key-override behaviour) |
 | `test_follow_utils.py` | `utils/follow_utils.py` — SSE event-stream following: subscription, reconnection after a dropped stream, thread lifecycle |
@@ -88,8 +89,9 @@ pytest -v -n 4 --run-demos
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |
 | `test_rclone_utils.py` | `utils/rclone_utils.py` — `parse_rclone_config` (plain remotes and inline config strings); `make_rclone_for_copy` remote-name collision handling |
 | `test_rclone_version.py` | `utils/rclone_version.py` — the rclone version lookup order, parsing of `rclone --version` output, and not-installed handling |
+| `test_readme_command_list.py` | The README's Command List against the registry: Universal and Shared table membership and short forms, the preamble's exceptions, and every command section's option bullets |
 | `test_resequence_resources.py` | `utils/load_resources.py` — `_resequence_resources` (creation/removal dependency ordering) |
-| `test_resolve_entity_type.py` | `utils/args.py` — `resolve_entity_type` (full names, prefixes, synonyms) |
+| `test_resolve_entity_type.py` | `utils/command_registry.py` — `resolve_entity_type` (full names, prefixes, synonyms) |
 | `test_resource_property_coverage.py` | `resource_models.py` — the write-side coverage gate: every settable property of every SDK model the resource corpus (`tests/resources/`) touches must be set by some specification, or excluded with an evidenced reason |
 | `test_resource_specs.py` | `resource_corpus.py`/`resource_models.py` — offline coverage of the resource corpus: each `.jsonnet` file is loaded through the CLI's own loader and built into the same SDK model(s) `create.py` builds, checking every property survives with the value sent; no credentials or network needed |
 | `test_retry_failure_policy.py` | `utils/submit_utils.py`, `submit.py` — the `RetryPolicy`/`FailurePolicy`/`TaskErrorSelector`/`Selection` builders, and the conflict and deprecation handling around them |
