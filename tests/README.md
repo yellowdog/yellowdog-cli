@@ -15,6 +15,7 @@ Five categories of test exist, controlled by pytest flags:
 | `--run-demos` | `demos` | Full live demo runs on the platform |
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
 | `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
+| `--update-parser-snapshots` | — | Not a category: regenerates `parser_snapshots.json` for `test_parser_snapshots.py`, which then passes, rather than running any extra tests. Regenerate on the oldest supported interpreter, or check the test on one, because a newer argparse can derive values differently |
 
 Around 350 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
 
@@ -86,6 +87,7 @@ pytest -v -n 4 --run-demos
 | `test_node_batching.py` | `provision.py`, `instantiate.py` — `_allocate_nodes_to_batches`: batch count, even distribution, remainder spreading, zero-node edge cases |
 | `test_nodeaction_args.py` | `utils/args.py` — `yd-nodeaction` argument parsing |
 | `test_nodeaction_parsing.py` | `nodeaction.py` — parsing helpers (`_parse_node_worker_target`, etc.) |
+| `test_parser_snapshots.py` | `utils/command_registry.py` — every command's option shapes (each action's kind, flags, `nargs`, `const`, `default`, `type`, `choices`, `required`, help excluded) against `parser_snapshots.json`; wording is not recorded, so only a shape change fails, naming the command and action. Regenerate with `--update-parser-snapshots` |
 | `test_printing.py` | `utils/printing.py` — `_truncate_text`, `_yes_or_no`, `indent`, `status_counts_msg`, `get_type_name`, `print_string`, `print_debug`, `print_dry_run`; the styling of output (the `--debug` preamble is coloured, ordinary and dry-run messages are not), rendered through a real Rich console so the assertions read the escape sequences; table-building helpers |
 | `test_property_overrides.py` | `utils/load_config.py` — `_apply_property_overrides`, `_parse_property_value` (CLI `--property` flag), and that a `common.variables` override holding an array, table or boolean is stored as JSON rather than as a Python repr |
 | `test_provision_utils.py` | `utils/provision_utils.py` — user data reading/concatenation via `get_user_data_property` |

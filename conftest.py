@@ -36,6 +36,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run system tests that provision real cloud compute (implies --run-system)",
     )
+    parser.addoption(
+        "--update-parser-snapshots",
+        action="store_true",
+        default=False,
+        help="Regenerate tests/parser_snapshots.json from the command registry",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
