@@ -17,8 +17,8 @@ class ConfigDataClient:
 @dataclass
 class ConfigCommon:
     url: str
-    key: str
-    secret: str
+    key: str | None  # None only from a lenient (strict=False) load
+    secret: str | None
     namespace: str
     name_tag: str
     use_pac: bool

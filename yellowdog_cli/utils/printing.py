@@ -3,6 +3,7 @@ Functions focused on print outputs.
 """
 
 import re
+import sys
 from collections.abc import Sequence
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -10,7 +11,6 @@ from datetime import datetime
 from json import dumps as json_dumps
 from json import loads as json_loads
 from os import get_terminal_size, getpid
-from sys import stderr
 from textwrap import fill
 from textwrap import indent as text_indent
 from typing import Any, TypeVar
@@ -262,7 +262,9 @@ def print_error(error_obj: Exception | str):
     Print an error message to stderr.
     """
     if ARGS_PARSER.no_format:
-        print(print_string(f"{ERROR_MARKER}{error_obj}"), flush=True, file=stderr)
+        # sys.stderr looked up at the call, so that a redirect (yd-doctor's
+        # capture of a configuration error) reaches it
+        print(print_string(f"{ERROR_MARKER}{error_obj}"), flush=True, file=sys.stderr)
         return
 
     CONSOLE_ERR.print(

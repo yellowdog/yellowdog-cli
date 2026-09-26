@@ -631,6 +631,25 @@ def resolve_variables_in_string(
     return result
 
 
+def undefined_variable_references(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[str]:
+    """
+    The names of the variables referenced in 'data' that nothing defines,
+    sorted and without duplicates. Reports nothing; yd-doctor's seam.
+    """
+    return sorted(
+        {
+            reference
+            for _, reference, _ in _unsubstituted_references(
+                data, prefix=prefix, postfix=postfix
+            )
+            if reference not in VARIABLE_SUBSTITUTIONS
+            and reference not in LAZY_VARIABLE_NAMES
+        }
+    )
+
+
 def warn_of_undefined_variables(
     data: dict | list, prefix: str = "", postfix: str = ""
 ) -> None:

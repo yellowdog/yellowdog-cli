@@ -194,6 +194,16 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def offline(self) -> bool | None:
+        return self.args.offline
+
+    @property
+    @allow_missing_attribute
+    def timeout(self) -> int | None:
+        return self.args.timeout
+
+    @property
+    @allow_missing_attribute
     def count_only(self) -> bool | None:
         return self.args.count
 

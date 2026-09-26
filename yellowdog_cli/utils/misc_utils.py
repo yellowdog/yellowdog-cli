@@ -346,12 +346,11 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     return new_yd_name
 
 
-def load_dotenv_file():
+def dotenv_file_path() -> str | None:
     """
-    Load extra environment variables from a .env file if it exists.
-    Do not override existing variables (environment takes precedence)
-    unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
-    Report on YD vars that are taken from .env.
+    The .env file a command would load: one beside the config file first,
+    else the nearest one found upwards from the current directory; None
+    when there is neither.
     """
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
@@ -359,11 +358,19 @@ def load_dotenv_file():
     config_path = ARGS_PARSER.config_file or "config.toml"
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
     if isfile(config_dir_dotenv):
-        dotenv_file = config_dir_dotenv
-    else:
-        dotenv_file = find_dotenv(usecwd=True)
+        return config_dir_dotenv
+    return find_dotenv(usecwd=True) or None
 
-    if not dotenv_file:
+
+def load_dotenv_file():
+    """
+    Load extra environment variables from a .env file if it exists.
+    Do not override existing variables (environment takes precedence)
+    unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
+    Report on YD vars that are taken from .env.
+    """
+    dotenv_file = dotenv_file_path()
+    if dotenv_file is None:
         return
 
     env_override = bool(ARGS_PARSER.env_override) or bool(

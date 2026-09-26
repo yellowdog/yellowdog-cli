@@ -68,6 +68,7 @@ pytest -v -n 4 --run-demos
 | `test_config_preamble.py` | `utils/printing.py`, `utils/load_config.py`, `utils/variables.py`, `utils/misc_utils.py`, `utils/wrapper.py` — the startup preamble is silent by default and, under `--debug`, every line of it carries the `DEBUG` marker. Imports `wrapper.py` in a subprocess, per scenario, for the messages emitted at import; calls `set_proxy()` directly, with the PAC lookup stubbed, for those emitted at command time. No platform access |
 | `test_csv_data.py` | `utils/csv_data.py` — `CSVTaskData`, `CSVDataCache`, substitution helpers |
 | `test_dataclient_utils.py` | `utils/dataclient_utils.py` — `resolve_remote_path` (rclone remote path resolution, trailing-slash directory intent) |
+| `test_doctor.py` | `yd-doctor` — the check model and runner, each check group through the seam it reads (fake `sys`, environment, temporary TOML, stub client and rclone), the real entry point offline, and that a set `YD_CONF` is ignored |
 | `test_download_destination.py` | `download.py` — where each item lands locally: `--destination` vs. `--into` for one glob, one literal path and several literal paths |
 | `test_dryrun_flags.py` | `utils/command_registry.py` — the dry-run flags on `yd-cancel`/`yd-shutdown`/`yd-terminate`: presence in `--help` and the parse-time by-name guard (no platform contact) |
 | `test_dryrun_utils.py` | `utils/dryrun_utils.py` — `report_dry_run` (human table via `yd-list`'s renderer, JSON output, empty match set) |
@@ -78,6 +79,7 @@ pytest -v -n 4 --run-demos
 | `test_interactive.py` | `utils/interactive.py` — `confirmed` (--yes / YD_YES shortcuts), `get_selected_list_items` (range parsing: comma, dash, `*`, error recovery) |
 | `test_list_name_glob.py` | `list.py` — `yd-list --name` glob filtering for every entity type that supports it, rejection for those that don't, and the warnings for unnamed items |
 | `test_load_config_helpers.py` | `utils/load_config.py` — helpers not covered by other test files, including a circular variable reference in a configuration section exiting with the error, the Worker Pool sections' undefined-variable re-check, and the single configuration values (`_resolve_value()`) resolving chains and exiting on a circular reference |
+| `test_load_config_sources.py` | `utils/load_config.py` — `CONFIG_SOURCES`, where each `[common]` value came from (command line, environment, config file, default, not set), and `load_config_common(strict=False)` returning a missing key or secret as `None` rather than exiting |
 | `test_ls_formatting.py` | `ls.py` — `_print_listing`, `_print_flat`, `_print_tree` output formatting |
 | `test_matched_item_rows.py` | `utils/dataclient_utils.py` — `matched_item_rows`, the enumeration behind `yd-delete`/`yd-download --dry-run --json`: each row's path must be usable verbatim and joined to the directory it came from |
 | `test_misc_utils.py` | `utils/misc_utils.py` — name formatting, ID generation, delimiter parsing, etc. |

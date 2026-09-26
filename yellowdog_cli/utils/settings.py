@@ -23,7 +23,6 @@ YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
 YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
-YD_CONF = "YD_CONF"
 ENV_VAR_SUB_PREFIX = "env:"
 
 # Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
@@ -49,6 +48,15 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 # event stream forever; a timeout during a quiet period just reconnects
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+
+# yd-doctor
+PYTHON_MIN_VERSION = (
+    3,
+    10,
+)  # must match pyproject.toml's requires-python; a test holds them together
+PYTHON_MAX_TESTED_VERSION = (3, 14)
+DOCTOR_DEFAULT_TIMEOUT = 10  # seconds, per network call
+PYPI_PROJECT_URL = "https://pypi.org/pypi/yellowdog-cli/json"
 
 # Prepended by format_yd_name() to a name that doesn't start with a letter.
 # The underscore is what makes the prefix visible as a prefix: bare 'yd' merges

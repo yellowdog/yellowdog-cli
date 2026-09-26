@@ -193,13 +193,14 @@
       * [yd-ls](#yd-ls)
       * [yd-copy](#yd-copy)
    * [Utility Commands](#utility-commands)
+      * [yd-doctor](#yd-doctor)
       * [yd-help](#yd-help)
       * [yd-version](#yd-version)
       * [yd-format-json](#yd-format-json)
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Sep 24 09:41:30 BST 2026 -->
+<!-- Added by: pwt, at: Fri Sep 25 17:37:11 BST 2026 -->
 
 <!--te-->
 
@@ -497,7 +498,7 @@ The name of the configuration file can be supplied in two different ways:
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd-submit -c jobs/config_1.toml`
 2. If not supplied, the commands look for a `config.toml` file in the current directory
 
-(The `YD_CONF` environment variable is no longer supported for selecting the configuration file; commands will exit with an error if it is set.)
+Run `yd-doctor` to see which configuration file was found and where each value came from.
 
 # Naming Rules
 
@@ -4064,7 +4065,7 @@ yd-variables -v instances=5 instances  # report a variable set on the command li
 {"namespace": "my-namespace", "tag": "my-tag"}
 ```
 
-Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`. Naming either of them reports its value — a name is an explicit request for that variable — and `--show-secrets` reports both in the full listing.
+Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`, and shows an inline data client remote (`dataClient.remote`, or a profile's `dataClient.<name>.remote`) with its name, type and provider only, every other parameter's value withheld as `<N parameters redacted>`, because those parameters are where an inline remote's credentials go; a named remote such as `myremote:` is shown as it is. Naming any of these variables reports its value in full — a name is an explicit request for that variable — and `--show-secrets` reports them all in the full listing.
 
 ```shell
 yd-variables                 # 'key' and 'secret' are reported as <REDACTED>
@@ -4092,7 +4093,7 @@ yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
 WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
 ```
 
-**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
+**No other variable is redacted.** `key`, `secret` and the inline remotes are the only ones the CLI can know to hold credentials: it adds them to the substitution table itself when it loads the configuration, and the rclone connection string's format says which part of it is parameters. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
 
 ## Resource Commands
 
@@ -4284,7 +4285,35 @@ yd-copy --dry-run input/ output/
 
 ## Utility Commands
 
-None of these commands requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options).
+None of `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options); `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+
+### yd-doctor
+
+The `yd-doctor` command checks whether this machine, this configuration and these credentials can run the CLI, and reports each check as `OK`, `WARN`, `FAIL` or `SKIP` with a remedy for anything wrong. It is the first thing to run when a command fails unexpectedly, and its output is what to include in a support request: the secret is shown redacted, and an inline data client remote with its name, type and provider only, every other parameter's value withheld.
+
+```shell
+yd-doctor [options]
+```
+
+It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads, and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
+
+Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
+
+Under formatted output a long detail or remedy wraps at the terminal's width, its continuation lines indented under its own column; under `--no-format` every row and every remedy is one line, for grep and pasting.
+
+Key options:
+- `--offline` — skip every check that reaches the network (PyPI, the Platform API, the data store)
+- `--json`/`-J` — emit the results as a JSON array, one object per check, for scripts
+- `--timeout <seconds>` — the budget for each network call (default 10)
+- `--quiet`/`-q` — print only the `WARN` and `FAIL` lines and the summary
+
+```shell
+yd-doctor                    # everything, against the current configuration
+yd-doctor --offline          # no network calls
+yd-doctor --json | jq '.[] | select(.status == "FAIL")'
+```
+
+The exit code is 1 if any check failed, else 0, so it can gate a script or a CI job.
 
 ### yd-help
 

@@ -25,6 +25,8 @@ from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 set_user_agent()
 
 CONFIG_COMMON: ConfigCommon = load_config_common()
+# A strict load never returns None for either; the assert narrows the types
+assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
 CLIENT = PlatformClient.create(
     ServicesSchema(defaultUrl=CONFIG_COMMON.url),
     ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),

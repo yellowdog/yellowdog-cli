@@ -27,7 +27,17 @@ SUBSTITUTIONS = {
     # A user-defined variable that holds a credential and says so in its name.
     # Deliberately NOT redacted: see TestRedaction below
     "APP_SECRET_MINE": "a-user-defined-secret",
+    # The data client remotes the CLI registers from [dataClient]: an inline
+    # connection string carries credentials in its parameters, a named remote
+    # carries none
+    "dataClient.remote": (
+        ":s3,provider=AWS,access_key_id=AKIAEXAMPLE,secret_access_key=SUPERSECRET:"
+    ),
+    "dataClient.backup.remote": "myremote:",
+    "dataClient.other.remote": ":s3,provider=AWS,secret_access_key=ALSOSECRET:",
 }
+
+INLINE_REMOTE_SECRETS = ("AKIAEXAMPLE", "SUPERSECRET", "ALSOSECRET")
 
 
 @pytest.fixture
@@ -83,6 +93,9 @@ class TestOrdering:
         assert list(report_variables([])) == [
             "APP_SECRET_MINE",
             "all",
+            "dataClient.backup.remote",
+            "dataClient.other.remote",
+            "dataClient.remote",
             "key",
             "namespace",
             "secret",
@@ -145,6 +158,36 @@ class TestRedaction:
         # the process running on '<REDACTED>' as its actual credentials
         assert variables_module.VARIABLE_SUBSTITUTIONS["key"] == SUBSTITUTIONS["key"]
 
+    # An inline rclone remote is the third thing the CLI can *know* holds
+    # credentials: it registers {{dataClient.*.remote}} itself, and the rclone
+    # parser knows which part of an inline connection string is parameters.
+    # Shown as the doctor shows it: name, type and provider, the rest withheld
+
+    def test_reporting_every_variable_withholds_inline_remote_parameters(
+        self, substitutions
+    ):
+        shown = report_variables([])["dataClient.remote"]
+        assert "provider=AWS" in shown
+        assert "2 parameters redacted" in shown
+        assert not any(secret in shown for secret in INLINE_REMOTE_SECRETS)
+
+    def test_a_profile_inline_remote_is_withheld_too(self, substitutions):
+        shown = report_variables([])["dataClient.other.remote"]
+        assert "1 parameter redacted" in shown
+        assert "ALSOSECRET" not in shown
+
+    def test_a_named_remote_is_reported_as_is(self, substitutions):
+        assert report_variables([])["dataClient.backup.remote"] == "myremote:"
+
+    def test_show_secrets_reports_the_inline_remote_in_full(self, substitutions):
+        reported = report_variables([], show_secrets=True)
+        assert reported["dataClient.remote"] == SUBSTITUTIONS["dataClient.remote"]
+
+    def test_naming_the_remote_reports_it_in_full(self, substitutions):
+        assert report_variables(["dataClient.remote"]) == {
+            "dataClient.remote": SUBSTITUTIONS["dataClient.remote"]
+        }
+
 
 # ---------------------------------------------------------------------------
 # The output of the command itself
@@ -198,6 +241,24 @@ class TestCommandOutput:
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"instances": "5"}
+
+    def test_an_inline_remote_keeps_its_secrets_out_of_the_full_report(self, tmp_path):
+        # The real command, end to end: the planted parameters never reach
+        # stdout unless asked for with --show-secrets
+        remote = SUBSTITUTIONS["dataClient.remote"]
+        withheld = _run("-q", "--property", f"dataClient.remote={remote}", cwd=tmp_path)
+        shown = _run(
+            "-q",
+            "--show-secrets",
+            "--property",
+            f"dataClient.remote={remote}",
+            cwd=tmp_path,
+        )
+
+        assert withheld.returncode == 0, withheld.stderr
+        assert "provider=AWS" in loads(withheld.stdout)["dataClient.remote"]
+        assert not any(s in withheld.stdout for s in INLINE_REMOTE_SECRETS)
+        assert loads(shown.stdout)["dataClient.remote"] == remote
 
     def test_names_are_accepted_ahead_of_the_options(self, tmp_path):
         # The shape Commander builds in _yd_variables_command(): the names sit

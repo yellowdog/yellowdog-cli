@@ -27,6 +27,7 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.settings import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DEFAULT_URL,
+    DOCTOR_DEFAULT_TIMEOUT,
     ET_ALLOWANCES,
     ET_APPLICATIONS,
     ET_ATTRIBUTE_DEFINITIONS,
@@ -235,6 +236,20 @@ SYNONYMS: dict[str, str] = {
 # For help text: "allowances (A)", "applications (B)", ...
 _SYNONYM_REVERSE: dict[str, str] = {v: k for k, v in SYNONYMS.items()}
 _ENTITY_TYPE_HELP = ", ".join(f"{t} ({_SYNONYM_REVERSE[t]})" for t in ENTITY_TYPES)
+
+
+def positive_int(value: str) -> int:
+    """
+    An argparse type for a count or a budget that must be at least 1:
+    anything else is a usage error rather than a value that misleads later.
+    """
+    try:
+        number = int(value)
+    except ValueError:
+        raise ArgumentTypeError(f"invalid int value: '{value}'") from None
+    if number < 1:
+        raise ArgumentTypeError(f"must be a positive integer, not {number}")
+    return number
 
 
 def resolve_entity_type(value: str) -> str:
@@ -460,6 +475,20 @@ JSON = option(
     action="store_true",
     required=False,
     help="emit results as a plain JSON array (suppresses table formatting)",
+)
+OFFLINE = option(
+    "--offline",
+    action="store_true",
+    required=False,
+    help="skip every check that reaches the network (PyPI, the Platform API, the data store)",
+)
+TIMEOUT = option(
+    "--timeout",
+    type=positive_int,
+    required=False,
+    default=DOCTOR_DEFAULT_TIMEOUT,
+    help=f"seconds allowed for each network call (default {DOCTOR_DEFAULT_TIMEOUT})",
+    metavar="<seconds>",
 )
 FOLLOW = option(
     "--follow",
@@ -1232,6 +1261,24 @@ COMMANDS["yd-delete"] = Command(
 )
 # The prog is set by the caller, so one object serves both names.
 COMMANDS["yd-rm"] = COMMANDS["yd-delete"]
+
+# --- yd-doctor -----------------------------------------------------------
+
+COMMANDS["yd-doctor"] = Command(
+    name="yd-doctor",
+    purpose="checking the installation, configuration and platform connection",
+    summary="Check the installation, configuration and platform connection",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        TAG,
+        OFFLINE,
+        JSON.variant(help="emit the check results as a JSON array"),
+        TIMEOUT,
+    ),
+    requires_namespace_and_tag=True,
+)
 
 # --- yd-download ---------------------------------------------------------
 
@@ -2086,7 +2133,8 @@ COMMANDS["yd-variables"] = Command(
         VARIABLE_NAMES,
         SHOW_SECRETS.variant(
             help=(
-                "include the values of the 'key' and 'secret' variables when"
+                "include the values of the 'key' and 'secret' variables, and the"
+                " parameters of an inline data client remote, when"
                 " reporting all variables; they are always reported when named"
                 " explicitly. No other variable is ever redacted: a user-defined"
                 " variable holding a credential is reported in full"
