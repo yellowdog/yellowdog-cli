@@ -318,20 +318,20 @@ class TestRenderingRegressions:
 
     DETAIL = " ".join(f"word{i}" for i in range(30))  # 30 words, well past 60 columns
 
-    def _narrow_console(self, monkeypatch):
+    def _narrow_console(self, monkeypatch, force_terminal=True):
         import io
 
         from rich.console import Console
 
         console = Console(
-            width=60, file=io.StringIO(), force_terminal=False, no_color=True
+            width=60, file=io.StringIO(), force_terminal=force_terminal, no_color=True
         )
         monkeypatch.setattr(doctor, "CONSOLE_TABLE", console)
         return console
 
     def test_a_long_detail_wraps_under_its_column(self, monkeypatch, capsys):
         _args(monkeypatch)
-        console = self._narrow_console(monkeypatch)
+        console = self._narrow_console(monkeypatch, force_terminal=True)
         detail = self.DETAIL
         assert len(detail) > 150
         doctor.render_table([_row("Groups and roles", dc.Result(dc.Status.OK, detail))])
@@ -345,6 +345,16 @@ class TestRenderingRegressions:
         pieces = [lines[0][offset:]] + [line[offset:] for line in lines[1:]]
         assert " ".join(pieces) == detail
 
+    def test_a_long_detail_is_one_line_off_a_terminal(self, monkeypatch, capsys):
+        _args(monkeypatch)
+        console = self._narrow_console(monkeypatch, force_terminal=False)
+        detail = self.DETAIL
+        assert len(detail) > 150
+        doctor.render_table([_row("Groups and roles", dc.Result(dc.Status.OK, detail))])
+        lines = console.file.getvalue().splitlines()
+        rows = [line for line in lines if "word" in line]
+        assert len(rows) == 1 and rows[0].endswith(detail)
+
     def test_a_long_detail_is_one_line_under_no_format(self, monkeypatch, capsys):
         _args(monkeypatch, no_format=True)
         self._narrow_console(monkeypatch)
@@ -356,7 +366,7 @@ class TestRenderingRegressions:
 
     def test_a_long_remedy_wraps_under_its_text(self, monkeypatch):
         _args(monkeypatch)
-        console = self._narrow_console(monkeypatch)
+        console = self._narrow_console(monkeypatch, force_terminal=True)
         doctor._print_remedies(
             [
                 (
@@ -374,9 +384,24 @@ class TestRenderingRegressions:
         text = " ".join([lines[0][offset:]] + [line[offset:] for line in lines[1:]])
         assert text == f"Latest: {self.DETAIL}"
 
+    def test_a_long_remedy_is_one_line_off_a_terminal(self, monkeypatch):
+        _args(monkeypatch)
+        console = self._narrow_console(monkeypatch, force_terminal=False)
+        doctor._print_remedies(
+            [
+                (
+                    _check("Latest", dc.Result(dc.Status.WARN, "old")),
+                    dc.Result(dc.Status.WARN, "old", self.DETAIL),
+                )
+            ]
+        )
+        lines = console.file.getvalue().splitlines()
+        rows = [line for line in lines if line.startswith("WARN Latest:")]
+        assert len(rows) == 1 and rows[0] == f"WARN Latest: {self.DETAIL}"
+
     def test_a_long_token_is_not_split(self, monkeypatch):
         _args(monkeypatch)
-        console = self._narrow_console(monkeypatch)
+        console = self._narrow_console(monkeypatch, force_terminal=True)
         token = "ydid:" + "x" * 65
         doctor.render_table(
             [_row("Tag", dc.Result(dc.Status.OK, f"short {token} end"))]

@@ -4299,7 +4299,7 @@ It checks, in order: the Python version and how the CLI was installed; the CLI, 
 
 Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
 
-Under formatted output a long detail or remedy wraps at the terminal's width, its continuation lines indented under its own column; under `--no-format` every row and every remedy is one line, for grep and pasting.
+A long detail or remedy wraps at the terminal's width, its continuation lines indented under its own column, only on a terminal; when piped or redirected, and under `--no-format`, every row and every remedy is one line, for grep and pasting.
 
 Key options:
 - `--offline` — skip every check that reaches the network (PyPI, the Platform API, the data store)

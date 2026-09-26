@@ -65,16 +65,24 @@ def _print_line(plain_prefix: str, markup_prefix: str, text: str) -> None:
     and status columns, or the status word) then its text.
 
     Under --no-format, one line whatever its length, for grep and pasting.
-    Formatted, the text wraps at the console's width, on whitespace only so
-    that no YDID, URL or path is split, and every continuation line is
-    indented to where the text began, leaving the columns to its left clear.
-    The wrapping is done here, on the plain text, rather than by the
-    console, which would carry the text on at column 0; 'soft_wrap=True'
-    then stops the console wrapping a line again, one too long only for a
-    word it could not break.
+    On a real terminal the text wraps at the console's width, on whitespace
+    only so that no YDID, URL or path is split, and every continuation line
+    is indented to where the text began, leaving the columns to its left
+    clear. Piped or redirected, Rich still reports a console width (80 by
+    default), but there is no screen for the wrap to save space on and a
+    consumer reading lines would see only a remedy's first one, so it is
+    one line there too, printed through the same console, and so the same
+    highlighter, as the wrapped lines. The wrapping is done here, on the
+    plain text, rather than by the console, which would carry the text on
+    at column 0; 'soft_wrap=True' then stops the console wrapping a line
+    again, one too long only for a word it could not break
+    (and, off a terminal, stops it wrapping the unbroken line at all).
     """
     if ARGS_PARSER.no_format:
         print_simple(f"{plain_prefix}{text}".rstrip(), override_quiet=True)
+        return
+    if not CONSOLE_TABLE.is_terminal:
+        CONSOLE_TABLE.print(f"{markup_prefix}{escape(text)}".rstrip(), soft_wrap=True)
         return
     offset = len(plain_prefix)
     pieces = textwrap.wrap(
