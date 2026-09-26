@@ -17,7 +17,10 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.entity_utils import (
     clear_application_caches,
+    clear_compute_requirement_template_cache,
+    clear_compute_source_template_cache,
     clear_group_caches,
+    clear_image_caches,
     clear_keyring_cache,
     get_application_id_by_name,
     get_compute_requirement_template_id_by_name,
@@ -170,6 +173,7 @@ def remove_compute_source_template(resource: dict):
 
     try:
         CLIENT.compute_client.delete_compute_source_template_by_id(source_id)
+        clear_compute_source_template_cache()
         print_info(f"Removed Compute Source Template '{name}' ({source_id})")
     except Exception as e:
         raise RuntimeError(
@@ -199,6 +203,7 @@ def remove_compute_requirement_template(resource: dict):
 
     try:
         CLIENT.compute_client.delete_compute_requirement_template_by_id(template_id)
+        clear_compute_requirement_template_cache()
         print_info(f"Removed Compute Requirement Template '{name}' ({template_id})")
     except Exception as e:
         raise RuntimeError(
@@ -295,6 +300,7 @@ def remove_image_family(resource: dict):
 
     try:
         CLIENT.images_client.delete_image_family(image_family)
+        clear_image_caches()
         print_info(f"Removed Image Family '{fq_name}' ({image_family.id})")
     except Exception as e:
         print_error(f"Unable to remove Image Family '{fq_name}': {e}")
@@ -377,6 +383,7 @@ def remove_resource_by_id(resource_id: str) -> bool:
         if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
             if confirmed(f"Remove Compute Source Template {resource_id}?"):
                 CLIENT.compute_client.delete_compute_source_template_by_id(resource_id)
+                clear_compute_source_template_cache()
                 print_info(
                     f"Removed Compute Source Template {resource_id} (if present)"
                 )
@@ -386,6 +393,7 @@ def remove_resource_by_id(resource_id: str) -> bool:
                 CLIENT.compute_client.delete_compute_requirement_template_by_id(
                     resource_id
                 )
+                clear_compute_requirement_template_cache()
                 print_info(
                     f"Removed Compute Requirement Template {resource_id} (if present)"
                 )
@@ -396,6 +404,7 @@ def remove_resource_by_id(resource_id: str) -> bool:
                     CLIENT.images_client.get_image_family_by_id(resource_id)
                 )
                 CLIENT.images_client.delete_image_family(family)
+                clear_image_caches()
                 print_info(f"Removed Image Family {resource_id} (if present)")
 
         elif ydid_type == YDIDType.IMAGE_GROUP:
@@ -404,12 +413,14 @@ def remove_resource_by_id(resource_id: str) -> bool:
                     resource_id
                 )
                 CLIENT.images_client.delete_image_group(group)
+                clear_image_caches()
                 print_info(f"Removed Image Group {resource_id} (if present)")
 
         elif ydid_type == YDIDType.IMAGE:
             if confirmed(f"Remove Image '{resource_id}'?"):
                 image: MachineImage = CLIENT.images_client.get_image(resource_id)
                 CLIENT.images_client.delete_image(image)
+                clear_image_caches()
                 print_info(f"Removed Image {resource_id} (if present)")
 
         elif ydid_type == YDIDType.KEYRING:
@@ -439,11 +450,13 @@ def remove_resource_by_id(resource_id: str) -> bool:
         elif ydid_type == YDIDType.GROUP:
             if confirmed(f"Remove Group {resource_id}?"):
                 CLIENT.account_client.delete_group(resource_id)
+                clear_group_caches()
                 print_info(f"Removed Group {resource_id} (if present)")
 
         elif ydid_type == YDIDType.APPLICATION:
             if confirmed(f"Remove Application {resource_id}?"):
                 CLIENT.account_client.delete_application(resource_id)
+                clear_application_caches()
                 print_info(f"Removed Application {resource_id} (if present)")
 
         else:

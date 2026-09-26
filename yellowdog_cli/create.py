@@ -239,6 +239,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
     # Allow image families (etc.) to be referenced by name rather than ID
     global CLEAR_IMAGE_FAMILY_CACHE
     if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
+        clear_image_caches()
         CLEAR_IMAGE_FAMILY_CACHE = False
 
     # Google CSTs use property name 'image' instead of 'imageId'
@@ -284,6 +285,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         compute_source = CLIENT.compute_client.add_compute_source_template(
             compute_source_template
         )
+        clear_compute_source_template_cache()
         print_info(f"Created Compute Source Template '{name}' ({compute_source.id})")
     else:
         if not confirmed(f"Update existing Compute Source Template '{name}'?"):
@@ -292,6 +294,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         compute_source = CLIENT.compute_client.update_compute_source_template(
             compute_source_template
         )
+        clear_compute_source_template_cache()
         print_info(
             f"Updated existing Compute Source Template '{name}' ({compute_source.id})"
         )
@@ -325,6 +328,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     # Allow image families to be referenced by name rather than ID
     global CLEAR_IMAGE_FAMILY_CACHE
     if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
+        clear_image_caches()
         CLEAR_IMAGE_FAMILY_CACHE = False
 
     def _get_images_id(image_str: str, context: dict, key: str):
@@ -396,6 +400,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         template = CLIENT.compute_client.add_compute_requirement_template(
             compute_template
         )
+        clear_compute_requirement_template_cache()
         global CLEAR_CRT_CACHE
         CLEAR_CRT_CACHE = True
         print_info(f"Created Compute Requirement Template '{name}' ({template.id})")
@@ -412,6 +417,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     template = CLIENT.compute_client.update_compute_requirement_template(
         compute_template
     )
+    clear_compute_requirement_template_cache()
     print_info(
         f"Updated existing Compute Requirement Template '{name}' ({template.id})"
     )
@@ -1076,6 +1082,7 @@ def create_group(resource: dict):
             AddGroupRequest(name=name, description=description)
         )
         print_info(f"Created Group '{group_.name}' ({group_.id})")
+        clear_group_caches()
         return group_
 
     def update_group(group_id_: str) -> Group | None:
@@ -1160,6 +1167,7 @@ def create_application(resource: dict):
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
             CLIENT.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
+            clear_application_caches()
             print_info(
                 f"Removed Group '{get_group_name_by_id(CLIENT, cast(str, group_id))}' "
                 f"from Application ({group_id})"
@@ -1168,6 +1176,7 @@ def create_application(resource: dict):
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
             CLIENT.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
+            clear_application_caches()
             print_info(
                 f"Added Group '{get_group_name_by_id(CLIENT, group_id)}' "
                 f"to Application ({group_id})"
@@ -1190,6 +1199,7 @@ def create_application(resource: dict):
         app = app_response.application
         print_info(f"Created Application '{app.name}' ({app.id})")  # type: ignore[union-attr]
         show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
+        clear_application_caches()
         update_groups(app)  # type: ignore[arg-type]
         if (
             keyrings
@@ -1218,6 +1228,7 @@ def create_application(resource: dict):
         if ARGS_PARSER.regenerate_app_keys:
             print_info("Regenerating Application key and secret")
             api_key = CLIENT.account_client.regenerate_application_api_key(app_id)
+            clear_application_caches()
             if api_key is None:
                 print_error("New API key/secret not returned")
             else:
