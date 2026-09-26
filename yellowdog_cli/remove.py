@@ -18,6 +18,7 @@ from yellowdog_client.model import (
 from yellowdog_cli.utils.entity_utils import (
     clear_application_caches,
     clear_group_caches,
+    clear_keyring_cache,
     get_application_id_by_name,
     get_compute_requirement_template_id_by_name,
     get_compute_source_template_id_by_name,
@@ -220,6 +221,7 @@ def remove_keyring(resource: dict):
 
     try:
         CLIENT.keyring_client.delete_keyring_by_name(name)
+        clear_keyring_cache()
         print_info(f"Removed Keyring '{name}'")
     except HTTPError as e:
         if e.response is not None and e.response.status_code == 404:
@@ -412,13 +414,17 @@ def remove_resource_by_id(resource_id: str) -> bool:
 
         elif ydid_type == YDIDType.KEYRING:
             if confirmed(f"Remove Keyring {resource_id}?"):
-                keyrings = CLIENT.keyring_client.find_all_keyrings()
-                for keyring in keyrings:
-                    if keyring.id == resource_id:
-                        CLIENT.keyring_client.delete_keyring_by_name(keyring.name)  # type: ignore[arg-type]
-                        print_info(f"Removed Keyring {resource_id}")
-                        return True
-                print_warning(f"Cannot find Keyring {resource_id}")
+                try:
+                    keyring = CLIENT.keyring_client.get_keyring(resource_id)
+                except HTTPError as e:
+                    if e.response is not None and e.response.status_code == 404:
+                        print_warning(f"Cannot find Keyring {resource_id}")
+                        return False
+                    raise
+                CLIENT.keyring_client.delete_keyring_by_name(keyring.name)  # type: ignore[arg-type]
+                clear_keyring_cache()
+                print_info(f"Removed Keyring {resource_id}")
+                return True
 
         elif ydid_type == YDIDType.WORKER_POOL:
             if confirmed(f"Shut down Worker Pool {resource_id}?"):

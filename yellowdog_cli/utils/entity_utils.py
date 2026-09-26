@@ -32,6 +32,8 @@ from yellowdog_client.model import (
     Instance,
     InstanceSearch,
     InternalUser,
+    KeyringSearch,
+    KeyringSummary,
     MachineImageFamily,
     MachineImageFamilySearch,
     MachineImageFamilySummary,
@@ -228,6 +230,27 @@ def get_work_requirement_summary_by_name_or_id(
             return work_requirement_summary
 
     return None
+
+
+@lru_cache
+def get_keyring_summary_by_name(
+    client: PlatformClient, name: str
+) -> KeyringSummary | None:
+    """
+    Find a Keyring's summary by its exact name, or None. The search's 'name'
+    is a partial match, so the results are filtered for equality here.
+    Keyring names are unique within an account. Cached.
+    """
+    summaries = client.keyring_client.get_keyrings(KeyringSearch(name=name)).list_all()
+    return next((s for s in summaries if s.name == name), None)
+
+
+def clear_keyring_cache():
+    """
+    Forget the Keyring name lookups: a Keyring created or removed in this run
+    must be found, or not, by the specifications that follow it.
+    """
+    get_keyring_summary_by_name.cache_clear()
 
 
 @lru_cache

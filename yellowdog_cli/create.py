@@ -42,6 +42,7 @@ from yellowdog_cli.utils.entity_utils import (
     clear_compute_source_template_cache,
     clear_group_caches,
     clear_image_caches,
+    clear_keyring_cache,
     get_application_group_summaries,
     get_application_id_by_name,
     get_compute_requirement_template_id_by_name,
@@ -49,6 +50,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_group_id_by_name,
     get_group_name_by_id,
     get_image_name_or_id,
+    get_keyring_summary_by_name,
     get_role_id_by_name,
     get_role_name_by_id,
     get_user_by_name_or_id,
@@ -237,7 +239,6 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
     # Allow image families (etc.) to be referenced by name rather than ID
     global CLEAR_IMAGE_FAMILY_CACHE
     if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
-        clear_image_caches()
         CLEAR_IMAGE_FAMILY_CACHE = False
 
     # Google CSTs use property name 'image' instead of 'imageId'
@@ -324,7 +325,6 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     # Allow image families to be referenced by name rather than ID
     global CLEAR_IMAGE_FAMILY_CACHE
     if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
-        clear_image_caches()
         CLEAR_IMAGE_FAMILY_CACHE = False
 
     def _get_images_id(image_str: str, context: dict, key: str):
@@ -421,7 +421,10 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
 
 def create_keyring(resource: dict, show_secrets: bool = False):
     """
-    Create or delete/recreate a Keyring.
+    Create a Keyring, or update the description of an existing one in place.
+    The description is the only thing the Platform lets a Keyring change; the
+    name is what an existing one is matched on. Credentials and accessors are
+    untouched by an update -- the Keyring is no longer deleted and recreated.
     """
     try:
         name = resource[PROP_NAME]
@@ -429,16 +432,22 @@ def create_keyring(resource: dict, show_secrets: bool = False):
     except KeyError as e:
         raise KeyError(f"Expected property to be defined ({e})")
 
-    keyrings: list[model.KeyringSummary] = CLIENT.keyring_client.find_all_keyrings()
-    for keyring in keyrings:
-        if keyring.name == name:
-            if not confirmed(f"Keyring '{name}' already exists: delete and recreate?"):
-                return
-            CLIENT.keyring_client.delete_keyring_by_name(name)
-            print_info(f"Deleted Keyring '{name}'")
+    existing = get_keyring_summary_by_name(CLIENT, name)
+    if existing is not None:
+        if not confirmed(f"Keyring '{name}' already exists: update its description?"):
+            return
+        keyring = CLIENT.keyring_client.update_keyring(
+            cast(str, existing.id), model.UpdateKeyringRequest(description=description)
+        )
+        clear_keyring_cache()  # the cached summary carries the old description
+        print_info(f"Updated Keyring '{name}' ({keyring.id})")
+        if ARGS_PARSER.quiet:
+            print(keyring.id)
+        return
 
     try:
         keyring_response = CLIENT.keyring_client.add_keyring(name, description)
+        clear_keyring_cache()
         keyring = keyring_response.keyring
         keyring_password = keyring_response.keyringPassword
         keyring_password = (
@@ -523,6 +532,7 @@ def create_image_family(resource):
         # This will update the Image Family but not its constituent
         # Image Group/Image resources
         CLIENT.images_client.update_image_family(image_family)
+        clear_image_caches()
         print_info(
             f"Updated existing Machine Image Family '{fq_name}' ('{image_family.id}')"
         )
@@ -1066,7 +1076,6 @@ def create_group(resource: dict):
             AddGroupRequest(name=name, description=description)
         )
         print_info(f"Created Group '{group_.name}' ({group_.id})")
-        clear_group_caches()
         return group_
 
     def update_group(group_id_: str) -> Group | None:
@@ -1079,6 +1088,7 @@ def create_group(resource: dict):
         group_: Group = CLIENT.account_client.update_group(
             group_id_, UpdateGroupRequest(name=name, description=description)
         )
+        clear_group_caches()
         print_info(f"Updated Group '{group_.name}' ({group_.id})")
         return group_
 
@@ -1180,7 +1190,6 @@ def create_application(resource: dict):
         app = app_response.application
         print_info(f"Created Application '{app.name}' ({app.id})")  # type: ignore[union-attr]
         show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
-        clear_application_caches()
         update_groups(app)  # type: ignore[arg-type]
         if (
             keyrings
@@ -1201,6 +1210,7 @@ def create_application(resource: dict):
         app: Application = CLIENT.account_client.update_application(
             app_id, _get_model_object(RN_UPDATE_APPLICATION_REQUEST, resource)
         )
+        clear_application_caches()
         print_info(f"Updated Application '{app.name}' ({app.id})")
         update_groups(app)
 
@@ -1393,6 +1403,7 @@ def _create_image_family(
     # Create the image family
     try:
         image_family = CLIENT.images_client.add_image_family(image_family)
+        clear_image_caches()
     except Exception as e:
         raise RuntimeError(f"Failed to create Machine Image Family '{fq_name}': {e}")
 

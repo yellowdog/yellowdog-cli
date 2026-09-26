@@ -148,6 +148,16 @@ def _worker_pool(client: MagicMock) -> tuple[str, _Obj]:
     return _ydid("wrkrpool"), obj
 
 
+def _keyring(client: MagicMock) -> tuple[str, _Obj]:
+    # Fetched by ID in one call; the deprecated find_all_keyrings() is never used
+    obj = _Obj("keyring")
+    client.keyring_client.get_keyring.return_value = obj
+    client.keyring_client.find_all_keyrings.side_effect = AssertionError(
+        "find_all_keyrings() is deprecated and must not be called"
+    )
+    return _ydid("keyring"), obj
+
+
 # The nine that dropped the array framing, plus two that kept it, as controls
 SETUPS = [
     _compute_requirement,
@@ -161,6 +171,7 @@ SETUPS = [
     _image,
     _image_family,
     _worker_pool,
+    _keyring,
 ]
 
 

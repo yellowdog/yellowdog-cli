@@ -7,9 +7,9 @@ Command to show the JSON details of YellowDog entities via their IDs.
 from sys import exit as sys_exit
 from typing import Any
 
+from requests.exceptions import HTTPError
 from yellowdog_client.model import ConfiguredWorkerPool
 
-from yellowdog_cli.list import get_keyring
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
     get_instance_by_id,
@@ -256,18 +256,15 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.KEYRING:
             print_info(f"Showing details of Keyring ID '{ydid}'")
-            keyrings = CLIENT.keyring_client.find_all_keyrings()
-            for keyring in keyrings:
-                if keyring.id == ydid:
-                    # This fetches additional Keyring data: credentials and accessors
-                    return [
-                        (
-                            get_keyring(keyring.name),  # type: ignore[arg-type]
-                            {RESOURCE_PROPERTY_NAME: RN_KEYRING},
-                        )
-                    ]
-            print_error(f"Keyring ID '{ydid}' not found")
-            return None
+            try:
+                # The Keyring with its credentials and accessors, in one call
+                keyring = CLIENT.keyring_client.get_keyring(ydid)
+            except HTTPError as e:
+                if is_http_not_found(e):
+                    print_error(f"Keyring ID '{ydid}' not found")
+                    return None
+                raise
+            return [(keyring, {RESOURCE_PROPERTY_NAME: RN_KEYRING})]
 
         elif ydid_type == YDIDType.ALLOWANCE:
             print_info(f"Showing details of Allowance ID '{ydid}'")

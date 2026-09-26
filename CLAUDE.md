@@ -70,7 +70,7 @@ yellowdog_cli/
     ├── config_types.py          # Configuration dataclasses
     ├── load_config.py           # Config loading from TOML/env vars
     ├── settings.py              # Constants, env var names, Rich theme
-    ├── entity_utils.py          # API entity lookups (LRU-cached search functions); name-glob resolution, expansion and filtering for entity selection
+    ├── entity_utils.py          # API entity lookups (LRU-cached search functions); name-glob resolution, expansion and filtering for entity selection. Keyrings go through the SDK's own calls: get_keyring_summary_by_name() resolves a name exactly over get_keyrings(KeyringSearch(name=...)), whose name is a partial match; yd-show and yd-remove fetch by ID with get_keyring(); yd-create updates an existing Keyring's description with update_keyring() rather than deleting and recreating it, and clears the lookup's cache with clear_keyring_cache() after an add, an update, or a removal by either route, as the template lookups do, so a later specification in the same run sees the change; the deprecated find_all_keyrings() is not used anywhere, and list.py's raw HTTP get_keyring() stand-in is gone
     ├── glob_utils.py            # contains_glob_chars() and glob_search_prefix(): the glob-character set, and the literal prefix a pattern can be searched by
     ├── printing.py              # Rich-based output formatting; print_debug() is the configuration/startup preamble, gated on '--debug' and coloured, and print_dry_run() the '--dry-run' messages — each prepends its marker from settings.py and delegates to print_info(), which takes an optional Rich style
     ├── variables.py             # Variable substitution engine ({{ }} delimiters)

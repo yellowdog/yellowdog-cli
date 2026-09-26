@@ -2777,7 +2777,7 @@ When a new Keyring is created it's usable only by the YellowDog application whic
 Keyring 'my-keyring-1': Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
 ```
 
-Note that Keyrings **cannot be updated**; they must instead be removed and recreated, and in doing so, any contained credentials will be lost.
+Re-running `yd-create` on an existing Keyring **updates its description in place**, after confirmation, and leaves its credentials and accessors as they are: the description is the only property the Platform allows to change, and the name is what an existing Keyring is matched on. To recreate a Keyring — for a fresh password, say — remove it with `yd-remove` and create it again, which loses its credentials.
 
 ## Credentials
 
