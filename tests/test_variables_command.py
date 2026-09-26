@@ -10,11 +10,17 @@ warnings ahead of it and the wrapper's 'Done' after it, and only JSON under
 import os
 import subprocess
 from json import loads
+from pathlib import Path
 
 import pytest
 
 import yellowdog_cli.utils.variables as variables_module
-from yellowdog_cli.utils.settings import REDACTED_VALUE, WARNING_MARKER
+from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+from yellowdog_cli.utils.settings import (
+    REDACTED_VALUE,
+    SECRET_VARIABLE_NAME_PATTERN,
+    WARNING_MARKER,
+)
 from yellowdog_cli.variables import report_variables
 
 SUBSTITUTIONS = {
@@ -24,9 +30,13 @@ SUBSTITUTIONS = {
     "all": "a variable that happens to be called 'all'",
     "key": "an-application-key",
     "secret": "an-application-secret",
-    # A user-defined variable that holds a credential and says so in its name.
-    # Deliberately NOT redacted: see TestRedaction below
+    # A user-defined variable that holds a credential and says so in its name:
+    # redacted by SECRET_VARIABLE_NAME_PATTERN (see TestRedaction below)
     "APP_SECRET_MINE": "a-user-defined-secret",
+    # User-defined variables whose names do not match the pattern, 'key' alone
+    # included: both are reported in full
+    "APP_KEY_DEMO": "an-identifier-not-a-secret",
+    "deploy_target": "production",
     # The data client remotes the CLI registers from [dataClient]: an inline
     # connection string carries credentials in its parameters, a named remote
     # carries none
@@ -91,11 +101,13 @@ class TestSelection:
 class TestOrdering:
     def test_every_variable_is_reported_in_alphabetical_order(self, substitutions):
         assert list(report_variables([])) == [
+            "APP_KEY_DEMO",
             "APP_SECRET_MINE",
             "all",
             "dataClient.backup.remote",
             "dataClient.other.remote",
             "dataClient.remote",
+            "deploy_target",
             "key",
             "namespace",
             "secret",
@@ -141,16 +153,56 @@ class TestRedaction:
             "tag": SUBSTITUTIONS["tag"],
         }
 
-    def test_no_other_variable_is_redacted(self, substitutions):
-        # The deliberate limit: only the two variables the CLI injects itself
-        # can be known to be credentials. A user-defined variable holding one --
-        # named 'APP_SECRET_MINE' here -- is reported in full, because guessing
-        # from the name would be a guarantee the command cannot keep
+    def test_a_variable_whose_name_looks_like_a_credential_is_redacted(
+        self, substitutions
+    ):
+        # The heuristic: a user-defined name matching SECRET_VARIABLE_NAME_PATTERN
+        # is redacted in the full report, and the command says so (see
+        # TestCredentialNamePatternNote)
+        assert report_variables([])["APP_SECRET_MINE"] == REDACTED_VALUE
+
+    @pytest.mark.parametrize("name", ["APP_KEY_DEMO", "deploy_target"])
+    def test_a_variable_whose_name_does_not_match_is_reported_in_full(
+        self, substitutions, name
+    ):
+        # 'key' alone is deliberately not in the pattern: APP_KEY_DEMO is an
+        # identifier, not a secret
+        assert report_variables([])[name] == SUBSTITUTIONS[name]
+
+    def test_only_the_known_and_matching_names_are_redacted(self, substitutions):
         reported = report_variables([])
+        assert [
+            name for name, value in reported.items() if value == REDACTED_VALUE
+        ] == ["APP_SECRET_MINE", "key", "secret"]
+
+    def test_naming_a_matching_variable_reports_it(self, substitutions):
+        assert report_variables(["APP_SECRET_MINE"]) == {
+            "APP_SECRET_MINE": SUBSTITUTIONS["APP_SECRET_MINE"]
+        }
+
+    def test_show_secrets_reports_a_matching_variable(self, substitutions):
+        reported = report_variables([], show_secrets=True)
         assert reported["APP_SECRET_MINE"] == SUBSTITUTIONS["APP_SECRET_MINE"]
-        assert REDACTED_VALUE not in [
-            value for name, value in reported.items() if name not in ("key", "secret")
-        ]
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "MY_PASSWORD",
+            "db_passwd",
+            "GitHubToken",
+            "cloud_credentials",
+            "SSH_PRIVATE_KEY",
+            "Secret",
+        ],
+    )
+    def test_the_pattern_matches_case_insensitively_anywhere(self, name):
+        assert SECRET_VARIABLE_NAME_PATTERN.search(name)
+
+    @pytest.mark.parametrize("name", ["APP_KEY_DEMO", "key", "APP_CREDS", "tag"])
+    def test_the_pattern_does_not_match(self, name):
+        # 'APP_CREDS' is the admitted miss: the note says what is matched, so
+        # the reader knows it is a heuristic
+        assert not SECRET_VARIABLE_NAME_PATTERN.search(name)
 
     def test_redaction_does_not_alter_the_variable_table(self, substitutions):
         report_variables([])
@@ -195,7 +247,13 @@ class TestRedaction:
 
 
 def _run(*args: str, cwd) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
+    # Without the environment's own YD_VAR_* variables, which would otherwise
+    # join every full report (and be counted by the credential-name note)
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("YD_VAR_")
+    }
     env.update(
         {
             "YD_KEY": "a-key",
@@ -315,6 +373,71 @@ class TestCommandOutput:
         assert reported["namespace"] == "my-namespace"
         assert reported["tag"] == "my-tag"
         assert list(reported) == sorted(reported)
+
+
+class TestCredentialNamePatternNote:
+    NOTE = (
+        f"{WARNING_MARKER}Redacted 1 variable(s) whose names match"
+        f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}' (case-insensitive);"
+        " everything else is shown in full. --show-secrets reports all."
+    )
+
+    def test_a_matching_variable_is_redacted_and_the_note_printed_once(self, tmp_path):
+        result = _run("-v", "MY_PASSWORD=x", "-v", "APP_KEY_DEMO=y", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert _stdout(result).count(self.NOTE) == 1
+        assert '"MY_PASSWORD": "<REDACTED>"' in result.stdout
+        assert '"APP_KEY_DEMO": "y"' in result.stdout
+
+    def test_no_note_when_no_variable_matches(self, tmp_path):
+        result = _run("-v", "APP_KEY_DEMO=y", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Redacted" not in result.stdout
+        assert '"APP_KEY_DEMO": "y"' in result.stdout
+
+    def test_quiet_leaves_only_the_json(self, tmp_path):
+        result = _run("-q", "-v", "MY_PASSWORD=x", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout)["MY_PASSWORD"] == REDACTED_VALUE
+
+    def test_no_note_when_the_variable_is_named(self, tmp_path):
+        result = _run("-v", "MY_PASSWORD=x", "MY_PASSWORD", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Redacted" not in result.stdout
+        assert '"MY_PASSWORD": "x"' in result.stdout
+
+    def test_no_note_under_show_secrets(self, tmp_path):
+        result = _run("--show-secrets", "-v", "MY_PASSWORD=x", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Redacted" not in result.stdout
+        assert '"MY_PASSWORD": "x"' in result.stdout
+
+    def test_a_redacted_variables_reference_is_not_reported(self, tmp_path):
+        # No exclusion does this: the value is already redacted when the
+        # undefined-variable check runs, so it carries no reference to report
+        result = _run("-v", "MY_TOKEN={{nowhere_defined}}", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "nowhere_defined" not in result.stdout
+
+
+class TestPatternIsStatedFromTheConstant:
+    # The pattern is quoted in the help and the README; both copies must be
+    # the one the command redacts by
+
+    def test_the_readme_quotes_the_pattern(self):
+        readme = (Path(__file__).parent.parent / "README.md").read_text("utf-8")
+        assert SECRET_VARIABLE_NAME_PATTERN.pattern in readme
+
+    def test_the_help_quotes_the_pattern(self):
+        parser = build_parser(COMMANDS["yd-variables"], prog="yd-variables")
+        (action,) = [a for a in parser._actions if "--show-secrets" in a.option_strings]
+        assert SECRET_VARIABLE_NAME_PATTERN.pattern in (action.help or "")
 
 
 def _stdout(result: subprocess.CompletedProcess) -> str:

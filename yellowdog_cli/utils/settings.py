@@ -151,6 +151,14 @@ DEBUG_STYLE = "dark_orange"
 DRY_RUN_MARKER = "DRY-RUN : "
 # Stands in for a credential that's being withheld ('--show-secrets' reveals it)
 REDACTED_VALUE = "<REDACTED>"
+# The names of user-defined variables that 'yd-variables' redacts in its full
+# report, as looking like credentials (searched for anywhere in the name). A
+# heuristic, and stated as one: the command prints this pattern whenever it
+# redacts by it. 'key' alone is deliberately absent: 'APP_KEY_DEMO' is an
+# identifier, not a secret
+SECRET_VARIABLE_NAME_PATTERN = re.compile(
+    r"secret|password|passwd|token|credential|private_key", re.IGNORECASE
+)
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [
     re.compile(r"(?P<active>ALLOCATED)"),

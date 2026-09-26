@@ -49,6 +49,7 @@ from yellowdog_cli.utils.settings import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
+    SECRET_VARIABLE_NAME_PATTERN,
 )
 
 Validator = Callable[[Namespace, ArgumentParser], None]
@@ -2133,11 +2134,13 @@ COMMANDS["yd-variables"] = Command(
         VARIABLE_NAMES,
         SHOW_SECRETS.variant(
             help=(
-                "include the values of the 'key' and 'secret' variables, and the"
-                " parameters of an inline data client remote, when"
-                " reporting all variables; they are always reported when named"
-                " explicitly. No other variable is ever redacted: a user-defined"
-                " variable holding a credential is reported in full"
+                "include the values of the 'key' and 'secret' variables, of"
+                " variables whose names match"
+                f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}'"
+                " (case-insensitive), and the parameters of an inline data client"
+                " remote, when reporting all variables; they are always reported"
+                " when named explicitly. Any other variable is reported in full,"
+                " even one holding a credential"
             )
         ),
     ),
