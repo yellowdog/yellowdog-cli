@@ -12,13 +12,6 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
 )
-
-# Re-exported: tests/test_resolve_entity_type.py imports these from here
-from yellowdog_cli.utils.command_registry import ENTITY_TYPES as ENTITY_TYPES
-from yellowdog_cli.utils.command_registry import SYNONYMS as SYNONYMS
-from yellowdog_cli.utils.command_registry import (
-    resolve_entity_type as resolve_entity_type,
-)
 from yellowdog_cli.version import DOCS_URL
 
 

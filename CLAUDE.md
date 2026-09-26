@@ -67,7 +67,7 @@ yellowdog_cli/
 └── utils/
     ├── wrapper.py               # Global CLIENT + CONFIG_COMMON; @main_wrapper decorator
     ├── command_registry.py      # Every yd-* command and its options, defined once as data: Option (flags + verbatim argparse kwargs; identity is the first long flag; variant() for per-command wording), Exclusive, CommandKind (API / DATA_CLIENT / STANDALONE, which decides the common set), Command (purpose, summary, options in registration order, validators, requires_namespace_and_tag), COMMON_OPTIONS, COMMANDS (yd-rm shares yd-delete's), build_parser(), command_from_argv0(). args.py builds from it, help.py lists from it, tests/test_readme_command_list.py checks the README against it
-    ├── args.py                  # CLIParser (single shared instance: ARGS_PARSER): resolves the command with command_from_argv0(), builds its parser with build_parser(), parses, runs the command's validators; the 115 properties over the parsed values; re-exports the entity-type helpers from command_registry.py
+    ├── args.py                  # CLIParser (single shared instance: ARGS_PARSER): resolves the command with command_from_argv0(), builds its parser with build_parser(), parses, runs the command's validators; the 115 properties over the parsed values
     ├── config_types.py          # Configuration dataclasses
     ├── load_config.py           # Config loading from TOML/env vars
     ├── settings.py              # Constants, env var names, Rich theme
