@@ -214,13 +214,86 @@ class TestHelpCommand:
         # never printed.
         for _, cmd in COMMANDS.items():
             assert f"{cmd.name:<{help_module.column_width()}}  {cmd.summary}" in out
-        assert (
-            out.count("yd-delete") == 1
-        )  # yd-rm is mentioned in yd-delete's summary, not listed again
+        # yd-rm has a line of its own saying it is a synonym, and yd-delete's
+        # summary names it back; the yd-delete line itself appears once
+        width = help_module.column_width()
+        assert f"{'yd-rm':<{width}}  A synonym for yd-delete" in out
+        assert out.count(f"{'yd-delete':<{width}}  ") == 1
 
-    def test_commander_is_not_listed(self, capsys):
+    def test_the_entry_points_outside_the_registry_are_listed(self, capsys):
+        # yd-commander and yd-mcp take none of the CLI's options and so have
+        # no registry entry, but they are commands a user has
         help_module.main()
-        assert "yd-commander" not in capsys.readouterr().out
+        out = capsys.readouterr().out
+        width = help_module.column_width()
+        for name, summary in help_module.OTHER_COMMANDS.items():
+            assert f"{name:<{width}}  {summary}" in out, name
+        assert "yd-commander" in out and "yd-mcp" in out
+
+    def test_the_other_commands_are_the_entry_points_the_registry_lacks(self):
+        # Held both ways, so a new entry point is listed by one or the other
+        assert set(help_module.OTHER_COMMANDS) == _entry_points() - set(COMMANDS)
+
+    def test_the_listing_is_coloured(self):
+        from rich.text import Text
+
+        # The name and a note (an extra needed, a synonym) carry styles the
+        # theme defines; the summary proper is plain
+        lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
+        assert all(isinstance(t, Text) for t in lines.values())
+        cancel = lines["yd-cancel"]
+        assert any(
+            s.style == help_module.NAME_STYLE
+            and cancel.plain[s.start : s.end].strip() == "yd-cancel"
+            for s in cancel.spans
+        )
+        assert not any(s.style == help_module.NOTE_STYLE for s in cancel.spans)
+        mcp = lines["yd-mcp"]
+        assert any(
+            s.style == help_module.NOTE_STYLE
+            and "needs the mcp extra" in mcp.plain[s.start : s.end]
+            for s in mcp.spans
+        )
+        # yd-rm's own summary is prose, not a note, so it is not dimmed
+        rm = lines["yd-rm"]
+        assert not any(s.style == help_module.NOTE_STYLE for s in rm.spans)
+
+    def test_a_parenthesis_inside_a_summary_is_not_a_note(self):
+        # 'Hold (pause) running Work Requirements': only a trailing extra or
+        # synonym note is dimmed, never a parenthesis in the summary's prose
+        lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
+        for name in ("yd-hold", "yd-start"):
+            line = lines[name]
+            assert "(" in line.plain
+            assert not any(s.style == help_module.NOTE_STYLE for s in line.spans), name
+        cloudwizard = lines["yd-cloudwizard"]
+        dimmed = [
+            cloudwizard.plain[s.start : s.end]
+            for s in cloudwizard.spans
+            if s.style == help_module.NOTE_STYLE
+        ]
+        assert dimmed == [" (needs the cloudwizard extra)"]
+
+    def test_no_format_prints_the_same_text_without_styles(self, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["yd-help"])
+        help_module.main()
+        styled = capsys.readouterr().out
+        monkeypatch.setattr(sys, "argv", ["yd-help", "--no-format"])
+        help_module.main()
+        plain = capsys.readouterr().out
+        # Not a terminal here, so the styled run carries no escape codes either
+        assert plain == styled and "\x1b[" not in plain
+
+    def test_the_json_lists_them_too(self, capsys, monkeypatch):
+        import json
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["yd-help", "--json"])
+        help_module.main()
+        listed = {row["command"] for row in json.loads(capsys.readouterr().out)}
+        assert {"yd-commander", "yd-mcp"} <= listed
 
 
 class TestToolKinds:

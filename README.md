@@ -4427,13 +4427,13 @@ The exit code is 1 if any check failed, else 0, so it can gate a script or a CI 
 
 ### yd-help
 
-The `yd-help` command lists all available `yd-*` commands and their purposes.
+The `yd-help` command lists all available `yd-*` commands and their purposes, `yd-commander` and `yd-mcp` included, with the extra each of those two needs.
 
 ```shell
-yd-help [--json]
+yd-help [--json] [--no-format]
 ```
 
-With `--json` it prints the commands as a JSON array of `{"command", "summary"}` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+The listing is coloured on a terminal, with the command names and the notes on extras and synonyms picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 ### yd-version
 

@@ -1123,7 +1123,7 @@ INSTANCE_TYPE = option(
 COMMANDS["yd-cloudwizard"] = Command(
     name="yd-cloudwizard",
     purpose="setting up cloud accounts and YellowDog resources",
-    summary="Set up cloud accounts and YellowDog resources",
+    summary="Set up cloud accounts and YellowDog resources (needs the cloudwizard extra)",
     kind=CommandKind.API,
     options=(
         VARIABLE,
