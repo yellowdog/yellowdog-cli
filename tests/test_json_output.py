@@ -44,6 +44,7 @@ import yellowdog_cli.utils.start_hold_common as shc_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.entity_utils import get_worker_pool_id_by_name
 from yellowdog_cli.utils.results import record_action, reset_results
+from yellowdog_cli.utils.settings import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
 
 WR_ID_1 = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
 WR_ID_2 = "ydid:workreq:000000:22222222-2222-2222-2222-222222222222"
@@ -867,6 +868,40 @@ class TestCreate:
         assert out[2]["resource"] == "Allowance"
         assert out[2]["description"] == "al"
         client.keyring_client.add_keyring.assert_not_called()
+
+    def test_dry_run_records_the_template_branches(self, run_create):
+        # The Compute Source Template and Compute Requirement Template
+        # branches call _show_dry_run_specification() themselves, after
+        # their own processing, rather than from the generic dispatch loop
+        # every other resource type goes through -- so they need their own
+        # coverage of the 'resource' key. Neither specification here needs
+        # an image or Compute Source Template name resolved (no 'imageId',
+        # and a dynamic template has no 'sources'), so nothing but
+        # '_get_model_object' -- the real validation -- runs.
+        source_template = {
+            "resource": "ComputeSourceTemplate",
+            "namespace": "ns1",
+            "description": "minimal source template",
+            "source": {
+                "type": "co.yellowdog.platform.model.SimulatorComputeSource",
+                "name": "sim-source",
+            },
+        }
+        requirement_template = {
+            "resource": "ComputeRequirementTemplate",
+            "type": "co.yellowdog.platform.model.ComputeRequirementDynamicTemplate",
+            "name": "dynamic-template",
+            "namespace": "ns1",
+            "strategyType": "co.yellowdog.platform.model.SplitProvisionStrategy",
+        }
+        out, _, client = run_create(
+            [source_template, requirement_template], dry_run=True
+        )
+        assert [next(iter(r)) for r in out] == ["resource", "resource"]
+        assert out[0]["resource"] == RN_SOURCE_TEMPLATE
+        assert out[1]["resource"] == RN_REQUIREMENT_TEMPLATE
+        client.compute_client.add_compute_source_template.assert_not_called()
+        client.compute_client.add_compute_requirement_template.assert_not_called()
 
     def test_jsonnet_dry_run_is_an_array_of_files(self, run, monkeypatch, tmp_path):
         import yellowdog_cli.create as yd_create
