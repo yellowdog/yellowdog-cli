@@ -2,7 +2,12 @@
 Unit tests for yellowdog_cli.utils.dataclient_utils
 """
 
+import json
 import re
+import shutil
+import threading
+import time
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -414,3 +419,105 @@ class TestDownloadFlatten:
         )
         assert code == 0
         assert _files_under(remote / "flat") == {"a.txt"}
+
+
+@needs_rclone
+class TestWildcardDownloadListing:
+    """
+    Under '--json' a wildcard download records every file of every match,
+    which costs one recursive listing per matched directory: those run
+    concurrently, and a matched file, whose entry is in hand, costs none.
+    """
+
+    DIRECTORIES = ("d1", "d2", "d3", "mydir")
+
+    @pytest.fixture()
+    def several(self, remote):
+        for name in ("d1", "d2", "d3"):
+            (remote / "remote" / name).mkdir()
+            (remote / "remote" / name / f"{name}.txt").write_text(name)
+        return remote
+
+    def _listings(self, monkeypatch, before=None) -> list[str]:
+        """
+        Count the '_lsjson' calls, running 'before(path)' ahead of each.
+        """
+        calls: list[str] = []
+        real = dcu_module._lsjson
+
+        def counted(rclone, remote_path, *args, **kwargs):
+            calls.append(remote_path)
+            if before is not None:
+                before(remote_path)
+            return real(rclone, remote_path, *args, **kwargs)
+
+        monkeypatch.setattr(dcu_module, "_lsjson", counted)
+        return calls
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_every_file_of_every_match_in_matched_order(
+        self, several, run_download, monkeypatch, dry_run
+    ):
+        # The first directory's listing is made the slowest, so that finishing
+        # order is not the matched order
+        delays = {"loc:remote/d1": 0.3, "loc:remote/d2": 0.2, "loc:remote/d3": 0.1}
+        calls = self._listings(
+            monkeypatch, before=lambda path: time.sleep(delays.get(path, 0))
+        )
+        out, _, code = run_download(
+            remote_paths=["loc:remote/*"],
+            into="got",
+            json_output=True,
+            dry_run=dry_run,
+        )
+        assert code == 0
+        records = json.loads(out)
+        # Grouped by match in matched order; within a directory, as listed
+        assert [r["match"] for r in records] == [
+            "loc:remote/a.txt",
+            "loc:remote/d1",
+            "loc:remote/d2",
+            "loc:remote/d3",
+            "loc:remote/mydir",
+            "loc:remote/mydir",
+        ]
+        assert {r["source"] for r in records[4:]} == {
+            "loc:remote/mydir/b.txt",
+            "loc:remote/mydir/sub/c.txt",
+        }
+        # One listing per matched directory, none for the matched file
+        assert sorted(calls) == [f"loc:remote/{d}" for d in self.DIRECTORIES]
+
+    def test_the_listings_run_concurrently(self, several, run_download, monkeypatch):
+        # Every listing waits for all the others to start, which a serial
+        # enumeration cannot satisfy
+        barrier = threading.Barrier(len(self.DIRECTORIES), timeout=10)
+        self._listings(monkeypatch, before=lambda path: barrier.wait())
+        out, _, code = run_download(
+            remote_paths=["loc:remote/*"], into="got", json_output=True, dry_run=True
+        )
+        assert code == 0
+        assert len(json.loads(out)) == 6
+
+    def test_a_failed_listing_in_a_worker_warns_of_nothing(
+        self, several, run_download, monkeypatch
+    ):
+        # A matched directory gone by the time it is listed: rclone_api warns
+        # with the whole command line on a failed run, which must stay silent
+        # from a worker thread as from the main one
+        def remove(path):
+            if path == "loc:remote/d2":
+                shutil.rmtree(several / "remote" / "d2")
+
+        self._listings(monkeypatch, before=remove)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _, err, code = run_download(
+                remote_paths=["loc:remote/*"],
+                into="got",
+                json_output=True,
+                dry_run=True,
+            )
+        assert code != 0
+        assert "Cannot list 'loc:remote/d2'" in err
+        assert [w for w in caught if issubclass(w.category, UserWarning)] == []

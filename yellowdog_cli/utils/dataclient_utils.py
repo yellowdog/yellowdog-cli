@@ -6,8 +6,10 @@ yd-upload, yd-download, yd-delete, yd-ls.
 import fnmatch
 import json
 import subprocess
+import threading
 import warnings
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -23,6 +25,7 @@ from yellowdog_cli.utils.rclone_utils import (
     parse_rclone_config,
 )
 from yellowdog_cli.utils.results import json_requested, record
+from yellowdog_cli.utils.settings import DATA_CLIENT_LISTING_WORKERS
 from yellowdog_cli.utils.variables import resolve_variables_in_string
 
 # The keys of an rclone 'lsjson' entry that yd-ls records under '--json',
@@ -61,6 +64,11 @@ def _join_remote(remote_dir: str, name: str) -> str:
 _T = TypeVar("_T")
 
 
+# Set in a listing worker thread, whose calls are silenced by the
+# catch_warnings() its pool is run under (see _files_of_matches())
+_IN_QUIET_WORKER = threading.local()
+
+
 def _without_rclone_api_warnings(call: Callable[[], _T]) -> _T:
     """
     Make a listing call with rclone_api's UserWarning silenced: on a failed
@@ -68,7 +76,15 @@ def _without_rclone_api_warnings(call: Callable[[], _T]) -> _T:
     parameters included) and rclone's stderr, which reaches the user's stderr
     ahead of the command's own report of the same failure -- a missing path.
     Scoped to rclone_api's warnings, so any other still gets through.
+
+    In a listing worker thread the call is made as it is: catch_warnings()
+    saves and restores the process's filters, so entered and left by threads
+    concurrently it would lift one thread's filter while another's call was
+    still running, and leave a filter in place for good. The thread that runs
+    the pool holds the filter for the pool's lifetime instead.
     """
+    if getattr(_IN_QUIET_WORKER, "active", False):
+        return call()
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", category=UserWarning, module=r"rclone_api(\.|$)"
@@ -458,24 +474,22 @@ def _download_with_glob(
     # Drive the transfer from the matched entries, so that the reported
     # matches and the transferred files always agree (rclone's '--include'
     # filter syntax differs subtly from the fnmatch syntax used above)
+    # A flattened directory's files are listed to be transferred one by one;
+    # otherwise they are listed only to be recorded, which only '--json' needs
+    files_of_matches = (
+        _files_of_matches(rclone, remote_dir, matches, local_destination, flatten)
+        if json_requested() or flatten
+        else [[] for _ in matches]
+    )
     flattened: dict[str, str] = {}
-    for entry in matches:
+    for entry, files in zip(matches, files_of_matches):
         src = _join_remote(remote_dir, entry["Name"])
-        if flatten and entry["IsDir"]:
-            files = _download_files_of(
-                rclone, src, True, local_destination, flatten=True
-            )
-            _warn_of_flattened_collisions(files, flattened)
-            _download_each(rclone, files, src)
-            continue
-        dst = str(local_destination / entry["Name"])
-        files = (
-            _download_files_of(rclone, src, bool(entry["IsDir"]), Path(dst), entry)
-            if json_requested() or flatten
-            else []
-        )
         if flatten:
             _warn_of_flattened_collisions(files, flattened)
+            if entry["IsDir"]:
+                _download_each(rclone, files, src)
+                continue
+        dst = str(local_destination / entry["Name"])
         if entry["IsDir"]:
             result = _rclone_sync(rclone, src, dst) if sync else rclone.copy(src, dst)
         else:
@@ -514,6 +528,58 @@ def _download_files_of(
         )
         for f in _lsjson(rclone, remote_path, recursive=True, files_only=True)
     ]
+
+
+def _mark_quiet_worker() -> None:
+    """
+    A listing worker thread's initializer: see _without_rclone_api_warnings().
+    """
+    _IN_QUIET_WORKER.active = True
+
+
+def _files_of_matches(
+    rclone: Rclone,
+    remote_dir: str,
+    matches: list[dict],
+    local_destination: Path,
+    flatten: bool,
+) -> list[list[tuple[str, str, int | None]]]:
+    """
+    For each entry a wildcard matched, in matched order, the files a download
+    of it fetches (see _download_files_of()): a matched directory's under
+    'local_destination' by its name -- or directly in it, flattened -- and a
+    matched file's to 'local_destination/<name>'.
+
+    Each directory costs one recursive listing, so they are listed
+    concurrently, DATA_CLIENT_LISTING_WORKERS at a time; a file's entry is
+    in hand and costs none. Listing the parent recursively once instead was
+    rejected: Commander's pattern is '<tag>*' under the namespace directory,
+    so it would list every tag's results to find this one's.
+    """
+
+    def files_of(entry: dict) -> list[tuple[str, str, int | None]]:
+        src = _join_remote(remote_dir, entry["Name"])
+        is_dir = bool(entry["IsDir"])
+        flat = flatten and is_dir
+        return _download_files_of(
+            rclone,
+            src,
+            is_dir,
+            local_destination if flat else local_destination / entry["Name"],
+            entry,
+            flatten=flat,
+        )
+
+    def list_all() -> list[list[tuple[str, str, int | None]]]:
+        with ThreadPoolExecutor(
+            max_workers=DATA_CLIENT_LISTING_WORKERS, initializer=_mark_quiet_worker
+        ) as pool:
+            return list(pool.map(files_of, matches))
+
+    # The workers' listings are silenced by the filter held here, for as long
+    # as the pool runs; its threads start inside it, so a context-aware
+    # warnings module gives them the filter too
+    return _without_rclone_api_warnings(list_all)
 
 
 def _record_downloads(
@@ -605,24 +671,16 @@ def download_files(
             )
             if json_requested() or flatten:
                 _, rclone = _rclone_for_config(config)
+                files_of_matches = _files_of_matches(
+                    rclone, remote_dir, matches, local_destination, flatten
+                )
                 flattened: dict[str, str] = {}
-                for entry in matches:
-                    src = _join_remote(remote_dir, entry["Name"])
-                    is_dir = bool(entry["IsDir"])
-                    flat = flatten and is_dir
-                    files = _download_files_of(
-                        rclone,
-                        src,
-                        is_dir,
-                        local_destination
-                        if flat
-                        else local_destination / entry["Name"],
-                        entry,
-                        flatten=flat,
-                    )
+                for entry, files in zip(matches, files_of_matches):
                     if flatten:
                         _warn_of_flattened_collisions(files, flattened)
-                    _record_downloads(files, src, "would download")
+                    _record_downloads(
+                        files, _join_remote(remote_dir, entry["Name"]), "would download"
+                    )
         else:
             listing = list_remote(config, remote_path)
             if not listing.dirs and not listing.files:
