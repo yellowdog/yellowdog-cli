@@ -21,7 +21,12 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON
+
+# The '--json' record's outcome for each action
+_OUTCOMES = {"Start": "started", "Hold": "held"}
 
 
 def start_work_requirements():
@@ -38,6 +43,22 @@ def hold_work_requirements():
     wr_ids = _start_or_hold_work_requirements("Hold", required_state, action_function)
     if ARGS_PARSER.follow:
         follow_ids(wr_ids)
+
+
+def _record(
+    action: str, entity: object, outcome: str | None = None, error: str | None = None
+) -> None:
+    """
+    Record the action's outcome for '--json': by default, that it was
+    applied ('started'); otherwise 'skipped' or 'failed'.
+    """
+    record_action(
+        entity,
+        ET_WORK_REQUIREMENTS,
+        action.lower(),
+        outcome or _OUTCOMES[action],
+        error,
+    )
 
 
 def _start_or_hold_work_requirements(
@@ -75,11 +96,17 @@ def _start_or_hold_work_requirements(
             CLIENT, selected_work_requirement_summaries
         )
 
-    if selected_work_requirement_summaries and confirmed(
+    if selected_work_requirement_summaries and not confirmed(
         f"{action} {len(selected_work_requirement_summaries)} Work Requirement(s)?"
     ):
         for work_summary in selected_work_requirement_summaries:
+            _record(action, work_summary, "skipped")
+        selected_work_requirement_summaries = []
+
+    if selected_work_requirement_summaries:
+        for work_summary in selected_work_requirement_summaries:
             if work_summary.status != required_state:
+                _record(action, work_summary, "skipped")
                 continue
             try:
                 action_function(work_summary.id)  # type: ignore[arg-type]
@@ -87,8 +114,10 @@ def _start_or_hold_work_requirements(
                 print_error(
                     f"Failed to {action} Work Requirement '{work_summary.name}': {e}"
                 )
+                _record(action, work_summary, "failed", str(e))
                 continue  # Don't follow Work Requirements that weren't actioned
             count += 1
+            _record(action, work_summary)
             work_requirement_ids.append(cast(str, work_summary.id))
             # The refetch is only needed to generate the link; the
             # action has already succeeded
@@ -136,6 +165,7 @@ def _start_or_hold_work_requirements_by_name_or_id(
 
         if work_requirement_summary is None:
             print_error(f"Work Requirement '{name_or_id}' not found")
+            _record(action, name_or_id, "failed", "not found")
             continue
 
         fq_name_and_id = (
@@ -148,9 +178,11 @@ def _start_or_hold_work_requirements_by_name_or_id(
                 f"Work Requirement {fq_name_and_id} is not in the required '{required_state}'"
                 f" state for action '{action}'"
             )
+            _record(action, work_requirement_summary, "skipped")
             continue
 
         if not confirmed(f"{action} Work Requirement {fq_name_and_id}?"):
+            _record(action, work_requirement_summary, "skipped")
             continue
 
         try:
@@ -159,9 +191,11 @@ def _start_or_hold_work_requirements_by_name_or_id(
                 f"Applied action '{action}' to Work Requirement {fq_name_and_id}"
             )
             work_requirement_summaries.append(work_requirement_summary)
+            _record(action, work_requirement_summary)
         except Exception as e:
             print_error(
                 f"Failed to apply action '{action}' to Work Requirement {fq_name_and_id}: {e}"
             )
+            _record(action, work_requirement_summary, "failed", str(e))
 
     return [cast(str, wr.id) for wr in work_requirement_summaries]

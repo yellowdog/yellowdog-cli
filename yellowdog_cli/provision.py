@@ -36,9 +36,11 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
+    print_quiet_result,
     print_warning,
     print_worker_pool,
     print_yd_object,
+    worker_pool_specification,
 )
 from yellowdog_cli.utils.property_names import (
     IMAGES_ID,
@@ -57,7 +59,13 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
 )
+from yellowdog_cli.utils.results import (
+    record_document,
+    record_document_part,
+    record_entity,
+)
 from yellowdog_cli.utils.settings import (
+    ET_WORKER_POOLS,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
@@ -268,6 +276,9 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         raise KeyError(f"Key error in JSON Worker Pool definition: {e}")
 
     if ARGS_PARSER.dry_run:
+        if ARGS_PARSER.json_output:
+            record_document(wp_data)
+            return
         print_dry_run("Printing JSON Worker Pool specification")
         print_yd_object(wp_data)
         print_dry_run("Complete")
@@ -284,8 +295,10 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         print_info(
             f"Provisioned Worker Pool '{reqt_template_usage['requirementNamespace']}/{name}' ({id})"
         )
-        if ARGS_PARSER.quiet:
-            print(id)
+        record_entity(
+            id, name, reqt_template_usage["requirementNamespace"], ET_WORKER_POOLS
+        )
+        print_quiet_result(id)
         if ARGS_PARSER.follow:
             print_info("Following Worker Pool event stream")
             follow_ids([id], auto_cr=ARGS_PARSER.auto_cr)
@@ -429,8 +442,22 @@ def create_worker_pool_from_toml():
                 print_info(f"Created {link_entity(CONFIG_COMMON.url, worker_pool)}")
                 print_info(f"YellowDog ID is '{worker_pool.id}'")
                 worker_pool_ids.append(worker_pool.id)  # type: ignore[arg-type]
-                if ARGS_PARSER.quiet:
-                    print(worker_pool.id)
+                # One per batch: the document is an array if batched
+                record_entity(
+                    worker_pool.id,
+                    worker_pool.name,
+                    CONFIG_COMMON.namespace,
+                    ET_WORKER_POOLS,
+                )
+                print_quiet_result(worker_pool.id)
+            elif ARGS_PARSER.json_output:
+                # One per batch, as above
+                record_document_part(
+                    worker_pool_specification(
+                        compute_requirement_template_usage,
+                        provisioned_worker_pool_properties,
+                    )
+                )
             else:
                 print_worker_pool(
                     compute_requirement_template_usage,

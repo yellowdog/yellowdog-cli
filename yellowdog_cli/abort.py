@@ -25,8 +25,23 @@ from yellowdog_cli.utils.printing import (
     print_info,
     sorted_objects,
 )
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import (
+    ET_TASK_GROUPS,
+    ET_TASKS,
+    ET_WORK_REQUIREMENTS,
+)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+
+def _record(
+    entity: object,
+    outcome: str,
+    error: str | None = None,
+    entity_type: str = ET_TASKS,
+) -> None:
+    record_action(entity, entity_type, "abort", outcome, error)
 
 
 @main_wrapper
@@ -126,6 +141,8 @@ def _do_abort_tasks(
     if not ARGS_PARSER.yes:
         tasks = select(CLIENT, sorted_objects(tasks), override_quiet=True)
         if not tasks or not confirmed(f"Abort {len(tasks)} Task(s)?"):
+            for task in tasks:
+                _record(task, "skipped")
             print_info("No Tasks Aborted")
             return
 
@@ -139,9 +156,11 @@ def _do_abort_tasks(
                 else ""
             )
             print_info(f"Aborted Task '{task.name}'{tg_part} in {context}")
+            _record(task, "aborted")
             aborted_tasks += 1
         except Exception as e:
             print_error(f"Unable to abort Task '{task.name}': {e}")
+            _record(task, "failed", str(e))
 
     if aborted_tasks == 0:
         print_info("No Tasks Aborted")
@@ -158,6 +177,7 @@ def _abort_tasks_in_tg_by_id(tg_ids: list[str]) -> None:
             tg = get_task_group_by_id(CLIENT, tg_id)
         except (KeyError, RuntimeError) as e:
             print_error(str(e))
+            _record(tg_id, "failed", str(e), ET_TASK_GROUPS)
             continue
         print_info(f"Aborting Tasks in Task Group '{tg.name}'")
         tasks: list[Task] = CLIENT.work_client.find_tasks(
@@ -188,6 +208,7 @@ def _abort_tasks_in_wrs_by_name(wr_names: list[str]) -> None:
 
         if "/" not in name:
             print_error(f"Work Requirement '{name}' not found")
+            _record(name, "failed", "not found", ET_WORK_REQUIREMENTS)
             continue
 
         # Try wr-name/tg-name (rsplit handles namespace/wr-name/tg-name correctly)
@@ -197,6 +218,7 @@ def _abort_tasks_in_wrs_by_name(wr_names: list[str]) -> None:
         )
         if wr_summary is None:
             print_error(f"Work Requirement '{wr_part}' not found")
+            _record(wr_part, "failed", "not found", ET_WORK_REQUIREMENTS)
             continue
 
         tg_groups = get_task_groups_from_wr_by_id(CLIENT, wr_summary.id)  # type: ignore[arg-type]
@@ -205,6 +227,7 @@ def _abort_tasks_in_wrs_by_name(wr_names: list[str]) -> None:
             print_error(
                 f"Task Group '{tg_part}' not found in Work Requirement '{wr_summary.name}'"
             )
+            _record(name, "failed", "not found", ET_TASK_GROUPS)
             continue
 
         print_info(
@@ -234,17 +257,21 @@ def _abort_tasks_by_name_or_id(task_id_list: list[str]):
     for task_id in task_id_list:
         if get_ydid_type(task_id) != YDIDType.TASK:
             print_error(f"ID '{task_id}' is not a valid Task YDID")
+            _record(task_id, "failed", "not a valid Task YDID")
             continue
 
         if not confirmed(f"Cancel and abort Task '{task_id}'?"):
+            _record(task_id, "skipped")
             continue
 
         try:
             CLIENT.work_client.cancel_task_by_id(task_id, abort=True)
             print_info(f"Cancelled and aborted Task '{task_id}'")
+            _record(task_id, "aborted")
             aborted_count += 1
         except Exception as e:
             print_error(f"Unable to cancel and abort Task '{task_id}': {e}")
+            _record(task_id, "failed", str(e))
 
     if aborted_count > 1:
         print_info(f"Cancelled and aborted {aborted_count} Tasks")

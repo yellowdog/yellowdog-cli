@@ -8,6 +8,14 @@ from sys import exit
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import (
+    NAMESPACE_PREFIX_SEPARATOR,
+    PROP_CREDENTIAL,
+    PROP_DESCRIPTION,
+    PROP_ID,
+    PROP_NAME,
+    PROP_NAMESPACE,
+    PROP_SOURCE,
+    PROP_USERNAME,
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -152,3 +160,41 @@ def _resequence_resources(
     resources.sort(key=_sequence, reverse=not creation_or_update)
 
     return resources
+
+
+def resource_display_name(resource_type: str | None, resource: dict) -> str | None:
+    """
+    The name yd-create and yd-remove report a resource by, read from its
+    specification before anything is popped from it: namespace-qualified
+    for the resources whose names are ('namespace/name'), the namespace for
+    a Namespace Policy, the description for an Allowance. None if the
+    specification lacks it.
+    """
+
+    def _get(container: object, key: str) -> str | None:
+        value = container.get(key) if isinstance(container, dict) else None
+        return value if isinstance(value, str) else None
+
+    def _qualified(name: str | None) -> str | None:
+        namespace = _get(resource, PROP_NAMESPACE)
+        if name is None or namespace is None:
+            return name
+        return f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
+
+    if resource_type == RN_SOURCE_TEMPLATE:
+        return _qualified(_get(resource.get(PROP_SOURCE), PROP_NAME))
+    if resource_type in (RN_REQUIREMENT_TEMPLATE, RN_IMAGE_FAMILY, RN_CONFIGURED_POOL):
+        return _qualified(_get(resource, PROP_NAME))
+    if resource_type == RN_CREDENTIAL:
+        return _get(resource.get(PROP_CREDENTIAL), PROP_NAME)
+    if resource_type == RN_NAMESPACE_POLICY:
+        return _get(resource, PROP_NAMESPACE)
+    if resource_type == RN_ALLOWANCE:
+        return _get(resource, PROP_DESCRIPTION)
+    if resource_type in (RN_INTERNAL_USER, RN_EXTERNAL_USER):
+        return (
+            _get(resource, PROP_NAME)
+            or _get(resource, PROP_USERNAME)
+            or _get(resource, PROP_ID)
+        )
+    return _get(resource, PROP_NAME)

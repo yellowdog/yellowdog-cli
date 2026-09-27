@@ -26,8 +26,27 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import (
+    ET_COMPUTE_REQUIREMENTS,
+    ET_NODES,
+    ET_WORKER_POOLS,
+)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+# The '--json' record's action and outcome
+_SHUTDOWN = "shutdown"
+_SHUT_DOWN = "shut down"
+
+
+def _record(
+    entity: object,
+    outcome: str,
+    error: str | None = None,
+    entity_type: str = ET_WORKER_POOLS,
+) -> None:
+    record_action(entity, entity_type, _SHUTDOWN, outcome, error)
 
 
 @main_wrapper
@@ -88,6 +107,8 @@ def main():
             selected_worker_pool_summaries,
             "Worker Pool",
             "shut down",
+            ET_WORKER_POOLS,
+            _SHUTDOWN,
             bool(ARGS_PARSER.json_output),
         )
         return
@@ -95,26 +116,36 @@ def main():
     if selected_worker_pool_summaries:
         selected_worker_pool_summaries = select(CLIENT, selected_worker_pool_summaries)
 
-    if selected_worker_pool_summaries and confirmed(
+    if selected_worker_pool_summaries and not confirmed(
         f"Shutdown {len(selected_worker_pool_summaries)} Worker Pool(s)?"
     ):
         for worker_pool_summary in selected_worker_pool_summaries:
-            try:
-                CLIENT.worker_pool_client.shutdown_worker_pool_by_id(
-                    worker_pool_summary.id  # type: ignore[arg-type]
-                )
-                shutdown_count += 1
-                worker_pool: WorkerPool = get_worker_pool_by_id(
-                    CLIENT, cast(str, worker_pool_summary.id)
-                )
-                print_info(
-                    f"Shut down {link_entity(CONFIG_COMMON.url, cast(ConfiguredWorkerPool, worker_pool))}"
-                )
-                optionally_terminate_compute_requirement(
-                    cast(str, worker_pool_summary.id)
-                )
-            except Exception as e:
-                print_error(f"Failed to shut down '{worker_pool_summary.name}': {e}")
+            _record(worker_pool_summary, "skipped")
+        selected_worker_pool_summaries = []
+
+    for worker_pool_summary in selected_worker_pool_summaries:
+        try:
+            CLIENT.worker_pool_client.shutdown_worker_pool_by_id(
+                worker_pool_summary.id  # type: ignore[arg-type]
+            )
+        except Exception as e:
+            print_error(f"Failed to shut down '{worker_pool_summary.name}': {e}")
+            _record(worker_pool_summary, "failed", str(e))
+            continue
+        shutdown_count += 1
+        _record(worker_pool_summary, _SHUT_DOWN)
+        # The refetch is only needed to generate the link; the shutdown has
+        # already succeeded
+        try:
+            worker_pool: WorkerPool = get_worker_pool_by_id(
+                CLIENT, cast(str, worker_pool_summary.id)
+            )
+            print_info(
+                f"Shut down {link_entity(CONFIG_COMMON.url, cast(ConfiguredWorkerPool, worker_pool))}"
+            )
+        except Exception:
+            print_info(f"Shut down Worker Pool '{worker_pool_summary.name}'")
+        optionally_terminate_compute_requirement(cast(str, worker_pool_summary.id))
 
     if shutdown_count > 0:
         print_info(f"Shut down {shutdown_count} Worker Pool(s)")
@@ -147,6 +178,7 @@ def shutdown_by_names_or_ids(names_or_ids: list[str]):
             )
             if worker_pool_id is None:
                 print_warning(f"Worker Pool '{name_or_id}' not found")
+                _record(name_or_id, "failed", "not found")
                 continue
         worker_pool_ids.append(worker_pool_id)
 
@@ -158,22 +190,31 @@ def shutdown_by_names_or_ids(names_or_ids: list[str]):
         f"Shut down {len(worker_pool_ids) + len(node_ids)} Worker Pool(s) and/or Node(s)?"
         f": ({', '.join(worker_pool_ids + node_ids)})"
     ):
+        for worker_pool_id in worker_pool_ids:
+            _record(worker_pool_id, "skipped")
+        for node_id in node_ids:
+            _record(node_id, "skipped", entity_type=ET_NODES)
         return
 
     for worker_pool_id in worker_pool_ids:
         try:
             CLIENT.worker_pool_client.shutdown_worker_pool_by_id(worker_pool_id)
-            print_info(f"Shut down Worker Pool '{worker_pool_id}'")
-            optionally_terminate_compute_requirement(worker_pool_id)
         except Exception as e:
             print_error(f"Failed to shut down Worker Pool '{worker_pool_id}': ({e})")
+            _record(worker_pool_id, "failed", str(e))
+            continue
+        print_info(f"Shut down Worker Pool '{worker_pool_id}'")
+        _record(worker_pool_id, _SHUT_DOWN)
+        optionally_terminate_compute_requirement(worker_pool_id)
 
     for node_id in node_ids:
         try:
             CLIENT.worker_pool_client.shutdown_node_by_id(node_id)
             print_info(f"Shut down Node '{node_id}'")
+            _record(node_id, _SHUT_DOWN, entity_type=ET_NODES)
         except Exception as e:
             print_error(f"Failed to shut down Node '{node_id}': ({e})")
+            _record(node_id, "failed", str(e), entity_type=ET_NODES)
 
     if ARGS_PARSER.follow:
         follow_ids(worker_pool_ids, auto_cr=ARGS_PARSER.auto_cr)
@@ -190,14 +231,30 @@ def optionally_terminate_compute_requirement(worker_pool_id: str):
         worker_pool: ProvisionedWorkerPool = (
             CLIENT.worker_pool_client.get_worker_pool_by_id(worker_pool_id)  # type: ignore[assignment]
         )
+    except Exception as e:
+        print_error(f"Failed to terminate Compute Requirement: ({e})")
+        # Keyed by the Worker Pool's ID, the Compute Requirement's being unknown
+        record_action(
+            {"id": worker_pool_id, "name": None},
+            ET_COMPUTE_REQUIREMENTS,
+            "terminate",
+            "failed",
+            str(e),
+        )
+        return
+    # Recorded by ID, the Compute Requirement's name being unknown here
+    cr_record = {"id": worker_pool.computeRequirementId, "name": None}
+    try:
         CLIENT.compute_client.terminate_compute_requirement_by_id(
             worker_pool.computeRequirementId  # type: ignore[arg-type]
         )
         print_info(
             f"Terminated associated Compute Requirement '{worker_pool.computeRequirementId}'"
         )
+        record_action(cr_record, ET_COMPUTE_REQUIREMENTS, "terminate", "terminated")
     except Exception as e:
         print_error(f"Failed to terminate Compute Requirement: ({e})")
+        record_action(cr_record, ET_COMPUTE_REQUIREMENTS, "terminate", "failed", str(e))
 
 
 # Entry point

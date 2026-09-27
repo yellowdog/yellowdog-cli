@@ -2,6 +2,8 @@
 User interaction processing utilities.
 """
 
+import sys
+from contextlib import redirect_stdout
 from os import getenv
 from typing import TypeVar
 
@@ -10,6 +12,7 @@ from yellowdog_client import PlatformClient
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import (
     CONSOLE,
+    CONSOLE_ERR,
     print_error,
     print_info,
     print_numbered_object_list,
@@ -52,7 +55,21 @@ def select(
     if sort_objects:
         objects = sorted_objects(objects)  # type: ignore[arg-type, assignment]
 
-    if not ARGS_PARSER.quiet or override_quiet or ARGS_PARSER.interactive:
+    selecting = bool(ARGS_PARSER.interactive or force_interactive)
+    if ARGS_PARSER.json_output:
+        # Under '--json' stdout is the result document alone: the list is
+        # shown only when a selection is to be made from it, and on stderr,
+        # as the selection prompt is
+        if selecting:
+            with redirect_stdout(sys.stderr):
+                print_numbered_object_list(
+                    client,
+                    objects,  # type: ignore[arg-type]
+                    override_quiet=True,
+                    showing_all=showing_all,
+                    object_type_name=object_type_name,
+                )
+    elif not ARGS_PARSER.quiet or override_quiet or ARGS_PARSER.interactive:
         print_numbered_object_list(
             client,
             objects,  # type: ignore[arg-type]
@@ -61,7 +78,7 @@ def select(
             object_type_name=object_type_name,
         )
 
-    if not ARGS_PARSER.interactive and force_interactive is False:
+    if not selecting:
         return objects
 
     if ARGS_PARSER.auto_select_all:
@@ -181,12 +198,35 @@ def confirmed(msg: str) -> bool:
             return False
 
 
+class NoAnswerToPrompt(Exception):
+    """
+    A prompt was shown but stdin was at end of input: a script that forgot
+    '--yes', or a run with stdin redirected from /dev/null. Raised in place
+    of the EOFError, whose message ('EOF when reading a line') says nothing
+    about what to do; the wrapper reports it and exits with a failure.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The prompt got no answer: stdin is at end of input, as when a command"
+            " is run without a terminal. Use '--yes' to proceed without"
+            " confirmation, or run the command from a terminal"
+        )
+
+
 def _get_user_input(input_prompt: str) -> str:
     """
-    Get user input, respecting the --no-format option.
+    Get user input, respecting the --no-format option. Under '--json' the
+    prompt goes to stderr, so stdout holds only the result document.
     """
-    if ARGS_PARSER.no_format:
-        return input(input_prompt)
-    # Prevents broken wrapping
-    CONSOLE.print(input_prompt, end="")
-    return CONSOLE.input("")
+    try:
+        if ARGS_PARSER.json_output:
+            CONSOLE_ERR.print(input_prompt, end="")
+            return input("")
+        if ARGS_PARSER.no_format:
+            return input(input_prompt)
+        # Prevents broken wrapping
+        CONSOLE.print(input_prompt, end="")
+        return CONSOLE.input("")
+    except EOFError:
+        raise NoAnswerToPrompt() from None

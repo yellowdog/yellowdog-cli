@@ -30,6 +30,12 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import (
+    ET_COMPUTE_REQUIREMENTS,
+    ET_INSTANCES,
+    ET_NODES,
+)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -45,6 +51,28 @@ VALID_TERMINATION_STATUSES = [
     ComputeRequirementStatus.STOPPING,
     ComputeRequirementStatus.STOPPED,
 ]  # Excludes TERMINATED, TERMINATING
+
+
+# The '--json' record's action and outcome
+_TERMINATE = "terminate"
+_TERMINATED = "terminated"
+
+
+def _record(
+    entity: object,
+    outcome: str,
+    error: str | None = None,
+    entity_type: str = ET_COMPUTE_REQUIREMENTS,
+) -> None:
+    record_action(entity, entity_type, _TERMINATE, outcome, error)
+
+
+def _instance(cr_id: str, instance_id: str) -> dict:
+    """
+    An Instance as the '--json' record names it: by the 'cr_id.instance_id'
+    form the command accepts, and by the Instance ID it prints.
+    """
+    return {"id": f"{cr_id}.{instance_id}", "name": instance_id}
 
 
 @main_wrapper
@@ -93,6 +121,8 @@ def main():
             compute_requirement_summaries,
             "Compute Requirement",
             "terminated",
+            ET_COMPUTE_REQUIREMENTS,
+            _TERMINATE,
             bool(ARGS_PARSER.json_output),
         )
         return
@@ -102,9 +132,14 @@ def main():
         CLIENT, compute_requirement_summaries
     )
 
-    if selected_compute_requirement_summaries and confirmed(
+    if selected_compute_requirement_summaries and not confirmed(
         f"Terminate {len(selected_compute_requirement_summaries)} Compute Requirement(s)?"
     ):
+        for compute_requirement_summary in selected_compute_requirement_summaries:
+            _record(compute_requirement_summary, "skipped")
+        selected_compute_requirement_summaries = []
+
+    if selected_compute_requirement_summaries:
         for compute_requirement_summary in selected_compute_requirement_summaries:
             try:
                 CLIENT.compute_client.terminate_compute_requirement_by_id(
@@ -114,8 +149,10 @@ def main():
                 print_error(
                     f"Failed to terminate '{compute_requirement_summary.name}': {e}"
                 )
+                _record(compute_requirement_summary, "failed", str(e))
                 continue  # Don't follow Compute Requirements that weren't terminated
             terminated_ids.append(cast(str, compute_requirement_summary.id))
+            _record(compute_requirement_summary, _TERMINATED)
             # The refetch is only needed to generate the link; the
             # termination has already succeeded
             try:
@@ -163,14 +200,17 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
             except Exception as e:
                 if is_http_not_found(e):
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}")
+                    _record(name_or_id, "failed", "not found")
                 else:
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}: {e}")
+                    _record(name_or_id, "failed", str(e))
                 continue
             if compute_requirement.status not in VALID_TERMINATION_STATUSES:
                 print_error(
                     f"Compute Requirement status {compute_requirement.status} "
                     "is not a valid state for termination"
                 )
+                _record(name_or_id, "skipped")
                 continue
             compute_requirement_ids.append(name_or_id)
 
@@ -188,6 +228,7 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
                 print_warning(
                     f"Compute Requirement in valid state not found for '{name_or_id}'"
                 )
+                _record(name_or_id, "failed", "not found in a valid state")
                 continue
             else:
                 print_info(f"Found Compute Requirement ID: {compute_requirement_id}")
@@ -199,6 +240,8 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
             f"Terminate {len(compute_requirement_ids)} Compute Requirement(s)?"
             f": ({', '.join(compute_requirement_ids)})"
         ):
+            for compute_requirement_id in compute_requirement_ids:
+                _record(compute_requirement_id, "skipped")
             return
         for compute_requirement_id in compute_requirement_ids:
             try:
@@ -206,8 +249,10 @@ def terminate_by_name_or_id(names_or_ids: list[str]):
                     compute_requirement_id
                 )
                 print_info(f"Terminated '{compute_requirement_id}'")
+                _record(compute_requirement_id, _TERMINATED)
             except Exception as e:
                 print_error(f"Failed to terminate '{compute_requirement_id}': ({e})")
+                _record(compute_requirement_id, "failed", str(e))
 
     # Follow all the CR IDs from CR terminations and node, instance terminations
     if ARGS_PARSER.follow:
@@ -224,13 +269,16 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
     except Exception as e:
         if is_http_not_found(e):
             print_error(f"Cannot find Node with ID {node_id}")
+            _record(node_id, "failed", "not found", ET_NODES)
             return None
         else:
             print_error(f"Error for Node ID {node_id}: {e}")
+            _record(node_id, "failed", str(e), ET_NODES)
             return None
 
     if node.status == NodeStatus.TERMINATED:
         print_info(f"Node {node_id} is already {node.status}")
+        _record(node_id, "skipped", entity_type=ET_NODES)
         return None
 
     if (
@@ -238,6 +286,7 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
             CLIENT, cast(str, node.workerPoolId)
         )
     ) is None:
+        _record(node_id, "failed", "no Compute Requirement found", ET_NODES)
         return None
 
     instance: Instance | None = get_instance_by_id(
@@ -251,6 +300,7 @@ def _terminate_node_instance_by_id(node_id: str) -> str | None:
             f"Cannot find Instance ID for Node ID {node_id} "
             f"in Compute Requirement {cr_id}"
         )
+        _record(node_id, "failed", "Instance not found", ET_NODES)
         return None
 
     return _terminate_instance(cr_id, instance.id.instanceId, node_id)  # type: ignore[union-attr]
@@ -264,14 +314,22 @@ def _terminate_instance(
     Returns the compute requirement ID or None.
     """
 
+    instance_record = _instance(cr_id, instance_id)
+
     if get_ydid_type(cr_id) != YDIDType.COMPUTE_REQUIREMENT:
         print_error(f"Invalid Compute Requirement ID {cr_id}")
+        _record(
+            instance_record, "failed", "invalid Compute Requirement ID", ET_INSTANCES
+        )
         return None
 
     try:
         compute_requirement = CLIENT.compute_client.get_compute_requirement_by_id(cr_id)
     except Exception:
         print_error(f"Cannot find Compute Requirement {cr_id}")
+        _record(
+            instance_record, "failed", "Compute Requirement not found", ET_INSTANCES
+        )
         return None
 
     instance: Instance | None = get_instance_by_id(CLIENT, cr_id, instance_id)
@@ -279,10 +337,12 @@ def _terminate_instance(
         print_error(
             f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"
         )
+        _record(instance_record, "failed", "not found", ET_INSTANCES)
         return None
 
     if instance.status in [InstanceStatus.TERMINATING, InstanceStatus.TERMINATED]:
         print_info(f"Instance ID '{cr_id}.{instance_id}' is already {instance.status}")
+        _record(instance_record, "skipped", entity_type=ET_INSTANCES)
         return None
 
     node_id_msg = "" if node_id is None else f" (Node ID {node_id})"
@@ -290,6 +350,7 @@ def _terminate_instance(
         f"Immediately terminate {instance.status} Instance ID '{instance_id}' "
         f"in Compute Requirement {cr_id}{node_id_msg}?"
     ):
+        _record(instance_record, "skipped", entity_type=ET_INSTANCES)
         return None
 
     try:
@@ -306,9 +367,11 @@ def _terminate_instance(
                 f"Failed to terminate Instance '{instance_id}' in "
                 f"Compute Requirement {cr_id}: {e}"
             )
+        _record(instance_record, "failed", str(e), ET_INSTANCES)
         return None
 
     print_info(f"Terminated Instance '{instance_id}' in Compute Requirement {cr_id}")
+    _record(instance_record, _TERMINATED, entity_type=ET_INSTANCES)
     return cr_id
 
 

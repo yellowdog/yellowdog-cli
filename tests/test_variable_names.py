@@ -25,7 +25,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.utils.variables as var_module
-from yellowdog_cli.utils.settings import RESERVED_VARIABLE_NAMES
+from yellowdog_cli.utils.settings import RESERVED_VARIABLE_NAMES, ExitCode
 
 VALID = ["a", "A1", "_x", "9lives", "42", "my-var", "dataClient.1.remote", "a.b-c_d"]
 INVALID = ["", "my var", ".ID", "-x", "a:b", "num:x", "a}}b", "a=b", "a{b", "é"]
@@ -160,26 +160,26 @@ def _yd_variables(*args: str, cwd, env: dict | None = None):
 class TestCommandSources:
     def test_command_line(self, tmp_path):
         result = _yd_variables("--nc", "-v", "my var=1", cwd=tmp_path)
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_environment(self, tmp_path):
         result = _yd_variables("--nc", cwd=tmp_path, env={"YD_VAR_my.var!": "1"})
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "YD_VAR_my.var!" in result.stdout + result.stderr
 
     def test_property_override(self, tmp_path):
         result = _yd_variables(
             "--nc", "--property", "common.variables.my var=1", cwd=tmp_path
         )
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_config_file(self, tmp_path):
         config = tmp_path / "config.toml"
         config.write_text('[common.variables]\n"my var" = "x"\n')
         result = _yd_variables("-c", str(config), cwd=tmp_path)
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_a_valid_name_starting_with_a_digit(self, tmp_path):
@@ -190,7 +190,7 @@ class TestCommandSources:
 
 class TestReservedNamesAtTheCommandSources:
     def _refused(self, result, name: str) -> None:
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         # Rich wraps the message, so compare it with the whitespace collapsed
         output = " ".join((result.stdout + result.stderr).split())
         assert f"Variable '{name}'" in output

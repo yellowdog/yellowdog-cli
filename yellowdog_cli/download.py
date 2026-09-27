@@ -8,14 +8,10 @@ from pathlib import Path
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
-from yellowdog_cli.utils.dataclient_utils import (
-    download_files,
-    matched_item_rows,
-    resolve_remote_path,
-)
+from yellowdog_cli.utils.dataclient_utils import download_files, resolve_remote_path
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_info, print_objects_as_json
+from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
@@ -69,15 +65,6 @@ def main():
     dry_run = ARGS_PARSER.dry_run or False
     explicit_destination = ARGS_PARSER.destination
     into_dir = ARGS_PARSER.into
-
-    if dry_run and ARGS_PARSER.json_output:
-        # Enumeration only, in the same shape yd-delete emits: Commander uses it
-        # to offer a selection of the matched top-level items. Nothing is
-        # downloaded, and '--json' without '--dry-run' is rejected at parse time.
-        print_objects_as_json(
-            matched_item_rows(CONFIG_DATA_CLIENT, ARGS_PARSER.remote_paths)
-        )
-        return
 
     for remote_path_str in ARGS_PARSER.remote_paths:
         remote_path = resolve_remote_path(

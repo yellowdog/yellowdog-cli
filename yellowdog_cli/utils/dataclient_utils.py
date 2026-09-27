@@ -5,8 +5,11 @@ yd-upload, yd-download, yd-delete, yd-ls.
 
 import fnmatch
 import json
+import subprocess
+import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
 from rclone_api import Config, Rclone
 from rclone_api.dir_listing import DirListing
@@ -19,7 +22,12 @@ from yellowdog_cli.utils.rclone_utils import (
     make_rclone_for_copy,
     parse_rclone_config,
 )
+from yellowdog_cli.utils.results import json_requested, record
 from yellowdog_cli.utils.variables import resolve_variables_in_string
+
+# The keys of an rclone 'lsjson' entry that yd-ls records under '--json',
+# spelled as rclone spells them; others vary by backend ('MimeType', 'IsBucket')
+LSJSON_KEYS = ("Path", "Name", "Size", "ModTime", "IsDir")
 
 
 def is_glob(path: str) -> bool:
@@ -37,6 +45,115 @@ def _rclone_error_detail(result) -> str:
     ran uncaptured (output went to the terminal), so fall back to the code.
     """
     return result.stderr or f"rclone exit code {result.returncode}"
+
+
+def _join_remote(remote_dir: str, name: str) -> str:
+    """
+    A name within a remote directory: 'remote_dir' may end with '/', or be a
+    bare 'remote:' (as list_remote_glob() returns it for a path with no
+    directory part), which a '/' would turn into a different path.
+    """
+    if remote_dir.endswith(("/", ":")):
+        return f"{remote_dir}{name}"
+    return f"{remote_dir}/{name}"
+
+
+_T = TypeVar("_T")
+
+
+def _without_rclone_api_warnings(call: Callable[[], _T]) -> _T:
+    """
+    Make a listing call with rclone_api's UserWarning silenced: on a failed
+    rclone run it warns with the whole command line (an inline remote's
+    parameters included) and rclone's stderr, which reaches the user's stderr
+    ahead of the command's own report of the same failure -- a missing path.
+    Scoped to rclone_api's warnings, so any other still gets through.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", category=UserWarning, module=r"rclone_api(\.|$)"
+        )
+        return call()
+
+
+def _run_quietly(rclone: Rclone, args: list[str]) -> subprocess.CompletedProcess:
+    """
+    rclone.impl._run(args, capture=True), without rclone_api's warning on a
+    non-zero exit: every caller checks the return code and reports it itself.
+    """
+    return _without_rclone_api_warnings(lambda: rclone.impl._run(args, capture=True))
+
+
+def _lsjson(
+    rclone: Rclone,
+    remote_path: str,
+    recursive: bool = False,
+    files_only: bool = False,
+) -> list[dict]:
+    """
+    rclone's 'lsjson' entries for 'remote_path' (a directory's contents, or
+    a file itself), raising if it cannot be listed.
+    """
+    args = ["lsjson", "--no-mimetype"]
+    if recursive:
+        args.append("-R")
+    if files_only:
+        args.append("--files-only")
+    result = _run_quietly(rclone, [*args, remote_path])
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Cannot list '{remote_path}': {_rclone_error_detail(result)}"
+        )
+    return json.loads(result.stdout or "[]")
+
+
+def record_transfer(
+    source: str,
+    destination: str | None,
+    size: int | None,
+    action: str,
+    error: str | None = None,
+    **extra,
+) -> None:
+    """
+    Record one file transferred by yd-upload, yd-download or yd-copy, as
+    {"source", "destination", "size", "action"} (plus "error" when given, and
+    any extra fields): 'action' is 'uploaded', 'downloaded' or 'copied',
+    'skipped', 'failed', or 'would upload' (and so on) under '--dry-run'.
+    """
+    item = {
+        "source": source,
+        "destination": destination,
+        "size": size,
+        "action": action,
+    }
+    if error is not None:
+        item["error"] = error
+    item.update(extra)
+    record(item)
+
+
+def _record_deletion(
+    remote_path: str, is_dir: bool, action: str, error: str | None = None
+) -> None:
+    """
+    Record one item removed by yd-delete, as {"path", "action"} with its
+    display "name" (a directory's with a trailing '/') and "isDir", which
+    Commander offers its selection from; 'action' is 'deleted', 'failed' or
+    'would delete'. The path carries no trailing '/', because it is the
+    handle passed back to delete that one item.
+    """
+    path = remote_path.rstrip("/")
+    name = path.rsplit("/", 1)[-1].split(":", 1)[-1] if path else path
+    item = {
+        "path": path,
+        "action": action,
+        "name": name + ("/" if is_dir else ""),
+        "isDir": is_dir,
+    }
+    if error is not None:
+        item["error"] = error
+    record(item)
 
 
 def _require_remote(config: ConfigDataClient) -> str:
@@ -121,15 +238,20 @@ def upload_file(
     """
     Upload a single local file to the given remote path.
     """
+    size = local_path.stat().st_size
     if dry_run:
         print_dry_run(f"Would upload '{local_path}' → '{remote_path}'")
+        record_transfer(str(local_path), remote_path, size, "would upload")
         return
 
     _, rclone = _rclone_for_config(config)
     print_info(f"Uploading '{local_path}' → '{remote_path}'")
     result = rclone.copy_to(src=str(local_path.resolve()), dst=remote_path)
     if result.returncode != 0:
-        raise RuntimeError(f"Upload failed: {_rclone_error_detail(result)}")
+        error = f"Upload failed: {_rclone_error_detail(result)}"
+        record_transfer(str(local_path), remote_path, size, "failed", error=error)
+        raise RuntimeError(error)
+    record_transfer(str(local_path), remote_path, size, "uploaded")
 
 
 def _rclone_sync(rclone: Rclone, src: str, dst: str):
@@ -174,9 +296,14 @@ def upload_directory(
         _upload_directory_flat(config, local_path, remote_path, dry_run)
         return
 
+    # Walked only to be recorded, which nothing prints without '--json'
+    files = _local_upload_files(local_path, remote_path) if json_requested() else []
+
     action = "sync" if sync else "copy"
     if dry_run:
         print_dry_run(f"Would {action} directory '{local_path}' → '{remote_path}'")
+        for source, destination, size in files:
+            record_transfer(source, destination, size, "would upload")
         return
 
     _, rclone = _rclone_for_config(config)
@@ -186,7 +313,28 @@ def upload_directory(
     else:
         result = rclone.copy(src=str(local_path.resolve()), dst=remote_path)
     if result.returncode != 0:
-        raise RuntimeError(f"Directory upload failed: {_rclone_error_detail(result)}")
+        # One rclone run moved them all, so which of them failed is unknown
+        error = f"Directory upload failed: {_rclone_error_detail(result)}"
+        for source, destination, size in files:
+            record_transfer(source, destination, size, "failed", error=error)
+        raise RuntimeError(error)
+    for source, destination, size in files:
+        record_transfer(source, destination, size, "uploaded")
+
+
+def _local_upload_files(
+    local_path: Path, remote_path: str
+) -> list[tuple[str, str, int | None]]:
+    """
+    (source, destination, size) for each file in the local directory, as an
+    rclone copy of it to 'remote_path' places it.
+    """
+    base = remote_path.rstrip("/")
+    return [
+        (str(f), f"{base}/{f.relative_to(local_path).as_posix()}", f.stat().st_size)
+        for f in sorted(local_path.rglob("*"))
+        if f.is_file()
+    ]
 
 
 def _upload_directory_flat(
@@ -289,7 +437,7 @@ def _download_with_glob(
 
     # Preflight: list the parent directory and check whether any entry
     # (file or directory) matches the glob pattern.
-    check = rclone.impl._run(["lsjson", remote_dir], capture=True)
+    check = _run_quietly(rclone, ["lsjson", remote_dir])
     if check.returncode != 0:
         print_warning(f"Cannot access '{remote_dir}'")
         return
@@ -307,18 +455,69 @@ def _download_with_glob(
     # Drive the transfer from the matched entries, so that the reported
     # matches and the transferred files always agree (rclone's '--include'
     # filter syntax differs subtly from the fnmatch syntax used above)
-    base = remote_dir.rstrip("/")
     for entry in matches:
-        src = f"{base}/{entry['Name']}"
+        src = _join_remote(remote_dir, entry["Name"])
         dst = str(local_destination / entry["Name"])
+        files = (
+            _download_files_of(rclone, src, bool(entry["IsDir"]), Path(dst), entry)
+            if json_requested()
+            else []
+        )
         if entry["IsDir"]:
             result = _rclone_sync(rclone, src, dst) if sync else rclone.copy(src, dst)
         else:
             result = rclone.copy_to(src=src, dst=dst)
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Download failed for '{src}': {_rclone_error_detail(result)}"
-            )
+            error = f"Download failed for '{src}': {_rclone_error_detail(result)}"
+            _record_downloads(files, src, "failed", error=error)
+            raise RuntimeError(error)
+        _record_downloads(files, src, "downloaded")
+
+
+def _download_files_of(
+    rclone: Rclone,
+    remote_path: str,
+    is_dir: bool,
+    local_path: Path,
+    entry: dict | None = None,
+    flatten: bool = False,
+) -> list[tuple[str, str, int | None]]:
+    """
+    (source, destination, size) for each file a download of one remote item
+    fetches: a file to 'local_path' itself, or each file in a directory to
+    its place under 'local_path' -- or directly in it, flattened. 'entry' is
+    the file's own lsjson entry, when the caller has it already.
+    """
+    if not is_dir:
+        if entry is None:
+            entries = _lsjson(rclone, remote_path)
+            entry = entries[0] if entries else {}
+        return [(remote_path, str(local_path), entry.get("Size"))]
+    return [
+        (
+            _join_remote(remote_path, f["Path"]),
+            str(local_path / (f["Name"] if flatten else f["Path"])),
+            f.get("Size"),
+        )
+        for f in _lsjson(rclone, remote_path, recursive=True, files_only=True)
+    ]
+
+
+def _record_downloads(
+    files: list[tuple[str, str, int | None]],
+    match: str,
+    action: str,
+    error: str | None = None,
+) -> None:
+    """
+    Record each file of one downloaded item. 'match' is the remote item the
+    command's argument matched -- the file itself, or the directory it is in --
+    which Commander offers its selection of top-level items from.
+    """
+    for source, destination, size in files:
+        record_transfer(
+            source, destination, size, action, error=error, match=match.rstrip("/")
+        )
 
 
 def download_files(
@@ -344,7 +543,7 @@ def download_files(
     if dry_run:
         action = "sync" if sync else "download"
         if is_glob(remote_path):
-            _, matches = list_remote_glob(config, remote_path)
+            remote_dir, matches = list_remote_glob(config, remote_path)
             if not matches:
                 print_info(f"No wildcard matches for '{remote_path}'")
                 return
@@ -353,6 +552,18 @@ def download_files(
                 f"Would {action} {len(matches)} matched item(s)"
                 f" → '{local_destination}': {', '.join(names)}"
             )
+            if json_requested():
+                _, rclone = _rclone_for_config(config)
+                for entry in matches:
+                    src = _join_remote(remote_dir, entry["Name"])
+                    files = _download_files_of(
+                        rclone,
+                        src,
+                        bool(entry["IsDir"]),
+                        local_destination / entry["Name"],
+                        entry,
+                    )
+                    _record_downloads(files, src, "would download")
         else:
             listing = list_remote(config, remote_path)
             if not listing.dirs and not listing.files:
@@ -365,6 +576,12 @@ def download_files(
                 f"Would {action} '{remote_path}' → '{local_destination}'"
                 f" ({n_files} file(s), {n_dirs} director{ies})"
             )
+            if json_requested():
+                _, rclone = _rclone_for_config(config)
+                files = _literal_download_files(
+                    rclone, remote_path, local_destination, flatten
+                )
+                _record_downloads(files, remote_path, "would download")
         return
 
     if is_glob(remote_path):
@@ -385,15 +602,26 @@ def download_files(
         local_destination.mkdir(parents=True, exist_ok=True)
         for dir_listing in rclone.walk(remote_path):
             for f in dir_listing.files:
+                file_src = f"{remote_path.rstrip('/')}/{f.path.path}"
                 file_dst = str(local_destination / f.name)
-                result = rclone.copy_to(
-                    src=f"{remote_path.rstrip('/')}/{f.path.path}", dst=file_dst
-                )
+                result = rclone.copy_to(src=file_src, dst=file_dst)
+                files: list[tuple[str, str, int | None]] = [
+                    (file_src, file_dst, f.path.size)
+                ]
                 if result.returncode != 0:
-                    raise RuntimeError(
-                        f"Download failed for '{f.path.path}': {_rclone_error_detail(result)}"
+                    error = (
+                        f"Download failed for '{f.path.path}':"
+                        f" {_rclone_error_detail(result)}"
                     )
+                    _record_downloads(files, remote_path, "failed", error=error)
+                    raise RuntimeError(error)
+                _record_downloads(files, remote_path, "downloaded")
     else:
+        files = (
+            _literal_download_files(rclone, remote_path, local_destination, flatten)
+            if json_requested()
+            else []
+        )
         action = "Syncing" if sync else "Downloading"
         print_info(f"{action} '{remote_path}' → '{local_destination}'")
         if sync:
@@ -401,7 +629,27 @@ def download_files(
         else:
             result = rclone.copy(src=remote_path, dst=dst)
         if result.returncode != 0:
-            raise RuntimeError(f"Download failed: {_rclone_error_detail(result)}")
+            # One rclone run fetched them all, so which of them failed is unknown
+            error = f"Download failed: {_rclone_error_detail(result)}"
+            _record_downloads(files, remote_path, "failed", error=error)
+            raise RuntimeError(error)
+        _record_downloads(files, remote_path, "downloaded")
+
+
+def _literal_download_files(
+    rclone: Rclone, remote_path: str, local_destination: Path, flatten: bool
+) -> list[tuple[str, str, int | None]]:
+    """
+    The files a download of a literal (not wildcard) remote path fetches:
+    'rclone copy' puts a file inside the destination directory, under its
+    own name, and a directory's contents in it.
+    """
+    if _is_remote_file(rclone, remote_path):
+        name = remote_path.rstrip("/").rsplit("/", 1)[-1]
+        return _download_files_of(rclone, remote_path, False, local_destination / name)
+    return _download_files_of(
+        rclone, remote_path, True, local_destination, flatten=flatten
+    )
 
 
 def _delete_with_glob(
@@ -418,7 +666,7 @@ def _delete_with_glob(
     remote_dir, pattern = _split_glob_remote_path(remote_path)
     _, rclone = _rclone_for_config(config)
 
-    check = rclone.impl._run(["lsjson", remote_dir], capture=True)
+    check = _run_quietly(rclone, ["lsjson", remote_dir])
     if check.returncode != 0:
         print_warning(f"Cannot access '{remote_dir}'")
         return
@@ -428,10 +676,10 @@ def _delete_with_glob(
         print_info(f"No matches for wildcard '{remote_path}'")
         return
 
-    base = remote_dir.rstrip("/")
     for entry in matches:
-        entry_path = f"{base}/{entry['Name']}"
-        if entry["IsDir"]:
+        entry_path = _join_remote(remote_dir, entry["Name"])
+        is_dir = bool(entry["IsDir"])
+        if is_dir:
             if recursive:
                 print_info(f"Deleting directory '{entry_path}'")
                 result = rclone.purge(entry_path)
@@ -444,7 +692,10 @@ def _delete_with_glob(
             print_info(f"Deleting '{entry_path}'")
             result = rclone.delete_files(entry_path)
         if result.returncode != 0:
-            raise RuntimeError(f"Delete failed: {_rclone_error_detail(result)}")
+            error = f"Delete failed: {_rclone_error_detail(result)}"
+            _record_deletion(entry_path, is_dir, "failed", error=error)
+            raise RuntimeError(error)
+        _record_deletion(entry_path, is_dir, "deleted")
 
 
 def delete_remote(
@@ -459,14 +710,33 @@ def delete_remote(
     if dry_run:
         action = "recursively delete" if recursive else "delete"
         if is_glob(remote_path):
-            _, matches = list_remote_glob(config, remote_path)
+            remote_dir, matches = list_remote_glob(config, remote_path)
             if not matches:
                 print_info(f"No wildcard matches for '{remote_path}'")
                 return
-            names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
+            # As the deletion itself does, pass over a directory without
+            # '--recursive'
+            deletable = []
+            for entry in matches:
+                if entry["IsDir"] and not recursive:
+                    print_warning(
+                        f"'{_join_remote(remote_dir, entry['Name'])}' is a"
+                        " directory; use --recursive to delete it"
+                    )
+                else:
+                    deletable.append(entry)
+            if not deletable:
+                return
+            names = [f"'{entry_to_name(e)}'" for e in deletable]
             print_dry_run(
-                f"Would {action} {len(matches)} matched item(s): {', '.join(names)}"
+                f"Would {action} {len(deletable)} matched item(s): {', '.join(names)}"
             )
+            for entry in deletable:
+                _record_deletion(
+                    _join_remote(remote_dir, entry["Name"]),
+                    bool(entry["IsDir"]),
+                    "would delete",
+                )
         else:
             listing = list_remote(config, remote_path)
             if not listing.dirs and not listing.files:
@@ -490,6 +760,7 @@ def delete_remote(
                     f"Would {action} '{remote_path}'"
                     f" ({n_files} file(s), {n_dirs} subdirector{ies})"
                 )
+            _record_deletion(remote_path, not is_file, "would delete")
         return
 
     if is_glob(remote_path):
@@ -519,7 +790,10 @@ def delete_remote(
         return
 
     if result.returncode != 0:
-        raise RuntimeError(f"Delete failed: {_rclone_error_detail(result)}")
+        error = f"Delete failed: {_rclone_error_detail(result)}"
+        _record_deletion(remote_path, not is_file, "failed", error=error)
+        raise RuntimeError(error)
+    _record_deletion(remote_path, not is_file, "deleted")
 
 
 def list_remote_glob(
@@ -534,52 +808,41 @@ def list_remote_glob(
     """
     remote_dir, pattern = _split_glob_remote_path(remote_path)
     _, rclone = _rclone_for_config(config)
-    check = rclone.impl._run(["lsjson", remote_dir], capture=True)
+    check = _run_quietly(rclone, ["lsjson", remote_dir])
     if check.returncode != 0:
         return remote_dir, []
     entries = json.loads(check.stdout or "[]")
     return remote_dir, [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
 
 
-def matched_item_rows(config: ConfigDataClient, remote_paths: list[str]) -> list[dict]:
+def lsjson_listing(
+    config: ConfigDataClient, remote_path: str, recursive: bool = False
+) -> list[dict]:
     """
-    The top-level items the given remote paths match, as JSON-ready rows of
-    {"name", "path", "isDir"}, without touching any of them. Shared by
-    'yd-delete --dry-run --json' and 'yd-download --dry-run --json', which offer
-    the same selection from the same shape of listing.
-
-    'name' is the display basename, with a trailing '/' on a directory. 'path' is
-    the resolved remote path and carries NO trailing slash even for a directory,
-    because resolve_remote_path reads a trailing '/' as directory-destination
-    intent (meaningful for yd-copy/yd-upload, wrong for naming one item). 'path'
-    is the handle a caller passes back to act on that one item, so every entry
-    must be joined to the parent directory IT came from — hence the rows are
-    built inside the loop rather than over a flattened list of names.
-
-    With no remote paths, the configured prefix is enumerated.
+    yd-ls's listing under '--json': rclone's 'lsjson' entries for
+    'remote_path', each reduced to LSJSON_KEYS. A wildcard path gives the
+    matching entries of its parent directory -- with a matching directory's
+    contents too when recursive, their 'Path' relative to that parent, as
+    rclone's own recursive listing of the parent would give it.
     """
-    rows: list[dict] = []
-    resolved = (
-        [resolve_remote_path(config)]
-        if not remote_paths
-        else [resolve_remote_path(config, relative_path=p) for p in remote_paths]
-    )
-    for remote_path in resolved:
-        # list_remote_glob handles a literal (non-glob) final component too: it
-        # lists the parent and exact-matches the name, so a path that matches
-        # nothing yields no entries (rather than echoing the input). The parent it
-        # returns already ends with '/', or is the bare remote prefix ('S3:') when
-        # the path has no directory part.
+    _, rclone = _rclone_for_config(config)
+    if not is_glob(remote_path):
+        entries = _lsjson(rclone, remote_path, recursive=recursive)
+    else:
         remote_dir, matches = list_remote_glob(config, remote_path)
-        for entry in matches:
-            rows.append(
-                {
-                    "name": entry_to_name(entry),
-                    "path": f"{remote_dir}{entry['Name']}",
-                    "isDir": bool(entry["IsDir"]),
-                }
-            )
-    return rows
+        entries = []
+        for match in matches:
+            entries.append(match)
+            if recursive and match["IsDir"]:
+                entries.extend(
+                    {**entry, "Path": f"{match['Path']}/{entry['Path']}"}
+                    for entry in _lsjson(
+                        rclone,
+                        _join_remote(remote_dir, match["Name"]),
+                        recursive=True,
+                    )
+                )
+    return [{key: entry.get(key) for key in LSJSON_KEYS} for entry in entries]
 
 
 def list_remote(
@@ -595,7 +858,9 @@ def list_remote(
     """
     _, rclone = _rclone_for_config(config)
     max_depth = -1 if recursive else 1
-    return rclone.ls(src=remote_path, max_depth=max_depth)
+    return _without_rclone_api_warnings(
+        lambda: rclone.ls(src=remote_path, max_depth=max_depth)
+    )
 
 
 def _is_remote_file(rclone: Rclone, remote_path: str) -> bool:
@@ -609,7 +874,7 @@ def _is_remote_file(rclone: Rclone, remote_path: str) -> bool:
     if "/" not in path_part:
         return False
     parent, name = path.rsplit("/", 1)
-    check = rclone.impl._run(["lsjson", parent], capture=True)
+    check = _run_quietly(rclone, ["lsjson", parent])
     if check.returncode != 0:
         return False
     entries = json.loads(check.stdout or "[]")
@@ -635,7 +900,8 @@ def copy_remote(
     if dry_run:
         action = "sync" if sync else "copy"
         print_dry_run(f"Would {action} '{src_path}' → '{dst_path}'")
-        return
+        if not json_requested():
+            return
 
     src_remote_str = _require_remote(src_config)
     dst_remote_str = _require_remote(dst_config)
@@ -646,30 +912,74 @@ def copy_remote(
 
     # Colliding remote names are renamed by make_rclone_for_copy; the paths
     # were resolved with the original names, so rewrite their prefixes
-    if src_name != src_orig_name and src_path.startswith(f"{src_orig_name}:"):
-        src_path = f"{src_name}:{src_path[len(src_orig_name) + 1 :]}"
-    if dst_name != dst_orig_name and dst_path.startswith(f"{dst_orig_name}:"):
-        dst_path = f"{dst_name}:{dst_path[len(dst_orig_name) + 1 :]}"
-
-    action = "Syncing" if sync else "Copying"
-    print_info(f"{action} '{src_path}' → '{dst_path}'")
+    src_path = _renamed(src_path, src_orig_name, src_name)
+    dst_path = _renamed(dst_path, dst_orig_name, dst_name)
 
     # Normalise shell tab-completion artefact: "dir/." → "dir/"
     if dst_path.endswith("/."):
         dst_path = dst_path[:-1]
 
+    src_is_file = not sync and _is_remote_file(rclone, src_path)
+    # Source is a single file: use copyto for precise destination naming.
+    # If dst ends with '/', treat it as a directory and append the source filename.
+    dst_file = (
+        dst_path + src_path.rsplit("/", 1)[-1] if dst_path.endswith("/") else dst_path
+    )
+
+    # Each file copied, named by the paths as the user gave them rather than
+    # by the collision-free names the transfer used
+    files: list[tuple[str, str, int | None]] = []
+    if json_requested():
+        if src_is_file:
+            entries = _lsjson(rclone, src_path)
+            files = [(src_path, dst_file, entries[0].get("Size") if entries else None)]
+        else:
+            files = [
+                (
+                    _join_remote(src_path.rstrip("/"), f["Path"]),
+                    _join_remote(dst_path.rstrip("/"), f["Path"]),
+                    f.get("Size"),
+                )
+                for f in _lsjson(rclone, src_path, recursive=True, files_only=True)
+            ]
+        files = [
+            (
+                _renamed(source, src_name, src_orig_name),
+                _renamed(destination, dst_name, dst_orig_name),
+                size,
+            )
+            for source, destination, size in files
+        ]
+
+    if dry_run:
+        for source, destination, size in files:
+            record_transfer(source, destination, size, "would copy")
+        return
+
+    action = "Syncing" if sync else "Copying"
+    print_info(f"{action} '{src_path}' → '{dst_path}'")
+
     if sync:
         result = _rclone_sync(rclone, src=src_path, dst=dst_path)
-    elif _is_remote_file(rclone, src_path):
-        # Source is a single file: use copyto for precise destination naming.
-        # If dst ends with '/', treat it as a directory and append the source filename.
-        if dst_path.endswith("/"):
-            dst_file = dst_path + src_path.rsplit("/", 1)[-1]
-        else:
-            dst_file = dst_path
+    elif src_is_file:
         result = rclone.copy_to(src=src_path, dst=dst_file)
     else:
         result = rclone.copy(src=src_path, dst=dst_path)
 
     if result.returncode != 0:
-        raise RuntimeError(f"Copy failed: {_rclone_error_detail(result)}")
+        # One rclone run copied them all, so which of them failed is unknown
+        error = f"Copy failed: {_rclone_error_detail(result)}"
+        for source, destination, size in files:
+            record_transfer(source, destination, size, "failed", error=error)
+        raise RuntimeError(error)
+    for source, destination, size in files:
+        record_transfer(source, destination, size, "copied")
+
+
+def _renamed(path: str, name: str, new_name: str) -> str:
+    """
+    'path' with its remote prefix 'name:' replaced by 'new_name:'.
+    """
+    if name != new_name and path.startswith(f"{name}:"):
+        return f"{new_name}:{path[len(name) + 1 :]}"
+    return path

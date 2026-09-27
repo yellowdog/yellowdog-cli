@@ -555,6 +555,9 @@ class CLIParser:
     @property
     @allow_missing_attribute
     def raw_events(self) -> bool | None:
+        # yd-follow's '--json' is a synonym for '--raw-events'
+        if self.command_name == "yd-follow" and getattr(self.args, "json", False):
+            return True
         return self.args.raw_events
 
     # -----------------------------------------------------------------------

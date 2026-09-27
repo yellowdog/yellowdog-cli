@@ -165,7 +165,7 @@ PyQt6 is the optional `commander` extra, installed by the `uv pip install` line 
 The GUI holds no API client and imports neither the SDK nor `utils/wrapper.py`: every action runs a `yd-*` command as a child process. Two consequences worth keeping in mind when changing a command:
 
 - Its behaviour, output and configuration precedence are the CLI's, so a fix to a command reaches the GUI for free.
-- The selection dialogs are built by parsing `-D --json` output from `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-download` and `yd-delete` (`parse_entity_summaries` and `parse_object_summaries`). Changing the shape of that JSON will change what the GUI offers to act on, and the tests for those parsers are where that will show up.
+- The selection dialogs are built by parsing `-D --json` output from `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-download` and `yd-delete` (`parse_entity_summaries`, `parse_object_summaries`, and `parse_download_summaries` for `yd-download`'s per-file records). Changing the shape of that JSON will change what the GUI offers to act on, and the tests for those parsers are where that will show up.
 
 The window layout is `commander.ui`, Qt Designer XML. Edit it in Designer if you have Qt's tools installed, otherwise the XML directly; either way keep widget names in step with the code, since `loadUi()` binds them by name and `YellowDogApp.__init__` connects signals to them — a renamed widget fails at construction, which `tests/test_commander_ui_loads.py` exists to catch.
 

@@ -68,8 +68,12 @@ class TestExplicitConstruction:
     def test_validators_run(self):
         with pytest.raises(SystemExit):
             CLIParser(command="yd-cancel", argv=["literal-name", "glob-*"])
-        with pytest.raises(SystemExit):
-            CLIParser(command="yd-delete", argv=["--json", "some/path"])
+        # '--json' no longer requires '--dry-run' on yd-delete: this must
+        # parse rather than raise.
+        assert (
+            CLIParser(command="yd-delete", argv=["--json", "some/path"]).json_output
+            is True
+        )
 
     def test_rm_keeps_its_own_prog(self):
         assert CLIParser(command="yd-rm", argv=["p"]).parser.prog == "yd-rm"

@@ -2,10 +2,15 @@
 Unit tests for yellowdog_cli.utils.dataclient_utils
 """
 
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
+import yellowdog_cli.utils.dataclient_utils as dcu_module
+import yellowdog_cli.utils.results as results_module
 from yellowdog_cli.utils.config_types import ConfigDataClient
-from yellowdog_cli.utils.dataclient_utils import resolve_remote_path
+from yellowdog_cli.utils.dataclient_utils import resolve_remote_path, upload_directory
 from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
 
 
@@ -171,3 +176,42 @@ class TestSplitGlobRemotePath:
 
         with pytest.raises(ValueError, match="final path component"):
             _split_glob_remote_path(path)
+
+
+class TestUploadDirectoryWalksOnlyForJson:
+    """
+    A directory upload lists its local files only to record them, which
+    nothing prints without '--json': a large tree is not walked for nothing.
+    """
+
+    def _upload(self, monkeypatch, tmp_path, json_output: bool) -> list:
+        (tmp_path / "d").mkdir()
+        (tmp_path / "d" / "x.txt").write_text("x")
+        monkeypatch.setattr(
+            results_module, "ARGS_PARSER", MagicMock(json_output=json_output)
+        )
+        stats: list = []
+        real_stat = Path.stat
+
+        def spy(self, *args, **kwargs):
+            stats.append(self)
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", spy)
+        walks: list = []
+        real_walk = dcu_module._local_upload_files
+        monkeypatch.setattr(
+            dcu_module,
+            "_local_upload_files",
+            lambda *a: walks.append(a) or real_walk(*a),
+        )
+        upload_directory(
+            ConfigDataClient(remote="r"), tmp_path / "d", "r:b/d", dry_run=True
+        )
+        return walks + stats
+
+    def test_no_walk_and_no_stat_without_json(self, monkeypatch, tmp_path):
+        assert self._upload(monkeypatch, tmp_path, json_output=False) == []
+
+    def test_walked_with_json(self, monkeypatch, tmp_path):
+        assert self._upload(monkeypatch, tmp_path, json_output=True) != []

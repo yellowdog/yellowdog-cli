@@ -95,3 +95,43 @@ def test_capture_summaries_logs_when_ydids_missing(window, monkeypatch):
     window.log_output.setPlainText("")
     assert window._capture_dry_run_summaries("yd-terminate") is None
     assert "did not include YDIDs" in window.log_output.toPlainText()
+
+
+def test_dry_run_records_carry_the_status_commander_shows(monkeypatch, capsys):
+    # The confirmation lists 'name  status'; the status comes from the CLI's
+    # own '-D --json' records, so build the rows from what report_dry_run()
+    # actually emits rather than hand-writing one.
+    from json import loads as json_loads
+    from unittest.mock import MagicMock
+
+    from yellowdog_client.model import (
+        WorkRequirementStatus,
+        WorkRequirementSummary,
+    )
+
+    import yellowdog_cli.utils.printing as printing_module
+    import yellowdog_cli.utils.results as results_module
+    from yellowdog_cli.utils.dryrun_utils import report_dry_run
+
+    args = MagicMock(json_output=True, no_format=True, quiet=False, strip_ids=False)
+    for module in (results_module, printing_module):
+        monkeypatch.setattr(module, "ARGS_PARSER", args)
+    results_module.reset_results()
+    wr_id = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
+    summary = WorkRequirementSummary(
+        id=wr_id, name="wr-a", namespace="ns", status=WorkRequirementStatus.HELD
+    )
+    report_dry_run(
+        MagicMock(),
+        [summary],
+        "Work Requirement",
+        "cancelled",
+        "work-requirements",
+        "cancel",
+        as_json=True,
+    )
+    results_module.flush_results()
+    parsed = json_loads(capsys.readouterr().out)
+    assert parse_entity_summaries(parsed) == [
+        EntitySummary(id=wr_id, name="wr-a", status="HELD")
+    ]

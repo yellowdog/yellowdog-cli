@@ -89,6 +89,7 @@ from yellowdog_cli.commander.selection import (
     checked_handles,
     entity_rows,
     object_rows,
+    parse_download_summaries,
     parse_entity_summaries,
     parse_object_summaries,
     path_would_be_globbed,
@@ -1276,14 +1277,18 @@ class YellowDogApp(QMainWindow):
         enumeration failed or did not carry paths, which drops the caller back to
         acting over the whole pattern.
 
-        'command' is 'yd-delete' or 'yd-download': both emit the same row shape
-        from their '--dry-run --json' mode, and both offer the same selection
-        over it.
+        'command' is 'yd-delete' or 'yd-download', which offer the same
+        selection: yd-delete's '--dry-run --json' records one row per item,
+        yd-download's one per file, naming the item each belongs to.
         """
         parsed = self._capture_dry_run_json(command, extra_args)
         if parsed is None:
             return None
-        summaries = parse_object_summaries(parsed)
+        summaries = (
+            parse_download_summaries(parsed)
+            if command == "yd-download"
+            else parse_object_summaries(parsed)
+        )
         if summaries is None:
             self._output.log(
                 "Object listing did not include paths; cannot offer a selection"

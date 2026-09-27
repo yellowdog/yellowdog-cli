@@ -151,7 +151,9 @@ def get_worker_pool_id_by_name(
 ) -> str | None:
     """
     Find a Worker Pool ID by its name. A 'namespace' in the worker pool name
-    overrides the 'namespace' argument.
+    overrides the 'namespace' argument. None means not found (an HTTP 404);
+    any other failure, such as a 401, is raised for the wrapper to report and
+    classify, rather than being mistaken for not found.
     """
     namespace_, name = split_namespace_and_name(worker_pool_name)
     namespace_ = namespace if namespace_ is None else namespace_
@@ -168,9 +170,9 @@ def get_worker_pool_id_by_name(
         )
         return worker_pool.id
     except Exception as e:
-        if not is_http_not_found(e):
-            print_error(f"Unable to look up Worker Pool '{worker_pool_name}': {e}")
-        return None
+        if is_http_not_found(e):
+            return None
+        raise
 
 
 def get_compute_requirement_id_by_name(

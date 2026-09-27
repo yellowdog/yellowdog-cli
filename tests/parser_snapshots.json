@@ -266,6 +266,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": "",
       "dest": "task_id_list",
@@ -713,6 +726,19 @@
       "option_strings": [
         "--yes",
         "-y"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -1601,6 +1627,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-compute-restart": [
@@ -1878,6 +1917,19 @@
       "option_strings": [
         "--yes",
         "-y"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -2202,6 +2254,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": "",
       "dest": "compute_reqs_instances_or_nodes",
@@ -2514,6 +2579,19 @@
       "option_strings": [
         "--yes",
         "-y"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -2905,6 +2983,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-create": [
@@ -3151,6 +3242,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -4469,6 +4573,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": "",
       "dest": "work_requirements",
@@ -4731,6 +4848,19 @@
       "nargs": 0,
       "option_strings": [
         "--raw-events"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -5027,6 +5157,19 @@
       "option_strings": [
         "--yes",
         "-y"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -5342,6 +5485,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -6165,6 +6321,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-nodeaction": [
@@ -6541,6 +6710,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-provision": [
@@ -6801,6 +6983,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -7122,6 +7317,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": [],
       "dest": "resource_specifications",
@@ -7417,6 +7625,19 @@
       "option_strings": [
         "--dry-run",
         "-D"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -8779,6 +9000,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": "",
       "dest": "work_requirements",
@@ -9270,6 +9504,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
       ],
       "required": false,
       "type": null
@@ -10035,6 +10282,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-variables": [
@@ -10485,6 +10745,19 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json"
+      ],
+      "required": false,
+      "type": null
     }
   ]
 }

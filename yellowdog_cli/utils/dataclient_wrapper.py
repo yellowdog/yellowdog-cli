@@ -7,8 +7,15 @@ run without YellowDog API credentials.
 from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.exit_codes import classify
 from yellowdog_cli.utils.load_config import warn_of_undefined_config_variables
 from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.results import (
+    any_failed,
+    flush_results,
+    flush_results_after_failure,
+)
+from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
 
@@ -20,28 +27,46 @@ def dataclient_wrapper(func):
         enable_undefined_variable_warnings()
         warn_of_undefined_config_variables()
         if not ARGS_PARSER.debug:
-            exit_code = 0
+            exit_code: int = ExitCode.SUCCESS
             try:
                 func()
+                flush_results()
+                if any_failed():
+                    # The command handled the error itself and recorded it;
+                    # func() raised nothing, but a failed record still fails
+                    # the run
+                    exit_code = ExitCode.FAILURE
             except SystemExit as e:
                 # Preserve an explicit exit code raised by the command
-                exit_code = e.code if isinstance(e.code, int) else 1
+                exit_code = e.code if isinstance(e.code, int) else ExitCode.FAILURE
+                flush_results_after_failure()
             except Exception as e:
                 # Include the exception type when there's no message,
                 # to avoid printing a blank error
                 print_error(str(e) or f"{type(e).__name__} (no error message)")
-                exit_code = 1
+                # Set before the flush, so a flush that fails cannot turn the
+                # failure into a success; what was done is still reported
+                exit_code = classify(e)
+                flush_results_after_failure()
             except KeyboardInterrupt:
                 print("\r", end="")  # Overwrite the display of ^C
                 print_info("Keyboard interruption ... exiting")
-                exit_code = 1
+                exit_code = ExitCode.INTERRUPTED
+                flush_results_after_failure()
             if exit_code == 0 and not ARGS_PARSER.print_pid:
                 print_info("Done")
             exit(exit_code)
         else:
-            func()
+            # Exceptions are re-raised unclassified, for their tracebacks;
+            # what was recorded is still printed, however the command ends
+            try:
+                func()
+            finally:
+                flush_results()
+            if any_failed():
+                exit(ExitCode.FAILURE)
             if not ARGS_PARSER.print_pid:
                 print_info("Done")
-            exit(0)
+            exit(ExitCode.SUCCESS)
 
     return wrapper

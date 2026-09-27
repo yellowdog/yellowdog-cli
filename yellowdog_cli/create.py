@@ -61,15 +61,18 @@ from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
     load_resource_specifications,
+    resource_display_name,
 )
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
     print_json,
+    print_quiet_result,
     print_warning,
 )
 from yellowdog_cli.utils.provision_utils import resolve_user_data_in_spec
+from yellowdog_cli.utils.results import record, record_resource
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
     PROP_AUTOSCALING_MAX_NODES,
@@ -113,7 +116,9 @@ from yellowdog_cli.utils.settings import (
     RN_CREDENTIAL,
     RN_EXTERNAL_USER,
     RN_GROUP,
+    RN_IMAGE,
     RN_IMAGE_FAMILY,
+    RN_IMAGE_GROUP,
     RN_INTERNAL_USER,
     RN_KEYRING,
     RN_NAMESPACE,
@@ -157,6 +162,7 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
 
     failed = 0
     for resource in cast(list[dict], resources):  # Keep typing happy
+        name = resource_display_name(resource.get(PROP_RESOURCE), resource)
         try:
             resource_type = resource.pop(PROP_RESOURCE)
             # Strip the internal source-dir stamp before any further processing
@@ -169,13 +175,15 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
                 RN_REQUIREMENT_TEMPLATE,
                 RN_SOURCE_TEMPLATE,
             ]:
-                print_json(resource)
+                _show_dry_run_specification(resource_type, resource)
                 continue
         except KeyError:
-            print_error(
+            error = (
                 f"Missing required '{PROP_RESOURCE}' property in the following resource"
                 f" specification: {resource}"
             )
+            print_error(error)
+            _record_failure(None, name, error)
             failed += 1
             continue
         try:
@@ -212,15 +220,42 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
                 create_namespace(resource)
             else:
                 print_error(f"Unknown resource type '{resource_type}'")
+                _record_failure(
+                    resource_type, name, f"Unknown resource type '{resource_type}'"
+                )
                 failed += 1
         except Exception as e:
             print_error(f"Failed to create resource: {e}")
+            _record_failure(resource_type, name, str(e))
             # Allow resource creation to continue, if exceptions were not
             # already caught in the creation functions
             failed += 1
 
     if failed:
         raise RuntimeError(f"{failed} resource(s) failed to create")
+
+
+def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
+    """
+    Show one processed resource specification in a dry run: printed, or
+    under '--json' recorded, so the dry run's document is the array of them.
+    The record puts back the 'resource' the loop popped, first, so a mixed
+    file's array stays typed; the printed form is unchanged.
+    """
+    if ARGS_PARSER.json_output:
+        record({PROP_RESOURCE: resource_type, **resource})
+    else:
+        print_json(resource)
+
+
+def _record_failure(resource_type: str | None, name: str | None, error: str) -> None:
+    """
+    Record a resource that failed. Not in a dry run, whose document under
+    '--json' is the array of processed specifications: the error is
+    reported on stderr and in the exit code instead.
+    """
+    if not ARGS_PARSER.dry_run:
+        record_resource(resource_type, name, None, "failed", error=error)
 
 
 def create_compute_source_template(resource: dict, source_dir: str | None = None):
@@ -265,7 +300,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
     if ARGS_PARSER.dry_run:
         resource[PROP_SOURCE] = source
         _get_model_object(source_type, source)  # Report extras and omissions
-        print_json(resource)
+        _show_dry_run_specification(RN_SOURCE_TEMPLATE, resource)
         return
 
     # Create the Compute Source
@@ -287,8 +322,10 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         )
         clear_compute_source_template_cache()
         print_info(f"Created Compute Source Template '{name}' ({compute_source.id})")
+        record_resource(RN_SOURCE_TEMPLATE, name, compute_source.id, "created")
     else:
         if not confirmed(f"Update existing Compute Source Template '{name}'?"):
+            record_resource(RN_SOURCE_TEMPLATE, name, source_id, "skipped")
             return
         compute_source_template.id = source_id
         compute_source = CLIENT.compute_client.update_compute_source_template(
@@ -298,12 +335,13 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         print_info(
             f"Updated existing Compute Source Template '{name}' ({compute_source.id})"
         )
+        record_resource(RN_SOURCE_TEMPLATE, name, compute_source.id, "updated")
 
     global CLEAR_CST_CACHE
     CLEAR_CST_CACHE = True
 
-    if ARGS_PARSER.quiet and compute_source.id is not None:
-        print(compute_source.id)
+    if compute_source.id is not None:
+        print_quiet_result(compute_source.id)
 
 
 def create_compute_requirement_template(resource: dict, source_dir: str | None = None):
@@ -381,7 +419,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
 
     if ARGS_PARSER.dry_run:
         _get_model_object(type, resource)  # Report omissions, extras, errors
-        print_json(resource)
+        _show_dry_run_specification(RN_REQUIREMENT_TEMPLATE, resource)
         return
 
     # Overwrite source dictionaries with ComputeSourceUsage objects for static CRTs
@@ -404,8 +442,8 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         global CLEAR_CRT_CACHE
         CLEAR_CRT_CACHE = True
         print_info(f"Created Compute Requirement Template '{name}' ({template.id})")
-        if ARGS_PARSER.quiet:
-            print(template.id)
+        record_resource(RN_REQUIREMENT_TEMPLATE, name, template.id, "created")
+        print_quiet_result(template.id)
         return
 
     # Update
@@ -413,6 +451,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     if not confirmed(
         f"Update existing Compute Requirement Template '{name}' ({template_id})?"
     ):
+        record_resource(RN_REQUIREMENT_TEMPLATE, name, template_id, "skipped")
         return
     template = CLIENT.compute_client.update_compute_requirement_template(
         compute_template
@@ -421,8 +460,8 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     print_info(
         f"Updated existing Compute Requirement Template '{name}' ({template.id})"
     )
-    if ARGS_PARSER.quiet:
-        print(template.id)
+    record_resource(RN_REQUIREMENT_TEMPLATE, name, template.id, "updated")
+    print_quiet_result(template.id)
 
 
 def create_keyring(resource: dict, show_secrets: bool = False):
@@ -441,14 +480,15 @@ def create_keyring(resource: dict, show_secrets: bool = False):
     existing = get_keyring_summary_by_name(CLIENT, name)
     if existing is not None:
         if not confirmed(f"Keyring '{name}' already exists: update its description?"):
+            record_resource(RN_KEYRING, name, existing.id, "skipped")
             return
         keyring = CLIENT.keyring_client.update_keyring(
             cast(str, existing.id), model.UpdateKeyringRequest(description=description)
         )
         clear_keyring_cache()  # the cached summary carries the old description
         print_info(f"Updated Keyring '{name}' ({keyring.id})")
-        if ARGS_PARSER.quiet:
-            print(keyring.id)
+        record_resource(RN_KEYRING, name, keyring.id, "updated")
+        print_quiet_result(keyring.id)
         return
 
     try:
@@ -456,16 +496,20 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         clear_keyring_cache()
         keyring = keyring_response.keyring
         keyring_password = keyring_response.keyringPassword
-        keyring_password = (
-            keyring_password
-            if ARGS_PARSER.show_keyring_passwords or show_secrets
-            else REDACTED_VALUE
-        )
+        show_password = bool(ARGS_PARSER.show_keyring_passwords or show_secrets)
+        keyring_password = keyring_password if show_password else REDACTED_VALUE
         print_info(
             f"Created Keyring '{name}' ({keyring.id}): Password = {keyring_password}"  # type: ignore[union-attr]
         )
-        if ARGS_PARSER.quiet:
-            print(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
+        # The password only when asked for: never even as REDACTED_VALUE
+        record_resource(
+            RN_KEYRING,
+            name,
+            keyring.id,  # type: ignore[union-attr]
+            "created",
+            **({"password": keyring_password} if show_password else {}),
+        )
+        print_quiet_result(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
     except Exception as e:
         print_error(f"Failed to create Keyring '{name}': {e}")
         raise
@@ -489,6 +533,8 @@ def create_credential(resource: dict):
     try:
         CLIENT.keyring_client.put_credential_by_name(keyring_name, credential)
         print_info(f"Added Credential '{name}' to Keyring '{keyring_name}'")
+        # A put: the Platform does not say whether it replaced one
+        record_resource(RN_CREDENTIAL, name, None, "created", keyring=keyring_name)
     except HTTPError as e:
         print_error(f"Failed to add Credential '{name}' to Keyring '{keyring_name}'")
         resp = e.response
@@ -533,6 +579,9 @@ def create_image_family(resource):
             )
         )  # Raises HTTP 404 Error if not found
         if not confirmed(f"Update existing Machine Image Family '{fq_name}'?"):
+            record_resource(
+                RN_IMAGE_FAMILY, fq_name, existing_image_family.id, "skipped"
+            )
             return
         image_family.id = existing_image_family.id
         # This will update the Image Family but not its constituent
@@ -542,16 +591,16 @@ def create_image_family(resource):
         print_info(
             f"Updated existing Machine Image Family '{fq_name}' ('{image_family.id}')"
         )
-        if ARGS_PARSER.quiet:
-            print(image_family.id)
+        record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "updated")
+        print_quiet_result(image_family.id)
     except HTTPError as e:
         if e.response is not None and e.response.status_code == 404:
             # This will create the Image Family and all of its constituent
             # Image Group/Image resources
             image_family = _create_image_family(image_family, fq_name)
             print_info(f"Created Machine Image Family '{fq_name}' ({image_family.id})")
-            if ARGS_PARSER.quiet:
-                print(image_family.id)
+            record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "created")
+            print_quiet_result(image_family.id)
             return
         else:
             print_error(f"Failed to create/update Image Family '{fq_name}': {e}")
@@ -568,6 +617,12 @@ def create_image_family(resource):
             if confirmed(f"Remove existing Image Group '{existing_image_group.name}'?"):
                 CLIENT.images_client.delete_image_group(existing_image_group)
                 print_info(f"Deleted Image Group '{existing_image_group.name}'")
+                record_resource(
+                    RN_IMAGE_GROUP,
+                    existing_image_group.name,
+                    existing_image_group.id,
+                    "removed",
+                )
 
     # Update Image Groups
     for image_group in image_groups:
@@ -593,20 +648,23 @@ def _create_image_group(
             )
         )  # Raises HTTP 404 Error if not found
         if not confirmed(f"Update existing Machine Image Group '{image_group.name}'?"):
+            record_resource(
+                RN_IMAGE_GROUP, image_group.name, existing_image_group.id, "skipped"
+            )
             return
         image_group.id = existing_image_group.id
         CLIENT.images_client.update_image_group(image_group)
         print_info(f"Updated existing Machine Image Group '{image_group.name}'")
-        if ARGS_PARSER.quiet:
-            print(image_group.id)
+        record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "updated")
+        print_quiet_result(image_group.id)
     except HTTPError as e:
         if e.response is not None and e.response.status_code == 404:
             image_group = CLIENT.images_client.add_image_group(
                 image_family, image_group
             )
             print_info(f"Created Machine Image Group '{image_group.name}'")
-            if ARGS_PARSER.quiet:
-                print(image_group.id)
+            record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "created")
+            print_quiet_result(image_group.id)
             return
         else:
             print_error(
@@ -625,6 +683,9 @@ def _create_image_group(
             if confirmed(f"Remove existing Image '{existing_image.name}'?"):
                 CLIENT.images_client.delete_image(existing_image)
                 print_info(f"Deleted Image '{existing_image.name}'")
+                record_resource(
+                    RN_IMAGE, existing_image.name, existing_image.id, "removed"
+                )
 
     # Update Images
     for image in images:
@@ -645,15 +706,18 @@ def _create_image(image: MachineImage, image_group: MachineImageGroup):
             if confirmed(f"Update existing Machine Image '{image.name}'?"):
                 image = CLIENT.images_client.update_image(image)
                 print_info(f"Updated existing Machine Image '{image.name}'")
+                record_resource(RN_IMAGE, image.name, image.id, "updated")
+            else:
+                record_resource(RN_IMAGE, image.name, image.id, "skipped")
         else:  # New Image
             image = CLIENT.images_client.add_image(image_group, image)
             print_info(f"Created Machine Image '{image.name}'")
+            record_resource(RN_IMAGE, image.name, image.id, "created")
     except InvalidRequestException as e:
         print_error(f"Unable to create/update Image '{image.name}': {e}")
         raise
 
-    if ARGS_PARSER.quiet:
-        print(image.id)
+    print_quiet_result(image.id)
 
 
 def create_configured_worker_pool(resource: dict):
@@ -683,8 +747,22 @@ def create_configured_worker_pool(resource: dict):
             "                   Worker Pool Expiry Time = "
             f"{str(cwp_response.token.expiryTime).split('.')[0]}"  # type: ignore[union-attr]
         )
-        if ARGS_PARSER.quiet:
-            print(cwp_response.workerPool.id)  # type: ignore[union-attr]
+        # The token too, which '--json' otherwise silences with the prints
+        # above, and which is how a Configured Worker Pool is used
+        token = cwp_response.token
+        record_resource(
+            RN_CONFIGURED_POOL,
+            name,
+            cwp_response.workerPool.id,  # type: ignore[union-attr]
+            "created",
+            token=None if token is None else token.secret,
+            expiryTime=(
+                None
+                if token is None or token.expiryTime is None
+                else token.expiryTime.isoformat()
+            ),
+        )
+        print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
     except Exception as e:
         print_error(f"Unable to create Configured Worker Pool '{name}': {e}")
@@ -715,9 +793,9 @@ def create_allowance(resource: dict):
                     namespace=CONFIG_COMMON.namespace,  # Worth a try if namespace not included in name
                 )
                 if template_id is None:
-                    print_error(
-                        f"Compute Source Template name '{template_name_or_id}' not found"
-                    )
+                    error = f"Compute Source Template name '{template_name_or_id}' not found"
+                    print_error(error)
+                    _record_failure(RN_ALLOWANCE, resource.get(PROP_DESCRIPTION), error)
                     return
                 print_info(
                     f"Replaced Source Template name '{template_name_or_id}'"
@@ -740,9 +818,12 @@ def create_allowance(resource: dict):
                     client=CLIENT, name=cast(str, template_name_or_id)
                 )
                 if template_id is None:
-                    print_error(
-                        f"Compute Requirement Template name '{template_name_or_id}' not found"
+                    error = (
+                        f"Compute Requirement Template name '{template_name_or_id}'"
+                        " not found"
                     )
+                    print_error(error)
+                    _record_failure(RN_ALLOWANCE, resource.get(PROP_DESCRIPTION), error)
                     return
                 print_info(
                     f"Replaced Requirement Template name '{template_name_or_id}'"
@@ -790,7 +871,7 @@ def create_allowance(resource: dict):
                     resource[property_], canonical=True
                 )
         resource[PROP_TYPE] = original_type  # Reinstate property
-        print_json(resource)
+        _show_dry_run_specification(RN_ALLOWANCE, resource)
         return
 
     description = resource.get(PROP_DESCRIPTION)
@@ -811,12 +892,13 @@ def create_allowance(resource: dict):
             print_info(f"Created new Allowance {allowance.id}")
         else:
             print_info(f"Created new Allowance '{description}' ({allowance.id})")
+        record_resource(RN_ALLOWANCE, description, allowance.id, "created")
     except Exception as e:
         print_error(f"Unable to create Allowance: {e}")
         raise
 
-    if ARGS_PARSER.quiet and allowance.id is not None:
-        print(allowance.id)
+    if allowance.id is not None:
+        print_quiet_result(allowance.id)
 
 
 def create_attribute_definition(resource: dict, resource_type: str):
@@ -866,15 +948,18 @@ def create_attribute_definition(resource: dict, resource_type: str):
 
     if response.status_code == 200:
         print_info(f"Created new Attribute Definition '{name}'")
+        record_resource(resource_type, name, None, "created")
         return
 
     if "Attribute already exists" in response.text:
         if not confirmed(f"Update existing Attribute Definition '{name}'?"):
+            record_resource(resource_type, name, None, "skipped")
             return
 
         response = put(url=url, headers=headers, json=payload)
         if response.status_code == 200:
             print_info(f"Updated existing Attribute Definition '{name}'")
+            record_resource(resource_type, name, None, "updated")
             return
 
     raise RuntimeError(f"HTTP {response.status_code} ({response.text})")
@@ -897,13 +982,17 @@ def create_namespace_policy(resource: dict):
         CLIENT.namespaces_client.get_namespace_policy(
             namespace=namespace_policy.namespace
         )
-        if not confirmed(
-            f"Update existing Namespace Policy '{namespace_policy.namespace}'?"
-        ):
-            return
+        existing = True
     except Exception:
         # Assume it's not found ... 404 from API
-        pass
+        existing = False
+    if existing and not confirmed(
+        f"Update existing Namespace Policy '{namespace_policy.namespace}'?"
+    ):
+        record_resource(
+            RN_NAMESPACE_POLICY, namespace_policy.namespace, None, "skipped"
+        )
+        return
 
     try:
         CLIENT.namespaces_client.save_namespace_policy(namespace_policy)
@@ -916,6 +1005,12 @@ def create_namespace_policy(resource: dict):
     print_info(
         f"Created or updated Namespace Policy '{namespace_policy.namespace}' with "
         f"'autoscalingMaxNodes={namespace_policy.autoscalingMaxNodes}'"
+    )
+    record_resource(
+        RN_NAMESPACE_POLICY,
+        namespace_policy.namespace,
+        None,
+        "updated" if existing else "created",
     )
 
 
@@ -1083,6 +1178,7 @@ def create_group(resource: dict):
         )
         print_info(f"Created Group '{group_.name}' ({group_.id})")
         clear_group_caches()
+        record_resource(RN_GROUP, name, group_.id, "created")
         return group_
 
     def update_group(group_id_: str) -> Group | None:
@@ -1091,12 +1187,14 @@ def create_group(resource: dict):
         its roles.
         """
         if not confirmed(f"Update Group '{name}' ({group_id_})?"):
+            record_resource(RN_GROUP, name, group_id_, "skipped")
             return None
         group_: Group = CLIENT.account_client.update_group(
             group_id_, UpdateGroupRequest(name=name, description=description)
         )
         clear_group_caches()
         print_info(f"Updated Group '{group_.name}' ({group_.id})")
+        record_resource(RN_GROUP, name, group_.id, "updated")
         return group_
 
     # Main logic
@@ -1184,10 +1282,22 @@ def create_application(resource: dict):
 
     def show_key_and_secret(api_key: ApiKey):
         """
-        Helper function to display the app key and secret.
+        Helper function to display the app key and secret. Under '--json'
+        they are the record's instead, since stdout holds only the
+        document, and this is the only time the Platform returns them.
         """
+        if ARGS_PARSER.json_output:
+            return
         print_info(f"Application Key ID     = '{api_key.id}'", override_quiet=True)
         print_info(f"Application Key Secret = '{api_key.secret}'", override_quiet=True)
+
+    def key_and_secret(api_key: ApiKey | None) -> dict:
+        """
+        The record's extra fields for a key and secret the Platform returned.
+        """
+        if api_key is None:
+            return {}
+        return {"apiKeyId": api_key.id, "apiKeySecret": api_key.secret}
 
     def add_application():
         """
@@ -1199,6 +1309,13 @@ def create_application(resource: dict):
         app = app_response.application
         print_info(f"Created Application '{app.name}' ({app.id})")  # type: ignore[union-attr]
         show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
+        record_resource(
+            RN_APPLICATION,
+            name,
+            app.id,  # type: ignore[union-attr]
+            "created",
+            **key_and_secret(app_response.apiKey),
+        )
         clear_application_caches()
         update_groups(app)  # type: ignore[arg-type]
         if (
@@ -1215,6 +1332,7 @@ def create_application(resource: dict):
         its groups.
         """
         if not confirmed(f"Update Application '{name}' ({app_id})?"):
+            record_resource(RN_APPLICATION, name, app_id, "skipped")
             return
 
         app: Application = CLIENT.account_client.update_application(
@@ -1233,6 +1351,9 @@ def create_application(resource: dict):
                 print_error("New API key/secret not returned")
             else:
                 show_key_and_secret(api_key)
+        record_resource(
+            RN_APPLICATION, name, app.id, "updated", **key_and_secret(api_key)
+        )
 
         if keyrings:
             grant_keyrings(app_id, api_key if api_key is not None else ApiKey())
@@ -1277,18 +1398,19 @@ def update_user(resource: dict, internal_user: bool):
         else:
             new_group_ids.add(group_id)
 
-    def update_groups():
+    def update_groups() -> bool:
         """
-        Helper function to add/remove groups from a user.
+        Helper function to add/remove groups from a user. False if the
+        update was declined.
         """
         current_group_ids = {group.id for group in get_user_groups(CLIENT, user.id)}  # type: ignore[union-attr]
 
         if current_group_ids == new_group_ids:
             print_info("No Group additions or deletions required")
-            return
+            return True
 
         if not confirmed(f"Update Groups for User '{username}' ({user.id})?"):  # type: ignore[union-attr]
-            return
+            return False
 
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
@@ -1303,6 +1425,7 @@ def update_user(resource: dict, internal_user: bool):
             print_info(
                 f"Added Group '{get_group_name_by_id(CLIENT, group_id)}' ({group_id})"
             )
+        return True
 
     # Main logic: try name, username, then ID if present; check for ID match
     user: User | None = None
@@ -1321,11 +1444,23 @@ def update_user(resource: dict, internal_user: bool):
             f"User not found ({resource}); Users cannot be created using "
             "the CLI, please use the YellowDog Portal"
         )
+        record_resource(
+            RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER,
+            name or username or id,
+            None,
+            "skipped",
+        )
         return
 
     username = user.username if isinstance(user, InternalUser) else user.name
-    update_groups()
+    updated = update_groups()
     print_info(f"Actions complete for User '{username}' ({user.id})")
+    record_resource(
+        RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER,
+        username,
+        user.id,
+        "updated" if updated else "skipped",
+    )
 
 
 def create_namespace(resource: dict):
@@ -1344,14 +1479,15 @@ def create_namespace(resource: dict):
     except Exception as e:
         if "ConflictException" in str(e):
             print_warning(f"Namespace '{name}' already exists")
+            record_resource(RN_NAMESPACE, name, None, "skipped")
             return
         else:
             raise RuntimeError(f"Failed to create namespace '{name}' ({e})")
 
     print_info(f"Created namespace '{name}' ({namespace_id})")
+    record_resource(RN_NAMESPACE, name, namespace_id, "created")
 
-    if ARGS_PARSER.quiet:
-        print(namespace_id)
+    print_quiet_result(namespace_id)
 
 
 def _get_model_object(class_name: str, resource: dict, **kwargs):

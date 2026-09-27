@@ -521,7 +521,33 @@ DRY_RUN_JSON = option(
     "--json",
     action="store_true",
     required=False,
-    help="with --dry-run, emit the affected entities as a JSON array",
+    help=(
+        "emit the actions taken, or with --dry-run what would be taken, as a JSON array"
+    ),
+)
+# The action commands' '--json': the '--json' of JSON without its '-J',
+# which the specification commands use for '--jsonnet-dry-run'
+ACTIONS_JSON = option(
+    "--json",
+    action="store_true",
+    required=False,
+    help="emit the actions taken as a JSON array",
+)
+TRANSFERS_JSON = ACTIONS_JSON.variant(help="emit the files uploaded as a JSON array")
+RESOURCES_JSON = ACTIONS_JSON.variant(
+    help="emit the resources created, updated, removed or skipped as a JSON array"
+)
+CREATE_JSON = ACTIONS_JSON.variant(
+    help=(
+        "emit the resources created, updated, removed or skipped as a JSON"
+        " array; with --dry-run, the processed specifications"
+    )
+)
+ENTITY_JSON = ACTIONS_JSON.variant(
+    help=(
+        "emit the created entity as JSON; with --dry-run, the processed"
+        " specification; not with --progress, --raw-events or --report"
+    )
 )
 FOLLOW_WORK_REQUIREMENT_EVENTS = FOLLOW.variant(
     help="follow work requirement events after applying action"
@@ -834,10 +860,45 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
         parser.error("--dry-run is not supported with explicit names/IDs")
 
 
-def check_json_requires_dry_run(args: Namespace, parser: ArgumentParser) -> None:
-    """On the enumeration commands '--json' only shapes the '--dry-run' output."""
-    if args.json and not args.dry_run:
-        parser.error("--json is only valid with --dry-run")
+# The options that write their own output to stdout, which '--json' cannot
+# share with its document
+_STREAMING_OPTIONS = (
+    ("progress", "--progress"),
+    ("raw_events", "--raw-events"),
+    ("report", "--report"),
+)
+
+
+def check_json_excludes_streaming(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    On the single-object creators, refuse '--json' with an option that
+    writes its own output to stdout: a progress bar, raw events or a
+    report table would share stdout with the document. '--follow' alone
+    reports through messages '--json' silences, so it is allowed.
+    """
+    if not getattr(args, "json", False):
+        return
+    for dest, flag in _STREAMING_OPTIONS:
+        if getattr(args, dest, False):
+            parser.error(
+                f"--json cannot be combined with {flag}: --progress, --raw-events"
+                " and --report write their own output"
+            )
+
+
+def check_follow_json_excludes_progress(
+    args: Namespace, parser: ArgumentParser
+) -> None:
+    """
+    On yd-follow, '--json' is '--raw-events', so the one streaming option it
+    cannot share stdout with is the progress bar, which consumes the events
+    rather than printing them.
+    """
+    if getattr(args, "json", False) and getattr(args, "progress", False):
+        parser.error(
+            "--json cannot be combined with --progress: --json prints the raw"
+            " events, which --progress replaces with a progress bar"
+        )
 
 
 # --- Commands ------------------------------------------------------------
@@ -868,7 +929,7 @@ COMMANDS["yd-abort"] = Command(
     purpose="aborting Tasks individually, or in Work Requirements or Task Groups",
     summary="Abort running Tasks",
     kind=CommandKind.API,
-    options=(SORT, REVERSE, VARIABLE, NAMESPACE, TAG, YES, TASK_ID_LIST),
+    options=(SORT, REVERSE, VARIABLE, NAMESPACE, TAG, YES, ACTIONS_JSON, TASK_ID_LIST),
     requires_namespace_and_tag=True,
 )
 
@@ -909,7 +970,7 @@ COMMANDS["yd-boost"] = Command(
     purpose="boosting Allowances",
     summary="Boost Allowances",
     kind=CommandKind.API,
-    options=(VARIABLE, YES, BOOST_HOURS, ALLOWANCES),
+    options=(VARIABLE, YES, ACTIONS_JSON, BOOST_HOURS, ALLOWANCES),
 )
 
 # --- yd-cancel -----------------------------------------------------------
@@ -942,7 +1003,7 @@ COMMANDS["yd-cancel"] = Command(
         WORK_REQUIREMENTS,
         RAW_EVENTS,
     ),
-    validators=(check_glob_and_literal_names, check_json_requires_dry_run),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
 )
 
@@ -1044,7 +1105,17 @@ COMMANDS["yd-compare"] = Command(
     ),
     summary="Compare a Work Requirement or Task Group against Worker Pool(s)",
     kind=CommandKind.API,
-    options=(WR_OR_TG_ID, WORKER_POOL_IDS, RUNNING_NODES_ONLY),
+    options=(
+        WR_OR_TG_ID,
+        WORKER_POOL_IDS,
+        RUNNING_NODES_ONLY,
+        ACTIONS_JSON.variant(
+            help=(
+                "emit the comparison as a JSON array, one object per Worker Pool"
+                " compared with each Task Group"
+            )
+        ),
+    ),
 )
 
 # --- yd-compute-restart / yd-compute-start / yd-compute-stop --------------
@@ -1061,6 +1132,7 @@ def _compute_action_options(
         TAG,
         INTERACTIVE,
         YES,
+        ACTIONS_JSON,
         targets,
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
         RAW_EVENTS,
@@ -1158,6 +1230,7 @@ COMMANDS["yd-copy"] = Command(
                 "deleting destination files not present in the source"
             )
         ),
+        TRANSFERS_JSON.variant(help="emit the files copied as a JSON array"),
     ),
     requires_namespace_and_tag=True,
 )
@@ -1197,6 +1270,7 @@ COMMANDS["yd-create"] = Command(
         TAG,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        CREATE_JSON,
         RESOURCE_SPECIFICATIONS,
         YES_ALLOW_UPDATES,
         MATCH_ALLOWANCES_BY_DESCRIPTION,
@@ -1224,6 +1298,7 @@ COMMANDS["yd-remove"] = Command(
         NAMESPACE,
         TAG,
         JSONNET_DRY_RUN,
+        RESOURCES_JSON,
         RESOURCE_SPECIFICATIONS,
         YES_ALLOW_UPDATES,
         MATCH_ALLOWANCES_BY_DESCRIPTION,
@@ -1254,10 +1329,12 @@ COMMANDS["yd-delete"] = Command(
         ),
         RECURSIVE.variant(help="delete directories recursively"),
         DRY_RUN_JSON.variant(
-            help="with --dry-run, list the matched items as JSON instead of deleting"
+            help=(
+                "emit the deletions, or with --dry-run the matched items, as a"
+                " JSON array"
+            )
         ),
     ),
-    validators=(check_json_requires_dry_run,),
     requires_namespace_and_tag=True,
 )
 # The prog is set by the caller, so one object serves both names.
@@ -1332,11 +1409,11 @@ COMMANDS["yd-download"] = Command(
         ),
         DRY_RUN_JSON.variant(
             help=(
-                "with --dry-run, list the matched items as JSON instead of downloading"
+                "emit the downloads, or with --dry-run the matched items, as a"
+                " JSON array"
             )
         ),
     ),
-    validators=(check_json_requires_dry_run,),
     requires_namespace_and_tag=True,
 )
 
@@ -1355,6 +1432,7 @@ def _work_requirement_action_options(
         FOLLOW_WORK_REQUIREMENT_EVENTS,
         INTERACTIVE,
         YES,
+        ACTIONS_JSON,
         targets,
         RAW_EVENTS,
     )
@@ -1419,7 +1497,9 @@ COMMANDS["yd-follow"] = Command(
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         RAW_EVENTS,
+        ACTIONS_JSON.variant(help="a synonym for --raw-events (not with --progress)"),
     ),
+    validators=(check_follow_json_excludes_progress,),
 )
 
 SHOW_TOKEN = option(
@@ -1467,6 +1547,7 @@ COMMANDS["yd-wait"] = Command(
     options=(
         VARIABLE,
         YELLOWDOG_IDS.variant(help="the YellowDog ID(s) of the item(s) to wait"),
+        ACTIONS_JSON.variant(help="emit each item's final status as a JSON array"),
     ),
 )
 
@@ -1516,6 +1597,7 @@ COMMANDS["yd-instantiate"] = Command(
         COMPUTE_REQUIREMENT,
         REPORT,
         JSONNET_DRY_RUN,
+        ENTITY_JSON,
         CONTENT_PATH,
         FOLLOW_PROVISIONING,
         TARGET,
@@ -1523,6 +1605,7 @@ COMMANDS["yd-instantiate"] = Command(
         COMPUTE_REQUIREMENT_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
+    validators=(check_json_excludes_streaming,),
 )
 
 WORKER_POOL_FILE_POSITIONAL = option(
@@ -1549,6 +1632,7 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        ENTITY_JSON,
         CONTENT_PATH,
         FOLLOW_PROVISIONING,
         TARGET,
@@ -1557,6 +1641,7 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
+    validators=(check_json_excludes_streaming,),
 )
 
 # --- yd-list -------------------------------------------------------------
@@ -1691,6 +1776,9 @@ COMMANDS["yd-ls"] = Command(
         ),
         RECURSIVE.variant(help="list directories recursively"),
         LONG,
+        ACTIONS_JSON.variant(
+            help="emit the listing as a JSON array of rclone 'lsjson' entries"
+        ),
     ),
     requires_namespace_and_tag=True,
 )
@@ -1758,6 +1846,12 @@ COMMANDS["yd-nodeaction"] = Command(
         ALL_NODES,
         NODE_ACTION_STATUS,
         DETAILS.variant(help="show the full JSON details for --status output"),
+        ACTIONS_JSON.variant(
+            help=(
+                "emit the submissions, or with --status the node action queues,"
+                " as a JSON array"
+            )
+        ),
     ),
     requires_namespace_and_tag=True,
 )
@@ -1798,6 +1892,7 @@ COMMANDS["yd-resize"] = Command(
         TAG,
         YES,
         DRY_RUN_ACTION,
+        ACTIONS_JSON,
         WORKER_POOL_POSITIONAL,
         WORKER_POOL_SIZE,
         RESIZE_COMPUTE_REQUIREMENT,
@@ -1848,7 +1943,7 @@ COMMANDS["yd-shutdown"] = Command(
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         RAW_EVENTS,
     ),
-    validators=(check_glob_and_literal_names, check_json_requires_dry_run),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
 )
 
@@ -2039,6 +2134,7 @@ COMMANDS["yd-submit"] = Command(
         ADD_TO,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        ENTITY_JSON,
         CONTENT_PATH,
         RAW_EVENTS,
         WORK_REQUIREMENT_FILE_POSITIONAL,
@@ -2052,6 +2148,7 @@ COMMANDS["yd-submit"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    validators=(check_json_excludes_streaming,),
 )
 
 # --- yd-terminate --------------------------------------------------------
@@ -2075,7 +2172,7 @@ COMMANDS["yd-terminate"] = Command(
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
         RAW_EVENTS,
     ),
-    validators=(check_glob_and_literal_names, check_json_requires_dry_run),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
 )
 
@@ -2104,6 +2201,7 @@ COMMANDS["yd-upload"] = Command(
         RECURSIVE,
         FLATTEN,
         SYNC,
+        TRANSFERS_JSON,
     ),
     requires_namespace_and_tag=True,
 )

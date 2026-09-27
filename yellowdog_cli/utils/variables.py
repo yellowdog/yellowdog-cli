@@ -40,6 +40,7 @@ from yellowdog_cli.utils.property_names import (
     USERDATA,
     VARIABLES,
 )
+from yellowdog_cli.utils.results import record
 from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
@@ -63,6 +64,7 @@ from yellowdog_cli.utils.settings import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
     YD_ENV_VAR_PREFIX,
+    ExitCode,
 )
 
 # Sentinel returned by process_variable_substitutions() when a property
@@ -177,7 +179,7 @@ for key, value in os.environ.items():
             )
         except ValueError as e:
             print_error(e)
-            exit(1)  # Note: exception trap not yet in place
+            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
         key = key[len(YD_ENV_VAR_PREFIX) :]
         VARIABLE_SUBSTITUTIONS[key] = value
         subs_list.append(f"'{key}'")
@@ -205,7 +207,7 @@ if ARGS_PARSER.variables is not None:
                 check_user_variable_name(key_value[0], f"'--variable {variable}'")
             except ValueError as e:
                 print_error(e)
-                exit(1)  # Note: exception trap not yet in place
+                exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
             CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
@@ -213,7 +215,7 @@ if ARGS_PARSER.variables is not None:
             print_error(
                 f"Error in variable substitution '{variable}'",
             )
-            exit(1)  # Note: exception trap not yet in place
+            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
 
 if subs_list:
     print_debug(
@@ -1144,7 +1146,13 @@ def load_jsonnet_file_with_variable_substitutions(
 
     if ARGS_PARSER.jsonnet_dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
-        print_json(dict_data)
+        if ARGS_PARSER.json_output and not exit_on_dry_run:
+            # A caller converting several files (yd-create, yd-remove): each
+            # is one element of the '--json' document, printed at exit; a
+            # copy, as the caller goes on to change what it was handed
+            record(deepcopy(dict_data))
+        else:
+            print_json(dict_data)
         print_dry_run("Complete")
         if exit_on_dry_run:
             sys.exit(0)

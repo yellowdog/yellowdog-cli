@@ -20,7 +20,13 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+
+
+def _record(entity: object, outcome: str, error: str | None = None) -> None:
+    record_action(entity, ET_WORK_REQUIREMENTS, "finish", outcome, error)
 
 
 @main_wrapper
@@ -58,9 +64,14 @@ def main():
             CLIENT, selected_work_requirement_summaries
         )
 
-    if selected_work_requirement_summaries and confirmed(
+    if selected_work_requirement_summaries and not confirmed(
         f"Finish {len(selected_work_requirement_summaries)} Work Requirement(s)?"
     ):
+        for work_summary in selected_work_requirement_summaries:
+            _record(work_summary, "skipped")
+        selected_work_requirement_summaries = []
+
+    if selected_work_requirement_summaries:
         for work_summary in selected_work_requirement_summaries:
             if work_summary.status != WorkRequirementStatus.FINISHING:
                 try:
@@ -69,8 +80,10 @@ def main():
                     print_error(
                         f"Failed to finish Work Requirement '{work_summary.name}': {e}"
                     )
+                    _record(work_summary, "failed", str(e))
                     continue  # Don't follow Work Requirements that failed to finish
                 finished_count += 1
+                _record(work_summary, "finished")
                 # The refetch is only needed to generate the link; the
                 # action has already succeeded
                 try:
@@ -88,6 +101,7 @@ def main():
                 print_info(
                     f"Work Requirement '{work_summary.name}' is already finishing"
                 )
+                _record(work_summary, "skipped")
                 finishing_count += 1
             work_requirement_ids.append(work_summary.id)  # type: ignore[arg-type]
 
@@ -117,6 +131,7 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
         )
         if work_requirement_summary is None:
             print_error(f"Work Requirement '{name_or_id}' not found")
+            _record(name_or_id, "failed", "not found")
             continue
 
         if work_requirement_summary.status not in [
@@ -128,6 +143,7 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 f"Work Requirement '{name_or_id}' is not in a valid state"
                 f" ('{work_requirement_summary.status}') to be finished"
             )
+            _record(work_requirement_summary, "skipped")
             continue
 
         fq_name = (
@@ -138,10 +154,12 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 f"Work Requirement '{fq_name}' ({work_requirement_summary.id}) "
                 "is already finishing"
             )
+            _record(work_requirement_summary, "skipped")
         else:
             if not confirmed(
                 f"Finish Work Requirement '{fq_name}' ({work_requirement_summary.id})"
             ):
+                _record(work_requirement_summary, "skipped")
                 continue
             try:
                 CLIENT.work_client.finish_work_requirement_by_id(
@@ -150,11 +168,13 @@ def _finish_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 print_info(
                     f"Finished Work Requirement '{fq_name}' ({work_requirement_summary.id})"
                 )
+                _record(work_requirement_summary, "finished")
             except Exception as e:
                 print_error(
                     f"Failed to finish Work Requirement '{fq_name}' "
                     f"({work_requirement_summary.id}): {e}"
                 )
+                _record(work_requirement_summary, "failed", str(e))
                 continue  # Don't follow Work Requirements that failed to finish
 
         # Only follow Work Requirements that are actually finishing

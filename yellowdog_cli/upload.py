@@ -9,6 +9,7 @@ from pathlib import Path
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
+    record_transfer,
     resolve_remote_path,
     upload_directory,
     upload_file,
@@ -41,7 +42,10 @@ def main():
         local_path = Path(local_path_str)
 
         if not local_path.exists():
-            print_error(f"Path does not exist: '{local_path}'")
+            error = f"Path does not exist: '{local_path}'"
+            print_error(error)
+            # Neither sent anywhere nor, being missing, of any size
+            record_transfer(local_path_str, None, None, "failed", error=error)
             continue
 
         if local_path.is_dir():
@@ -50,6 +54,7 @@ def main():
                     f"'{local_path}' is a directory; use --recursive or --flatten"
                     " to upload its contents"
                 )
+                record_transfer(local_path_str, None, None, "skipped")
                 continue
             remote_path = resolve_remote_path(
                 CONFIG_DATA_CLIENT, relative_path=destination or local_path.name

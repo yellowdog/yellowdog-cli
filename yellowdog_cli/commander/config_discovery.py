@@ -259,7 +259,7 @@ class ConfigDiscovery:
 
         Only with no configuration file selected. 'yd-variables' is then given
         '--nc' and has nothing but the environment to work from, and an environment
-        with no YellowDog credentials in it makes it exit 1 with "Missing
+        with no YellowDog credentials in it makes it exit 3 with "Missing
         configuration data: 'key'" before it can resolve anything. Reported, that
         put an error in the output window at startup, and again on every
         Deselect, in front of a user who had done nothing wrong.
@@ -272,7 +272,8 @@ class ConfigDiscovery:
         variables, with the definition files nominated by hand — and its
         failures are as worth seeing as any other.
 
-        Matched on the message, the CLI having one exit code for everything.
+        Matched on the message: the exit code, ExitCode.CONFIGURATION, is shared
+        by every configuration error, not only this one.
         MISSING_CONFIG_DATA is the CLI's own definition of it, imported rather
         than written out again here, so the two cannot drift apart silently.
         """

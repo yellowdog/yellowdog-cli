@@ -12,12 +12,14 @@ from yellowdog_cli.utils.dataclient_utils import (
     is_glob,
     list_remote,
     list_remote_glob,
+    lsjson_listing,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.load_config import load_config_data_client
 from yellowdog_cli.utils.printing import print_info, print_simple
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
+from yellowdog_cli.utils.results import json_requested, record
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
 
@@ -112,7 +114,13 @@ def main():
             CONFIG_DATA_CLIENT, relative_path=remote_path_str
         )
         print_info(f"Listing '{remote_path}'")
-        if is_glob(remote_path):
+        if json_requested():
+            # The entries as rclone's 'lsjson' gives them, in place of the table
+            for entry in lsjson_listing(
+                CONFIG_DATA_CLIENT, remote_path, recursive=recursive
+            ):
+                record(entry)
+        elif is_glob(remote_path):
             _ls_glob(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
         else:
             listing = list_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)

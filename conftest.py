@@ -98,6 +98,22 @@ def cleanup():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_json_results():
+    """
+    Start every test with nothing recorded for '--json' (utils/results.py).
+
+    The action commands record every outcome whether or not '--json' is set,
+    since recording is free without it, so a test that drives one leaves
+    records behind in the module's global accumulator; a later test that
+    prints its own JSON document under '--json' would then find them and
+    raise. Imported lazily, so a test that never touches the CLI pays nothing.
+    """
+    if "yellowdog_cli.utils.results" in sys.modules:
+        sys.modules["yellowdog_cli.utils.results"].reset_results()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _gui_harness_guard():
     """
     Surface anything that happened inside a Qt callback.

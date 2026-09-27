@@ -47,6 +47,7 @@ from yellowdog_cli.utils.settings import (
     YD_TAG,
     YD_URL,
     YD_URL_ALT,
+    ExitCode,
 )
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
@@ -118,7 +119,7 @@ def _resolve_value(value, source: str | None = None):
         return resolve_variables_in_string(value, source=source)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def _resolve_section_variables(section: dict) -> None:
@@ -130,7 +131,7 @@ def _resolve_section_variables(section: dict) -> None:
         resolve_variables_insitu(section)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def config_file_explicitly_selected() -> bool:
@@ -186,21 +187,21 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             print_error(
                 f"Invalid --property format '{override}': expected 'section.key=value'"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         lhs, _, value_str = override.partition("=")
         if "." not in lhs:
             print_error(
                 f"Invalid --property format '{override}': "
                 f"expected 'section.key=value' (missing section)"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         section, _, rest = lhs.partition(".")
         if section not in valid_sections:
             print_error(
                 f"Unknown section '{section}' in --property '{override}'. "
                 f"Valid sections: {', '.join(sorted(valid_sections))}"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         path = rest.split(".")
         value = _parse_property_value(value_str, path[-1])
         if section not in config:
@@ -219,7 +220,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
                 )
             except ValueError as e:
                 print_error(e)
-                exit(1)
+                exit(ExitCode.CONFIGURATION)
             # Command-line-defined variables always take precedence,
             # including over an explicitly selected config file
             CLI_DEFINED_VARIABLES.add(path[1])
@@ -272,7 +273,7 @@ else:
             validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
         except Exception as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if ARGS_PARSER.property_overrides:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
 
@@ -280,7 +281,7 @@ else:
         # An explicitly selected config file ('--config'/'-c') must exist
         if ARGS_PARSER.config_file is not None:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         # No config file, so create a stub config dictionary
         print_debug(
             "No configuration file; expecting configuration data on command line "
@@ -293,11 +294,11 @@ else:
         print_error(
             f"Unable to load configuration data from '{CONFIG_FILE}': {e}",
         )
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def load_config_common(strict: bool = True) -> ConfigCommon:
@@ -459,7 +460,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def _imported_file_name(filename: str) -> str:
@@ -475,7 +476,7 @@ def import_toml(filename: str) -> dict:
         return common_config[COMMON_SECTION]
     except (FileNotFoundError, PermissionError, TOMLDecodeError, ValueError) as e:
         print_error(f"Unable to load imported common configuration data: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def _load_namespace_and_tag() -> None:
@@ -581,7 +582,7 @@ def register_dc_substitutions() -> None:
             )
         except ValueError as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
 
 
 def _select_dc_section(base: dict, profile_name: str | None) -> dict:
@@ -625,7 +626,7 @@ def load_config_data_client() -> ConfigDataClient:
             dc_section = _select_dc_section(base_section, profile_name)
         except ValueError as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         print_debug(f"Using data client profile: '{profile_name}'")
     else:
         dc_section = _select_dc_section(base_section, None)
@@ -721,7 +722,7 @@ def load_config_data_client_for_profile(
         dc_section = _select_dc_section(base_section, profile_name)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     if profile_name is not None:
         print_debug(f"Using destination data client profile: '{profile_name}'")
@@ -809,7 +810,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         csv_files = wr_section.get(CSV_FILES)
         if csv_file and csv_files:
             print_error("Only one of 'csvFile' and 'csvFiles' should be set")
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if csv_file:
             csv_files = [csv_file]
 
@@ -884,11 +885,11 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
         print_error(f"{e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def load_config_worker_pool() -> ConfigWorkerPool:
@@ -923,7 +924,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             f"Duplicate keys in '{WORKER_POOL_SECTION}' and"
             f" '{COMPUTE_REQUIREMENT_SECTION}': {duplicate_keys}"
         )
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
     wp_section.update(cr_section)
 
     if not wp_section:
@@ -947,7 +948,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
                 f"Only one of '{WORKER_POOL_DATA_FILE}' or"
                 f" '{COMPUTE_REQUIREMENT_DATA_FILE}' should be set"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if worker_pool_data_file is not None:
             worker_pool_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, worker_pool_data_file
@@ -1009,12 +1010,12 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except TypeError as e:
         print_error(f"{e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except ValueError as e:
         print_error(f"Invalid type for configuration: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)

@@ -3,10 +3,11 @@ System tests: error handling behaviour.
 
 Two distinct failure modes exist in the CLI:
 
-  Hard failures (exit code 1):
+  Hard failures (a non-zero exit code):
     Raised by an unhandled exception inside @main_wrapper (e.g. file not
-    found, JSON parse error, bad variable syntax). The process exits 1 and
-    the error marker appears in stderr.
+    found, JSON parse error), which exits 1, or a configuration error at
+    load (e.g. bad variable syntax), which exits ExitCode.CONFIGURATION (3).
+    The error marker appears in stderr.
 
   Soft failures (exit code 0, the error marker in stderr):
     The command processes a list of items (YDIDs, resource specs) and reports
@@ -23,7 +24,7 @@ Run with: pytest --run-system tests/test_system_error_handling.py
 import pytest
 from cli_test_helpers import shell
 
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.settings import ERROR_MARKER, ExitCode
 from yellowdog_cli.utils.ydid_utils import TYPE_KEYRING, YDID
 
 
@@ -43,7 +44,7 @@ def _has_error(result) -> bool:
 
 @pytest.mark.system
 class TestHardFailures:
-    """Commands that raise an exception and exit 1."""
+    """Commands that fail outright, exiting non-zero."""
 
     @pytest.mark.parametrize(
         "cmd",
@@ -69,7 +70,7 @@ class TestHardFailures:
     def test_bad_variable_format(self):
         # No platform needed — variable parsing fails before any API call
         result = shell("yd-submit -D -n=test -t=test -v no_equals_sign")
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CONFIGURATION
         assert _has_error(result)
         assert "no_equals_sign" in _output(result)
 
