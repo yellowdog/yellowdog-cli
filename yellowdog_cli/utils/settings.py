@@ -63,13 +63,14 @@ YD_DATA_CLIENT_BUCKET = "YD_DATA_CLIENT_BUCKET"
 YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
 
-# The most rclone listings a data client command runs at once, as a wildcard
-# download does to enumerate its matched directories' files under '--json'
-DATA_CLIENT_LISTING_WORKERS = 8
-
 YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 ENV_VAR_SUB_PREFIX = "env:"
+
+# The most rclone listings a data client command runs at once: a wildcard
+# download lists each matched directory's files to record them under '--json'
+# or to flatten them, and these run concurrently
+DATA_CLIENT_LISTING_WORKERS = 8
 
 # Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
 RAND_VAR_DIGITS = 3

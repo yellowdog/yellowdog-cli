@@ -8,20 +8,17 @@ from pathlib import Path
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
-from yellowdog_cli.utils.dataclient_utils import download_files, resolve_remote_path
+from yellowdog_cli.utils.dataclient_utils import (
+    download_files,
+    is_glob,
+    resolve_remote_path,
+)
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.load_config import load_config_data_client
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
-
-
-def _is_pattern(remote_path_str: str) -> bool:
-    """
-    Whether the remote path is a wildcard pattern rather than a literal item.
-    """
-    return any(c in remote_path_str for c in "*?[")
 
 
 def local_destination_for(
@@ -45,7 +42,7 @@ def local_destination_for(
     - With neither, a pattern expands into the current directory and a literal item
       mirrors its own name, so downloading 'mydir' creates './mydir/'.
     """
-    is_pattern = _is_pattern(remote_path_str)
+    is_pattern = is_glob(remote_path_str)
     basename = remote_path_str.rstrip("/").rsplit("/", 1)[-1]
 
     if into_dir:
@@ -70,7 +67,7 @@ def destination_is_item(
     into any destination, it would land inside a directory named after
     itself ('dli/a.txt/a.txt').
     """
-    if _is_pattern(remote_path_str):
+    if is_glob(remote_path_str):
         return False
     return bool(into_dir) or not explicit_destination
 

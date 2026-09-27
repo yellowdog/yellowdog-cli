@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TypeVar, cast
 
 from rclone_api import Config, Rclone
+from rclone_api.completed_process import CompletedProcess as RcloneCompletedProcess
 from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
@@ -98,6 +99,27 @@ def _run_quietly(rclone: Rclone, args: list[str]) -> subprocess.CompletedProcess
     non-zero exit: every caller checks the return code and reports it itself.
     """
     return _without_rclone_api_warnings(lambda: rclone.impl._run(args, capture=True))
+
+
+def _copy_to(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
+    """
+    'rclone copyto src dst' (dst is the file's own path), returning the result
+    for the caller to check: rclone_api's default is check=True, which raises
+    a CalledProcessError on a failed transfer before the caller can record it
+    as 'failed', and its UserWarning is silenced as for a listing.
+    """
+    return _without_rclone_api_warnings(
+        lambda: rclone.copy_to(src=src, dst=dst, check=False)
+    )
+
+
+def _copy(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
+    """
+    'rclone copy src dst' (dst is a directory to copy into); see _copy_to().
+    """
+    return _without_rclone_api_warnings(
+        lambda: rclone.copy(src=src, dst=dst, check=False)
+    )
 
 
 def _lsjson(
@@ -262,7 +284,7 @@ def upload_file(
 
     _, rclone = _rclone_for_config(config)
     print_info(f"Uploading '{local_path}' → '{remote_path}'")
-    result = rclone.copy_to(src=str(local_path.resolve()), dst=remote_path)
+    result = _copy_to(rclone, str(local_path.resolve()), remote_path)
     if result.returncode != 0:
         error = f"Upload failed: {_rclone_error_detail(result)}"
         record_transfer(str(local_path), remote_path, size, "failed", error=error)
@@ -274,21 +296,25 @@ def _rclone_sync(rclone: Rclone, src: str, dst: str):
     """
     Run 'rclone sync src dst', making dst an exact mirror of src.
     rclone_api has no sync wrapper, so we call the underlying _run directly.
-    Performance flags match those hardcoded in rclone_api's copy().
+    Performance flags match those hardcoded in rclone_api's copy(). The
+    result is returned for the caller to check, rclone_api's warning silenced
+    as in _copy_to().
     """
-    return rclone.impl._run(
-        [
-            "sync",
-            src,
-            dst,
-            "--checkers",
-            "1000",
-            "--transfers",
-            "32",
-            "--low-level-retries",
-            "10",
-        ],
-        capture=False,
+    return _without_rclone_api_warnings(
+        lambda: rclone.impl._run(
+            [
+                "sync",
+                src,
+                dst,
+                "--checkers",
+                "1000",
+                "--transfers",
+                "32",
+                "--low-level-retries",
+                "10",
+            ],
+            capture=False,
+        )
     )
 
 
@@ -327,7 +353,7 @@ def upload_directory(
     if sync:
         result = _rclone_sync(rclone, src=str(local_path.resolve()), dst=remote_path)
     else:
-        result = rclone.copy(src=str(local_path.resolve()), dst=remote_path)
+        result = _copy(rclone, str(local_path.resolve()), remote_path)
     if result.returncode != 0:
         # One rclone run moved them all, so which of them failed is unknown
         error = f"Directory upload failed: {_rclone_error_detail(result)}"
@@ -491,9 +517,9 @@ def _download_with_glob(
                 continue
         dst = str(local_destination / entry["Name"])
         if entry["IsDir"]:
-            result = _rclone_sync(rclone, src, dst) if sync else rclone.copy(src, dst)
+            result = _rclone_sync(rclone, src, dst) if sync else _copy(rclone, src, dst)
         else:
-            result = rclone.copy_to(src=src, dst=dst)
+            result = _copy_to(rclone, src, dst)
         if result.returncode != 0:
             error = f"Download failed for '{src}': {_rclone_error_detail(result)}"
             _record_downloads(files, src, "failed", error=error)
@@ -625,7 +651,7 @@ def _download_each(
     'rclone copyto', recording each, and raising on the first that fails.
     """
     for source, destination, size in files:
-        result = rclone.copy_to(src=source, dst=destination)
+        result = _copy_to(rclone, source, destination)
         if result.returncode != 0:
             error = f"Download failed for '{source}': {_rclone_error_detail(result)}"
             _record_downloads([(source, destination, size)], match, "failed", error)
@@ -717,7 +743,10 @@ def download_files(
     _, rclone = _rclone_for_config(config)
     dst = str(local_destination)
 
-    is_file = _is_remote_file(rclone, remote_path)
+    # The listing that decides between the transfers is only needed for an
+    # item's own path or a flat tree; a plain copy handles a file or a
+    # directory alike
+    is_file = (destination_is_item or flatten) and _is_remote_file(rclone, remote_path)
     if destination_is_item and is_file:
         # 'rclone copy' would treat the path as a directory to copy into
         files = (
@@ -726,7 +755,7 @@ def download_files(
             else []
         )
         print_info(f"Downloading '{remote_path}' → '{local_destination}'")
-        result = rclone.copy_to(src=remote_path, dst=dst)
+        result = _copy_to(rclone, remote_path, dst)
         if result.returncode != 0:
             error = f"Download failed: {_rclone_error_detail(result)}"
             _record_downloads(files, remote_path, "failed", error=error)
@@ -754,7 +783,7 @@ def download_files(
         if sync:
             result = _rclone_sync(rclone, src=remote_path, dst=dst)
         else:
-            result = rclone.copy(src=remote_path, dst=dst)
+            result = _copy(rclone, remote_path, dst)
         if result.returncode != 0:
             # One rclone run fetched them all, so which of them failed is unknown
             error = f"Download failed: {_rclone_error_detail(result)}"
@@ -1096,9 +1125,9 @@ def copy_remote(
     if sync:
         result = _rclone_sync(rclone, src=src_path, dst=dst_path)
     elif src_is_file:
-        result = rclone.copy_to(src=src_path, dst=dst_file)
+        result = _copy_to(rclone, src_path, dst_file)
     else:
-        result = rclone.copy(src=src_path, dst=dst_path)
+        result = _copy(rclone, src_path, dst_path)
 
     if result.returncode != 0:
         # One rclone run copied them all, so which of them failed is unknown

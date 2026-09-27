@@ -4288,7 +4288,7 @@ Key options:
 - `--destination`/`-d <local-path>` — local destination directory (default: mirrors the remote directory name)
 - `--into <local-dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
 - `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
-- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination, including the directories a wildcard matches; files that share a name are warned about, and the later one overwrites the earlier
+- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination, including the directories a wildcard matches; files that share a name within one remote path argument are warned about, and the later one overwrites the earlier
 - `--dry-run`/`-D` — show what would be downloaded, without downloading
 - `--json` — emit the downloads, or with `--dry-run` the matched items, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 

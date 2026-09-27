@@ -521,3 +521,77 @@ class TestWildcardDownloadListing:
         assert code != 0
         assert "Cannot list 'loc:remote/d2'" in err
         assert [w for w in caught if issubclass(w.category, UserWarning)] == []
+
+    def test_the_warning_filters_are_left_as_found(self, several, run_download):
+        # The listing pool holds one warning filter for its lifetime; a
+        # filter left in place afterwards would silence every later warning
+        before = list(warnings.filters)
+        _, _, code = run_download(
+            remote_paths=["loc:remote/*"], into="got", json_output=True, dry_run=True
+        )
+        assert code == 0
+        assert list(warnings.filters) == before
+
+
+@needs_rclone
+class TestFailedTransfer:
+    """
+    A transfer rclone refuses is reported as the command's own 'failed'
+    record and error, not as rclone_api's UserWarning (which carries the
+    whole command line, an inline remote's parameters included) and a
+    CalledProcessError that skips the record.
+    """
+
+    @staticmethod
+    def _quiet_run(run, **values):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out, err, code = run(**values)
+        user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+        return out, err, code, user_warnings
+
+    def test_a_file_blocked_by_a_directory_is_recorded_failed(
+        self, remote, run_download
+    ):
+        (remote / "dli" / "a.txt").mkdir(parents=True)
+        out, err, code, user_warnings = self._quiet_run(
+            run_download,
+            remote_paths=["loc:remote/a.txt"],
+            into="dli",
+            json_output=True,
+        )
+        assert code != 0
+        assert user_warnings == []
+        assert "Download failed" in err
+        records = json.loads(out)
+        assert [(r["source"], r["action"]) for r in records] == [
+            ("loc:remote/a.txt", "failed")
+        ]
+        assert "directory" in records[0]["error"]
+
+    def test_a_directory_blocked_by_a_file_is_recorded_failed(
+        self, remote, run_download
+    ):
+        (remote / "out").write_text("in the way")
+        out, err, code, user_warnings = self._quiet_run(
+            run_download,
+            remote_paths=["loc:remote/mydir"],
+            destination="out",
+            json_output=True,
+        )
+        assert code != 0
+        assert user_warnings == []
+        assert "Download failed" in err
+        assert {(r["source"], r["action"]) for r in json.loads(out)} == {
+            ("loc:remote/mydir/b.txt", "failed"),
+            ("loc:remote/mydir/sub/c.txt", "failed"),
+        }
+
+    def test_without_json_the_failure_is_still_quiet(self, remote, run_download):
+        (remote / "dli" / "a.txt").mkdir(parents=True)
+        _, err, code, user_warnings = self._quiet_run(
+            run_download, remote_paths=["loc:remote/a.txt"], into="dli"
+        )
+        assert code != 0
+        assert user_warnings == []
+        assert "Download failed" in err
