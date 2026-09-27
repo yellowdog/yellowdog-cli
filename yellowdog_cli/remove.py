@@ -35,6 +35,7 @@ from yellowdog_cli.utils.load_resources import (
     load_resource_specifications,
     resource_display_name,
 )
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_resource
 from yellowdog_cli.utils.settings import (
@@ -607,11 +608,12 @@ def remove_namespace_policy(resource: dict):
     # Test for existing policy
     try:
         CLIENT.namespaces_client.get_namespace_policy(namespace=namespace)
-    except Exception:
-        # Assume it's not found ... 404 from API
-        print_warning(f"Cannot find Namespace Policy '{namespace}'")
-        record_resource(RN_NAMESPACE_POLICY, namespace, None, "skipped")
-        return
+    except HTTPError as e:
+        if is_http_not_found(e):
+            print_warning(f"Cannot find Namespace Policy '{namespace}'")
+            record_resource(RN_NAMESPACE_POLICY, namespace, None, "skipped")
+            return
+        raise
 
     if not confirmed(f"Remove Namespace Policy '{namespace}'?"):
         record_resource(RN_NAMESPACE_POLICY, namespace, None, "skipped")

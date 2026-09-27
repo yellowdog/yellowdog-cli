@@ -772,7 +772,7 @@ def run_create(run, monkeypatch):
                 id=KEYRING_ID
             )
             # No existing Namespace Policy
-            client.namespaces_client.get_namespace_policy.side_effect = Exception("404")
+            client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
         return run(yd_create, client=client, **{**_CREATOR_DEFAULTS, **values})
 
     return _run
@@ -816,7 +816,7 @@ class TestCreate:
     def test_a_failure_is_recorded_and_the_run_continues(self, run_create):
         client = MagicMock()
         client.keyring_client.add_keyring.side_effect = RuntimeError("boom")
-        client.namespaces_client.get_namespace_policy.side_effect = Exception("404")
+        client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
         out, _, _ = run_create(_keyring_and_policy(), client=client)
         assert out == [
             _resource("Keyring", "kr", None, "failed", error="boom"),
@@ -963,6 +963,29 @@ class TestRemove:
             match_allowances_by_description=True,
         )
         assert out == [_resource("Allowance", None, None, "skipped")]
+
+    def test_a_404_on_a_namespace_policy_is_skipped(self, run_remove):
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
+        out, _, _ = run_remove(
+            [{"resource": "NamespacePolicy", "namespace": "ns1"}], client=client
+        )
+        assert out == [_resource("NamespacePolicy", "ns1", None, "skipped")]
+
+    def test_a_401_on_a_namespace_policy_is_a_failure(self, run, run_remove):
+        # Not a 'not found': the existence check's failure is recorded as
+        # 'failed' with its cause, like any other per-resource failure, and
+        # the run goes on to the next resource and exits 1
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.side_effect = _http_error(401)
+        out, _, _ = run_remove(
+            [{"resource": "NamespacePolicy", "namespace": "ns1"}], client=client
+        )
+        assert len(out) == 1
+        assert out[0]["resource"] == "NamespacePolicy"
+        assert out[0]["action"] == "failed"
+        assert "401" in out[0]["error"]
+        assert run.exit_code == 1
 
 
 # ---------------------------------------------------------------------------
