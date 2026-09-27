@@ -21,6 +21,8 @@ from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.property_names import (
     COMPLETED_TASK_TTL,
     INSTANCE_PRICING_PREFERENCE,
+    MAX_WORKERS,
+    MIN_WORKERS,
     NAME,
     PROVIDERS,
     RAM,
@@ -31,6 +33,7 @@ from yellowdog_cli.utils.property_names import (
     TASK_TYPE,
     TASK_TYPES,
     TASKS,
+    TASKS_PER_WORKER,
     VCPUS,
 )
 
@@ -230,6 +233,55 @@ class TestCreateTaskGroupTimeouts:
     def test_completed_task_ttl_none_when_not_set(self):
         tg = _call_create_task_group(self._tg())
         assert tg.completedTaskTtl is None
+
+
+INHERITED_CASES = [
+    (MIN_WORKERS, 2, "minWorkers", 2),
+    (MAX_WORKERS, 5, "maxWorkers", 5),
+    (TASKS_PER_WORKER, 3, "tasksPerWorker", 3),
+    (TASK_TIMEOUT, 30, "taskTimeout", timedelta(minutes=30)),
+]
+
+
+class TestCreateTaskGroupInheritsFromWorkRequirement:
+    """
+    minWorkers, maxWorkers, tasksPerWorker and taskTimeout set at the Work
+    Requirement level reach every Task Group that does not set its own, as
+    vcpus and ram do: the README's Property Inheritance.
+    """
+
+    def _tg(self, **extra) -> dict:
+        return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
+
+    @pytest.mark.parametrize(("prop", "value", "attr", "expected"), INHERITED_CASES)
+    def test_work_requirement_value_is_inherited(self, prop, value, attr, expected):
+        tg_data = self._tg()
+        wr_data = {prop: value, TASK_GROUPS: [tg_data]}
+        tg = _call_create_task_group(tg_data, wr_data=wr_data)
+        assert getattr(tg.runSpecification, attr) == expected
+
+    @pytest.mark.parametrize(("prop", "value", "attr", "expected"), INHERITED_CASES)
+    def test_task_group_value_overrides_work_requirement(
+        self, prop, value, attr, expected
+    ):
+        tg_data = self._tg(**{prop: value})
+        wr_data = {prop: value + 1, TASK_GROUPS: [tg_data]}
+        tg = _call_create_task_group(tg_data, wr_data=wr_data)
+        assert getattr(tg.runSpecification, attr) == expected
+
+    @pytest.mark.parametrize(("prop", "value", "attr", "expected"), INHERITED_CASES)
+    def test_work_requirement_value_overrides_toml(self, prop, value, attr, expected):
+        field = {
+            MIN_WORKERS: "min_workers",
+            MAX_WORKERS: "max_workers",
+            TASKS_PER_WORKER: "tasks_per_worker",
+            TASK_TIMEOUT: "task_timeout",
+        }[prop]
+        tg_data = self._tg()
+        wr_data = {prop: value, TASK_GROUPS: [tg_data]}
+        config_wr = ConfigWorkRequirement(**{field: value + 1})
+        tg = _call_create_task_group(tg_data, wr_data=wr_data, config_wr=config_wr)
+        assert getattr(tg.runSpecification, attr) == expected
 
 
 # ---------------------------------------------------------------------------

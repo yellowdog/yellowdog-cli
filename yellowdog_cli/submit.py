@@ -626,7 +626,10 @@ def create_task_group(
     )
 
     task_timeout_minutes: float | None = check_float_or_int(
-        task_group_data.get(TASK_TIMEOUT, config_wr.task_timeout), TASK_TIMEOUT
+        task_group_data.get(
+            TASK_TIMEOUT, wr_data.get(TASK_TIMEOUT, config_wr.task_timeout)
+        ),
+        TASK_TIMEOUT,
     )
     task_timeout: timedelta | None = (
         None
@@ -694,13 +697,22 @@ def create_task_group(
         vcpus=vcpus,
         ram=ram,
         minWorkers=check_int(
-            task_group_data.get(MIN_WORKERS, config_wr.min_workers), MIN_WORKERS
+            task_group_data.get(
+                MIN_WORKERS, wr_data.get(MIN_WORKERS, config_wr.min_workers)
+            ),
+            MIN_WORKERS,
         ),
         maxWorkers=check_int(
-            task_group_data.get(MAX_WORKERS, config_wr.max_workers), MAX_WORKERS
+            task_group_data.get(
+                MAX_WORKERS, wr_data.get(MAX_WORKERS, config_wr.max_workers)
+            ),
+            MAX_WORKERS,
         ),
         tasksPerWorker=check_int(
-            task_group_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
+            task_group_data.get(
+                TASKS_PER_WORKER,
+                wr_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
+            ),
             TASKS_PER_WORKER,
         ),
         providers=providers,
