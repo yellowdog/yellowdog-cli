@@ -12,7 +12,7 @@ from pathlib import Path
 
 from cli_test_helpers import shell
 
-from yellowdog_cli.download import local_destination_for
+from yellowdog_cli.download import destination_is_item, local_destination_for
 
 # --- '--into': a container, each item keeps its name --------------------------
 
@@ -74,6 +74,25 @@ def test_no_destination_mirrors_the_remote_name():
 
 def test_no_destination_expands_a_pattern_into_the_current_directory():
     assert local_destination_for("pyex*") == Path(".")
+
+
+# --- Whether the destination is the item's own path --------------------------
+
+
+def test_into_and_the_default_give_a_literal_item_its_own_path():
+    # So a single file is transferred to that path, not into a directory there
+    assert destination_is_item("a.txt", into_dir="results")
+    assert destination_is_item("S3:bucket/pfx/a.txt")
+
+
+def test_destination_is_a_directory_to_copy_into():
+    assert not destination_is_item("a.txt", explicit_destination="results")
+
+
+def test_a_pattern_never_names_an_item():
+    assert not destination_is_item("pyex*", into_dir="results")
+    assert not destination_is_item("pyex*")
+    assert not destination_is_item("pyex*", explicit_destination="results")
 
 
 # --- The two options are mutually exclusive ----------------------------------

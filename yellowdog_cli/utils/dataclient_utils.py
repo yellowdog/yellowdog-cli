@@ -527,6 +527,7 @@ def download_files(
     flatten: bool = False,
     sync: bool = False,
     dry_run: bool = False,
+    destination_is_item: bool = False,
 ) -> None:
     """
     Download from remote_path to local_destination.
@@ -535,6 +536,9 @@ def download_files(
     (delegated to rclone).  With flatten=True, all remote files are placed
     directly in local_destination without preserving directory structure.
     With sync=True, local files not present in the remote are deleted.
+    With destination_is_item=True, local_destination is the remote item's own
+    path rather than a directory to copy it into, so a single file is written
+    to that path itself.
     """
     if flatten and sync:
         print_warning("--sync is not supported with --flatten; ignoring --sync")
@@ -579,7 +583,7 @@ def download_files(
             if json_requested():
                 _, rclone = _rclone_for_config(config)
                 files = _literal_download_files(
-                    rclone, remote_path, local_destination, flatten
+                    rclone, remote_path, local_destination, flatten, destination_is_item
                 )
                 _record_downloads(files, remote_path, "would download")
         return
@@ -596,7 +600,21 @@ def download_files(
     _, rclone = _rclone_for_config(config)
     dst = str(local_destination)
 
-    if flatten:
+    if destination_is_item and _is_remote_file(rclone, remote_path):
+        # 'rclone copy' would treat the path as a directory to copy into
+        files = (
+            _download_files_of(rclone, remote_path, False, local_destination)
+            if json_requested()
+            else []
+        )
+        print_info(f"Downloading '{remote_path}' → '{local_destination}'")
+        result = rclone.copy_to(src=remote_path, dst=dst)
+        if result.returncode != 0:
+            error = f"Download failed: {_rclone_error_detail(result)}"
+            _record_downloads(files, remote_path, "failed", error=error)
+            raise RuntimeError(error)
+        _record_downloads(files, remote_path, "downloaded")
+    elif flatten:
         # Walk the remote path and download each file flat to the destination
         print_info(f"Downloading (flat) '{remote_path}' → '{local_destination}'")
         local_destination.mkdir(parents=True, exist_ok=True)
@@ -618,7 +636,9 @@ def download_files(
                 _record_downloads(files, remote_path, "downloaded")
     else:
         files = (
-            _literal_download_files(rclone, remote_path, local_destination, flatten)
+            _literal_download_files(
+                rclone, remote_path, local_destination, flatten, destination_is_item
+            )
             if json_requested()
             else []
         )
@@ -637,14 +657,21 @@ def download_files(
 
 
 def _literal_download_files(
-    rclone: Rclone, remote_path: str, local_destination: Path, flatten: bool
+    rclone: Rclone,
+    remote_path: str,
+    local_destination: Path,
+    flatten: bool,
+    destination_is_item: bool = False,
 ) -> list[tuple[str, str, int | None]]:
     """
     The files a download of a literal (not wildcard) remote path fetches:
-    'rclone copy' puts a file inside the destination directory, under its
-    own name, and a directory's contents in it.
+    a file to the destination itself when that is the item's own path, and
+    otherwise inside the destination directory, under its own name, as
+    'rclone copy' puts it; a directory's contents in the destination.
     """
     if _is_remote_file(rclone, remote_path):
+        if destination_is_item:
+            return _download_files_of(rclone, remote_path, False, local_destination)
         name = remote_path.rstrip("/").rsplit("/", 1)[-1]
         return _download_files_of(rclone, remote_path, False, local_destination / name)
     return _download_files_of(

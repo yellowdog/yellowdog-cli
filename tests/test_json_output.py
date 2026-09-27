@@ -1719,17 +1719,26 @@ class TestDownload:
             yd_download, remote_paths=["loc:remote/a.txt"], into="got"
         )
         assert code == 0
-        # 'rclone copy' puts a file inside the destination, under its own name
+        # '--into' gives the file its own path, which it occupies itself
         assert out == [
             {
                 "source": "loc:remote/a.txt",
-                "destination": str(_Path("got") / "a.txt" / "a.txt"),
+                "destination": str(_Path("got") / "a.txt"),
                 "size": 5,
                 "action": "downloaded",
                 "match": "loc:remote/a.txt",
             }
         ]
-        assert (remote / "got" / "a.txt" / "a.txt").read_text() == "hello"
+        assert (remote / "got" / "a.txt").read_text() == "hello"
+
+    def test_a_file_dry_run_names_the_same_destination(self, remote, run_dc):
+        out, _, _ = run_dc(
+            yd_download, remote_paths=["loc:remote/a.txt"], into="got", dry_run=True
+        )
+        assert [(r["destination"], r["action"]) for r in out] == [
+            (str(_Path("got") / "a.txt"), "would download")
+        ]
+        assert not (remote / "got").exists()
 
     def test_a_directory_records_each_file(self, remote, run_dc):
         out, _, _ = run_dc(yd_download, remote_paths=["loc:remote/sub"])

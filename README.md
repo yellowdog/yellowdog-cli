@@ -4292,7 +4292,7 @@ Key options:
 - `--dry-run`/`-D` — show what would be downloaded, without downloading
 - `--json` — emit the downloads, or with `--dry-run` the matched items, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
-`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. A single file is given its own path the same way: `yd-download --into out a.txt` writes the file `out/a.txt`, and `yd-download a.txt` writes `./a.txt`, while `yd-download -d out a.txt` puts it inside `out`, as `out/a.txt`. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
 
 ```shell
 yd-download 'results_*'

@@ -17,6 +17,13 @@ from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
 
 
+def _is_pattern(remote_path_str: str) -> bool:
+    """
+    Whether the remote path is a wildcard pattern rather than a literal item.
+    """
+    return any(c in remote_path_str for c in "*?[")
+
+
 def local_destination_for(
     remote_path_str: str,
     into_dir: str | None = None,
@@ -38,7 +45,7 @@ def local_destination_for(
     - With neither, a pattern expands into the current directory and a literal item
       mirrors its own name, so downloading 'mydir' creates './mydir/'.
     """
-    is_pattern = any(c in remote_path_str for c in "*?[")
+    is_pattern = _is_pattern(remote_path_str)
     basename = remote_path_str.rstrip("/").rsplit("/", 1)[-1]
 
     if into_dir:
@@ -48,6 +55,24 @@ def local_destination_for(
     if is_pattern:
         return Path(".")
     return Path(basename)
+
+
+def destination_is_item(
+    remote_path_str: str,
+    into_dir: str | None = None,
+    explicit_destination: str | None = None,
+) -> bool:
+    """
+    Whether local_destination_for() gives the remote item its *own* path, as
+    '--into' and the bare form do for a literal item, rather than naming a
+    directory to copy it into, as '--destination' does. A single file is
+    then transferred to that exact path: copied into it, as rclone copies
+    into any destination, it would land inside a directory named after
+    itself ('dli/a.txt/a.txt').
+    """
+    if _is_pattern(remote_path_str):
+        return False
+    return bool(into_dir) or not explicit_destination
 
 
 @dataclient_wrapper
@@ -82,6 +107,11 @@ def main():
             flatten=flatten,
             sync=sync,
             dry_run=dry_run,
+            destination_is_item=destination_is_item(
+                remote_path_str,
+                into_dir=into_dir,
+                explicit_destination=explicit_destination,
+            ),
         )
 
     print_info("Download complete")
