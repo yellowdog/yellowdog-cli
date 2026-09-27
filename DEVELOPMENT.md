@@ -33,7 +33,7 @@ source .venv/bin/activate      # macOS/Linux
 # .venv\Scripts\activate       # Windows
 
 # Install in editable mode with all dev dependencies
-uv pip install -e ".[dev,jsonnet,cloudwizard,commander]"
+uv pip install -e ".[dev,jsonnet,cloudwizard,commander,mcp]"
 ```
 
 This installs the package in editable mode, making all `yd-*` commands available in your environment and reflecting any local code changes immediately. You may need to re-source the venv to access the commands immediately.
@@ -171,12 +171,25 @@ The window layout is `commander.ui`, Qt Designer XML. Edit it in Designer if you
 
 Assets ship through `[tool.setuptools.package-data]` in `pyproject.toml`, which lists `*.ui` and `images/*`; `include-package-data` is `false`, so anything new has to be added there or it will be missing from the wheel while still working from a checkout. `screenshots/` is for the README and is deliberately not shipped.
 
+## MCP Server
+
+`yd-mcp` is an MCP server over the CLI, in `yellowdog_cli/mcp/`. [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together.
+
+```shell
+yd-mcp config.toml                  # or: python -m yellowdog_cli.mcp config.toml
+```
+
+The `mcp` extra (`mcp>=2.2`) is installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd-mcp` exits with an instruction to install it rather than a traceback, and `tests/test_mcp_server.py`, the one test module that needs the extra, skips (`tests/mcp_guard.py`'s `require_mcp()`); the other three MCP test modules need neither the extra nor the SDK.
+
+Like Commander, the server holds no API client and runs every tool call as a `yd-*` command in a child process, under its own interpreter (`python -m yellowdog_cli.<command>`) rather than the console scripts, so a fix to a command reaches it for free.
+
 ## Project Structure
 
 ```
 yellowdog_cli/            # One module per yd-* command
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
+yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 uv.lock                   # Locked dependency versions for reproducible installs

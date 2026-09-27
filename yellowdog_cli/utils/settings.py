@@ -72,6 +72,13 @@ ENV_VAR_SUB_PREFIX = "env:"
 # or to flatten them, and these run concurrently
 DATA_CLIENT_LISTING_WORKERS = 8
 
+# The MCP server (yellowdog_cli/mcp/): its name to clients, and the default
+# bound on a tool call, since a client gives up on one after a fixed time;
+# yd_follow's is shorter, its result being the events collected in that time
+MCP_SERVER_NAME = "yellowdog-cli"
+MCP_TOOL_TIMEOUT_SECONDS = 300
+MCP_FOLLOW_TIMEOUT_SECONDS = 60
+
 # Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
 RAND_VAR_DIGITS = 3
 RAND_VAR_6_DIGITS = 6

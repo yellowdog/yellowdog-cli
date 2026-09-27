@@ -83,3 +83,17 @@ def check_commander_imports():
             " usually the library's name with the version moved to the end, so"
             " 'libxkbcommon.so.0' comes from 'libxkbcommon0'."
         )
+
+
+def check_mcp_imports():
+    # The MCP SDK is not installed by default. It is only needed for the
+    # yd-mcp server. Probe the low-level server module, which is what
+    # yellowdog_cli/mcp/server.py uses.
+    try:
+        import mcp.server.lowlevel  # noqa: F401
+    except ModuleNotFoundError:
+        raise ImportError(
+            "The MCP server is not installed by default. It can be installed"
+            " by adding the option to pip:"
+            ' pip install -U "yellowdog-cli[mcp]"'
+        )

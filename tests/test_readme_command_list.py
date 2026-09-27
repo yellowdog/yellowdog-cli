@@ -128,7 +128,7 @@ class TestUniversalOptions:
             n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
         }
         named = set(re.findall(r"`(yd-[\w-]+)`", self.section.split("\n\n")[1]))
-        assert named == standalone | {"yd-commander"}
+        assert named == standalone | {"yd-commander", "yd-mcp"}
 
     def test_preamble_names_the_withheld_options(self):
         assert (

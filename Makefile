@@ -1,11 +1,11 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
 PYCACHE = __pycache__ yellowdog_cli/__pycache__ yellowdog_cli/utils/__pycache__
-TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.* yellowdog_cli/commander/README.md.*
+TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.* yellowdog_cli/commander/README.md.* yellowdog_cli/mcp/README.md.*
 
 build: $(SRC) $(MANIFEST)
 	uv build
@@ -14,7 +14,7 @@ clean:
 	rm -rf $(BUILD_DIST) $(PYCACHE) $(TOC_BACKUP)
 
 install: build
-	uv pip install -U -e ".[commander,jsonnet,cloudwizard]"
+	uv pip install -U -e ".[commander,mcp,jsonnet,cloudwizard]"
 
 uninstall:
 	uv pip uninstall yellowdog-cli
@@ -33,7 +33,7 @@ pypi_test_upload: clean build
 pypi_check: build
 	twine check dist/*
 
-toc_all: toc toc_cloudwizard toc_commander
+toc_all: toc toc_cloudwizard toc_commander toc_mcp
 
 toc: README.md
 	./gh-md-toc --insert --skip-header README.md
@@ -43,6 +43,9 @@ toc_cloudwizard: README_CLOUDWIZARD.md
 
 toc_commander: yellowdog_cli/commander/README.md
 	./gh-md-toc --insert --skip-header yellowdog_cli/commander/README.md
+
+toc_mcp: yellowdog_cli/mcp/README.md
+	./gh-md-toc --insert --skip-header yellowdog_cli/mcp/README.md
 
 test:
 	pytest -v
@@ -54,7 +57,7 @@ tox:
 	tox
 
 update:
-	uv pip install -U -e ".[dev,commander,jsonnet,cloudwizard]"
+	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
 
 no_op:
 	# Available targets are: build, clean, format, install, test, tox, uninstall, update, pypi_upload, pypi_check

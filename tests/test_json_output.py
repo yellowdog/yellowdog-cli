@@ -2130,9 +2130,27 @@ class TestVersion:
     def test_the_versions(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_jsonnet_version", lambda: "Not installed")
         out = self._run(monkeypatch, capsys, "--json")
-        assert set(out) == {"cli", "sdk", "python", "jsonnet", "rclone"}
+        assert set(out) == {"cli", "sdk", "python", "jsonnet", "rclone", "mcp"}
         assert out["cli"] == yd_version.__version__
         assert out["jsonnet"] is None
+
+    def test_the_mcp_sdk_version(self, monkeypatch, capsys):
+        # The 'mcp' extra's SDK, read from package metadata without importing
+        # it, so yd-version stays standalone and fast
+        monkeypatch.setattr(yd_version, "_mcp_version", lambda: "2.9.9")
+        assert self._run(monkeypatch, capsys, "--json")["mcp"] == "2.9.9"
+        monkeypatch.setattr(yd_version, "_mcp_version", lambda: "Not installed")
+        assert self._run(monkeypatch, capsys, "--json")["mcp"] is None
+
+    def test_mcp_alone_prints_the_bare_version_or_exits_1(self, monkeypatch, capsys):
+        monkeypatch.setattr(yd_version, "_mcp_version", lambda: "2.9.9")
+        monkeypatch.setattr(_sys, "argv", ["yd-version", "--mcp"])
+        yd_version.main()
+        assert capsys.readouterr().out.strip() == "2.9.9"
+        monkeypatch.setattr(yd_version, "_mcp_version", lambda: "Not installed")
+        with pytest.raises(SystemExit) as exit_info:
+            yd_version.main()
+        assert exit_info.value.code == 1
 
     def test_a_missing_rclone_is_null(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_rclone_version", lambda: "Not installed")

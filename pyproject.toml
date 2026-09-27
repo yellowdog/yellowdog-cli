@@ -43,6 +43,7 @@
 [project.optional-dependencies]
     jsonnet = ["jsonnet"]
     commander = ["PyQt6"]
+    mcp = ["mcp>=2.2"]
     cloudwizard = [
         "boto3",
         "botocore",
@@ -94,6 +95,7 @@
     yd-list = "yellowdog_cli.list:main"
     yd-nodeaction = "yellowdog_cli.nodeaction:main"
     yd-ls = "yellowdog_cli.ls:main"
+    yd-mcp = "yellowdog_cli.mcp.launcher:main"
     yd-provision = "yellowdog_cli.provision:main"
     yd-remove = "yellowdog_cli.remove:main"
     yd-resize = "yellowdog_cli.resize:main"
@@ -109,10 +111,11 @@
 
 [tool.setuptools]
     include-package-data = false
-    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander"]
+    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander", "yellowdog_cli.mcp"]
 
 [tool.setuptools.package-data]
     "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]
+    "yellowdog_cli.mcp" = ["README.md"]
 
 [tool.setuptools.dynamic.version]
     attr = "yellowdog_cli._version.__version__"
@@ -155,7 +158,7 @@
 
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
-    extras = ["dev", "commander"]
+    extras = ["dev", "commander", "mcp"]
     commands = [["pytest", "{posargs}"]]
 
 [tool.tox.env.py315]

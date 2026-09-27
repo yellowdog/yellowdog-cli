@@ -6,6 +6,8 @@ Report version numbers, etc.
 
 import json
 from argparse import ArgumentParser
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from os.path import abspath
 from sys import executable, path
 from sys import version as py_version
@@ -34,6 +36,17 @@ def _jsonnet_version() -> str:
         return NOT_INSTALLED
 
 
+def _mcp_version() -> str:
+    """
+    The 'mcp' extra's SDK version, from its package metadata: read without
+    importing the package, which keeps yd-version standalone and fast.
+    """
+    try:
+        return package_version("mcp")
+    except PackageNotFoundError:
+        return NOT_INSTALLED
+
+
 def main():
     parser = ArgumentParser(
         prog="yd-version",
@@ -54,6 +67,9 @@ def main():
     )
     group.add_argument(
         "--rclone", action="store_true", help="print rclone version number only"
+    )
+    group.add_argument(
+        "--mcp", action="store_true", help="print the MCP SDK version number only"
     )
     group.add_argument(
         "--json",
@@ -93,12 +109,19 @@ def main():
             exit(1)
         print(version)
         return
+    if args.mcp:
+        version = _mcp_version()
+        if version == NOT_INSTALLED:
+            exit(1)
+        print(version)
+        return
 
     print(f"  YellowDog CLI Version:   {__version__} (Docs: {DOCS_URL})")
     print(f"  YellowDog SDK Version:   {yd_sdk_version}")
     print(f"  Python Version:          {py_version.split()[0]} ")
     print(f"  Jsonnet Version:         {_jsonnet_version()}")
     print(f"  rclone Version:          {_rclone_version()}")
+    print(f"  MCP SDK Version:         {_mcp_version()}")
     print(f"  Author:                  {__author__} ({__email__}) ")
     if args.debug:
         print(f"  Command:                 {abspath(__file__)}")
@@ -126,6 +149,7 @@ def _print_json(debug: bool) -> None:
         "python": py_version.split()[0],
         "jsonnet": installed(_jsonnet_version()),
         "rclone": installed(_rclone_version()),
+        "mcp": installed(_mcp_version()),
     }
     if debug:
         document["executable"] = executable

@@ -32,6 +32,7 @@ from yellowdog_cli.utils.check_imports import (
     check_cloudwizard_imports,
     check_commander_imports,
     check_jsonnet_import,
+    check_mcp_imports,
 )
 from yellowdog_cli.utils.entity_utils import (
     get_all_roles_and_namespaces_for_application,
@@ -327,6 +328,10 @@ def check_extra_cloudwizard(ctx: Context) -> Result:
 
 def check_extra_commander(ctx: Context) -> Result:
     return _check_extra("PyQt6", check_commander_imports)
+
+
+def check_extra_mcp(ctx: Context) -> Result:
+    return _check_extra("mcp", check_mcp_imports)
 
 
 def check_rclone(ctx: Context) -> Result:
@@ -814,6 +819,7 @@ CHECKS: tuple[Check, ...] = (
     Check("Jsonnet", "Installation", Need.NOTHING, check_extra_jsonnet),
     Check("Cloud Wizard", "Installation", Need.NOTHING, check_extra_cloudwizard),
     Check("Commander", "Installation", Need.NOTHING, check_extra_commander),
+    Check("MCP Server", "Installation", Need.NOTHING, check_extra_mcp),
     Check("rclone", "Installation", Need.NOTHING, check_rclone),
     Check("Proxy", "Installation", Need.NOTHING, check_proxy),
     Check("Certificates", "Installation", Need.CONFIG, check_certificates),

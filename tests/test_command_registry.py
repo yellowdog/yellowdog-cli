@@ -15,9 +15,11 @@ from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     COMMON_OPTIONS,
     DESCRIPTION_PREFIX,
+    MCP_EXCLUDED_OPTIONS,
     Command,
     CommandKind,
     Exclusive,
+    ToolKind,
     build_parser,
     command_from_argv0,
     option,
@@ -71,6 +73,7 @@ class TestOption:
 
 class TestCommand:
     def _command(self, kind=CommandKind.API, **kwargs) -> Command:
+        kwargs.setdefault("tool", ToolKind.READ_ONLY)
         return Command(
             name="yd-x", purpose="doing x", summary="Do x", kind=kind, **kwargs
         )
@@ -152,6 +155,7 @@ class TestBuildParser:
                     )
                 ),
             ),
+            tool=ToolKind.READ_ONLY,
         )
         parser = build_parser(cmd, prog="yd-x")
         assert parser.prog == "yd-x"
@@ -169,7 +173,7 @@ def _entry_points() -> set[str]:
 
 class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
-        assert set(COMMANDS) == _entry_points() - {"yd-commander"}
+        assert set(COMMANDS) == _entry_points() - {"yd-commander", "yd-mcp"}
 
     def test_rm_is_an_alias_of_delete(self):
         assert COMMANDS["yd-rm"] is COMMANDS["yd-delete"]
@@ -217,3 +221,93 @@ class TestHelpCommand:
     def test_commander_is_not_listed(self, capsys):
         help_module.main()
         assert "yd-commander" not in capsys.readouterr().out
+
+
+class TestToolKinds:
+    def test_every_command_states_its_kind(self):
+        for command in COMMANDS.values():
+            assert isinstance(command.tool, ToolKind), command.name
+
+    def test_the_commands_that_are_not_tools(self):
+        # Interactive, or file formatters, or the tool list itself
+        assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.NONE} == {
+            "yd-cloudwizard",
+            "yd-format-json",
+            "yd-jsonnet2json",
+            "yd-help",
+        }
+
+    def test_the_read_only_commands(self):
+        assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.READ_ONLY} == {
+            "yd-list",
+            "yd-show",
+            "yd-variables",
+            "yd-doctor",
+            "yd-application",
+            "yd-compare",
+            "yd-ls",
+            "yd-version",
+        }
+
+    def test_the_destructive_commands(self):
+        assert {
+            n
+            for n, c in COMMANDS.items()
+            if c.tool is ToolKind.DESTRUCTIVE and n != "yd-rm"
+        } == {
+            "yd-cancel",
+            "yd-abort",
+            "yd-shutdown",
+            "yd-terminate",
+            "yd-remove",
+            "yd-delete",
+            "yd-hold",
+            "yd-start",
+            "yd-finish",
+            "yd-resize",
+            "yd-boost",
+            "yd-compute-stop",
+            "yd-compute-start",
+            "yd-compute-restart",
+            "yd-nodeaction",
+        }
+
+    def test_the_acting_commands(self):
+        assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.ACTING} == {
+            "yd-submit",
+            "yd-provision",
+            "yd-instantiate",
+            "yd-create",
+            "yd-upload",
+            "yd-download",
+            "yd-copy",
+            "yd-wait",
+            "yd-follow",
+        }
+
+    def test_a_command_must_state_its_kind(self):
+        with pytest.raises(TypeError):
+            Command(name="yd-x", purpose="p", summary="s", kind=CommandKind.API)  # type: ignore[call-arg]
+
+
+class TestExcludedOptions:
+    def test_every_excluded_name_is_an_option_of_some_command(self):
+        names = {o.name for c in COMMANDS.values() for o in c.flat_options()}
+        assert MCP_EXCLUDED_OPTIONS <= names, MCP_EXCLUDED_OPTIONS - names
+
+    def test_the_options_the_server_supplies_itself_are_excluded(self):
+        assert {
+            "--json",
+            "--yes",
+            "--config",
+            "--no-config",
+            "--no-format",
+        } <= MCP_EXCLUDED_OPTIONS
+
+    def test_credentials_and_secrets_are_excluded(self):
+        assert {
+            "--key",
+            "--secret",
+            "--show-keyring-passwords",
+            "--show-secrets",
+        } <= MCP_EXCLUDED_OPTIONS

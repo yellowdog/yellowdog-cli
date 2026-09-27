@@ -20,6 +20,7 @@
       * [Update](#update-2)
       * [With Jsonnet support](#with-jsonnet-support-2)
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
+* [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
    * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
@@ -201,7 +202,7 @@
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Sep 26 20:40:32 BST 2026 -->
+<!-- Added by: pwt, at: Sun Sep 27 14:21:11 BST 2026 -->
 
 <!--te-->
 
@@ -393,6 +394,17 @@ yd-commander
 
 It works by invoking the `yd-*` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
+# YellowDog MCP Server
+
+`yd-mcp` is an MCP server exposing the `yd-*` commands as tools for an agent. Install it with the `mcp` extra and launch it with `yd-mcp`:
+
+```commandline
+pip install -U "yellowdog-cli[mcp]"
+yd-mcp config.toml
+```
+
+It runs the `yd-*` commands on an agent's behalf and returns their `--json` results. See [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) for details.
+
 # Usage
 
 All three installation methods add a number of **`yd-`** commands to your PATH.
@@ -467,6 +479,8 @@ For scripting, every command family below follows one rule: with `--json`, stdou
 7. On a failure part-way through, whatever was done is still emitted before the process exits non-zero, so a script sees what happened.
 8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and `yd-instantiate --report`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
 9. The option is spelled `--json` with no short form, except on `yd-list` and `yd-application`, which also accept `-J` (on the specification commands `-J` means `--jsonnet-dry-run`).
+
+The `yd-mcp` server is a consumer of this contract: each tool call runs a command with `--json` and returns its document.
 
 The documents, by command:
 
@@ -3439,7 +3453,7 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
 The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -4391,7 +4405,7 @@ The `yd-doctor` command checks whether this machine, this configuration and thes
 yd-doctor [options]
 ```
 
-It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads, and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
+It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads, and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
 
 Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
 
@@ -4423,14 +4437,14 @@ With `--json` it prints the commands as a JSON array of `{"command", "summary"}`
 
 ### yd-version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet and the rclone binary.
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp`.
 
 ```shell
 yd-version [options]
 ```
 
 Key options:
-- `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone` — mutually exclusive; each prints just that bare version number, for use in scripts
+- `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
 - `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error)
 - `--json` — print the versions as a JSON object, `null` for a component not installed; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
@@ -4440,7 +4454,7 @@ yd-version --cli     # print the CLI version number only
 yd-version --rclone  # print the rclone binary version only
 ```
 
-The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet` and `--rclone` exit with a non-zero status if the respective component is not installed.
+The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet`, `--rclone` and `--mcp` exit with a non-zero status if the respective component is not installed.
 
 ### yd-format-json
 

@@ -19,7 +19,7 @@ from argparse import (
     _ArgumentGroup,
 )
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
@@ -110,6 +110,20 @@ class CommandKind(Enum):
     STANDALONE = auto()  # no configuration and no credentials
 
 
+class ToolKind(Enum):
+    """
+    What the command is as an MCP tool (yellowdog_cli/mcp/): the annotation
+    the client is given, so that it can ask the user before a destructive
+    one. NONE for a command that is not a tool at all. There is no default:
+    a new command says what it is.
+    """
+
+    READ_ONLY = auto()  # reads the platform or the installation
+    ACTING = auto()  # creates, transfers or waits; destroys nothing
+    DESTRUCTIVE = auto()  # cancels, removes, shuts down, changes what is running
+    NONE = auto()  # interactive, or a file formatter, or the tool list itself
+
+
 @dataclass(frozen=True, eq=False)
 class Command:
     name: str  # "yd-submit"
@@ -121,6 +135,11 @@ class Command:
     # True for the commands that default a missing namespace and tag with a
     # debug message (load_config.py); yd-list has --namespace but is not one.
     requires_namespace_and_tag: bool = False
+    # The MCP tool kind (see ToolKind), stated by every command
+    tool: ToolKind = field(kw_only=True)
+    # A hand-written description for a tool whose workflow needs explaining;
+    # None means the summary and purpose are used
+    tool_description: str | None = None
 
     def all_options(self) -> tuple[Option | Exclusive, ...]:
         return COMMON_OPTIONS[self.kind] + self.options
@@ -405,6 +424,53 @@ COMMON_OPTIONS[CommandKind.DATA_CLIENT] = (
     PROPERTY,
 )
 COMMON_OPTIONS[CommandKind.STANDALONE] = ()
+
+# The options no MCP tool exposes, by option name (Option.name: the first
+# long flag, or a positional's name), compared as Command.has() compares.
+# tests/test_mcp_tools.py holds every option of every tool command to being
+# either in a schema or here, so a new option is placed on purpose.
+MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
+    {
+        # The common set: the server owns the configuration, the credentials
+        # and the output form
+        "--docs",
+        "--config",
+        "--key",
+        "--secret",
+        "--url",
+        "--debug",
+        "--pac",
+        "--no-format",
+        "--quiet",
+        "--env-override",
+        "--print-pid",
+        "--no-config",
+        "--property",
+        # Supplied by the server, or meaningless without a terminal, or
+        # refused with '--json'
+        "--json",
+        "--yes",
+        "--interactive",
+        "--progress",
+        "--report",
+        "--ids-only",
+        # Machine maintenance, not platform work
+        "--upgrade-rclone",
+        "--which-rclone",
+        # A credential in a tool result is a credential in the conversation
+        "--show-keyring-passwords",
+        "--show-secrets",
+        # The specification files, replaced by the tools' 'specification(s)'
+        # argument (yellowdog_cli/mcp/tools.py)
+        "--work-requirement",
+        "--worker-pool",
+        "--compute-requirement",
+        "work_requirement_file_positional",
+        "worker_pool_file_positional",
+        "compute_requirement_file_positional",
+        "resource_specifications",
+    }
+)
 
 
 # --- Shared options ------------------------------------------------------
@@ -924,6 +990,7 @@ COMMANDS["yd-abort"] = Command(
     kind=CommandKind.API,
     options=(SORT, REVERSE, VARIABLE, NAMESPACE, TAG, YES, ACTIONS_JSON, TASK_ID_LIST),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-application ------------------------------------------------------
@@ -940,6 +1007,7 @@ COMMANDS["yd-application"] = Command(
         JSON.variant(help="emit the Application's details as JSON"),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.READ_ONLY,
 )
 
 # --- yd-boost ------------------------------------------------------------
@@ -964,6 +1032,7 @@ COMMANDS["yd-boost"] = Command(
     summary="Boost Allowances",
     kind=CommandKind.API,
     options=(VARIABLE, YES, ACTIONS_JSON, BOOST_HOURS, ALLOWANCES),
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-cancel -----------------------------------------------------------
@@ -997,6 +1066,7 @@ COMMANDS["yd-cancel"] = Command(
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-cloudwizard ------------------------------------------------------
@@ -1065,6 +1135,7 @@ COMMANDS["yd-cloudwizard"] = Command(
         INSTANCE_TYPE,
         SHOW_SECRETS,
     ),
+    tool=ToolKind.NONE,
 )
 
 # --- yd-compare ----------------------------------------------------------
@@ -1108,6 +1179,7 @@ COMMANDS["yd-compare"] = Command(
             )
         ),
     ),
+    tool=ToolKind.READ_ONLY,
 )
 
 # --- yd-compute-restart / yd-compute-start / yd-compute-stop --------------
@@ -1142,6 +1214,7 @@ COMMANDS["yd-compute-restart"] = Command(
         )
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-start"] = Command(
     name="yd-compute-start",
@@ -1150,6 +1223,7 @@ COMMANDS["yd-compute-start"] = Command(
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-stop"] = Command(
     name="yd-compute-stop",
@@ -1158,6 +1232,7 @@ COMMANDS["yd-compute-stop"] = Command(
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-copy -------------------------------------------------------------
@@ -1224,6 +1299,7 @@ COMMANDS["yd-copy"] = Command(
         TRANSFERS_JSON.variant(help="emit the files copied as a JSON array"),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.ACTING,
 )
 
 # --- yd-create / yd-remove -----------------------------------------------
@@ -1270,6 +1346,7 @@ COMMANDS["yd-create"] = Command(
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.ACTING,
 )
 
 IDS = option(
@@ -1296,6 +1373,7 @@ COMMANDS["yd-remove"] = Command(
         IDS,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-delete / yd-rm ---------------------------------------------------
@@ -1327,6 +1405,7 @@ COMMANDS["yd-delete"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 # The prog is set by the caller, so one object serves both names.
 COMMANDS["yd-rm"] = COMMANDS["yd-delete"]
@@ -1347,6 +1426,7 @@ COMMANDS["yd-doctor"] = Command(
         TIMEOUT,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.READ_ONLY,
 )
 
 # --- yd-download ---------------------------------------------------------
@@ -1406,6 +1486,15 @@ COMMANDS["yd-download"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Download objects (task outputs, results) from the namespace's object"
+        " store to the local machine. remote_paths are object paths relative"
+        " to the configured prefix, which defaults to '<namespace>/<tag>' (set"
+        " no_prefix to give paths relative to the bucket root instead);"
+        " wildcards are allowed. Returns one record per file: {source, destination, size,"
+        " action, match}. Use dry_run first to see what would be fetched."
+    ),
 )
 
 # --- yd-finish / yd-hold / yd-start --------------------------------------
@@ -1442,6 +1531,7 @@ COMMANDS["yd-finish"] = Command(
         )
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-hold"] = Command(
     name="yd-hold",
@@ -1457,6 +1547,7 @@ COMMANDS["yd-hold"] = Command(
         )
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-start"] = Command(
     name="yd-start",
@@ -1472,6 +1563,7 @@ COMMANDS["yd-start"] = Command(
         )
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-follow / yd-show / yd-wait ---------------------------------------
@@ -1494,6 +1586,14 @@ COMMANDS["yd-follow"] = Command(
         ),
     ),
     validators=(check_follow_json_excludes_progress,),
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Collect the events of Work Requirements, Worker Pools or Compute"
+        " Requirements (by YDID) for up to timeout_seconds, then return them"
+        " as an array; the call ends early when every entity reaches a"
+        " terminal state. Each event is the entity's current state, so the"
+        " last one per entity is its latest status."
+    ),
 )
 
 SHOW_TOKEN = option(
@@ -1528,6 +1628,7 @@ COMMANDS["yd-show"] = Command(
         OUTPUT_FILE,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.READ_ONLY,
 )
 
 COMMANDS["yd-wait"] = Command(
@@ -1543,6 +1644,7 @@ COMMANDS["yd-wait"] = Command(
         YELLOWDOG_IDS.variant(help="the YellowDog ID(s) of the item(s) to wait"),
         ACTIONS_JSON.variant(help="emit each item's final status as a JSON array"),
     ),
+    tool=ToolKind.ACTING,
 )
 
 # --- yd-instantiate / yd-provision ---------------------------------------
@@ -1599,6 +1701,7 @@ COMMANDS["yd-instantiate"] = Command(
     ),
     requires_namespace_and_tag=True,
     validators=(check_json_excludes_streaming,),
+    tool=ToolKind.ACTING,
 )
 
 WORKER_POOL_FILE_POSITIONAL = option(
@@ -1634,6 +1737,14 @@ COMMANDS["yd-provision"] = Command(
     ),
     requires_namespace_and_tag=True,
     validators=(check_json_excludes_streaming,),
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Provision a Worker Pool from a specification (a file path, or the"
+        " specification itself). Returns {id, name, namespace, type}; a"
+        " Configured Worker Pool's record also carries its token and"
+        " expiryTime. With dry_run, the processed specification. Shut it"
+        " down afterwards with yd_shutdown."
+    ),
 )
 
 # --- yd-list -------------------------------------------------------------
@@ -1740,6 +1851,14 @@ COMMANDS["yd-list"] = Command(
         STRIP_IDS,
         OUTPUT_FILE,
     ),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "List entities of one type in the namespace, optionally filtered by"
+        " name pattern and status. entity_type is the full type name"
+        " (work-requirements, worker-pools, compute-requirements, tasks,"
+        " task-groups, nodes, workers, images, ...). Returns an array of"
+        " summary objects; details adds each entity's full object."
+    ),
 )
 
 # --- yd-ls ---------------------------------------------------------------
@@ -1773,6 +1892,7 @@ COMMANDS["yd-ls"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.READ_ONLY,
 )
 
 # --- yd-nodeaction -------------------------------------------------------
@@ -1846,6 +1966,7 @@ COMMANDS["yd-nodeaction"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-resize -----------------------------------------------------------
@@ -1892,6 +2013,7 @@ COMMANDS["yd-resize"] = Command(
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-shutdown ---------------------------------------------------------
@@ -1935,6 +2057,7 @@ COMMANDS["yd-shutdown"] = Command(
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-submit -----------------------------------------------------------
@@ -2138,6 +2261,15 @@ COMMANDS["yd-submit"] = Command(
     ),
     requires_namespace_and_tag=True,
     validators=(check_json_excludes_streaming,),
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Submit a Work Requirement from a specification (a file path, or the"
+        " specification itself as an object). Returns {id, name, namespace,"
+        " type} of the created Work Requirement; with dry_run, the processed"
+        " specification instead. Follow it afterwards with yd_follow, or"
+        " poll with yd_list and yd_show, then fetch its outputs with"
+        " yd_download."
+    ),
 )
 
 # --- yd-terminate --------------------------------------------------------
@@ -2162,6 +2294,7 @@ COMMANDS["yd-terminate"] = Command(
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-upload -----------------------------------------------------------
@@ -2192,6 +2325,7 @@ COMMANDS["yd-upload"] = Command(
         TRANSFERS_JSON,
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.ACTING,
 )
 
 # --- yd-variables --------------------------------------------------------
@@ -2231,6 +2365,7 @@ COMMANDS["yd-variables"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
+    tool=ToolKind.READ_ONLY,
 )
 
 # --- Standalone commands -------------------------------------------------
@@ -2242,22 +2377,26 @@ COMMANDS["yd-format-json"] = Command(
     purpose="formatting JSON files using a compact encoder",
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,
+    tool=ToolKind.NONE,
 )
 COMMANDS["yd-help"] = Command(
     name="yd-help",
     purpose="listing available yd-* commands and their purposes",
     summary="List available yd-* commands and their purposes",
     kind=CommandKind.STANDALONE,
+    tool=ToolKind.NONE,
 )
 COMMANDS["yd-jsonnet2json"] = Command(
     name="yd-jsonnet2json",
     purpose="converting a Jsonnet file to JSON",
     summary="Convert a Jsonnet file to JSON",
     kind=CommandKind.STANDALONE,
+    tool=ToolKind.NONE,
 )
 COMMANDS["yd-version"] = Command(
     name="yd-version",
     purpose="reporting version information",
     summary="Report version information",
     kind=CommandKind.STANDALONE,
+    tool=ToolKind.READ_ONLY,
 )

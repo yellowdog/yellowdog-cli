@@ -543,6 +543,14 @@ class TestInstallation:
             r.status is dc.Status.FAIL and r.remedy == "libstdc++ missing: install it"
         )
 
+    def test_the_mcp_extra_is_checked_like_the_others(self, monkeypatch):
+        monkeypatch.setattr(dc, "_module_is_installed", lambda name: False)
+        r = dc.check_extra_mcp(_ctx())
+        assert (r.status, r.detail) == (dc.Status.OK, "not installed (optional)")
+        monkeypatch.setattr(dc, "_module_is_installed", lambda name: True)
+        monkeypatch.setattr(dc, "check_mcp_imports", lambda: None)
+        assert dc.check_extra_mcp(_ctx()).status is dc.Status.OK
+
     def test_rclone_missing_warns(self, monkeypatch):
         monkeypatch.setattr(dc, "find_rclone", lambda: None)
         r = dc.check_rclone(_ctx())
@@ -658,6 +666,7 @@ class TestInstallation:
             "Jsonnet",
             "Cloud Wizard",
             "Commander",
+            "MCP Server",
             "rclone",
             "Proxy",
             "Certificates",
