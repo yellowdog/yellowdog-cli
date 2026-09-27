@@ -1289,9 +1289,6 @@ class TestJsonExcludesStreaming:
         "command, option",
         [
             ("yd-submit", "--progress"),
-            ("yd-submit", "--raw-events"),
-            ("yd-provision", "--raw-events"),
-            ("yd-instantiate", "--raw-events"),
             ("yd-instantiate", "--report"),
         ],
     )
@@ -1429,16 +1426,35 @@ class TestWait:
 
 
 # ---------------------------------------------------------------------------
-# yd-follow: '--json' is '--raw-events'
+# yd-follow: '--json' streams the events
 # ---------------------------------------------------------------------------
 
 
 class TestFollow:
-    def test_json_sets_raw_events(self):
+    def test_json_streams_the_events(self):
         from yellowdog_cli.utils.args import CLIParser
 
         parser = CLIParser(command="yd-follow", argv=["--json", WR_ID_1])
-        assert parser.raw_events and parser.json_output
+        assert parser.events_as_json and parser.json_output
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-follow", ["--raw-events", WR_ID_1]),
+            ("yd-cancel", ["--follow", "--raw-events", "wr"]),
+            ("yd-submit", ["--follow", "--raw-events"]),
+        ],
+    )
+    def test_raw_events_is_no_longer_an_option(self, command, argv, capsys):
+        # The raw event stream is yd-follow's '--json'; the option that
+        # duplicated it, on yd-follow and on every command taking '--follow',
+        # is gone
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as exit_info:
+            CLIParser(command=command, argv=argv)
+        assert exit_info.value.code == 2
+        assert "--raw-events" in capsys.readouterr().err
 
     def test_json_is_refused_with_progress(self, capsys):
         from yellowdog_cli.utils.args import CLIParser
@@ -1486,12 +1502,15 @@ class TestFollow:
             yd_follow.main()
         assert capsys.readouterr().out == ""
 
-    def test_raw_events_is_unchanged_without_json(self):
+    def test_only_yd_follow_streams_events_as_json(self):
         from yellowdog_cli.utils.args import CLIParser
 
-        assert not CLIParser(command="yd-follow", argv=[WR_ID_1]).raw_events
-        # Another command's '--json' is not '--raw-events'
-        assert not CLIParser(command="yd-cancel", argv=["--json", "-D"]).raw_events
+        assert not CLIParser(command="yd-follow", argv=[WR_ID_1]).events_as_json
+        # Another command's '--follow --json' still follows through status
+        # messages, which '--json' silences: its document is the result
+        assert not CLIParser(
+            command="yd-cancel", argv=["--json", "--follow", "-D"]
+        ).events_as_json
 
 
 from yellowdog_cli.utils.ydid_utils import YDIDType as _YDIDType  # noqa: E402

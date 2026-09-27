@@ -546,7 +546,7 @@ CREATE_JSON = ACTIONS_JSON.variant(
 ENTITY_JSON = ACTIONS_JSON.variant(
     help=(
         "emit the created entity as JSON; with --dry-run, the processed"
-        " specification; not with --progress, --raw-events or --report"
+        " specification; not with --progress or --report"
     )
 )
 FOLLOW_WORK_REQUIREMENT_EVENTS = FOLLOW.variant(
@@ -677,12 +677,6 @@ AUTO_FOLLOW_COMPUTE_REQUIREMENTS = option(
         "automatically follow the associated compute requirements when"
         " following worker pools"
     ),
-)
-RAW_EVENTS = option(
-    "--raw-events",
-    action="store_true",
-    required=False,
-    help="print the raw JSON event stream when following events",
 )
 SHOW_SECRETS = option(
     "--show-secrets",
@@ -864,7 +858,6 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
 # share with its document
 _STREAMING_OPTIONS = (
     ("progress", "--progress"),
-    ("raw_events", "--raw-events"),
     ("report", "--report"),
 )
 
@@ -872,17 +865,17 @@ _STREAMING_OPTIONS = (
 def check_json_excludes_streaming(args: Namespace, parser: ArgumentParser) -> None:
     """
     On the single-object creators, refuse '--json' with an option that
-    writes its own output to stdout: a progress bar, raw events or a
-    report table would share stdout with the document. '--follow' alone
-    reports through messages '--json' silences, so it is allowed.
+    writes its own output to stdout: a progress bar or a report table
+    would share stdout with the document. '--follow' alone reports through
+    messages '--json' silences, so it is allowed.
     """
     if not getattr(args, "json", False):
         return
     for dest, flag in _STREAMING_OPTIONS:
         if getattr(args, dest, False):
             parser.error(
-                f"--json cannot be combined with {flag}: --progress, --raw-events"
-                " and --report write their own output"
+                f"--json cannot be combined with {flag}: --progress and --report"
+                " write their own output"
             )
 
 
@@ -890,7 +883,7 @@ def check_follow_json_excludes_progress(
     args: Namespace, parser: ArgumentParser
 ) -> None:
     """
-    On yd-follow, '--json' is '--raw-events', so the one streaming option it
+    On yd-follow, '--json' prints the events themselves, so the one option it
     cannot share stdout with is the progress bar, which consumes the events
     rather than printing them.
     """
@@ -1001,7 +994,6 @@ COMMANDS["yd-cancel"] = Command(
         INTERACTIVE,
         YES,
         WORK_REQUIREMENTS,
-        RAW_EVENTS,
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
@@ -1135,7 +1127,6 @@ def _compute_action_options(
         ACTIONS_JSON,
         targets,
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
-        RAW_EVENTS,
     )
 
 
@@ -1434,7 +1425,6 @@ def _work_requirement_action_options(
         YES,
         ACTIONS_JSON,
         targets,
-        RAW_EVENTS,
     )
 
 
@@ -1496,8 +1486,12 @@ COMMANDS["yd-follow"] = Command(
         YELLOWDOG_IDS,
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
-        RAW_EVENTS,
-        ACTIONS_JSON.variant(help="a synonym for --raw-events (not with --progress)"),
+        ACTIONS_JSON.variant(
+            help=(
+                "print each event as a JSON document as it arrives"
+                " (not with --progress)"
+            )
+        ),
     ),
     validators=(check_follow_json_excludes_progress,),
 )
@@ -1601,7 +1595,6 @@ COMMANDS["yd-instantiate"] = Command(
         CONTENT_PATH,
         FOLLOW_PROVISIONING,
         TARGET,
-        RAW_EVENTS,
         COMPUTE_REQUIREMENT_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
@@ -1637,7 +1630,6 @@ COMMANDS["yd-provision"] = Command(
         FOLLOW_PROVISIONING,
         TARGET,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
-        RAW_EVENTS,
         WORKER_POOL_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
@@ -1898,7 +1890,6 @@ COMMANDS["yd-resize"] = Command(
         RESIZE_COMPUTE_REQUIREMENT,
         FOLLOW.variant(help="follow progress after resizing"),
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
-        RAW_EVENTS,
     ),
     requires_namespace_and_tag=True,
 )
@@ -1941,7 +1932,6 @@ COMMANDS["yd-shutdown"] = Command(
         FOLLOW.variant(help="follow worker pool shutdown to completion"),
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
-        RAW_EVENTS,
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
@@ -2136,7 +2126,6 @@ COMMANDS["yd-submit"] = Command(
         JSONNET_DRY_RUN,
         ENTITY_JSON,
         CONTENT_PATH,
-        RAW_EVENTS,
         WORK_REQUIREMENT_FILE_POSITIONAL,
         UPGRADE_RCLONE,
         WHICH_RCLONE,
@@ -2170,7 +2159,6 @@ COMMANDS["yd-terminate"] = Command(
         YES,
         COMPUTE_REQS_INSTANCES_OR_NODES,
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
-        RAW_EVENTS,
     ),
     validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,

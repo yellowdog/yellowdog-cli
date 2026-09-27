@@ -553,12 +553,13 @@ class CLIParser:
     # -----------------------------------------------------------------------
 
     @property
-    @allow_missing_attribute
-    def raw_events(self) -> bool | None:
-        # yd-follow's '--json' is a synonym for '--raw-events'
-        if self.command_name == "yd-follow" and getattr(self.args, "json", False):
-            return True
-        return self.args.raw_events
+    def events_as_json(self) -> bool:
+        # yd-follow's '--json' prints each event as a JSON document; any
+        # other command's '--follow --json' follows through the status
+        # messages '--json' silences, its document being the result
+        return self.command_name == "yd-follow" and bool(
+            getattr(self.args, "json", False)
+        )
 
     # -----------------------------------------------------------------------
     # yd-cloudwizard

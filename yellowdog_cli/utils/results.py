@@ -183,7 +183,7 @@ def any_failed() -> bool:
 def results_are_streamed() -> None:
     """
     Declare that the command writes its '--json' output as it goes -- yd-follow,
-    whose '--json' is '--raw-events' -- so that flush_results() prints nothing
+    whose '--json' prints each event -- so that flush_results() prints nothing
     after it, not even the empty array a command that printed nothing gets.
     """
     global _STREAMED

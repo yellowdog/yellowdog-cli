@@ -14,8 +14,8 @@ from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 
 @main_wrapper
 def main():
-    # '--json' is '--raw-events' (the parser sets both): the events are
-    # the output, printed as they arrive, with no document after them
+    # Under '--json' the events are the output, printed as JSON as they
+    # arrive, with no document after them
     results_are_streamed()
 
     if not ARGS_PARSER.yellowdog_ids:

@@ -1547,7 +1547,7 @@ def print_event(event: str, id_type: YDIDType):
     # Strip only the leading prefix: the payload itself may contain 'data:'
     event_data: dict = json_loads(event[len(data_prefix) :])
 
-    if ARGS_PARSER.raw_events:
+    if ARGS_PARSER.events_as_json:
         print_json(event_data)
         return
 

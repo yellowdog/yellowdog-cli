@@ -1110,19 +1110,6 @@
       "option_strings": [],
       "required": null,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-cloudwizard": [
@@ -1958,19 +1945,6 @@
       ],
       "required": false,
       "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-compute-start": [
@@ -2289,19 +2263,6 @@
       ],
       "required": false,
       "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-compute-stop": [
@@ -2617,19 +2578,6 @@
       "option_strings": [
         "--follow",
         "-f"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
       ],
       "required": false,
       "type": null
@@ -4594,19 +4542,6 @@
       "option_strings": [],
       "required": null,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-follow": [
@@ -4835,19 +4770,6 @@
       "option_strings": [
         "--auto-follow-compute-requirements",
         "-a"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
       ],
       "required": false,
       "type": null
@@ -5184,19 +5106,6 @@
       "option_strings": [],
       "required": null,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-instantiate": [
@@ -5543,19 +5452,6 @@
       ],
       "required": false,
       "type": "int"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     },
     {
       "choices": null,
@@ -7058,19 +6954,6 @@
     },
     {
       "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
       "const": null,
       "default": null,
       "dest": "worker_pool_file_positional",
@@ -7702,19 +7585,6 @@
       "option_strings": [
         "--auto-follow-compute-requirements",
         "-a"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
       ],
       "required": false,
       "type": null
@@ -8690,19 +8560,6 @@
       ],
       "required": false,
       "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-start": [
@@ -9021,19 +8878,6 @@
       "option_strings": [],
       "required": null,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
     }
   ],
   "yd-submit": [
@@ -9537,19 +9381,6 @@
     },
     {
       "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
       "const": null,
       "default": null,
       "dest": "work_requirement_file_positional",
@@ -9926,19 +9757,6 @@
       "option_strings": [
         "--follow",
         "-f"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "raw_events",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--raw-events"
       ],
       "required": false,
       "type": null
