@@ -2,6 +2,7 @@
 Unit tests for yellowdog_cli.utils.dataclient_utils
 """
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -236,6 +237,7 @@ _DOWNLOAD_ARGS = {
     "json_output": False,
     "dry_run": False,
     "quiet": True,
+    "count_only": False,
     "interactive": False,
     "yes": True,
     "no_format": True,
@@ -349,3 +351,66 @@ class TestDownloadDestinations:
         _, _, code = run_download(remote_paths=["loc:remote/mydir"], destination="out")
         assert code == 0
         assert _files_under(remote / "out") == {"b.txt", "sub/c.txt"}
+
+
+@needs_rclone
+class TestDownloadFlatten:
+    """
+    '--flatten' puts every file of a directory tree directly in the
+    destination, whether the directory is named or matched by a wildcard.
+    """
+
+    def test_a_literal_directory_is_flattened(self, remote, run_download):
+        _, _, code = run_download(
+            remote_paths=["loc:remote/mydir"], destination="flat", flatten=True
+        )
+        assert code == 0
+        assert _files_under(remote / "flat") == {"b.txt", "c.txt"}
+
+    def test_a_directory_matched_by_a_wildcard_is_flattened(self, remote, run_download):
+        _, _, code = run_download(
+            remote_paths=["loc:remote/my*"], destination="flat", flatten=True
+        )
+        assert code == 0
+        assert _files_under(remote / "flat") == {"b.txt", "c.txt"}
+
+    def test_a_wildcard_matching_files_and_directories(self, remote, run_download):
+        _, _, code = run_download(
+            remote_paths=["loc:remote/*"], destination="flat", flatten=True
+        )
+        assert code == 0
+        assert _files_under(remote / "flat") == {"a.txt", "b.txt", "c.txt"}
+
+    def test_a_name_collision_is_warned_of_and_the_later_file_wins(
+        self, remote, run_download
+    ):
+        (remote / "remote" / "mydir" / "sub" / "b.txt").write_text("dup")
+        out, err, code = run_download(
+            remote_paths=["loc:remote/mydir"],
+            destination="flat",
+            flatten=True,
+            quiet=False,
+        )
+        assert code == 0
+        # A long warning may be wrapped, though never within a path
+        text = " ".join((out + err).split())
+        warnings = re.findall(
+            r"'([^']+)' will overwrite '([^']+)' locally"
+            r" \(same filename, flattened download\)",
+            text,
+        )
+        assert len(warnings) == 1
+        later, first = warnings[0]
+        assert {later, first} == {
+            "loc:remote/mydir/b.txt",
+            "loc:remote/mydir/sub/b.txt",
+        }
+        expected = "dup" if later.endswith("sub/b.txt") else "abc"
+        assert (remote / "flat" / "b.txt").read_text() == expected
+
+    def test_a_single_file_is_unaffected(self, remote, run_download):
+        _, _, code = run_download(
+            remote_paths=["loc:remote/a.txt"], destination="flat", flatten=True
+        )
+        assert code == 0
+        assert _files_under(remote / "flat") == {"a.txt"}

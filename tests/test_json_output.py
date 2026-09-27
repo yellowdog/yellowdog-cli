@@ -1793,6 +1793,29 @@ class TestDownload:
             ObjectSummary(path="loc:remote/sub", name="sub/", is_dir=True),
         ]
 
+    @pytest.mark.parametrize("path", ["loc:remote/sub", "loc:remote/s*"])
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_flattened_records_name_the_flat_destinations(
+        self, remote, run_dc, path, dry_run
+    ):
+        (remote / "remote" / "sub" / "deeper").mkdir()
+        (remote / "remote" / "sub" / "deeper" / "c.txt").write_text("xyz")
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=[path],
+            destination="flat",
+            flatten=True,
+            dry_run=dry_run,
+        )
+        assert code == 0
+        action = "would download" if dry_run else "downloaded"
+        assert sorted((r["source"], r["destination"], r["action"]) for r in out) == [
+            ("loc:remote/sub/b.txt", str(_Path("flat") / "b.txt"), action),
+            ("loc:remote/sub/deeper/c.txt", str(_Path("flat") / "c.txt"), action),
+        ]
+        assert all(r["match"] == "loc:remote/sub" for r in out)
+        assert (remote / "flat" / "c.txt").exists() != dry_run
+
     def test_a_missing_path_records_nothing(self, remote, run_dc):
         # The local backend fails the listing, an object store lists nothing
         # and warns; either way no transfer is recorded, and stdout still
