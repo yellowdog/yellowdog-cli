@@ -8,6 +8,7 @@ command line deterministically. Needs neither the 'mcp' extra nor the SDK.
 import json
 import os
 import stat
+import subprocess
 import sys
 
 import pytest
@@ -506,3 +507,40 @@ class TestInlineSpecificationFiles:
             )
         assert len(calls) == 2
         assert list(tmp_path.iterdir()) == []
+
+
+class TestSdkFreeImport:
+    def test_importing_the_catalogue_pulls_in_neither_the_sdk_nor_fastjsonschema(self):
+        # yellowdog_cli/mcp/tools.py's own docstring, and CLAUDE.md's MCP
+        # section, both say this module (and command_registry.py beneath it)
+        # is SDK-free; a subprocess is the only honest way to check what a
+        # fresh interpreter loads, since this test file's own process has
+        # almost certainly already imported both by the time it runs
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import yellowdog_cli.mcp.tools\n"
+                "import sys\n"
+                "assert 'yellowdog_client' not in sys.modules, 'yellowdog_client'\n"
+                "assert 'fastjsonschema' not in sys.modules, 'fastjsonschema'\n",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_importing_the_command_registry_alone_is_also_sdk_free(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import yellowdog_cli.utils.command_registry\n"
+                "import sys\n"
+                "assert 'yellowdog_client' not in sys.modules, 'yellowdog_client'\n"
+                "assert 'fastjsonschema' not in sys.modules, 'fastjsonschema'\n",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr

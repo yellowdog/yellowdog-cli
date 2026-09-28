@@ -69,6 +69,8 @@ from yellowdog_cli.utils.settings import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
+from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -125,6 +127,8 @@ def main():
         wp_json_file = resolve_filename(files_directory, wp_json_file)
         print_info(f"Loading Worker Pool data from: '{wp_json_file}'")
         create_worker_pool_from_json(wp_json_file)
+    elif ARGS_PARSER.validate:
+        raise ValueError("Option '--validate' needs a Worker Pool specification file")
     elif CONFIG_WP.template_id is None:
         print_error("No template ID supplied")
     else:
@@ -147,6 +151,11 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         wp_data = load_json_file_with_variable_substitutions(
             wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
         )
+
+    # Both branches above, JSON and Jsonnet, arrive here with the loaded document
+    wp_data = check_specification(
+        Family.WORKER_POOL, wp_data, wp_json_file, bool(ARGS_PARSER.validate)
+    )
 
     _update_node_counts()
 

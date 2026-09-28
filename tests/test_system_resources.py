@@ -164,7 +164,7 @@ READ_GATE_EXCLUSIONS.update(
         ),
         # rootDeviceName: only ever populated from real AMI metadata once an
         # AWS instance actually launches, which this suite never does; the two
-        # classes here are exactly resource_models._AWS_COMPUTE_SOURCE_CLASSES,
+        # classes here are exactly sdk_models.AWS_COMPUTE_SOURCE_CLASSES,
         # the only two that declare this field at all.
         ("rootDeviceName", "AwsFleetComputeSource"): (
             "only populated from real AMI metadata once an AWS instance "

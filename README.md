@@ -22,6 +22,7 @@
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
+   * [Specification Schemas](#specification-schemas)
    * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
 * [Configuration](#configuration)
@@ -200,9 +201,10 @@
       * [yd-version](#yd-version)
       * [yd-format-json](#yd-format-json)
       * [yd-jsonnet2json](#yd-jsonnet2json)
+      * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Sep 27 14:21:11 BST 2026 -->
+<!-- Added by: pwt, at: Sun Sep 27 18:58:16 BST 2026 -->
 
 <!--te-->
 
@@ -465,6 +467,27 @@ options:
   --interactive, -i     list, and interactively select, the items to act on
   --yes, -y             perform modifying/destructive actions without requiring user confirmation
 ```
+
+## Specification Schemas
+
+A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd-schema` command prints, writes or checks them (see [yd-schema](#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd-schema --write <dir>` afterwards, or `yd-schema --check <dir>` first to see whether it is needed.
+
+Point an editor's JSON Schema support at the files `yd-schema --write` produces, to get inline validation and autocomplete while writing a specification. In VS Code, add an entry to `settings.json`:
+
+```json
+"json.schemas": [
+  {
+    "fileMatch": ["*.wr.json", "work-requirement*.json"],
+    "url": "./schemas/work-requirement.schema.json"
+  }
+]
+```
+
+A specification file can instead name its own schema directly, with a `$schema` key at the top of the file; the CLI accepts this key and ignores it, so it is never sent on to the Platform. JetBrains IDEs offer the same association under Preferences → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings.
+
+Every run of `yd-submit`, `yd-provision`, `yd-instantiate`, `yd-create` and `yd-nodeaction` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd-schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one.
+
+A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd-jsonnet2json` on a Jsonnet file to see that JSON.
 
 ## Machine-readable Output and Exit Codes
 
@@ -1047,9 +1070,9 @@ The following table outlines all the properties available for defining Work Requ
 | `arguments`                 | The list of arguments to be passed to the Task when it is executed. E.g. `[1, "Two"]`.                                                                                                                                             | Yes  | Yes | Yes  | Yes  |
 | `completedTaskTtl`          | The time (in minutes) to live for completed Tasks. If set, Tasks that have been completed for longer than this period will be deleted. E.g. `10.0`.                                                                                | Yes  | Yes | Yes  |      |
 | `csvFile`                   | The name of the CSV file used to derive Task data. An alternative to `csvFiles` that can be used when there's only a single CSV file. E.g. `"file.csv"`.                                                                            | Yes  |     |      |      |
-| `csvFiles`                  | A list of CSV files used to derive Task data. E.g. `["file.csv", "file_2.csv:2]`.                                                                                                                                                   | Yes  |     |      |      |
+| `csvFiles`                  | A list of CSV files used to derive Task data. E.g. `["file.csv", "file_2.csv:2"]`.                                                                                                                                                  | Yes  |     |      |      |
 | `dependencies`              | The names of other Task Groups within the same Work Requirement that must be successfully completed before the Task Group is started. E.g. `["task_group_1", "task_group_2"]`.                                                      |      |     | Yes  |      |
-| `dependentOn`               | **Deprecated** — use `dependencies` instead (see above). Takes a single string rather than a list. Support for `dependentOn` will be removed in a future release.                                                                   |      |     | Yes  |      |
+| `dependentOn`               | **Deprecated** — use `dependencies` instead. Takes a single string rather than a list. Support for `dependentOn` will be removed in a future release.                                                                               |      |     | Yes  |      |
 | `disablePreallocation`      | If `true`, tasks are only allocated to nodes as workers become idle and are not queued on the node. Default: `false`.                                                                                                               | Yes  | Yes | Yes  |      |
 | `environment`               | The environment variables to set for a Task when it's executed. E.g. JSON: `{"VAR_1": "abc", "VAR_2": "def"}`, TOML: `{VAR_1 = "abc", VAR_2 = "def"}`.                                                                             | Yes  | Yes | Yes  | Yes  |
 | `failurePolicy`             | A policy for resubmitting a Task to a different Task Group when it would otherwise be `FAILED`. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                       | Yes  | Yes | Yes  |      |
@@ -1066,29 +1089,30 @@ The following table outlines all the properties available for defining Work Requ
 | `priority`                  | The priority of Work Requirements and Task Groups. Higher priority acquires Workers ahead of lower priority. E.g. `0.0`.                                                                                                           | Yes  | Yes | Yes  |      |
 | `providers`                 | Constrains the YellowDog Scheduler only to execute tasks from the associated Task Group on the specified providers. E.g. `["AWS", "GOOGLE"]`.                                                                                      | Yes  | Yes | Yes  |      |
 | `ram`                       | Range constraint on GB of RAM that are required to execute Tasks. E.g. `[2.5, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.5, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                           | Yes  | Yes | Yes  |      |
-| `regions`                   | Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g. `["eu-west-2]`.                                                                                             | Yes  | Yes | Yes  |      |
+| `regions`                   | Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g. `["eu-west-2"]`.                                                                                             | Yes  | Yes | Yes  |      |
 | `retryPolicy`               | A policy controlling Task retries on error. See [Task Retries and Failure Policies](#task-retries-and-failure-policies).                                                                                                            | Yes  | Yes | Yes  |      |
 | `retryableErrors`           | (Deprecated — see `retryPolicy`.) A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
 | `setTaskNames`              | Set this to `false` to suppress automatic generation of Task names. Defaults to `true`. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.                  | Yes  | Yes | Yes  | Yes  |
 | `tag`                       | A tag that can be associated with a Work Requirement, Task Group or Task. Note there is **no property inheritance** for these tags.                                                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 1,000.                                                                                                                                                       | Yes  |     |      |      |
 | `taskCount`                 | The number of times to execute the Task.                                                                                                                                                                                            | Yes  | Yes | Yes  |      |
-| `taskDataFile`              | Populate the `taskData` property above with the contents of the specified file. E.g. `"my_task_data_file.txt"`.                                                                                                                    | Yes  | Yes | Yes  | Yes  |
-| `taskDataFiles`             | Populate the `taskData` property above by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g. `["header.txt", "body.txt"]`.                                                | Yes  | Yes | Yes  | Yes  |
+| `taskDataFile`              | Populate the Task's `taskData` with the contents of the specified file. E.g. `"my_task_data_file.txt"`.                                                                                                                             | Yes  | Yes | Yes  | Yes  |
+| `taskDataFiles`             | Populate the Task's `taskData` by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g. `["header.txt", "body.txt"]`.                                                          | Yes  | Yes | Yes  | Yes  |
 | `taskDataInputs`            | A list of data inputs to be downloaded by the task E.g. JSON: `{"source": "src", "destination": "dest"}`, TOML: `{source = "src", destination = "dest"}`.                                                                          | Yes  | Yes | Yes  | Yes  |
 | `taskDataOutputs`           | A list of data outputs to be uploaded at the conclusion of a task E.g. JSON: `{"source": "src", "destination": "dest", "alwaysUpload": true}`, TOML: `{source = "src", destination = "dest", alwaysUpload = true}`.                | Yes  | Yes | Yes  | Yes  |
 | `taskData`                  | The data to be passed to the Worker when the Task is started. E.g. `"mydata"`. Becomes file `taskdata.txt` in the Task's working directory when the task executes.                                                                 | Yes  | Yes | Yes  | Yes  |
 | `taskGroupCount`            | Create `taskGroupCount` duplicates of a single Task Group.                                                                                                                                                                          | Yes  | Yes |      |      |
 | `taskGroupName`             | The name to use for the Task Group. Only usable in the TOML file. E.g. `"my_tg_number_{{task_group_number}}"`.                                                                                                                     | Yes  |     |      |      |
+| `taskGroups`                | The list of Task Groups making up the Work Requirement. Required.                                                                                                                                                                  |      | Yes |      |      |
 | `taskName`                  | The name to use for the Task. Only usable in the TOML file. Mostly useful in conjunction with CSV Task data. E.g. `"my_task_number_{{task_number}}"`.                                                                              | Yes  |     |      |      |
 | `taskTemplate`              | Sets default `taskType`, `taskData` (or `taskDataFile`/`taskDataFiles`), and/or `environment` for all Tasks in a Task Group; applied by the platform, allowing Tasks to be more compact. E.g. `{"taskType": "docker", "environment": {"X": "1"}}`. | Yes  | Yes | Yes  |      |
 | `taskTimeout`               | The timeout in minutes after which an executing Task will be terminated and reported as `FAILED`. E.g. `120.0`. The default is no timeout.                                                                                          | Yes  | Yes | Yes  |      |
-| `taskType`                  | The Task Type of a Task. E.g. `"docker"`.                                                                                                                                                                                          | Yes  |     |      | Yes  |
-| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g. `["docker", "bash"]`. If omitted, the value is auto-derived from the `taskType` of the constituent Tasks (see [Automatic `taskTypes` Population](#automatic-tasktypes-population) below).             |      | Yes | Yes  |      |
+| `taskType`                  | The Task Type of a Task. E.g. `"docker"`; at the Work Requirement or Task Group level, a shorthand for a single-entry `taskTypes`.                                                                                                  | Yes  | Yes | Yes  | Yes  |
+| `taskTypes`                 | The list of Task Types required by the range of Tasks in a Task Group. E.g. `["docker", "bash"]`. If omitted, the value is auto-derived from the `taskType` of the constituent Tasks (see [Automatic `taskTypes` Population](#automatic-tasktypes-population)). |      | Yes | Yes  |      |
+| `tasks`                     | The list of Tasks in the Task Group. Required; with a CSV file or `taskCount`, one prototype Task.                                                                                                                                  |      |     | Yes  |      |
 | `tasksPerWorker`            | Determines the number of Worker claims based on splitting the number of unfinished Tasks across Workers. E.g. `1`.                                                                                                                 | Yes  | Yes | Yes  |      |
+| `timeout`                   | The timeout in minutes after which an individual executing Task will be terminated and reported as `FAILED`. Overrides the Task Group's `taskTimeout` (if present). E.g. `120.0`.                                                   | Yes  |     |      | Yes  |
 | `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g. `[2.0, 4.0]`. Either bound may be left unset for a one-sided limit, e.g. `[2.0, null]` (no upper limit) or `[null, 4.0]` (no lower limit); in TOML use the string `"none"` or `"null"` instead of `null`.                      | Yes  | Yes | Yes  |      |
-| `timeout`                   | As above, but set at the individual Task level, which overrides the group level `taskTimeout` property (if present).                                                                                                                | Yes  |     |      | Yes  |
-| `vcpus`                     | Range constraint on number of vCPUs that are required to execute Tasks E.g. `[2.0, 4.0]`.                                                                                                                                          | Yes  | Yes | Yes  |      |
 | `workRequirementData`       | The name of the file containing the JSON document in which the Work Requirement is defined. E.g. `"test_workreq.json"`.                                                                                                            | Yes  |     |      |      |
 | `workerTags`                | The list of Worker Tags that will be used to match against the Worker Tag of a candidate Worker. E.g. `["tag_x", "tag_y"]`.                                                                                                        | Yes  | Yes | Yes  |      |
 
@@ -1425,7 +1449,7 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     completedTaskTtl = 10
     csvFile = "file1.csv"
     csvFiles = ["file1.csv", "file3.csv:3"]
-    environment = {MY_VAR = 100}
+    environment = {MY_VAR = "100"}
     finishIfAllTasksFinished = true
     finishIfAnyTaskFailed = false
     instancePricingPreference = "SPOT_THEN_ON_DEMAND"
@@ -1482,7 +1506,7 @@ Showing all possible properties at the Work Requirement level:
   "argumentsPostfix": ["--postfix-arg"],
   "argumentsPrefix": ["--prefix-arg"],
   "completedTaskTtl": 10,
-  "environment": {"MY_VAR": 100},
+  "environment": {"MY_VAR": "100"},
   "finishIfAllTasksFinished": true,
   "finishIfAnyTaskFailed": false,
   "instancePricingPreference": "SPOT_THEN_ON_DEMAND",
@@ -1549,7 +1573,7 @@ Showing all possible properties at the Task Group level:
       "argumentsPostfix": ["--postfix-arg"],
       "argumentsPrefix": ["--prefix-arg"],
       "completedTaskTtl": 10,
-      "environment": {"MY_VAR": 100},
+      "environment": {"MY_VAR": "100"},
       "finishIfAllTasksFinished": true,
       "finishIfAnyTaskFailed": false,
       "instancePricingPreference": "SPOT_THEN_ON_DEMAND",
@@ -1617,7 +1641,7 @@ Showing all possible properties at the Task level:
         {
           "addYDEnvironment": true,
           "arguments": [1, 2],
-          "environment": {"MY_VAR": 100},
+          "environment": {"MY_VAR": "100"},
           "name": "my-task",
           "setTaskNames": false,
           "tag": "my_tag",
@@ -2240,8 +2264,6 @@ The example below is of a simple JSON specification of a Worker Pool with one in
     "metricsEnabled": true,
     "minNodes": 0,
     "nodeBootTimeout": "PT5M",
-    "nodeIdleGracePeriod": "PT3M",
-    "nodeIdleTimeLimit": "PT3M",
     "workerTag": "pyex-bash-docker"
   }
 }
@@ -2895,7 +2917,7 @@ An example Compute Source resource specification is found below:
     "createElasticFabricAdapter": null,
     "enableDetailedMonitoring": null,
     "keyName": null,
-    "iamRoleArn": null,
+    "iamInstanceProfileArn": null,
     "subnetId": "subnet-0d241e541249e9fdc",
     "userData": null,
     "instanceTags": {"environment": "demo-prod"}
@@ -3056,9 +3078,9 @@ Example:
       ],
       "nodeEvents": {
         "STARTUP_NODES_ADDED": []
-      },
-      "targetNodeCount": 0
-    }
+      }
+    },
+    "targetNodeCount": 0
   }
 }
 ```
@@ -3453,7 +3475,7 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
 The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -3534,6 +3556,7 @@ Key options:
 - `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
+- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the created Work Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--progress`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
@@ -3675,6 +3698,7 @@ Key options:
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
+- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
@@ -3748,6 +3772,7 @@ Key options:
 - `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec
 - `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
+- `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
@@ -3787,6 +3812,7 @@ Key options:
 - `--report`/`-r` — report on a test run of a Dynamic Template, without provisioning (see below)
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
 - `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd-instantiate`
+- `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the created Compute Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
@@ -4212,6 +4238,7 @@ Key options:
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
@@ -4485,3 +4512,16 @@ yd-jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
 This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
 
 See [Jsonnet Support](#jsonnet-support) for installation and usage.
+
+### yd-schema
+
+The `yd-schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd-submit` accepts), `worker-pool` (`yd-provision`), `compute-requirement` (`yd-instantiate`), `resources` (`yd-create`) and `node-actions` (`yd-nodeaction`). It needs no configuration file and no credentials.
+
+```shell
+yd-schema <family>            # print one family's schema as JSON
+yd-schema --write <dir>       # write every family's schema, and index.json, to <dir>
+yd-schema --check <dir>       # exit 0 if <dir> matches the installed CLI and SDK, else 1
+yd-schema --list              # list the family names
+```
+
+Exactly one of a `<family>`, `--write <dir>`, `--check <dir>` or `--list` must be given. `--write` writes `<family>.schema.json` for every family into `<dir>`, plus an `index.json` naming the CLI and SDK versions that generated them, and exits 1 naming the path if `<dir>` cannot be created or written; point an editor's JSON Schema support (VS Code's `json.schemas`, JetBrains' JSON Schema mappings) at the files it writes. After upgrading the CLI or the SDK, `yd-schema --check <dir>` says whether a written directory is still current, and `yd-schema --write <dir>` again refreshes it. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.

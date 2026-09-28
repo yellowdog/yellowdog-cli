@@ -80,6 +80,9 @@ RETRY_ERRORS = "retryErrors"  # Dict (Selection<TaskErrorSelector>)
 RETRY_MAX_RETRIES = "maxRetries"  # Integer (RetryPolicy field)
 RETRY_POLICY = "retryPolicy"  # Dict
 RETRYABLE_ERRORS = "retryableErrors"  # List of Dicts (Deprecated: use RETRY_POLICY)
+SCHEMA_KEY = (
+    "$schema"  # String - the JSON Schema an editor checks the file against; ignored
+)
 SECRET = "secret"  # String
 SELECTION_EXCLUDES = "excludes"  # List (within a Selection<T>)
 SELECTION_INCLUDES = "includes"  # List (within a Selection<T>)
@@ -206,6 +209,7 @@ ALL_KEYS = [
     RETRY_MAX_RETRIES,
     RETRY_POLICY,
     RETRYABLE_ERRORS,
+    SCHEMA_KEY,
     SECRET,
     SELECTION_EXCLUDES,
     SELECTION_INCLUDES,
@@ -291,6 +295,7 @@ STRING_PROPERTIES = frozenset(
         NAME_TAG,
         NODE_TARGET_CUSTOM_CMD,
         NODE_TARGET_TYPE,
+        SCHEMA_KEY,
         SECRET,
         TASK_DATA,
         TASK_DATA_DESTINATION,

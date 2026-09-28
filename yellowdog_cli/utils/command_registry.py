@@ -49,6 +49,7 @@ from yellowdog_cli.utils.settings import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
+    SCHEMA_FAMILIES,
     SECRET_VARIABLE_NAME_PATTERN,
 )
 
@@ -647,6 +648,15 @@ JSONNET_DRY_RUN = option(
     required=False,
     help="dry-run Jsonnet processing into JSON",
 )
+VALIDATE = option(
+    "--validate",
+    action="store_true",
+    required=False,
+    help=(
+        "check the specification against its JSON Schema and stop, reporting"
+        " every violation"
+    ),
+)
 COMPUTE_REQS_INSTANCES_OR_NODES = option(
     "compute_reqs_instances_or_nodes",
     nargs="*",
@@ -958,6 +968,28 @@ def check_follow_json_excludes_progress(
             "--json cannot be combined with --progress: --json prints the raw"
             " events, which --progress replaces with a progress bar"
         )
+
+
+def check_schema_mode_is_exclusive(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-schema takes exactly one of a family, --write, --check or --list: each
+    names a different thing to do, and none is a sensible default for the
+    others.
+    """
+    given = [
+        name
+        for name, value in (
+            ("family", getattr(args, "family", None)),
+            ("--write", getattr(args, "write", None)),
+            ("--check", getattr(args, "check", None)),
+            ("--list", getattr(args, "list", False)),
+        )
+        if value
+    ]
+    if len(given) == 0:
+        parser.error("give a family, or one of --write, --check or --list")
+    if len(given) > 1:
+        parser.error(f"cannot combine {' and '.join(given)}")
 
 
 # --- Commands ------------------------------------------------------------
@@ -1337,6 +1369,7 @@ COMMANDS["yd-create"] = Command(
         TAG,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        VALIDATE,
         CREATE_JSON,
         RESOURCE_SPECIFICATIONS,
         YES_ALLOW_UPDATES,
@@ -1347,6 +1380,12 @@ COMMANDS["yd-create"] = Command(
     ),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
+    tool_description=(
+        "Create or update resources from specifications (each a file path,"
+        " or the specification itself). Returns {resource, name, id, action}"
+        " per resource created, updated or skipped; yd_schema resources"
+        " gives the schema to compose against."
+    ),
 )
 
 IDS = option(
@@ -1693,6 +1732,7 @@ COMMANDS["yd-instantiate"] = Command(
         COMPUTE_REQUIREMENT,
         REPORT,
         JSONNET_DRY_RUN,
+        VALIDATE,
         ENTITY_JSON,
         CONTENT_PATH,
         FOLLOW_PROVISIONING,
@@ -1728,6 +1768,7 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        VALIDATE,
         ENTITY_JSON,
         CONTENT_PATH,
         FOLLOW_PROVISIONING,
@@ -1743,7 +1784,8 @@ COMMANDS["yd-provision"] = Command(
         " specification itself). Returns {id, name, namespace, type}; a"
         " Configured Worker Pool's record also carries its token and"
         " expiryTime. With dry_run, the processed specification. Shut it"
-        " down afterwards with yd_shutdown."
+        " down afterwards with yd_shutdown; yd_schema worker-pool gives the"
+        " schema to compose against."
     ),
 )
 
@@ -1951,6 +1993,7 @@ COMMANDS["yd-nodeaction"] = Command(
             )
         ),
         ACTIONS,
+        VALIDATE,
         WORKER_POOL.variant(
             help="name of the target worker pool", metavar="<worker-pool-name>"
         ),
@@ -2014,6 +2057,59 @@ COMMANDS["yd-resize"] = Command(
     ),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
+)
+
+# --- yd-schema -------------------------------------------------------------
+
+SCHEMA_FAMILY = option(
+    "family",
+    nargs="?",
+    choices=list(SCHEMA_FAMILIES),
+    metavar="<family>",
+    type=str,
+    help=(
+        "the specification family to print: work-requirement, worker-pool,"
+        " compute-requirement, resources or node-actions"
+    ),
+)
+SCHEMA_WRITE = option(
+    "--write",
+    type=str,
+    metavar="<dir>",
+    help="write every family's schema to <dir>, and index.json naming the CLI and SDK versions",
+)
+SCHEMA_CHECK = option(
+    "--check",
+    type=str,
+    metavar="<dir>",
+    help="exit 0 if the schemas in <dir> were written by the installed CLI and SDK, else 1 saying which changed",
+)
+SCHEMA_LIST = option(
+    "--list",
+    action="store_true",
+    help="list the families",
+)
+
+COMMANDS["yd-schema"] = Command(
+    name="yd-schema",
+    purpose="printing, writing and checking the specification schemas",
+    summary="Print, write or check the specification schemas",
+    kind=CommandKind.STANDALONE,
+    options=(
+        SCHEMA_FAMILY,
+        SCHEMA_WRITE,
+        SCHEMA_CHECK,
+        SCHEMA_LIST,
+    ),
+    validators=(check_schema_mode_is_exclusive,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Print the JSON Schema a specification family must follow —"
+        " work-requirement (yd_submit), worker-pool (yd_provision),"
+        " compute-requirement (yd_instantiate), resources (yd_create),"
+        " node-actions (yd_nodeaction) — generated from the installed CLI"
+        " and SDK. Ask for it before composing an inline specification."
+    ),
 )
 
 # --- yd-shutdown ---------------------------------------------------------
@@ -2247,6 +2343,7 @@ COMMANDS["yd-submit"] = Command(
         ADD_TO,
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
+        VALIDATE,
         ENTITY_JSON,
         CONTENT_PATH,
         WORK_REQUIREMENT_FILE_POSITIONAL,
@@ -2268,7 +2365,8 @@ COMMANDS["yd-submit"] = Command(
         " type} of the created Work Requirement; with dry_run, the processed"
         " specification instead. Follow it afterwards with yd_follow, or"
         " poll with yd_list and yd_show, then fetch its outputs with"
-        " yd_download."
+        " yd_download; yd_schema work-requirement gives the schema to"
+        " compose against."
     ),
 )
 

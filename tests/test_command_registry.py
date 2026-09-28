@@ -187,7 +187,13 @@ class TestRegistryMatchesEntryPoints:
             "yd-ls",
             "yd-copy",
         }
-        standalone = {"yd-help", "yd-version", "yd-format-json", "yd-jsonnet2json"}
+        standalone = {
+            "yd-help",
+            "yd-version",
+            "yd-format-json",
+            "yd-jsonnet2json",
+            "yd-schema",
+        }
         for name, cmd in COMMANDS.items():
             expected = (
                 CommandKind.DATA_CLIENT
@@ -320,6 +326,7 @@ class TestToolKinds:
             "yd-compare",
             "yd-ls",
             "yd-version",
+            "yd-schema",
         }
 
     def test_the_destructive_commands(self):
