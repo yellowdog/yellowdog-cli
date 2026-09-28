@@ -256,7 +256,7 @@ log "Creating .venv on Python $PYTHON_VERSION (uv downloads it if absent)"
 uv venv --python "$PYTHON_VERSION" .venv
 
 log "Installing yellowdog-cli in editable mode with all extras"
-VIRTUAL_ENV="$CHECKOUT/.venv" uv pip install -e ".[dev,jsonnet,cloudwizard,commander]"
+VIRTUAL_ENV="$CHECKOUT/.venv" uv pip install -e ".[dev,jsonnet,cloudwizard,commander,mcp]"
 
 # The yd-* commands must be on PATH: tests/test_entrypoints.py runs them as
 # subprocesses, which is what activating the venv normally arranges.

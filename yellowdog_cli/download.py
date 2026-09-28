@@ -10,12 +10,12 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
     download_files,
-    matched_item_rows,
+    is_glob,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_info, print_objects_as_json
+from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
@@ -42,7 +42,7 @@ def local_destination_for(
     - With neither, a pattern expands into the current directory and a literal item
       mirrors its own name, so downloading 'mydir' creates './mydir/'.
     """
-    is_pattern = any(c in remote_path_str for c in "*?[")
+    is_pattern = is_glob(remote_path_str)
     basename = remote_path_str.rstrip("/").rsplit("/", 1)[-1]
 
     if into_dir:
@@ -52,6 +52,24 @@ def local_destination_for(
     if is_pattern:
         return Path(".")
     return Path(basename)
+
+
+def destination_is_item(
+    remote_path_str: str,
+    into_dir: str | None = None,
+    explicit_destination: str | None = None,
+) -> bool:
+    """
+    Whether local_destination_for() gives the remote item its *own* path, as
+    '--into' and the bare form do for a literal item, rather than naming a
+    directory to copy it into, as '--destination' does. A single file is
+    then transferred to that exact path: copied into it, as rclone copies
+    into any destination, it would land inside a directory named after
+    itself ('dli/a.txt/a.txt').
+    """
+    if is_glob(remote_path_str):
+        return False
+    return bool(into_dir) or not explicit_destination
 
 
 @dataclient_wrapper
@@ -70,15 +88,6 @@ def main():
     explicit_destination = ARGS_PARSER.destination
     into_dir = ARGS_PARSER.into
 
-    if dry_run and ARGS_PARSER.json_output:
-        # Enumeration only, in the same shape yd-delete emits: Commander uses it
-        # to offer a selection of the matched top-level items. Nothing is
-        # downloaded, and '--json' without '--dry-run' is rejected at parse time.
-        print_objects_as_json(
-            matched_item_rows(CONFIG_DATA_CLIENT, ARGS_PARSER.remote_paths)
-        )
-        return
-
     for remote_path_str in ARGS_PARSER.remote_paths:
         remote_path = resolve_remote_path(
             CONFIG_DATA_CLIENT, relative_path=remote_path_str
@@ -95,6 +104,11 @@ def main():
             flatten=flatten,
             sync=sync,
             dry_run=dry_run,
+            destination_is_item=destination_is_item(
+                remote_path_str,
+                into_dir=into_dir,
+                explicit_destination=explicit_destination,
+            ),
         )
 
     print_info("Download complete")

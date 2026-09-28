@@ -20,7 +20,9 @@
       * [Update](#update-2)
       * [With Jsonnet support](#with-jsonnet-support-2)
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
+* [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
+   * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
 * [Configuration](#configuration)
 * [Naming Rules](#naming-rules)
@@ -193,13 +195,14 @@
       * [yd-ls](#yd-ls)
       * [yd-copy](#yd-copy)
    * [Utility Commands](#utility-commands)
+      * [yd-doctor](#yd-doctor)
       * [yd-help](#yd-help)
       * [yd-version](#yd-version)
       * [yd-format-json](#yd-format-json)
       * [yd-jsonnet2json](#yd-jsonnet2json)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Sep 24 09:41:30 BST 2026 -->
+<!-- Added by: pwt, at: Sun Sep 27 14:21:11 BST 2026 -->
 
 <!--te-->
 
@@ -391,6 +394,17 @@ yd-commander
 
 It works by invoking the `yd-*` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
+# YellowDog MCP Server
+
+`yd-mcp` is an MCP server exposing the `yd-*` commands as tools for an agent. Install it with the `mcp` extra and launch it with `yd-mcp`:
+
+```commandline
+pip install -U "yellowdog-cli[mcp]"
+yd-mcp config.toml
+```
+
+It runs the `yd-*` commands on an agent's behalf and returns their `--json` results. See [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) for details.
+
 # Usage
 
 All three installation methods add a number of **`yd-`** commands to your PATH.
@@ -402,7 +416,7 @@ Commands are run from the command line. Invoking any command with the `--help` o
 usage: yd-cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>] [--debug]
                  [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config] [--property <section.key=value>]
                  [--sort <name|created|status|namespace>] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
-                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes] [--raw-events]
+                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
                  [<work-requirement-name-or-ID> ...]
 
 YellowDog command-line utility for cancelling Work Requirements
@@ -447,11 +461,64 @@ options:
   --abort, -a           abort running tasks with immediate effect
   --follow, -f          follow progress after cancelling the work requirement(s)
   --dry-run, -D         list the entities that would be affected, without acting
-  --json                with --dry-run, emit the affected entities as a JSON array
+  --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
   --interactive, -i     list, and interactively select, the items to act on
   --yes, -y             perform modifying/destructive actions without requiring user confirmation
-  --raw-events          print the raw JSON event stream when following events
 ```
+
+## Machine-readable Output and Exit Codes
+
+For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. This includes `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-delete`/`yd-rm` and `yd-download`, whose `--json` used to require `--dry-run`; it is now accepted on their real, acting path too, giving the same shape as the dry run but without the `would ` prefix. The contract is:
+
+1. With `--json`, stdout carries one JSON document and nothing else: no status messages, no tables, no bare IDs. A command that acted on nothing emits an empty array (`[]`). In every family, any record whose `action` or `outcome` is `failed` makes the exit code 1, even where the command carried on and completed; this holds with or without `--json`.
+2. Warnings go to stderr under `--json`, as errors always do. A confirmation or selection prompt also writes to stderr under `--json`, so an interactive run still parses on stdout; a prompt that finds stdin at end of input (a script that omitted `--yes`, or a redirect from `/dev/null`) fails with an error saying so and exit code 1, with the document holding whatever was recorded before it. Items not chosen in an interactive selection (`--interactive`) are absent from the document rather than recorded as `skipped`.
+3. There is no envelope: the document is a bare array or object, as `yd-list`, `yd-show` and `yd-doctor` emit.
+4. `--dry-run` with `--json` gives the same shape, with each outcome prefixed `would ` (e.g., `would cancel`, `would delete`).
+5. `--quiet` is unchanged and independent: the bare ID printed under `--quiet` stays, and `--quiet --json` emits only the JSON.
+6. `--strip-ids`, where a command has it, applies to the JSON.
+7. On a failure part-way through, whatever was done is still emitted before the process exits non-zero, so a script sees what happened.
+8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and `yd-instantiate --report`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
+9. The option is spelled `--json` with no short form, except on `yd-list` and `yd-application`, which also accept `-J` (on the specification commands `-J` means `--jsonnet-dry-run`).
+
+The `yd-mcp` server is a consumer of this contract: each tool call runs a command with `--json` and returns its document.
+
+The documents, by command:
+
+| Family | Commands | Document |
+|---|---|---|
+| Listings | `yd-list` | an array of the listed objects |
+| Always JSON | `yd-show`, `yd-variables`, `yd-doctor`, `yd-application` | as each command documents |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"`; under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
+| Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`, and Allowances removed by description `"count"`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
+| Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
+| Waiting | `yd-wait` | an array of `{"id", "status", "succeeded"}`, one per ID, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched |
+| Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
+| Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches); several paths' entries are concatenated |
+| Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (a directory `yd-upload` was not told to recurse into), `failed` (plus `"error"`; a local path that does not exist, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist exits 1 although it carries on with the others. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
+| Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"`; a directory passed over for want of `--recursive` is not recorded |
+| Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
+| Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
+| Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone"}`, `null` for a missing optional component; `--debug` adds `"executable"` and `"path"` |
+| Utility | `yd-help` | an array of `{"command", "summary"}` |
+
+The exit codes, with or without `--json`:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | The operation failed, the work failed (`yd-wait`, `yd-submit -E`), a check failed (`yd-doctor`), or any record's `outcome` or `action` is `failed`, in any family (even if the command handled the error itself and did not raise) |
+| 2 | A usage error: an unknown option or a missing argument |
+| 3 | A configuration error: missing configuration data, an unreadable or invalid TOML file, a variable error at load, or a `--config` file that does not exist |
+| 4 | Authentication failed: the Application key ID and secret were not recognised (HTTP 401) |
+| 5 | Permission denied: the Application lacks a required permission (HTTP 403) |
+| 6 | Not found (HTTP 404) |
+| 7 | A platform error (HTTP 5xx) |
+| 8 | A connection error or timeout reaching the platform |
+| 130 | Interrupted from the keyboard |
+
+A failure a command handles per item, such as a 401 on `yd-boost`, `yd-terminate <id>`, `yd-create`, `yd-remove`, `yd-abort` or the `yd-compute-*` commands given IDs, is reported in that item's record's `error` and exits 1 whatever its cause: a script wanting the cause reads `error`, not the exit code. Codes 4 to 8 are for a failure that reaches the command's top level before, or instead of, a record.
+
+Exit codes 2 (usage) and 3 (configuration) occur before the command runs, so stdout is empty: a script should check the exit code before parsing stdout.
 
 # Typical Workflow
 
@@ -497,7 +564,7 @@ The name of the configuration file can be supplied in two different ways:
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd-submit -c jobs/config_1.toml`
 2. If not supplied, the commands look for a `config.toml` file in the current directory
 
-(The `YD_CONF` environment variable is no longer supported for selecting the configuration file; commands will exit with an error if it is set.)
+Run `yd-doctor` to see which configuration file was found and where each value came from.
 
 # Naming Rules
 
@@ -712,6 +779,8 @@ The following substitutions are automatically created and can be used in any sec
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
 
+The `namespace`, `tag`, `key`, `secret` and `url` variables always hold the values the command is using, and cannot be redefined or unset as user-defined variables (see [Variable Naming](#variable-naming)); the other default variables can be overridden, as described in [Precedence Order](#precedence-order).
+
 For the `date`, `time`, `datetime`, `random`, `random6`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
 The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
@@ -727,6 +796,8 @@ User-defined variables can be supplied using an option on the command line, by s
 ### Variable Naming
 
 A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
+
+The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration. Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
 
 The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
@@ -841,11 +912,11 @@ For example, in a TOML file:
 ```toml
 [workRequirement]
 name          = "my-job"
-tag           = "{{tag::}}"          # removed if 'tag' is not set
+tag           = "{{wr_tag::}}"       # removed if 'wr_tag' is not set
 maxRetries    = "{{num:retries::}}"  # removed if 'retries' is not set
 ```
 
-If `tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `tag` is supplied, e.g. via `-v tag=my-tag`, it will be used as the value.
+If `wr_tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `wr_tag` is supplied, e.g. via `-v wr_tag=my-tag`, it will be used as the value.
 
 This also works inside JSON/Jsonnet specifications and for list elements. In the contents of files that are substituted as text — User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `writeFile` content files — there is no property to remove, so an unset substitution for an undefined variable is left in the text exactly as written.
 
@@ -859,6 +930,14 @@ The bare `{{::}}` (no variable name) always removes the property unconditionally
 
 ```toml
 taskType = "{{::}}"   # always removed
+```
+
+An unset expression does not have to be the whole value. Wherever it appears in a string, it removes the **entire** property, list element or variable containing it, not just the expression itself; the rest of the string is discarded with it:
+
+```toml
+imageId   = "ami-{{region::}}-base"          # removed entirely if 'region' is not set
+arguments = ["--user", "{{user::}}", "--zone={{region::}}a"]  # each element removed separately
+site      = "{{app}}-{{zone}} {{::}}"        # always removed, whatever 'app' and 'zone' are
 ```
 
 The unset suffix can also be used inside a [nested variable](#nested-variables). The property is removed if the unset variable's value is needed, and kept if it is not:
@@ -875,13 +954,13 @@ A variable defined with the unset syntax, in `[common.variables]` or elsewhere, 
 A variable substitution for a variable that is not defined, and that has neither a default value nor the unset suffix, is left in the specification unchanged, and a warning is printed naming it and the properties it appears in, e.g.:
 
 ```
-Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
+WARNING : Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'taskGroups[0].tasks[0].arguments[1]'
 ```
 
 Where the variable was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix), the warning says so, and why:
 
 ```
-Warning: Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
+WARNING : Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
 ```
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-nodeaction` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
@@ -2765,7 +2844,7 @@ When a new Keyring is created it's usable only by the YellowDog application whic
 Keyring 'my-keyring-1': Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
 ```
 
-Note that Keyrings **cannot be updated**; they must instead be removed and recreated, and in doing so, any contained credentials will be lost.
+Re-running `yd-create` on an existing Keyring **updates its description in place**, after confirmation, and leaves its credentials and accessors as they are: the description is the only property the Platform allows to change, and the name is what an existing Keyring is matched on. To recreate a Keyring — for a fresh password, say — remove it with `yd-remove` and create it again, which loses its credentials.
 
 ## Credentials
 
@@ -3374,7 +3453,7 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json`, none of which requires a configuration file or YellowDog credentials. They are not repeated in the individual command sections below.
 
 The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -3418,7 +3497,6 @@ These options are accepted by many commands, but not by all. The command section
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
 | `--follow`, `-f` | Follow the relevant event stream after the command has acted |
-| `--raw-events` | Print the raw JSON event stream when following events |
 | `--sort <name\|created\|status\|namespace>` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name) |
 | `--reverse` | Reverse (descending) order of the active `--sort` key |
 | `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](#checking-jsonnet-processing) |
@@ -3456,6 +3534,7 @@ Key options:
 - `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
+- `--json` — emit the created Work Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--progress`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-submit my_work_requirement.json --follow
@@ -3491,7 +3570,7 @@ By default, any Tasks that are currently running on Workers will continue to run
 Key options:
 - `--abort`/`-a` — instruct running Tasks to abort immediately, rather than running to completion
 - `--dry-run`/`-D` — show the matched Work Requirements before anything is cancelled
-- `--json` — with `--dry-run`, emit the affected entities as a JSON array
+- `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-cancel 'myproject-*' --dry-run
@@ -3517,6 +3596,9 @@ The `namespace` and `tag` values in the `config.toml` file are used to identify 
 
 With `--yes`/`-y`, all executing Tasks in all selected Work Requirements are aborted without prompting.
 
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
 ```shell
 yd-abort my-analysis-run/task-group-1
 ```
@@ -3530,6 +3612,9 @@ yd-start [options] [<work-requirement-name-or-ID> ...]
 ```
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-start my-analysis-run --follow
@@ -3547,6 +3632,9 @@ yd-hold [options] [<work-requirement-name-or-ID> ...]
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
 
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
 ```shell
 yd-hold my-analysis-run
 ```
@@ -3562,6 +3650,9 @@ yd-finish [options] [<work-requirement-name-or-ID> ...]
 ```
 
 As with `yd-start` and `yd-hold`, specific names and/or YDIDs can be supplied, otherwise the `namespace` and `tag` are used to generate the list of candidates.
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-finish my-analysis-run
@@ -3584,6 +3675,7 @@ Key options:
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
+- `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-provision my_worker_pool.json --target 10 --follow
@@ -3611,7 +3703,7 @@ Key options:
 - `--terminate`/`-T` — immediately terminate the associated Compute Requirement(s) rather than waiting for executing Tasks to complete
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
 - `--dry-run`/`-D` — show the matched Worker Pools before anything is shut down
-- `--json` — with `--dry-run`, emit the affected entities as a JSON array
+- `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-shutdown 'wp-*' --dry-run
@@ -3630,6 +3722,7 @@ The name or ID of the Worker Pool or Compute Requirement is supplied along with 
 Key options:
 - `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-resize pyex-slurm-pwt_230711-1243561-0d 10
@@ -3655,6 +3748,7 @@ Key options:
 - `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec
 - `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
+- `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 # Submit actions to interactively selected node(s)
@@ -3693,6 +3787,7 @@ Key options:
 - `--report`/`-r` — report on a test run of a Dynamic Template, without provisioning (see below)
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
 - `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd-instantiate`
+- `--json` — emit the created Compute Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-instantiate my_compute_requirement.json --target 4
@@ -3764,7 +3859,7 @@ A Compute Requirement name argument can also be a glob pattern (`*`, `?`, `[...]
 
 Key options:
 - `--dry-run`/`-D` — show which Compute Requirements would be terminated
-- `--json` — with `--dry-run`, emit the affected entities as a JSON array
+- `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 - `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 
 ```shell
@@ -3787,6 +3882,9 @@ If no arguments are supplied, Compute Requirements that match the `namespace` an
 
 A Compute Requirement name may also be a glob pattern (e.g. `'cr-*'`). The `--follow`/`-f` option follows the event stream(s) of the affected Compute Requirement(s).
 
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
 ```shell
 yd-compute-stop
 yd-compute-stop my-compute-requirement
@@ -3805,6 +3903,9 @@ yd-compute-start [options] [<name-or-ID> ...]
 
 It accepts the same arguments as `yd-compute-stop`: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
 
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
 ```shell
 yd-compute-start my-compute-requirement --follow
 ```
@@ -3818,6 +3919,9 @@ yd-compute-restart [options] [<name-or-ID> ...]
 ```
 
 Instances to restart are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs.
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-compute-restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
@@ -3942,7 +4046,7 @@ It exits with code 1 if any of the supplied IDs could not be followed (invalid I
 Key options:
 - `--progress` — display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)
 - `--auto-follow-compute-requirements`/`-a` — automatically follow the associated Compute Requirements when following Worker Pools
-- `--raw-events` — print the raw JSON event stream
+- `--json` — print each event as a JSON document as it arrives, refused with `--progress` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
@@ -3963,6 +4067,9 @@ yd-wait [options] [<yellowdog-id> ...]
 
 Multiple IDs can be supplied; `yd-wait` blocks until all of them have reached a terminal state. This makes it suitable for scripting pipelines. Use `--quiet`/`-q` to suppress all output and rely solely on the exit code. For interactive observation of event streams, use `yd-follow` instead.
 
+Key options:
+- `--json` — emit each item's final status as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
 ```bash
 WR_ID=$(yd-submit mywork.json --quiet)
 yd-wait "$WR_ID" && yd-download results/
@@ -3981,6 +4088,10 @@ The command checks if the **Run Specification** of a Task Group matches the prop
 A detailed matching report showing the comparison against each specific property is created, which can be used to determine which properties are preventing a Worker Pool match.
 
 By default every Node registered to a Worker Pool is included in the comparison, whatever its state. The `--running-nodes-only` option restricts the comparison to Nodes in the `RUNNING` state, which gives a more accurate picture of current capacity when a pool contains Nodes that are still provisioning or have been terminated.
+
+Key options:
+- `--running-nodes-only` — compare against Nodes in the `RUNNING` state only
+- `--json` — emit the comparison as a JSON array, one object per Worker Pool compared with each Task Group (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
@@ -4052,7 +4163,7 @@ yd-variables -v instances=5 instances  # report a variable set on the command li
 {"namespace": "my-namespace", "tag": "my-tag"}
 ```
 
-Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`. Naming either of them reports its value — a name is an explicit request for that variable — and `--show-secrets` reports both in the full listing.
+Reporting every variable redacts the values of `key` and `secret`, replacing each with `<REDACTED>`, and shows an inline data client remote (`dataClient.remote`, or a profile's `dataClient.<name>.remote`) with its name, type and provider only, every other parameter's value withheld as `<N parameters redacted>`, because those parameters are where an inline remote's credentials go; a named remote such as `myremote:` is shown as it is. Naming any of these variables reports its value in full — a name is an explicit request for that variable — and `--show-secrets` reports them all in the full listing.
 
 ```shell
 yd-variables                 # 'key' and 'secret' are reported as <REDACTED>
@@ -4067,7 +4178,7 @@ yd-variables -v 'bucket=s3://{{regoin}}' bucket
 ```
 
 ```
-Warning: Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
+WARNING : Variable '{{regoin}}' is not defined, and has been left unsubstituted in 'bucket'
 ```
 
 A variable that was defined but has been removed by the [unset syntax](#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, a warning also gives the reason, following each `{{name::}}` reference to a variable that was itself unset:
@@ -4077,10 +4188,12 @@ yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
 ```
 
 ```
-Warning: Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
+WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is unset; 'site' is '{{::}}', which always unsets it
 ```
 
-**No other variable is redacted.** `key` and `secret` are the only two the CLI can know to be credentials, because it adds them to the substitution table itself when it loads the configuration. A variable of your own that holds a credential — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — is reported in full whatever it is called, because redacting by name pattern would be a guarantee the command could not keep. Take care when sending a full report somewhere it will persist.
+**Variables whose names look like credentials are redacted too, and the command says so.** `key`, `secret` and the inline remotes are the only variables the CLI can *know* hold credentials: it adds them to the substitution table itself when it loads the configuration, and the rclone connection string's format says which part of it is parameters. Beyond them, the full report also redacts any variable of your own — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — whose name contains `secret`, `password`, `passwd`, `token`, `credential` or `private_key`, in any case, and when it does it prints one line ahead of the JSON saying so: `Redacted N variable(s) whose names match 'secret|password|passwd|token|credential|private_key' (case-insensitive); everything else is shown in full. --show-secrets reports all.` (not under `--quiet`, which leaves the JSON alone). As with the others, naming such a variable reports its value, and `--show-secrets` reports them all.
+
+This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it.
 
 ## Resource Commands
 
@@ -4099,6 +4212,7 @@ Key options:
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-create my_keyring.json my_compute_templates.jsonnet
@@ -4118,6 +4232,7 @@ Key options:
 - `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-remove my_compute_templates.jsonnet
@@ -4135,6 +4250,9 @@ yd-boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
 ```
 
 The number of hours to add is supplied first, followed by the YDID(s) of one or more Allowances to boost. Allowance names are not accepted.
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-boost 10 ydid:allowance:D9C548:...
@@ -4161,6 +4279,7 @@ Key options:
 - `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
 - `--destination`/`-d <remote-path>` — override the destination path; supports `{{variable}}` substitution
 - `--dry-run`/`-D` — show what would be uploaded, without uploading
+- `--json` — emit the files uploaded as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-upload --recursive my_input_data/
@@ -4180,10 +4299,11 @@ Key options:
 - `--destination`/`-d <local-path>` — local destination directory (default: mirrors the remote directory name)
 - `--into <local-dir>` — local directory to download each remote item into, under its own name (mutually exclusive with `--destination`)
 - `--sync` — mirror the remote source to the local destination, deleting local files not present remotely (not compatible with `--flatten`)
-- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination
-- `--dry-run`/`-D` — show what would be downloaded, without downloading; add `--json` to list the matched items as JSON
+- `--flatten` — download all files in a remote directory tree to a flat (single-level) local destination, including the directories a wildcard matches; files that share a name within one remote path argument are warned about, and the later one overwrites the earlier
+- `--dry-run`/`-D` — show what would be downloaded, without downloading
+- `--json` — emit the downloads, or with `--dry-run` the matched items, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
-`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. A single file is given its own path the same way: `yd-download --into out a.txt` writes the file `out/a.txt`, and `yd-download a.txt` writes `./a.txt`, while `yd-download -d out a.txt` puts it inside `out`, as `out/a.txt`. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way. With `--flatten`, each directory's files are placed directly in the destination, the directory's own name and those of its subdirectories being dropped, so `yd-download --flatten -d flat 'my*'` puts every file of every matched directory in `flat`; a file whose name another flattened file already has is reported with a warning naming both, and the later of the two is the one kept.
 
 ```shell
 yd-download 'results_*'
@@ -4203,7 +4323,8 @@ Remote paths support `{{variable}}` substitution and may also contain wildcard c
 
 Key options:
 - `--recursive`/`-R` — recursively delete a remote directory tree
-- `--dry-run`/`-D` — show what would be deleted, without deleting; add `--json` to list the matched items as JSON
+- `--dry-run`/`-D` — show what would be deleted, without deleting
+- `--json` — emit the deletions, or with `--dry-run` the matched items, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 - `--yes`/`-y` — skip confirmation prompts
 
 ```shell
@@ -4225,6 +4346,7 @@ Remote paths support `{{variable}}` substitution and may also contain wildcard c
 Key options:
 - `--recursive`/`-R` — list recursively; output is displayed as a directory tree
 - `--long`/`-l` — long listing, showing file sizes and modification timestamps
+- `--json` — emit the listing as a JSON array of rclone `lsjson` entries (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-ls -Rl 'results_*'
@@ -4246,6 +4368,7 @@ Key options:
 - `--sync` — mirror the source to the destination, deleting destination files not present in the source
 - `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
 - `--dry-run`/`-D` — show what would happen, without performing any transfers
+- `--json` — emit the files copied as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```bash
 # Copy a file to a new location within the same prefix
@@ -4272,27 +4395,58 @@ yd-copy --dry-run input/ output/
 
 ## Utility Commands
 
-None of these commands requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options).
+None of `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options); `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+
+### yd-doctor
+
+The `yd-doctor` command checks whether this machine, this configuration and these credentials can run the CLI, and reports each check as `OK`, `WARN`, `FAIL` or `SKIP` with a remedy for anything wrong. It is the first thing to run when a command fails unexpectedly, and its output is what to include in a support request: the secret is shown redacted, and an inline data client remote with its name, type and provider only, every other parameter's value withheld.
+
+```shell
+yd-doctor [options]
+```
+
+It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads, and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
+
+Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
+
+A long detail or remedy wraps at the terminal's width, its continuation lines indented under its own column, only on a terminal; when piped or redirected, and under `--no-format`, every row and every remedy is one line, for grep and pasting.
+
+Key options:
+- `--offline` — skip every check that reaches the network (PyPI, the Platform API, the data store)
+- `--json`/`-J` — emit the results as a JSON array, one object per check, for scripts
+- `--timeout <seconds>` — the budget for each network call (default 10)
+- `--quiet`/`-q` — print only the `WARN` and `FAIL` lines and the summary
+
+```shell
+yd-doctor                    # everything, against the current configuration
+yd-doctor --offline          # no network calls
+yd-doctor --json | jq '.[] | select(.status == "FAIL")'
+```
+
+The exit code is 1 if any check failed, else 0, so it can gate a script or a CI job.
 
 ### yd-help
 
-The `yd-help` command lists all available `yd-*` commands and their purposes.
+The `yd-help` command lists all available `yd-*` commands and their purposes, `yd-commander` and `yd-mcp` included, with the extra each of those two needs.
 
 ```shell
-yd-help
+yd-help [--json] [--no-format]
 ```
+
+The listing is coloured on a terminal, with the command names and the notes on extras and synonyms picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 ### yd-version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet and the rclone binary.
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp`.
 
 ```shell
 yd-version [options]
 ```
 
 Key options:
-- `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone` — mutually exclusive; each prints just that bare version number, for use in scripts
+- `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
 - `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error)
+- `--json` — print the versions as a JSON object, `null` for a component not installed; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-version           # report all versions
@@ -4300,7 +4454,7 @@ yd-version --cli     # print the CLI version number only
 yd-version --rclone  # print the rclone binary version only
 ```
 
-The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet` and `--rclone` exit with a non-zero status if the respective component is not installed.
+The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet`, `--rclone` and `--mcp` exit with a non-zero status if the respective component is not installed.
 
 ### yd-format-json
 

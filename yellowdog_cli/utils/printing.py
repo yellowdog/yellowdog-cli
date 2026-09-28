@@ -3,6 +3,7 @@ Functions focused on print outputs.
 """
 
 import re
+import sys
 from collections.abc import Sequence
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -10,7 +11,6 @@ from datetime import datetime
 from json import dumps as json_dumps
 from json import loads as json_loads
 from os import get_terminal_size, getpid
-from sys import stderr
 from textwrap import fill
 from textwrap import indent as text_indent
 from typing import Any, TypeVar
@@ -72,6 +72,7 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_LOG_WIDTH,
     DEFAULT_THEME,
     DRY_RUN_MARKER,
+    ERROR_MARKER,
     ERROR_STYLE,
     HIGHLIGHTED_STATES,
     JSON_INDENT,
@@ -90,6 +91,7 @@ from yellowdog_cli.utils.settings import (
     PROP_SOURCE,
     PROP_SUPPORTING_RESOURCE_CREATED,
     PROP_TRAITS,
+    WARNING_MARKER,
     WARNING_STYLE,
 )
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType
@@ -225,6 +227,16 @@ def print_info(
     CONSOLE.print(escape(print_string(log_message, no_fill=no_fill)), style=style)
 
 
+def print_quiet_result(result: object) -> None:
+    """
+    Print a command's bare result -- a created entity's ID, say -- when
+    '--quiet' is set, for a shell to capture. Not under '--json', whose
+    document is then all that stdout holds.
+    """
+    if ARGS_PARSER.quiet and not ARGS_PARSER.json_output:
+        print(result, flush=True)
+
+
 def print_debug(
     log_message: str = "",
     no_fill: bool = False,
@@ -260,10 +272,14 @@ def print_error(error_obj: Exception | str):
     Print an error message to stderr.
     """
     if ARGS_PARSER.no_format:
-        print(print_string(f"Error: {error_obj}"), flush=True, file=stderr)
+        # sys.stderr looked up at the call, so that a redirect (yd-doctor's
+        # capture of a configuration error) reaches it
+        print(print_string(f"{ERROR_MARKER}{error_obj}"), flush=True, file=sys.stderr)
         return
 
-    CONSOLE_ERR.print(escape(print_string(f"Error: {error_obj}")), style=ERROR_STYLE)
+    CONSOLE_ERR.print(
+        escape(print_string(f"{ERROR_MARKER}{error_obj}")), style=ERROR_STYLE
+    )
 
 
 def print_warning(
@@ -272,19 +288,25 @@ def print_warning(
     no_fill: bool = False,
 ):
     """
-    Print a warning.
+    Print a warning: to stdout, or to stderr under '--json'.
     """
-    if (
-        ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
-    ) and override_quiet is False:
+    if (ARGS_PARSER.quiet or ARGS_PARSER.count_only) and override_quiet is False:
         return
+
+    # Under '--json' stdout is the result document alone, so a warning goes
+    # to stderr rather than being dropped
+    to_stderr = bool(ARGS_PARSER.json_output)
 
     if ARGS_PARSER.no_format:
-        print(print_string(f"Warning: {warning}", no_fill=no_fill), flush=True)
+        print(
+            print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill),
+            flush=True,
+            file=sys.stderr if to_stderr else sys.stdout,
+        )
         return
 
-    CONSOLE.print(
-        escape(print_string(f"Warning: {warning}", no_fill=no_fill)),
+    (CONSOLE_ERR if to_stderr else CONSOLE).print(
+        escape(print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill)),
         style=WARNING_STYLE,
     )
 
@@ -1193,6 +1215,27 @@ def print_objects_as_json(objects: list) -> None:
     print_json(data)
 
 
+# Set once a JSON document has been printed to stdout, so the '--json' result
+# flush (results.py) does not add a second one after a command that printed
+# its own
+_JSON_DOCUMENT_PRINTED = False
+
+
+def json_document_printed() -> bool:
+    """
+    Has print_json() printed anything to stdout in this process?
+    """
+    return _JSON_DOCUMENT_PRINTED
+
+
+def reset_json_document_printed() -> None:
+    """
+    Forget that a JSON document was printed (for tests, via reset_results()).
+    """
+    global _JSON_DOCUMENT_PRINTED
+    _JSON_DOCUMENT_PRINTED = False
+
+
 def print_json(
     data: Any,
     initial_indent: int = 0,
@@ -1203,6 +1246,8 @@ def print_json(
     Print a dictionary as a JSON data structure, using the compact JSON
     encoder.
     """
+    global _JSON_DOCUMENT_PRINTED
+    _JSON_DOCUMENT_PRINTED = True
     json_string = indent(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
@@ -1301,11 +1346,19 @@ def print_worker_pool(
     Reconstruct and print the JSON-formatted Worker Pool specification.
     """
     print_dry_run("Printing JSON Worker Pool specification")
-    wp_data = {
+    print_json(worker_pool_specification(crtu, pwpp))
+
+
+def worker_pool_specification(
+    crtu: ComputeRequirementTemplateUsage, pwpp: ProvisionedWorkerPoolProperties
+) -> dict:
+    """
+    Reconstruct the JSON Worker Pool specification.
+    """
+    return {
         "provisionedProperties": Json.dump(pwpp),
         "requirementTemplateUsage": Json.dump(crtu),
     }
-    print_json(wp_data)
 
 
 class WorkRequirementSnapshot:
@@ -1494,7 +1547,7 @@ def print_event(event: str, id_type: YDIDType):
     # Strip only the leading prefix: the payload itself may contain 'data:'
     event_data: dict = json_loads(event[len(data_prefix) :])
 
-    if ARGS_PARSER.raw_events:
+    if ARGS_PARSER.events_as_json:
         print_json(event_data)
         return
 
@@ -1623,13 +1676,16 @@ def node_action_type_label(action: NodeAction | None) -> str:
             return type(action).__name__
 
 
-def print_node_action_queue_table(
+NODE_ACTION_QUEUE_HEADINGS = ["Node ID", "Status", "Waiting", "Executing", "Failed"]
+
+
+def node_action_queue_table(
     rows: list[tuple[str, NodeActionQueueSnapshot]],
-):
+) -> list[list]:
     """
-    Print a consolidated table of NodeActionQueueSnapshot rows, one per node.
+    The node action queue table's rows, one per node, under
+    NODE_ACTION_QUEUE_HEADINGS.
     """
-    headers = ["Node ID", "Status", "Waiting", "Executing", "Failed"]
     table = []
     for node_id, snapshot in rows:
         waiting_count = len(snapshot.waiting) if snapshot.waiting else 0
@@ -1646,7 +1702,22 @@ def print_node_action_queue_table(
                 failed_label,
             ]
         )
+    return table
+
+
+def print_node_action_queue_table(
+    rows: list[tuple[str, NodeActionQueueSnapshot]],
+):
+    """
+    Print a consolidated table of NodeActionQueueSnapshot rows, one per node.
+    """
     print_table_core(
-        indent(tabulate(table, headers=headers, tablefmt="simple_outline"))
+        indent(
+            tabulate(
+                node_action_queue_table(rows),
+                headers=NODE_ACTION_QUEUE_HEADINGS,
+                tablefmt="simple_outline",
+            )
+        )
     )
     print(flush=True)

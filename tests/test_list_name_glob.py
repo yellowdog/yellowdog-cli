@@ -554,7 +554,9 @@ def test_name_glob_filters_keyrings_and_warns_on_unnamed():
         patch.object(yd_list, "print_numbered_object_list") as mock_print,
         patch.object(yd_list, "print_warning") as mock_warning,
     ):
-        mock_client.keyring_client.find_all_keyrings.return_value = keyrings
+        mock_client.keyring_client.get_keyrings.return_value.list_all.return_value = (
+            keyrings
+        )
         yd_list.list_keyrings()
 
     assert [k.id for k in mock_print.call_args.args[1]] == ["a"]
@@ -596,7 +598,9 @@ def test_name_glob_keyrings_no_warning_when_all_named():
         patch.object(yd_list, "print_numbered_object_list") as mock_print,
         patch.object(yd_list, "print_warning") as mock_warning,
     ):
-        mock_client.keyring_client.find_all_keyrings.return_value = keyrings
+        mock_client.keyring_client.get_keyrings.return_value.list_all.return_value = (
+            keyrings
+        )
         yd_list.list_keyrings()
 
     assert [k.id for k in mock_print.call_args.args[1]] == ["a", "b"]

@@ -32,6 +32,8 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.printing import (
+    NODE_ACTION_QUEUE_HEADINGS,
+    node_action_queue_table,
     print_error,
     print_info,
     print_node_action_queue_table,
@@ -55,6 +57,7 @@ from yellowdog_cli.utils.property_names import (
     NODE_TYPES,
     NODE_WORKERS,
 )
+from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
 from yellowdog_cli.utils.settings import (
     NODE_ACTION_QUEUE_POLL_INTERVAL,
     WP_VARIABLES_POSTFIX,
@@ -73,6 +76,48 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 _RUN_COMMAND = "runCommand"
 _WRITE_FILE = "writeFile"
 _CREATE_WORKERS = "createWorkers"
+
+# The columns of a submission's '--json' record, one per submission target:
+# a node, or the whole Worker Pool (a null node ID)
+SUBMISSION_HEADINGS = [
+    "Worker Pool ID",
+    "Node ID",
+    "Action Groups",
+    "Actions",
+    "Outcome",
+]
+
+
+def _record_submission(
+    wp_id: str,
+    node_ids: list[str] | None,
+    action_groups: int | None,
+    actions: int,
+    outcome: str,
+    error: str | None = None,
+) -> None:
+    """
+    Record a submission for '--json': one row per node in 'node_ids', or one
+    for the whole Worker Pool when it is None. 'outcome' is 'submitted',
+    'skipped' (declined) or 'failed', with the error text in "error".
+    """
+    for node_id in node_ids if node_ids is not None else [None]:
+        (row,) = rows_as_objects(
+            SUBMISSION_HEADINGS, [[wp_id, node_id, action_groups, actions, outcome]]
+        )
+        if error is not None:
+            row["error"] = error
+        record(row)
+
+
+def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
+    """
+    Record the node action queue table for '--json', a row object per node.
+    """
+    for row in rows_as_objects(
+        NODE_ACTION_QUEUE_HEADINGS, node_action_queue_table(rows)
+    ):
+        record(row)
 
 
 @main_wrapper
@@ -478,10 +523,17 @@ def _submit_actions():
                 for action in group.actions or []:
                     action.nodeIdFilter = NodeIdFilter.LIST
 
+        submission = (
+            wp_id,
+            node_id_filter_list,
+            len(action_groups),
+            sum(len(group.actions or []) for group in action_groups),
+        )
         if not confirmed(
             f"Submit {len(action_groups)} action group(s) to "
             f"Worker Pool '{wp_id}' targeting {target_desc}?"
         ):
+            _record_submission(*submission, "skipped")
             return
 
         try:
@@ -494,8 +546,11 @@ def _submit_actions():
                 f"Submitted {len(action_groups)} action group(s) to "
                 f"Worker Pool '{wp_id}'"
             )
+            _record_submission(*submission, "submitted")
         except Exception as e:
-            print_error(_submission_error(e, specific_nodes=bool(node_id_filter_list)))
+            error = _submission_error(e, specific_nodes=bool(node_id_filter_list))
+            print_error(error)
+            _record_submission(*submission, "failed", error=error)
             return
 
         if ARGS_PARSER.follow:
@@ -522,6 +577,7 @@ def _submit_actions():
                 f"Submit {len(actions)} action(s) to all nodes in "
                 f"Worker Pool '{wp_id}'?"
             ):
+                _record_submission(wp_id, None, None, len(actions), "skipped")
                 return
             try:
                 CLIENT.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
@@ -529,8 +585,11 @@ def _submit_actions():
                     f"Submitted {len(actions)} action(s) to all nodes in "
                     f"Worker Pool '{wp_id}'"
                 )
+                _record_submission(wp_id, None, None, len(actions), "submitted")
             except Exception as e:
-                print_error(_submission_error(e))
+                error = _submission_error(e)
+                print_error(error)
+                _record_submission(wp_id, None, None, len(actions), "failed", error)
                 return
 
             if ARGS_PARSER.follow:
@@ -549,6 +608,7 @@ def _submit_actions():
                 f"Submit {len(actions)} action(s) to "
                 f"{len(node_ids)} node(s) in Worker Pool '{wp_id}'?"
             ):
+                _record_submission(wp_id, node_ids, None, len(actions), "skipped")
                 return
 
             submitted_node_ids = []
@@ -560,9 +620,16 @@ def _submit_actions():
                     print_info(
                         f"Submitted {len(actions)} action(s) to node '{node_id}'"
                     )
+                    _record_submission(
+                        wp_id, [node_id], None, len(actions), "submitted"
+                    )
                     submitted_node_ids.append(node_id)
                 except Exception as e:
-                    print_error(_submission_error(e, node_id=node_id))
+                    error = _submission_error(e, node_id=node_id)
+                    print_error(error)
+                    _record_submission(
+                        wp_id, [node_id], None, len(actions), "failed", error
+                    )
 
             if ARGS_PARSER.follow and submitted_node_ids:
                 _follow_node_actions(submitted_node_ids, initial_delay=True)
@@ -571,9 +638,13 @@ def _submit_actions():
     print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
 
 
-def _follow_node_actions(node_ids: list[str], initial_delay: bool = False) -> None:
+def _follow_node_actions(
+    node_ids: list[str], initial_delay: bool = False
+) -> list[tuple[str, NodeActionQueueSnapshot]]:
     """
-    Poll the node action queue for each node until all reach EMPTY or FAILED status.
+    Poll the node action queue for each node until all reach EMPTY or FAILED
+    status, printing the table at each poll (not under '--json'), and return
+    the final rows.
     """
     pending = set(node_ids)
     done: dict[str, NodeActionQueueSnapshot] = {}
@@ -607,13 +678,14 @@ def _follow_node_actions(node_ids: list[str], initial_delay: bool = False) -> No
             (nid, snap) for nid, snap in done.items() if nid not in live_node_ids
         ]
         all_rows = done_rows + live_rows
-        if all_rows:
+        if all_rows and not json_requested():
             print_node_action_queue_table(all_rows)
         pending -= completed
         if pending:
             time.sleep(NODE_ACTION_QUEUE_POLL_INTERVAL)
 
     print_info("All node action queues have finished.")
+    return sorted(done.items(), key=lambda row: row[0])
 
 
 def _show_status():
@@ -636,7 +708,9 @@ def _show_status():
                 return
 
     if ARGS_PARSER.follow:
-        _follow_node_actions(node_ids)
+        final_rows = _follow_node_actions(node_ids)
+        if json_requested():
+            _record_queues(final_rows)
         return
 
     rows: list[tuple[str, NodeActionQueueSnapshot]] = []
@@ -649,13 +723,16 @@ def _show_status():
             print_error(f"Failed to get node action status for '{node_id}': {e}")
             continue
 
-        if ARGS_PARSER.details:
+        # Under '--json' the table's rows, '--details' or not
+        if ARGS_PARSER.details and not json_requested():
             print_info(f"Node action queue for node '{node_id}':")
             print_yd_object(snapshot)
         else:
             rows.append((node_id, snapshot))
 
-    if rows:
+    if json_requested():
+        _record_queues(rows)
+    elif rows:
         print_node_action_queue_table(rows)
 
 

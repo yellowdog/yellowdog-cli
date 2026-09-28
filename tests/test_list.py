@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,7 +118,7 @@ class TestCountOption:
         import yellowdog_cli.list as yd_list
 
         client = MagicMock()
-        client.keyring_client.find_all_keyrings.return_value = [
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
             MagicMock(),
             MagicMock(),
         ]
@@ -135,13 +136,36 @@ class TestCountOption:
         import yellowdog_cli.list as yd_list
 
         client = MagicMock()
-        client.keyring_client.find_all_keyrings.return_value = []
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = []
         with (
             patch.object(yd_list, "CLIENT", client),
             patch.object(yd_list, "ARGS_PARSER", _args_parser()),
         ):
             yd_list.list_keyrings()
         assert capsys.readouterr().out.strip() == "0"
+
+    def test_keyrings_search_by_the_globs_literal_prefix(self, capsys):
+        # The server search takes the literal prefix of the glob; the glob
+        # itself is applied to what comes back, as for Image Families
+        from yellowdog_client.model import KeyringSearch
+
+        import yellowdog_cli.list as yd_list
+
+        client = MagicMock()
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
+            SimpleNamespace(name="proj-a"),
+            SimpleNamespace(name="proj-b"),
+            SimpleNamespace(name="proj-other"),
+        ]
+        with (
+            patch.object(yd_list, "CLIENT", client),
+            patch.object(yd_list, "ARGS_PARSER", _args_parser(name_glob="proj-?")),
+        ):
+            yd_list.list_keyrings()
+        client.keyring_client.get_keyrings.assert_called_once_with(
+            KeyringSearch(name="proj-")
+        )
+        assert capsys.readouterr().out.strip() == "2"
 
     def test_tasks_count_aggregates_without_interaction(self, capsys):
         import yellowdog_cli.list as yd_list

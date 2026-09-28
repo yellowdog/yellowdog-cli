@@ -26,6 +26,12 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import (
+    ET_COMPUTE_REQUIREMENTS,
+    ET_INSTANCES,
+    ET_NODES,
+)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -43,6 +49,25 @@ class ComputeAction:
     instance_method_name: str  # ComputeClient method for instances
     valid_cr_statuses: list[ComputeRequirementStatus]
     valid_instance_statuses: list[InstanceStatus]
+
+    def record(
+        self,
+        entity: object,
+        outcome: str | None = None,
+        error: str | None = None,
+        entity_type: str = ET_COMPUTE_REQUIREMENTS,
+    ) -> None:
+        """
+        Record the action's outcome for '--json': by default, that it was
+        applied ('stopped'); otherwise 'skipped' or 'failed'.
+        """
+        record_action(
+            entity,
+            entity_type,
+            self.name.lower(),
+            outcome or self.past_tense.lower(),
+            error,
+        )
 
 
 COMPUTE_STOP = ComputeAction(
@@ -113,10 +138,15 @@ def apply_compute_action(action: ComputeAction):
         CLIENT, compute_requirement_summaries
     )
 
-    if selected_compute_requirement_summaries and confirmed(
+    if selected_compute_requirement_summaries and not confirmed(
         f"{action.name} {len(selected_compute_requirement_summaries)} "
         "Compute Requirement(s)?"
     ):
+        for compute_requirement_summary in selected_compute_requirement_summaries:
+            action.record(compute_requirement_summary, "skipped")
+        selected_compute_requirement_summaries = []
+
+    if selected_compute_requirement_summaries:
         for compute_requirement_summary in selected_compute_requirement_summaries:
             try:
                 getattr(CLIENT.compute_client, action.cr_method_name)(
@@ -127,8 +157,10 @@ def apply_compute_action(action: ComputeAction):
                     f"Failed to {action.name.lower()} "
                     f"'{compute_requirement_summary.name}': {e}"
                 )
+                action.record(compute_requirement_summary, "failed", str(e))
                 continue  # Don't follow Compute Requirements that weren't actioned
             actioned_ids.append(cast(str, compute_requirement_summary.id))
+            action.record(compute_requirement_summary)
             # The refetch is only needed to generate the link; the
             # action has already succeeded
             try:
@@ -177,6 +209,11 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
                     f"Compute Requirements cannot be {action.past_tense.lower()}; "
                     "please supply Instance or Node IDs"
                 )
+                action.record(
+                    name_or_id,
+                    "failed",
+                    f"Compute Requirements cannot be {action.past_tense.lower()}",
+                )
                 continue
             try:
                 compute_requirement = (
@@ -185,14 +222,17 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
             except Exception as e:
                 if is_http_not_found(e):
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}")
+                    action.record(name_or_id, "failed", "not found")
                 else:
                     print_error(f"Cannot find Compute Requirement ID {name_or_id}: {e}")
+                    action.record(name_or_id, "failed", str(e))
                 continue
             if compute_requirement.status not in action.valid_cr_statuses:
                 print_error(
                     f"Compute Requirement status {compute_requirement.status} "
                     f"is not a valid state for action '{action.name}'"
                 )
+                action.record(name_or_id, "skipped")
                 continue
             compute_requirement_ids.append(name_or_id)
 
@@ -210,6 +250,11 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
                     f"Compute Requirements cannot be {action.past_tense.lower()}; "
                     "please supply Instance or Node IDs"
                 )
+                action.record(
+                    name_or_id,
+                    "failed",
+                    f"Compute Requirements cannot be {action.past_tense.lower()}",
+                )
                 continue
             compute_requirement_id = get_compute_requirement_id_by_name(
                 CLIENT, name_or_id, CONFIG_COMMON.namespace, action.valid_cr_statuses
@@ -218,6 +263,7 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
                 print_warning(
                     f"Compute Requirement in valid state not found for '{name_or_id}'"
                 )
+                action.record(name_or_id, "failed", "not found in a valid state")
                 continue
             else:
                 print_info(f"Found Compute Requirement ID: {compute_requirement_id}")
@@ -229,6 +275,8 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
             f"{action.name} {len(compute_requirement_ids)} Compute Requirement(s)?"
             f": ({', '.join(compute_requirement_ids)})"
         ):
+            for compute_requirement_id in compute_requirement_ids:
+                action.record(compute_requirement_id, "skipped")
             return
         for compute_requirement_id in compute_requirement_ids:
             try:
@@ -236,10 +284,12 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
                     compute_requirement_id
                 )
                 print_info(f"{action.past_tense} '{compute_requirement_id}'")
+                action.record(compute_requirement_id)
             except Exception as e:
                 print_error(
                     f"Failed to {action.name.lower()} '{compute_requirement_id}': ({e})"
                 )
+                action.record(compute_requirement_id, "failed", str(e))
 
     # Follow all the CR IDs from CR actions and node, instance actions
     if ARGS_PARSER.follow:
@@ -258,9 +308,11 @@ def _apply_action_to_node_instance_by_id(
     except Exception as e:
         if is_http_not_found(e):
             print_error(f"Cannot find Node with ID {node_id}")
+            action.record(node_id, "failed", "not found", ET_NODES)
             return None
         else:
             print_error(f"Error for Node ID {node_id}: {e}")
+            action.record(node_id, "failed", str(e), ET_NODES)
             return None
 
     if (
@@ -268,6 +320,7 @@ def _apply_action_to_node_instance_by_id(
             CLIENT, cast(str, node.workerPoolId)
         )
     ) is None:
+        action.record(node_id, "failed", "no Compute Requirement found", ET_NODES)
         return None
 
     instance: Instance | None = get_instance_by_id(
@@ -281,6 +334,7 @@ def _apply_action_to_node_instance_by_id(
             f"Cannot find Instance ID for Node ID {node_id} "
             f"in Compute Requirement {cr_id}"
         )
+        action.record(node_id, "failed", "Instance not found", ET_NODES)
         return None
 
     return _apply_action_to_instance(
@@ -299,14 +353,24 @@ def _apply_action_to_instance(
     Returns the compute requirement ID or None.
     """
 
+    # Named by the 'cr_id.instance_id' form the command accepts, and by the
+    # Instance ID it prints
+    instance_record = {"id": f"{cr_id}.{instance_id}", "name": instance_id}
+
     if get_ydid_type(cr_id) != YDIDType.COMPUTE_REQUIREMENT:
         print_error(f"Invalid Compute Requirement ID {cr_id}")
+        action.record(
+            instance_record, "failed", "invalid Compute Requirement ID", ET_INSTANCES
+        )
         return None
 
     try:
         compute_requirement = CLIENT.compute_client.get_compute_requirement_by_id(cr_id)
     except Exception:
         print_error(f"Cannot find Compute Requirement {cr_id}")
+        action.record(
+            instance_record, "failed", "Compute Requirement not found", ET_INSTANCES
+        )
         return None
 
     instance: Instance | None = get_instance_by_id(CLIENT, cr_id, instance_id)
@@ -314,6 +378,7 @@ def _apply_action_to_instance(
         print_error(
             f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"
         )
+        action.record(instance_record, "failed", "not found", ET_INSTANCES)
         return None
 
     if instance.status not in action.valid_instance_statuses:
@@ -321,6 +386,7 @@ def _apply_action_to_instance(
             f"Instance ID '{cr_id}.{instance_id}' status {instance.status} "
             f"is not a valid state for action '{action.name}'"
         )
+        action.record(instance_record, "skipped", entity_type=ET_INSTANCES)
         return None
 
     node_id_msg = "" if node_id is None else f" (Node ID {node_id})"
@@ -328,6 +394,7 @@ def _apply_action_to_instance(
         f"{action.name} {instance.status} Instance ID '{instance_id}' "
         f"in Compute Requirement {cr_id}{node_id_msg}?"
     ):
+        action.record(instance_record, "skipped", entity_type=ET_INSTANCES)
         return None
 
     try:
@@ -346,9 +413,11 @@ def _apply_action_to_instance(
                 f"Failed to {action.name.lower()} Instance '{instance_id}' in "
                 f"Compute Requirement {cr_id}: {e}"
             )
+        action.record(instance_record, "failed", str(e), ET_INSTANCES)
         return None
 
     print_info(
         f"{action.past_tense} Instance '{instance_id}' in Compute Requirement {cr_id}"
     )
+    action.record(instance_record, entity_type=ET_INSTANCES)
     return cr_id

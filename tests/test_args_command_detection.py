@@ -40,3 +40,40 @@ class TestCommandDetectionUsesBasename:
         # 'resize' in the path must not add the resize positionals
         with pytest.raises(SystemExit):
             _make_parser("/home/user/resize/yd-version", "my-pool", "5")
+
+
+class TestExplicitConstruction:
+    def test_named_command_and_argv_bypass_sys_argv(self):
+        parser = CLIParser(command="yd-resize", argv=["my-pool", "5"])
+        assert parser.worker_pool_name == "my-pool"
+        assert parser.command_name == "yd-resize"
+
+    def test_unknown_command_has_only_the_common_options(self):
+        parser = CLIParser(command="yd-nonesuch", argv=["--quiet"])
+        assert parser.quiet is True
+        assert parser.command is None
+        assert parser.worker_pool_name is None
+
+    def test_namespace_required_follows_the_registry(self):
+        assert CLIParser(command="yd-submit", argv=[]).namespace_required is True
+        assert (
+            CLIParser(command="yd-list", argv=["work-requirements"]).namespace_required
+            is False
+        )
+        assert (
+            CLIParser(command="yd-list", argv=["work-requirements"]).tag_required
+            is False
+        )
+
+    def test_validators_run(self):
+        with pytest.raises(SystemExit):
+            CLIParser(command="yd-cancel", argv=["literal-name", "glob-*"])
+        # '--json' no longer requires '--dry-run' on yd-delete: this must
+        # parse rather than raise.
+        assert (
+            CLIParser(command="yd-delete", argv=["--json", "some/path"]).json_output
+            is True
+        )
+
+    def test_rm_keeps_its_own_prog(self):
+        assert CLIParser(command="yd-rm", argv=["p"]).parser.prog == "yd-rm"

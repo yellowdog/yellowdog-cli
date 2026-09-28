@@ -8,11 +8,16 @@ import sys
 
 from yellowdog_cli.utils.follow_utils import follow_errors_occurred, follow_ids
 from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.results import results_are_streamed
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 
 
 @main_wrapper
 def main():
+    # Under '--json' the events are the output, printed as JSON as they
+    # arrive, with no document after them
+    results_are_streamed()
+
     if not ARGS_PARSER.yellowdog_ids:
         print_info("No YellowDog IDs to follow")
         return

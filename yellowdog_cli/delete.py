@@ -10,13 +10,12 @@ from yellowdog_cli.utils.dataclient_utils import (
     delete_remote,
     is_glob,
     list_remote_glob,
-    matched_item_rows,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_info, print_objects_as_json
+from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
@@ -35,10 +34,6 @@ def main():
     recursive = ARGS_PARSER.recursive or False
     dry_run = ARGS_PARSER.dry_run or False
     remote_paths = ARGS_PARSER.remote_paths or []
-
-    if dry_run and ARGS_PARSER.json_output:
-        _emit_matched_json(remote_paths)
-        return
 
     if not remote_paths:
         # No paths supplied: operate on the entire default prefix
@@ -82,16 +77,6 @@ def _delete_one(remote_path: str, recursive: bool, dry_run: bool) -> None:
     action = "Recursively delete" if recursive else "Delete"
     if confirmed(f"{action} '{remote_path}'?"):
         delete_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
-
-
-def _emit_matched_json(remote_paths: list[str]) -> None:
-    """
-    Print the top-level items a delete would match, as a JSON array of
-    {"name", "path", "isDir"}, without deleting. The row building lives in
-    dataclient_utils because 'yd-download --dry-run --json' emits the same shape
-    for the same purpose — offering the user a selection of matched items.
-    """
-    print_objects_as_json(matched_item_rows(CONFIG_DATA_CLIENT, remote_paths))
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ from yellowdog_cli.commander.selection import (
     Confirmation,
     ObjectSummary,
     object_rows,
+    parse_download_summaries,
     parse_object_summaries,
 )
 
@@ -88,6 +89,75 @@ def test_capture_objects_parses_enumeration(window, monkeypatch):
     assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
         objects()[0]
     ]
+
+
+def _download_record(source: str, match: str) -> dict:
+    return {
+        "source": source,
+        "destination": source.rsplit("/", 1)[-1],
+        "size": 1,
+        "action": "would download",
+        "match": match,
+    }
+
+
+def test_capture_objects_groups_download_records_into_items(window, monkeypatch):
+    # yd-download records one row per file; the chooser offers the top-level
+    # items they belong to. Delete's parser would reject these rows (no
+    # 'path'), so a swapped dispatch fails here.
+    seen: list = []
+
+    def enumerate_files(command, extra_args=None):
+        seen.append(command)
+        return [
+            _download_record("S3:b/pfx/pyex-001", "S3:b/pfx/pyex-001"),
+            _download_record("S3:b/pfx/pyex-logs/a.log", "S3:b/pfx/pyex-logs"),
+            _download_record("S3:b/pfx/pyex-logs/sub/b.log", "S3:b/pfx/pyex-logs"),
+        ]
+
+    monkeypatch.setattr(window, "_capture_dry_run_json", enumerate_files)
+    assert window._capture_dry_run_objects("yd-download", ["pyex*"]) == objects()
+    assert seen == ["yd-download"]
+
+
+def test_capture_objects_does_not_group_delete_records(window, monkeypatch):
+    # yd-delete's rows are per item already, and carry no 'match'
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_json",
+        lambda command, extra_args=None: [
+            {"path": "S3:b/pfx/pyex-logs", "name": "pyex-logs/", "isDir": True}
+        ],
+    )
+    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+        objects()[1]
+    ]
+
+
+def test_parse_download_summaries_empty_list():
+    assert parse_download_summaries([]) == []
+
+
+def test_parse_download_summaries_rejects_non_dict_row():
+    assert parse_download_summaries(["S3:b/pfx/pyex-001"]) is None
+
+
+@pytest.mark.parametrize("missing", ["source", "match"])
+def test_parse_download_summaries_rejects_row_missing_a_key(missing):
+    row = _download_record("S3:b/pfx/pyex-001", "S3:b/pfx/pyex-001")
+    del row[missing]
+    assert parse_download_summaries([row]) is None
+
+
+def test_capture_objects_logs_when_download_records_lack_matches(window, monkeypatch):
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_json",
+        lambda command, extra_args=None: [{"source": "S3:b/pfx/pyex-001"}],
+    )
+    window.log_output.setPlainText("")
+    assert window._capture_dry_run_objects("yd-download", ["pyex*"]) is None
+    assert "did not include paths" in window.log_output.toPlainText()
 
 
 def test_capture_objects_none_on_enumeration_failure(window, monkeypatch):

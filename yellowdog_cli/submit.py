@@ -53,6 +53,7 @@ from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_json,
+    print_quiet_result,
     print_warning,
 )
 from yellowdog_cli.utils.property_names import (
@@ -104,8 +105,10 @@ from yellowdog_cli.utils.property_names import (
     WR_TAG,
 )
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
+from yellowdog_cli.utils.results import record_document, record_entity
 from yellowdog_cli.utils.settings import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
+    ET_WORK_REQUIREMENTS,
     L_TASK_COUNT,
     L_TASK_GROUP_COUNT,
     L_TASK_GROUP_NAME,
@@ -159,7 +162,9 @@ from yellowdog_cli.utils.ydid_utils import YDIDType
 CONFIG_WR: ConfigWorkRequirement = load_config_work_requirement()
 
 
-ID = generate_id(CONFIG_COMMON.name_tag)
+# Generated in main() rather than at import, so that a name tag too long for
+# it is reported as an error by main_wrapper rather than as a traceback
+ID: str = ""
 TASK_BATCH_SIZE = CONFIG_WR.task_batch_size
 
 if ARGS_PARSER.dry_run:
@@ -178,6 +183,9 @@ def main():
     if ARGS_PARSER.which_rclone:
         which_rclone()
         return
+
+    global ID
+    ID = generate_id(CONFIG_COMMON.name_tag)
 
     if not 1 <= TASK_BATCH_SIZE <= 10000:
         raise ValueError("Task batch size must be between 1 and 10,000")
@@ -287,7 +295,10 @@ def main():
         )
 
     if ARGS_PARSER.dry_run:
-        WR_SNAPSHOT.print()
+        if ARGS_PARSER.json_output:
+            record_document(WR_SNAPSHOT.wr_data)
+        else:
+            WR_SNAPSHOT.print()
 
 
 def _submit_or_add_to(
@@ -415,8 +426,14 @@ def submit_work_requirement(
     )
     if not ARGS_PARSER.dry_run:
         work_requirement = CLIENT.work_client.add_work_requirement(work_requirement)
-        if ARGS_PARSER.quiet:
-            print(work_requirement.id)
+        # Recorded now, so a failure adding its Tasks still reports it
+        record_entity(
+            work_requirement.id,
+            work_requirement.name,
+            CONFIG_COMMON.namespace,
+            ET_WORK_REQUIREMENTS,
+        )
+        print_quiet_result(work_requirement.id)
         print_info(
             "Created "
             f"{link_entity(CONFIG_COMMON.url, work_requirement)} "
@@ -609,7 +626,10 @@ def create_task_group(
     )
 
     task_timeout_minutes: float | None = check_float_or_int(
-        task_group_data.get(TASK_TIMEOUT, config_wr.task_timeout), TASK_TIMEOUT
+        task_group_data.get(
+            TASK_TIMEOUT, wr_data.get(TASK_TIMEOUT, config_wr.task_timeout)
+        ),
+        TASK_TIMEOUT,
     )
     task_timeout: timedelta | None = (
         None
@@ -677,13 +697,22 @@ def create_task_group(
         vcpus=vcpus,
         ram=ram,
         minWorkers=check_int(
-            task_group_data.get(MIN_WORKERS, config_wr.min_workers), MIN_WORKERS
+            task_group_data.get(
+                MIN_WORKERS, wr_data.get(MIN_WORKERS, config_wr.min_workers)
+            ),
+            MIN_WORKERS,
         ),
         maxWorkers=check_int(
-            task_group_data.get(MAX_WORKERS, config_wr.max_workers), MAX_WORKERS
+            task_group_data.get(
+                MAX_WORKERS, wr_data.get(MAX_WORKERS, config_wr.max_workers)
+            ),
+            MAX_WORKERS,
         ),
         tasksPerWorker=check_int(
-            task_group_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
+            task_group_data.get(
+                TASKS_PER_WORKER,
+                wr_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
+            ),
             TASKS_PER_WORKER,
         ),
         providers=providers,
@@ -1432,6 +1461,16 @@ def add_to_existing_work_requirement(
             f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{ID}'"
         )
 
+    if not ARGS_PARSER.dry_run:
+        # The Work Requirement added to, as a creator's document names the
+        # one it created
+        record_entity(
+            work_requirement.id,
+            work_requirement.name,
+            CONFIG_COMMON.namespace,  # Where it was looked up
+            ET_WORK_REQUIREMENTS,
+        )
+
     # Add tasks to new TGs (no task offset)
     for spec_idx, spec_tg in new_tgs:
         add_tasks_to_task_group(
@@ -1494,6 +1533,9 @@ def submit_json_raw(wr_file: str):
 
     if ARGS_PARSER.dry_run:
         # This will show the results of any variable substitutions
+        if ARGS_PARSER.json_output:
+            record_document(wr_data)
+            return
         print_dry_run("Printing JSON Work Requirement specification:")
         print_json(wr_data)
         print_dry_run("Complete")
@@ -1523,8 +1565,8 @@ def submit_json_raw(wr_file: str):
         print_info(
             f"Created Work Requirement '{wr_data['namespace']}/{wr_name}' ({wr_id})"
         )
-        if ARGS_PARSER.quiet:
-            print(wr_id)
+        record_entity(wr_id, wr_name, wr_data.get("namespace"), ET_WORK_REQUIREMENTS)
+        print_quiet_result(wr_id)
     else:
         print_error(f"Failed to create Work Requirement '{wr_name}'")
         raise RuntimeError(f"{response.text}")

@@ -1,5 +1,5 @@
 """
-Unit tests for resolve_entity_type() in yellowdog_cli.utils.args.
+Unit tests for resolve_entity_type() in yellowdog_cli.utils.command_registry.
 
 Tests cover:
   - exact full names
@@ -13,7 +13,11 @@ import argparse
 
 import pytest
 
-from yellowdog_cli.utils.args import ENTITY_TYPES, SYNONYMS, resolve_entity_type
+from yellowdog_cli.utils.command_registry import (
+    ENTITY_TYPES,
+    SYNONYMS,
+    resolve_entity_type,
+)
 
 # ---------------------------------------------------------------------------
 # Exact full names

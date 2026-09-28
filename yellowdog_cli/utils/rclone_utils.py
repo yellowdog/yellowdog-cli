@@ -228,3 +228,32 @@ def which_rclone() -> None:
 
     print_info(f"rclone: {rclone_path} ({source})")
     print_info(f"Version: {rclone_version_line(rclone_path)}")
+
+
+# An inline remote's parameters that are never secrets, and say what it is
+SHOWN_REMOTE_PARAMETERS = ("type", "provider")
+
+
+def shown_remote(remote: str) -> str:
+    """
+    A remote as a report may show it. A named remote ('myremote:') is shown
+    as is; an inline connection string keeps its name, type and provider, and
+    every other parameter's value is withheld, since those are where its
+    credentials go -- and yd-doctor's report is one the README says to paste,
+    while yd-variables' is one that gets sent along with it.
+    """
+    remote_name, section = parse_rclone_config(remote)
+    if section is None:
+        return remote
+    kept: list[str] = []
+    withheld = 0
+    for line in section.splitlines()[1:]:
+        key, _, value = line.partition(" = ")
+        if key in SHOWN_REMOTE_PARAMETERS:
+            kept.append(f"{key}={value.rstrip(':')}")
+        else:
+            withheld += 1
+    if withheld:
+        kept.append(f"<{withheld} parameter{'' if withheld == 1 else 's'} redacted>")
+    trailing = ":" if remote.rstrip().endswith(":") else ""
+    return ",".join([remote_name, *kept]) + trailing

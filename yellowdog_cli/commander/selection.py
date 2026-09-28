@@ -155,6 +155,35 @@ def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
     return summaries
 
 
+def parse_download_summaries(parsed: list) -> list[ObjectSummary] | None:
+    """
+    Convert a parsed 'yd-download -D --json' array -- one record per file,
+    each naming in 'match' the top-level item it belongs to -- into one
+    ObjectSummary per top-level item, in the order first seen. An item is a
+    directory when any of its files is not the item itself. Returns None if
+    any row is not a dict or lacks a 'source' or a 'match', for the reason
+    parse_object_summaries() gives. An empty directory has no files and so
+    is not offered: downloading it would fetch nothing.
+    """
+    is_dir: dict[str, bool] = {}
+    for obj in parsed:
+        if not isinstance(obj, dict):
+            return None
+        source, match = obj.get("source"), obj.get("match")
+        if not source or not match:
+            return None
+        match, source = str(match), str(source)
+        is_dir[match] = is_dir.get(match, False) or source != match
+    return [
+        ObjectSummary(
+            path=match,
+            name=match.rsplit("/", 1)[-1].split(":", 1)[-1] + ("/" if dir_ else ""),
+            is_dir=dir_,
+        )
+        for match, dir_ in is_dir.items()
+    ]
+
+
 def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
     """
     Rows for an object listing: a single column of display names (a directory

@@ -38,7 +38,7 @@ The commands support:
 - **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
 - **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
-Utility commands are also provided: **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
+Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
 
 The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 
@@ -68,20 +68,21 @@ pip install -U yellowdog-cli
 
 ### Optional Extras
 
-Three optional extras are available:
+Four optional extras are available:
 
 | Extra         | Provides                                                         |
 |---------------|------------------------------------------------------------------|
 | `jsonnet`     | Jsonnet templating of resource specifications                    |
 | `commander`   | The `yd-commander` desktop GUI, described below                  |
 | `cloudwizard` | The cloud provider SDKs required by the `yd-cloudwizard` command |
+| `mcp`         | The `yd-mcp` MCP server, described below                         |
 
-List the ones you need in square brackets at installation time, e.g. to install all three:
+List the ones you need in square brackets at installation time, e.g. to install all four:
 
 ```shell
-pipx install "yellowdog-cli[jsonnet,commander,cloudwizard]"    # pipx
-uv tool install "yellowdog-cli[jsonnet,commander,cloudwizard]" # uv
-pip install -U "yellowdog-cli[jsonnet,commander,cloudwizard]"  # pip
+pipx install "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"    # pipx
+uv tool install "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]" # uv
+pip install -U "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"  # pip
 ```
 
 An extra can also be added to an existing pipx installation without reinstalling it, e.g. `pipx inject yellowdog-cli jsonnet`.
@@ -96,6 +97,17 @@ yd-commander
 ```
 
 It works by invoking the `yd-*` commands on your behalf and displaying their output. See the [Commander documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/commander/README.md) for details.
+
+### MCP Server
+
+**`yd-mcp`** is an optional MCP server exposing the `yd-*` commands as tools for an agent, installed via the `mcp` extra above:
+
+```shell
+pip install -U "yellowdog-cli[mcp]"
+yd-mcp config.toml
+```
+
+It runs the `yd-*` commands on an agent's behalf, with `--json`, and returns their results. See the [MCP server documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/mcp/README.md) for details.
 
 ## Documentation
 

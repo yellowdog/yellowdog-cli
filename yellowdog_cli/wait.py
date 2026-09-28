@@ -10,8 +10,33 @@ import sys
 
 from yellowdog_cli.utils.follow_utils import WR_FAILURE_STATUS_VALUES, follow_ids
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+# The states each type's event stream concludes in, and of those the ones
+# counted as success
+_TERMINAL_STATUSES = {
+    YDIDType.WORK_REQUIREMENT: frozenset({"COMPLETED", "FAILED", "CANCELLED"}),
+    YDIDType.WORKER_POOL: frozenset({"SHUTDOWN", "TERMINATED"}),
+    YDIDType.COMPUTE_REQUIREMENT: frozenset({"TERMINATED"}),
+}
+
+
+def _record_status(ydid: str, status: str | None) -> None:
+    """
+    Record one ID's final status for '--json', as {"id", "status",
+    "succeeded"}: 'succeeded' is false for a failed Work Requirement, a
+    state that is not terminal, or a status that could not be fetched.
+    """
+    ydid_type = get_ydid_type(ydid)
+    succeeded = (
+        status is not None
+        and ydid_type in _TERMINAL_STATUSES
+        and status in _TERMINAL_STATUSES[ydid_type]
+        and status not in WR_FAILURE_STATUS_VALUES
+    )
+    record({"id": ydid, "status": status, "succeeded": succeeded})
 
 
 @main_wrapper
@@ -23,7 +48,14 @@ def main():
     # follow_ids handles deduplication, validation, and event-stream following;
     # it returns the valid original IDs (WR/WP/CR) for the post-stream status check.
     valid_ydids = follow_ids(ARGS_PARSER.yellowdog_ids)
+
+    # Recorded in the order given, once each; an ID that could not be
+    # followed has no status
+    requested = list(dict.fromkeys(ARGS_PARSER.yellowdog_ids))
+
     if not valid_ydids:
+        for ydid in requested:
+            _record_status(ydid, None)
         raise Exception("No valid YellowDog IDs to wait for")
 
     # Check final status of each entity and determine exit code.
@@ -31,8 +63,12 @@ def main():
     # '--quiet': exiting 1 silently is unhelpful.
     any_failed = False
     any_fetch_errors = False
-    for ydid in valid_ydids:
+    for ydid in requested:
+        if ydid not in valid_ydids:
+            _record_status(ydid, None)
+            continue
         ydid_type = get_ydid_type(ydid)
+        status: str | None = None
         try:
             if ydid_type == YDIDType.WORK_REQUIREMENT:
                 wr = CLIENT.work_client.get_work_requirement_by_id(ydid)
@@ -60,6 +96,8 @@ def main():
         except Exception as e:
             print_error(f"Could not fetch final status for '{ydid}': {e}")
             any_fetch_errors = True
+            status = None
+        _record_status(ydid, status)
 
     if any_failed:
         print_error("One or more Work Requirements did not complete successfully")

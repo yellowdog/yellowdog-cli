@@ -36,9 +36,18 @@ def pytest_addoption(parser):
         default=False,
         help="Run system tests that provision real cloud compute (implies --run-system)",
     )
+    parser.addoption(
+        "--update-parser-snapshots",
+        action="store_true",
+        default=False,
+        help="Regenerate tests/parser_snapshots.json from the command registry",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
+    # By marker, not by "name" in item.keywords: keywords also hold every test,
+    # class, module and parameter name, so a parametrize ID such as "system"
+    # would silently gate an ordinary test behind --run-system.
     run_system = config.getoption("--run-system") or config.getoption(
         "--run-system-compute"
     )
@@ -46,19 +55,19 @@ def pytest_collection_modifyitems(config, items):
     if not config.getoption("--run-demos"):
         skipper = pytest.mark.skip(reason="Only run when '--run-demos' is given")
         for item in items:
-            if "demos" in item.keywords:
+            if item.get_closest_marker("demos"):
                 item.add_marker(skipper)
 
     if not config.getoption("--run-dryruns"):
         skipper = pytest.mark.skip(reason="Only run when '--run-dryruns' is given")
         for item in items:
-            if "dryruns" in item.keywords:
+            if item.get_closest_marker("dryruns"):
                 item.add_marker(skipper)
 
     if not run_system:
         skipper = pytest.mark.skip(reason="Only run when '--run-system' is given")
         for item in items:
-            if "system" in item.keywords:
+            if item.get_closest_marker("system"):
                 item.add_marker(skipper)
 
     if not config.getoption("--run-system-compute"):
@@ -66,7 +75,7 @@ def pytest_collection_modifyitems(config, items):
             reason="Only run when '--run-system-compute' is given"
         )
         for item in items:
-            if "system_compute" in item.keywords:
+            if item.get_closest_marker("system_compute"):
                 item.add_marker(skipper)
 
 
@@ -86,6 +95,22 @@ def cleanup():
     yield cmds.append
     for cmd in reversed(cmds):
         shell(cmd)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_json_results():
+    """
+    Start every test with nothing recorded for '--json' (utils/results.py).
+
+    The action commands record every outcome whether or not '--json' is set,
+    since recording is free without it, so a test that drives one leaves
+    records behind in the module's global accumulator; a later test that
+    prints its own JSON document under '--json' would then find them and
+    raise. Imported lazily, so a test that never touches the CLI pays nothing.
+    """
+    if "yellowdog_cli.utils.results" in sys.modules:
+        sys.modules["yellowdog_cli.utils.results"].reset_results()
+    yield
 
 
 @pytest.fixture(autouse=True)

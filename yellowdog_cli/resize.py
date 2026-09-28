@@ -20,9 +20,27 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_dry_run, print_info, print_warning
-from yellowdog_cli.utils.settings import DRY_RUN_MARKER
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import (
+    DRY_RUN_MARKER,
+    ET_COMPUTE_REQUIREMENTS,
+    ET_WORKER_POOLS,
+)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+
+def _record(
+    entity: object, entity_type: str, outcome: str, error: str | None = None
+) -> None:
+    record_action(
+        entity,
+        entity_type,
+        "resize",
+        outcome,
+        error,
+        targetInstanceCount=ARGS_PARSER.worker_pool_size,
+    )
 
 
 @main_wrapper
@@ -51,6 +69,9 @@ def _resize_worker_pool():
             namespace=CONFIG_COMMON.namespace,
         )
         if worker_pool_id is None:
+            _record(
+                ARGS_PARSER.worker_pool_name, ET_WORKER_POOLS, "failed", "not found"
+            )
             raise KeyError(f"Worker Pool '{ARGS_PARSER.worker_pool_name}' not found")
 
     worker_pool: WorkerPool = CLIENT.worker_pool_client.get_worker_pool_by_id(
@@ -60,17 +81,24 @@ def _resize_worker_pool():
     if ARGS_PARSER.dry_run:
         print_dry_run(f"Found Worker Pool '{worker_pool.id}'")
         print_dry_run("Complete")
+        _record(worker_pool, ET_WORKER_POOLS, "would resize")
         return
 
     if not confirmed(
         f"Confirm resize Worker Pool to {ARGS_PARSER.worker_pool_size} node(s)?"
     ):
+        _record(worker_pool, ET_WORKER_POOLS, "skipped")
         return
 
-    CLIENT.worker_pool_client.resize_worker_pool(
-        worker_pool=worker_pool,  # type: ignore[arg-type]
-        size=ARGS_PARSER.worker_pool_size,  # type: ignore[arg-type]
-    )
+    try:
+        CLIENT.worker_pool_client.resize_worker_pool(
+            worker_pool=worker_pool,  # type: ignore[arg-type]
+            size=ARGS_PARSER.worker_pool_size,  # type: ignore[arg-type]
+        )
+    except Exception as e:
+        _record(worker_pool, ET_WORKER_POOLS, "failed", str(e))
+        raise
+    _record(worker_pool, ET_WORKER_POOLS, "resized")
     print_info(
         f"Resized Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
         f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
@@ -118,24 +146,34 @@ def _resize_compute_requirement():
 
         if cr_summary.targetInstanceCount == ARGS_PARSER.worker_pool_size:
             print_info("No resize attempted: target instance count would be unchanged")
+            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "skipped")
             return
 
         if ARGS_PARSER.dry_run:
             print_dry_run(f"Found Compute Requirement '{cr_summary.id}'")
             print_dry_run("Complete")
+            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "would resize")
             return
 
         if not confirmed(
             f"Confirm resize Compute Requirement '{cr_summary.name}'"
             f" to {ARGS_PARSER.worker_pool_size:,d} instance(s)?"
         ):
+            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "skipped")
             return
 
-        cr: ComputeRequirement = CLIENT.compute_client.get_compute_requirement_by_id(
-            cr_summary.id  # type: ignore[arg-type]
-        )
-        cr.targetInstanceCount = ARGS_PARSER.worker_pool_size  # type: ignore[misc]
-        CLIENT.compute_client.update_compute_requirement(cr, reprovision=False)
+        try:
+            cr: ComputeRequirement = (
+                CLIENT.compute_client.get_compute_requirement_by_id(
+                    cr_summary.id  # type: ignore[arg-type]
+                )
+            )
+            cr.targetInstanceCount = ARGS_PARSER.worker_pool_size  # type: ignore[misc]
+            CLIENT.compute_client.update_compute_requirement(cr, reprovision=False)
+        except Exception as e:
+            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
+            raise
+        _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "resized")
 
         print_info(
             f"Resizing complete: new target instance count = {cr.targetInstanceCount}"
@@ -153,6 +191,12 @@ def _resize_compute_requirement():
         return
 
     else:
+        _record(
+            ARGS_PARSER.worker_pool_name,
+            ET_COMPUTE_REQUIREMENTS,
+            "failed",
+            f"not found or not in status '{ComputeRequirementStatus.RUNNING}'",
+        )
         raise KeyError(
             f"Compute Requirement '{ARGS_PARSER.worker_pool_name}' not found or not in "
             f"status '{ComputeRequirementStatus.RUNNING}'"

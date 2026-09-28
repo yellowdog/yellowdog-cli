@@ -40,6 +40,7 @@ from yellowdog_cli.utils.property_names import (
     USERDATA,
     VARIABLES,
 )
+from yellowdog_cli.utils.results import record
 from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
@@ -50,6 +51,7 @@ from yellowdog_cli.utils.settings import (
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
+    RESERVED_VARIABLE_NAMES,
     TABLE_TYPE_TAG,
     TYPE_TAG_DEFAULT_GUARD,
     VAR_CLOSING_DELIMITER,
@@ -62,6 +64,7 @@ from yellowdog_cli.utils.settings import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
     YD_ENV_VAR_PREFIX,
+    ExitCode,
 )
 
 # Sentinel returned by process_variable_substitutions() when a property
@@ -120,6 +123,22 @@ def check_variable_name(name: str, source: str) -> None:
         )
 
 
+def check_user_variable_name(name: str, source: str) -> None:
+    """
+    As check_variable_name(), and also raise ValueError if 'name' is one of
+    the variables the CLI defines from its configuration, saying where it is
+    set instead. For the definitions a user writes -- '-v', 'YD_VAR_*',
+    '[common.variables]' and '--property common.variables.<name>' -- never for
+    the CLI's own registration of those values.
+    """
+    check_variable_name(name, source)
+    if name in RESERVED_VARIABLE_NAMES:
+        raise ValueError(
+            f"Variable '{name}' in {source} cannot be defined: it is set by the"
+            f" configuration, using {RESERVED_VARIABLE_NAMES[name]}"
+        )
+
+
 def enable_undefined_variable_warnings() -> None:
     """
     Report, from now on, variables left unsubstituted because nothing
@@ -155,12 +174,12 @@ subs_list = []
 for key, value in os.environ.items():
     if key.startswith(YD_ENV_VAR_PREFIX):
         try:
-            check_variable_name(
+            check_user_variable_name(
                 key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
             )
         except ValueError as e:
             print_error(e)
-            exit(1)  # Note: exception trap not yet in place
+            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
         key = key[len(YD_ENV_VAR_PREFIX) :]
         VARIABLE_SUBSTITUTIONS[key] = value
         subs_list.append(f"'{key}'")
@@ -185,10 +204,10 @@ if ARGS_PARSER.variables is not None:
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
             try:
-                check_variable_name(key_value[0], f"'--variable {variable}'")
+                check_user_variable_name(key_value[0], f"'--variable {variable}'")
             except ValueError as e:
                 print_error(e)
-                exit(1)  # Note: exception trap not yet in place
+                exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
             CLI_DEFINED_VARIABLES.add(key_value[0])
             subs_list.append(f"'{key_value[0]}'")
@@ -196,7 +215,7 @@ if ARGS_PARSER.variables is not None:
             print_error(
                 f"Error in variable substitution '{variable}'",
             )
-            exit(1)  # Note: exception trap not yet in place
+            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
 
 if subs_list:
     print_debug(
@@ -312,7 +331,7 @@ def add_substitutions_from_config_file(
     precedence as usual.
     """
     for name in subs:
-        check_variable_name(name, source)
+        check_user_variable_name(name, source)
     if not config_file_explicitly_selected(ARGS_PARSER):
         add_substitutions_without_overwriting(subs, source)
         return
@@ -612,6 +631,25 @@ def resolve_variables_in_string(
             _undefined_unless_circular(_unsubstituted_references({label: result}))
         )
     return result
+
+
+def undefined_variable_references(
+    data: dict | list, prefix: str = "", postfix: str = ""
+) -> list[str]:
+    """
+    The names of the variables referenced in 'data' that nothing defines,
+    sorted and without duplicates. Reports nothing; yd-doctor's seam.
+    """
+    return sorted(
+        {
+            reference
+            for _, reference, _ in _unsubstituted_references(
+                data, prefix=prefix, postfix=postfix
+            )
+            if reference not in VARIABLE_SUBSTITUTIONS
+            and reference not in LAZY_VARIABLE_NAMES
+        }
+    )
 
 
 def warn_of_undefined_variables(
@@ -1108,7 +1146,13 @@ def load_jsonnet_file_with_variable_substitutions(
 
     if ARGS_PARSER.jsonnet_dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
-        print_json(dict_data)
+        if ARGS_PARSER.json_output and not exit_on_dry_run:
+            # A caller converting several files (yd-create, yd-remove): each
+            # is one element of the '--json' document, printed at exit; a
+            # copy, as the caller goes on to change what it was handed
+            record(deepcopy(dict_data))
+        else:
+            print_json(dict_data)
         print_dry_run("Complete")
         if exit_on_dry_run:
             sys.exit(0)

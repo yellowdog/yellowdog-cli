@@ -13,6 +13,7 @@ from glob import glob
 
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.settings import ERROR_MARKER
 
 _GLOB_CHARS = frozenset("*?[")
 
@@ -47,7 +48,7 @@ def main():
             json_data = json.loads(evaluate_file(files[0]))
             print(json.dumps(json_data, indent=2, cls=CompactJSONEncoder))
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"{ERROR_MARKER}{e}")
             exit(1)
         return
 

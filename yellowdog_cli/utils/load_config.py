@@ -4,7 +4,6 @@ Common utility functions, mostly related to loading configuration data.
 
 import json
 import os
-from os import getenv
 from os.path import abspath, dirname, join, relpath
 from pathlib import Path
 from sys import exit
@@ -36,7 +35,6 @@ from yellowdog_cli.utils.settings import (
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
     TASK_BATCH_SIZE_DEFAULT,
-    YD_CONF,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
     YD_DATA_CLIENT_PREFIX,
@@ -49,6 +47,7 @@ from yellowdog_cli.utils.settings import (
     YD_TAG,
     YD_URL,
     YD_URL_ALT,
+    ExitCode,
 )
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
@@ -57,6 +56,7 @@ from yellowdog_cli.utils.variables import (
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,
     add_substitutions_without_overwriting,
+    check_user_variable_name,
     load_toml_file_with_variable_substitutions,
     resolve_variables_in_string,
     resolve_variables_insitu,
@@ -67,6 +67,11 @@ from yellowdog_cli.utils.variables import (
 # 'computeRequirement' was merged into 'workerPool', for the undefined-variable
 # re-check the commands make once warnings are enabled
 _WORKER_POOL_SECTIONS_AS_LOADED: dict[str, dict] = {}
+
+# Where each [common] value came from, by property name, recorded by
+# load_config_common() as it chooses: 'command line', 'environment (YD_KEY)',
+# 'config file (<name>)', 'default' or 'not set'. Read by yd-doctor.
+CONFIG_SOURCES: dict[str, str] = {}
 
 
 def warn_of_undefined_worker_pool_variables() -> None:
@@ -114,7 +119,7 @@ def _resolve_value(value, source: str | None = None):
         return resolve_variables_in_string(value, source=source)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def _resolve_section_variables(section: dict) -> None:
@@ -126,7 +131,7 @@ def _resolve_section_variables(section: dict) -> None:
         resolve_variables_insitu(section)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def config_file_explicitly_selected() -> bool:
@@ -182,21 +187,21 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             print_error(
                 f"Invalid --property format '{override}': expected 'section.key=value'"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         lhs, _, value_str = override.partition("=")
         if "." not in lhs:
             print_error(
                 f"Invalid --property format '{override}': "
                 f"expected 'section.key=value' (missing section)"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         section, _, rest = lhs.partition(".")
         if section not in valid_sections:
             print_error(
                 f"Unknown section '{section}' in --property '{override}'. "
                 f"Valid sections: {', '.join(sorted(valid_sections))}"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         path = rest.split(".")
         value = _parse_property_value(value_str, path[-1])
         if section not in config:
@@ -209,12 +214,13 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
             try:
+                check_user_variable_name(path[1], f"'--property {override}'")
                 add_or_update_substitution(
                     path[1], value, source=f"'--property {override}'"
                 )
             except ValueError as e:
                 print_error(e)
-                exit(1)
+                exit(ExitCode.CONFIGURATION)
             # Command-line-defined variables always take precedence,
             # including over an explicitly selected config file
             CLI_DEFINED_VARIABLES.add(path[1])
@@ -229,16 +235,6 @@ for norm, alt in [
     alt_value = os.getenv(alt)
     if os.getenv(norm) is None and alt_value is not None:
         os.environ[norm] = alt_value
-
-# The YD_CONF environment variable is no longer supported; error out (rather
-# than silently ignoring it) so that any remaining usage fails loudly instead
-# of quietly loading a different configuration file
-if getenv(YD_CONF) is not None:
-    print_error(
-        f"The '{YD_CONF}' environment variable is no longer supported; "
-        "please use the '--config'/'-c' option to select a configuration file"
-    )
-    exit(1)
 
 # CLI > 'config.toml'
 CONFIG_FILE = relpath(
@@ -277,7 +273,7 @@ else:
             validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
         except Exception as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if ARGS_PARSER.property_overrides:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
 
@@ -285,7 +281,7 @@ else:
         # An explicitly selected config file ('--config'/'-c') must exist
         if ARGS_PARSER.config_file is not None:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         # No config file, so create a stub config dictionary
         print_debug(
             "No configuration file; expecting configuration data on command line "
@@ -298,27 +294,40 @@ else:
         print_error(
             f"Unable to load configuration data from '{CONFIG_FILE}': {e}",
         )
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
-def load_config_common() -> ConfigCommon:
+def load_config_common(strict: bool = True) -> ConfigCommon:
     """
-    Load the configuration values for the 'common' section.
+    Load the configuration values for the 'common' section, recording where
+    each came from in CONFIG_SOURCES. With 'strict' (the default) a missing
+    key or secret is reported and exits; without it, as yd-doctor needs,
+    either is returned as None.
     """
     try:
         common_section = CONFIG_TOML.get(COMMON_SECTION, {})
 
         # Check for IMPORT directive ('common' section in a separate file)
         common_section_import_file = common_section.pop(IMPORT_COMMON, None)
+        imported_keys: set[str] = set()
         if common_section_import_file is not None:
             common_section_imported = import_toml(common_section_import_file)
             # Local properties supersede imported properties
+            imported_keys = set(common_section_imported) - set(common_section)
             common_section_imported.update(common_section)
             common_section = common_section_imported
+
+        def file_source(key_name: str) -> str:
+            """The file a [common] value was read from, for CONFIG_SOURCES."""
+            if common_section_import_file is not None and key_name in imported_keys:
+                return (
+                    f"config file ({_imported_file_name(common_section_import_file)})"
+                )
+            return f"config file ({CONFIG_FILE})"
 
         # Replace common section properties with command line or
         # environment variable overrides. Precedence is:
@@ -336,6 +345,7 @@ def load_config_common() -> ConfigCommon:
         ]:
             if args_parser_value is not None:
                 common_section[key_name] = args_parser_value
+                CONFIG_SOURCES[key_name] = "command line"
                 print_debug(
                     f"Using '{key_name}' provided on command line "
                     "(or automatically set)"
@@ -343,14 +353,21 @@ def load_config_common() -> ConfigCommon:
             elif config_file_explicitly_selected() and (
                 common_section.get(key_name) is not None
             ):
-                pass  # Retain the value from the explicitly selected config file
+                # Retain the value from the explicitly selected config file
+                CONFIG_SOURCES[key_name] = file_source(key_name)
             elif os.environ.get(env_var_name) is not None:
                 common_section[key_name] = os.environ[env_var_name]
+                CONFIG_SOURCES[key_name] = f"environment ({env_var_name})"
                 print_debug(f"Using '{key_name}' provided via the environment")
+            elif common_section.get(key_name) is not None:
+                CONFIG_SOURCES[key_name] = file_source(key_name)
+            else:
+                CONFIG_SOURCES[key_name] = "not set"
 
         # Provide default values for namespace and tag
         if common_section.get(NAMESPACE) is None:
             common_section[NAMESPACE] = "default"
+            CONFIG_SOURCES[NAMESPACE] = "default"
             if ARGS_PARSER.namespace_required:
                 print_debug(
                     "Using default value for 'namespace': "
@@ -358,12 +375,15 @@ def load_config_common() -> ConfigCommon:
                 )
         if common_section.get(NAME_TAG) is None:
             common_section[NAME_TAG] = "{{username}}"
+            CONFIG_SOURCES[NAME_TAG] = "default"
             if ARGS_PARSER.tag_required:
                 print_debug(
                     "Using default value for 'tag/prefix/name' = "
                     f"'{VARIABLE_SUBSTITUTIONS['username']}'"
                 )
 
+        if common_section.get(URL) is None:
+            CONFIG_SOURCES[URL] = "default"
         url = cast(
             str,
             _resolve_value(
@@ -378,12 +398,24 @@ def load_config_common() -> ConfigCommon:
         # substitutions for the items in its dictionary each time it's
         # called
         add_substitutions_without_overwriting(subs={URL: url})
-        key = cast(str, _resolve_value(common_section[KEY], f"{COMMON_SECTION}.{KEY}"))
-        add_substitutions_without_overwriting(subs={KEY: key})
-        secret = cast(
-            str, _resolve_value(common_section[SECRET], f"{COMMON_SECTION}.{SECRET}")
+        if strict:
+            key_raw, secret_raw = common_section[KEY], common_section[SECRET]
+        else:
+            key_raw, secret_raw = common_section.get(KEY), common_section.get(SECRET)
+        key = (
+            None
+            if key_raw is None
+            else cast(str, _resolve_value(key_raw, f"{COMMON_SECTION}.{KEY}"))
         )
-        add_substitutions_without_overwriting(subs={SECRET: secret})
+        secret = (
+            None
+            if secret_raw is None
+            else cast(str, _resolve_value(secret_raw, f"{COMMON_SECTION}.{SECRET}"))
+        )
+        if key is not None:
+            add_substitutions_without_overwriting(subs={KEY: key})
+        if secret is not None:
+            add_substitutions_without_overwriting(subs={SECRET: secret})
         namespace = cast(
             str,
             _resolve_value(common_section[NAMESPACE], f"{COMMON_SECTION}.{NAMESPACE}"),
@@ -428,18 +460,23 @@ def load_config_common() -> ConfigCommon:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
+
+
+def _imported_file_name(filename: str) -> str:
+    """The path an 'importCommon' file is read from, as import_toml() reads it."""
+    return relpath(join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename))))
 
 
 def import_toml(filename: str) -> dict:
-    filename = relpath(join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename))))
+    filename = _imported_file_name(filename)
     print_debug(f"Loading imported common configuration data from: '{filename}'")
     try:
         common_config: dict = load_toml_file_with_variable_substitutions(filename)
         return common_config[COMMON_SECTION]
     except (FileNotFoundError, PermissionError, TOMLDecodeError, ValueError) as e:
         print_error(f"Unable to load imported common configuration data: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def _load_namespace_and_tag() -> None:
@@ -545,7 +582,7 @@ def register_dc_substitutions() -> None:
             )
         except ValueError as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
 
 
 def _select_dc_section(base: dict, profile_name: str | None) -> dict:
@@ -589,7 +626,7 @@ def load_config_data_client() -> ConfigDataClient:
             dc_section = _select_dc_section(base_section, profile_name)
         except ValueError as e:
             print_error(e)
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         print_debug(f"Using data client profile: '{profile_name}'")
     else:
         dc_section = _select_dc_section(base_section, None)
@@ -685,7 +722,7 @@ def load_config_data_client_for_profile(
         dc_section = _select_dc_section(base_section, profile_name)
     except ValueError as e:
         print_error(e)
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     if profile_name is not None:
         print_debug(f"Using destination data client profile: '{profile_name}'")
@@ -773,7 +810,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         csv_files = wr_section.get(CSV_FILES)
         if csv_file and csv_files:
             print_error("Only one of 'csvFile' and 'csvFiles' should be set")
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if csv_file:
             csv_files = [csv_file]
 
@@ -848,11 +885,11 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
         print_error(f"{e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
 
 def load_config_worker_pool() -> ConfigWorkerPool:
@@ -887,7 +924,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             f"Duplicate keys in '{WORKER_POOL_SECTION}' and"
             f" '{COMPUTE_REQUIREMENT_SECTION}': {duplicate_keys}"
         )
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
     wp_section.update(cr_section)
 
     if not wp_section:
@@ -911,7 +948,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
                 f"Only one of '{WORKER_POOL_DATA_FILE}' or"
                 f" '{COMPUTE_REQUIREMENT_DATA_FILE}' should be set"
             )
-            exit(1)
+            exit(ExitCode.CONFIGURATION)
         if worker_pool_data_file is not None:
             worker_pool_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, worker_pool_data_file
@@ -973,12 +1010,12 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except TypeError as e:
         print_error(f"{e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)
 
     except ValueError as e:
         print_error(f"Invalid type for configuration: {e}")
-        exit(1)
+        exit(ExitCode.CONFIGURATION)

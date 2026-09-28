@@ -10,6 +10,7 @@ from math import ceil, floor
 from typing import cast
 
 import requests
+from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
     ComputeRequirementTemplateTestResult,
     ComputeRequirementTemplateUsage,
@@ -31,6 +32,7 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
+    print_quiet_result,
     print_yd_object,
 )
 from yellowdog_cli.utils.provision_utils import (
@@ -38,7 +40,16 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
 )
-from yellowdog_cli.utils.settings import WP_VARIABLES_POSTFIX, WP_VARIABLES_PREFIX
+from yellowdog_cli.utils.results import (
+    record_document,
+    record_document_part,
+    record_entity,
+)
+from yellowdog_cli.utils.settings import (
+    ET_COMPUTE_REQUIREMENTS,
+    WP_VARIABLES_POSTFIX,
+    WP_VARIABLES_PREFIX,
+)
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -54,14 +65,17 @@ class CRBatch:
 
 
 CONFIG_WP: ConfigWorkerPool = load_config_worker_pool()
-GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
+# Generated in main() rather than at import, so that a name tag too long for
+# it is reported as an error by main_wrapper rather than as a traceback
+GENERATED_ID: str = ""
 
 
 @main_wrapper
 def main():
-    global CONFIG_WP
+    global CONFIG_WP, GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
+    GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
 
     if ARGS_PARSER.target is not None:
         CONFIG_WP.target_instance_count = ARGS_PARSER.target
@@ -188,13 +202,22 @@ def main():
                     )
                 )
                 compute_requirement_ids.append(compute_requirement.id)  # type: ignore[arg-type]
-                if ARGS_PARSER.quiet:
-                    print(compute_requirement.id)
+                # One per batch: the document is an array if batched
+                record_entity(
+                    compute_requirement.id,
+                    compute_requirement.name,
+                    CONFIG_COMMON.namespace,
+                    ET_COMPUTE_REQUIREMENTS,
+                )
+                print_quiet_result(compute_requirement.id)
                 print_info(
                     f"Provisioned {link_entity(CONFIG_COMMON.url, compute_requirement)}"
                 )
                 print_info(f"YellowDog ID is '{compute_requirement.id}'")
 
+            elif ARGS_PARSER.json_output:
+                # One per batch, as above
+                record_document_part(Json.dump(compute_requirement_template_usage))
             else:
                 print_dry_run("Printing JSON Compute Requirement specification")
                 print_yd_object(compute_requirement_template_usage)
@@ -319,6 +342,9 @@ def _create_compute_requirement_from_json(
         )
 
     if ARGS_PARSER.dry_run:
+        if ARGS_PARSER.json_output:
+            record_document(cr_data)
+            return
         print_dry_run("Printing JSON Compute Requirement specification")
         print_yd_object(cr_data)
         print_dry_run("Complete")
@@ -335,8 +361,10 @@ def _create_compute_requirement_from_json(
         print_info(
             f"Provisioned Compute Requirement '{cr_data['requirementNamespace']}/{name}' ({id})"
         )
-        if ARGS_PARSER.quiet:
-            print(id)
+        record_entity(
+            id, name, cr_data["requirementNamespace"], ET_COMPUTE_REQUIREMENTS
+        )
+        print_quiet_result(id)
         if ARGS_PARSER.follow:
             print_info("Following Compute Requirement event stream")
             follow_events(id, YDIDType.COMPUTE_REQUIREMENT)

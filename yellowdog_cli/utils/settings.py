@@ -3,6 +3,7 @@ String and numeric constants, etc.
 """
 
 import re
+from enum import IntEnum
 
 DEFAULT_URL = "https://api.yellowdog.ai"
 
@@ -11,6 +12,46 @@ DEFAULT_URL = "https://api.yellowdog.ai"
 # with no configuration file selected it recognises this one failure of
 # 'yd-show' as 'nothing is configured' rather than reporting it as an error.
 MISSING_CONFIG_DATA = "Missing configuration data"
+
+
+class ExitCode(IntEnum):
+    """
+    The process exit codes, so a script can tell kinds of failure apart.
+
+    | Code | Name           | When                                               |
+    |------|----------------|----------------------------------------------------|
+    | 0    | SUCCESS        |                                                    |
+    | 1    | FAILURE        | the operation, the work (yd-wait, yd-submit -E),   |
+    |      |                | or a check (yd-doctor) failed                      |
+    | 2    | USAGE          | argparse's own                                     |
+    | 3    | CONFIGURATION  | missing configuration data, unreadable or invalid  |
+    |      |                | TOML, a variable error at load, a missing --config |
+    | 4    | AUTHENTICATION | HTTP 401, NotAuthorisedException, 'Unauthorized'   |
+    | 5    | PERMISSION     | HTTP 403, 'MissingPermissionException'             |
+    | 6    | NOT_FOUND      | HTTP 404 reaching the wrapper                      |
+    | 7    | PLATFORM       | HTTP 5xx, InternalServerException,                 |
+    |      |                | ServerErrorException                               |
+    | 8    | CONNECTION     | requests connection errors and timeouts            |
+    | 130  | INTERRUPTED    | keyboard interrupt                                 |
+
+    What reaches a command wrapper is mapped by exit_codes.classify();
+    commands that catch a failure themselves exit FAILURE. So does any
+    command whose recorded results include a 'failed' outcome/action, even
+    where main() itself returns normally (results.any_failed(), checked by
+    both wrappers straight after a successful run).
+    """
+
+    SUCCESS = 0
+    FAILURE = 1
+    USAGE = 2
+    CONFIGURATION = 3
+    AUTHENTICATION = 4
+    PERMISSION = 5
+    NOT_FOUND = 6
+    PLATFORM = 7
+    CONNECTION = 8
+    INTERRUPTED = 130
+
 
 YD_KEY = "YD_KEY"
 YD_SECRET = "YD_SECRET"
@@ -21,10 +62,22 @@ YD_DATA_CLIENT = "YD_DATA_CLIENT"
 YD_DATA_CLIENT_BUCKET = "YD_DATA_CLIENT_BUCKET"
 YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
+
 YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
-YD_CONF = "YD_CONF"
 ENV_VAR_SUB_PREFIX = "env:"
+
+# The most rclone listings a data client command runs at once: a wildcard
+# download lists each matched directory's files to record them under '--json'
+# or to flatten them, and these run concurrently
+DATA_CLIENT_LISTING_WORKERS = 8
+
+# The MCP server (yellowdog_cli/mcp/): its name to clients, and the default
+# bound on a tool call, since a client gives up on one after a fixed time;
+# yd_follow's is shorter, its result being the events collected in that time
+MCP_SERVER_NAME = "yellowdog-cli"
+MCP_TOOL_TIMEOUT_SECONDS = 300
+MCP_FOLLOW_TIMEOUT_SECONDS = 60
 
 # Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
 RAND_VAR_DIGITS = 3
@@ -49,6 +102,15 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 # event stream forever; a timeout during a quiet period just reconnects
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+
+# yd-doctor
+PYTHON_MIN_VERSION = (
+    3,
+    10,
+)  # must match pyproject.toml's requires-python; a test holds them together
+PYTHON_MAX_TESTED_VERSION = (3, 14)
+DOCTOR_DEFAULT_TIMEOUT = 10  # seconds, per network call
+PYPI_PROJECT_URL = "https://pypi.org/pypi/yellowdog-cli/json"
 
 # Prepended by format_yd_name() to a name that doesn't start with a letter.
 # The underscore is what makes the prefix visible as a prefix: bare 'yd' merges
@@ -75,6 +137,19 @@ VARIABLE_NAME_RULE = (
     "a name must start with a letter, digit or '_', and contain only letters,"
     " digits, '_', '.' and '-'"
 )
+# Variables the CLI defines itself from its configuration ('[common]', the
+# YD_* environment variables, the options), mapped to where each is set. They
+# are not user variables: defined as one, only '{{name}}' would change, not the
+# namespace, tag or credentials the command acts on -- and one unset with
+# '{{::}}' would simply be defined again from the configuration -- so each is an
+# error wherever a user variable is defined
+RESERVED_VARIABLE_NAMES = {
+    "namespace": "'namespace' in '[common]', 'YD_NAMESPACE' or '--namespace'",
+    "tag": "'tag' in '[common]', 'YD_TAG' or '--tag'",
+    "key": "'key' in '[common]', 'YD_KEY' or '--key'",
+    "secret": "'secret' in '[common]', 'YD_SECRET' or '--secret'",
+    "url": "'url' in '[common]', 'YD_URL' or '--url'",
+}
 # An 'env:' name belongs to the operating system rather than to us (Windows has
 # 'ProgramFiles(x86)'), so it may hold anything but whitespace and the syntax
 ENV_VARIABLE_NAME_PATTERN = r"[^\s{}:=]+"
@@ -120,6 +195,9 @@ MAX_TABLE_DESCRIPTION = 50
 MAX_LINES_COLOURED_FORMATTING = 1024
 ERROR_STYLE = "bold red3"
 WARNING_STYLE = "red3"
+# Mark the messages printed by print_error() and print_warning()
+ERROR_MARKER = "ERROR : "
+WARNING_MARKER = "WARNING : "
 # Marks and colours the configuration/startup messages shown only under '--debug'
 DEBUG_MARKER = "DEBUG : "
 DEBUG_STYLE = "dark_orange"
@@ -127,6 +205,14 @@ DEBUG_STYLE = "dark_orange"
 DRY_RUN_MARKER = "DRY-RUN : "
 # Stands in for a credential that's being withheld ('--show-secrets' reveals it)
 REDACTED_VALUE = "<REDACTED>"
+# The names of user-defined variables that 'yd-variables' redacts in its full
+# report, as looking like credentials (searched for anywhere in the name). A
+# heuristic, and stated as one: the command prints this pattern whenever it
+# redacts by it. 'key' alone is deliberately absent: 'APP_KEY_DEMO' is an
+# identifier, not a secret
+SECRET_VARIABLE_NAME_PATTERN = re.compile(
+    r"secret|password|passwd|token|credential|private_key", re.IGNORECASE
+)
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [
     re.compile(r"(?P<active>ALLOCATED)"),
@@ -203,7 +289,9 @@ RN_CONFIGURED_POOL = "ConfiguredWorkerPool"
 RN_CREDENTIAL = "Credential"
 RN_EXTERNAL_USER = "ExternalUser"
 RN_GROUP = "Group"
+RN_IMAGE = "MachineImage"  # Not a specification resource; reported by yd-create
 RN_IMAGE_FAMILY = "MachineImageFamily"
+RN_IMAGE_GROUP = "MachineImageGroup"  # Likewise
 RN_INTERNAL_USER = "InternalUser"
 RN_KEYRING = "Keyring"
 RN_NAMESPACE = "Namespace"

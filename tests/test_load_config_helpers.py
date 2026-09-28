@@ -57,6 +57,7 @@ from yellowdog_cli.utils.settings import (
     YD_NAMESPACE,
     YD_SECRET,
     YD_TAG,
+    ExitCode,
 )
 
 # ---------------------------------------------------------------------------
@@ -585,7 +586,7 @@ class TestResolveSectionVariables:
             pytest.raises(SystemExit) as exc,
         ):
             lc_module._resolve_section_variables({"name": "{{env:YD_TEST_A}}"})
-        assert exc.value.code == 1
+        assert exc.value.code == ExitCode.CONFIGURATION
         message = str(print_error.call_args.args[0])
         assert "circular" in message
         assert "'name'" in message
@@ -672,5 +673,5 @@ class TestResolveValue:
             pytest.raises(SystemExit) as exc,
         ):
             lc_module._resolve_value("{{env:YD_TEST_A}}", "common.tag")
-        assert exc.value.code == 1
+        assert exc.value.code == ExitCode.CONFIGURATION
         assert "'common.tag'" in str(print_error.call_args.args[0])

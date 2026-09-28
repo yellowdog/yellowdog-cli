@@ -10,7 +10,6 @@ from typing import cast
 
 from requests import get
 from yellowdog_client.common import SearchClient
-from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
     Allowance,
     AllowanceSearch,
@@ -20,7 +19,7 @@ from yellowdog_client.model import (
     Group,
     Instance,
     InstanceSearch,
-    Keyring,
+    KeyringSearch,
     KeyringSummary,
     MachineImageFamilySearch,
     MachineImageFamilySummary,
@@ -913,7 +912,16 @@ def list_keyrings():
     """
     Print the list of Keyrings
     """
-    keyrings: list[KeyringSummary] = CLIENT.keyring_client.find_all_keyrings()
+    # The server search takes a partial name: the glob's literal prefix
+    # narrows it, and the glob itself is applied to what comes back
+    search_client: SearchClient = CLIENT.keyring_client.get_keyrings(
+        KeyringSearch(
+            name=(glob_search_prefix(ARGS_PARSER.name_glob) or None)
+            if ARGS_PARSER.name_glob
+            else None
+        )
+    )
+    keyrings: list[KeyringSummary] = search_client.list_all()
     if ARGS_PARSER.name_glob:
         keyrings = _filter_by_name_glob_with_warning(
             keyrings, ARGS_PARSER.name_glob, "Keyring"
@@ -939,20 +947,6 @@ def list_keyrings():
     print_yd_object_list(
         [(keyring, {PROP_RESOURCE: RN_KEYRING}) for keyring in select(CLIENT, keyrings)]
     )
-
-
-def get_keyring(name: str) -> Keyring:
-    """
-    Temporary function in place of a missing KeyringClient SDK call.
-    """
-    response = get(
-        url=f"{CONFIG_COMMON.url}/keyrings/{name}",
-        headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
-    )
-    if response.status_code == 200:
-        return Json.load(response.json(), Keyring)
-    else:
-        raise RuntimeError(f"Failed to get Keyring '{name}' ({response.text})")
 
 
 def list_image_families():

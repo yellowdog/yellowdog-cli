@@ -10,6 +10,12 @@ expression refers to: one whose name breaks it is text, never a variable, so
 the undefined-variable warning and the circular-reference check cover every
 reference there is. An 'env:' name belongs to the operating system, and may be
 anything but whitespace and the substitution syntax.
+
+The variables the CLI defines from its own configuration -- 'namespace', 'tag',
+'key', 'secret' and 'url' (RESERVED_VARIABLE_NAMES) -- are an error at those
+same user sources: defined as a variable, only '{{name}}' would change and not
+the value the command acts on, and one unset with '{{::}}' would be defined
+again from the configuration. The CLI's own registration of them is unaffected.
 """
 
 import os
@@ -19,6 +25,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.utils.variables as var_module
+from yellowdog_cli.utils.settings import RESERVED_VARIABLE_NAMES, ExitCode
 
 VALID = ["a", "A1", "_x", "9lives", "42", "my-var", "dataClient.1.remote", "a.b-c_d"]
 INVALID = ["", "my var", ".ID", "-x", "a:b", "num:x", "a}}b", "a=b", "a{b", "é"]
@@ -60,6 +67,38 @@ class TestDefinitionsAreChecked:
     def test_a_valid_name_starting_with_a_digit_is_defined(self, subs):
         var_module.add_or_update_substitution("9lives", "cat")
         assert var_module.process_variable_substitutions("{{9lives}}") == "cat"
+
+
+class TestReservedNames:
+    @pytest.mark.parametrize("name", sorted(RESERVED_VARIABLE_NAMES))
+    def test_a_reserved_name_is_refused(self, name):
+        with pytest.raises(ValueError, match="set by the configuration") as exc:
+            var_module.check_user_variable_name(name, "somewhere")
+        assert f"'{name}'" in str(exc.value)
+        assert "somewhere" in str(exc.value)
+
+    def test_the_rule_still_applies(self):
+        with pytest.raises(ValueError, match="Invalid variable name"):
+            var_module.check_user_variable_name("my var", "somewhere")
+
+    @pytest.mark.parametrize("name", ["TAG", "wr_tag", "tag2", "username"])
+    def test_other_names_are_accepted(self, name):
+        var_module.check_user_variable_name(name, "somewhere")
+
+    def test_the_cli_still_registers_its_own(self, subs):
+        var_module.add_substitutions_without_overwriting({"tag": "t"})
+        assert var_module.process_variable_substitutions("{{tag}}") == "t"
+
+    def test_config_file_variables(self, subs, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text('[common.variables]\ntag = "x"\n')
+        with pytest.raises(ValueError, match=r"'tag'.*config\.toml"):
+            var_module.load_toml_file_with_variable_substitutions(str(config))
+
+    def test_config_file_common_properties_are_unaffected(self, subs, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text('[common]\ntag = "x"\n[common.variables]\nother = "y"\n')
+        var_module.load_toml_file_with_variable_substitutions(str(config))
 
 
 class TestReferences:
@@ -121,29 +160,71 @@ def _yd_variables(*args: str, cwd, env: dict | None = None):
 class TestCommandSources:
     def test_command_line(self, tmp_path):
         result = _yd_variables("--nc", "-v", "my var=1", cwd=tmp_path)
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_environment(self, tmp_path):
         result = _yd_variables("--nc", cwd=tmp_path, env={"YD_VAR_my.var!": "1"})
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "YD_VAR_my.var!" in result.stdout + result.stderr
 
     def test_property_override(self, tmp_path):
         result = _yd_variables(
             "--nc", "--property", "common.variables.my var=1", cwd=tmp_path
         )
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_config_file(self, tmp_path):
         config = tmp_path / "config.toml"
         config.write_text('[common.variables]\n"my var" = "x"\n')
         result = _yd_variables("-c", str(config), cwd=tmp_path)
-        assert result.returncode == 1
+        assert result.returncode == ExitCode.CONFIGURATION
         assert "'my var'" in result.stdout + result.stderr
 
     def test_a_valid_name_starting_with_a_digit(self, tmp_path):
         result = _yd_variables("--nc", "-v", "9lives=cat", "9lives", cwd=tmp_path)
         assert result.returncode == 0, result.stderr
         assert '"9lives": "cat"' in result.stdout
+
+
+class TestReservedNamesAtTheCommandSources:
+    def _refused(self, result, name: str) -> None:
+        assert result.returncode == ExitCode.CONFIGURATION
+        # Rich wraps the message, so compare it with the whitespace collapsed
+        output = " ".join((result.stdout + result.stderr).split())
+        assert f"Variable '{name}'" in output
+        assert "set by the configuration" in output
+
+    def test_command_line(self, tmp_path):
+        # The case that prompted the rule: '{{::}}' used to be defined again
+        # from the configuration, silently
+        self._refused(_yd_variables("--nc", "-v", "tag={{::}}", cwd=tmp_path), "tag")
+
+    def test_command_line_value(self, tmp_path):
+        self._refused(
+            _yd_variables("--nc", "-v", "namespace=x", cwd=tmp_path), "namespace"
+        )
+
+    def test_environment(self, tmp_path):
+        self._refused(
+            _yd_variables("--nc", cwd=tmp_path, env={"YD_VAR_url": "x"}), "url"
+        )
+
+    def test_property_override(self, tmp_path):
+        self._refused(
+            _yd_variables(
+                "--nc", "--property", "common.variables.secret=1", cwd=tmp_path
+            ),
+            "secret",
+        )
+
+    def test_config_file(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text('[common.variables]\nkey = "x"\n')
+        self._refused(_yd_variables("-c", str(config), cwd=tmp_path), "key")
+
+    def test_the_options_still_set_them(self, tmp_path):
+        result = _yd_variables("--nc", "-t", "foo", "tag", cwd=tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert '"tag": "foo"' in result.stdout

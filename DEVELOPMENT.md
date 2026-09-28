@@ -33,7 +33,7 @@ source .venv/bin/activate      # macOS/Linux
 # .venv\Scripts\activate       # Windows
 
 # Install in editable mode with all dev dependencies
-uv pip install -e ".[dev,jsonnet,cloudwizard,commander]"
+uv pip install -e ".[dev,jsonnet,cloudwizard,commander,mcp]"
 ```
 
 This installs the package in editable mode, making all `yd-*` commands available in your environment and reflecting any local code changes immediately. You may need to re-source the venv to access the commands immediately.
@@ -165,11 +165,23 @@ PyQt6 is the optional `commander` extra, installed by the `uv pip install` line 
 The GUI holds no API client and imports neither the SDK nor `utils/wrapper.py`: every action runs a `yd-*` command as a child process. Two consequences worth keeping in mind when changing a command:
 
 - Its behaviour, output and configuration precedence are the CLI's, so a fix to a command reaches the GUI for free.
-- The selection dialogs are built by parsing `-D --json` output from `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-download` and `yd-delete` (`parse_entity_summaries` and `parse_object_summaries`). Changing the shape of that JSON will change what the GUI offers to act on, and the tests for those parsers are where that will show up.
+- The selection dialogs are built by parsing `-D --json` output from `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-download` and `yd-delete` (`parse_entity_summaries`, `parse_object_summaries`, and `parse_download_summaries` for `yd-download`'s per-file records). Changing the shape of that JSON will change what the GUI offers to act on, and the tests for those parsers are where that will show up.
 
 The window layout is `commander.ui`, Qt Designer XML. Edit it in Designer if you have Qt's tools installed, otherwise the XML directly; either way keep widget names in step with the code, since `loadUi()` binds them by name and `YellowDogApp.__init__` connects signals to them — a renamed widget fails at construction, which `tests/test_commander_ui_loads.py` exists to catch.
 
 Assets ship through `[tool.setuptools.package-data]` in `pyproject.toml`, which lists `*.ui` and `images/*`; `include-package-data` is `false`, so anything new has to be added there or it will be missing from the wheel while still working from a checkout. `screenshots/` is for the README and is deliberately not shipped.
+
+## MCP Server
+
+`yd-mcp` is an MCP server over the CLI, in `yellowdog_cli/mcp/`. [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together.
+
+```shell
+yd-mcp config.toml                  # or: python -m yellowdog_cli.mcp config.toml
+```
+
+The `mcp` extra (`mcp>=2.2`) is installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd-mcp` exits with an instruction to install it rather than a traceback, and `tests/test_mcp_server.py`, the one test module that needs the extra, skips (`tests/mcp_guard.py`'s `require_mcp()`); the other three MCP test modules need neither the extra nor the SDK.
+
+Like Commander, the server holds no API client and runs every tool call as a `yd-*` command in a child process, under its own interpreter (`python -m yellowdog_cli.<command>`) rather than the console scripts, so a fix to a command reaches it for free.
 
 ## Project Structure
 
@@ -177,6 +189,7 @@ Assets ship through `[tool.setuptools.package-data]` in `pyproject.toml`, which 
 yellowdog_cli/            # One module per yd-* command
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
+yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 uv.lock                   # Locked dependency versions for reproducible installs

@@ -31,6 +31,7 @@ from yellowdog_cli.utils.printing import (
     print_table_core,
     print_warning,
 )
+from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -62,6 +63,15 @@ class PropertyMatch:
     match: MatchType
     match_count: int | None = None
     total_nodes: int | None = None
+
+
+# The detailed report table's headings
+DETAIL_HEADINGS = [
+    "Property",
+    "Task Group Run Specification",
+    "Worker Pool",
+    "Match Status",
+]
 
 
 class MatchReport:
@@ -127,6 +137,27 @@ class MatchReport:
         print_warning("Unable to calculate YES/MAYBE/NO summary")
         return MatchType.NO
 
+    def detail_rows(self) -> list[list[str]]:
+        """
+        The rows of the detailed report's table, one per property compared.
+        """
+        return [
+            [
+                p.property_name,
+                p.task_group_values,
+                p.worker_pool_values,
+                (
+                    f"{p.match.value}"
+                    + (
+                        f" ({p.match_count}/{p.total_nodes})"
+                        if p.match_count is not None
+                        else ""
+                    )
+                ),
+            ]
+            for p in self._property_match_list
+        ]
+
     def print_detailed_report(self):
         """
         Print a detailed matching report for the worker pool.
@@ -144,33 +175,13 @@ class MatchReport:
         )
 
         # Print table
-        header_row = [
-            "Property",
-            "Task Group Run Specification",
-            "Worker Pool",
-            "Match Status",
-        ]
-        table_rows = []
-        for p in self._property_match_list:
-            table_rows.append(
-                [
-                    p.property_name,
-                    p.task_group_values,
-                    p.worker_pool_values,
-                    (
-                        f"{p.match.value}"
-                        + (
-                            f" ({p.match_count}/{p.total_nodes})"
-                            if p.match_count is not None
-                            else ""
-                        )
-                    ),
-                ]
-            )
-
         print_table_core(
             indent(
-                tabulate(table_rows, headers=header_row, tablefmt="simple_outline"),
+                tabulate(
+                    self.detail_rows(),
+                    headers=DETAIL_HEADINGS,
+                    tablefmt="simple_outline",
+                ),
                 indent_width=4,
             )
         )
@@ -645,43 +656,81 @@ def _get_provisioned_worker_pool_by_id(worker_pool_id: str) -> ProvisionedWorker
         )
 
 
+# The summary table's headings; the first, unheaded, column numbers the rows
+SUMMARY_HEADINGS = [
+    "",
+    "Worker Pool Name",
+    "Status",
+    "Worker Pool ID",
+    "Worker Pool Match?",
+]
+
+
+def _summary_row(index: int, match_report: MatchReport) -> list:
+    return [
+        index + 1,
+        match_report.worker_pool_name,
+        match_report.worker_pool_status,
+        match_report.worker_pool_id,
+        match_report.summary().value,
+    ]
+
+
+def _record_comparison(task_group: TaskGroup, match_reports: list[MatchReport]):
+    """
+    Record, for '--json', one object per Worker Pool compared with the Task
+    Group: the Task Group, the summary table's row for the Worker Pool, and
+    its detailed report's rows under "properties", each keyed by its table's
+    headings in lowerCamelCase.
+    """
+    for index, match_report in enumerate(match_reports):
+        (summary,) = rows_as_objects(
+            SUMMARY_HEADINGS, [_summary_row(index, match_report)]
+        )
+        record(
+            {
+                "taskGroupName": task_group.name,
+                "taskGroupId": task_group.id,
+                **summary,
+                "properties": rows_as_objects(
+                    DETAIL_HEADINGS, match_report.detail_rows()
+                ),
+            }
+        )
+
+
 def _compare_task_group(task_group: TaskGroup, worker_pools: WorkerPools):
     """
     Compare a Task Group.
     """
     print_info(
         f"Comparing Task Group '{task_group.name}' ({task_group.id})",
-        override_quiet=True,
+        # Printed despite '--quiet', but not into '--json' output
+        override_quiet=not json_requested(),
     )
 
     match_reports: list[MatchReport] = (
         worker_pools.check_task_group_for_matching_worker_pools(task_group=task_group)
     )
 
+    if json_requested():
+        # The tables, and the messages printed alongside them despite
+        # '--quiet', are the result, which '--json' prints instead
+        _record_comparison(task_group, match_reports)
+        return
+
     if len(match_reports) > 1:
         # Summary report
         print_info("Summary of Worker Pool matches:", override_quiet=True)
-        header_row = [
-            "",
-            "Worker Pool Name",
-            "Status",
-            "Worker Pool ID",
-            "Worker Pool Match?",
+        table_rows = [
+            _summary_row(index, match_report)
+            for index, match_report in enumerate(match_reports)
         ]
-        table_rows = []
-        for index, match_report in enumerate(match_reports):
-            table_rows.append(
-                [
-                    index + 1,
-                    match_report.worker_pool_name,
-                    match_report.worker_pool_status,
-                    match_report.worker_pool_id,
-                    match_report.summary().value,
-                ]
-            )
         print_table_core(
             indent(
-                tabulate(table_rows, headers=header_row, tablefmt="simple_outline"),
+                tabulate(
+                    table_rows, headers=SUMMARY_HEADINGS, tablefmt="simple_outline"
+                ),
                 indent_width=4,
             ),
         )
@@ -716,7 +765,8 @@ def main():
         print_info(
             f"Comparing all Task Groups in Work Requirement '{work_requirement.name}' "
             f"({work_requirement.id})",
-            override_quiet=True,
+            # Printed despite '--quiet', but not into '--json' output
+            override_quiet=not json_requested(),
         )
         for task_group in work_requirement.taskGroups or []:
             _compare_task_group(task_group, worker_pools)

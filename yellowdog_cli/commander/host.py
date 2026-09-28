@@ -7,11 +7,13 @@ rather than guessing. Qt-free.
 import sys
 from platform import system as _platform_system
 
+from yellowdog_cli.utils.settings import ERROR_MARKER
+
 _system = _platform_system()
 MACOS = _system == "Darwin"
 LINUX = _system == "Linux"
 WINDOWS = _system == "Windows"
 
 if not (MACOS or LINUX or WINDOWS):
-    print(f"Error: unrecognised platform: {_system}", file=sys.stderr)
+    print(f"{ERROR_MARKER}unrecognised platform: {_system}", file=sys.stderr)
     sys.exit(1)

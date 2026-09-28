@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import QApplication
 from yellowdog_cli.commander import config_discovery
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
-from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
+from yellowdog_cli.utils.settings import ERROR_MARKER, MISSING_CONFIG_DATA, ExitCode
 
 # These are the tests discovery itself is the subject of, so they opt out of
 # conftest's stub of _parse_yd_config. No 'yd-variables' is spawned all the same:
@@ -104,12 +104,16 @@ NEVER_FINISHES = "import time; time.sleep(60)"
 EXITS_NON_ZERO = "import sys; sys.stderr.write('bad config\\n'); sys.exit(3)"
 PRINTS_RUBBISH = "print('not json at all')"
 # What 'yd-variables --nc' says when the environment holds no YellowDog credentials:
-# load_common_config() raises KeyError('key') and the CLI exits 1. Built from the
-# CLI's own constant, so renaming the message cannot leave this passing against
-# wording Commander no longer recognises.
-NO_CREDENTIALS_STDERR = f"2026-01-01 00:00:00 : Error: {MISSING_CONFIG_DATA}: 'key'"
+# load_common_config() raises KeyError('key') and the CLI exits 3
+# (ExitCode.CONFIGURATION). Built from the CLI's own constant, so renaming the
+# message cannot leave this passing against wording Commander no longer
+# recognises.
+NO_CREDENTIALS_STDERR = (
+    f"2026-01-01 00:00:00 : {ERROR_MARKER}{MISSING_CONFIG_DATA}: 'key'"
+)
 NO_CREDENTIALS = (
-    f"import sys; sys.stderr.write({NO_CREDENTIALS_STDERR!r} + chr(10)); sys.exit(1)"
+    f"import sys; sys.stderr.write({NO_CREDENTIALS_STDERR!r} + chr(10));"
+    f" sys.exit({int(ExitCode.CONFIGURATION)})"
 )
 
 
@@ -328,7 +332,7 @@ def test_a_configuration_file_changing_on_disk_retries_a_timed_out_discovery(
 # --- Discovery while a user-defined variable is being typed -------------------
 # The user-variables box reparses 600ms after every keystroke, and every
 # variable is typed through states that are not yet 'name=value' — 'instances'
-# on the way to 'instances=3'. Handed one of those, 'yd-variables' exits 1 with
+# on the way to 'instances=3'. Handed one of those, 'yd-variables' exits 3 with
 # "Error in variable substitution 'instances'", so simply adding a variable
 # reported an error the user had not made.
 
@@ -405,7 +409,7 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
 # --- 'Nothing is configured' is not a failure ---------------------------------
 # With no configuration file selected, 'yd-variables' is run with '--nc' and has only
 # the environment to work from. An environment with no YellowDog credentials
-# makes it exit 1 before it can resolve anything, and that was reported as an
+# makes it exit 3 before it can resolve anything, and that was reported as an
 # error — at startup, and again on every Deselect, to a user who had done
 # nothing. It alone is suppressed. Discovery still runs, because credentials and
 # namespace/tag in YD_* variables with no configuration file at all is a

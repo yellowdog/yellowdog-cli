@@ -213,7 +213,7 @@ The dry run overlaps with those selection dialogs, deliberately: both show you w
 - The dry run reports what the *pattern* matched, so it also lists objects whose names contain a wildcard character or a `{{` placeholder — which the selection dialogs refuse to act on, and so cannot show you acting on.
 - Because `-y`/`--yes` suppresses both dialogs, a dry run is the only preview left in a session launched that way.
 
-What neither reports is how much sits inside a matched directory: counting that means walking every subtree, one recursive listing per matched item, which is why it is left out of both.
+What neither reports is how much sits inside a matched directory. The download's listing does walk each matched directory, since it works from the files a download would fetch, but it gathers them back into the top-level items for the chooser; the deletion's listing reads only the directory the path points into. Because the download chooser is built from files, a matched directory with nothing in it is left out, and a path that matches only empty directories reports that no objects match rather than offering them.
 
 ## Namespace, Tag, and Name Overrides
 

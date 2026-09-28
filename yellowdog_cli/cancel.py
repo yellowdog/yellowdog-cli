@@ -24,8 +24,23 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import link_entity
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.settings import ET_TASKS, ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+# The '--json' record's action and outcome
+_CANCEL = "cancel"
+_CANCELLED = "cancelled"
+
+
+def _record(
+    entity: object,
+    outcome: str,
+    error: str | None = None,
+    entity_type: str = ET_WORK_REQUIREMENTS,
+) -> None:
+    record_action(entity, entity_type, _CANCEL, outcome, error)
 
 
 @main_wrapper
@@ -80,6 +95,8 @@ def main():
             selected_work_requirement_summaries,
             "Work Requirement",
             "cancelled",
+            ET_WORK_REQUIREMENTS,
+            _CANCEL,
             bool(ARGS_PARSER.json_output),
         )
         return
@@ -93,11 +110,16 @@ def main():
             CLIENT, selected_work_requirement_summaries
         )
 
-    if selected_work_requirement_summaries and confirmed(
+    if selected_work_requirement_summaries and not confirmed(
         f"Cancel {len(selected_work_requirement_summaries)} "
         f"Work Requirement(s)"
         f"{'' if not ARGS_PARSER.abort else ' and abort all executing tasks'}?"
     ):
+        for work_summary in selected_work_requirement_summaries:
+            _record(work_summary, "skipped")
+        selected_work_requirement_summaries = []
+
+    if selected_work_requirement_summaries:
         for work_summary in selected_work_requirement_summaries:
             if work_summary.status != WorkRequirementStatus.CANCELLING:
                 try:
@@ -109,8 +131,10 @@ def main():
                     print_error(
                         f"Failed to cancel Work Requirement '{work_summary.name}': {e}"
                     )
+                    _record(work_summary, "failed", str(e))
                     continue  # Don't follow Work Requirements that failed to cancel
                 cancelled_count += 1
+                _record(work_summary, _CANCELLED)
                 cancel_msg_postfix = (
                     "" if not ARGS_PARSER.abort else " and aborted all executing tasks"
                 )
@@ -145,15 +169,18 @@ def main():
                             f"Aborted executing Tasks in already-cancelling"
                             f" Work Requirement '{work_summary.name}'"
                         )
+                        _record(work_summary, _CANCELLED)
                     except Exception as e:
                         print_error(
                             f"Failed to abort Tasks in '{work_summary.name}': {e}"
                         )
+                        _record(work_summary, "failed", str(e))
                         continue
                 else:
                     print_info(
                         f"Work Requirement '{work_summary.name}' is already cancelling"
                     )
+                    _record(work_summary, "skipped")
                 cancelling_count += 1
             work_requirement_ids.append(work_summary.id)  # type: ignore[arg-type]
 
@@ -182,6 +209,7 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 f"Cancel {'' if not ARGS_PARSER.abort else 'and abort '}"
                 f"Task '{name_or_id}'?"
             ):
+                _record(name_or_id, "skipped", entity_type=ET_TASKS)
                 continue
             try:
                 CLIENT.work_client.cancel_task_by_id(name_or_id, ARGS_PARSER.abort)
@@ -189,8 +217,10 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                     f"Cancelled{'' if not ARGS_PARSER.abort else ' and aborted'}"
                     f" Task '{name_or_id}'"
                 )
+                _record(name_or_id, _CANCELLED, entity_type=ET_TASKS)
             except Exception as e:
                 print_error(f"Failed to cancel Task '{name_or_id}': {e}")
+                _record(name_or_id, "failed", str(e), entity_type=ET_TASKS)
             continue
 
         work_requirement_summary = get_work_requirement_summary_by_name_or_id(
@@ -200,6 +230,7 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
         )
         if work_requirement_summary is None:
             print_error(f"Work Requirement '{name_or_id}' not found")
+            _record(name_or_id, "failed", "not found")
             continue
 
         if work_requirement_summary.status not in [
@@ -212,6 +243,7 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                 f"Work Requirement '{name_or_id}' is not in a valid state"
                 f" ('{work_requirement_summary.status}') for cancellation"
             )
+            _record(work_requirement_summary, "skipped")
             continue
 
         fq_name = (
@@ -226,6 +258,7 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                     f"Abort executing Tasks in already-cancelling Work"
                     f" Requirement '{fq_name}' ({work_requirement_summary.id})?"
                 ):
+                    _record(work_requirement_summary, "skipped")
                     continue
                 try:
                     CLIENT.work_client.cancel_work_requirement_by_id(
@@ -236,22 +269,26 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                         f"Aborted executing Tasks in already-cancelling Work"
                         f" Requirement '{fq_name}' ({work_requirement_summary.id})"
                     )
+                    _record(work_requirement_summary, _CANCELLED)
                 except Exception as e:
                     print_error(
                         f"Failed to abort Tasks in '{fq_name}'"
                         f" ({work_requirement_summary.id}): {e}"
                     )
+                    _record(work_requirement_summary, "failed", str(e))
                     continue
             else:
                 print_info(
                     f"Work Requirement '{fq_name}' ({work_requirement_summary.id}) "
                     "is already cancelling"
                 )
+                _record(work_requirement_summary, "skipped")
         else:
             if not confirmed(
                 f"Cancel Work Requirement '{fq_name}' ({work_requirement_summary.id})"
                 f"{'' if not ARGS_PARSER.abort else ' and abort all executing tasks'}?"
             ):
+                _record(work_requirement_summary, "skipped")
                 continue
             try:
                 CLIENT.work_client.cancel_work_requirement_by_id(
@@ -262,11 +299,13 @@ def _cancel_work_requirements_by_name_or_id(names_or_ids: list[str]):
                     f"Cancelled Work Requirement '{fq_name}' ({work_requirement_summary.id})"
                     f"{'' if not ARGS_PARSER.abort else ' and aborted all executing tasks'}"
                 )
+                _record(work_requirement_summary, _CANCELLED)
             except Exception as e:
                 print_error(
                     f"Failed to cancel Work Requirement '{fq_name}' "
                     f"({work_requirement_summary.id}): {e}"
                 )
+                _record(work_requirement_summary, "failed", str(e))
                 continue  # Don't follow Work Requirements that failed to cancel
 
         # Only follow Work Requirements that are actually cancelling

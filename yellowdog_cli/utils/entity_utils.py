@@ -32,6 +32,8 @@ from yellowdog_client.model import (
     Instance,
     InstanceSearch,
     InternalUser,
+    KeyringSearch,
+    KeyringSummary,
     MachineImageFamily,
     MachineImageFamilySearch,
     MachineImageFamilySummary,
@@ -60,7 +62,7 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
@@ -149,7 +151,9 @@ def get_worker_pool_id_by_name(
 ) -> str | None:
     """
     Find a Worker Pool ID by its name. A 'namespace' in the worker pool name
-    overrides the 'namespace' argument.
+    overrides the 'namespace' argument. None means not found (an HTTP 404);
+    any other failure, such as a 401, is raised for the wrapper to report and
+    classify, rather than being mistaken for not found.
     """
     namespace_, name = split_namespace_and_name(worker_pool_name)
     namespace_ = namespace if namespace_ is None else namespace_
@@ -166,9 +170,9 @@ def get_worker_pool_id_by_name(
         )
         return worker_pool.id
     except Exception as e:
-        if not is_http_not_found(e):
-            print_error(f"Unable to look up Worker Pool '{worker_pool_name}': {e}")
-        return None
+        if is_http_not_found(e):
+            return None
+        raise
 
 
 def get_compute_requirement_id_by_name(
@@ -228,6 +232,27 @@ def get_work_requirement_summary_by_name_or_id(
             return work_requirement_summary
 
     return None
+
+
+@lru_cache
+def get_keyring_summary_by_name(
+    client: PlatformClient, name: str
+) -> KeyringSummary | None:
+    """
+    Find a Keyring's summary by its exact name, or None. The search's 'name'
+    is a partial match, so the results are filtered for equality here.
+    Keyring names are unique within an account. Cached.
+    """
+    summaries = client.keyring_client.get_keyrings(KeyringSearch(name=name)).list_all()
+    return next((s for s in summaries if s.name == name), None)
+
+
+def clear_keyring_cache():
+    """
+    Forget the Keyring name lookups: a Keyring created or removed in this run
+    must be found, or not, by the specifications that follow it.
+    """
+    get_keyring_summary_by_name.cache_clear()
 
 
 @lru_cache
@@ -1185,8 +1210,8 @@ def get_image_family_summaries(
     except Exception as e:
         if namespace is not None and "MissingPermissionException" in str(e):
             # Caching will prevent this warning appearing multiple times
-            print_info(
-                "Warning: Possible 'IMAGE_READ' permission missing if "
+            print_warning(
+                "Possible 'IMAGE_READ' permission missing if "
                 f"'{namespace}' is meant as an Image namespace?"
             )
         else:
