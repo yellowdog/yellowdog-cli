@@ -12,7 +12,7 @@ from datetime import datetime
 from functools import partial as functools_partial
 from typing import cast
 
-from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS
+from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS, shell_command
 
 if WINDOWS:
     import ctypes
@@ -105,7 +105,15 @@ from yellowdog_cli.commander.selection import (
     update_selection_state,
 )
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
 from yellowdog_cli.utils.settings import ERROR_MARKER
+
+# The 'yd-' commands that take none of the options Commander adds to the others
+# (the config source, namespace, tag, variables, properties, '--nf', '--pp'),
+# so a typed one is run as it was typed
+UNDECORATED_YD_COMMANDS = frozenset(
+    name for name, command in COMMANDS.items() if command.kind is CommandKind.STANDALONE
+)
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 NO_SELECTED_CONFIG = "No configuration selected"
@@ -2329,8 +2337,8 @@ class YellowDogApp(QMainWindow):
         """
         Decorate a command's arguments for execution. For 'yd-' commands this
         injects the config source ('-c <file>' or '--nc'), the namespace / tag /
-        user variables, and the '--nf'/'--pp' flags. Non-yd commands are
-        returned unchanged.
+        user variables, and the '--nf'/'--pp' flags. Non-yd commands, and the
+        standalone ones in UNDECORATED_YD_COMMANDS, are returned unchanged.
         """
         if yd_command:
             return (
@@ -2340,7 +2348,7 @@ class YellowDogApp(QMainWindow):
                 + args
             )
 
-        if command.startswith("yd-"):
+        if command.startswith("yd-") and command not in UNDECORATED_YD_COMMANDS:
             args = list(args)
             # Use the selected config source unless one is set explicitly
             # (or config use is explicitly disabled) on the command line.
@@ -3018,11 +3026,18 @@ class YellowDogApp(QMainWindow):
             self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
-        if words[0].startswith("yd-") and words[0] != "yd-version":
+        if words[0].startswith("yd-"):
             # Split with quoting, as a shell would: the non-yd branch below
             # hands the text to one, so the two agree about what a quote means
             command_and_args = self._split_text(command_text, "command")
-            if command_and_args is None or not self._properties_are_usable():
+            if command_and_args is None:
+                return
+            # The standalone ones are given nothing (UNDECORATED_YD_COMMANDS),
+            # so the Properties field has nothing to do with them
+            if (
+                command_and_args[0] not in UNDECORATED_YD_COMMANDS
+                and not self._properties_are_usable()
+            ):
                 return
             # yd- commands: inject UI namespace/tag/user vars as normal
             self._run_command_in_subprocess(
@@ -3034,7 +3049,7 @@ class YellowDogApp(QMainWindow):
         else:
             # Non-yd commands: run via shell to support wildcard expansion,
             # pipes, and other shell features
-            shell, flag = ("cmd", "/c") if WINDOWS else ("sh", "-c")
+            shell, flag = shell_command()
             self._run_command_in_subprocess(
                 command=shell,
                 args=[flag, command_text],

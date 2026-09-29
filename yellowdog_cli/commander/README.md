@@ -283,7 +283,7 @@ To choose one or more processes from the whole list, right-click anywhere in the
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The exceptions are `yd-version`, `yd-help`, `yd-schema`, `yd-format-json` and `yd-jsonnet2json`, which need no configuration and take none of those options, so they are run exactly as typed. Any other command is run through the system shell (`%ComSpec%`, normally `cmd.exe`, on Windows; `/bin/sh` elsewhere), so wildcards, pipes and redirection work as they would in a terminal. The `<` and `>` buttons step back and forth through your command history.
 
 ## Sending Input to a Running Command
 

@@ -872,6 +872,31 @@ def test_build_args_any_yd_command_respects_user_config_flag(window):
     assert args == ["--nc", "-w", "--nf", "--pp"]
 
 
+def test_a_typed_standalone_yd_command_runs_as_typed(window, captured):
+    # yd-version takes none of the options added to the others, and used to be
+    # handed to the shell for that reason, which failed where the shell did
+    window._config_file = "d/config.toml"
+    window.namespace_override.setPlainText("ns")
+    window.properties.setPlainText("common.tag='unclosed")  # not its concern
+    window._run_any_command_core("yd-version --json")
+    assert captured == [("yd-version", ["--json"])]
+    assert window._build_command_args("yd-version", ["--json"], yd_command=False) == [
+        "--json"
+    ]
+
+
+def test_a_typed_non_yd_command_goes_to_the_shell_by_its_full_path(
+    window, captured, monkeypatch
+):
+    from yellowdog_cli.commander import commander
+
+    monkeypatch.setattr(
+        commander, "shell_command", lambda: (r"C:\Windows\System32\cmd.exe", "/c")
+    )
+    window._run_any_command_core("dir *.toml")
+    assert captured == [(r"C:\Windows\System32\cmd.exe", ["/c", "dir *.toml"])]
+
+
 def test_build_args_shell_command_unchanged(window):
     window._config_file = None
     args = window._build_command_args("sh", ["-c", "ls"], yd_command=False)
