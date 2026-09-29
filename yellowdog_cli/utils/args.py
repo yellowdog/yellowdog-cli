@@ -418,6 +418,12 @@ class CLIParser:
     def jsonnet_dry_run(self) -> bool | None:
         return self.args.jsonnet_dry_run
 
+    @property
+    @allow_missing_attribute
+    def validate(self) -> bool | None:
+        # yd-submit, yd-provision, yd-instantiate, yd-create, yd-nodeaction
+        return self.args.validate
+
     # -----------------------------------------------------------------------
     # yd-resize
     # -----------------------------------------------------------------------
@@ -831,6 +837,30 @@ class CLIParser:
     @allow_missing_attribute
     def dst_prefix(self) -> str | None:
         return self.args.dst_prefix
+
+    # -----------------------------------------------------------------------
+    # yd-schema
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def schema_family(self) -> str | None:
+        return self.args.family
+
+    @property
+    @allow_missing_attribute
+    def schema_write_dir(self) -> str | None:
+        return self.args.write
+
+    @property
+    @allow_missing_attribute
+    def schema_check_dir(self) -> str | None:
+        return self.args.check
+
+    @property
+    @allow_missing_attribute
+    def schema_list(self) -> bool | None:
+        return self.args.list
 
 
 ARGS_PARSER = CLIParser()

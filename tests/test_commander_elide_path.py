@@ -13,6 +13,7 @@ from yellowdog_cli.commander.elision import (
     PATH_ELLIPSIS,
     elide_middle,
     elide_path,
+    elide_path_to_fit,
 )
 
 SEP = os.sep
@@ -77,3 +78,28 @@ def test_long_name_is_elided_in_the_middle():
 def test_elide_middle_max_length_can_be_overridden():
     assert len(elide_middle("x" * 100, max_length=11)) == 11
     assert elide_middle("x" * 100, max_length=11) == f"xxxxx{PATH_ELLIPSIS}xxxxx"
+
+
+def fits_within(length: int):
+    return lambda text: len(text) <= length
+
+
+def test_a_path_that_fits_is_unchanged():
+    path = SEP.join(["a", "b", "config.toml"])
+    assert elide_path_to_fit(path, fits_within(len(path))) == path
+
+
+def test_the_longest_tail_that_fits_is_kept():
+    path = SEP.join(["", "one", "two", "three", "config.toml"])
+    tail = SEP.join(["", "three", "config.toml"])
+    elided = elide_path_to_fit(path, fits_within(len(PATH_ELLIPSIS + tail)))
+    assert elided == f"{PATH_ELLIPSIS}{tail}"
+
+
+def test_the_filename_is_kept_when_nothing_else_fits():
+    path = SEP.join(["", "one", "two", "config.toml"])
+    assert elide_path_to_fit(path, fits_within(3)) == f"{PATH_ELLIPSIS}{SEP}config.toml"
+
+
+def test_a_path_with_no_separator_is_left_for_the_caller_to_clip():
+    assert elide_path_to_fit("config.toml", fits_within(3)) == "config.toml"

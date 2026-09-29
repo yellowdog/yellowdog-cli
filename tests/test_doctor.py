@@ -787,6 +787,7 @@ class TestConfiguration:
         names = [name for name, row in rows.items() if row["group"] == "Configuration"]
         assert names == [
             "Configuration loads",
+            "Config schema",
             "Key",
             "Secret",
             "Namespace",
@@ -796,6 +797,49 @@ class TestConfiguration:
             ".env file",
             "Tag is a legal name",
         ]
+
+    def test_config_schema_ok(self, tmp_path):
+        _, rows = _run_doctor(tmp_path, config='[common]\nkey = "k"\nsecret = "s"\n')
+        assert rows["Config schema"]["status"] == "OK"
+        assert rows["Config schema"]["detail"] == "no violations"
+
+    def test_config_schema_no_file(self, tmp_path):
+        _, rows = _run_doctor(tmp_path)
+        assert rows["Config schema"]["status"] == "OK"
+        assert rows["Config schema"]["detail"] == "no configuration file"
+
+    def test_config_schema_warns_of_violations(self, tmp_path):
+        _, rows = _run_doctor(
+            tmp_path,
+            config=(
+                '[common]\nkey = "k"\nsecret = "s"\nusePAC = "yes"\n'
+                "[workRequirement]\nminNodes = 1\n"
+                '[workerPool]\nmaxNodes = "a"\nminNodes = "b"\n'
+            ),
+        )
+        row = rows["Config schema"]
+        assert row["status"] == "WARN"
+        assert row["detail"].startswith("4 violations: ")
+        assert "common.usePAC: must be boolean" in row["detail"]
+        assert row["detail"].endswith("; and 1 more")
+        assert "warning" in row["remedy"]
+
+    def test_config_schema_skipped_when_the_file_does_not_load(self, tmp_path):
+        _, rows = _run_doctor(tmp_path, config="[common\nkey = ")
+        assert rows["Config schema"]["status"] == "SKIP"
+
+    def test_config_schema_unbuildable_warns(self, monkeypatch):
+        from yellowdog_cli.utils import load_config, spec_validation
+        from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+
+        def fail(document, sections):
+            raise SchemaGenerationError("Thing.field: unknown annotation")
+
+        monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
+        monkeypatch.setattr(spec_validation, "validate_config", fail)
+        result = dc.check_config_schema(_ctx(config_loaded=True))
+        assert result.status is dc.Status.WARN
+        assert "Thing.field" in result.detail
 
     def test_data_client_profiles_listed(self, tmp_path):
         config = (

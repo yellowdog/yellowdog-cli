@@ -9,6 +9,11 @@ import argparse
 import sys
 from os.path import abspath, isfile
 
+from yellowdog_cli.commander.arguments import (
+    QuotingError,
+    property_is_complete,
+    quote_argument,
+)
 from yellowdog_cli.commander.startup import StartupSettings, variable_is_complete
 from yellowdog_cli.utils.check_imports import check_commander_imports
 
@@ -46,6 +51,26 @@ def _variable(value: str) -> str:
     return value
 
 
+def _property(value: str) -> str:
+    """
+    A 'section.key=value' for the Properties box, returned quoted as the box
+    needs it (see arguments.py), so that a value containing spaces, such as a
+    JSON list, reaches the CLI as the one argument it was given as.
+    """
+    if any(char in value for char in FIELD_STRIPPED_CHARS):
+        raise argparse.ArgumentTypeError(
+            f"'{value}' must be a single line with no tabs"
+        )
+    if not property_is_complete(value):
+        raise argparse.ArgumentTypeError(
+            f"'{value}' is not of the form section.key=value"
+        )
+    try:
+        return quote_argument(value)
+    except QuotingError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+
+
 def _existing_file(value: str) -> str:
     """
     A file that must exist now: one named on the command line is a file the
@@ -63,7 +88,7 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         prog="yd-commander",
         description="Launch the YellowDog Commander desktop GUI.",
         epilog=(
-            "The namespace, tag, name, path and variable options only fill in"
+            "The namespace, tag, name, path, variable and property options only fill in"
             " Commander's fields at startup; they can be edited or cleared in"
             " the window afterwards."
         ),
@@ -126,6 +151,14 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         help="add a variable to the User Variables field; can be repeated",
     )
     parser.add_argument(
+        "--property",
+        action="append",
+        default=[],
+        metavar="<section.key=value>",
+        type=_property,
+        help="add a property override to the Properties field; can be repeated",
+    )
+    parser.add_argument(
         "--work-requirement",
         "-r",
         metavar="<file.json|file.jsonnet>",
@@ -154,6 +187,7 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         name_glob=args.name,
         object_path=args.path,
         variables=tuple(args.variable),
+        properties=tuple(args.property),
         wr_file=args.work_requirement,
         wp_file=args.worker_pool,
     )

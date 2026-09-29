@@ -3198,6 +3198,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "validate",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--validate"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "json",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -5402,6 +5415,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "validate",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--validate"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "json",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -6541,6 +6567,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "validate",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--validate"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": null,
       "dest": "worker_pool",
@@ -6879,6 +6918,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "validate",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--validate"
       ],
       "required": false,
       "type": null
@@ -7912,6 +7964,65 @@
       "nargs": 0,
       "option_strings": [
         "--json"
+      ],
+      "required": false,
+      "type": null
+    }
+  ],
+  "yd-schema": [
+    {
+      "choices": [
+        "work-requirement",
+        "worker-pool",
+        "compute-requirement",
+        "resources",
+        "node-actions",
+        "config"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "family",
+      "kind": "_StoreAction",
+      "nargs": "?",
+      "option_strings": [],
+      "required": null,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "write",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--write"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "check",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--check"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "list",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--list"
       ],
       "required": false,
       "type": null
@@ -9348,6 +9459,19 @@
       "option_strings": [
         "--jsonnet-dry-run",
         "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "validate",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--validate"
       ],
       "required": false,
       "type": null

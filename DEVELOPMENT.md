@@ -150,6 +150,12 @@ make build        # builds the distribution into dist/
 make pypi_check   # checks the distribution with twine
 ```
 
+The specification schemas' property descriptions are extracted from `README.md`'s Work Requirement Property Dictionary into `yellowdog_cli/spec_data/descriptions.json`, which ships with the package. Regenerate it after editing the dictionary, as the `toc` targets regenerate the tables of contents; `tests/test_spec_properties.py` fails while the shipped file is stale:
+
+```shell
+make schema_descriptions
+```
+
 ## Commander
 
 `yd-commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together; what follows is what you need in order to work on it.
@@ -190,10 +196,12 @@ yellowdog_cli/            # One module per yd-* command
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
 yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
+yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
+scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 uv.lock                   # Locked dependency versions for reproducible installs
-Makefile                  # format, build, install, update, toc, pypi, pyright targets
+Makefile                  # format, build, install, update, toc, schema_descriptions, pypi, pyright targets
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials

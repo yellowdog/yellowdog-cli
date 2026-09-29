@@ -119,6 +119,8 @@ from yellowdog_cli.utils.settings import (
     MAX_BATCH_SUBMIT_ATTEMPTS,
     VAR_NAME_OF_UNNAMED_TASK,
 )
+from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
     assemble_arguments,
@@ -191,6 +193,9 @@ def main():
         raise ValueError("Task batch size must be between 1 and 10,000")
 
     if ARGS_PARSER.json_raw:
+        # Raw Platform JSON, not a CLI specification: there is no schema for it
+        if ARGS_PARSER.validate:
+            raise ValueError("Option '--validate' cannot be used with '--json-raw'")
         submit_json_raw(ARGS_PARSER.json_raw)
         return
 
@@ -223,6 +228,14 @@ def main():
     )
 
     if wr_data_file is None and csv_files is not None:
+        # No specification file: the Work Requirement is built from the TOML
+        # configuration and the CSV file, with task-level prototype
+        # properties (taskName, taskGroupName, taskTimeout) no file may
+        # carry, so there is nothing of the user's to check it against
+        if ARGS_PARSER.validate:
+            raise ValueError(
+                "Option '--validate' needs a Work Requirement specification file"
+            )
         wr_data = csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
         _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
 
@@ -286,10 +299,19 @@ def main():
                 "must end with '.json', '.jsonnet', or '.toml'"
             )
 
+        # Every branch above -- JSON, Jsonnet, TOML, each with or without CSV
+        # task expansion -- arrives here with the loaded document
+        wr_data = check_specification(
+            Family.WORK_REQUIREMENT, wr_data, wr_data_file, bool(ARGS_PARSER.validate)
+        )
         validate_properties(wr_data, "Work Requirement JSON")
         _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
 
     else:
+        if ARGS_PARSER.validate:
+            raise ValueError(
+                "Option '--validate' needs a Work Requirement specification file"
+            )
         _submit_or_add_to(
             files_directory=files_directory, task_count=CONFIG_WR.task_count
         )

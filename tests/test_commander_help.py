@@ -142,7 +142,7 @@ def test_f1_opens_the_help(qapp):
 
 def test_a_section_link_scrolls_to_it_and_back_returns(qapp):
     window = YellowDogApp()
-    window.resize(1091, 840)
+    window.resize(1102, 840)
     window.show_help.click()
     dialog = window._help_dialog
     assert dialog is not None

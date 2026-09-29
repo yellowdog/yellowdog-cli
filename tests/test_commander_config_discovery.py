@@ -71,6 +71,10 @@ def win(qapp, monkeypatch):
     window.close()
 
 
+# Taken before the 'win' fixture replaces it on the class
+REAL_YD_VARIABLES_COMMAND = ConfigDiscovery._yd_variables_command
+
+
 def python_commands(win, monkeypatch, *scripts: str) -> list[int | None]:
     """
     Make each successive discovery attempt run the next of 'scripts' as Python,
@@ -404,6 +408,78 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
     type_user_variables(win, "")
 
     assert len(attempts) == 1, "nothing typed is not the same as something incomplete"
+
+
+def type_properties(win, text: str) -> None:
+    """type_user_variables(), for the Properties box, which shares its timer."""
+    win._discovery._user_vars_reparse_timer.setInterval(0)
+    win.properties.setPlainText(text)
+    assert win._discovery._user_vars_reparse_timer.isActive(), (
+        "editing should schedule a reparse"
+    )
+    deadline = monotonic() + SETTLE_TIMEOUT_S
+    while win._discovery._user_vars_reparse_timer.isActive() and monotonic() < deadline:
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
+    assert not win._discovery._user_vars_reparse_timer.isActive(), (
+        "the reparse never ran"
+    )
+    QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "common",
+        "common.tag",
+        "common.tag=x workRequirement",
+        "common.tag='still typing",
+    ],
+)
+def test_a_half_typed_property_does_not_run_discovery(win, monkeypatch, text):
+    attempts = python_commands(win, monkeypatch, EXITS_NON_ZERO)
+
+    type_properties(win, text)
+
+    assert attempts == []
+    assert win.log_output.toPlainText() == "", "the user has not made a mistake yet"
+
+
+def test_a_completed_property_runs_discovery(win, monkeypatch):
+    attempts = python_commands(win, monkeypatch, PRINTS_CONFIG)
+
+    type_properties(win, "common.tag='a b'")
+
+    assert len(attempts) == 1
+
+
+def test_discovery_is_given_the_properties(win):
+    win.properties.setPlainText("common.tag='a b'")
+    _, args = REAL_YD_VARIABLES_COMMAND(win._discovery)
+    assert "--property=common.tag=a b" in args
+
+
+def test_unbalanced_properties_are_a_discovery_failure(win, monkeypatch):
+    # Reached by selecting a configuration file, which does not wait for the
+    # box to be complete
+    started: list[str] = []
+    monkeypatch.setattr(
+        win._discovery,
+        "_yd_variables_command",
+        lambda: REAL_YD_VARIABLES_COMMAND(win._discovery),
+    )
+    monkeypatch.setattr(
+        win._discovery, "_run_nested", lambda *args, **kwargs: started.append("run")
+    )
+    win.properties.blockSignals(True)
+    win.properties.setPlainText("common.tag='open")
+    win.properties.blockSignals(False)
+    win.log_output.setPlainText("")
+
+    win._discovery.invalidate()
+    win._discovery.reparse_placeholders()
+
+    assert started == []
+    assert "the Properties field cannot be used" in win.log_output.toPlainText()
 
 
 # --- 'Nothing is configured' is not a failure ---------------------------------

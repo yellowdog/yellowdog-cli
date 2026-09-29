@@ -234,14 +234,39 @@ def which_rclone() -> None:
 SHOWN_REMOTE_PARAMETERS = ("type", "provider")
 
 
+# An inline connection string's parameters: 'key=value', each after a comma
+_INLINE_REMOTE_PARAMETER = re.compile(r",\s*([A-Za-z0-9_]+)=")
+
+
+def is_inline_remote(value: str) -> bool:
+    """
+    Whether 'value' is an inline rclone connection string, and so carries
+    parameters that may be credentials: either rclone's own form, a
+    ':backend' followed by parameters, or the CLI's 'NAME,type=...' form,
+    each with an optional 'rclone:' prefix and trailing ':path'. Anything
+    else with a comma in it -- which parse_rclone_config() would read as a
+    remote -- is not, so an ordinary value is never taken for one.
+    """
+    config = value.strip()
+    if config.startswith(RCLONE_PREFIX):
+        config = config[len(RCLONE_PREFIX) :]
+    keys = _INLINE_REMOTE_PARAMETER.findall(config)
+    if not keys or not re.match(r":?[\w.-]+,", config):
+        return False
+    return config.startswith(":") or "type" in keys
+
+
 def shown_remote(remote: str) -> str:
     """
     A remote as a report may show it. A named remote ('myremote:') is shown
-    as is; an inline connection string keeps its name, type and provider, and
-    every other parameter's value is withheld, since those are where its
-    credentials go -- and yd-doctor's report is one the README says to paste,
-    while yd-variables' is one that gets sent along with it.
+    as is; an inline connection string keeps its 'rclone:' prefix, name,
+    type and provider, and every other parameter's value is withheld, since
+    those are where its credentials go -- and yd-doctor's report is one the
+    README says to paste, while yd-variables' is one that gets sent along
+    with it. A trailing ':path' is withheld with the last parameter, because
+    it cannot be told apart from a ':port' in that parameter's URL.
     """
+    prefix = RCLONE_PREFIX if remote.startswith(RCLONE_PREFIX) else ""
     remote_name, section = parse_rclone_config(remote)
     if section is None:
         return remote
@@ -256,4 +281,4 @@ def shown_remote(remote: str) -> str:
     if withheld:
         kept.append(f"<{withheld} parameter{'' if withheld == 1 else 's'} redacted>")
     trailing = ":" if remote.rstrip().endswith(":") else ""
-    return ",".join([remote_name, *kept]) + trailing
+    return prefix + ",".join([remote_name, *kept]) + trailing

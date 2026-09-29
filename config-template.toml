@@ -11,6 +11,10 @@
 # config_dir_abs, config_dir_name.  User-defined variables are set in the
 # [common.variables] table or via YD_VAR_<NAME> environment variables.
 #
+# Each command checks this file against a schema as it starts, and warns of
+# a value of the wrong type or a property in a section that does not read
+# it; 'yd-schema config' prints the schema.
+#
 
 [common]  ######################################################################
 
@@ -170,6 +174,23 @@
     #     {errorTypes = ["TIMEOUT"], required = true}
     # ]
 
+    # Retry policy for errored tasks, in place of maximumTaskRetries and
+    # retryableErrors (which it cannot be combined with). 'maxRetries' is
+    # required; 'retryErrors' is optional (all errors are retried if omitted).
+    # Optional
+    # retryPolicy = {maxRetries = 3, retryErrors = {includes = [
+    #     {errorTypes = {includes = ["ALLOCATION_LOST"]}}
+    # ]}}
+
+    # Where a task is resubmitted when its retries are exhausted: the first
+    # matching destination Task Group wins.
+    # Optional
+    # failurePolicy = {resubmissionDestinations = [
+    #     {destinationTaskGroup = "on-demand-tg", resubmitErrors = {includes = [
+    #         {errorTypes = {includes = ["ALLOCATION_LOST"]}}
+    #     ]}}
+    # ]}
+
     # --------------------------------------------------------------------------
     # Scheduling and priority
     # --------------------------------------------------------------------------
@@ -193,6 +214,10 @@
     # Worker tags the task group will match against.
     # Optional
     # workerTags = ["my-worker-tag"]
+
+    # A single worker tag, used when workerTags is not set.
+    # Optional
+    # workerTag = "my-worker-tag"
 
     # Maximum number of workers that can execute tasks from this group.
     # Optional

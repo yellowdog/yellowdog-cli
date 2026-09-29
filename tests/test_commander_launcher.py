@@ -152,6 +152,39 @@ def test_a_field_value_cannot_be_empty(capsys, option):
     assert "must not be empty" in refused([option, ""], capsys)
 
 
+@pytest.mark.parametrize("prop", ["workRequirement", "name=x", "workRequirement.name"])
+def test_a_property_must_be_section_key_equals_value(capsys, prop):
+    assert "section.key=value" in refused(["--property", prop], capsys)
+
+
+@pytest.mark.parametrize("prop", ["common.tag=a\tb", "common.tag=a\nb"])
+def test_a_property_must_survive_the_field(capsys, prop):
+    assert "single line" in refused(["--property", prop], capsys)
+
+
+def test_a_property_is_quoted_for_the_field():
+    # Unlike a variable, a property may contain spaces: the Properties field is
+    # split with quoting, so the value is quoted to reach the CLI whole
+    settings = parse_args(
+        [
+            "--property",
+            'workRequirement.workerTags=["a", "b"]',
+            "--property",
+            "common.tag=x",
+        ]
+    )
+    assert settings.properties == (
+        """'workRequirement.workerTags=["a", "b"]'""",
+        "common.tag=x",
+    )
+
+
+def test_a_property_with_both_quotes_and_a_space_is_refused(capsys):
+    assert "both kinds" in refused(
+        ["--property", 'workRequirement.name=it\'s "x"'], capsys
+    )
+
+
 def test_a_path_may_contain_spaces():
     # Unlike a variable, the Path field is taken whole
     assert parse_args(["-P", "my results/*"]).object_path == "my results/*"

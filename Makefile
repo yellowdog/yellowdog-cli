@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/spec_data/*.py
+SCRIPTS = scripts/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
@@ -19,9 +20,9 @@ install: build
 uninstall:
 	uv pip uninstall yellowdog-cli
 
-format: $(SRC) $(TESTS)
-	ruff check --fix $(SRC) $(TESTS)
-	ruff format $(SRC) $(TESTS)
+format: $(SRC) $(TESTS) $(SCRIPTS)
+	ruff check --fix $(SRC) $(TESTS) $(SCRIPTS)
+	ruff format $(SRC) $(TESTS) $(SCRIPTS)
 
 pypi_upload: clean build
 	# '--repository yellowdog-cli' maps into the correct API token for yellowdog-cli uploads
@@ -46,6 +47,9 @@ toc_commander: yellowdog_cli/commander/README.md
 
 toc_mcp: yellowdog_cli/mcp/README.md
 	./gh-md-toc --insert --skip-header yellowdog_cli/mcp/README.md
+
+schema_descriptions: README.md
+	python3 scripts/extract_schema_descriptions.py > yellowdog_cli/spec_data/descriptions.json
 
 test:
 	pytest -v

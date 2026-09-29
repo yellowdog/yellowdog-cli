@@ -20,6 +20,7 @@
     dependencies = [
         "PyPAC >= 0.16.4",
         "dateparser",
+        "fastjsonschema",
         "python-dotenv",
         "requests",
         "rclone-api",
@@ -99,6 +100,7 @@
     yd-provision = "yellowdog_cli.provision:main"
     yd-remove = "yellowdog_cli.remove:main"
     yd-resize = "yellowdog_cli.resize:main"
+    yd-schema = "yellowdog_cli.schema:main"
     yd-show = "yellowdog_cli.show:main"
     yd-shutdown = "yellowdog_cli.shutdown:main"
     yd-start = "yellowdog_cli.start:main"
@@ -111,11 +113,12 @@
 
 [tool.setuptools]
     include-package-data = false
-    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander", "yellowdog_cli.mcp"]
+    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander", "yellowdog_cli.mcp", "yellowdog_cli.spec_data"]
 
 [tool.setuptools.package-data]
     "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]
     "yellowdog_cli.mcp" = ["README.md"]
+    "yellowdog_cli.spec_data" = ["*.json"]
 
 [tool.setuptools.dynamic.version]
     attr = "yellowdog_cli._version.__version__"

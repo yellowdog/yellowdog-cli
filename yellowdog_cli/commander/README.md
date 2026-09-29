@@ -14,6 +14,8 @@
    * [Collecting and Managing Results (Panel 4)](#collecting-and-managing-results-panel-4)
    * [Namespace, Tag, and Name Overrides](#namespace-tag-and-name-overrides)
    * [User-Defined Variables](#user-defined-variables)
+   * [Properties](#properties)
+   * [Quoting](#quoting)
    * [Utility Actions](#utility-actions)
    * [Filtering the Command Output](#filtering-the-command-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
@@ -21,7 +23,7 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 15:47:47 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 29 15:30:03 BST 2026 -->
 
 <!--te-->
 
@@ -53,7 +55,7 @@ yd-commander path/to/config.toml
 
 The configuration file can also be given with `-c`/`--config`, as it is to the `yd-*` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
 
-Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, and the download chooser, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
 
 Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd-*` commands:
 
@@ -64,6 +66,7 @@ Commander's fields and file selections can be filled in from the command line to
 | `--name <glob>` | The **Name** field |
 | `-P`, `--path <object-path>` | The **Path** field |
 | `-v`, `--variable <name=value>` | The **User-Defined Variables** field; repeat it for each variable |
+| `--property <section.key=value>` | The **Properties** field; repeat it for each property. A value containing spaces is quoted for you |
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
@@ -71,7 +74,7 @@ Commander's fields and file selections can be filled in from the command line to
 yd-commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
 ```
 
-These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), and an empty value or one containing a tab or newline for the other fields.
+These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), a property not of the form `section.key=value` or containing both kinds of quote as well as a space, and an empty value or one containing a tab or newline for the other fields.
 
 Multiple instances can run simultaneously.
 
@@ -177,25 +180,27 @@ The **Save Command Output** dialog is the exception to the preview: it names a f
 
 ## Selecting a Configuration (Panel 1)
 
-Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
+Use the **Select** button to choose a `config.toml` file. The selected file's full path is shown at the top of the right-hand column, level with the button (shortened from the left, keeping the filename, when the window is too narrow for it; hover over it for the whole path), and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
 
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
+- **Add to…** — runs `yd-submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that have not completed, failed, or been cancelled or begun cancelling) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, and a dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
-- **Extra Options** — free-text command-line options appended to the `yd-submit` command.
+- **Extra Options** — free-text command-line options appended to the `yd-submit` command, split as described in [Quoting](#quoting).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
 ## Provisioning and Managing Compute (Panel 3)
 
-- **Create New Cloud Worker Pool** — runs `yd-provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
+- **Provision Worker Pool** — runs `yd-provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
+- **Resize…** — runs `yd-resize` on a Worker Pool you choose. It first lists the active Worker Pools matching the current namespace and tag (or the **Name** pattern), each with its status and the number of nodes it expects now, and opens a dialog in which you choose one and set **Target nodes**. The count starts at the pool's current one and is kept within the pool's minimum and maximum; **Resize** is unavailable until you change it, and a warning appears if you are reducing it, since nodes will be shut down and tasks running on them may be interrupted. The dialog is the confirmation, so no second one follows. Configured (on-premise) Worker Pools are not listed, as their nodes are not a number the platform can change. A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived; if every matching pool is awaiting nodes, the output window says so and no dialog opens. The **Dry Run** and **Follow** checkboxes apply to creation only. If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
-- **Extra Options** — free-text command-line options appended to the `yd-provision` command.
+- **Extra Options** — free-text command-line options appended to the `yd-provision` command, split as described in [Quoting](#quoting).
 - **Shutdown Worker Pools** — shuts down all matching Worker Pools.
 - **Terminate Compute Requirements** — terminates all matching Compute Requirements.
 
@@ -219,7 +224,7 @@ What neither reports is how much sits inside a matched directory. The download's
 
 The **Namespace** and **Tag** fields override the values from the configuration file for every command. The default values discovered from the configuration are shown as placeholder text, so you can see what will be used if you leave a field blank.
 
-The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements), selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all four actions, so it applies to whichever one you run.
+The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** and the Worker Pools **Resize…** offer, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all six actions, so it applies to whichever one you run.
 
 ## User-Defined Variables
 
@@ -232,6 +237,29 @@ instances=2 template=my_template
 Each pair is passed to the command as a `-v` option (`-v instances=2 -v template=my_template`).
 
 Editing the field re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since a variable can be used in the configuration file's `namespace` or `tag`. It waits until every pair in the field is a complete `name=value`, so a name part-way through being typed does not report itself as an error.
+
+## Properties
+
+The **Properties** field overrides configuration file properties for every command, exactly as the CLI's `--property` option does. Enter them as `section.key=value` pairs separated by spaces, quoting any value that contains spaces (see [Quoting](#quoting)), for example:
+
+```text
+workRequirement.taskCount=10 workRequirement.workerTags='["gpu", "large"]'
+```
+
+Each pair is passed to the command as a `--property` option. The valid sections are `common`, `dataClient`, `workRequirement`, `workerPool` and `computeRequirement`, and values are read as JSON where they can be, so numbers, booleans, lists and tables need no special treatment; see the CLI's documentation of `--property` for the details. Unlike the **Extra Options** fields, which reach only `yd-submit` or `yd-provision`, this field reaches every `yd-*` command, including the data client commands behind **Download** and **Delete**, so it can change `dataClient` properties such as the remote.
+
+Like the User-Defined Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way; it waits until every entry is a complete `section.key=value` and no quote is left open. If the field cannot be split because a quote is left open, every action that runs a `yd-*` command says so in the output window and does nothing.
+
+## Quoting
+
+The **Extra Options** fields, the **Properties** field and a `yd-*` command typed into **Run Command in Config Directory** are split into separate arguments at spaces, except where text is inside single or double quotes: a quoted run of text is kept as one argument, with its quotes removed, as it would be in a shell. Quotes can surround the whole argument or any part of it, so both of these pass the same single argument:
+
+```text
+--property 'workRequirement.workerTags=["gpu", "large"]'
+--property workRequirement.workerTags='["gpu", "large"]'
+```
+
+A backslash has no special meaning, so Windows paths can be entered as they are. The one consequence is that a quote character can only be written inside quotes of the other kind: `"it's"` is `it's`, and `'say "hi"'` is `say "hi"`. A quote left open is an error, reported in the output window, and nothing is run.
 
 ## Utility Actions
 
@@ -255,7 +283,7 @@ To choose one or more processes from the whole list, right-click anywhere in the
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, and the user-defined variables are added to it automatically (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
 
 ## Sending Input to a Running Command
 
@@ -274,7 +302,7 @@ For all five destructive actions that listing is **checkable**:
 - Object deletion is selectable in the same way, with one caveat: the listing shows top-level matches, so unticking works at that level, and a ticked directory is deleted with everything inside it.
 - The dialog offers **Yes**, **No**, and **Yes to All (Don't Ask Again)**. The last acts on every listed item regardless of what you have ticked, and suppresses further prompts for that same action for the rest of the session, after which that action always applies to everything in scope.
 
-Working out what an action would affect means asking the platform or the object store, which takes a moment; the output window says so while it happens, and the six action buttons in panels 2, 3 and 4 are greyed until it finishes. That wait keeps the window responsive rather than freezing it, which is why the buttons need greying: without it a second action could be started against a listing that was still being assembled. A click that lands anyway is refused with a note in the output window rather than silently ignored.
+Working out what an action would affect means asking the platform or the object store, which takes a moment; the output window says so while it happens, and the eight action buttons in panels 2, 3 and 4 (**Add to…** and **Resize…** among them, since they list their targets the same way) are greyed until it finishes. That wait keeps the window responsive rather than freezing it, which is why the buttons need greying: without it a second action could be started against a listing that was still being assembled. A click that lands anyway is refused with a note in the output window rather than silently ignored.
 
 Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session, in which case every action applies to everything in scope.
 
@@ -283,5 +311,9 @@ Check the namespace, tag, and path you have set before confirming. A real object
 Launching with `-y`/`--yes` skips it and downloads everything the path matched, just as that flag skips the confirmations: it asks for an unattended session, and an unattended session cannot answer a chooser either. To fetch a subset without being asked, narrow the **Path** field instead.
 
 Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd-download` and `yd-delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
+
+**Add to…** shows a chooser too, of exactly one Work Requirement: a plain list with one row selected rather than a checkable one, since a submission can be added to only one. Launching with `-y`/`--yes` skips it when only one Work Requirement can be added to, and adds to that one; when there are several it refuses and says so, since an unattended session cannot choose and Commander will not choose for it. Narrow the choice to one with the **Name** field.
+
+**Resize…** shows its dialog even under `-y`/`--yes`, because the dialog is the only place to give the number of nodes.
 
 **Deselect...** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.

@@ -84,6 +84,39 @@ def test_submit_with_wr_file_dry_run_and_extra_options(window, captured):
     assert captured == [("yd-submit", ["-r", "wr.json", "-D", "--foo", "bar"])]
 
 
+def test_extra_options_are_split_with_quoting(window, captured):
+    window.follow_progress.setChecked(False)
+    window.wr_submit_options.setPlainText(
+        """--property 'workRequirement.workerTags=["a", "b"]'"""
+    )
+    window._submit_work_requirement_action()
+    assert captured == [
+        ("yd-submit", ["--property", 'workRequirement.workerTags=["a", "b"]'])
+    ]
+
+
+def test_unbalanced_extra_options_refuse_the_submission(window, captured):
+    window.log_output.setPlainText("")
+    window.wr_submit_options.setPlainText("--property 'workRequirement.name=x")
+    window._submit_work_requirement_action()
+    assert captured == []
+    assert "Cannot use the Extra Options field" in window.log_output.toPlainText()
+
+
+def test_unbalanced_extra_options_refuse_the_provisioning(window, captured):
+    window.wp_provision_options.setPlainText('--property "workerPool.name=x')
+    window._create_worker_pool_action()
+    assert captured == []
+    assert "Cannot use the Extra Options field" in window.log_output.toPlainText()
+
+
+def test_provision_extra_options_are_split_with_quoting(window, captured):
+    window.follow_worker_pool.setChecked(False)
+    window.wp_provision_options.setPlainText("""--property 'workerPool.name=a b'""")
+    window._create_worker_pool_action()
+    assert captured == [("yd-provision", ["--property", "workerPool.name=a b"])]
+
+
 def test_submit_follow_only_when_not_dry_run(window, captured):
     window.follow_progress.setChecked(True)
     window.dry_run.setChecked(True)
@@ -620,6 +653,89 @@ def test_namespace_tag_and_user_vars_assembly(window):
         "-v",
         "a=b",
     ]
+
+
+def test_properties_follow_the_variables_joined_to_their_flag(window):
+    # Joined, so that a value beginning with '-' is never read as an option
+    window.user_variables.setPlainText("x=y")
+    window.properties.setPlainText(
+        """workRequirement.workerTags='["a", "b"]' common.tag=-odd"""
+    )
+    assert window._namespace_tag_and_user_vars() == [
+        "-v",
+        "x=y",
+        '--property=workRequirement.workerTags=["a", "b"]',
+        "--property=common.tag=-odd",
+    ]
+
+
+def test_properties_reach_every_yd_command(window, captured):
+    window.follow_worker_pool.setChecked(False)
+    window._config_file = None
+    window.properties.setPlainText("workerPool.name=wp")
+    window._create_worker_pool_action()
+    command, args = captured[0]
+    assert command == "yd-provision"
+    assert window._build_command_args(command, args, yd_command=True) == [
+        "--nc",
+        "--nf",
+        "--pp",
+        "--property=workerPool.name=wp",
+    ]
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "_submit_work_requirement_action",
+        "_add_to_work_requirement_action",
+        "_create_worker_pool_action",
+        "_resize_worker_pool_action",
+        "_cancel_work_requirements_action",
+        "_shutdown_all_worker_pools_action",
+        "_terminate_all_compute_requirements_action",
+        "_download_results_action",
+        "_delete_objects_action",
+    ],
+)
+def test_unbalanced_properties_refuse_every_action(
+    window, captured, monkeypatch, action
+):
+    # Refused before any listing, which would otherwise fail and be reported
+    # as the listing failing rather than as the quoting mistake it is
+    listings: list[str] = []
+    monkeypatch.setattr(
+        window,
+        "_capture_json",
+        lambda command, *args, **kwargs: listings.append(command),
+    )
+    window._discovery.tag = "my-tag"
+    window.log_output.setPlainText("")
+    window.properties.setPlainText("common.tag='unclosed")
+
+    getattr(window, action)()
+
+    assert captured == []
+    assert listings == []
+    assert "Cannot use the Properties field" in window.log_output.toPlainText()
+
+
+def test_unbalanced_properties_refuse_a_typed_yd_command(window, captured):
+    window.properties.setPlainText("common.tag='unclosed")
+    window._run_any_command_core("yd-list -w")
+    assert captured == []
+    assert "Cannot use the Properties field" in window.log_output.toPlainText()
+
+
+def test_a_typed_yd_command_is_split_with_quoting(window, captured):
+    window._run_any_command_core("yd-submit --property 'workRequirement.name=a b'")
+    assert captured == [("yd-submit", ["--property", "workRequirement.name=a b"])]
+
+
+def test_an_unbalanced_typed_yd_command_is_refused(window, captured):
+    window._run_any_command_core("yd-submit --property 'workRequirement.name=a")
+    assert captured == []
+    assert "Cannot use the command field" in window.log_output.toPlainText()
 
 
 def test_namespace_tag_and_user_vars_empty(window):

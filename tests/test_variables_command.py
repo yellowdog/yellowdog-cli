@@ -45,9 +45,23 @@ SUBSTITUTIONS = {
     ),
     "dataClient.backup.remote": "myremote:",
     "dataClient.other.remote": ":s3,provider=AWS,secret_access_key=ALSOSECRET:",
+    # A user-defined variable holding an inline connection string, under a
+    # name the pattern does not match: withheld by the shape of its value
+    "remote_with_keys": (
+        "rclone:S3,type=s3,provider=AWS,access_key_id=AKIAUSER,"
+        "secret_access_key=USERSECRET,region=eu-west-2:bucket/path"
+    ),
+    # A comma-separated value that is not a connection string: in full
+    "hosts": "a,b,port=8080",
 }
 
-INLINE_REMOTE_SECRETS = ("AKIAEXAMPLE", "SUPERSECRET", "ALSOSECRET")
+INLINE_REMOTE_SECRETS = (
+    "AKIAEXAMPLE",
+    "SUPERSECRET",
+    "ALSOSECRET",
+    "AKIAUSER",
+    "USERSECRET",
+)
 
 
 @pytest.fixture
@@ -108,8 +122,10 @@ class TestOrdering:
             "dataClient.other.remote",
             "dataClient.remote",
             "deploy_target",
+            "hosts",
             "key",
             "namespace",
+            "remote_with_keys",
             "secret",
             "tag",
             "username",
@@ -193,6 +209,8 @@ class TestRedaction:
             "cloud_credentials",
             "SSH_PRIVATE_KEY",
             "Secret",
+            # rclone's S3 credential parameter, as a variable name
+            "secret_access_key",
         ],
     )
     def test_the_pattern_matches_case_insensitively_anywhere(self, name):
@@ -238,6 +256,28 @@ class TestRedaction:
     def test_naming_the_remote_reports_it_in_full(self, substitutions):
         assert report_variables(["dataClient.remote"]) == {
             "dataClient.remote": SUBSTITUTIONS["dataClient.remote"]
+        }
+
+    # Any variable whose value is an inline connection string is shown the
+    # same way, whatever it is called and whoever defined it
+
+    def test_a_user_variable_holding_an_inline_remote_is_withheld(self, substitutions):
+        assert report_variables([])["remote_with_keys"] == (
+            "rclone:S3,type=s3,provider=AWS,<3 parameters redacted>"
+        )
+
+    def test_a_comma_separated_value_that_is_not_a_remote_is_in_full(
+        self, substitutions
+    ):
+        assert report_variables([])["hosts"] == SUBSTITUTIONS["hosts"]
+
+    def test_show_secrets_reports_the_user_remote_in_full(self, substitutions):
+        reported = report_variables([], show_secrets=True)
+        assert reported["remote_with_keys"] == SUBSTITUTIONS["remote_with_keys"]
+
+    def test_naming_the_user_remote_reports_it_in_full(self, substitutions):
+        assert report_variables(["remote_with_keys"]) == {
+            "remote_with_keys": SUBSTITUTIONS["remote_with_keys"]
         }
 
 
@@ -424,6 +464,46 @@ class TestCredentialNamePatternNote:
 
         assert result.returncode == 0, result.stderr
         assert "nowhere_defined" not in result.stdout
+
+
+class TestInlineRemoteNote:
+    NOTE = (
+        f"{WARNING_MARKER}Withheld the parameters of 1 variable(s) holding an"
+        " inline rclone connection string, keeping its name, type and"
+        " provider. --show-secrets reports all."
+    )
+    REMOTE = (
+        "rclone:S3,type=s3,provider=AWS,access_key_id=AKIAUSER,"
+        "secret_access_key=USERSECRET,region=eu-west-2"
+    )
+
+    def test_a_user_remote_is_withheld_and_the_note_printed_once(self, tmp_path):
+        result = _run("-v", f"remote_with_keys={self.REMOTE}", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert _stdout(result).count(self.NOTE) == 1
+        assert '"rclone:S3,type=s3,provider=AWS,<3 parameters redacted>"' in (
+            result.stdout
+        )
+        assert "AKIAUSER" not in result.stdout
+        assert "USERSECRET" not in result.stdout
+
+    def test_no_note_for_the_clis_own_remote(self, tmp_path):
+        # {{dataClient.remote}} is withheld as it always was, without a note
+        result = _run("--property", f"dataClient.remote={self.REMOTE}", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Withheld" not in result.stdout
+        assert "USERSECRET" not in result.stdout
+
+    def test_no_note_under_show_secrets(self, tmp_path):
+        result = _run(
+            "--show-secrets", "-v", f"remote_with_keys={self.REMOTE}", cwd=tmp_path
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "Withheld" not in result.stdout
+        assert "USERSECRET" in result.stdout
 
 
 class TestPatternIsStatedFromTheConstant:

@@ -38,7 +38,7 @@ The commands support:
 - **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
 - **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
-Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
+Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, **`yd-schema`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
 
 The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 

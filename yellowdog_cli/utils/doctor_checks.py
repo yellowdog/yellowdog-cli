@@ -465,6 +465,47 @@ def check_config_loads(ctx: Context) -> Result:
     return Result(Status.OK, load_config.CONFIG_FILE)
 
 
+CONFIG_SCHEMA_SHOWN = 3  # violations named in the detail; the rest counted
+
+
+def check_config_schema(ctx: Context) -> Result:
+    """
+    The configuration file against the config schema, every section: what
+    a command would warn of as it starts. Read from the file as written, the
+    '--property' overrides applied, as those warnings are.
+    """
+    import fastjsonschema
+
+    from yellowdog_cli.utils import load_config, spec_validation
+    from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
+    from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+
+    document = load_config.config_as_written()
+    if document is None:
+        return Result(Status.OK, "no configuration file")
+    try:
+        violations = spec_validation.validate_config(document, ALL_CONFIG_SECTIONS)
+    except (SchemaGenerationError, fastjsonschema.JsonSchemaDefinitionException) as e:
+        return Result(
+            Status.WARN,
+            f"the schema could not be built: {e}",
+            "Run 'yd-schema config' to see why; the configuration may be fine",
+        )
+    if not violations:
+        return Result(Status.OK, "no violations")
+    shown = "; ".join(
+        f"{v.path}: {v.message}" for v in violations[:CONFIG_SCHEMA_SHOWN]
+    )
+    more = len(violations) - CONFIG_SCHEMA_SHOWN
+    count = f"{len(violations)} violation{'s' if len(violations) != 1 else ''}"
+    return Result(
+        Status.WARN,
+        f"{count}: {shown}" + (f"; and {more} more" if more > 0 else ""),
+        "Every one is reported as a warning when a command runs;"
+        " 'yd-schema config' prints the schema",
+    )
+
+
 def _captured_message(text: str) -> str:
     """
     What a failed load printed, as one line: the log prefix (timestamp and
@@ -824,6 +865,7 @@ CHECKS: tuple[Check, ...] = (
     Check("Proxy", "Installation", Need.NOTHING, check_proxy),
     Check("Certificates", "Installation", Need.CONFIG, check_certificates),
     Check(CONFIG_LOADS, "Configuration", Need.NOTHING, check_config_loads),
+    Check("Config schema", "Configuration", Need.CONFIG, check_config_schema),
     Check("Key", "Configuration", Need.CONFIG, check_config_value(KEY)),
     Check("Secret", "Configuration", Need.CONFIG, check_config_value(SECRET)),
     Check("Namespace", "Configuration", Need.CONFIG, check_config_value(NAMESPACE)),

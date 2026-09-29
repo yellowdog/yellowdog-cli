@@ -63,6 +63,8 @@ from yellowdog_cli.utils.settings import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
+from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -123,6 +125,8 @@ def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
 @main_wrapper
 def main():
     if ARGS_PARSER.status:
+        if ARGS_PARSER.validate:
+            raise ValueError("Option '--validate' cannot be used with '--status'")
         _show_status()
     else:
         _submit_actions()
@@ -432,6 +436,11 @@ def _load_spec(spec_file: str) -> dict | None:
             postfix=WP_VARIABLES_POSTFIX,
         )
 
+    # Both branches above, JSON and Jsonnet, arrive here with the loaded document
+    spec = check_specification(
+        Family.NODE_ACTIONS, spec, spec_file, bool(ARGS_PARSER.validate)
+    )
+
     if not isinstance(spec, dict):
         print_error(f"Spec file '{spec_file}' must be a JSON object")
         return None
@@ -466,6 +475,11 @@ def _submit_actions():
     """
     spec_file = ARGS_PARSER.node_action_spec
     if spec_file is None:
+        if ARGS_PARSER.validate:
+            raise ValueError(
+                "Option '--validate' needs a Node Action specification file"
+                " (use --actions)"
+            )
         print_error("A spec file is required (use --actions)")
         return
 

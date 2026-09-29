@@ -1,0 +1,45 @@
+{
+  "actionGroups": [
+    {
+      "actions": [
+        {
+          "type": "runCommand",
+          "path": "/usr/local/bin/prepare.sh",
+          "arguments": ["--verbose", "--mode", "fast"],
+          "environment": {"STAGE": "prepare"},
+          "nodeTypes": ["worker"]
+        },
+        {
+          "type": "writeFile",
+          "path": "/etc/app/settings.conf",
+          "content": "mode=fast\n",
+          "nodeTypes": ["worker"]
+        },
+        {
+          "type": "writeFile",
+          "path": "/etc/app/extra.conf",
+          "contentFile": "extra.conf"
+        },
+        {
+          "type": "writeFile",
+          "path": "/etc/app/joined.conf",
+          "contentFiles": ["part-1.conf", "part-2.conf"]
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "type": "createWorkers",
+          "nodeWorkers": {"targetType": "PER_VCPU", "targetCount": 1.5},
+          "totalWorkers": 8,
+          "nodeTypes": ["worker"]
+        },
+        {
+          "type": "createWorkers",
+          "nodeWorkers": {"targetType": "CUSTOM", "customTargetCommand": "nproc"}
+        }
+      ]
+    }
+  ]
+}

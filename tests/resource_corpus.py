@@ -7,10 +7,15 @@ brings Jsonnet expansion, variable substitution and dependency re-sequencing wit
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
-import tomllib
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10: tomli, which the CLI already depends on
+    import tomli as tomllib
 
 from yellowdog_cli.utils.load_resources import RESOURCE_SOURCE_DIR
 

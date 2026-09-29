@@ -19,6 +19,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.load_config import (
     load_config_common,
+    warn_of_config_violations,
     warn_of_undefined_config_variables,
 )
 from yellowdog_cli.utils.printing import print_debug, print_error, print_info
@@ -28,6 +29,7 @@ from yellowdog_cli.utils.results import (
     flush_results_after_failure,
 )
 from yellowdog_cli.utils.settings import ExitCode
+from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
 from yellowdog_cli.utils.user_agent import set_user_agent
 from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
@@ -82,6 +84,7 @@ def main_wrapper(func):
         # one still unsubstituted from here on is one nothing defines
         enable_undefined_variable_warnings()
         warn_of_undefined_config_variables()
+        warn_of_config_violations(ALL_CONFIG_SECTIONS)
         if not ARGS_PARSER.debug:
             exit_code: int = ExitCode.SUCCESS
             try:

@@ -47,6 +47,7 @@ from PyQt6.QtGui import (
     QTextCursor,
 )
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QDialog,
@@ -61,6 +62,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollBar,
+    QSpinBox,
     QStyle,
     QStyleOptionButton,
     QVBoxLayout,
@@ -68,10 +71,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.commander.arguments import QuotingError, split_arguments
 from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
-from yellowdog_cli.commander.elision import elide_middle, elide_path
+from yellowdog_cli.commander.elision import elide_middle, elide_path, elide_path_to_fit
 from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.help_viewer import HelpDialog
 from yellowdog_cli.commander.output_model import (
@@ -85,14 +89,18 @@ from yellowdog_cli.commander.selection import (
     Confirmation,
     EntitySummary,
     ObjectSummary,
+    ResizablePool,
     SelectableRow,
     checked_handles,
     entity_rows,
+    newest_entity_id,
     object_rows,
     parse_download_summaries,
     parse_entity_summaries,
     parse_object_summaries,
+    parse_resizable_pools,
     path_would_be_globbed,
+    pool_rows,
     set_all_check_states,
     update_selection_state,
 )
@@ -100,10 +108,6 @@ from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.utils.settings import ERROR_MARKER
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
-# px: inset between the selected-configuration label's frame and its text.
-# Set here rather than in commander.ui because PyQt6's loadUi() silently
-# drops a QLabel's 'margin' property, leaving the text against the frame.
-SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
 SELECTED_WR_PREFIX = "Work Requirement: "
 SELECTED_WP_PREFIX = "Worker Pool: "
@@ -133,6 +137,29 @@ NO_OBJECT_PATH = (
     " match. Enter a Path, or select a configuration file to discover one from"
     " (reselect it if discovery has already failed)."
 )
+# Shown when an action that lists entities with 'yd-list' has no tag to list
+# them by. 'yd-list' defaults its tag to '' (every entity in the namespace), so
+# the tag must be passed explicitly, and without one the listing would offer
+# entities from outside the scope the dialog names.
+NO_LISTING_TAG = (
+    "No tag: none has been discovered, so there is no default scope to list."
+    " Enter a Tag or a Name pattern, or select a configuration file to discover"
+    " one from (reselect it if discovery has already failed)."
+)
+RESIZE_DIALOG_TITLE = "Resize Worker Pool"
+SCALE_DOWN_WARNING = (
+    "Fewer nodes than now: nodes will be shut down, and any tasks running on"
+    " them may be interrupted."
+)
+# Extra space between a dialog's message, its listing and what follows, which
+# otherwise sit at the layout's default spacing and read as crowded
+DIALOG_SECTION_SPACING = 6
+# The spin box's ceiling for a Worker Pool that sets no maximum of its own
+MAX_SPIN_NODES = 10_000
+# The one non-terminal Work Requirement status 'yd-list --active-only' keeps and
+# 'yd-submit --add-to' refuses, so Add to must not offer it. Spelled out rather
+# than imported: nothing in Commander imports the SDK.
+CANCELLING_STATUS = "CANCELLING"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
@@ -157,11 +184,14 @@ class YellowDogApp(QMainWindow):
     wr_options_label: QLabel
     wp_options_label: QLabel
     object_path_label: QLabel
+    user_variables_label: QLabel
+    properties_label: QLabel
 
     log_output: QPlainTextEdit
     output_filter_bar: QFrame
     output_filter_label: QLabel
     user_variables: QPlainTextEdit
+    properties: QPlainTextEdit
     wr_submit_options: QPlainTextEdit
     wp_provision_options: QPlainTextEdit
     any_command: QPlainTextEdit
@@ -181,6 +211,7 @@ class YellowDogApp(QMainWindow):
     select_config_file: QPushButton
     select_work_requirement: QPushButton
     submit_work_requirement: QPushButton
+    add_to_work_requirement: QPushButton
     download_results: QPushButton
     clear_command_output: QPushButton
     copy_command_output: QPushButton
@@ -191,6 +222,7 @@ class YellowDogApp(QMainWindow):
     cancel_work_requirements_and_abort: QPushButton
     select_worker_pool: QPushButton
     create_worker_pool: QPushButton
+    resize_worker_pool: QPushButton
     shutdown_all_worker_pools: QPushButton
     terminate_all_compute_requirements: QPushButton
     browse_results_directory: QPushButton
@@ -218,7 +250,6 @@ class YellowDogApp(QMainWindow):
 
         # The framed label showing the selected configuration file (the frame
         # itself comes from commander.ui, which cannot carry this margin)
-        self.select_config_label.setMargin(SELECTED_CONFIG_MARGIN)
 
         self._align_field_labels()
 
@@ -263,6 +294,9 @@ class YellowDogApp(QMainWindow):
         self.submit_work_requirement.clicked.connect(
             self._submit_work_requirement_action
         )
+        self.add_to_work_requirement.clicked.connect(
+            self._add_to_work_requirement_action
+        )
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
         self.copy_command_output.clicked.connect(self._copy_output_action)
@@ -276,6 +310,7 @@ class YellowDogApp(QMainWindow):
         )
         self.select_worker_pool.clicked.connect(self._select_worker_pool_action)
         self.create_worker_pool.clicked.connect(self._create_worker_pool_action)
+        self.resize_worker_pool.clicked.connect(self._resize_worker_pool_action)
         self.shutdown_all_worker_pools.clicked.connect(
             self._shutdown_all_worker_pools_action
         )
@@ -330,6 +365,7 @@ class YellowDogApp(QMainWindow):
         # Handle specific key presses in text edit boxes
         for ui_object in [
             self.user_variables,
+            self.properties,
             self.wr_submit_options,
             self.wp_provision_options,
             self.any_command,
@@ -343,6 +379,9 @@ class YellowDogApp(QMainWindow):
             )
 
         self._config_file: str | None = None
+        # Re-elide the selected configuration's path whenever its label's width
+        # changes (see _show_config_selection)
+        self.select_config_label.installEventFilter(self)
         # Absolute, deliberately: these are handed to a child process that runs
         # in the config file's directory (see _working_dir), while Commander's own
         # directory is wherever it was launched from — and Show reads them in this
@@ -376,6 +415,7 @@ class YellowDogApp(QMainWindow):
             tag_field=self.tag_override,
             object_path_field=self.object_path_override,
             user_variables=self.user_variables,
+            properties=self.properties,
             config_selected=lambda: self._config_file is not None,
             config_source_args=lambda: self._config_source_args(),
             override_args=lambda: self._namespace_tag_and_user_vars(),
@@ -442,6 +482,9 @@ class YellowDogApp(QMainWindow):
         if settings.variables:
             self.user_variables.setPlainText(" ".join(settings.variables))
             self._set_cursor_to_end(self.user_variables)
+        if settings.properties:
+            self.properties.setPlainText(" ".join(settings.properties))
+            self._set_cursor_to_end(self.properties)
 
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
@@ -476,8 +519,7 @@ class YellowDogApp(QMainWindow):
 
         if config_file is None:
             self._config_file = None
-            self.select_config_label.setText(NO_SELECTED_CONFIG)
-            self.select_config_label.setToolTip("")
+            self._show_config_selection()
             self._discovery.clear()
             self._discovery.reparse_placeholders()
             return
@@ -490,8 +532,7 @@ class YellowDogApp(QMainWindow):
         self._config_file = selected_config_file
         self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")
-        self.select_config_label.setText(elide_path(selected_config_file))
-        self.select_config_label.setToolTip(abspath(selected_config_file))
+        self._show_config_selection()
         self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
@@ -516,7 +557,9 @@ class YellowDogApp(QMainWindow):
     def _align_field_labels(self):
         """
         Start the left-hand column's input fields at one edge, by widening each
-        of their labels to the widest of them.
+        of their labels to the widest of them; and likewise the right-hand
+        column's User-Defined Variables and Properties fields, one above the
+        other in separate grid rows.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
         across layouts, so each field began wherever its own label happened to
@@ -524,10 +567,15 @@ class YellowDogApp(QMainWindow):
         commander.ui, because a width in pixels is a width for one font: these
         labels are the widest under this one, and need not be under the next.
         """
-        labels = (self.wr_options_label, self.wp_options_label, self.object_path_label)
-        widest = max(label.sizeHint().width() for label in labels)
-        for label in labels:
-            label.setMinimumWidth(widest)
+        for labels in (
+            (self.wr_options_label, self.wp_options_label, self.object_path_label),
+            # The right-hand column's two, so that Properties lines up with the
+            # User-Defined Variables field above it
+            (self.user_variables_label, self.properties_label),
+        ):
+            widest = max(label.sizeHint().width() for label in labels)
+            for label in labels:
+                label.setMinimumWidth(widest)
 
     def _align_checkbox_indicators(self):
         """
@@ -593,6 +641,40 @@ class YellowDogApp(QMainWindow):
         return style.subElementRect(
             QStyle.SubElement.SE_CheckBoxIndicator, option, checkbox
         ).left()
+
+    def _show_config_selection(self):
+        """
+        Show the selected configuration file's full path on its label, elided
+        from the left to the label's width when it does not fit, so that the
+        filename and as much of its directory as there is room for stay in view;
+        the tooltip always has the whole path. The label's horizontal size
+        policy is Ignored in commander.ui, so a long path never widens the
+        window: the label takes the width the layout gives it, and the path is
+        fitted to that, again on every resize (eventFilter).
+        """
+        label = self.select_config_label
+        if self._config_file is None:
+            label.setText(NO_SELECTED_CONFIG)
+            label.setToolTip("")
+            return
+        path = abspath(self._config_file)
+        metrics = QFontMetrics(label.font())
+        available = label.contentsRect().width()
+        label.setText(
+            elide_path_to_fit(
+                path, lambda text: metrics.horizontalAdvance(text) <= available
+            )
+        )
+        label.setToolTip(path)
+
+    def eventFilter(self, a0, a1):
+        if (
+            a0 is self.select_config_label
+            and a1 is not None
+            and a1.type() == QEvent.Type.Resize
+        ):
+            self._show_config_selection()
+        return super().eventFilter(a0, a1)
 
     def showEvent(self, a0):
         """
@@ -741,8 +823,12 @@ class YellowDogApp(QMainWindow):
         self._output.log(f"Selected Worker Pool definition '{self._wp_file}'")
         self._show_wp_selection()
 
-    def _submit_work_requirement_action(self):
-        # Generate and run the command
+    def _submit_args(self) -> list[str] | None:
+        """
+        The 'yd-submit' arguments Panel 2 sets, shared by Submit and Add to: the
+        selected definition, Dry Run, Follow Progress and the Extra Options.
+        None, having said why, when the Extra Options cannot be split.
+        """
         if self._wr_file is None:
             args = []
         else:
@@ -753,8 +839,104 @@ class YellowDogApp(QMainWindow):
             args += ["-D"]
         if follow_progress and not dry_run:
             args += ["-f"]
-        args += self.wr_submit_options.toPlainText().split()
-        self._run_command_in_subprocess("yd-submit", args)
+        extra_options = self._split_field(self.wr_submit_options, "Extra Options")
+        if extra_options is None:
+            return None
+        return args + extra_options
+
+    def _submit_work_requirement_action(self):
+        if not self._properties_are_usable():
+            return
+        submit_args = self._submit_args()
+        if submit_args is None:
+            return
+        self._run_command_in_subprocess("yd-submit", submit_args)
+
+    def _add_to_work_requirement_action(self):
+        """
+        Add the Task Groups and Tasks of the selected definition (or the
+        configuration file's) to an existing Work Requirement, chosen from a list
+        of those that can still be added to: 'yd-submit --add-to <ydid>', with
+        the same Panel 2 settings as Submit.
+
+        Lists the candidates with 'yd-list work-requirements --active-only
+        --json', in the current namespace and tag or matching the Name pattern.
+        '--active-only' leaves out COMPLETED, CANCELLED and FAILED, and CANCELLING
+        is dropped here, since 'yd-submit --add-to' refuses it too.
+
+        Every failure refuses rather than falling back. The destructive actions
+        fall back to acting over their whole scope when the listing fails, but
+        there is no scope here: the only fallbacks would be guessing a target, or
+        a plain submission, which creates a Work Requirement nobody asked for.
+
+        The target is passed by YDID, not by name, because names are not
+        guaranteed unique and 'yd-submit' takes the first one that matches.
+
+        '--yes' skips the chooser when there is exactly one candidate, and
+        refuses when there are several: an unattended session cannot choose, and
+        Commander does not choose for it.
+        """
+        title = "Add to Work Requirement"
+        if self._operation_in_flight(title) or not self._properties_are_usable():
+            return
+        # Before the listing, so that a quoting mistake is not found only after
+        # a Work Requirement has been chosen
+        submit_args = self._submit_args()
+        if submit_args is None:
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("tags", name_args)
+
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
+        self._output.log("Checking which Work Requirements can be added to...")
+        self.log_output.repaint()
+        parsed = self._capture_json(
+            "yd-list", ["--json"], ["work-requirements", "--active-only"] + scope_args
+        )
+        entities = None if parsed is None else parse_entity_summaries(parsed)
+        if parsed is None or entities is None:
+            self._output.log(
+                "Could not list the Work Requirements to add to; nothing submitted"
+            )
+            return
+
+        entities = [entity for entity in entities if entity.status != CANCELLING_STATUS]
+        if not entities:
+            self._output.log(f"No active Work Requirements{scope} to add to")
+            return
+
+        if self._confirmations_disabled:
+            if len(entities) > 1:
+                self._output.log(
+                    f"{len(entities)} active Work Requirements{scope}, and"
+                    " '--yes' leaves no way to choose between them; nothing"
+                    " submitted. Narrow the choice with the Name field."
+                )
+                return
+            target = entities[0].id
+            self._output.log(
+                f"Selection suppressed by '--yes'; adding to the only active"
+                f" Work Requirement{scope}, '{entities[0].name}'"
+            )
+        else:
+            newest = newest_entity_id(parsed)
+            target = self._choose_one(
+                title,
+                f"Choose the Work Requirement{scope} to add the Task Groups and"
+                " Tasks to.",
+                "Add",
+                entity_rows(entities),
+                selected=newest,
+            )
+            if target is None:
+                return
+
+        self._run_command_in_subprocess("yd-submit", ["-A", target] + submit_args)
 
     def _object_path(self) -> str | None:
         """
@@ -789,6 +971,36 @@ class YellowDogApp(QMainWindow):
         if self._discovery.tag:
             return f" with {match_word} including '{self._discovery.tag}'"
         return " in the current namespace and tag"
+
+    def _yd_list_scope_args(self, name_args: list[str]) -> list[str] | None:
+        """
+        The 'yd-list' arguments that confine a listing to the scope the other
+        actions use: the Name pattern as '--name' when one is set, else the tag
+        as '-t' — the Tag field's, or the discovered one. None when there is
+        neither, since 'yd-list' defaults its tag to '' and would list every
+        entity in the namespace; callers must refuse, with NO_LISTING_TAG.
+
+        The tag has to be passed even when the configuration file names one,
+        because that default is 'yd-list''s own: the configuration's tag
+        reaches every other command and not this one.
+        """
+        if name_args:
+            return ["--name", name_args[0]]
+        tag = self.tag_override.toPlainText().strip() or self._discovery.tag
+        return ["-t", tag] if tag else None
+
+    def _listing_scope(self, match_word: str, name_args: list[str]) -> str:
+        """
+        The scope phrase for an action that lists entities: the Name pattern
+        when one is set, since entities are then selected by that glob rather
+        than by tag or name substring, and otherwise _scope_phrase().
+        """
+        if not name_args:
+            return self._scope_phrase(match_word)
+        scope = f" matching name pattern '{name_args[0]}'"
+        if self._discovery.namespace:
+            scope = f" in namespace '{self._discovery.namespace}'{scope}"
+        return scope
 
     def _confirm_destructive(
         self,
@@ -1010,8 +1222,10 @@ class YellowDogApp(QMainWindow):
         startable while an enumeration is already blocking in a nested event
         loop. Submit and provision are absent deliberately: they launch a command
         and return, without a nested loop or a pre-flight listing to be confused.
+        Add to and Resize are here, although neither destroys anything, because
+        each lists its targets first.
 
-        All six grey together, including ones unrelated to the action in flight.
+        All eight grey together, including ones unrelated to the action in flight.
         That is deliberately conservative rather than strictly required — the
         demonstrable failure is one action re-entering itself, where the inner
         dialog's 'Don't Ask Again' makes the outer call return an empty selection.
@@ -1022,8 +1236,10 @@ class YellowDogApp(QMainWindow):
         lasts one subprocess, so the cost is a second or two, visibly greyed.
         """
         return (
+            self.add_to_work_requirement,
             self.cancel_work_requirements,
             self.cancel_work_requirements_and_abort,
+            self.resize_worker_pool,
             self.shutdown_all_worker_pools,
             self.terminate_all_compute_requirements,
             self.download_results,
@@ -1216,6 +1432,17 @@ class YellowDogApp(QMainWindow):
         output that is not a JSON array) so callers can fall back to a
         scope-level confirmation.
         """
+        return self._capture_json(command, ["-D", "--json"], extra_args)
+
+    def _capture_json(
+        self, command: str, flags: list[str], extra_args: list[str] | None = None
+    ) -> list | None:
+        """
+        Run '<command> <flags>' (quiet, no formatting) with the current config
+        source and namespace/tag/user variables, then 'extra_args', and return
+        the parsed JSON array; 'flags' must ask for JSON. None on any failure: a
+        process error, a non-zero exit, or output that is not a JSON array.
+        """
         yd_process = QProcess()
         event_loop = QEventLoop()
 
@@ -1228,7 +1455,8 @@ class YellowDogApp(QMainWindow):
 
         args = (
             self._config_source_args()
-            + ["--nf", "-q", "-D", "--json"]
+            + ["--nf", "-q"]
+            + flags
             + self._namespace_tag_and_user_vars()
             + (extra_args or [])
         )
@@ -1319,6 +1547,272 @@ class YellowDogApp(QMainWindow):
             # the rows it owns — would live for the rest of the session.
             dialog.deleteLater()
 
+    def _build_single_choice_dialog(
+        self,
+        title: str,
+        message: str,
+        accept_text: str,
+        rows: list[SelectableRow],
+        selected: str | None = None,
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) a chooser of exactly one row: a message, a plain
+        selectable listing with the row whose handle is 'selected' (else the
+        first) selected, and Cancel / <accept_text> buttons with the accept
+        button as the default. Returns the dialog and that button.
+
+        Not _build_chooser_dialog with a flag, because what that dialog is built
+        around — ticks, All / None, 'N of M selected' — means nothing when the
+        answer is one row. With no check indicators there is nothing for
+        fix_check_indicator_placement() to correct, either. The accept button is
+        gated on a selection all the same, since a ctrl-click can clear it, and
+        double-clicking a row accepts it. The listing opens wide enough for its
+        longest row, up to the main window's width, as the process chooser's
+        does, so the status column is not elided behind a long name. 'rows'
+        must be non-empty.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        layout = QVBoxLayout(dialog)
+        self._size_dialog_to_its_text(layout)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        listing = self._new_single_choice_listing(rows)
+        layout.addWidget(listing)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        accept_btn = cast(
+            QPushButton,
+            button_box.addButton(accept_text, QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        accept_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        def refresh() -> None:
+            accept_btn.setEnabled(bool(listing.selectedItems()))
+
+        listing.itemSelectionChanged.connect(refresh)
+        listing.itemDoubleClicked.connect(lambda _item: dialog.accept())
+
+        self._select_row(listing, rows, selected)
+        refresh()
+
+        return dialog, accept_btn
+
+    def _new_single_choice_listing(self, rows: list[SelectableRow]) -> QListWidget:
+        """
+        A single-selection dialog list of 'rows', named 'choice_list', its
+        height fitted to them and wide enough for the longest, up to the main
+        window's width, as the process chooser's is.
+        """
+        listing = self._new_dialog_listing("choice_list")
+        listing.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for row in rows:
+            item = QListWidgetItem(row.display)
+            item.setToolTip(row.tooltip)
+            item.setData(Qt.ItemDataRole.UserRole, row.handle)
+            if not row.enabled:
+                item.setFlags(
+                    item.flags()
+                    & ~Qt.ItemFlag.ItemIsSelectable
+                    & ~Qt.ItemFlag.ItemIsEnabled
+                )
+            listing.addItem(item)
+        self._fit_dialog_listing_height(listing)
+        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
+        listing.setMinimumWidth(
+            min(
+                listing.sizeHintForColumn(0)
+                + 2 * listing.frameWidth()
+                + (
+                    scrollbar.sizeHint().width()
+                    if listing.count() > MAX_DIALOG_LIST_ROWS
+                    else 0
+                ),
+                self.width(),
+            )
+        )
+        return listing
+
+    @staticmethod
+    def _size_dialog_to_its_text(layout: QVBoxLayout) -> None:
+        """
+        Size a dialog to its layout, word-wrapped labels included. Left to
+        itself a dialog takes its size before a wrapped label knows how wide it
+        will be, so a message that wraps to three lines is given the height of
+        two and clipped top and bottom. A fixed-size constraint has the layout
+        size the dialog from each label's height for its actual width instead.
+        The dialog can then not be resized by hand, which none of these small
+        dialogs needs; its listing scrolls beyond MAX_DIALOG_LIST_ROWS.
+        """
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+
+    @staticmethod
+    def _select_row(
+        listing: QListWidget, rows: list[SelectableRow], selected: str | None
+    ) -> None:
+        """
+        Select the row whose handle is 'selected', else the first; a disabled
+        row is passed over for the first enabled one. Selects nothing when no
+        row is enabled.
+        """
+        enabled = [index for index, row in enumerate(rows) if row.enabled]
+        preferred = [
+            index for index in enabled if rows[index].handle == selected
+        ] or enabled
+        if preferred:
+            listing.setCurrentRow(preferred[0])
+
+    def _build_resize_dialog(
+        self,
+        message: str,
+        pools: list[ResizablePool],
+        selected: str | None = None,
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) the resize dialog: the single-choice listing of
+        'pools', a 'Target nodes' spin box and Cancel / Resize. Returns the
+        dialog and the Resize button.
+
+        The spin box follows the selection, bounded by the selected pool's
+        minimum and maximum and set to the node count it expects now. Resize
+        is greyed while that count is unchanged, since the resize would do
+        nothing, and a warning shows while the count is below it. 'pools' must
+        be non-empty.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(RESIZE_DIALOG_TITLE)
+        layout = QVBoxLayout(dialog)
+        self._size_dialog_to_its_text(layout)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        rows = pool_rows(pools)
+        listing = self._new_single_choice_listing(rows)
+        layout.addWidget(listing)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Target nodes:"))
+        spin = QSpinBox()
+        spin.setObjectName("target_nodes")
+        # Sized by its range, a pool with a maximum of 5 would get a box one
+        # narrow digit wide; sized for the ceiling, every pool gets the same
+        # box and any count fits it.
+        probe = QSpinBox()
+        probe.setRange(0, MAX_SPIN_NODES)
+        spin.setMinimumWidth(probe.sizeHint().width())
+        size_row.addWidget(spin)
+        size_row.addStretch(1)
+        layout.addLayout(size_row)
+
+        # Its room is kept while it is hidden, so the dialog is the same size
+        # whether or not it shows, and nothing is clipped when it appears.
+        warning = QLabel(SCALE_DOWN_WARNING)
+        warning.setObjectName("scale_down_warning")
+        warning.setWordWrap(True)
+        policy = warning.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        warning.setSizePolicy(policy)
+        layout.addWidget(warning)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        resize_btn = cast(
+            QPushButton,
+            button_box.addButton("Resize", QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        resize_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        by_id = {pool.id: pool for pool in pools}
+
+        def current() -> ResizablePool | None:
+            chosen = listing.selectedItems()
+            return by_id[chosen[0].data(Qt.ItemDataRole.UserRole)] if chosen else None
+
+        def refresh() -> None:
+            pool = current()
+            changed = pool is not None and spin.value() != pool.expected_nodes
+            resize_btn.setEnabled(changed)
+            warning.setVisible(pool is not None and spin.value() < pool.expected_nodes)
+
+        def follow_selection() -> None:
+            pool = current()
+            if pool is not None:
+                spin.setRange(
+                    pool.min_nodes,
+                    MAX_SPIN_NODES if pool.max_nodes is None else pool.max_nodes,
+                )
+                spin.setValue(pool.expected_nodes)
+            refresh()
+
+        listing.itemSelectionChanged.connect(follow_selection)
+        spin.valueChanged.connect(lambda _value: refresh())
+
+        self._select_row(listing, rows, selected)
+        follow_selection()
+
+        return dialog, resize_btn
+
+    def _choose_pool_size(
+        self, message: str, pools: list[ResizablePool], selected: str | None = None
+    ) -> tuple[str, int] | None:
+        """
+        Offer the resize dialog and return the chosen pool's YDID and target
+        node count, or None if the user dismissed it.
+        """
+        dialog, _resize_btn = self._build_resize_dialog(message, pools, selected)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "choice_list"))
+            spin = cast(QSpinBox, dialog.findChild(QSpinBox, "target_nodes"))
+            chosen = listing.selectedItems()
+            if not chosen:
+                return None
+            return chosen[0].data(Qt.ItemDataRole.UserRole), spin.value()
+        finally:
+            dialog.deleteLater()
+
+    def _choose_one(
+        self,
+        title: str,
+        message: str,
+        accept_text: str,
+        rows: list[SelectableRow],
+        selected: str | None = None,
+    ) -> str | None:
+        """
+        Offer a single-choice chooser over 'rows' and return the handle chosen,
+        or None if the user dismissed it. Callers honour '--yes' themselves, as
+        for _choose_objects.
+        """
+        dialog, _accept_btn = self._build_single_choice_dialog(
+            title, message, accept_text, rows, selected
+        )
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "choice_list"))
+            chosen = listing.selectedItems()
+            return chosen[0].data(Qt.ItemDataRole.UserRole) if chosen else None
+        finally:
+            dialog.deleteLater()
+
     def _download_results_action(self):
         """
         Download matching objects from remote storage into the results directory,
@@ -1337,7 +1831,10 @@ class YellowDogApp(QMainWindow):
         answer a chooser either; a user who wants a subset without being asked can
         narrow the Path field instead.
         """
-        if self._operation_in_flight("Download Matching Objects"):
+        if (
+            self._operation_in_flight("Download Matching Objects")
+            or not self._properties_are_usable()
+        ):
             return
 
         dst = join(self._working_dir(), RESULTS_DIR)
@@ -1404,7 +1901,10 @@ class YellowDogApp(QMainWindow):
         enumeration or confirmation. The '-y'/per-action-skip bypasses delete the
         whole pattern, logging that they have done so.
         """
-        if self._operation_in_flight("Delete Matching Objects"):
+        if (
+            self._operation_in_flight("Delete Matching Objects")
+            or not self._properties_are_usable()
+        ):
             return
 
         path = self._object_path()
@@ -1568,19 +2068,11 @@ class YellowDogApp(QMainWindow):
         describe the action (e.g. 'Cancelling'/'Work Requirements') and
         'match_word' is how the CLI selects entities ('tags' or 'names').
         """
-        if self._operation_in_flight(title):
+        if self._operation_in_flight(title) or not self._properties_are_usable():
             return
 
         name_args = self._name_glob_args()
-
-        # When a Name pattern is set, entities are selected by that glob rather
-        # than by tag/name-substring, so describe the scope accordingly.
-        if name_args:
-            scope = f" matching name pattern '{name_args[0]}'"
-            if self._discovery.namespace:
-                scope = f" in namespace '{self._discovery.namespace}'{scope}"
-        else:
-            scope = self._scope_phrase(match_word)
+        scope = self._listing_scope(match_word, name_args)
 
         if self._confirmations_disabled or action_key in self._skip_confirmations:
             self._output.log(
@@ -1652,6 +2144,8 @@ class YellowDogApp(QMainWindow):
         )
 
     def _create_worker_pool_action(self):
+        if not self._properties_are_usable():
+            return
         if self._wp_file is None:
             args = []
         else:
@@ -1660,8 +2154,88 @@ class YellowDogApp(QMainWindow):
             args += ["-af"]
         elif self.dry_run_worker_pool.isChecked():
             args += ["-D"]
-        args += self.wp_provision_options.toPlainText().split()
-        self._run_command_in_subprocess("yd-provision", args)
+        extra_options = self._split_field(self.wp_provision_options, "Extra Options")
+        if extra_options is None:
+            return
+        self._run_command_in_subprocess("yd-provision", args + extra_options)
+
+    def _resize_worker_pool_action(self):
+        """
+        Resize a Worker Pool, chosen from a list with the target node count, by
+        'yd-resize -y <ydid> <nodes>': the dialog is the confirmation, so the
+        CLI's own is not asked for as well.
+
+        Lists the candidates with 'yd-list worker-pools --active-only --details
+        --json', since only the full Worker Pool carries the node count and its
+        bounds, in the current namespace and tag or matching the Name pattern.
+        Configured Worker Pools are left out, since their nodes are not a
+        number the platform can change. A pool awaiting nodes is listed but
+        cannot be chosen, since the platform refuses to resize it, and when
+        every pool is awaiting nodes no dialog opens. A pool that starts
+        awaiting nodes after the listing still fails in 'yd-resize', whose
+        error reaches the output window like any other. Every failure
+        refuses, as for Add to.
+
+        Neither Panel 3 checkbox applies: a Worker Pool being resized is
+        probably being followed already, and Dry Run is labelled for creation,
+        while the dialog already shows what the resize will do.
+        '--yes' does not skip the dialog, which is the only place a node count
+        can be given; the Deselect... dialog is not skipped either, for the same
+        reason.
+        """
+        if (
+            self._operation_in_flight(RESIZE_DIALOG_TITLE)
+            or not self._properties_are_usable()
+        ):
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("names", name_args)
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
+        self._output.log("Checking which Worker Pools can be resized...")
+        self.log_output.repaint()
+        parsed = self._capture_json(
+            "yd-list",
+            ["--json"],
+            ["worker-pools", "--active-only", "--details"] + scope_args,
+        )
+        result = None if parsed is None else parse_resizable_pools(parsed)
+        if parsed is None or result is None:
+            self._output.log("Could not list the Worker Pools to resize; none resized")
+            return
+
+        pools, configured = result
+        if not pools:
+            left_out = (
+                f"; {configured} Configured Worker Pool(s) matched, which cannot"
+                " be resized"
+                if configured
+                else ""
+            )
+            self._output.log(f"No active Worker Pools{scope} to resize{left_out}")
+            return
+        if all(pool.awaiting_nodes for pool in pools):
+            self._output.log(
+                f"No Worker Pools{scope} can be resized yet: {len(pools)} matched,"
+                " all awaiting nodes, which the platform will not resize"
+            )
+            return
+
+        choice = self._choose_pool_size(
+            f"Choose the Worker Pool{scope} to resize, and the number of nodes"
+            " to resize it to.",
+            pools,
+            selected=newest_entity_id(parsed),
+        )
+        if choice is None:
+            return
+
+        pool_id, nodes = choice
+        self._run_command_in_subprocess("yd-resize", ["-y", pool_id, str(nodes)])
 
     def _shutdown_all_worker_pools_action(self):
         self._run_destructive_with_listing(
@@ -1686,12 +2260,25 @@ class YellowDogApp(QMainWindow):
         )
 
     def _namespace_tag_and_user_vars(self) -> list[str]:
+        """
+        The arguments every 'yd-' command is given from the top of the window:
+        '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
+        variable and '--property' for each property override.
+
+        Each property is passed joined to its flag, '--property=section.key=value',
+        so a value that begins with '-' is never taken for an option. Raises
+        QuotingError when the Properties field cannot be split, which every
+        action refuses on beforehand (_properties_are_usable).
+        """
         # Split out a list of variables of the form "x=y",
         # and prefix each with "-v" -> ["-v', "x=y"], etc.
         # Apply a namespace override if it exists.
         # Apply a tag override if it exists.
         namespace_tag_user_vars = [
             x for y in self.user_variables.toPlainText().split() for x in ["-v", y]
+        ] + [
+            f"--property={override}"
+            for override in split_arguments(self.properties.toPlainText())
         ]
 
         tag_override = self.tag_override.toPlainText().strip()
@@ -1709,6 +2296,32 @@ class YellowDogApp(QMainWindow):
             ] + namespace_tag_user_vars
 
         return namespace_tag_user_vars
+
+    def _split_field(self, field: QPlainTextEdit, name: str) -> list[str] | None:
+        """
+        A field's contents as arguments, split as a shell would split them (see
+        arguments.py), so that a value containing spaces can be quoted. None,
+        having said why, when its quotes do not balance.
+        """
+        return self._split_text(field.toPlainText(), name)
+
+    def _split_text(self, text: str, name: str) -> list[str] | None:
+        """_split_field() for text already read from the field called 'name'."""
+        try:
+            return split_arguments(text)
+        except QuotingError as error:
+            self._output.log(f"Cannot use the {name} field: {error}")
+            return None
+
+    def _properties_are_usable(self) -> bool:
+        """
+        Whether the Properties field can be split into arguments. Every action
+        that runs a 'yd-' command asks first, and refuses when it cannot: the
+        overrides are part of every such command line, so there is nothing to
+        run without them, and a listing attempted without them would fail and
+        read as 'the listing failed' rather than as the quoting mistake it is.
+        """
+        return self._split_field(self.properties, "Properties") is not None
 
     def _build_command_args(
         self, command: str, args: list[str], yd_command: bool
@@ -2377,7 +2990,7 @@ class YellowDogApp(QMainWindow):
             )
         if is_dark:
             self.setStyleSheet(
-                "#line_3, #line_4, #line_6, #line_7, #line_8 {"
+                "#line_3, #line_4, #line_6, #line_7, #line_8, #line_9 {"
                 " background-color: #555555; border: none; max-height: 2px; }"
                 " #line_5 { background-color: #555555; border: none; max-width: 2px; }"
             )
@@ -2400,15 +3013,17 @@ class YellowDogApp(QMainWindow):
         self._run_any_command_core(self.any_command.toPlainText())
 
     def _run_any_command_core(self, command_text: str):
-        command_and_args = command_text.split()
-        if len(command_and_args) == 0:
+        words = command_text.split()
+        if len(words) == 0:
             self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
-        if (
-            command_and_args[0].startswith("yd-")
-            and command_and_args[0] != "yd-version"
-        ):
+        if words[0].startswith("yd-") and words[0] != "yd-version":
+            # Split with quoting, as a shell would: the non-yd branch below
+            # hands the text to one, so the two agree about what a quote means
+            command_and_args = self._split_text(command_text, "command")
+            if command_and_args is None or not self._properties_are_usable():
+                return
             # yd- commands: inject UI namespace/tag/user vars as normal
             self._run_command_in_subprocess(
                 command=command_and_args[0],

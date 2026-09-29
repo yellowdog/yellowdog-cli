@@ -114,6 +114,21 @@ def _fresh_json_results():
 
 
 @pytest.fixture(autouse=True)
+def _no_config_snapshot(monkeypatch):
+    """
+    Start every test with no configuration file snapshot (load_config's
+    _CONFIG_AS_WRITTEN), so a wrapped main() run in-process does not warn
+    of the violations in whatever config.toml the test process loaded at
+    import -- the developer's own, in a checkout. Tests of the warnings set
+    it themselves. Inert until load_config is imported.
+    """
+    module = sys.modules.get("yellowdog_cli.utils.load_config")
+    if module is not None:
+        monkeypatch.setattr(module, "_CONFIG_AS_WRITTEN", None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _gui_harness_guard():
     """
     Surface anything that happened inside a Qt callback.

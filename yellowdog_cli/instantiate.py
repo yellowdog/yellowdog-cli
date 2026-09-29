@@ -50,6 +50,8 @@ from yellowdog_cli.utils.settings import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
+from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -105,6 +107,11 @@ def main():
             cr_json_file, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
         )
         return
+
+    if ARGS_PARSER.validate:
+        raise ValueError(
+            "Option '--validate' needs a Compute Requirement specification file"
+        )
 
     if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")
@@ -293,6 +300,12 @@ def _create_compute_requirement_from_json(
         cr_data = load_json_file_with_variable_substitutions(
             cr_json_file, prefix=prefix, postfix=postfix
         )
+
+    # Both branches above, JSON and Jsonnet, arrive here with the loaded
+    # document, validated before 'requirementTemplateUsage' is unwrapped
+    cr_data = check_specification(
+        Family.COMPUTE_REQUIREMENT, cr_data, cr_json_file, bool(ARGS_PARSER.validate)
+    )
 
     # Use only the 'requirementTemplateUsage' value (if present);
     # strips out Worker Pool stuff

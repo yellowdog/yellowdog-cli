@@ -150,6 +150,10 @@ The specification-taking tools — `yd_submit`, `yd_provision`, `yd_instantiate`
 
 An inline specification is written to a uniquely named `.yd-mcp-*.json` file in the working directory for the run, created exclusively and readable by the owner only, and removed once the run completes, whatever its outcome — so that a relative `taskDataFile` or `userDataFile` reference inside it resolves exactly as it would from a file the user had placed there themselves.
 
+`yd_schema` gives the JSON Schema a family of specifications must follow; ask for it before composing one inline.
+
+`yd_submit`, `yd_provision`, `yd_instantiate`, `yd_create` and `yd_nodeaction` each also take a `validate` argument, exactly as `--validate` does on the command line: it checks the specification against its schema and stops there, reporting every violation, instead of running it.
+
 ## Timeouts and Following
 
 Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result.

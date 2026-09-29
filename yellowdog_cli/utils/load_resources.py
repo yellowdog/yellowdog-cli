@@ -32,6 +32,12 @@ from yellowdog_cli.utils.settings import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
+from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.spec_validation import (
+    strip_schema_key,
+    validate_all_and_exit,
+    warn_of_violations,
+)
 from yellowdog_cli.utils.variables import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
@@ -51,6 +57,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
     resources described in a set of resource description files.
     """
     resources = []
+    to_validate: list[tuple[object, str]] = []  # Under '--validate'
     for resource_spec in ARGS_PARSER.resource_specifications:
         if resource_spec.lower().endswith(".jsonnet"):
             resources_loaded = load_jsonnet_file_with_variable_substitutions(
@@ -76,20 +83,37 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
             raise ValueError(exception_message)
 
         # Transform single resource items into lists
+        document = resources_loaded
         if isinstance(resources_loaded, dict):
             resources_loaded = [resources_loaded]
 
         spec_dir = dirname(abspath(resource_spec))
 
-        # Secondary variable processing pass + source-dir stamp
+        # Secondary variable processing pass
         for resource in resources_loaded:
             resolve_variables_insitu(resource)
+
+        # Every branch above -- JSON, Jsonnet, TOML -- arrives here with the
+        # loaded document. Checked for creation only: the schema is what
+        # yd-create accepts, and yd-remove reads no more than the names
+        if creation_or_update:
+            strip_schema_key(resources_loaded)
+            if ARGS_PARSER.validate:
+                to_validate.append((document, resource_spec))
+                continue
+            warn_of_violations(Family.RESOURCES, document, resource_spec)
+
+        # Source-dir stamp
+        for resource in resources_loaded:
             resource[RESOURCE_SOURCE_DIR] = spec_dir
 
         print_info(
             f"Including {len(resources_loaded)} resource(s) from '{resource_spec}'"
         )
         resources += resources_loaded
+
+    if creation_or_update and ARGS_PARSER.validate:
+        validate_all_and_exit(Family.RESOURCES, to_validate)
 
     if ARGS_PARSER.jsonnet_dry_run:
         exit(0)

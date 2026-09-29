@@ -74,6 +74,7 @@ _DEFAULTS = {
     "details": False,
     "reverse": None,
     "sort": None,
+    "validate": False,
 }
 
 
