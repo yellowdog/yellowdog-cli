@@ -4,7 +4,13 @@ Unit tests for yellowdog_cli.utils.rclone_utils
 
 from unittest.mock import MagicMock, patch
 
-from yellowdog_cli.utils.rclone_utils import parse_rclone_config
+import pytest
+
+from yellowdog_cli.utils.rclone_utils import (
+    is_inline_remote,
+    parse_rclone_config,
+    shown_remote,
+)
 
 
 class TestParseRcloneConfig:
@@ -193,3 +199,55 @@ class TestMakeRcloneForCopy:
         assert config_text is not None
         assert "[SRC]" in config_text
         assert "[DST]" in config_text
+
+
+class TestIsInlineRemote:
+    """
+    What yd-variables withholds the parameters of, by the shape of the value:
+    strict, so that an ordinary comma-separated value is never taken for one.
+    """
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "S3,type=s3,provider=AWS,secret_access_key=X",
+            "rclone:S3,type=s3,secret_access_key=X",
+            "rclone:S3,type=s3,secret_access_key=X:bucket/path",
+            ":s3,provider=AWS,secret_access_key=X:",
+            ":s3,secret_access_key=X",
+            "loc,type=local",
+        ],
+    )
+    def test_inline_remotes(self, value):
+        assert is_inline_remote(value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["myremote:", "rclone:myremote:path", "a,b", "x,y=z", "a,b,port=8080", ""],
+    )
+    def test_not_inline_remotes(self, value):
+        assert not is_inline_remote(value)
+
+
+class TestShownRemote:
+    @pytest.mark.parametrize(
+        "remote, shown",
+        [
+            (
+                "rclone:S3,type=s3,provider=AWS,access_key_id=A,secret_access_key=B",
+                "rclone:S3,type=s3,provider=AWS,<2 parameters redacted>",
+            ),
+            # A trailing path goes with the last parameter: it cannot be told
+            # apart from the port of a URL there
+            (
+                "rclone:S3,type=s3,secret_access_key=B:bucket/path",
+                "rclone:S3,type=s3,<1 parameter redacted>",
+            ),
+            (
+                "r,type=s3,endpoint=http://127.0.0.1:9",
+                "r,type=s3,<1 parameter redacted>",
+            ),
+        ],
+    )
+    def test_the_prefix_is_kept(self, remote, shown):
+        assert shown_remote(remote) == shown

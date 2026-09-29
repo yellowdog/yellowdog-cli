@@ -2455,8 +2455,8 @@ COMMANDS["yd-variables"] = Command(
                 "include the values of the 'key' and 'secret' variables, of"
                 " variables whose names match"
                 f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}'"
-                " (case-insensitive), and the parameters of an inline data client"
-                " remote, when reporting all variables; they are always reported"
+                " (case-insensitive), and the parameters of any value that is an inline"
+                " rclone connection string, when reporting all variables; they are always reported"
                 " when named explicitly. Any other variable is reported in full,"
                 " even one holding a credential"
             )

@@ -11,7 +11,7 @@ from yellowdog_cli.utils.property_names import (
     KEY,
     SECRET,
 )
-from yellowdog_cli.utils.rclone_utils import shown_remote
+from yellowdog_cli.utils.rclone_utils import is_inline_remote, shown_remote
 from yellowdog_cli.utils.settings import (
     REDACTED_VALUE,
     SECRET_VARIABLE_NAME_PATTERN,
@@ -43,7 +43,13 @@ from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 # {{dataClient.*.remote}} variables itself, and the rclone parser knows which
 # part of the string the parameters are. Those are shown as yd-doctor shows
 # them -- name, type and provider, the rest withheld -- under the same rule:
-# in the full report only, and not under --show-secrets.
+# in the full report only, and not under --show-secrets. The same holds of any
+# other variable whose *value* is an inline connection string (a user-defined
+# 'remote_with_keys', say), since what makes the parameters credentials is the
+# shape of the value, not who registered it; is_inline_remote() recognises
+# the shape strictly, so an ordinary comma-separated value is left alone. Like
+# the name pattern, it is stated whenever it withholds anything from a
+# variable the CLI did not register itself.
 SECRET_VARIABLES = (KEY, SECRET)
 
 
@@ -80,6 +86,27 @@ def is_remote_variable(name: str) -> bool:
     )
 
 
+def withheld_remotes(variable_names: list[str], show_secrets: bool) -> list[str]:
+    """
+    The user variables -- not the CLI's own {{dataClient.*.remote}} -- whose
+    values the report shows through shown_remote() because they are inline
+    rclone connection strings: none when variables are named or
+    'show_secrets' is set, and none already redacted by the name pattern.
+    """
+    if variable_names or show_secrets:
+        return []
+    return sorted(
+        name
+        for name, value in get_all_user_variables().items()
+        if not is_remote_variable(name)
+        and name not in SECRET_VARIABLES
+        and not matches_secret_name_pattern(name)
+        and isinstance(value, str)
+        and is_inline_remote(value)
+        and shown_remote(value) != value
+    )
+
+
 @main_wrapper
 def main():
     # Like yd-show, whose output is also always JSON, the warnings and the
@@ -89,6 +116,7 @@ def main():
     show_secrets = bool(ARGS_PARSER.show_secrets)
     variables = report_variables(ARGS_PARSER.variable_names, show_secrets=show_secrets)
     by_pattern = redacted_by_pattern(ARGS_PARSER.variable_names, show_secrets)
+    by_value = withheld_remotes(ARGS_PARSER.variable_names, show_secrets)
     # A value redacted by the pattern is already REDACTED_VALUE here, and so
     # carries no reference to check. 'key' and 'secret', which --show-secrets
     # reports in full, are left out of the check by name
@@ -105,6 +133,12 @@ def main():
             f"Redacted {len(by_pattern)} variable(s) whose names match"
             f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}' (case-insensitive);"
             " everything else is shown in full. --show-secrets reports all."
+        )
+    if by_value:
+        print_warning(
+            f"Withheld the parameters of {len(by_value)} variable(s) holding an"
+            " inline rclone connection string, keeping its name, type and"
+            " provider. --show-secrets reports all."
         )
     print_json(variables)
 
@@ -136,8 +170,8 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> d
 
     Reporting every variable redacts the values of SECRET_VARIABLES and of
     every variable whose name matches SECRET_VARIABLE_NAME_PATTERN, and
-    withholds the parameters of an inline rclone remote (see shown_remote())
-    unless 'show_secrets' is set; naming one reports it either way, a name
+    withholds the parameters of every value that is an inline rclone
+    connection string (see is_inline_remote() and shown_remote()) unless 'show_secrets' is set; naming one reports it either way, a name
     being an explicit request for that variable.
     """
     if variable_names:
@@ -149,7 +183,9 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> d
                 if name in SECRET_VARIABLES or matches_secret_name_pattern(name):
                     variables[name] = REDACTED_VALUE
             for name, value in variables.items():
-                if is_remote_variable(name) and isinstance(value, str):
+                if isinstance(value, str) and (
+                    is_remote_variable(name) or is_inline_remote(value)
+                ):
                     variables[name] = shown_remote(value)
 
     return dict(sorted(variables.items()))
