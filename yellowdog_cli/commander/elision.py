@@ -47,8 +47,8 @@ def elide_path_to_fit(path: str, fits: Callable[[str], bool]) -> str:
     else the ellipsis and the longest tail of it that starts at a separator, so
     that no directory name is shown cut off and the filename is kept. Where not
     even the filename fits, the ellipsis and the filename (or, with no separator,
-    the path as it is), for the caller to clip. 'fits' is the caller's measure — a width in pixels, typically — which
-    keeps this free of Qt.
+    the path as it is), for the caller to clip. 'fits' is the caller's measure —
+    a width in pixels, typically — which keeps this free of Qt.
     """
     if fits(path):
         return path
