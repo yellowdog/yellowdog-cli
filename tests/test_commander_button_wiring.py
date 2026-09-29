@@ -35,6 +35,7 @@ WIRING = [
     ),
     ("select_worker_pool", "_select_worker_pool_action"),
     ("create_worker_pool", "_create_worker_pool_action"),
+    ("resize_worker_pool", "_resize_worker_pool_action"),
     ("shutdown_all_worker_pools", "_shutdown_all_worker_pools_action"),
     (
         "terminate_all_compute_requirements",

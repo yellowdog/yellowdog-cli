@@ -63,6 +63,7 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollBar,
+    QSpinBox,
     QStyle,
     QStyleOptionButton,
     QVBoxLayout,
@@ -87,6 +88,7 @@ from yellowdog_cli.commander.selection import (
     Confirmation,
     EntitySummary,
     ObjectSummary,
+    ResizablePool,
     SelectableRow,
     checked_handles,
     entity_rows,
@@ -95,7 +97,9 @@ from yellowdog_cli.commander.selection import (
     parse_download_summaries,
     parse_entity_summaries,
     parse_object_summaries,
+    parse_resizable_pools,
     path_would_be_globbed,
+    pool_rows,
     set_all_check_states,
     update_selection_state,
 )
@@ -136,6 +140,25 @@ NO_OBJECT_PATH = (
     " match. Enter a Path, or select a configuration file to discover one from"
     " (reselect it if discovery has already failed)."
 )
+# Shown when an action that lists entities with 'yd-list' has no tag to list
+# them by. 'yd-list' defaults its tag to '' (every entity in the namespace), so
+# the tag must be passed explicitly, and without one the listing would offer
+# entities from outside the scope the dialog names.
+NO_LISTING_TAG = (
+    "No tag: none has been discovered, so there is no default scope to list."
+    " Enter a Tag or a Name pattern, or select a configuration file to discover"
+    " one from (reselect it if discovery has already failed)."
+)
+RESIZE_DIALOG_TITLE = "Resize Worker Pool"
+SCALE_DOWN_WARNING = (
+    "Fewer nodes than now: nodes will be shut down, and any tasks running on"
+    " them may be interrupted."
+)
+# Extra space between a dialog's message, its listing and what follows, which
+# otherwise sit at the layout's default spacing and read as crowded
+DIALOG_SECTION_SPACING = 6
+# The spin box's ceiling for a Worker Pool that sets no maximum of its own
+MAX_SPIN_NODES = 10_000
 # The one non-terminal Work Requirement status 'yd-list --active-only' keeps and
 # 'yd-submit --add-to' refuses, so Add to must not offer it. Spelled out rather
 # than imported: nothing in Commander imports the SDK.
@@ -199,6 +222,7 @@ class YellowDogApp(QMainWindow):
     cancel_work_requirements_and_abort: QPushButton
     select_worker_pool: QPushButton
     create_worker_pool: QPushButton
+    resize_worker_pool: QPushButton
     shutdown_all_worker_pools: QPushButton
     terminate_all_compute_requirements: QPushButton
     browse_results_directory: QPushButton
@@ -287,6 +311,7 @@ class YellowDogApp(QMainWindow):
         )
         self.select_worker_pool.clicked.connect(self._select_worker_pool_action)
         self.create_worker_pool.clicked.connect(self._create_worker_pool_action)
+        self.resize_worker_pool.clicked.connect(self._resize_worker_pool_action)
         self.shutdown_all_worker_pools.clicked.connect(
             self._shutdown_all_worker_pools_action
         )
@@ -804,12 +829,16 @@ class YellowDogApp(QMainWindow):
         name_args = self._name_glob_args()
         scope = self._listing_scope("tags", name_args)
 
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
         self._output.log("Checking which Work Requirements can be added to...")
         self.log_output.repaint()
-        listing_args = ["work-requirements", "--active-only"]
-        if name_args:
-            listing_args += ["--name", name_args[0]]
-        parsed = self._capture_json("yd-list", ["--json"], listing_args)
+        parsed = self._capture_json(
+            "yd-list", ["--json"], ["work-requirements", "--active-only"] + scope_args
+        )
         entities = None if parsed is None else parse_entity_summaries(parsed)
         if parsed is None or entities is None:
             self._output.log(
@@ -885,6 +914,23 @@ class YellowDogApp(QMainWindow):
         if self._discovery.tag:
             return f" with {match_word} including '{self._discovery.tag}'"
         return " in the current namespace and tag"
+
+    def _yd_list_scope_args(self, name_args: list[str]) -> list[str] | None:
+        """
+        The 'yd-list' arguments that confine a listing to the scope the other
+        actions use: the Name pattern as '--name' when one is set, else the tag
+        as '-t' — the Tag field's, or the discovered one. None when there is
+        neither, since 'yd-list' defaults its tag to '' and would list every
+        entity in the namespace; callers must refuse, with NO_LISTING_TAG.
+
+        The tag has to be passed even when the configuration file names one,
+        because that default is 'yd-list''s own: the configuration's tag
+        reaches every other command and not this one.
+        """
+        if name_args:
+            return ["--name", name_args[0]]
+        tag = self.tag_override.toPlainText().strip() or self._discovery.tag
+        return ["-t", tag] if tag else None
 
     def _listing_scope(self, match_word: str, name_args: list[str]) -> str:
         """
@@ -1119,10 +1165,10 @@ class YellowDogApp(QMainWindow):
         startable while an enumeration is already blocking in a nested event
         loop. Submit and provision are absent deliberately: they launch a command
         and return, without a nested loop or a pre-flight listing to be confused.
-        Add to is here, although it only submits, because it lists its targets
-        first.
+        Add to and Resize are here, although neither destroys anything, because
+        each lists its targets first.
 
-        All seven grey together, including ones unrelated to the action in flight.
+        All eight grey together, including ones unrelated to the action in flight.
         That is deliberately conservative rather than strictly required — the
         demonstrable failure is one action re-entering itself, where the inner
         dialog's 'Don't Ask Again' makes the outer call return an empty selection.
@@ -1136,6 +1182,7 @@ class YellowDogApp(QMainWindow):
             self.add_to_work_requirement,
             self.cancel_work_requirements,
             self.cancel_work_requirements_and_abort,
+            self.resize_worker_pool,
             self.shutdown_all_worker_pools,
             self.terminate_all_compute_requirements,
             self.download_results,
@@ -1470,33 +1517,16 @@ class YellowDogApp(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
         layout = QVBoxLayout(dialog)
+        self._size_dialog_to_its_text(layout)
 
         message_label = QLabel(message)
         message_label.setWordWrap(True)
         layout.addWidget(message_label)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
 
-        listing = self._new_dialog_listing("choice_list")
-        listing.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        for row in rows:
-            item = QListWidgetItem(row.display)
-            item.setToolTip(row.tooltip)
-            item.setData(Qt.ItemDataRole.UserRole, row.handle)
-            listing.addItem(item)
-        self._fit_dialog_listing_height(listing)
-        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
-        listing.setMinimumWidth(
-            min(
-                listing.sizeHintForColumn(0)
-                + 2 * listing.frameWidth()
-                + (
-                    scrollbar.sizeHint().width()
-                    if listing.count() > MAX_DIALOG_LIST_ROWS
-                    else 0
-                ),
-                self.width(),
-            )
-        )
+        listing = self._new_single_choice_listing(rows)
         layout.addWidget(listing)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
 
         button_box = QDialogButtonBox(dialog)
         button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
@@ -1515,11 +1545,191 @@ class YellowDogApp(QMainWindow):
         listing.itemSelectionChanged.connect(refresh)
         listing.itemDoubleClicked.connect(lambda _item: dialog.accept())
 
-        handles = [row.handle for row in rows]
-        listing.setCurrentRow(handles.index(selected) if selected in handles else 0)
+        self._select_row(listing, rows, selected)
         refresh()
 
         return dialog, accept_btn
+
+    def _new_single_choice_listing(self, rows: list[SelectableRow]) -> QListWidget:
+        """
+        A single-selection dialog list of 'rows', named 'choice_list', its
+        height fitted to them and wide enough for the longest, up to the main
+        window's width, as the process chooser's is.
+        """
+        listing = self._new_dialog_listing("choice_list")
+        listing.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for row in rows:
+            item = QListWidgetItem(row.display)
+            item.setToolTip(row.tooltip)
+            item.setData(Qt.ItemDataRole.UserRole, row.handle)
+            if not row.enabled:
+                item.setFlags(
+                    item.flags()
+                    & ~Qt.ItemFlag.ItemIsSelectable
+                    & ~Qt.ItemFlag.ItemIsEnabled
+                )
+            listing.addItem(item)
+        self._fit_dialog_listing_height(listing)
+        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
+        listing.setMinimumWidth(
+            min(
+                listing.sizeHintForColumn(0)
+                + 2 * listing.frameWidth()
+                + (
+                    scrollbar.sizeHint().width()
+                    if listing.count() > MAX_DIALOG_LIST_ROWS
+                    else 0
+                ),
+                self.width(),
+            )
+        )
+        return listing
+
+    @staticmethod
+    def _size_dialog_to_its_text(layout: QVBoxLayout) -> None:
+        """
+        Size a dialog to its layout, word-wrapped labels included. Left to
+        itself a dialog takes its size before a wrapped label knows how wide it
+        will be, so a message that wraps to three lines is given the height of
+        two and clipped top and bottom. A fixed-size constraint has the layout
+        size the dialog from each label's height for its actual width instead.
+        The dialog can then not be resized by hand, which none of these small
+        dialogs needs; its listing scrolls beyond MAX_DIALOG_LIST_ROWS.
+        """
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+
+    @staticmethod
+    def _select_row(
+        listing: QListWidget, rows: list[SelectableRow], selected: str | None
+    ) -> None:
+        """
+        Select the row whose handle is 'selected', else the first; a disabled
+        row is passed over for the first enabled one. Selects nothing when no
+        row is enabled.
+        """
+        enabled = [index for index, row in enumerate(rows) if row.enabled]
+        preferred = [
+            index for index in enabled if rows[index].handle == selected
+        ] or enabled
+        if preferred:
+            listing.setCurrentRow(preferred[0])
+
+    def _build_resize_dialog(
+        self,
+        message: str,
+        pools: list[ResizablePool],
+        selected: str | None = None,
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) the resize dialog: the single-choice listing of
+        'pools', a 'Target nodes' spin box and Cancel / Resize. Returns the
+        dialog and the Resize button.
+
+        The spin box follows the selection, bounded by the selected pool's
+        minimum and maximum and set to the node count it expects now. Resize
+        is greyed while that count is unchanged, since the resize would do
+        nothing, and a warning shows while the count is below it. 'pools' must
+        be non-empty.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(RESIZE_DIALOG_TITLE)
+        layout = QVBoxLayout(dialog)
+        self._size_dialog_to_its_text(layout)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        rows = pool_rows(pools)
+        listing = self._new_single_choice_listing(rows)
+        layout.addWidget(listing)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Target nodes:"))
+        spin = QSpinBox()
+        spin.setObjectName("target_nodes")
+        # Sized by its range, a pool with a maximum of 5 would get a box one
+        # narrow digit wide; sized for the ceiling, every pool gets the same
+        # box and any count fits it.
+        probe = QSpinBox()
+        probe.setRange(0, MAX_SPIN_NODES)
+        spin.setMinimumWidth(probe.sizeHint().width())
+        size_row.addWidget(spin)
+        size_row.addStretch(1)
+        layout.addLayout(size_row)
+
+        # Its room is kept while it is hidden, so the dialog is the same size
+        # whether or not it shows, and nothing is clipped when it appears.
+        warning = QLabel(SCALE_DOWN_WARNING)
+        warning.setObjectName("scale_down_warning")
+        warning.setWordWrap(True)
+        policy = warning.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        warning.setSizePolicy(policy)
+        layout.addWidget(warning)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        resize_btn = cast(
+            QPushButton,
+            button_box.addButton("Resize", QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        resize_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        by_id = {pool.id: pool for pool in pools}
+
+        def current() -> ResizablePool | None:
+            chosen = listing.selectedItems()
+            return by_id[chosen[0].data(Qt.ItemDataRole.UserRole)] if chosen else None
+
+        def refresh() -> None:
+            pool = current()
+            changed = pool is not None and spin.value() != pool.expected_nodes
+            resize_btn.setEnabled(changed)
+            warning.setVisible(pool is not None and spin.value() < pool.expected_nodes)
+
+        def follow_selection() -> None:
+            pool = current()
+            if pool is not None:
+                spin.setRange(
+                    pool.min_nodes,
+                    MAX_SPIN_NODES if pool.max_nodes is None else pool.max_nodes,
+                )
+                spin.setValue(pool.expected_nodes)
+            refresh()
+
+        listing.itemSelectionChanged.connect(follow_selection)
+        spin.valueChanged.connect(lambda _value: refresh())
+
+        self._select_row(listing, rows, selected)
+        follow_selection()
+
+        return dialog, resize_btn
+
+    def _choose_pool_size(
+        self, message: str, pools: list[ResizablePool], selected: str | None = None
+    ) -> tuple[str, int] | None:
+        """
+        Offer the resize dialog and return the chosen pool's YDID and target
+        node count, or None if the user dismissed it.
+        """
+        dialog, _resize_btn = self._build_resize_dialog(message, pools, selected)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "choice_list"))
+            spin = cast(QSpinBox, dialog.findChild(QSpinBox, "target_nodes"))
+            chosen = listing.selectedItems()
+            if not chosen:
+                return None
+            return chosen[0].data(Qt.ItemDataRole.UserRole), spin.value()
+        finally:
+            dialog.deleteLater()
 
     def _choose_one(
         self,
@@ -1881,6 +2091,81 @@ class YellowDogApp(QMainWindow):
             args += ["-D"]
         args += self.wp_provision_options.toPlainText().split()
         self._run_command_in_subprocess("yd-provision", args)
+
+    def _resize_worker_pool_action(self):
+        """
+        Resize a Worker Pool, chosen from a list with the target node count, by
+        'yd-resize -y <ydid> <nodes>': the dialog is the confirmation, so the
+        CLI's own is not asked for as well.
+
+        Lists the candidates with 'yd-list worker-pools --active-only --details
+        --json', since only the full Worker Pool carries the node count and its
+        bounds, in the current namespace and tag or matching the Name pattern.
+        Configured Worker Pools are left out, since their nodes are not a
+        number the platform can change. A pool awaiting nodes is listed but
+        cannot be chosen, since the platform refuses to resize it, and when
+        every pool is awaiting nodes no dialog opens. A pool that starts
+        awaiting nodes after the listing still fails in 'yd-resize', whose
+        error reaches the output window like any other. Every failure
+        refuses, as for Add to.
+
+        Neither Panel 3 checkbox applies: a Worker Pool being resized is
+        probably being followed already, and Dry Run is labelled for creation,
+        while the dialog already shows what the resize will do.
+        '--yes' does not skip the dialog, which is the only place a node count
+        can be given; the Deselect... dialog is not skipped either, for the same
+        reason.
+        """
+        if self._operation_in_flight(RESIZE_DIALOG_TITLE):
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("names", name_args)
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
+        self._output.log("Checking which Worker Pools can be resized...")
+        self.log_output.repaint()
+        parsed = self._capture_json(
+            "yd-list",
+            ["--json"],
+            ["worker-pools", "--active-only", "--details"] + scope_args,
+        )
+        result = None if parsed is None else parse_resizable_pools(parsed)
+        if parsed is None or result is None:
+            self._output.log("Could not list the Worker Pools to resize; none resized")
+            return
+
+        pools, configured = result
+        if not pools:
+            left_out = (
+                f"; {configured} Configured Worker Pool(s) matched, which cannot"
+                " be resized"
+                if configured
+                else ""
+            )
+            self._output.log(f"No active Worker Pools{scope} to resize{left_out}")
+            return
+        if all(pool.awaiting_nodes for pool in pools):
+            self._output.log(
+                f"No Worker Pools{scope} can be resized yet: {len(pools)} matched,"
+                " all awaiting nodes, which the platform will not resize"
+            )
+            return
+
+        choice = self._choose_pool_size(
+            f"Choose the Worker Pool{scope} to resize, and the number of nodes"
+            " to resize it to.",
+            pools,
+            selected=newest_entity_id(parsed),
+        )
+        if choice is None:
+            return
+
+        pool_id, nodes = choice
+        self._run_command_in_subprocess("yd-resize", ["-y", pool_id, str(nodes)])
 
     def _shutdown_all_worker_pools_action(self):
         self._run_destructive_with_listing(

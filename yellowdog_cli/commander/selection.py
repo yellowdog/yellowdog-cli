@@ -81,6 +81,7 @@ class SelectableRow:
     display: str
     handle: str
     tooltip: str
+    enabled: bool = True  # honoured by the single-choice listings only
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,110 @@ def entity_rows(entities: list[EntitySummary]) -> list[SelectableRow]:
         )
         for entity in entities
     ]
+
+
+# The 'type' 'yd-list --details --json' gives a Worker Pool that can be resized:
+# a Configured Worker Pool's nodes are the ones that registered with it, not a
+# number the platform can be asked to change.
+PROVISIONED_WORKER_POOL_TYPE = "co.yellowdog.platform.model.ProvisionedWorkerPool"
+AWAITING_NODES_NOTE = "awaiting nodes: cannot be resized yet"
+AWAITING_NODES_TOOLTIP = "The platform cannot resize a Worker Pool awaiting nodes"
+
+
+@dataclass(frozen=True)
+class ResizablePool:
+    """
+    One Provisioned Worker Pool in a 'yd-list worker-pools --details --json'
+    listing: the YDID to resize it by, the name and status shown, the node
+    count it currently expects, the bounds a resize must keep within (maximum
+    None when the pool sets none), and whether it is awaiting nodes, in which
+    case the platform refuses to resize it ('Cannot resize worker pool whilst
+    it is awaiting nodes').
+    """
+
+    id: str
+    name: str
+    status: str | None
+    expected_nodes: int
+    min_nodes: int
+    max_nodes: int | None
+    awaiting_nodes: bool = False
+
+
+def parse_resizable_pools(parsed: list) -> tuple[list[ResizablePool], int] | None:
+    """
+    The Provisioned Worker Pools in a parsed 'yd-list worker-pools --details
+    --json' array, and how many Configured ones were left out. None if any
+    row is not a dict or lacks an 'id' or a 'name', for the reason
+    parse_entity_summaries() gives: without a YDID a pool cannot be targeted,
+    and names are not guaranteed unique.
+    """
+    pools: list[ResizablePool] = []
+    configured = 0
+    for obj in parsed:
+        if not isinstance(obj, dict):
+            return None
+        pool_id, name = obj.get("id"), obj.get("name")
+        if not pool_id or not name:
+            return None
+        if obj.get("type") != PROVISIONED_WORKER_POOL_TYPE:
+            configured += 1
+            continue
+        properties = obj.get("properties") or {}
+        status = obj.get("status")
+        max_nodes = properties.get("maxNodes")
+        pools.append(
+            ResizablePool(
+                id=str(pool_id),
+                name=str(name),
+                status=None if status is None else str(status),
+                expected_nodes=int(obj.get("expectedNodeCount") or 0),
+                min_nodes=int(properties.get("minNodes") or 0),
+                max_nodes=None if max_nodes is None else int(max_nodes),
+                awaiting_nodes=bool(obj.get("awaitingNodes")),
+            )
+        )
+    return pools, configured
+
+
+def pool_rows(pools: list[ResizablePool]) -> list[SelectableRow]:
+    """
+    Rows for a resize listing: name, status and the expected node count with
+    its bounds, each column padded to a common width as entity_rows() pads
+    the name, with the YDID as the handle and in the tooltip. A pool awaiting
+    nodes is a disabled row saying so, rather than left out, so that it is
+    not a mystery where the pool went.
+    """
+    names = [pool.name for pool in pools]
+    statuses = [pool.status or "" for pool in pools]
+    name_width = max((len(name) for name in names), default=0)
+    status_width = max((len(status) for status in statuses), default=0)
+    gap = " " * ENTITY_ROW_GAP
+    rows = []
+    for pool, name, status in zip(pools, names, statuses):
+        bounds = (
+            f"min {pool.min_nodes}"
+            if pool.max_nodes is None
+            else f"{pool.min_nodes}-{pool.max_nodes}"
+        )
+        nodes = f"{pool.expected_nodes} node{'' if pool.expected_nodes == 1 else 's'}"
+        display = (
+            f"{name.ljust(name_width)}{gap}{status.ljust(status_width)}"
+            f"{gap}{nodes} ({bounds})"
+        )
+        tooltip = f"{pool.name}\n{pool.id}"
+        if pool.awaiting_nodes:
+            display += f"{gap}{AWAITING_NODES_NOTE}"
+            tooltip += f"\n{AWAITING_NODES_TOOLTIP}"
+        rows.append(
+            SelectableRow(
+                display=display,
+                handle=pool.id,
+                tooltip=tooltip,
+                enabled=not pool.awaiting_nodes,
+            )
+        )
+    return rows
 
 
 @dataclass(frozen=True)

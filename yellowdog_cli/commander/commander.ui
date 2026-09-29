@@ -348,19 +348,39 @@ instead of the one the configuration file names</string>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="create_worker_pool">
-        <property name="toolTip">
-         <string>Provision a Worker Pool with yd-provision</string>
-        </property>
-        <property name="font">
-         <font>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Create New Cloud Worker Pool</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_create" stretch="1,0">
+        <item>
+         <widget class="QPushButton" name="create_worker_pool">
+          <property name="toolTip">
+           <string>Provision a Worker Pool with yd-provision</string>
+          </property>
+          <property name="font">
+           <font>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Provision Worker Pool</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="resize_worker_pool">
+          <property name="toolTip">
+           <string>Resize a Worker Pool, chosen from a list, to a number of nodes
+(yd-resize)</string>
+          </property>
+          <property name="font">
+           <font>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Resize…</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QPushButton" name="select_worker_pool">

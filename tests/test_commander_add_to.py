@@ -15,7 +15,7 @@ import gui_harness
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication
 
-from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.commander import NO_LISTING_TAG, YellowDogApp
 from yellowdog_cli.commander.selection import newest_entity_id
 from yellowdog_cli.commander.startup import StartupSettings
 
@@ -41,7 +41,9 @@ CANCELLING = {
 
 @pytest.fixture
 def window(qapp):
-    return YellowDogApp()
+    window = YellowDogApp()
+    window._discovery.tag = "pwt"
+    return window
 
 
 @pytest.fixture
@@ -77,7 +79,26 @@ def log(window) -> str:
 def test_lists_the_active_work_requirements(window, captured, monkeypatch):
     asked = listed(window, monkeypatch, [])
     window._add_to_work_requirement_action()
-    assert asked == [("yd-list", ["--json"], ["work-requirements", "--active-only"])]
+    assert asked == [
+        ("yd-list", ["--json"], ["work-requirements", "--active-only", "-t", "pwt"])
+    ]
+
+
+def test_the_tag_field_overrides_the_discovered_tag(window, captured, monkeypatch):
+    asked = listed(window, monkeypatch, [])
+    window.tag_override.setPlainText("other")
+    window._add_to_work_requirement_action()
+    assert asked[0][2][-2:] == ["-t", "other"]
+
+
+def test_without_a_tag_nothing_is_listed(window, captured, monkeypatch):
+    # 'yd-list' defaults its tag to '', so a listing without one would offer
+    # every Work Requirement in the namespace under a dialog naming the tag.
+    asked = listed(window, monkeypatch, [OLDER])
+    window._discovery.tag = None
+    window._add_to_work_requirement_action()
+    assert asked == [] and captured == []
+    assert NO_LISTING_TAG in log(window)
 
 
 def test_the_name_pattern_narrows_the_listing(window, captured, monkeypatch):
@@ -236,7 +257,9 @@ def test_an_operation_in_flight_refuses(window, captured, monkeypatch):
 
 @pytest.fixture
 def unattended(qapp):
-    return YellowDogApp(StartupSettings(disable_confirmations=True))
+    window = YellowDogApp(StartupSettings(disable_confirmations=True))
+    window._discovery.tag = "pwt"
+    return window
 
 
 def test_yes_adds_to_the_only_candidate(unattended, monkeypatch):

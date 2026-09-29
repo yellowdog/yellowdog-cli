@@ -198,6 +198,54 @@ def drive_single_choice(
     monkeypatch.setattr(window, "_build_single_choice_dialog", build)
 
 
+def target_nodes(dialog):
+    """The resize dialog's node-count spin box; fails loudly when there is none."""
+    from PyQt6.QtWidgets import QSpinBox
+
+    found = dialog.findChild(QSpinBox, "target_nodes")
+    assert found is not None, "the dialog has no target node count"
+    return found
+
+
+def drive_resize(
+    window,
+    monkeypatch,
+    press: str,
+    choose: int | None = None,
+    nodes: int | None = None,
+    inspect=None,
+) -> None:
+    """
+    Arm the next resize dialog so that, inside its real exec(), row 'choose' is
+    selected and the target set to 'nodes' (each if given), then 'press' is
+    pressed. 'inspect(dialog)' runs after both, for assertions that only hold
+    while it is open.
+    """
+    real_build = window._build_resize_dialog
+
+    def build(message, pools, selected=None):
+        dialog, resize_btn = real_build(message, pools, selected)
+
+        def interact(open_dialog):
+            if choose is not None:
+                choice_listing(open_dialog).setCurrentRow(choose)
+            if nodes is not None:
+                target_nodes(open_dialog).setValue(nodes)
+            if inspect is not None:
+                inspect(open_dialog)
+            if press == ACCEPT:
+                resize_btn.click()
+            elif press == CANCEL:
+                gui_harness.button_labelled(open_dialog, "Cancel").click()
+            elif press != NOTHING:
+                open_dialog.reject()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog, resize_btn
+
+    monkeypatch.setattr(window, "_build_resize_dialog", build)
+
+
 def drive_notice(window, monkeypatch, inspect=None) -> dict:
     """
     Arm the next notice dialog so that, inside its real exec(), 'inspect(dialog)'
