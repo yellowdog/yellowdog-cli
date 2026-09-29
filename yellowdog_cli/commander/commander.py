@@ -71,10 +71,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.commander.arguments import QuotingError, split_arguments
 from yellowdog_cli.commander.check_indicator import fix_check_indicator_placement
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
-from yellowdog_cli.commander.elision import elide_middle, elide_path
+from yellowdog_cli.commander.elision import elide_middle, elide_path, elide_path_to_fit
 from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.help_viewer import HelpDialog
 from yellowdog_cli.commander.output_model import (
@@ -107,10 +108,6 @@ from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.utils.settings import ERROR_MARKER
 
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
-# px: inset between the selected-configuration label's frame and its text.
-# Set here rather than in commander.ui because PyQt6's loadUi() silently
-# drops a QLabel's 'margin' property, leaving the text against the frame.
-SELECTED_CONFIG_MARGIN = 5
 NO_SELECTED_CONFIG = "No configuration selected"
 SELECTED_WR_PREFIX = "Work Requirement: "
 SELECTED_WP_PREFIX = "Worker Pool: "
@@ -187,11 +184,14 @@ class YellowDogApp(QMainWindow):
     wr_options_label: QLabel
     wp_options_label: QLabel
     object_path_label: QLabel
+    user_variables_label: QLabel
+    properties_label: QLabel
 
     log_output: QPlainTextEdit
     output_filter_bar: QFrame
     output_filter_label: QLabel
     user_variables: QPlainTextEdit
+    properties: QPlainTextEdit
     wr_submit_options: QPlainTextEdit
     wp_provision_options: QPlainTextEdit
     any_command: QPlainTextEdit
@@ -250,7 +250,6 @@ class YellowDogApp(QMainWindow):
 
         # The framed label showing the selected configuration file (the frame
         # itself comes from commander.ui, which cannot carry this margin)
-        self.select_config_label.setMargin(SELECTED_CONFIG_MARGIN)
 
         self._align_field_labels()
 
@@ -366,6 +365,7 @@ class YellowDogApp(QMainWindow):
         # Handle specific key presses in text edit boxes
         for ui_object in [
             self.user_variables,
+            self.properties,
             self.wr_submit_options,
             self.wp_provision_options,
             self.any_command,
@@ -379,6 +379,9 @@ class YellowDogApp(QMainWindow):
             )
 
         self._config_file: str | None = None
+        # Re-elide the selected configuration's path whenever its label's width
+        # changes (see _show_config_selection)
+        self.select_config_label.installEventFilter(self)
         # Absolute, deliberately: these are handed to a child process that runs
         # in the config file's directory (see _working_dir), while Commander's own
         # directory is wherever it was launched from — and Show reads them in this
@@ -412,6 +415,7 @@ class YellowDogApp(QMainWindow):
             tag_field=self.tag_override,
             object_path_field=self.object_path_override,
             user_variables=self.user_variables,
+            properties=self.properties,
             config_selected=lambda: self._config_file is not None,
             config_source_args=lambda: self._config_source_args(),
             override_args=lambda: self._namespace_tag_and_user_vars(),
@@ -478,6 +482,9 @@ class YellowDogApp(QMainWindow):
         if settings.variables:
             self.user_variables.setPlainText(" ".join(settings.variables))
             self._set_cursor_to_end(self.user_variables)
+        if settings.properties:
+            self.properties.setPlainText(" ".join(settings.properties))
+            self._set_cursor_to_end(self.properties)
 
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
@@ -512,8 +519,7 @@ class YellowDogApp(QMainWindow):
 
         if config_file is None:
             self._config_file = None
-            self.select_config_label.setText(NO_SELECTED_CONFIG)
-            self.select_config_label.setToolTip("")
+            self._show_config_selection()
             self._discovery.clear()
             self._discovery.reparse_placeholders()
             return
@@ -526,8 +532,7 @@ class YellowDogApp(QMainWindow):
         self._config_file = selected_config_file
         self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")
-        self.select_config_label.setText(elide_path(selected_config_file))
-        self.select_config_label.setToolTip(abspath(selected_config_file))
+        self._show_config_selection()
         self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
@@ -552,7 +557,9 @@ class YellowDogApp(QMainWindow):
     def _align_field_labels(self):
         """
         Start the left-hand column's input fields at one edge, by widening each
-        of their labels to the widest of them.
+        of their labels to the widest of them; and likewise the right-hand
+        column's User-Defined Variables and Properties fields, one above the
+        other in separate grid rows.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
         across layouts, so each field began wherever its own label happened to
@@ -560,10 +567,15 @@ class YellowDogApp(QMainWindow):
         commander.ui, because a width in pixels is a width for one font: these
         labels are the widest under this one, and need not be under the next.
         """
-        labels = (self.wr_options_label, self.wp_options_label, self.object_path_label)
-        widest = max(label.sizeHint().width() for label in labels)
-        for label in labels:
-            label.setMinimumWidth(widest)
+        for labels in (
+            (self.wr_options_label, self.wp_options_label, self.object_path_label),
+            # The right-hand column's two, so that Properties lines up with the
+            # User-Defined Variables field above it
+            (self.user_variables_label, self.properties_label),
+        ):
+            widest = max(label.sizeHint().width() for label in labels)
+            for label in labels:
+                label.setMinimumWidth(widest)
 
     def _align_checkbox_indicators(self):
         """
@@ -629,6 +641,40 @@ class YellowDogApp(QMainWindow):
         return style.subElementRect(
             QStyle.SubElement.SE_CheckBoxIndicator, option, checkbox
         ).left()
+
+    def _show_config_selection(self):
+        """
+        Show the selected configuration file's full path on its label, elided
+        from the left to the label's width when it does not fit, so that the
+        filename and as much of its directory as there is room for stay in view;
+        the tooltip always has the whole path. The label's horizontal size
+        policy is Ignored in commander.ui, so a long path never widens the
+        window: the label takes the width the layout gives it, and the path is
+        fitted to that, again on every resize (eventFilter).
+        """
+        label = self.select_config_label
+        if self._config_file is None:
+            label.setText(NO_SELECTED_CONFIG)
+            label.setToolTip("")
+            return
+        path = abspath(self._config_file)
+        metrics = QFontMetrics(label.font())
+        available = label.contentsRect().width()
+        label.setText(
+            elide_path_to_fit(
+                path, lambda text: metrics.horizontalAdvance(text) <= available
+            )
+        )
+        label.setToolTip(path)
+
+    def eventFilter(self, a0, a1):
+        if (
+            a0 is self.select_config_label
+            and a1 is not None
+            and a1.type() == QEvent.Type.Resize
+        ):
+            self._show_config_selection()
+        return super().eventFilter(a0, a1)
 
     def showEvent(self, a0):
         """
@@ -777,10 +823,11 @@ class YellowDogApp(QMainWindow):
         self._output.log(f"Selected Worker Pool definition '{self._wp_file}'")
         self._show_wp_selection()
 
-    def _submit_args(self) -> list[str]:
+    def _submit_args(self) -> list[str] | None:
         """
         The 'yd-submit' arguments Panel 2 sets, shared by Submit and Add to: the
         selected definition, Dry Run, Follow Progress and the Extra Options.
+        None, having said why, when the Extra Options cannot be split.
         """
         if self._wr_file is None:
             args = []
@@ -792,11 +839,18 @@ class YellowDogApp(QMainWindow):
             args += ["-D"]
         if follow_progress and not dry_run:
             args += ["-f"]
-        args += self.wr_submit_options.toPlainText().split()
-        return args
+        extra_options = self._split_field(self.wr_submit_options, "Extra Options")
+        if extra_options is None:
+            return None
+        return args + extra_options
 
     def _submit_work_requirement_action(self):
-        self._run_command_in_subprocess("yd-submit", self._submit_args())
+        if not self._properties_are_usable():
+            return
+        submit_args = self._submit_args()
+        if submit_args is None:
+            return
+        self._run_command_in_subprocess("yd-submit", submit_args)
 
     def _add_to_work_requirement_action(self):
         """
@@ -823,7 +877,12 @@ class YellowDogApp(QMainWindow):
         Commander does not choose for it.
         """
         title = "Add to Work Requirement"
-        if self._operation_in_flight(title):
+        if self._operation_in_flight(title) or not self._properties_are_usable():
+            return
+        # Before the listing, so that a quoting mistake is not found only after
+        # a Work Requirement has been chosen
+        submit_args = self._submit_args()
+        if submit_args is None:
             return
 
         name_args = self._name_glob_args()
@@ -877,9 +936,7 @@ class YellowDogApp(QMainWindow):
             if target is None:
                 return
 
-        self._run_command_in_subprocess(
-            "yd-submit", ["-A", target] + self._submit_args()
-        )
+        self._run_command_in_subprocess("yd-submit", ["-A", target] + submit_args)
 
     def _object_path(self) -> str | None:
         """
@@ -1774,7 +1831,10 @@ class YellowDogApp(QMainWindow):
         answer a chooser either; a user who wants a subset without being asked can
         narrow the Path field instead.
         """
-        if self._operation_in_flight("Download Matching Objects"):
+        if (
+            self._operation_in_flight("Download Matching Objects")
+            or not self._properties_are_usable()
+        ):
             return
 
         dst = join(self._working_dir(), RESULTS_DIR)
@@ -1841,7 +1901,10 @@ class YellowDogApp(QMainWindow):
         enumeration or confirmation. The '-y'/per-action-skip bypasses delete the
         whole pattern, logging that they have done so.
         """
-        if self._operation_in_flight("Delete Matching Objects"):
+        if (
+            self._operation_in_flight("Delete Matching Objects")
+            or not self._properties_are_usable()
+        ):
             return
 
         path = self._object_path()
@@ -2005,7 +2068,7 @@ class YellowDogApp(QMainWindow):
         describe the action (e.g. 'Cancelling'/'Work Requirements') and
         'match_word' is how the CLI selects entities ('tags' or 'names').
         """
-        if self._operation_in_flight(title):
+        if self._operation_in_flight(title) or not self._properties_are_usable():
             return
 
         name_args = self._name_glob_args()
@@ -2081,6 +2144,8 @@ class YellowDogApp(QMainWindow):
         )
 
     def _create_worker_pool_action(self):
+        if not self._properties_are_usable():
+            return
         if self._wp_file is None:
             args = []
         else:
@@ -2089,8 +2154,10 @@ class YellowDogApp(QMainWindow):
             args += ["-af"]
         elif self.dry_run_worker_pool.isChecked():
             args += ["-D"]
-        args += self.wp_provision_options.toPlainText().split()
-        self._run_command_in_subprocess("yd-provision", args)
+        extra_options = self._split_field(self.wp_provision_options, "Extra Options")
+        if extra_options is None:
+            return
+        self._run_command_in_subprocess("yd-provision", args + extra_options)
 
     def _resize_worker_pool_action(self):
         """
@@ -2116,7 +2183,10 @@ class YellowDogApp(QMainWindow):
         can be given; the Deselect... dialog is not skipped either, for the same
         reason.
         """
-        if self._operation_in_flight(RESIZE_DIALOG_TITLE):
+        if (
+            self._operation_in_flight(RESIZE_DIALOG_TITLE)
+            or not self._properties_are_usable()
+        ):
             return
 
         name_args = self._name_glob_args()
@@ -2190,12 +2260,25 @@ class YellowDogApp(QMainWindow):
         )
 
     def _namespace_tag_and_user_vars(self) -> list[str]:
+        """
+        The arguments every 'yd-' command is given from the top of the window:
+        '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
+        variable and '--property' for each property override.
+
+        Each property is passed joined to its flag, '--property=section.key=value',
+        so a value that begins with '-' is never taken for an option. Raises
+        QuotingError when the Properties field cannot be split, which every
+        action refuses on beforehand (_properties_are_usable).
+        """
         # Split out a list of variables of the form "x=y",
         # and prefix each with "-v" -> ["-v', "x=y"], etc.
         # Apply a namespace override if it exists.
         # Apply a tag override if it exists.
         namespace_tag_user_vars = [
             x for y in self.user_variables.toPlainText().split() for x in ["-v", y]
+        ] + [
+            f"--property={override}"
+            for override in split_arguments(self.properties.toPlainText())
         ]
 
         tag_override = self.tag_override.toPlainText().strip()
@@ -2213,6 +2296,32 @@ class YellowDogApp(QMainWindow):
             ] + namespace_tag_user_vars
 
         return namespace_tag_user_vars
+
+    def _split_field(self, field: QPlainTextEdit, name: str) -> list[str] | None:
+        """
+        A field's contents as arguments, split as a shell would split them (see
+        arguments.py), so that a value containing spaces can be quoted. None,
+        having said why, when its quotes do not balance.
+        """
+        return self._split_text(field.toPlainText(), name)
+
+    def _split_text(self, text: str, name: str) -> list[str] | None:
+        """_split_field() for text already read from the field called 'name'."""
+        try:
+            return split_arguments(text)
+        except QuotingError as error:
+            self._output.log(f"Cannot use the {name} field: {error}")
+            return None
+
+    def _properties_are_usable(self) -> bool:
+        """
+        Whether the Properties field can be split into arguments. Every action
+        that runs a 'yd-' command asks first, and refuses when it cannot: the
+        overrides are part of every such command line, so there is nothing to
+        run without them, and a listing attempted without them would fail and
+        read as 'the listing failed' rather than as the quoting mistake it is.
+        """
+        return self._split_field(self.properties, "Properties") is not None
 
     def _build_command_args(
         self, command: str, args: list[str], yd_command: bool
@@ -2881,7 +2990,7 @@ class YellowDogApp(QMainWindow):
             )
         if is_dark:
             self.setStyleSheet(
-                "#line_3, #line_4, #line_6, #line_7, #line_8 {"
+                "#line_3, #line_4, #line_6, #line_7, #line_8, #line_9 {"
                 " background-color: #555555; border: none; max-height: 2px; }"
                 " #line_5 { background-color: #555555; border: none; max-width: 2px; }"
             )
@@ -2904,15 +3013,17 @@ class YellowDogApp(QMainWindow):
         self._run_any_command_core(self.any_command.toPlainText())
 
     def _run_any_command_core(self, command_text: str):
-        command_and_args = command_text.split()
-        if len(command_and_args) == 0:
+        words = command_text.split()
+        if len(words) == 0:
             self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
-        if (
-            command_and_args[0].startswith("yd-")
-            and command_and_args[0] != "yd-version"
-        ):
+        if words[0].startswith("yd-") and words[0] != "yd-version":
+            # Split with quoting, as a shell would: the non-yd branch below
+            # hands the text to one, so the two agree about what a quote means
+            command_and_args = self._split_text(command_text, "command")
+            if command_and_args is None or not self._properties_are_usable():
+                return
             # yd- commands: inject UI namespace/tag/user vars as normal
             self._run_command_in_subprocess(
                 command=command_and_args[0],

@@ -15,6 +15,11 @@ from typing import cast
 from PyQt6.QtCore import QEventLoop, QObject, QProcess, QProcessEnvironment, QTimer
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
+from yellowdog_cli.commander.arguments import (
+    QuotingError,
+    property_is_complete,
+    split_arguments,
+)
 from yellowdog_cli.commander.startup import variable_is_complete
 from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
@@ -52,6 +57,7 @@ class ConfigDiscovery:
         tag_field: QPlainTextEdit,
         object_path_field: QPlainTextEdit,
         user_variables: QPlainTextEdit,
+        properties: QPlainTextEdit,
         config_selected: Callable[[], bool],
         config_source_args: Callable[[], list[str]],
         override_args: Callable[[], list[str]],
@@ -64,6 +70,7 @@ class ConfigDiscovery:
         self._tag_field = tag_field
         self._object_path_field = object_path_field
         self._user_variables = user_variables
+        self._properties = properties
         self._config_selected = config_selected
         self._config_source_args = config_source_args
         self._override_args = override_args
@@ -87,12 +94,13 @@ class ConfigDiscovery:
         self._discovery_retry_timer.timeout.connect(self._retry_discovery)
 
         # Invalidate the config parse cache when inputs that affect it change
-        for ui_object in [namespace_field, tag_field, user_variables]:
+        for ui_object in [namespace_field, tag_field, user_variables, properties]:
             ui_object.textChanged.connect(self.invalidate)
 
         # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables change (debounced to avoid running yd-variables
-        # on every keystroke)
+        # user-defined variables or properties change (debounced to avoid
+        # running yd-variables on every keystroke). A property can set the
+        # namespace or tag itself: common.namespace, common.tag.
         self._user_vars_reparse_timer = QTimer(parent)
         self._user_vars_reparse_timer.setSingleShot(True)
         self._user_vars_reparse_timer.setInterval(600)
@@ -100,6 +108,7 @@ class ConfigDiscovery:
             self._reparse_placeholders_after_edit
         )
         user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
+        properties.textChanged.connect(self._user_vars_reparse_timer.start)
 
     def clear(self):
         """
@@ -148,7 +157,8 @@ class ConfigDiscovery:
 
     def _reparse_placeholders_after_edit(self):
         """
-        The debounced reparse behind an edit to the user-variables box.
+        The debounced reparse behind an edit to the user-variables box or the
+        Properties box.
 
         Held back while any variable in the box is not yet 'name=value'. Every
         variable is typed through states that are not — 'instances' on the way
@@ -163,11 +173,19 @@ class ConfigDiscovery:
         Only this path is held back. A malformed variable still reaches the CLI
         when the user runs a command, which is where it is a real error rather
         than an unfinished one, and where they are there to read it.
+
+        The Properties box is held back the same way while any property is not
+        yet 'section.key=value', or a quote is still open: 'yd-variables' exits
+        on a malformed '--property' just as it does on a malformed variable.
         """
+        try:
+            properties = split_arguments(self._properties.toPlainText())
+        except QuotingError:
+            return
         if all(
             variable_is_complete(variable)
             for variable in self._user_variables.toPlainText().split()
-        ):
+        ) and all(property_is_complete(prop) for prop in properties):
             self.reparse_placeholders()
 
     def _schedule_discovery_retry(self):
@@ -308,7 +326,14 @@ class ConfigDiscovery:
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
-        cmd, args = self._yd_variables_command()
+        try:
+            cmd, args = self._yd_variables_command()
+        except QuotingError as error:
+            self._report_discovery_failure(
+                f"Cannot discover the namespace and tag: the Properties field"
+                f" cannot be used: {error}"
+            )
+            return False
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")

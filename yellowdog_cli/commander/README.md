@@ -14,6 +14,8 @@
    * [Collecting and Managing Results (Panel 4)](#collecting-and-managing-results-panel-4)
    * [Namespace, Tag, and Name Overrides](#namespace-tag-and-name-overrides)
    * [User-Defined Variables](#user-defined-variables)
+   * [Properties](#properties)
+   * [Quoting](#quoting)
    * [Utility Actions](#utility-actions)
    * [Filtering the Command Output](#filtering-the-command-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
@@ -21,7 +23,7 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 15:47:47 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 29 15:30:03 BST 2026 -->
 
 <!--te-->
 
@@ -64,6 +66,7 @@ Commander's fields and file selections can be filled in from the command line to
 | `--name <glob>` | The **Name** field |
 | `-P`, `--path <object-path>` | The **Path** field |
 | `-v`, `--variable <name=value>` | The **User-Defined Variables** field; repeat it for each variable |
+| `--property <section.key=value>` | The **Properties** field; repeat it for each property. A value containing spaces is quoted for you |
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
@@ -71,7 +74,7 @@ Commander's fields and file selections can be filled in from the command line to
 yd-commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
 ```
 
-These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), and an empty value or one containing a tab or newline for the other fields.
+These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), a property not of the form `section.key=value` or containing both kinds of quote as well as a space, and an empty value or one containing a tab or newline for the other fields.
 
 Multiple instances can run simultaneously.
 
@@ -177,7 +180,7 @@ The **Save Command Output** dialog is the exception to the preview: it names a f
 
 ## Selecting a Configuration (Panel 1)
 
-Use the **Select** button to choose a `config.toml` file. The selected path is shown beneath the button, and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
+Use the **Select** button to choose a `config.toml` file. The selected file's full path is shown at the top of the right-hand column, level with the button (shortened from the left, keeping the filename, when the window is too narrow for it; hover over it for the whole path), and all subsequent commands run in that file's directory and are passed it via `-c`. If you launched Commander with a file argument, it is pre-selected.
 
 ## Submitting and Managing Work (Panel 2)
 
@@ -186,7 +189,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
-- **Extra Options** — free-text command-line options appended to the `yd-submit` command.
+- **Extra Options** — free-text command-line options appended to the `yd-submit` command, split as described in [Quoting](#quoting).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
@@ -197,7 +200,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
-- **Extra Options** — free-text command-line options appended to the `yd-provision` command.
+- **Extra Options** — free-text command-line options appended to the `yd-provision` command, split as described in [Quoting](#quoting).
 - **Shutdown Worker Pools** — shuts down all matching Worker Pools.
 - **Terminate Compute Requirements** — terminates all matching Compute Requirements.
 
@@ -235,6 +238,29 @@ Each pair is passed to the command as a `-v` option (`-v instances=2 -v template
 
 Editing the field re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since a variable can be used in the configuration file's `namespace` or `tag`. It waits until every pair in the field is a complete `name=value`, so a name part-way through being typed does not report itself as an error.
 
+## Properties
+
+The **Properties** field overrides configuration file properties for every command, exactly as the CLI's `--property` option does. Enter them as `section.key=value` pairs separated by spaces, quoting any value that contains spaces (see [Quoting](#quoting)), for example:
+
+```text
+workRequirement.taskCount=10 workRequirement.workerTags='["gpu", "large"]'
+```
+
+Each pair is passed to the command as a `--property` option. The valid sections are `common`, `dataClient`, `workRequirement`, `workerPool` and `computeRequirement`, and values are read as JSON where they can be, so numbers, booleans, lists and tables need no special treatment; see the CLI's documentation of `--property` for the details. Unlike the **Extra Options** fields, which reach only `yd-submit` or `yd-provision`, this field reaches every `yd-*` command, including the data client commands behind **Download** and **Delete**, so it can change `dataClient` properties such as the remote.
+
+Like the User-Defined Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way; it waits until every entry is a complete `section.key=value` and no quote is left open. If the field cannot be split because a quote is left open, every action that runs a `yd-*` command says so in the output window and does nothing.
+
+## Quoting
+
+The **Extra Options** fields, the **Properties** field and a `yd-*` command typed into **Run Command in Config Directory** are split into separate arguments at spaces, except where text is inside single or double quotes: a quoted run of text is kept as one argument, with its quotes removed, as it would be in a shell. Quotes can surround the whole argument or any part of it, so both of these pass the same single argument:
+
+```text
+--property 'workRequirement.workerTags=["gpu", "large"]'
+--property workRequirement.workerTags='["gpu", "large"]'
+```
+
+A backslash has no special meaning, so Windows paths can be entered as they are. The one consequence is that a quote character can only be written inside quotes of the other kind: `"it's"` is `it's`, and `'say "hi"'` is `say "hi"`. A quote left open is an error, reported in the output window, and nothing is run.
+
 ## Utility Actions
 
 - **Browse Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
@@ -257,7 +283,7 @@ To choose one or more processes from the whole list, right-click anywhere in the
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, and the user-defined variables are added to it automatically (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The `<` and `>` buttons step back and forth through your command history.
 
 ## Sending Input to a Running Command
 

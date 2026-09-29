@@ -81,9 +81,8 @@ def test_a_separator_divides_the_browse_row_from_the_run_command_row(qapp):
 # by position: which row is meant to line up with which is a design decision, not
 # something geometry can be asked.
 ALIGNED_ROWS = [
-    ("horizontalLayout_select_config", "horizontalLayout_8"),  # heading / Namespace
-    ("select_config_label", "horizontalLayout"),  # selection / User variables
-    ("line_7", "line_4"),  # and the separator beneath them
+    ("horizontalLayout_select_config", "select_config_label"),  # Select / selection
+    ("line_7", "line_9"),  # and the separator beneath them
 ]
 
 
@@ -158,7 +157,8 @@ def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
 # One widget from each row of the right-hand column, the leftmost in the row.
 RIGHT_COLUMN_ROWS = [
     "label_7",  # Namespace:
-    "label_4",  # User-Defined Variables:
+    "user_variables_label",  # User-Defined Variables:
+    "properties_label",  # Properties:
     "browse_config_directory",
     "run_any_command",
     "command_output_title",
@@ -217,6 +217,19 @@ def test_the_left_column_fields_start_at_the_same_edge(qapp):
     assert len(set(starts.values())) == 1, f"ragged field edges: {starts}"
 
 
+def test_the_properties_field_starts_under_the_variables_field(qapp):
+    # In separate grid rows, each field would otherwise begin where its own label
+    # ends, and 'Properties:' is much shorter than 'User-Defined Variables:'
+    win = gui_harness.shown(YellowDogApp())
+
+    starts = {
+        name: getattr(win, name).mapTo(win, QPoint(0, 0)).x()
+        for name in ("user_variables", "properties")
+    }
+
+    assert len(set(starts.values())) == 1, f"ragged field edges: {starts}"
+
+
 # One row from each panel of the left-hand column, top to bottom.
 LEFT_COLUMN_ROWS = [
     "submit_work_requirement",
@@ -243,13 +256,16 @@ def test_the_left_column_does_not_spread_as_the_window_grows(qapp):
             for name in LEFT_COLUMN_ROWS
         ]
 
-    win.resize(win.width(), 840)
-    at_840 = offsets()
+    # From the height it opens at, which is at least its layout's minimum (see
+    # the test above): below that the column is compressed, which is another
+    # failure altogether
+    win.resize(win.width(), win.height())
+    at_opening = offsets()
     win.resize(win.width(), 1200)
     at_1200 = offsets()
 
-    assert at_840 == at_1200, (
-        f"the column spread as the window grew: {at_840} then {at_1200}"
+    assert at_opening == at_1200, (
+        f"the column spread as the window grew: {at_opening} then {at_1200}"
     )
 
 

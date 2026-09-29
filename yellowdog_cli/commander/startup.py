@@ -23,6 +23,8 @@ class StartupSettings:
     name_glob: str | None = None
     object_path: str | None = None
     variables: tuple[str, ...] = ()
+    # Each already quoted as the Properties field needs it (arguments.quote_argument)
+    properties: tuple[str, ...] = ()
     wr_file: str | None = None
     wp_file: str | None = None
 

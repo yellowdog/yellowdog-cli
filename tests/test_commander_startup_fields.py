@@ -69,6 +69,18 @@ def test_the_variables_survive_a_later_edit(make_window):
     assert window.user_variables.toPlainText().split() == ["a=1", "b=2", "c=3"]
 
 
+def test_the_properties_reach_the_commands_whole(make_window):
+    window = make_window(
+        StartupSettings(
+            properties=("""'workRequirement.workerTags=["a", "b"]'""", "common.tag=x")
+        )
+    )
+    assert window._namespace_tag_and_user_vars() == [
+        '--property=workRequirement.workerTags=["a", "b"]',
+        "--property=common.tag=x",
+    ]
+
+
 def test_the_first_discovery_is_the_only_one_and_sees_the_fields(
     make_window, monkeypatch
 ):
@@ -80,12 +92,14 @@ def test_the_first_discovery_is_the_only_one_and_sees_the_fields(
             seen.append((self, self._override_args())) or False
         ),
     )
-    window = make_window(StartupSettings(tag="tag", variables=("a=1",)))
+    window = make_window(
+        StartupSettings(tag="tag", variables=("a=1",), properties=("common.url=u",))
+    )
     QApplication.processEvents()  # runs the deferred _set_config_file
     # Filtered to this window: an earlier test's window, closed but not yet
     # deleted, can have its own deferred parse still to run
     assert [args for d, args in seen if d is window._discovery] == [
-        ["-t", "tag", "-v", "a=1"]
+        ["-t", "tag", "-v", "a=1", "--property=common.url=u"]
     ]
     # Filled after the connections, the user-variables box would have started
     # its reparse timer and run a second parse 600ms later
