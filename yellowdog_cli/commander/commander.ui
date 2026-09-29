@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1091</width>
+    <width>1102</width>
     <height>840</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>1080</width>
+    <width>1091</width>
     <height>720</height>
    </size>
   </property>
@@ -150,19 +150,39 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="submit_work_requirement">
-        <property name="toolTip">
-         <string>Submit the Work Requirement with yd-submit</string>
-        </property>
-        <property name="font">
-         <font>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Submit Work Requirement</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_submit" stretch="1,0">
+        <item>
+         <widget class="QPushButton" name="submit_work_requirement">
+          <property name="toolTip">
+           <string>Submit the Work Requirement with yd-submit</string>
+          </property>
+          <property name="font">
+           <font>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Submit Work Requirement</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="add_to_work_requirement">
+          <property name="toolTip">
+           <string>Add the Task Groups and Tasks to an existing Work Requirement,
+chosen from a list (yd-submit --add-to)</string>
+          </property>
+          <property name="font">
+           <font>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>Add to…</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QPushButton" name="select_work_requirement">

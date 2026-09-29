@@ -53,7 +53,7 @@ yd-commander path/to/config.toml
 
 The configuration file can also be given with `-c`/`--config`, as it is to the `yd-*` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
 
-Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, and the download chooser, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
+Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
 
 Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd-*` commands:
 
@@ -182,6 +182,7 @@ Use the **Select** button to choose a `config.toml` file. The selected path is s
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
+- **Add to…** — runs `yd-submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that have not completed, failed, or been cancelled or begun cancelling) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, and a dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
@@ -219,7 +220,7 @@ What neither reports is how much sits inside a matched directory. The download's
 
 The **Namespace** and **Tag** fields override the values from the configuration file for every command. The default values discovered from the configuration are shown as placeholder text, so you can see what will be used if you leave a field blank.
 
-The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements), selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all four actions, so it applies to whichever one you run.
+The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** offers, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all five actions, so it applies to whichever one you run.
 
 ## User-Defined Variables
 
@@ -274,7 +275,7 @@ For all five destructive actions that listing is **checkable**:
 - Object deletion is selectable in the same way, with one caveat: the listing shows top-level matches, so unticking works at that level, and a ticked directory is deleted with everything inside it.
 - The dialog offers **Yes**, **No**, and **Yes to All (Don't Ask Again)**. The last acts on every listed item regardless of what you have ticked, and suppresses further prompts for that same action for the rest of the session, after which that action always applies to everything in scope.
 
-Working out what an action would affect means asking the platform or the object store, which takes a moment; the output window says so while it happens, and the six action buttons in panels 2, 3 and 4 are greyed until it finishes. That wait keeps the window responsive rather than freezing it, which is why the buttons need greying: without it a second action could be started against a listing that was still being assembled. A click that lands anyway is refused with a note in the output window rather than silently ignored.
+Working out what an action would affect means asking the platform or the object store, which takes a moment; the output window says so while it happens, and the seven action buttons in panels 2, 3 and 4 (**Add to…** among them, since it lists its targets the same way) are greyed until it finishes. That wait keeps the window responsive rather than freezing it, which is why the buttons need greying: without it a second action could be started against a listing that was still being assembled. A click that lands anyway is refused with a note in the output window rather than silently ignored.
 
 Check the namespace, tag, and path you have set before confirming. A real object deletion is confirmed, but a dry-run deletion is not (it changes nothing). Launch with `-y`/`--yes` to disable these confirmation dialogs entirely for the session, in which case every action applies to everything in scope.
 
@@ -283,5 +284,7 @@ Check the namespace, tag, and path you have set before confirming. A real object
 Launching with `-y`/`--yes` skips it and downloads everything the path matched, just as that flag skips the confirmations: it asks for an unattended session, and an unattended session cannot answer a chooser either. To fetch a subset without being asked, narrow the **Path** field instead.
 
 Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd-download` and `yd-delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
+
+**Add to…** shows a chooser too, of exactly one Work Requirement: a plain list with one row selected rather than a checkable one, since a submission can be added to only one. Launching with `-y`/`--yes` skips it when only one Work Requirement can be added to, and adds to that one; when there are several it refuses and says so, since an unattended session cannot choose and Commander will not choose for it. Narrow the choice to one with the **Name** field.
 
 **Deselect...** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.

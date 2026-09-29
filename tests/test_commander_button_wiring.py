@@ -27,6 +27,7 @@ WIRING = [
     ("select_config_file", "_select_config_file_action"),
     ("select_work_requirement", "_select_work_requirement_action"),
     ("submit_work_requirement", "_submit_work_requirement_action"),
+    ("add_to_work_requirement", "_add_to_work_requirement_action"),
     ("cancel_work_requirements", "_cancel_work_requirements_action"),
     (
         "cancel_work_requirements_and_abort",

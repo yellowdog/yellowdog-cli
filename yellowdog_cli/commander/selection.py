@@ -54,6 +54,21 @@ def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
     return summaries
 
 
+def newest_entity_id(parsed: list) -> str | None:
+    """
+    The 'id' of the row with the latest 'createdTime' in a parsed 'yd-list
+    --json' array, or None when no row carries both. The times are compared as
+    the ISO 8601 text they are serialised as, which orders them correctly
+    because every row comes from the same serialiser and the same platform.
+    """
+    dated = [
+        (str(obj["createdTime"]), str(obj["id"]))
+        for obj in parsed
+        if isinstance(obj, dict) and obj.get("createdTime") and obj.get("id")
+    ]
+    return max(dated)[1] if dated else None
+
+
 @dataclass(frozen=True)
 class SelectableRow:
     """

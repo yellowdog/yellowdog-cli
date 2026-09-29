@@ -47,6 +47,7 @@ from PyQt6.QtGui import (
     QTextCursor,
 )
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QDialog,
@@ -61,6 +62,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollBar,
     QStyle,
     QStyleOptionButton,
     QVBoxLayout,
@@ -88,6 +90,7 @@ from yellowdog_cli.commander.selection import (
     SelectableRow,
     checked_handles,
     entity_rows,
+    newest_entity_id,
     object_rows,
     parse_download_summaries,
     parse_entity_summaries,
@@ -133,6 +136,10 @@ NO_OBJECT_PATH = (
     " match. Enter a Path, or select a configuration file to discover one from"
     " (reselect it if discovery has already failed)."
 )
+# The one non-terminal Work Requirement status 'yd-list --active-only' keeps and
+# 'yd-submit --add-to' refuses, so Add to must not offer it. Spelled out rather
+# than imported: nothing in Commander imports the SDK.
+CANCELLING_STATUS = "CANCELLING"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
@@ -181,6 +188,7 @@ class YellowDogApp(QMainWindow):
     select_config_file: QPushButton
     select_work_requirement: QPushButton
     submit_work_requirement: QPushButton
+    add_to_work_requirement: QPushButton
     download_results: QPushButton
     clear_command_output: QPushButton
     copy_command_output: QPushButton
@@ -262,6 +270,9 @@ class YellowDogApp(QMainWindow):
         )
         self.submit_work_requirement.clicked.connect(
             self._submit_work_requirement_action
+        )
+        self.add_to_work_requirement.clicked.connect(
+            self._add_to_work_requirement_action
         )
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
@@ -741,8 +752,11 @@ class YellowDogApp(QMainWindow):
         self._output.log(f"Selected Worker Pool definition '{self._wp_file}'")
         self._show_wp_selection()
 
-    def _submit_work_requirement_action(self):
-        # Generate and run the command
+    def _submit_args(self) -> list[str]:
+        """
+        The 'yd-submit' arguments Panel 2 sets, shared by Submit and Add to: the
+        selected definition, Dry Run, Follow Progress and the Extra Options.
+        """
         if self._wr_file is None:
             args = []
         else:
@@ -754,7 +768,89 @@ class YellowDogApp(QMainWindow):
         if follow_progress and not dry_run:
             args += ["-f"]
         args += self.wr_submit_options.toPlainText().split()
-        self._run_command_in_subprocess("yd-submit", args)
+        return args
+
+    def _submit_work_requirement_action(self):
+        self._run_command_in_subprocess("yd-submit", self._submit_args())
+
+    def _add_to_work_requirement_action(self):
+        """
+        Add the Task Groups and Tasks of the selected definition (or the
+        configuration file's) to an existing Work Requirement, chosen from a list
+        of those that can still be added to: 'yd-submit --add-to <ydid>', with
+        the same Panel 2 settings as Submit.
+
+        Lists the candidates with 'yd-list work-requirements --active-only
+        --json', in the current namespace and tag or matching the Name pattern.
+        '--active-only' leaves out COMPLETED, CANCELLED and FAILED, and CANCELLING
+        is dropped here, since 'yd-submit --add-to' refuses it too.
+
+        Every failure refuses rather than falling back. The destructive actions
+        fall back to acting over their whole scope when the listing fails, but
+        there is no scope here: the only fallbacks would be guessing a target, or
+        a plain submission, which creates a Work Requirement nobody asked for.
+
+        The target is passed by YDID, not by name, because names are not
+        guaranteed unique and 'yd-submit' takes the first one that matches.
+
+        '--yes' skips the chooser when there is exactly one candidate, and
+        refuses when there are several: an unattended session cannot choose, and
+        Commander does not choose for it.
+        """
+        title = "Add to Work Requirement"
+        if self._operation_in_flight(title):
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("tags", name_args)
+
+        self._output.log("Checking which Work Requirements can be added to...")
+        self.log_output.repaint()
+        listing_args = ["work-requirements", "--active-only"]
+        if name_args:
+            listing_args += ["--name", name_args[0]]
+        parsed = self._capture_json("yd-list", ["--json"], listing_args)
+        entities = None if parsed is None else parse_entity_summaries(parsed)
+        if parsed is None or entities is None:
+            self._output.log(
+                "Could not list the Work Requirements to add to; nothing submitted"
+            )
+            return
+
+        entities = [entity for entity in entities if entity.status != CANCELLING_STATUS]
+        if not entities:
+            self._output.log(f"No active Work Requirements{scope} to add to")
+            return
+
+        if self._confirmations_disabled:
+            if len(entities) > 1:
+                self._output.log(
+                    f"{len(entities)} active Work Requirements{scope}, and"
+                    " '--yes' leaves no way to choose between them; nothing"
+                    " submitted. Narrow the choice with the Name field."
+                )
+                return
+            target = entities[0].id
+            self._output.log(
+                f"Selection suppressed by '--yes'; adding to the only active"
+                f" Work Requirement{scope}, '{entities[0].name}'"
+            )
+        else:
+            newest = newest_entity_id(parsed)
+            target = self._choose_one(
+                title,
+                f"Choose the Work Requirement{scope} to add the Task Groups and"
+                " Tasks to.",
+                "Add",
+                entity_rows(entities),
+                selected=newest,
+            )
+            if target is None:
+                return
+
+        self._run_command_in_subprocess(
+            "yd-submit", ["-A", target] + self._submit_args()
+        )
 
     def _object_path(self) -> str | None:
         """
@@ -789,6 +885,19 @@ class YellowDogApp(QMainWindow):
         if self._discovery.tag:
             return f" with {match_word} including '{self._discovery.tag}'"
         return " in the current namespace and tag"
+
+    def _listing_scope(self, match_word: str, name_args: list[str]) -> str:
+        """
+        The scope phrase for an action that lists entities: the Name pattern
+        when one is set, since entities are then selected by that glob rather
+        than by tag or name substring, and otherwise _scope_phrase().
+        """
+        if not name_args:
+            return self._scope_phrase(match_word)
+        scope = f" matching name pattern '{name_args[0]}'"
+        if self._discovery.namespace:
+            scope = f" in namespace '{self._discovery.namespace}'{scope}"
+        return scope
 
     def _confirm_destructive(
         self,
@@ -1010,8 +1119,10 @@ class YellowDogApp(QMainWindow):
         startable while an enumeration is already blocking in a nested event
         loop. Submit and provision are absent deliberately: they launch a command
         and return, without a nested loop or a pre-flight listing to be confused.
+        Add to is here, although it only submits, because it lists its targets
+        first.
 
-        All six grey together, including ones unrelated to the action in flight.
+        All seven grey together, including ones unrelated to the action in flight.
         That is deliberately conservative rather than strictly required — the
         demonstrable failure is one action re-entering itself, where the inner
         dialog's 'Don't Ask Again' makes the outer call return an empty selection.
@@ -1022,6 +1133,7 @@ class YellowDogApp(QMainWindow):
         lasts one subprocess, so the cost is a second or two, visibly greyed.
         """
         return (
+            self.add_to_work_requirement,
             self.cancel_work_requirements,
             self.cancel_work_requirements_and_abort,
             self.shutdown_all_worker_pools,
@@ -1216,6 +1328,17 @@ class YellowDogApp(QMainWindow):
         output that is not a JSON array) so callers can fall back to a
         scope-level confirmation.
         """
+        return self._capture_json(command, ["-D", "--json"], extra_args)
+
+    def _capture_json(
+        self, command: str, flags: list[str], extra_args: list[str] | None = None
+    ) -> list | None:
+        """
+        Run '<command> <flags>' (quiet, no formatting) with the current config
+        source and namespace/tag/user variables, then 'extra_args', and return
+        the parsed JSON array; 'flags' must ask for JSON. None on any failure: a
+        process error, a non-zero exit, or output that is not a JSON array.
+        """
         yd_process = QProcess()
         event_loop = QEventLoop()
 
@@ -1228,7 +1351,8 @@ class YellowDogApp(QMainWindow):
 
         args = (
             self._config_source_args()
-            + ["--nf", "-q", "-D", "--json"]
+            + ["--nf", "-q"]
+            + flags
             + self._namespace_tag_and_user_vars()
             + (extra_args or [])
         )
@@ -1317,6 +1441,109 @@ class YellowDogApp(QMainWindow):
         finally:
             # Parented to the main window, so without this every chooser — and
             # the rows it owns — would live for the rest of the session.
+            dialog.deleteLater()
+
+    def _build_single_choice_dialog(
+        self,
+        title: str,
+        message: str,
+        accept_text: str,
+        rows: list[SelectableRow],
+        selected: str | None = None,
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) a chooser of exactly one row: a message, a plain
+        selectable listing with the row whose handle is 'selected' (else the
+        first) selected, and Cancel / <accept_text> buttons with the accept
+        button as the default. Returns the dialog and that button.
+
+        Not _build_chooser_dialog with a flag, because what that dialog is built
+        around — ticks, All / None, 'N of M selected' — means nothing when the
+        answer is one row. With no check indicators there is nothing for
+        fix_check_indicator_placement() to correct, either. The accept button is
+        gated on a selection all the same, since a ctrl-click can clear it, and
+        double-clicking a row accepts it. The listing opens wide enough for its
+        longest row, up to the main window's width, as the process chooser's
+        does, so the status column is not elided behind a long name. 'rows'
+        must be non-empty.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        layout = QVBoxLayout(dialog)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        listing = self._new_dialog_listing("choice_list")
+        listing.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for row in rows:
+            item = QListWidgetItem(row.display)
+            item.setToolTip(row.tooltip)
+            item.setData(Qt.ItemDataRole.UserRole, row.handle)
+            listing.addItem(item)
+        self._fit_dialog_listing_height(listing)
+        scrollbar = cast(QScrollBar, listing.verticalScrollBar())
+        listing.setMinimumWidth(
+            min(
+                listing.sizeHintForColumn(0)
+                + 2 * listing.frameWidth()
+                + (
+                    scrollbar.sizeHint().width()
+                    if listing.count() > MAX_DIALOG_LIST_ROWS
+                    else 0
+                ),
+                self.width(),
+            )
+        )
+        layout.addWidget(listing)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        accept_btn = cast(
+            QPushButton,
+            button_box.addButton(accept_text, QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        accept_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        def refresh() -> None:
+            accept_btn.setEnabled(bool(listing.selectedItems()))
+
+        listing.itemSelectionChanged.connect(refresh)
+        listing.itemDoubleClicked.connect(lambda _item: dialog.accept())
+
+        handles = [row.handle for row in rows]
+        listing.setCurrentRow(handles.index(selected) if selected in handles else 0)
+        refresh()
+
+        return dialog, accept_btn
+
+    def _choose_one(
+        self,
+        title: str,
+        message: str,
+        accept_text: str,
+        rows: list[SelectableRow],
+        selected: str | None = None,
+    ) -> str | None:
+        """
+        Offer a single-choice chooser over 'rows' and return the handle chosen,
+        or None if the user dismissed it. Callers honour '--yes' themselves, as
+        for _choose_objects.
+        """
+        dialog, _accept_btn = self._build_single_choice_dialog(
+            title, message, accept_text, rows, selected
+        )
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "choice_list"))
+            chosen = listing.selectedItems()
+            return chosen[0].data(Qt.ItemDataRole.UserRole) if chosen else None
+        finally:
             dialog.deleteLater()
 
     def _download_results_action(self):
@@ -1572,15 +1799,7 @@ class YellowDogApp(QMainWindow):
             return
 
         name_args = self._name_glob_args()
-
-        # When a Name pattern is set, entities are selected by that glob rather
-        # than by tag/name-substring, so describe the scope accordingly.
-        if name_args:
-            scope = f" matching name pattern '{name_args[0]}'"
-            if self._discovery.namespace:
-                scope = f" in namespace '{self._discovery.namespace}'{scope}"
-        else:
-            scope = self._scope_phrase(match_word)
+        scope = self._listing_scope(match_word, name_args)
 
         if self._confirmations_disabled or action_key in self._skip_confirmations:
             self._output.log(

@@ -116,7 +116,7 @@ def test_the_depth_is_a_counter_not_a_flag(window):
 
 def test_the_action_buttons_are_greyed_and_restored(window):
     buttons = window._action_buttons()
-    assert len(buttons) == 6
+    assert len(buttons) == 7
     assert all(b.isEnabled() for b in buttons)
 
     window._set_action_buttons_enabled(False)

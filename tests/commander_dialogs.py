@@ -155,6 +155,49 @@ def drive_chooser(
     monkeypatch.setattr(window, "_build_chooser_dialog", build)
 
 
+def choice_listing(dialog) -> QListWidget:
+    """The single-choice dialog's listing; fails loudly when there is none."""
+    found = dialog.findChild(QListWidget, "choice_list")
+    assert found is not None, "the dialog has no single-choice listing"
+    return found
+
+
+def drive_single_choice(
+    window,
+    monkeypatch,
+    press: str,
+    choose: int | None = None,
+    inspect=None,
+) -> None:
+    """
+    Arm the next single-choice dialog so that, inside its real exec(), row
+    'choose' is selected (if given) and 'press' is pressed. 'inspect(dialog)'
+    runs after the choice, for assertions that only hold while it is open. Like
+    the chooser, it wires its own button box.
+    """
+    real_build = window._build_single_choice_dialog
+
+    def build(title, message, accept_text, rows, selected=None):
+        dialog, accept_btn = real_build(title, message, accept_text, rows, selected)
+
+        def interact(open_dialog):
+            if choose is not None:
+                choice_listing(open_dialog).setCurrentRow(choose)
+            if inspect is not None:
+                inspect(open_dialog)
+            if press == ACCEPT:
+                accept_btn.click()
+            elif press == CANCEL:
+                gui_harness.button_labelled(open_dialog, "Cancel").click()
+            elif press != NOTHING:
+                open_dialog.reject()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog, accept_btn
+
+    monkeypatch.setattr(window, "_build_single_choice_dialog", build)
+
+
 def drive_notice(window, monkeypatch, inspect=None) -> dict:
     """
     Arm the next notice dialog so that, inside its real exec(), 'inspect(dialog)'
