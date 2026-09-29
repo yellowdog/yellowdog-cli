@@ -447,6 +447,168 @@ def properties_at(level: Level) -> tuple[Property, ...]:
     return tuple(p for p in WORK_REQUIREMENT_PROPERTIES if level in p.levels)
 
 
+# --- the configuration file ------------------------------------------------
+#
+# The [common], [dataClient] and [workerPool] (or [computeRequirement])
+# sections' own properties, typed from what utils/load_config.py reads;
+# [workRequirement] is the dictionary's TOML level. tests/test_config_schema.py
+# holds each to config-template.toml, the annotated reference for all of them.
+# None is required: each has an environment variable, an option or a default.
+
+# What an int() or a float() cast in load_config.py accepts: a number (int()
+# truncates a float), a bool, or a string holding what the cast parses --
+# digits with '_' separators, and for float() a fraction, an exponent, 'inf',
+# 'infinity' or 'nan' in any case ('pattern' constrains only a string). Not
+# an 'anyOf', which fastjsonschema reports as 'cannot be validated by any
+# definition'; spec_validation.validate_config() words these failures itself
+_DIGITS = r"\d+(_\d+)*"
+INTEGER_PATTERN = rf"^\s*[+-]?{_DIGITS}\s*$"
+NUMERIC_PATTERN = (
+    rf"^\s*[+-]?(({_DIGITS}(\.({_DIGITS})?)?|\.{_DIGITS})([eE][+-]?{_DIGITS})?"
+    r"|[Ii][Nn][Ff]([Ii][Nn][Ii][Tt][Yy])?|[Nn][Aa][Nn])\s*$"
+)
+_CAST_TYPES = ["number", "boolean", "string"]
+INT_CAST: dict[str, Any] = {"type": _CAST_TYPES, "pattern": INTEGER_PATTERN}
+FLOAT_CAST: dict[str, Any] = {"type": _CAST_TYPES, "pattern": NUMERIC_PATTERN}
+# settings.VARIABLE_NAME_PATTERN, anchored (a test holds the two together)
+_VARIABLE_NAMES: dict[str, Any] = {
+    "type": "object",
+    "propertyNames": {"pattern": r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"},
+}
+
+CONFIG_COMMON: tuple[Property, ...] = (
+    Property("key", STR, description="the YellowDog Application key ID"),
+    Property("secret", STR, description="the YellowDog Application key secret"),
+    Property(
+        "namespace",
+        STR,
+        description="the namespace YellowDog objects are created in; 'default' if unset",
+    ),
+    Property(
+        "tag",
+        STR,
+        description="the tag that names and subdivides objects; '{{username}}' if unset",
+    ),
+    Property("url", STR, description="the YellowDog API endpoint"),
+    Property("usePAC", BOOL, description="use Proxy Auto-Configuration for HTTPS"),
+    Property(
+        "certificates",
+        STR,
+        description="a CA certificates bundle, set as REQUESTS_CA_BUNDLE",
+    ),
+    Property(
+        "importCommon",
+        STR,
+        description="a TOML file whose [common] section this one's properties override",
+    ),
+    Property(
+        "variables",
+        _VARIABLE_NAMES,
+        description=(
+            "variables for {{name}} substitution; a value that is not a string"
+            " is held as its JSON text"
+        ),
+    ),
+)
+
+CONFIG_DATA_CLIENT: tuple[Property, ...] = (
+    Property(
+        "remote",
+        STR,
+        description="the rclone remote: a name, or an inline connection string",
+    ),
+    Property("bucket", STR, description="the bucket, container or root in the remote"),
+    Property(
+        "prefix",
+        STR,
+        description="prepended to every remote path; '{{namespace}}/{{tag}}' if unset",
+    ),
+)
+
+CONFIG_WORKER_POOL: tuple[Property, ...] = (
+    Property(
+        "templateId", STR, description="the Compute Requirement Template, by ID or name"
+    ),
+    Property(
+        "workerPoolData",
+        STR,
+        description="a Worker Pool specification file, relative to this file",
+    ),
+    Property(
+        "computeRequirementData",
+        STR,
+        description="a Compute Requirement specification file, relative to this file",
+    ),
+    Property("targetInstanceCount", INT_CAST, description="the number of instances"),
+    Property("minNodes", INT_CAST, description="the pool's minimum node count"),
+    Property("maxNodes", INT, description="the pool's maximum node count"),
+    Property("workersPerNode", INT_CAST, description="Workers started per node"),
+    Property(
+        "workersPerVCPU",
+        INT_CAST,
+        description="Workers started per vCPU, in place of workersPerNode",
+    ),
+    Property("workerTag", STR, description="the tag the pool's Workers carry"),
+    Property(
+        "workersCustomCommand", STR, description="a command run to start the Workers"
+    ),
+    Property(
+        "idleNodeTimeout",
+        FLOAT_CAST,
+        description="minutes an idle node waits before shutting down; 0 never",
+    ),
+    Property(
+        "idlePoolTimeout",
+        FLOAT_CAST,
+        description="minutes an idle pool waits before shutting down; 0 never",
+    ),
+    Property(
+        "nodeBootTimeout", FLOAT_CAST, description="minutes a node may take to boot"
+    ),
+    Property("imagesId", STR, description="the image, by ID or Image Family name"),
+    Property("instanceTags", STR_MAP, description="cloud-provider instance tags"),
+    Property("userData", STR, description="the instances' user data"),
+    Property(
+        "userDataFile", STR, description="a file whose contents become the user data"
+    ),
+    Property(
+        "userDataFiles", STRS, description="files concatenated into the user data"
+    ),
+    Property("name", STR, description="the Worker Pool or Compute Requirement name"),
+    Property("requirementTag", STR, description="the Compute Requirement's tag"),
+    Property("metricsEnabled", BOOL, description="collect platform metrics"),
+    Property(
+        "computeRequirementBatchSize",
+        INT,
+        description="instances per Compute Requirement when provisioning in batches",
+    ),
+    Property(
+        "maintainInstanceCount",
+        BOOL,
+        description="keep the instance count rather than allowing scale-to-zero",
+    ),
+)
+
+# Read from [workRequirement] as a one-tag 'workerTags' when that is absent
+# (load_config_work_requirement()); not a dictionary property
+_WORK_REQUIREMENT_WORKER_TAG = Property(
+    "workerTag",
+    STR,
+    description="a single worker tag, used when 'workerTags' is not set",
+)
+
+CONFIG_SECTIONS: dict[str, tuple[Property, ...]] = {
+    "common": CONFIG_COMMON,
+    "workRequirement": (*properties_at(Level.TOML), _WORK_REQUIREMENT_WORKER_TAG),
+    "dataClient": CONFIG_DATA_CLIENT,
+    "workerPool": CONFIG_WORKER_POOL,
+    "computeRequirement": CONFIG_WORKER_POOL,
+}
+ALL_CONFIG_SECTIONS: frozenset[str] = frozenset(CONFIG_SECTIONS)
+# What a data client command reads, and so what it checks
+DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"})
+
+
 def load_descriptions() -> dict[str, str]:
     """The dictionary properties' descriptions, extracted from the README at build time."""
     text = (

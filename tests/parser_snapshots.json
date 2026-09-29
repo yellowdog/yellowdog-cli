@@ -7976,7 +7976,8 @@
         "worker-pool",
         "compute-requirement",
         "resources",
-        "node-actions"
+        "node-actions",
+        "config"
       ],
       "const": null,
       "default": null,

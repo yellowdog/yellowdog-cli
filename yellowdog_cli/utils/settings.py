@@ -226,6 +226,7 @@ SCHEMA_FAMILIES: tuple[str, ...] = (
     "compute-requirement",
     "resources",
     "node-actions",
+    "config",
 )
 JSON_INDENT = 2
 HIGHLIGHTED_STATES = [

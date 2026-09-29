@@ -33,19 +33,26 @@ case applies is not known until the variable is substituted.
 from __future__ import annotations
 
 import copy
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from sys import exit
 from typing import Any, NamedTuple, NoReturn
 
 import fastjsonschema
 
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.property_names import SCHEMA_KEY
+from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
 from yellowdog_cli.utils.settings import ExitCode
+from yellowdog_cli.utils.spec_properties import (
+    ALL_CONFIG_SECTIONS,
+    CONFIG_SECTIONS,
+    FLOAT_CAST,
+    INT_CAST,
+)
 from yellowdog_cli.utils.spec_schema import (
     Family,
     SchemaGenerationError,
+    compile_config_schema,
     compile_schema,
 )
 
@@ -269,7 +276,11 @@ def validate_specification(
     Every violation of the family's schema in 'document', each with the JSON
     path it is at. 'source' names the document, for the callers' messages.
     """
-    validate = compile_schema(family)
+    return _violations(compile_schema(family), document)
+
+
+def _violations(validate: Callable[[Any], Any], document: Any) -> list[Violation]:
+    """Every violation 'validate' finds in 'document', found by repair."""
     working = copy.deepcopy(document)
     violations: list[Violation] = []
     seen: set[Violation] = set()
@@ -294,6 +305,91 @@ def validate_specification(
             if not _repair(working, exc):
                 break
     return violations
+
+
+MISPLACED_MESSAGE = "'{key}' is not read in this section"
+
+
+# A property the loader casts with int() or float() (spec_properties'
+# INT_CAST, FLOAT_CAST) fails as a type list or as a pattern; either way what
+# it must be is a number of that kind
+def _worded(violation: Violation) -> Violation:
+    """A cast property's failure in words, else the violation as it is."""
+    section, _, key = violation.path.partition(".")
+    for prop in CONFIG_SECTIONS.get(section, ()):
+        if prop.name == key and prop.schema is INT_CAST:
+            return Violation(violation.path, "must be an integer")
+        if prop.name == key and prop.schema is FLOAT_CAST:
+            return Violation(violation.path, "must be a number")
+    return violation
+
+
+def _without_nulls(value: Any) -> Any:
+    """
+    'value' with every None removed from its tables: TOML has no null, so
+    one came from '--property section.key=null', which unsets the property.
+    """
+    if isinstance(value, dict):
+        return {k: _without_nulls(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_without_nulls(item) for item in value]
+    return value
+
+
+def _misplaced_or_unknown(key: str) -> str:
+    return (
+        MISPLACED_MESSAGE.format(key=key)
+        if key in ALL_KEYS
+        else f"unknown property '{key}'"
+    )
+
+
+def _check_keys(
+    table: dict, allowed: set[str], path: str, violations: list[Violation]
+) -> None:
+    """Report, and delete from 'table', every key 'allowed' does not hold."""
+    for key in [k for k in table if k not in allowed]:
+        violations.append(Violation(path, _misplaced_or_unknown(key)))
+        del table[key]
+
+
+def validate_config(document: dict, sections: frozenset[str]) -> list[Violation]:
+    """
+    Every violation in the configuration file's 'sections'. Each section's
+    own keys are checked here, so that a key another section reads is
+    reported as misplaced rather than unknown -- validate_properties() has
+    already refused, at import, a key that no section reads, so an unknown
+    one here came from '--property' -- and deleted from a copy, which the
+    schema then checks for everything else. A [dataClient] section's table
+    values are profiles, checked with the section's keys.
+    """
+    working = _without_nulls(copy.deepcopy(document))
+    violations: list[Violation] = []
+    if sections == ALL_CONFIG_SECTIONS:
+        known = ALL_CONFIG_SECTIONS | {SCHEMA_KEY}
+        for name in [k for k in working if k not in known]:
+            kind = "unknown section" if isinstance(working[name], dict) else None
+            violations.append(
+                Violation(
+                    DOCUMENT_PATH,
+                    f"{kind} '{name}'" if kind else f"'{name}' is not in a section",
+                )
+            )
+            del working[name]
+    for name in sorted(sections):
+        section = working.get(name)
+        if not isinstance(section, dict):
+            continue  # absent, or not a table: the schema says which
+        allowed = {p.name for p in CONFIG_SECTIONS[name]}
+        if name == DATA_CLIENT_SECTION:
+            for profile, table in section.items():
+                if isinstance(table, dict):
+                    _check_keys(table, allowed, f"{name}.{profile}", violations)
+            allowed |= {k for k, v in section.items() if isinstance(v, dict)}
+        _check_keys(section, allowed, name, violations)
+    return violations + [
+        _worded(v) for v in _violations(compile_config_schema(sections), working)
+    ]
 
 
 def _describe(source: str, violation: Violation) -> str:

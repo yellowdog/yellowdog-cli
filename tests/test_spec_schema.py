@@ -99,6 +99,7 @@ class TestEveryFamily:
             Family.COMPUTE_REQUIREMENT: {"templateId": "t"},
             Family.RESOURCES: {"resource": "Namespace", "name": "n"},
             Family.NODE_ACTIONS: {"actions": []},
+            Family.CONFIG: {"common": {}},
         }[family]
         compile_schema(family)({"$schema": "x", **document})
 

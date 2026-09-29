@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Sep 27 18:58:16 BST 2026 -->
+<!-- Added by: pwt, at: Tue Sep 29 12:55:41 BST 2026 -->
 
 <!--te-->
 
@@ -470,7 +470,7 @@ options:
 
 ## Specification Schemas
 
-A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd-schema` command prints, writes or checks them (see [yd-schema](#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd-schema --write <dir>` afterwards, or `yd-schema --check <dir>` first to see whether it is needed.
+A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd-schema` command prints, writes or checks them (see [yd-schema](#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd-schema --write <dir>` afterwards, or `yd-schema --check <dir>` first to see whether it is needed. The TOML configuration file has a schema too, `config`, which every command checks the file against (see [Configuration](#configuration)).
 
 Point an editor's JSON Schema support at the files `yd-schema --write` produces, to get inline validation and autocomplete while writing a specification. In VS Code, add an entry to `settings.json`:
 
@@ -588,6 +588,8 @@ The name of the configuration file can be supplied in two different ways:
 2. If not supplied, the commands look for a `config.toml` file in the current directory
 
 Run `yd-doctor` to see which configuration file was found and where each value came from.
+
+Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be integer`. A property that no section reads, or one that is no longer supported, is still an error, as before. The data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, `yd-copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd-schema config` prints the schema itself. `yd-doctor` reports the same problems in its `Config schema` row.
 
 # Naming Rules
 
@@ -4434,7 +4436,7 @@ The `yd-doctor` command checks whether this machine, this configuration and thes
 yd-doctor [options]
 ```
 
-It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads, and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
+It checks, in order: the Python version and how the CLI was installed; the CLI, SDK and rclone versions, and whether a newer CLI is on PyPI; each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"; the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks then use that proxy); whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](#configuration)), and where each of the key, secret, namespace, tag and URL came from; undefined variable references; the `.env` file in use; whether the tag is a legal name; and then, live, whether the Platform API is reachable, whether the credentials are accepted (naming the Application, its groups and roles), whether the configured namespace is readable by the Application, each data client profile, and whether the data client's remote can be listed. A check that cannot run says why (`SKIP`) rather than disappearing.
 
 Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
 
@@ -4517,7 +4519,7 @@ See [Jsonnet Support](#jsonnet-support) for installation and usage.
 
 ### yd-schema
 
-The `yd-schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd-submit` accepts), `worker-pool` (`yd-provision`), `compute-requirement` (`yd-instantiate`), `resources` (`yd-create`) and `node-actions` (`yd-nodeaction`). It needs no configuration file and no credentials.
+The `yd-schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd-submit` accepts), `worker-pool` (`yd-provision`), `compute-requirement` (`yd-instantiate`), `resources` (`yd-create`), `node-actions` (`yd-nodeaction`) and `config` (the TOML configuration file every command reads; see [Configuration](#configuration)). It needs no configuration file and no credentials.
 
 ```shell
 yd-schema <family>            # print one family's schema as JSON

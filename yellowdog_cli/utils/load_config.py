@@ -2,6 +2,7 @@
 Common utility functions, mostly related to loading configuration data.
 """
 
+import copy
 import json
 import os
 from os.path import abspath, dirname, join, relpath
@@ -9,6 +10,7 @@ from pathlib import Path
 from sys import exit
 from typing import cast
 
+import fastjsonschema
 from tomli import TOMLDecodeError
 
 from yellowdog_cli.utils.args import ARGS_PARSER
@@ -49,6 +51,8 @@ from yellowdog_cli.utils.settings import (
     YD_URL_ALT,
     ExitCode,
 )
+from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+from yellowdog_cli.utils.spec_validation import validate_config
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variables import (
@@ -81,6 +85,48 @@ def warn_of_undefined_worker_pool_variables() -> None:
     them again, so yd-provision and yd-instantiate call this as they start.
     """
     warn_of_undefined_variables(_WORKER_POOL_SECTIONS_AS_LOADED)
+
+
+def config_as_written() -> dict | None:
+    """The configuration file as written (see _CONFIG_AS_WRITTEN), or None."""
+    return _CONFIG_AS_WRITTEN
+
+
+def warn_of_config_violations(sections: frozenset[str]) -> None:
+    """
+    Warn of each violation of the configuration file's schema in 'sections',
+    those the command reads. Called by the command wrappers as a command
+    starts, never at import, which would print into yd-doctor's table. A
+    key no section reads has already been refused at import, by
+    validate_properties(); everything found here is a warning, and a schema
+    that cannot be built is one warning that the file went unchecked.
+    """
+    document = config_as_written()
+    if document is None:
+        return
+    try:
+        violations = validate_config(document, sections)
+    except (SchemaGenerationError, fastjsonschema.JsonSchemaDefinitionException) as e:
+        print_warning(
+            f"cannot check '{CONFIG_FILE}' against the config schema: {e};"
+            " run 'yd-schema config' to see why"
+        )
+        return
+    except Exception as e:
+        # A fault in the check itself: the check is advisory, so it never
+        # stops a command that would otherwise run; '--debug' shows it
+        if ARGS_PARSER.debug:
+            raise
+        print_warning(
+            f"cannot check '{CONFIG_FILE}' against the config schema:"
+            f" {type(e).__name__}: {e}"
+        )
+        return
+    for violation in violations:
+        print_warning(
+            f"'{CONFIG_FILE}': {violation.path}: {violation.message}"
+            " (see yd-schema config)"
+        )
 
 
 def warn_of_undefined_config_variables() -> None:
@@ -241,6 +287,12 @@ CONFIG_FILE = relpath(
     "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
 )
 
+# The configuration file as written -- its own substitutions made, the
+# '--property' overrides applied, nothing yet popped or merged by a section
+# loader -- which warn_of_config_violations() checks as a command starts.
+# None when no file was read.
+_CONFIG_AS_WRITTEN: dict | None = None
+
 if ARGS_PARSER.no_config:
     # Suppress use of any TOML config file
     print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
@@ -276,6 +328,7 @@ else:
             exit(ExitCode.CONFIGURATION)
         if ARGS_PARSER.property_overrides:
             _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
+        _CONFIG_AS_WRITTEN = copy.deepcopy(CONFIG_TOML)
 
     except FileNotFoundError as e:
         # An explicitly selected config file ('--config'/'-c') must exist
