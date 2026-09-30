@@ -192,7 +192,8 @@ def _run(
         patch.object(show_module, "CLIENT", client),
         patch.object(show_module, "ConfiguredWorkerPool", _FakeConfiguredWorkerPool),
         patch.object(printing_module, "ARGS_PARSER", args),
-        patch.object(printing_module, "Json", _StubJson),
+        # printing.py imports Json where it uses it, from the SDK's module
+        patch("yellowdog_client.common.json.Json", _StubJson),
         patch.object(show_module, "print_error"),
     ):
         failures = show_ydids(ydids)

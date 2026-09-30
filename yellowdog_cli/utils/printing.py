@@ -2,68 +2,31 @@
 Functions focused on print outputs.
 """
 
+from __future__ import annotations
+
 import re
 import sys
 from collections.abc import Sequence
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
+from functools import cache
 from json import dumps as json_dumps
 from json import loads as json_loads
 from os import get_terminal_size, getpid
 from textwrap import fill
 from textwrap import indent as text_indent
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from rich.console import Console
 from rich.highlighter import JSONHighlighter, RegexHighlighter
 from rich.markup import escape
 from rich.theme import Theme
 from tabulate import tabulate
-from yellowdog_client import PlatformClient
-from yellowdog_client.common.json import Json
-from yellowdog_client.model import (
-    Allowance,
-    Application,
-    ComputeRequirementDynamicTemplateTestResult,
-    ComputeRequirementStatus,
-    ComputeRequirementSummary,
-    ComputeRequirementTemplateSummary,
-    ComputeRequirementTemplateTestResult,
-    ComputeRequirementTemplateUsage,
-    ComputeSourceTemplateSummary,
-    ExternalUser,
-    Group,
-    Instance,
-    InstanceStatus,
-    InternalUser,
-    KeyringSummary,
-    MachineImageFamilySummary,
-    Namespace,
-    NamespacePolicy,
-    Node,
-    NodeAction,
-    NodeActionQueueSnapshot,
-    NodeActionQueueStatus,
-    NodeStatus,
-    PermissionDetail,
-    ProvisionedWorkerPoolProperties,
-    Role,
-    Task,
-    TaskGroup,
-    TaskStatus,
-    User,
-    Worker,
-    WorkerPoolSummary,
-    WorkerStatus,
-    WorkRequirement,
-    WorkRequirementSummary,
-)
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.cloudwizard_aws_types import AWSAvailabilityZone
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
-from yellowdog_cli.utils.items import Item
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASKS
 from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
 from yellowdog_cli.utils.settings import (
@@ -95,6 +58,40 @@ from yellowdog_cli.utils.settings import (
     WARNING_STYLE,
 )
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType
+
+if TYPE_CHECKING:
+    from yellowdog_client import PlatformClient
+    from yellowdog_client.model import (
+        Allowance,
+        Application,
+        ComputeRequirementSummary,
+        ComputeRequirementTemplateSummary,
+        ComputeRequirementTemplateTestResult,
+        ComputeRequirementTemplateUsage,
+        ComputeSourceTemplateSummary,
+        Group,
+        Instance,
+        KeyringSummary,
+        MachineImageFamilySummary,
+        Namespace,
+        NamespacePolicy,
+        Node,
+        NodeAction,
+        NodeActionQueueSnapshot,
+        PermissionDetail,
+        ProvisionedWorkerPoolProperties,
+        Role,
+        Task,
+        TaskGroup,
+        User,
+        Worker,
+        WorkerPoolSummary,
+        WorkRequirement,
+        WorkRequirementSummary,
+    )
+
+    from yellowdog_cli.utils.items import Item
+
 
 _T = TypeVar("_T")
 
@@ -282,6 +279,14 @@ def print_error(error_obj: Exception | str):
     )
 
 
+def warnings_suppressed() -> bool:
+    """
+    True if print_warning() prints nothing unless told to override: under
+    '--quiet' or '--count-only'. A check that only warns can be skipped.
+    """
+    return bool(ARGS_PARSER.quiet or ARGS_PARSER.count_only)
+
+
 def print_warning(
     warning: str,
     override_quiet: bool = False,
@@ -290,7 +295,7 @@ def print_warning(
     """
     Print a warning: to stdout, or to stderr under '--json'.
     """
-    if (ARGS_PARSER.quiet or ARGS_PARSER.count_only) and override_quiet is False:
+    if warnings_suppressed() and override_quiet is False:
         return
 
     # Under '--json' stdout is the result document alone, so a warning goes
@@ -846,6 +851,8 @@ def namespace_policies_table(
 def users_table(
     users: list[User],
 ) -> tuple[list[str], list[list]]:
+    from yellowdog_client.model import ExternalUser, InternalUser
+
     headers = [
         "#",
         "Name",
@@ -988,6 +995,29 @@ def print_numbered_object_list(
     Print a numbered list of objects.
     Assume that the list supplied is already sorted.
     """
+    from yellowdog_client.model import (
+        Allowance,
+        Application,
+        ComputeRequirementSummary,
+        ComputeRequirementTemplateSummary,
+        ComputeSourceTemplateSummary,
+        Group,
+        Instance,
+        KeyringSummary,
+        MachineImageFamilySummary,
+        Namespace,
+        NamespacePolicy,
+        Node,
+        PermissionDetail,
+        Role,
+        Task,
+        TaskGroup,
+        User,
+        Worker,
+        WorkerPoolSummary,
+        WorkRequirementSummary,
+    )
+
     if not objects:
         return
 
@@ -1086,6 +1116,8 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
     Sort objects by their 'name' property, or 'instanceType' in the case of
     Instances, etc.
     """
+    from yellowdog_client.model import Allowance, Instance, Node, Task, Worker
+
     if not objects:
         return objects
 
@@ -1196,12 +1228,23 @@ def _strip_id_props(d):
     return d
 
 
+def _sdk_json(yd_object: object) -> Any:
+    """
+    An SDK object as JSON data. Json is imported here, for an SDK object
+    only: a list of plain dicts -- every data client command's '--json'
+    result -- is printed without loading the SDK.
+    """
+    from yellowdog_client.common.json import Json
+
+    return Json.dump(yd_object)
+
+
 def print_objects_as_json(objects: list) -> None:
     """
     Serialise a list of SDK model objects (or plain dicts) as a JSON array
     and print to stdout with no Rich formatting.  Used by --json mode.
     """
-    data = [Json.dump(obj) if not isinstance(obj, dict) else obj for obj in objects]
+    data = [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
     if ARGS_PARSER.strip_ids:
         stripped = []
         for item in data:
@@ -1286,6 +1329,8 @@ def print_yd_object(
     Print a YellowDog object as a JSON data structure,
     using the compact JSON encoder.
     """
+    from yellowdog_client.common.json import Json
+
     object_data: Any = Json.dump(yd_object)
 
     if ARGS_PARSER.strip_ids:
@@ -1355,6 +1400,8 @@ def worker_pool_specification(
     """
     Reconstruct the JSON Worker Pool specification.
     """
+    from yellowdog_client.common.json import Json
+
     return {
         "provisionedProperties": Json.dump(pwpp),
         "requirementTemplateUsage": Json.dump(crtu),
@@ -1376,6 +1423,8 @@ class WorkRequirementSnapshot:
         Set the Work Requirement to be represented, processed to
         comply with the API.
         """
+        from yellowdog_client.common.json import Json
+
         self.wr_data = Json.dump(wr)  # type: ignore[assignment]  # Dictionary holding the complete WR
 
     def add_tasks(self, task_group_name: str, tasks: list[Task]):
@@ -1383,6 +1432,8 @@ class WorkRequirementSnapshot:
         Add the list of Tasks to a named Task Group within the
         Work Requirement. Cumulative.
         """
+        from yellowdog_client.common.json import Json
+
         for task_group in self.wr_data[TASK_GROUPS]:
             if task_group[NAME] == task_group_name:
                 task_group[TASKS] = task_group.get(TASKS, [])
@@ -1402,6 +1453,8 @@ def print_compute_template_test_result(result: ComputeRequirementTemplateTestRes
     """
     Print the results of a test submission of a Dynamic Compute Template.
     """
+    from yellowdog_client.model import ComputeRequirementDynamicTemplateTestResult
+
     if not isinstance(result, ComputeRequirementDynamicTemplateTestResult):
         print_info("Reports are only available for Dynamic Templates")
         return
@@ -1446,66 +1499,95 @@ class StatusCount:
     include_if_zero: bool = False
 
 
-STATUS_COUNTS_TASKS = [
-    StatusCount(TaskStatus.PENDING.value),
-    StatusCount(TaskStatus.READY.value, True),
-    StatusCount(TaskStatus.ALLOCATED.value),
-    StatusCount(TaskStatus.EXECUTING.value, True),
-    StatusCount(TaskStatus.UPLOADING.value),
-    StatusCount(TaskStatus.DOWNLOADING.value),
-    StatusCount(TaskStatus.COMPLETED.value, True),
-    StatusCount(TaskStatus.CANCELLED.value),
-    StatusCount(TaskStatus.ABORTED.value),
-    StatusCount(TaskStatus.FAILED.value),
-    StatusCount(TaskStatus.RESUBMITTED.value),
-]
+@cache
+def status_counts_tasks() -> list[StatusCount]:
+    from yellowdog_client.model import TaskStatus
 
-STATUS_COUNTS_INSTANCES = [
-    StatusCount(InstanceStatus.PENDING.value, True),
-    StatusCount(InstanceStatus.RUNNING.value, True),
-    StatusCount(InstanceStatus.STOPPING.value),
-    StatusCount(InstanceStatus.STOPPED.value),
-    StatusCount(InstanceStatus.TERMINATING.value),
-    StatusCount(InstanceStatus.TERMINATED.value, True),
-    StatusCount(InstanceStatus.UNAVAILABLE.value),
-    StatusCount(InstanceStatus.UNKNOWN.value),
-]
+    return [
+        StatusCount(TaskStatus.PENDING.value),
+        StatusCount(TaskStatus.READY.value, True),
+        StatusCount(TaskStatus.ALLOCATED.value),
+        StatusCount(TaskStatus.EXECUTING.value, True),
+        StatusCount(TaskStatus.UPLOADING.value),
+        StatusCount(TaskStatus.DOWNLOADING.value),
+        StatusCount(TaskStatus.COMPLETED.value, True),
+        StatusCount(TaskStatus.CANCELLED.value),
+        StatusCount(TaskStatus.ABORTED.value),
+        StatusCount(TaskStatus.FAILED.value),
+        StatusCount(TaskStatus.RESUBMITTED.value),
+    ]
 
-STATUS_COUNTS_WORKERS = [
-    StatusCount(WorkerStatus.BATCH_ALLOCATION.value),  # Deprecated
-    StatusCount(WorkerStatus.DOING_TASK.value, True),  # Deprecated
-    StatusCount(WorkerStatus.STOPPED.value, True),
-    StatusCount(WorkerStatus.RUNNING.value, True),
-    StatusCount(WorkerStatus.SLEEPING.value),  # Deprecated
-    StatusCount(WorkerStatus.STARTING.value),
-    StatusCount(WorkerStatus.LATE.value),
-    StatusCount(WorkerStatus.LOST.value),
-    StatusCount(WorkerStatus.SHUTDOWN.value),
-]
 
-STATUS_COUNTS_NODES = [
-    StatusCount(NodeStatus.RUNNING.value, True),
-    StatusCount(NodeStatus.TERMINATED.value, True),
-    StatusCount(NodeStatus.DEREGISTERED.value),
-    StatusCount(NodeStatus.LATE.value),
-    StatusCount(NodeStatus.LOST.value),
-]
+@cache
+def status_counts_instances() -> list[StatusCount]:
+    from yellowdog_client.model import InstanceStatus
 
-STATUS_COUNTS_NODE_ACTIONS = [
-    # StatusCount(NodeActionQueueStatus.EMPTY.value, True),
-    StatusCount(NodeActionQueueStatus.WAITING.value, True),
-    StatusCount(NodeActionQueueStatus.EXECUTING.value, True),
-    StatusCount(NodeActionQueueStatus.FAILED.value),
-]
+    return [
+        StatusCount(InstanceStatus.PENDING.value, True),
+        StatusCount(InstanceStatus.RUNNING.value, True),
+        StatusCount(InstanceStatus.STOPPING.value),
+        StatusCount(InstanceStatus.STOPPED.value),
+        StatusCount(InstanceStatus.TERMINATING.value),
+        StatusCount(InstanceStatus.TERMINATED.value, True),
+        StatusCount(InstanceStatus.UNAVAILABLE.value),
+        StatusCount(InstanceStatus.UNKNOWN.value),
+    ]
 
-STATUS_COUNTS_COMPUTE_REQ = [
-    StatusCount(ComputeRequirementStatus.PROVISIONING.value, True),
-    StatusCount(ComputeRequirementStatus.RUNNING.value, True),
-    StatusCount(ComputeRequirementStatus.STOPPING.value),
-    StatusCount(ComputeRequirementStatus.STOPPED.value),
-    StatusCount(ComputeRequirementStatus.TERMINATING.value),
-    StatusCount(ComputeRequirementStatus.TERMINATED.value),
-]
+
+@cache
+def status_counts_workers() -> list[StatusCount]:
+    from yellowdog_client.model import WorkerStatus
+
+    return [
+        StatusCount(WorkerStatus.BATCH_ALLOCATION.value),  # Deprecated
+        StatusCount(WorkerStatus.DOING_TASK.value, True),  # Deprecated
+        StatusCount(WorkerStatus.STOPPED.value, True),
+        StatusCount(WorkerStatus.RUNNING.value, True),
+        StatusCount(WorkerStatus.SLEEPING.value),  # Deprecated
+        StatusCount(WorkerStatus.STARTING.value),
+        StatusCount(WorkerStatus.LATE.value),
+        StatusCount(WorkerStatus.LOST.value),
+        StatusCount(WorkerStatus.SHUTDOWN.value),
+    ]
+
+
+@cache
+def status_counts_nodes() -> list[StatusCount]:
+    from yellowdog_client.model import NodeStatus
+
+    return [
+        StatusCount(NodeStatus.RUNNING.value, True),
+        StatusCount(NodeStatus.TERMINATED.value, True),
+        StatusCount(NodeStatus.DEREGISTERED.value),
+        StatusCount(NodeStatus.LATE.value),
+        StatusCount(NodeStatus.LOST.value),
+    ]
+
+
+@cache
+def status_counts_node_actions() -> list[StatusCount]:
+    from yellowdog_client.model import NodeActionQueueStatus
+
+    return [
+        # StatusCount(NodeActionQueueStatus.EMPTY.value, True),
+        StatusCount(NodeActionQueueStatus.WAITING.value, True),
+        StatusCount(NodeActionQueueStatus.EXECUTING.value, True),
+        StatusCount(NodeActionQueueStatus.FAILED.value),
+    ]
+
+
+@cache
+def status_counts_compute_req() -> list[StatusCount]:
+    from yellowdog_client.model import ComputeRequirementStatus
+
+    return [
+        StatusCount(ComputeRequirementStatus.PROVISIONING.value, True),
+        StatusCount(ComputeRequirementStatus.RUNNING.value, True),
+        StatusCount(ComputeRequirementStatus.STOPPING.value),
+        StatusCount(ComputeRequirementStatus.STOPPED.value),
+        StatusCount(ComputeRequirementStatus.TERMINATING.value),
+        StatusCount(ComputeRequirementStatus.TERMINATED.value),
+    ]
 
 
 def status_counts_msg(
@@ -1567,23 +1649,23 @@ def print_event(event: str, id_type: YDIDType):
                 f" {task_group['taskSummary']['taskCount']:,d} Task(s){event_indent_2}"
             )
             msg += status_counts_msg(
-                STATUS_COUNTS_TASKS, task_group["taskSummary"]["statusCounts"]
+                status_counts_tasks(), task_group["taskSummary"]["statusCounts"]
             )
 
     elif id_type == YDIDType.WORKER_POOL:
         msg = f"{id_type.value} '{event_data['name']}' is {event_data['status']}"
         msg += f"{event_indent}Node(s):        " + status_counts_msg(
-            STATUS_COUNTS_NODES, event_data["nodeSummary"]["statusCounts"]
+            status_counts_nodes(), event_data["nodeSummary"]["statusCounts"]
         )
         node_actions_msg = status_counts_msg(
-            STATUS_COUNTS_NODE_ACTIONS,
+            status_counts_node_actions(),
             event_data["nodeSummary"]["actionQueueStatuses"],
             empty_msg_if_zero_total=True,
         )
         if node_actions_msg:
             msg += f"{event_indent}Node Action(s): " + node_actions_msg
         workers_msg = status_counts_msg(
-            STATUS_COUNTS_WORKERS,
+            status_counts_workers(),
             event_data["workerSummary"]["statusCounts"],
             empty_msg_if_zero_total=True,
         )
@@ -1606,7 +1688,7 @@ def print_event(event: str, id_type: YDIDType):
         )
         for source in event_data["provisionStrategy"]["sources"]:
             source_msg = status_counts_msg(
-                STATUS_COUNTS_INSTANCES,
+                status_counts_instances(),
                 source["instanceSummary"]["statusCounts"],
                 empty_msg_if_zero_total=True,
             )

@@ -30,6 +30,7 @@ from yellowdog_cli.utils.printing import (
     print_debug,
     print_error,
     print_warning,
+    warnings_suppressed,
 )
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
@@ -100,7 +101,14 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     key no section reads has already been refused at import, by
     validate_properties(); everything found here is a warning, and a schema
     that cannot be built is one warning that the file went unchecked.
+
+    Skipped when no warning could be shown ('--quiet'), since building the
+    schema can import the SDK -- which Commander's 'yd-variables --quiet'
+    would otherwise pay on every discovery -- but not under '--debug', which
+    raises a fault in the check rather than warning of it.
     """
+    if warnings_suppressed() and not ARGS_PARSER.debug:
+        return
     document = config_as_written()
     if document is None:
         return

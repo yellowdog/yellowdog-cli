@@ -387,8 +387,14 @@ def validate_config(document: dict, sections: frozenset[str]) -> list[Violation]
                     _check_keys(table, allowed, f"{name}.{profile}", violations)
             allowed |= {k for k, v in section.items() if isinstance(v, dict)}
         _check_keys(section, allowed, name, violations)
+    # The schema over the sections the file has, not all it could have: an
+    # absent section has nothing to check, and [workRequirement]'s, built
+    # from the SDK, is most of the full schema's size. Anything left at the
+    # top level is a known section or '$schema', so the subset schema's
+    # leaving other sections open changes nothing
+    present = sections & frozenset(working)
     return violations + [
-        _worded(v) for v in _violations(compile_config_schema(sections), working)
+        _worded(v) for v in _violations(compile_config_schema(present), working)
     ]
 
 

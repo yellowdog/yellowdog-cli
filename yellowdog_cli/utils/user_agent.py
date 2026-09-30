@@ -20,10 +20,9 @@ longer-term fix, after which the SDK-specific override can be removed.
 """
 
 import requests.utils
-from yellowdog_client._version import __version__ as _sdk_version
-from yellowdog_client.common.credentials import ApiKeyAuthenticationHeadersProvider
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.version import sdk_version
 
 # Captured once, at import: the original requests User-Agent (requests/urllib3
 # version), preserved as a suffix on both flavours below.
@@ -34,7 +33,7 @@ CLI_USER_AGENT = f"yellowdog-cli/{__version__} {_REQUESTS_UA}"
 
 # Calls made through the YellowDog SDK additionally advertise the SDK version.
 SDK_USER_AGENT = (
-    f"yellowdog-cli/{__version__} yellowdog-sdk/{_sdk_version} {_REQUESTS_UA}"
+    f"yellowdog-cli/{__version__} yellowdog-sdk/{sdk_version()} {_REQUESTS_UA}"
 )
 
 # Guards the SDK auth-callable wrapping against repeated application.
@@ -48,7 +47,12 @@ def set_user_agent() -> None:
     # 1) Baseline for every requests Session — covers the CLI's direct calls.
     requests.utils.default_user_agent = lambda *_args, **_kwargs: CLI_USER_AGENT
 
-    # 2) SDK-only override, applied by the SDK's per-request auth callable.
+    # 2) SDK-only override, applied by the SDK's per-request auth callable;
+    # imported here, since importing the SDK at all builds the whole client
+    from yellowdog_client.common.credentials import (
+        ApiKeyAuthenticationHeadersProvider,
+    )
+
     if not getattr(ApiKeyAuthenticationHeadersProvider, _SDK_PATCH_FLAG, False):
         original_call = ApiKeyAuthenticationHeadersProvider.__call__
 

@@ -16,8 +16,6 @@ import it.
 import re
 from typing import Any
 
-from yellowdog_client.common.json import Json
-
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import (
     json_document_printed,
@@ -246,9 +244,13 @@ def flush_results() -> None:
         return
 
     if _HAS_DOCUMENT:
-        print_json(
-            _DOCUMENT if isinstance(_DOCUMENT, (dict, list)) else Json.dump(_DOCUMENT)
-        )
+        if isinstance(_DOCUMENT, (dict, list)):
+            print_json(_DOCUMENT)
+        else:
+            # An SDK object, so the SDK is loaded already
+            from yellowdog_client.common.json import Json
+
+            print_json(Json.dump(_DOCUMENT))
         return
 
     # Dicts pass through; SDK objects are serialised; '--strip-ids' applies

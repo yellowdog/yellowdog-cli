@@ -267,6 +267,29 @@ class TestValidateConfig:
             Violation("dataClient.bucket", "must be string")
         ]
 
+    def test_only_the_sections_the_file_has_are_compiled(self, monkeypatch):
+        from yellowdog_cli.utils import spec_validation
+
+        compiled = []
+
+        def spy(sections):
+            compiled.append(sections)
+            return compile_config_schema(sections)
+
+        monkeypatch.setattr(spec_validation, "compile_config_schema", spy)
+        _check({"common": {"key": "k"}, "workerPool": {"maxNodes": "ten"}})
+        _check({"common": {}, "workPool": {}}, DATA_CLIENT_CONFIG_SECTIONS)
+        assert compiled == [frozenset({"common", "workerPool"}), frozenset({"common"})]
+
+    def test_a_section_that_is_not_a_table_is_still_checked(self):
+        assert _check({"common": {}, "workerPool": 3}) == [
+            Violation("workerPool", "must be object")
+        ]
+
+    def test_a_file_with_no_sections_passes(self):
+        assert _check({}) == []
+        assert _check({"$schema": "x"}) == []
+
     def test_the_document_is_not_changed(self):
         document = {"workRequirement": {"minNodes": 1}}
         _check(document)
@@ -314,6 +337,23 @@ class TestWarnOfConfigViolations:
     def test_no_file_no_warnings(self, monkeypatch, warnings):
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", None)
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
+        assert warnings == []
+
+    @pytest.mark.parametrize("debug", [False, True])
+    def test_quiet_skips_the_check_unless_debugging(self, monkeypatch, warnings, debug):
+        from types import SimpleNamespace
+
+        checked = []
+        monkeypatch.setattr(
+            load_config,
+            "validate_config",
+            lambda document, sections: checked.append(sections) or [],
+        )
+        monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
+        monkeypatch.setattr(load_config, "warnings_suppressed", lambda: True)
+        monkeypatch.setattr(load_config, "ARGS_PARSER", SimpleNamespace(debug=debug))
+        load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
+        assert bool(checked) is debug
         assert warnings == []
 
     def test_an_unbuildable_schema_is_one_warning(self, monkeypatch, warnings):

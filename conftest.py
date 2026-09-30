@@ -113,6 +113,29 @@ def _fresh_json_results():
     yield
 
 
+@pytest.fixture(scope="session")
+def _schema_cache_root(tmp_path_factory):
+    return tmp_path_factory.mktemp("schema-cache")
+
+
+@pytest.fixture(autouse=True)
+def _session_schema_cache(monkeypatch, _schema_cache_root):
+    """
+    Keep the compiled schema validators (schema_cache.py) in a directory of
+    the session's own rather than the system's temporary directory, so an
+    in-process test neither reads a validator an earlier run left nor
+    leaves one. Commands run as child processes still use the real one. No
+    reporter is registered, and nothing counts as already reported, so a
+    wrapped main() run by one test reports nothing into the next.
+    """
+    from yellowdog_cli.utils import schema_cache
+
+    monkeypatch.setattr(schema_cache, "_temp_root", lambda: _schema_cache_root)
+    monkeypatch.setattr(schema_cache, "_reporter", None)
+    monkeypatch.setattr(schema_cache, "_REPORTED", set())
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _no_config_snapshot(monkeypatch):
     """

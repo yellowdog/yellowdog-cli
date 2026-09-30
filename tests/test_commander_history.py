@@ -1,6 +1,7 @@
 """
 Unit tests for the Commander CommandHistory helper (pure Python; no Qt, so it
-runs where PyQt6 is not installed). Guards the command-recall pointer logic against off-by-one regressions.
+runs where PyQt6 is not installed). Guards the command-recall pointer logic
+against off-by-one regressions.
 """
 
 from yellowdog_cli.commander.command_history import CommandHistory

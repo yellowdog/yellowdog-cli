@@ -37,7 +37,10 @@ def window(qapp, tmp_path):
 
 @pytest.fixture
 def never_browses(window, monkeypatch):
-    """Fail loudly if a browse dialog is opened; these tests are about not opening one."""
+    """
+    Fail loudly if a browse dialog is opened; these tests are about not opening
+    one.
+    """
 
     def refuse(*_args, **_kwargs):
         raise AssertionError("a browse dialog was opened for a missing directory")
