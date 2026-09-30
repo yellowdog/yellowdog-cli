@@ -28,6 +28,7 @@ from yellowdog_cli.utils.results import (
     flush_results,
     flush_results_after_failure,
 )
+from yellowdog_cli.utils.schema_cache import report_problems_to
 from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
 from yellowdog_cli.utils.user_agent import set_user_agent
@@ -83,6 +84,8 @@ def main_wrapper(func):
         # The configuration is loaded, so every variable it defines exists:
         # one still unsubstituted from here on is one nothing defines
         enable_undefined_variable_warnings()
+        # Before the first schema is compiled, by the config check below
+        report_problems_to(print_debug)
         warn_of_undefined_config_variables()
         warn_of_config_violations(ALL_CONFIG_SECTIONS)
         if not ARGS_PARSER.debug:

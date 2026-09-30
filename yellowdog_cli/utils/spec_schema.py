@@ -28,10 +28,9 @@ from enum import Enum
 from functools import cache
 from typing import Any
 
-import fastjsonschema
-
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils import sdk_models
+from yellowdog_cli.utils.schema_cache import compile_validator
 from yellowdog_cli.utils.spec_properties import (
     ALL_CONFIG_SECTIONS,
     COMPUTE_REQUIREMENT_SHELL,
@@ -879,9 +878,11 @@ def build_schema(family: Family) -> dict[str, Any]:
 
 @cache
 def compile_schema(family: Family) -> Callable[[Any], Any]:
-    """The family's schema compiled by fastjsonschema, once per process."""
-    validate: Callable[[Any], Any] = fastjsonschema.compile(build_schema(family))  # type: ignore[assignment]
-    return validate
+    """
+    The family's schema compiled by fastjsonschema, once per process, and
+    kept between processes by schema_cache.py.
+    """
+    return compile_validator(build_schema(family), family.value)
 
 
 def build_config_schema(sections: frozenset[str]) -> dict[str, Any]:
@@ -895,7 +896,7 @@ def build_config_schema(sections: frozenset[str]) -> dict[str, Any]:
     defs: dict[str, Any] = {"variable": VARIABLE_TOKEN}
     document = {
         "$schema": DRAFT,
-        "$id": f"{ID_BASE}{Family.CONFIG.value}-{'-'.join(sorted(sections))}"
+        "$id": f"{ID_BASE}{Family.CONFIG.value}-{'-'.join(sorted(sections)) or 'none'}"
         ".schema.json",
         **_config_root(sections, defs),
         "$defs": defs,
@@ -905,8 +906,13 @@ def build_config_schema(sections: frozenset[str]) -> dict[str, Any]:
 
 @cache
 def compile_config_schema(sections: frozenset[str]) -> Callable[[Any], Any]:
-    """build_config_schema(sections) compiled, once per process per subset."""
-    validate: Callable[[Any], Any] = fastjsonschema.compile(  # type: ignore[assignment]
-        build_config_schema(sections)
+    """
+    build_config_schema(sections) compiled, once per process per subset,
+    and kept between processes by schema_cache.py.
+    """
+    stem = (
+        Family.CONFIG.value
+        if sections == ALL_CONFIG_SECTIONS
+        else f"{Family.CONFIG.value}-{'-'.join(sorted(sections)) or 'none'}"
     )
-    return validate
+    return compile_validator(build_config_schema(sections), stem)

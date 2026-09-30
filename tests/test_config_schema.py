@@ -267,6 +267,29 @@ class TestValidateConfig:
             Violation("dataClient.bucket", "must be string")
         ]
 
+    def test_only_the_sections_the_file_has_are_compiled(self, monkeypatch):
+        from yellowdog_cli.utils import spec_validation
+
+        compiled = []
+
+        def spy(sections):
+            compiled.append(sections)
+            return compile_config_schema(sections)
+
+        monkeypatch.setattr(spec_validation, "compile_config_schema", spy)
+        _check({"common": {"key": "k"}, "workerPool": {"maxNodes": "ten"}})
+        _check({"common": {}, "workPool": {}}, DATA_CLIENT_CONFIG_SECTIONS)
+        assert compiled == [frozenset({"common", "workerPool"}), frozenset({"common"})]
+
+    def test_a_section_that_is_not_a_table_is_still_checked(self):
+        assert _check({"common": {}, "workerPool": 3}) == [
+            Violation("workerPool", "must be object")
+        ]
+
+    def test_a_file_with_no_sections_passes(self):
+        assert _check({}) == []
+        assert _check({"$schema": "x"}) == []
+
     def test_the_document_is_not_changed(self):
         document = {"workRequirement": {"minNodes": 1}}
         _check(document)
