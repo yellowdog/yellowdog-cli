@@ -2131,9 +2131,27 @@ class TestVersion:
     def test_the_versions(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_jsonnet_version", lambda: "Not installed")
         out = self._run(monkeypatch, capsys, "--json")
-        assert set(out) == {"cli", "sdk", "python", "jsonnet", "rclone", "mcp"}
+        assert set(out) == {
+            "cli",
+            "sdk",
+            "python",
+            "jsonnet",
+            "rclone",
+            "mcp",
+            "author",
+            "licence",
+        }
         assert out["cli"] == yd_version.__version__
         assert out["jsonnet"] is None
+
+    def test_the_author_and_licence(self, monkeypatch, capsys):
+        # The plain report's Author and Licence lines, as structured values
+        out = self._run(monkeypatch, capsys, "--json")
+        assert out["author"] == {
+            "name": yd_version.__author__,
+            "email": yd_version.__email__,
+        }
+        assert out["licence"] == yd_version.cli_licence()
 
     def test_the_sdk_version_is_the_sdks_own(self, monkeypatch, capsys):
         # Read from package metadata, so that naming it imports no SDK

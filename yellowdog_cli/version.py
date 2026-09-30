@@ -105,8 +105,9 @@ def main():
         "--json",
         action="store_true",
         help=(
-            "print the version numbers as a JSON object, null for one not"
-            " installed; with --debug, the Python executable and path too"
+            "print the version numbers, author and licence as a JSON object,"
+            " null for a version not installed; with --debug, the Python"
+            " executable and path too"
         ),
     )
     parser.add_argument(
@@ -181,6 +182,8 @@ def _print_json(debug: bool) -> None:
         "jsonnet": installed(_jsonnet_version()),
         "rclone": installed(_rclone_version()),
         "mcp": installed(_mcp_version()),
+        "author": {"name": __author__, "email": __email__},
+        "licence": cli_licence(),
     }
     if debug:
         document["executable"] = executable
