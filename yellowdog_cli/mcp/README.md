@@ -1,7 +1,7 @@
 # YellowDog MCP Server
 
 <!--ts-->
-   * [What yd-mcp Is](#what-yd-mcp-is)
+   * [Overview](#overview)
    * [Installation](#installation)
    * [Launching](#launching)
    * [Configuring a Client](#configuring-a-client)
@@ -16,11 +16,11 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Sep 27 15:05:37 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 30 14:06:15 BST 2026 -->
 
 <!--te-->
 
-## What `yd-mcp` Is
+## Overview
 
 `yd-mcp` is an MCP server that exposes the YellowDog CLI's `yd-*` commands as tools for an agent.
 
