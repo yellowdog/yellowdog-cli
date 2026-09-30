@@ -29,14 +29,14 @@ reflect a real code path, unlike every other non-None, non-DYNAMIC entry.
 
 This module must not import create.py, which imports wrapper.py and so builds a
 Platform client at import: model_class() resolves through yellowdog_client.model
-directly, which is all create._get_model_class() does.
+directly, which is all create._get_model_class() does, and imports it only
+there: the configuration file's [common] and [dataClient] schemas need no
+SDK, and nor should the commands that check only those.
 """
 
 import dataclasses
 import types
 import typing
-
-from yellowdog_client import model
 
 # Sentinel distinguishing "resolved dynamically from the specification" from
 # "no model is ever built" -- both would otherwise be spelled None.
@@ -347,6 +347,10 @@ def model_class(model_name: str) -> type:
     The SDK model class of this name, resolved as create._get_model_class()
     resolves it, without importing create.py (see the module docstring).
     """
+    # Imported here: importing the SDK at all builds the whole Platform
+    # client, and a schema with no SDK-backed section never gets this far
+    from yellowdog_client import model
+
     return getattr(model, model_name)
 
 

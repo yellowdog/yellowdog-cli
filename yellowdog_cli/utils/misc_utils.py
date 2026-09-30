@@ -2,28 +2,32 @@
 General utility functions.
 """
 
+from __future__ import annotations
+
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from os.path import abspath, dirname, isfile, join, normpath, relpath
 from random import choice
-from typing import TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 from urllib.parse import urlparse
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
-from requests.exceptions import HTTPError
-from yellowdog_client.model import (
-    ComputeRequirement,
-    ConfiguredWorkerPool,
-    ProvisionedWorkerPool,
-    WorkRequirement,
-)
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 from yellowdog_cli.utils.type_check import check_str
+
+if TYPE_CHECKING:
+    from yellowdog_client.model import (
+        ComputeRequirement,
+        ConfiguredWorkerPool,
+        ProvisionedWorkerPool,
+        WorkRequirement,
+    )
 
 UTCNOW = datetime.now(timezone.utc)
 
@@ -87,9 +91,7 @@ def generate_id(prefix: str = "", max_length: int = 60) -> str:
 
 
 # Utility functions for creating links to YD entities
-_EntityType: TypeAlias = (
-    ConfiguredWorkerPool | ProvisionedWorkerPool | WorkRequirement | ComputeRequirement
-)
+_EntityType: TypeAlias = "ConfiguredWorkerPool | ProvisionedWorkerPool | WorkRequirement | ComputeRequirement"
 
 entities: dict[str, str] = {
     "ConfiguredWorkerPool": "workers",
@@ -402,6 +404,10 @@ def is_http_not_found(e: Exception) -> bool:
     Return True if the exception is an HTTP 404 (not found) error from the
     platform API. Use this instead of matching on exception message text.
     """
+    if "requests" not in sys.modules:
+        return False  # an HTTPError can only come from a loaded 'requests'
+    from requests.exceptions import HTTPError
+
     return (
         isinstance(e, HTTPError)
         and e.response is not None

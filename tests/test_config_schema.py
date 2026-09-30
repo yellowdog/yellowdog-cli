@@ -339,6 +339,23 @@ class TestWarnOfConfigViolations:
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert warnings == []
 
+    @pytest.mark.parametrize("debug", [False, True])
+    def test_quiet_skips_the_check_unless_debugging(self, monkeypatch, warnings, debug):
+        from types import SimpleNamespace
+
+        checked = []
+        monkeypatch.setattr(
+            load_config,
+            "validate_config",
+            lambda document, sections: checked.append(sections) or [],
+        )
+        monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
+        monkeypatch.setattr(load_config, "warnings_suppressed", lambda: True)
+        monkeypatch.setattr(load_config, "ARGS_PARSER", SimpleNamespace(debug=debug))
+        load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
+        assert bool(checked) is debug
+        assert warnings == []
+
     def test_an_unbuildable_schema_is_one_warning(self, monkeypatch, warnings):
         def fail(document, sections):
             raise SchemaGenerationError("Thing.field: unknown annotation")

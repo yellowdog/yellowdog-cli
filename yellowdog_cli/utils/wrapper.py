@@ -1,14 +1,20 @@
 """
 Decorator to handle standard setup, shutdown and exception handling
 for all commands.
+
+CLIENT is built the first time it is asked for, by the module __getattr__:
+importing the SDK at all builds the whole Platform client (~140ms), and a
+command that never uses it -- yd-variables -- need not pay for it. Every
+other command imports CLIENT by name, so for them it is built at import,
+exactly as before. The User-Agent is applied as it is built, before any
+request can be made, and pypac and 'requests' are imported only when used.
 """
+
+from __future__ import annotations
 
 import os
 from sys import exit
-
-from pypac import pac_context_for_url
-from yellowdog_client import PlatformClient
-from yellowdog_client.model import ApiKey, ServicesSchema
+from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigCommon
@@ -31,20 +37,52 @@ from yellowdog_cli.utils.results import (
 from yellowdog_cli.utils.schema_cache import report_problems_to
 from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
-from yellowdog_cli.utils.user_agent import set_user_agent
 from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
 
-# Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and direct)
-# before any client is created or request is made.
-set_user_agent()
+if TYPE_CHECKING:
+    from yellowdog_client import PlatformClient
+
+    CLIENT: PlatformClient
 
 CONFIG_COMMON: ConfigCommon = load_config_common()
 # A strict load never returns None for either; the assert narrows the types
 assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
-CLIENT = PlatformClient.create(
-    ServicesSchema(defaultUrl=CONFIG_COMMON.url),
-    ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),
-)
+
+
+def _create_client() -> PlatformClient:
+    """
+    Build the Platform client, and keep it as this module's CLIENT, so that
+    it is built once and the wrapper closes it.
+    """
+    from yellowdog_client import PlatformClient
+    from yellowdog_client.model import ApiKey, ServicesSchema
+
+    from yellowdog_cli.utils.user_agent import set_user_agent
+
+    # Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and
+    # direct) before the client is created or any request is made: every
+    # command that makes a request imports CLIENT
+    set_user_agent()
+    assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
+    client = PlatformClient.create(
+        ServicesSchema(defaultUrl=CONFIG_COMMON.url),
+        ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),
+    )
+    globals()["CLIENT"] = client
+    return client
+
+
+def __getattr__(name: str) -> PlatformClient:
+    if name == "CLIENT":
+        return _create_client()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _close_client() -> None:
+    """Close CLIENT if it was ever built (or a test put one there)."""
+    client = globals().get("CLIENT")
+    if client is not None:
+        client.close()
 
 
 def dry_run() -> bool:
@@ -66,6 +104,12 @@ def set_proxy():
 
     proxy_var = "HTTPS_PROXY"
     if CONFIG_COMMON.use_pac:
+        from pypac import pac_context_for_url
+
+        from yellowdog_cli.utils.user_agent import set_user_agent
+
+        # The PAC file is fetched with 'requests', as the CLI's own request
+        set_user_agent()
         print_debug("Using Proxy Auto-Configuration (PAC)")
         with pac_context_for_url(CONFIG_COMMON.url):
             https_proxy = os.getenv(proxy_var, None)
@@ -128,7 +172,7 @@ def main_wrapper(func):
                 exit_code = ExitCode.INTERRUPTED
                 flush_results_after_failure()
             finally:
-                CLIENT.close()
+                _close_client()
                 if exit_code == 0 and not ARGS_PARSER.print_pid:
                     print_info("Done")
                 exit(exit_code)
@@ -147,6 +191,6 @@ def main_wrapper(func):
                     print_info("Done")
                 exit(ExitCode.SUCCESS)
             finally:
-                CLIENT.close()
+                _close_client()
 
     return wrapper

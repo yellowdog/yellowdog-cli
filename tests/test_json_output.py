@@ -2135,6 +2135,12 @@ class TestVersion:
         assert out["cli"] == yd_version.__version__
         assert out["jsonnet"] is None
 
+    def test_the_sdk_version_is_the_sdks_own(self, monkeypatch, capsys):
+        # Read from package metadata, so that naming it imports no SDK
+        from yellowdog_client._version import __version__ as sdk_version
+
+        assert self._run(monkeypatch, capsys, "--json")["sdk"] == sdk_version
+
     def test_the_mcp_sdk_version(self, monkeypatch, capsys):
         # The 'mcp' extra's SDK, read from package metadata without importing
         # it, so yd-version stays standalone and fast

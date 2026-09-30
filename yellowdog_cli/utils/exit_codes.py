@@ -4,17 +4,10 @@ script can tell an authentication failure from a missing entity from an
 unreachable platform. The codes are ExitCode's, in settings.py.
 """
 
-from requests import ConnectionError as RequestsConnectionError
-from requests import HTTPError, Timeout
-from yellowdog_client.model.exceptions.internal_server_exception import (
-    InternalServerException,
-)
-from yellowdog_client.model.exceptions.not_authorised_exception import (
-    NotAuthorisedException,
-)
-from yellowdog_client.model.exceptions.server_error_exception import (
-    ServerErrorException,
-)
+from __future__ import annotations
+
+import sys
+from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.settings import ExitCode
 
@@ -22,6 +15,9 @@ from yellowdog_cli.utils.settings import ExitCode
 # last resort, after every typed check
 MISSING_PERMISSION_TEXT = "MissingPermissionException"
 UNAUTHORIZED_TEXT = "Unauthorized"
+
+if TYPE_CHECKING:
+    from requests import HTTPError
 
 
 def _http_status(exception: HTTPError) -> ExitCode | None:
@@ -47,17 +43,41 @@ def classify(exception: BaseException) -> ExitCode:
     connection errors and timeouts), then the two message-text checks the
     wrappers use for their friendly messages; anything else is FAILURE.
     SystemExit is not classified: the wrappers pass its code through.
+
+    The typed checks import their classes here, and only if their package
+    is already loaded, since an instance cannot exist otherwise: importing
+    the SDK at all builds the whole Platform client, and 'requests' is
+    ~50ms that a command which never used it should not pay to fail.
     """
-    if isinstance(exception, HTTPError):
-        code = _http_status(exception)
-        if code is not None:
-            return code
-    if isinstance(exception, NotAuthorisedException):
-        return ExitCode.AUTHENTICATION
-    if isinstance(exception, (InternalServerException, ServerErrorException)):
-        return ExitCode.PLATFORM
-    if isinstance(exception, (RequestsConnectionError, Timeout)):
-        return ExitCode.CONNECTION
+    requests_loaded = "requests" in sys.modules
+    if requests_loaded:
+        from requests import HTTPError
+
+        if isinstance(exception, HTTPError):
+            code = _http_status(exception)
+            if code is not None:
+                return code
+    if "yellowdog_client" in sys.modules:
+        from yellowdog_client.model.exceptions.internal_server_exception import (
+            InternalServerException,
+        )
+        from yellowdog_client.model.exceptions.not_authorised_exception import (
+            NotAuthorisedException,
+        )
+        from yellowdog_client.model.exceptions.server_error_exception import (
+            ServerErrorException,
+        )
+
+        if isinstance(exception, NotAuthorisedException):
+            return ExitCode.AUTHENTICATION
+        if isinstance(exception, (InternalServerException, ServerErrorException)):
+            return ExitCode.PLATFORM
+    if requests_loaded:
+        from requests import ConnectionError as RequestsConnectionError
+        from requests import Timeout
+
+        if isinstance(exception, (RequestsConnectionError, Timeout)):
+            return ExitCode.CONNECTION
 
     message = str(exception)
     if MISSING_PERMISSION_TEXT in message:

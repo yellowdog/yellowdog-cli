@@ -12,8 +12,6 @@ from os.path import abspath
 from sys import executable, path
 from sys import version as py_version
 
-from yellowdog_client._version import __version__ as yd_sdk_version
-
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
@@ -22,8 +20,21 @@ from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
 from yellowdog_cli.utils.settings import JSON_INDENT
 
 NOT_INSTALLED = "Not installed"
+SDK_DISTRIBUTION = "yellowdog-sdk"
 
 DOCS_URL = f"https://github.com/yellowdog/yellowdog-cli/blob/v{__version__}/README.md"
+
+
+def sdk_version() -> str:
+    """
+    The installed YellowDog SDK's version, from its package metadata: read
+    without importing the package, whose __init__ builds the whole Platform
+    client (~140ms), so that nothing needs the SDK just to name it.
+    """
+    try:
+        return package_version(SDK_DISTRIBUTION)
+    except PackageNotFoundError:
+        return NOT_INSTALLED
 
 
 def _jsonnet_version() -> str:
@@ -92,7 +103,7 @@ def main():
         print(__version__)
         return
     if args.sdk:
-        print(yd_sdk_version)
+        print(sdk_version())
         return
     if args.python:
         print(py_version.split()[0])
@@ -117,7 +128,7 @@ def main():
         return
 
     print(f"  YellowDog CLI Version:   {__version__} (Docs: {DOCS_URL})")
-    print(f"  YellowDog SDK Version:   {yd_sdk_version}")
+    print(f"  YellowDog SDK Version:   {sdk_version()}")
     print(f"  Python Version:          {py_version.split()[0]} ")
     print(f"  Jsonnet Version:         {_jsonnet_version()}")
     print(f"  rclone Version:          {_rclone_version()}")
@@ -145,7 +156,7 @@ def _print_json(debug: bool) -> None:
 
     document: dict = {
         "cli": __version__,
-        "sdk": yd_sdk_version,
+        "sdk": sdk_version(),
         "python": py_version.split()[0],
         "jsonnet": installed(_jsonnet_version()),
         "rclone": installed(_rclone_version()),
