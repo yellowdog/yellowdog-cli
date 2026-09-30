@@ -1,6 +1,7 @@
 # YellowDog Commander
 
 <!--ts-->
+   * [Overview](#overview)
    * [Installation](#installation)
    * [Running](#running)
    * [How It Works](#how-it-works)
@@ -23,9 +24,11 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 29 15:30:03 BST 2026 -->
+<!-- Added by: pwt, at: Wed Sep 30 14:04:37 BST 2026 -->
 
 <!--te-->
+
+## Overview
 
 YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
 
