@@ -4468,7 +4468,7 @@ The listing is coloured on a terminal, with the command names and the notes on e
 
 ### yd-version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp`.
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp`, followed by the CLI's author and licence.
 
 ```shell
 yd-version [options]

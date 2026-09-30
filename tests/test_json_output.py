@@ -2159,6 +2159,26 @@ class TestVersion:
             yd_version.main()
         assert exit_info.value.code == 1
 
+    def test_the_report_names_the_licence_from_package_metadata(
+        self, monkeypatch, capsys
+    ):
+        # pyproject.toml is the one place the licence is stated
+        import tomli
+
+        with open(_Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+            declared = tomli.load(f)["project"]["license"]
+        assert yd_version.cli_licence() == declared
+        monkeypatch.setattr(_sys, "argv", ["yd-version"])
+        yd_version.main()
+        assert f"Licence:                 {declared}" in capsys.readouterr().out
+
+    def test_an_unknown_licence(self, monkeypatch):
+        def not_found(_name):
+            raise yd_version.PackageNotFoundError
+
+        monkeypatch.setattr(yd_version, "metadata", not_found)
+        assert yd_version.cli_licence() == yd_version.UNKNOWN_LICENCE
+
     def test_a_missing_rclone_is_null(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_rclone_version", lambda: "Not installed")
         assert self._run(monkeypatch, capsys, "--json")["rclone"] is None

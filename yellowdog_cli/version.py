@@ -6,7 +6,7 @@ Report version numbers, etc.
 
 import json
 from argparse import ArgumentParser
-from importlib.metadata import PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, metadata
 from importlib.metadata import version as package_version
 from os.path import abspath
 from sys import executable, path
@@ -21,6 +21,8 @@ from yellowdog_cli.utils.settings import JSON_INDENT
 
 NOT_INSTALLED = "Not installed"
 SDK_DISTRIBUTION = "yellowdog-sdk"
+CLI_DISTRIBUTION = "yellowdog-cli"
+UNKNOWN_LICENCE = "Unknown"
 
 DOCS_URL = f"https://github.com/yellowdog/yellowdog-cli/blob/v{__version__}/README.md"
 
@@ -35,6 +37,23 @@ def sdk_version() -> str:
         return package_version(SDK_DISTRIBUTION)
     except PackageNotFoundError:
         return NOT_INSTALLED
+
+
+def cli_licence() -> str:
+    """
+    The CLI's licence, from its package metadata ('License-Expression', or
+    the older 'License' field), so that pyproject.toml is the one place it
+    is stated.
+    """
+    try:
+        dist_metadata = metadata(CLI_DISTRIBUTION)
+    except PackageNotFoundError:
+        return UNKNOWN_LICENCE
+    for field in ("License-Expression", "License"):
+        values = dist_metadata.get_all(field)
+        if values and values[0]:
+            return values[0]
+    return UNKNOWN_LICENCE
 
 
 def _jsonnet_version() -> str:
@@ -134,6 +153,7 @@ def main():
     print(f"  rclone Version:          {_rclone_version()}")
     print(f"  MCP SDK Version:         {_mcp_version()}")
     print(f"  Author:                  {__author__} ({__email__}) ")
+    print(f"  Licence:                 {cli_licence()}")
     if args.debug:
         print(f"  Command:                 {abspath(__file__)}")
         rclone = find_rclone()
