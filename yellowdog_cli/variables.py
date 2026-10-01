@@ -16,7 +16,7 @@ from yellowdog_cli.utils.settings import (
     REDACTED_VALUE,
     SECRET_VARIABLE_NAME_PATTERN,
 )
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     explain_unset_variable,
     get_all_user_variables,
     get_unset_variable_names,

@@ -595,7 +595,7 @@ def check_config_value(prop: str) -> Callable[[Context], Result]:
 
 def check_variable_references(ctx: Context) -> Result:
     from yellowdog_cli.utils import load_config
-    from yellowdog_cli.utils.variables import undefined_variable_references
+    from yellowdog_cli.utils.variable_substitution import undefined_variable_references
 
     undefined = undefined_variable_references(load_config.CONFIG_TOML)
     if undefined:

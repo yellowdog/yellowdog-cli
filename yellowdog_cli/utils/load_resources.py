@@ -38,7 +38,7 @@ from yellowdog_cli.utils.spec_validation import (
     validate_all_and_exit,
     warn_of_violations,
 )
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
     load_toml_file_with_variable_substitutions,

@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.utils.load_config as lc_module
-import yellowdog_cli.utils.variables as var_module
+import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,

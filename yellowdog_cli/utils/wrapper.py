@@ -37,7 +37,7 @@ from yellowdog_cli.utils.results import (
 from yellowdog_cli.utils.schema_cache import report_problems_to
 from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
-from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
+from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient

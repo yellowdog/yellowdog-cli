@@ -24,7 +24,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import yellowdog_cli.utils.variables as var_module
+import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.settings import RESERVED_VARIABLE_NAMES, ExitCode
 
 VALID = ["a", "A1", "_x", "9lives", "42", "my-var", "dataClient.1.remote", "a.b-c_d"]

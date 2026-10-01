@@ -674,8 +674,8 @@ class TestLateSubstitutionPasses:
             )
 
     def test_no_late_pass_is_a_single_pass(self):
-        # Every in-situ pass outside variables.py is a resolving one; a
-        # single pass reintroduced anywhere brings the short chains back
+        # Every in-situ pass outside variable_substitution.py is a resolving
+        # one; a single pass reintroduced anywhere brings the short chains back
         from pathlib import Path
 
         import yellowdog_cli
@@ -684,7 +684,7 @@ class TestLateSubstitutionPasses:
         callers = [
             str(path.relative_to(package))
             for path in package.rglob("*.py")
-            if path.name != "variables.py"
+            if path.name != "variable_substitution.py"
             and "process_variable_substitutions_insitu" in path.read_text()
         ]
         assert callers == []

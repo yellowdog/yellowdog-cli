@@ -32,8 +32,8 @@ class StartupSettings:
 def variable_is_complete(variable: str) -> bool:
     """
     Whether a whitespace-separated token from the user-variables box is a
-    'name=value' the CLI will accept. Mirrors the rule in utils/variables.py:
-    an '=' with a non-empty name in front of it.
+    'name=value' the CLI will accept. Mirrors the rule in
+    utils/variable_substitution.py: an '=' with a non-empty name in front of it.
     """
     name, separator, _ = variable.partition("=")
     return bool(separator) and bool(name)

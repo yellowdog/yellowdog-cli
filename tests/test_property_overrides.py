@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from yellowdog_cli.utils import load_config, property_names
-from yellowdog_cli.utils import variables as var_module
+from yellowdog_cli.utils import variable_substitution as var_module
 from yellowdog_cli.utils.load_config import (
     _apply_property_overrides,
     _parse_property_value,

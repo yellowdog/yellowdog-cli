@@ -27,7 +27,7 @@ from yellowdog_cli.utils.rclone_utils import (
 )
 from yellowdog_cli.utils.results import json_requested, record
 from yellowdog_cli.utils.settings import DATA_CLIENT_LISTING_WORKERS
-from yellowdog_cli.utils.variables import resolve_variables_in_string
+from yellowdog_cli.utils.variable_substitution import resolve_variables_in_string
 
 # The keys of an rclone 'lsjson' entry that yd-ls records under '--json',
 # spelled as rclone spells them; others vary by backend ('MimeType', 'IsBucket')

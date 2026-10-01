@@ -71,7 +71,7 @@ from yellowdog_cli.utils.settings import (
     VAR_OPENING_DELIMITER,
 )
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions_in_file_contents,
     resolve_filename,
     resolve_variables_insitu,

@@ -73,9 +73,9 @@ def install_variables() -> dict[str, str | None]:
     Force the corpus's dummy values into the substitution engine, returning what
     each key held beforehand so remove_variables() can put it back exactly.
 
-    Set directly rather than through YD_VAR_* environment variables: variables.py
-    scans the environment at import, which has already happened by the time a
-    fixture runs.
+    Set directly rather than through YD_VAR_* environment variables:
+    variable_substitution.py scans the environment at import, which has already
+    happened by the time a fixture runs.
 
     *Forcing* rather than merging, and that distinction is the whole point. An
     earlier version used add_substitutions_without_overwriting(), which skips a key
@@ -92,7 +92,7 @@ def install_variables() -> dict[str, str | None]:
     explicitly selected config file (see add_substitutions_from_config_file), which
     is what '-c' means in the live layer.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
@@ -119,7 +119,7 @@ def remove_variables(previous: dict[str, str | None]) -> None:
     being deleted -- deleting it would leave the session subtly different from how
     the test found it, which is the same class of failure in the other direction.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
@@ -162,10 +162,10 @@ def load_corpus_file(path: Path) -> list[dict]:
     Also chdir's to the file's own directory for the duration of the load: a
     Jsonnet 'import' is resolved relative to the current working directory, not to
     the file doing the importing, because VariableSubstitutedJsonnetFile
-    (variables.py) writes its variable-substituted copy into os.getcwd() before
-    handing it to the Jsonnet evaluator (see that class's own commit message,
-    "Create Jsonnet temporary file in current directory to fix import path
-    issue") -- i.e. a real invocation is expected to run from the directory
+    (variable_substitution.py) writes its variable-substituted copy into
+    os.getcwd() before handing it to the Jsonnet evaluator (see that class's own
+    commit message, "Create Jsonnet temporary file in current directory to fix
+    import path issue") -- i.e. a real invocation is expected to run from the directory
     containing the spec and anything it imports. Without matching that here,
     'lib/base.libsonnet' resolves against the repo root (pytest's cwd) instead of
     tests/resources/, and the import fails regardless of how correct the corpus

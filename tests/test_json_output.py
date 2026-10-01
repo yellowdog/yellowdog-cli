@@ -907,7 +907,7 @@ class TestCreate:
     def test_jsonnet_dry_run_is_an_array_of_files(self, run, monkeypatch, tmp_path):
         import yellowdog_cli.create as yd_create
         import yellowdog_cli.utils.load_resources as load_resources_module
-        import yellowdog_cli.utils.variables as variables_module
+        import yellowdog_cli.utils.variable_substitution as variables_module
         from yellowdog_cli.utils.check_imports import check_jsonnet_import
 
         try:

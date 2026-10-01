@@ -56,7 +56,7 @@ from yellowdog_cli.utils.spec_schema import SchemaGenerationError
 from yellowdog_cli.utils.spec_validation import validate_config
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     CLI_DEFINED_VARIABLES,
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,

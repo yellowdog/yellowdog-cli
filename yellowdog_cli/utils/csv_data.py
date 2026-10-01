@@ -23,7 +23,7 @@ from yellowdog_cli.utils.settings import (
     FORMAT_NAME_TYPE_TAG,
     NUMBER_TYPE_TAG,
 )
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     load_jsonnet_file_with_variable_substitutions,
     resolve_filename,
     resolve_variables_insitu,

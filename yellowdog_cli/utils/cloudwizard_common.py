@@ -21,7 +21,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.settings import RN_KEYRING, RN_REQUIREMENT_TEMPLATE
-from yellowdog_cli.utils.variables import resolve_variables_insitu
+from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 
 CLOUDWIZARD_NAMESPACE_PREFIX = "cloudwizard"
 

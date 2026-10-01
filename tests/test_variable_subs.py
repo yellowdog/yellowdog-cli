@@ -1,5 +1,5 @@
 """
-Unit tests for yellowdog_cli.utils.variables
+Unit tests for yellowdog_cli.utils.variable_substitution
 
 Tests cover process_typed_variable_substitution (pure, no global state)
 and process_variable_substitutions / process_variable_substitutions_in_file_contents
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import yellowdog_cli.utils.variables as var_module
+import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.misc_utils import BASE36_DIGITS
 from yellowdog_cli.utils.settings import (
     ARRAY_TYPE_TAG,
@@ -763,7 +763,7 @@ class TestPidDefaultSubstitutions:
         # environment-defined substitutions it finds on the way past
         snippet = (
             "import os; "
-            "from yellowdog_cli.utils.variables import "
+            "from yellowdog_cli.utils.variable_substitution import "
             "process_variable_substitutions as p; "
             "print('RESULT', p('{{pid}}'), os.getpid())"
         )
@@ -775,7 +775,7 @@ class TestPidDefaultSubstitutions:
         # generated name agree for one run
         snippet = (
             "from yellowdog_cli.utils.misc_utils import generate_id; "
-            "from yellowdog_cli.utils.variables import "
+            "from yellowdog_cli.utils.variable_substitution import "
             "process_variable_substitutions as p; "
             "print('RESULT', p('{{pid2}}'), generate_id('name'))"
         )
@@ -1512,10 +1512,10 @@ class TestStringResolution:
         assert var_module.resolve_variables_in_string("{{env:YD_TEST_A}}") == "end"
         assert warnings.call_count == 0
 
-    def test_no_single_value_substitution_outside_variables_py(self):
-        # Every value substituted outside variables.py goes through a
-        # resolving call; a bare process_variable_substitutions() brings the
-        # one-link chains, and the misreported variables, back
+    def test_no_single_value_substitution_outside_variable_substitution_py(self):
+        # Every value substituted outside variable_substitution.py goes
+        # through a resolving call; a bare process_variable_substitutions()
+        # brings the one-link chains, and the misreported variables, back
         from pathlib import Path
 
         import yellowdog_cli
@@ -1524,7 +1524,7 @@ class TestStringResolution:
         callers = [
             str(path.relative_to(package))
             for path in package.rglob("*.py")
-            if path.name != "variables.py"
+            if path.name != "variable_substitution.py"
             and "process_variable_substitutions(" in path.read_text()
         ]
         assert callers == []

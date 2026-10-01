@@ -149,7 +149,7 @@ from yellowdog_cli.utils.type_check import (
     check_str,
 )
 from yellowdog_cli.utils.validate_properties import validate_properties
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     add_or_update_substitution,
     add_substitutions_without_overwriting,
     load_json_file_with_variable_substitutions,

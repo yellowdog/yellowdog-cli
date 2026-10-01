@@ -52,7 +52,7 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import check_specification
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
 )

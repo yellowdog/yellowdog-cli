@@ -71,7 +71,7 @@ def test_install_variables_forces_the_corpus_value_and_restores_what_it_found():
     Saves and restores both keys directly, independent of the module's autouse
     fixture, so the outcome does not depend on what that fixture already installed.
     """
-    from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+    from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
     occupied_key = "namespace"  # stands in for the ambient config's value
     fresh_key = "aws_region"
@@ -118,7 +118,7 @@ def test_a_corpus_load_uses_the_test_config_namespace_not_the_ambient_one():
     ('yd-demo' on the machine where it was found) while the live layer, passing
     '-c test-config.toml' to a subprocess, used 'yd-cli-tests'.
     """
-    from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+    from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
     key = "namespace"
     original = (

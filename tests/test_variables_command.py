@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import yellowdog_cli.utils.variables as variables_module
+import yellowdog_cli.utils.variable_substitution as variables_module
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.settings import (
     REDACTED_VALUE,

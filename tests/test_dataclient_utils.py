@@ -24,7 +24,7 @@ from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import resolve_remote_path, upload_directory
 from yellowdog_cli.utils.rclone_version import find_rclone
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
 
 class TestResolveRemotePath:

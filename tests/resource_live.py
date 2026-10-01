@@ -310,7 +310,7 @@ def load_corpus_file(path) -> list[dict]:
     where 'run_id' already had some other value, which is restored rather than
     deleted.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
