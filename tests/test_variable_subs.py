@@ -293,6 +293,58 @@ class TestMixedAndNested:
         assert result == "hello"
 
 
+class TestDefaultsContainingBraces:
+    """
+    A default may contain braces of its own -- a table's JSON, a shell's
+    '${HOME}' -- and the expression ends at the '}}' after them, not at the
+    first '}}' to appear.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    @pytest.mark.parametrize(
+        "expression,expected",
+        [
+            ('{{table:env:={"A":100,"B":200}}}', {"A": 100, "B": 200}),
+            ('{{table:env:={"A":{"x":1}}}}', {"A": {"x": 1}}),
+            ("{{table:env:={}}}", {}),
+            ('{{array:a:=[{"x":1}]}}', [{"x": 1}]),
+        ],
+    )
+    def test_typed_default(self, expression, expected):
+        assert var_module.process_variable_substitutions(expression) == expected
+
+    def test_untyped_default(self):
+        result = var_module.process_variable_substitutions("{{cmd:=echo ${HOME}}}")
+        assert result == "echo ${HOME}"
+
+    def test_value_replaces_the_default(self):
+        var_module.VARIABLE_SUBSTITUTIONS["env"] = '{"C":3}'
+        result = var_module.process_variable_substitutions(
+            '{{table:env:={"A":100,"B":200}}}'
+        )
+        assert result == {"C": 3}
+
+    def test_readme_example_in_toml(self, tmp_path):
+        path = tmp_path / "spec.toml"
+        path.write_text('[spec]\nenvironment = \'{{table:env:={"A":100,"B":200}}}\'\n')
+        assert _load_toml(path) == {"environment": {"A": 100, "B": 200}}
+
+    def test_in_json_file_text(self, tmp_path):
+        # Scanned as text, before the JSON is parsed
+        path = tmp_path / "spec.json"
+        path.write_text('{"command": "{{cmd:=echo ${HOME}}}", "n": "{{num:n:=2}}"}')
+        assert _load_json(path) == {"command": "echo ${HOME}", "n": 2}
+
+    def test_unquoted_in_json_file_text(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["n"] = "3"
+        path = tmp_path / "spec.json"
+        path.write_text('{"a": {"count": {{n}}}}')
+        assert _load_json(path) == {"a": {"count": 3}}
+
+
 class TestSubstitutedTextIsNotSyntax:
     """
     An expression is parsed before anything is substituted into it, so a

@@ -161,47 +161,12 @@ def get_delimited_string_boundaries(
         the function will return Substring objects: [(4, 19), (24, 37)]
 
     Opening and closing delimiters must be balanced across the entire
-    input_string, otherwise an exception will be raised.
+    input_string, otherwise an exception will be raised. Braces inside an
+    expression are its content: see _scan_delimited().
     """
-    # Escape the delimiters: they are literal strings, not regex patterns
-    openings = [
-        (x.span()[0], 1)
-        for x in re.finditer(re.escape(opening_delimiter), input_string)
-    ]
-    closings = [
-        (x.span()[0], -1)
-        for x in re.finditer(re.escape(closing_delimiter), input_string)
-    ]
-
-    mismatched_delimiters_exception = ValueError(
-        f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
-        f" in '{input_string}'"
+    return _scan_delimited(
+        input_string, opening_delimiter, closing_delimiter, lenient=False
     )
-
-    if len(openings) != len(closings):
-        raise mismatched_delimiters_exception
-
-    slate = 0
-    start = None
-    substrings: list[Substring] = []
-
-    for boundary in sorted(openings + closings):
-        slate += boundary[1]
-        if slate < 0:
-            raise mismatched_delimiters_exception
-        if slate == 1 and start is None:
-            start = boundary[0]
-        elif slate == 0:
-            assert start is not None  # set when slate first reached 1
-            substrings.append(
-                Substring(start=start, end=boundary[0] + len(closing_delimiter))
-            )
-            start = None
-
-    if slate > 0:
-        raise mismatched_delimiters_exception
-
-    return substrings
 
 
 def find_delimited_expressions(
@@ -221,30 +186,92 @@ def find_delimited_expressions(
       when called with ('{"a":{"b":"{{x_{{y}}}}"}}', "{{", "}}")
       the result is: ['{{x_{{y}}}}']
     """
+    return [
+        s[span.start : span.end]
+        for span in _scan_delimited(
+            s, opening_delimiter, closing_delimiter, lenient=True
+        )
+    ]
+
+
+def _scan_delimited(
+    s: str, opening_delimiter: str, closing_delimiter: str, lenient: bool
+) -> list[Substring]:
+    """
+    The spans of the top-level delimited expressions in a string, for the two
+    functions above, which must agree on where an expression ends: one finds
+    the expressions in a file's text, the other splits each one to substitute
+    it. Strict, a delimiter that does not balance raises ValueError; lenient,
+    it is text, and so is an expression left open at the end of its line.
+
+    Inside an expression, a single brace -- the last character of the opening
+    delimiter, or the first of the closing one -- is content, and a closing
+    brace that closes one opened in the content is content too. That is what
+    lets a default hold braces of its own: '{{table:t:={"a":1}}}' ends at its
+    last '}}', not its first, and so does '{{cmd:=echo ${HOME}}}'. Outside an
+    expression a brace is plain text, so the JSON around '{"n":{{x}}}' ends
+    the expression at its first '}}'.
+    """
     # Jump from one delimiter to the next rather than stepping through the
     # text a character at a time, which cost ~18ms on a 500kB specification
-    # against ~1.5ms this way. A line break matters only while an expression
-    # is open, so it is looked for only then, between one delimiter and the
-    # next, rather than matched throughout the text
-    expressions: list[str] = []
-    depth = 0
+    # against ~1.5ms this way. Outside an expression only the next opening
+    # delimiter is looked for, with str.find(); single braces are looked for
+    # only while one is open, and a line break only then, between one match
+    # and the next, rather than matched throughout the text
+    mismatched = ValueError(
+        f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
+        f" in '{s}'"
+    )
+    opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
+    tokens = [opening_delimiter, closing_delimiter]
+    if opening_brace != closing_brace:
+        tokens += [opening_brace, closing_brace]
+    inside = re.compile("|".join(re.escape(token) for token in tokens))
+
+    spans: list[Substring] = []
+    # For each expression open, innermost last, the braces its content has open
+    open_braces: list[int] = []
     start = 0
-    previous_end = 0
-    for match in re.finditer(
-        f"{re.escape(opening_delimiter)}|{re.escape(closing_delimiter)}", s
-    ):
-        if depth > 0 and s.find("\n", previous_end, match.start()) != -1:
-            depth = 0  # The open expression ended with its line
-        previous_end = match.end()
-        if match.group() == opening_delimiter:
-            if depth == 0:
-                start = match.start()
-            depth += 1
-        elif depth > 0:
-            depth -= 1
-            if depth == 0:
-                expressions.append(s[start : match.end()])
-    return expressions
+    position = 0
+    while True:
+        if not open_braces:  # Only an opening delimiter matters, so find it
+            start = s.find(opening_delimiter, position)
+            before = start if start != -1 else len(s)
+            if not lenient and s.find(closing_delimiter, position, before) != -1:
+                raise mismatched  # A closing delimiter with nothing open
+            if start == -1:
+                break
+            open_braces.append(0)
+            position = start + len(opening_delimiter)
+            continue
+
+        match = inside.search(s, position)
+        if match is None:
+            break
+        if lenient and s.find("\n", position, match.start()) != -1:
+            open_braces = []  # The open expression ended with its line
+            position = match.start()  # Read this match again, outside one
+            continue
+        position = match.end()
+        token = match.group()
+        if token == opening_delimiter:
+            open_braces.append(0)
+        elif token == closing_delimiter and open_braces[-1] > 0:
+            # Its first character closes a brace the content opened
+            open_braces[-1] -= 1
+            position = match.start() + len(closing_brace)
+        elif token == closing_delimiter:
+            open_braces.pop()
+            if not open_braces:
+                spans.append(Substring(start=start, end=match.end()))
+        elif token == opening_brace:
+            open_braces[-1] += 1
+        elif open_braces[-1] > 0:  # A closing brace
+            open_braces[-1] -= 1
+
+    if open_braces and not lenient:
+        raise mismatched
+    return spans
 
 
 def split_delimited_string(

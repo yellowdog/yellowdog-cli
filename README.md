@@ -916,6 +916,8 @@ When a JSON default contains double-quoted strings, use a TOML single-quoted (li
 workerTags = '{{array:worker_tags:=["tag1", "tag2"]}}'
 ```
 
+A default can contain braces of its own, as long as they balance, as a table's JSON or a shell's `${HOME}` does: the substitution ends at the `}}` that follows them.
+
 Default values can be used anywhere that variable substitutions are allowed, and nested variable substitutions can be used inside default values, e.g.:
 
 ```toml

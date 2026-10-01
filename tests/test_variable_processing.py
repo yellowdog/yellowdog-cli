@@ -83,7 +83,7 @@ class TestFindDelimitedExpressions:
             ("{{a}}\n{{b}}", ["{{a}}", "{{b}}"]),
             ("{{a\n}}", []),  # an expression does not span lines
             ("{{a\n{{b}}", ["{{b}}"]),  # one left open does not swallow the next
-            ("{{{a}}}", ["{{{a}}"]),
+            ("{{{a}}}", ["{{{a}}}"]),  # its braces balance, so are content
             ("{{a}}}}", ["{{a}}"]),
             ("{{{{a}}", []),  # never closed
             ("}} {{a}}", ["{{a}}"]),
@@ -91,6 +91,31 @@ class TestFindDelimitedExpressions:
     )
     def test_finds_top_level_expressions(self, s, expected):
         assert find_delimited_expressions(s, "{{", "}}") == expected
+
+    @pytest.mark.parametrize(
+        "s,expected",
+        [
+            # A '}' closing a '{' opened inside the expression is its content
+            ('{{table:t:={"a":1}}}', ['{{table:t:={"a":1}}}']),
+            ('{{table:t:={"a":{"b":1}}}}', ['{{table:t:={"a":{"b":1}}}}']),
+            ("{{table:t:={}}}", ["{{table:t:={}}}"]),
+            ("{{cmd:=echo ${HOME}}}", ["{{cmd:=echo ${HOME}}}"]),
+            ('{{t:={"a":{{x}}}}}', ['{{t:={"a":{{x}}}}}']),
+            # Outside an expression a brace is text: JSON around one is not it
+            ('{"n":{{x}}}', ["{{x}}"]),
+        ],
+    )
+    def test_braces_inside_an_expression(self, s, expected):
+        assert find_delimited_expressions(s, "{{", "}}") == expected
+        # The strict scanner splitting values agrees with the one scanning text
+        assert [
+            e for e in split_delimited_string(s, "{{", "}}") if e.startswith("{{")
+        ] == expected
+
+    def test_braces_in_json_text_around_an_expression(self):
+        # Its '}}' would be a stray closing delimiter to the strict scanner
+        s = '{"a":{"n":{{x}}}}'
+        assert find_delimited_expressions(s, "{{", "}}") == ["{{x}}"]
 
     def test_prefixed_delimiters(self):
         assert find_delimited_expressions(
