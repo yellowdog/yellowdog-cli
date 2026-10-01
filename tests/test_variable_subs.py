@@ -332,17 +332,69 @@ class TestDefaultsContainingBraces:
         path.write_text('[spec]\nenvironment = \'{{table:env:={"A":100,"B":200}}}\'\n')
         assert _load_toml(path) == {"environment": {"A": 100, "B": 200}}
 
-    def test_in_json_file_text(self, tmp_path):
-        # Scanned as text, before the JSON is parsed
+    def test_in_json_file(self, tmp_path):
         path = tmp_path / "spec.json"
         path.write_text('{"command": "{{cmd:=echo ${HOME}}}", "n": "{{num:n:=2}}"}')
         assert _load_json(path) == {"command": "echo ${HOME}", "n": 2}
 
-    def test_unquoted_in_json_file_text(self, tmp_path):
-        var_module.VARIABLE_SUBSTITUTIONS["n"] = "3"
+
+class TestJsonFiles:
+    """
+    A JSON file is parsed before anything is substituted into it, as a TOML
+    file is, so a value is substituted as itself: never read through JSON's
+    escapes, and never inserted where it could break the JSON around it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        pass
+
+    @staticmethod
+    def _load(tmp_path, spec) -> dict:
         path = tmp_path / "spec.json"
-        path.write_text('{"a": {"count": {{n}}}}')
-        assert _load_json(path) == {"a": {"count": 3}}
+        path.write_text(json.dumps(spec) if not isinstance(spec, str) else spec)
+        return _load_json(path)
+
+    def test_value_with_backslashes(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["path"] = r"C:\temp\new"
+        assert self._load(tmp_path, {"p": "{{path}}"}) == {"p": r"C:\temp\new"}
+
+    def test_value_with_quotes(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["msg"] = 'say "hi"'
+        assert self._load(tmp_path, {"m": "{{msg}} now"}) == {"m": 'say "hi" now'}
+
+    def test_typed_default_with_strings(self, tmp_path):
+        spec = {"a": '{{array:a:=["x", "y"]}}', "t": '{{table:t:={"A":{"x":1}}}}'}
+        assert self._load(tmp_path, spec) == {"a": ["x", "y"], "t": {"A": {"x": 1}}}
+
+    def test_readme_table_default(self, tmp_path):
+        spec = {"environment": '{{table:env:={"A":100,"B":200}}}'}
+        assert self._load(tmp_path, spec) == {"environment": {"A": 100, "B": 200}}
+
+    def test_top_level_array(self, tmp_path):
+        assert self._load(tmp_path, ["{{myvar}}", {"n": "{{num:num_var}}"}]) == [
+            "hello",
+            {"n": 42},
+        ]
+
+    def test_unset_property_is_removed(self, tmp_path):
+        assert self._load(tmp_path, {"a": "{{nope::}}", "b": "{{myvar}}"}) == {
+            "b": "hello"
+        }
+
+    def test_property_name_is_refused(self, tmp_path):
+        with pytest.raises(ValueError, match=r"property names.*'env\.\{\{myvar\}\}'"):
+            self._load(tmp_path, {"env": {"{{myvar}}": 1}})
+
+    def test_unquoted_substitution_is_refused(self, tmp_path):
+        # Not JSON until substituted, so the parse fails, saying why
+        with pytest.raises(ValueError, match="inside a JSON string"):
+            self._load(tmp_path, '{"a": {"count": {{num_var}}}}')
+
+    def test_other_invalid_json_names_the_file(self, tmp_path):
+        with pytest.raises(ValueError, match=r"spec\.json") as raised:
+            self._load(tmp_path, '{"a": }')
+        assert "inside a JSON string" not in str(raised.value)
 
 
 class TestSubstitutedTextIsNotSyntax:

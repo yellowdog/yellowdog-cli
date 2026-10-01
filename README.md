@@ -762,7 +762,7 @@ Variable substitutions are discussed in more detail below.
 
 # Variable Substitutions
 
-Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g. for the `arguments` property, and tables (dictionaries), e.g. the `environment` property.
+Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g. for the `arguments` property, and tables (dictionaries), e.g. the `environment` property. In a JSON file a substitution is written inside a string, as `"{{num:count}}"` rather than `{{num:count}}`, even for a number, table or array, and never in a property name; the value it gives is substituted as it is, so a Windows path or a quotation mark needs no escaping.
 
 Variable substitutions are expressed using the `{{variable}}` notation (note: no spaces between the double brackets and the variable name), where the expression is replaced by the value of `variable`.
 

@@ -8,6 +8,7 @@ import sys
 import tempfile
 from copy import deepcopy
 from getpass import getuser
+from json import JSONDecodeError
 from json import dumps as json_dumps
 from json import loads as json_loads
 from typing import cast
@@ -1076,15 +1077,66 @@ def load_json_file_with_variable_substitutions(
     """
     Takes a JSON filename and returns a dictionary with its variable
     substitutions processed.
+
+    The file is parsed first and its values substituted after, as a TOML
+    file's are, rather than its text substituted before it is parsed: there a
+    value was read through JSON's escapes (a default's '\\"' was not a
+    quote) and inserted without them (a Windows path's '\\t' became a tab,
+    a quote ended the string). So a substitution goes inside a JSON string,
+    and in a value, not a property name.
     """
+    opening = prefix + VAR_OPENING_DELIMITER
+    closing = VAR_CLOSING_DELIMITER + postfix
     with open(resolve_filename(files_directory, filename)) as f:
         file_contents = f.read()
-    file_contents = process_variable_substitutions_in_file_contents(
-        file_contents, prefix=prefix, postfix=postfix, source=filename
-    )
-    result = json_loads(file_contents)
+    try:
+        result = json_loads(file_contents)
+    except JSONDecodeError as e:
+        # The parser stops within the opening delimiter of one that is not
+        # inside a string: at its first brace, or after it, taken for an object
+        around_error = file_contents[
+            max(0, e.pos - len(opening) + 1) : e.pos + len(opening)
+        ]
+        hint = (
+            "; a variable substitution must be inside a JSON string,"
+            f' e.g. "{opening}num:count{closing}"'
+            if opening in around_error
+            else ""
+        )
+        raise ValueError(f"Invalid JSON in '{filename}': {e}{hint}") from e
+
+    names = _substituted_property_names(result, opening, closing)
+    if names:
+        raise ValueError(
+            "Variable substitutions are made in property values, not property"
+            f" names, in '{filename}': {_list_paths(names)}"
+        )
     resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
     return result
+
+
+def _substituted_property_names(
+    data: dict | list, opening_delimiter: str, closing_delimiter: str, path: str = ""
+) -> list[str]:
+    """
+    The paths of the property names in 'data' that hold a substitution.
+    """
+    found: list[str] = []
+    if isinstance(data, dict):
+        children = []
+        for key, value in data.items():
+            key_path = f"{path}.{key}" if path else key
+            if find_delimited_expressions(key, opening_delimiter, closing_delimiter):
+                found.append(key_path)
+            children.append((key_path, value))
+    else:
+        children = [(f"{path}[{index}]", item) for index, item in enumerate(data)]
+    for child_path, child in children:
+        if isinstance(child, (dict, list)):
+            found += _substituted_property_names(
+                child, opening_delimiter, closing_delimiter, child_path
+            )
+    return found
 
 
 def load_jsonnet_file_with_variable_substitutions(
