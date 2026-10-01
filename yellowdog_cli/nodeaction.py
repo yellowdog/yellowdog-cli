@@ -330,6 +330,7 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                         {str(content_file): content_val},
                         prefix=WP_VARIABLES_PREFIX,
                         postfix=WP_VARIABLES_POSTFIX,
+                        per_source=True,
                     )
                 except OSError as e:
                     print_error(f"Cannot read '{ACTION_CONTENT_FILE}' file: {e}")
@@ -353,6 +354,7 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                             {str(file_path): part},
                             prefix=WP_VARIABLES_PREFIX,
                             postfix=WP_VARIABLES_POSTFIX,
+                            per_source=True,
                         )
                         parts.append(part)
                     except OSError as e:

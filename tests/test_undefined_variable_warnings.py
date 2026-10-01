@@ -136,6 +136,15 @@ class TestUserDataFiles:
         [message] = _messages(warnings)
         assert "b.sh" in message and "a.sh" not in message
 
+    def test_each_file_holding_the_variable_is_reported(self, warnings, tmp_path):
+        a, b = tmp_path / "a.sh", tmp_path / "b.sh"
+        a.write_text("echo __{{nope}}__\n")
+        b.write_text("echo __{{nope}}__\n")
+        get_user_data_property(ConfigWorkerPool(user_data_files=[str(a), str(b)]))
+        first, second = _messages(warnings)
+        assert "a.sh" in first and "b.sh" not in first
+        assert "b.sh" in second and "a.sh" not in second
+
 
 class TestNodeActionContentFiles:
     @pytest.mark.parametrize("prop", ["contentFile", "contentFiles"])
@@ -149,6 +158,19 @@ class TestNodeActionContentFiles:
         [message] = _messages(warnings)
         assert "'__{{nope}}__'" in message and "payload.txt" in message
 
+    def test_each_content_file_is_reported(self, warnings, tmp_path):
+        from yellowdog_cli.nodeaction import _parse_action
+
+        a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+        a.write_text("value=__{{nope}}__\n")
+        b.write_text("value=__{{nope}}__\n")
+        _parse_action(
+            {"type": "writeFile", "path": "/tmp/x", "contentFiles": [str(a), str(b)]},
+            ".",
+        )
+        first, second = _messages(warnings)
+        assert "a.txt" in first and "b.txt" in second
+
 
 class TestTaskDataFiles:
     @pytest.mark.parametrize("prop", [TASK_DATA_FILE, TASK_DATA_FILES])
@@ -159,6 +181,21 @@ class TestTaskDataFiles:
         resolve_task_data({prop: value})
         [message] = _messages(warnings)
         assert "'{{nope}}'" in message and "input.json" in message
+
+    def test_each_task_data_file_is_reported(self, warnings, tmp_path):
+        a, b = tmp_path / "a.json", tmp_path / "b.json"
+        a.write_text('{"region": "{{nope}}"}\n')
+        b.write_text('{"region": "{{nope}}"}\n')
+        resolve_task_data({TASK_DATA_FILES: [str(a), str(b)]})
+        first, second = _messages(warnings)
+        assert "a.json" in first and "b.json" in second
+
+    def test_a_file_read_for_every_task_is_reported_once(self, warnings, tmp_path):
+        data = tmp_path / "input.json"
+        data.write_text('{"region": "{{nope}}"}\n')
+        for _ in range(3):
+            resolve_task_data({TASK_DATA_FILE: str(data)})
+        assert len(_messages(warnings)) == 1
 
 
 # ---------------------------------------------------------------------------

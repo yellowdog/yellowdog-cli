@@ -905,7 +905,7 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
         contents = process_variable_substitutions_in_file_contents(
             f.read(), source=filename
         )
-    warn_of_undefined_variables({filename: contents})
+    warn_of_undefined_variables({filename: contents}, per_source=True)
     return contents
 
 

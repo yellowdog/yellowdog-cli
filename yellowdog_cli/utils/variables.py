@@ -88,8 +88,10 @@ _UNSET_MARKER = "\ue000"
 _UNDEFINED_VARIABLE_WARNINGS = False
 
 # The expressions already reported, so that each is reported once however
-# many passes, Task Groups or Tasks it turns up in
-_UNDEFINED_VARIABLES_REPORTED: set[str] = set()
+# many passes, Task Groups or Tasks it turns up in; or, for a check made
+# 'per_source', the (expression, source) pairs, so that each file holding
+# an expression is reported once, however many times it is read
+_UNDEFINED_VARIABLES_REPORTED: set[str | tuple[str, str]] = set()
 
 # What an expression naming a variable looks like, once resolution has left
 # it: an optional type tag, then either 'env:' and an environment variable's
@@ -653,12 +655,17 @@ def undefined_variable_references(
 
 
 def warn_of_undefined_variables(
-    data: dict | list, prefix: str = "", postfix: str = ""
+    data: dict | list, prefix: str = "", postfix: str = "", per_source: bool = False
 ) -> None:
     """
     Report the undefined variables left in 'data', as resolve_variables_insitu()
     does, without substituting anything: for data resolved before the warnings
     were enabled, which would otherwise never be checked.
+
+    With 'per_source', an expression is reported once for each source (each
+    key of 'data') it turns up in, rather than once in all: for files, each of
+    which is checked by a call of its own, so that an expression in several of
+    a '*Files' list is reported for each of them, not for the first alone.
     """
     undefined: dict[str, list[str]] = {}
     for expression, reference, path in _unsubstituted_references(
@@ -669,20 +676,33 @@ def warn_of_undefined_variables(
             and reference not in LAZY_VARIABLE_NAMES
         ):
             undefined.setdefault(expression, []).append(path)
-    _warn_of_undefined(undefined)
+    _warn_of_undefined(undefined, per_source=per_source)
 
 
-def _warn_of_undefined(undefined: dict[str, list[str]]) -> None:
+def _warn_of_undefined(
+    undefined: dict[str, list[str]], per_source: bool = False
+) -> None:
     """
     Warn of each undefined variable expression, with the properties it was
-    found in, unless warnings are not yet enabled or it was reported before.
+    found in, unless warnings are not yet enabled or it was reported before:
+    the expression at all, or with 'per_source' in that property.
     """
     if not _UNDEFINED_VARIABLE_WARNINGS:
         return
     for expression, paths in undefined.items():
-        if expression in _UNDEFINED_VARIABLES_REPORTED:
-            continue
-        _UNDEFINED_VARIABLES_REPORTED.add(expression)
+        if per_source:
+            paths = [
+                path
+                for path in dict.fromkeys(paths)
+                if (expression, path) not in _UNDEFINED_VARIABLES_REPORTED
+            ]
+            if not paths:
+                continue
+            _UNDEFINED_VARIABLES_REPORTED.update((expression, path) for path in paths)
+        else:
+            if expression in _UNDEFINED_VARIABLES_REPORTED:
+                continue
+            _UNDEFINED_VARIABLES_REPORTED.add(expression)
         reference = _reference_of(expression)
         if reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
             # Defined, but removed by the unset syntax, which is what anyone

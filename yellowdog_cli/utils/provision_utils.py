@@ -85,7 +85,10 @@ def _substituted_user_data(source: str, text: str) -> str:
         raise RuntimeError(f"Error processing variable substitutions: {e}")
 
     warn_of_undefined_variables(
-        {source: content}, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+        {source: content},
+        prefix=WP_VARIABLES_PREFIX,
+        postfix=WP_VARIABLES_POSTFIX,
+        per_source=True,
     )
     return content
 
