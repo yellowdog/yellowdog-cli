@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 29 12:55:41 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct  1 18:14:29 BST 2026 -->
 
 <!--te-->
 
@@ -762,7 +762,7 @@ Variable substitutions are discussed in more detail below.
 
 # Variable Substitutions
 
-Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g. for the `arguments` property, and tables (dictionaries), e.g. the `environment` property. In a JSON file a substitution is written inside a string, as `"{{num:count}}"` rather than `{{num:count}}`, even for a number, table or array, and never in a property name; the value it gives is substituted as it is, so a Windows path or a quotation mark needs no escaping.
+Variable substitutions provide a powerful mechanism for introducing variable values into TOML configuration files, and JSON/Jsonnet definitions. They can be included in the value of any property in any of these objects, including in values within arrays (lists), e.g. for the `arguments` property, and tables (dictionaries), e.g. the `environment` property. In a JSON file a substitution is written inside a string, as `"{{num:count}}"` rather than `{{num:count}}`, even for a number, table or array, and never in a property name; the value it gives is substituted as it is, so a Windows path or a quotation mark needs no escaping. A Jsonnet file is more flexible: see [Variable Substitutions in Jsonnet Files](#variable-substitutions-in-jsonnet-files).
 
 Variable substitutions are expressed using the `{{variable}}` notation (note: no spaces between the double brackets and the variable name), where the expression is replaced by the value of `variable`.
 
@@ -3343,9 +3343,14 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 ## Variable Substitutions in Jsonnet Files
 
-The scripts provide full support for variable substitutions in Jsonnet files, using the same rules as for the JSON specifications. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"`.
+The scripts provide full support for variable substitutions in Jsonnet files. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"`.
 
 Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion. Variables are fully resolved before the expansion, including those whose values themselves contain variable references, so Jsonnet code can compute with their values, e.g. `local count = std.parseInt('{{count}}');`.
+
+Because the substitution before the expansion is made in the Jsonnet text itself, a substitution can be placed anywhere in it, unlike in a JSON file:
+
+* **Inside a string**, the value is written with that string's escaping, so a Windows path, a quotation mark or an apostrophe needs none of its own, and a default is read the same way, so `"{{env:={\"A\":1}}}"` has the default `{"A":1}`. This holds for every kind of Jsonnet string: double- and single-quoted, verbatim (`@"..."`, `@'...'`) and text blocks (`|||`), where a value of several lines keeps the block's indentation.
+* **Outside a string**, the value is inserted as Jsonnet code: `{{expr}}` with `expr = "1 + 2"` evaluates to `3`, and a typed substitution is inserted as its JSON, so `{{num:count}} + 1` is a number.
 
 ## Checking Jsonnet Processing
 
