@@ -25,7 +25,6 @@ from yellowdog_cli.utils.misc_utils import (
     format_yd_name,
     load_dotenv_file,
     random_base36,
-    remove_outer_delimiters,
     split_delimited_string,
 )
 from yellowdog_cli.utils.printing import (
@@ -883,174 +882,126 @@ def process_untyped_variable_substitutions(
     closing_delimiter: str,
 ) -> str | None:
     """
-    Apply untyped variable substitutions to a supplied input string,
-    including applying default values if present and required.
+    Substitute one untyped expression, '{{name}}', '{{name:=default}}',
+    '{{name::}}' or any of them with 'env:' before the name, returning its
+    value, its default, _UNSET for an unset one with neither, or else the
+    expression with its nested parts resolved. Text that is not an expression
+    (a piece of one's interior, when nested) is returned as it is.
 
-    Algorithm (in order):
-    1. Nesting: if the variable name itself contains '{{...}}', resolve the
-       innermost expression first — e.g. '{{{{key_var}}}}' where key_var='x'
-       becomes '{{x}}' before the outer substitution runs. An unset inner
-       expression is replaced by _UNSET_MARKER, and if the marker survives
-       the steps below the whole expression is unset (step 9).
-    2. Unset suffix ('::') — '{{varname::}}' returns the variable's value if
-       defined, otherwise returns _UNSET to signal the caller to remove the
-       property entirely.
-    3. First substitution pass: replace exact '{{varname}}' matches from the
-       substitutions dict. This handles the common no-default case without the
-       overhead of the regex-based default extraction below.
-    4. Env-var handling: '{{env:VARNAME}}' and '{{env:VARNAME:=default}}'.
-    5. Default extraction: collect (varname, default) pairs from any remaining
-       '{{varname:=default}}' patterns. The first pass (step 3) leaves these
-       untouched because the full '{{varname:=default}}' string does not match
-       the exact '{{varname}}' key in the dict.
-    6. Strip defaults: rewrite '{{varname:=default}}' as '{{varname}}' so the
-       substitutions dict can match them.
-    7. Second substitution pass: replace '{{varname}}' from the dict, now that
-       defaults have been stripped.
-    8. Apply defaults: for any '{{varname}}' still unresolved, substitute its
-       collected default value.
-    9. Unset propagation: if an unset inner expression's marker is still in
-       the result, its value was needed, so return _UNSET.
+    The expression is parsed before anything is substituted into it, so that
+    a value -- a variable's, an environment variable's or a nested
+    expression's -- is never read as the syntax: a value may contain ':=',
+    '::' or the closing delimiter. Only the syntax written in the expression
+    itself, outside any nested expression, counts.
+
+    A nested expression is resolved first ('{{{{key_var}}}}', where key_var
+    is 'x', looks up 'x'); an unset one stands as _UNSET_MARKER while the outer
+    one is resolved, and if the marker survives -- the name was needed, or the
+    default was used -- the outer one is unset too.
     """
     if input_string is None:
         return None
-
-    # Check if there are inner variables
-    undelimited_input_string = remove_outer_delimiters(
-        input_string, opening_delimiter, closing_delimiter
-    )
-    if (
-        opening_delimiter in undelimited_input_string
-        and closing_delimiter in undelimited_input_string
+    if not (
+        len(input_string) >= len(opening_delimiter) + len(closing_delimiter)
+        and input_string.startswith(opening_delimiter)
+        and input_string.endswith(closing_delimiter)
     ):
-        # Recursive call to resolve innermost variables first
-        processed_string = ""
-        for element in split_delimited_string(
-            undelimited_input_string, opening_delimiter, closing_delimiter
-        ):
-            result = process_untyped_variable_substitutions(
-                element, opening_delimiter, closing_delimiter
-            )
-            if result is _UNSET:
-                processed_string += _UNSET_MARKER
-            else:
-                processed_string += result or ""
-        input_string = opening_delimiter + processed_string + closing_delimiter
+        return input_string
 
-    assert isinstance(input_string, str)  # narrow: None already returned above
-    s: str = input_string
-
-    # Check for the unset suffix ('::') — must be done before the general
-    # substitution loop so the bare variable name can be looked up cleanly.
-    # Syntax: "{{varname::}}" — if varname is defined, use its value;
-    # if not, return _UNSET to signal the caller to remove the property.
-    unset_marker = (
-        f"{re.escape(opening_delimiter)}.*"
-        f"{re.escape(VAR_UNSET_SUFFIX)}{re.escape(closing_delimiter)}"
+    inner = input_string[len(opening_delimiter) : -len(closing_delimiter)]
+    unset = inner.endswith(VAR_UNSET_SUFFIX)
+    if unset:
+        inner = inner[: -len(VAR_UNSET_SUFFIX)]
+    name_text, default_text = _split_default(
+        inner, input_string, opening_delimiter, closing_delimiter
     )
-    if re.fullmatch(unset_marker, s):
-        bare_name = remove_outer_delimiters(s, opening_delimiter, closing_delimiter)[
-            : -len(VAR_UNSET_SUFFIX)
-        ]
-        if bare_name in VARIABLE_SUBSTITUTIONS:
-            s = str(VARIABLE_SUBSTITUTIONS[bare_name])
-        elif bare_name.startswith(ENV_VAR_SUB_PREFIX):
-            env_value = os.getenv(bare_name[len(ENV_VAR_SUB_PREFIX) :])
-            if env_value is not None:
-                s = env_value
-            else:
-                return _UNSET  # type: ignore
-        else:
+    if unset and default_text is not None:
+        raise ValueError(
+            f"Malformed substitution '{input_string}': a default value"
+            f" ('{VAR_DEFAULT_SEPARATOR}') and the unset suffix"
+            f" ('{VAR_UNSET_SUFFIX}') cannot be combined; for a default that"
+            " is itself unset if undefined, nest it:"
+            f" '{opening_delimiter}<variable>{VAR_DEFAULT_SEPARATOR}"
+            f"{opening_delimiter}<default>{VAR_UNSET_SUFFIX}{closing_delimiter}"
+            f"{closing_delimiter}'"
+        )
+
+    name = _resolve_nested(name_text, opening_delimiter, closing_delimiter)
+    value = _value_of(name)
+    if value is None and default_text is not None:
+        value = _resolve_nested(default_text, opening_delimiter, closing_delimiter)
+    if value is None:
+        if unset:
             return _UNSET  # type: ignore
+        value = opening_delimiter + name + closing_delimiter
 
-    # Perform initial substitutions from the substitutions dictionary; this
-    # will not substitute variables that have default values
-    for substitution, value in VARIABLE_SUBSTITUTIONS.items():
-        s = s.replace(
-            f"{opening_delimiter}{substitution}{closing_delimiter}", str(value)
-        )
-
-    # Check for substitutions from general environment variables
-    if s.startswith(f"{opening_delimiter}{ENV_VAR_SUB_PREFIX}"):
-        var_name = s.replace(f"{opening_delimiter}{ENV_VAR_SUB_PREFIX}", "").replace(
-            closing_delimiter, ""
-        )
-        if VAR_DEFAULT_SEPARATOR in var_name:  # Check for a default
-            split_result = var_name.split(VAR_DEFAULT_SEPARATOR)
-            if split_result[0] == "" or len(split_result) != 2:
-                raise ValueError(
-                    f"Malformed '<variable>:=<default>' substitution: '{var_name}'"
-                )
-            var_name, var_default = split_result
-        else:
-            var_default = None
-        var = os.getenv(var_name, None)
-        if var is not None:  # Matching environment variable
-            if var_default is None:  # Just replace the prefix and the variable name
-                s = s.replace(
-                    f"{opening_delimiter}{ENV_VAR_SUB_PREFIX}{var_name}{closing_delimiter}",
-                    var,
-                )
-            else:  # Also replace the default separator & value
-                s = s.replace(
-                    f"{opening_delimiter}{ENV_VAR_SUB_PREFIX}{var_name}"
-                    f"{VAR_DEFAULT_SEPARATOR}{var_default}{closing_delimiter}",
-                    var,
-                )
-        elif var_default is not None:  # Variable not found, but default exists
-            s = s.replace(
-                f"{opening_delimiter}{ENV_VAR_SUB_PREFIX}{var_name}"
-                f"{VAR_DEFAULT_SEPARATOR}{var_default}{closing_delimiter}",
-                var_default,
-            )
-
-    # Create list of variable substitutions with their default values
-    substitutions_with_defaults = re.findall(
-        f"{re.escape(opening_delimiter)}.*{re.escape(VAR_DEFAULT_SEPARATOR)}"
-        f".*{re.escape(closing_delimiter)}",
-        s,
-    )
-    default_value_substitutions = []  # List of (variable_name, default_value)
-    for substitution in substitutions_with_defaults:
-        variable_default = remove_outer_delimiters(
-            substitution, opening_delimiter, closing_delimiter
-        ).split(VAR_DEFAULT_SEPARATOR)
-        if variable_default[0] == "" or len(variable_default) != 2:
-            raise ValueError(
-                f"Malformed '<variable>:=<default>' substitution: '{substitution}'"
-            )
-        default_value_substitutions.append(variable_default)
-
-    # Remove default variable values if present (i.e., remove ':=<default>')
-    s = str(
-        re.sub(
-            VAR_DEFAULT_SEPARATOR + f".*{closing_delimiter}",
-            f"{closing_delimiter}",
-            s,
-        )
-    )
-
-    # Repeat substitutions from the substitutions dictionary, now that defaults
-    # have been removed
-    for substitution, value in VARIABLE_SUBSTITUTIONS.items():
-        s = s.replace(
-            f"{opening_delimiter}{substitution}{closing_delimiter}", str(value)
-        )
-
-    # Perform default substitutions for variables that remain unpopulated;
-    # allows for multiple variables with the same name, but with different
-    # default values
-    for var_name, default_value in default_value_substitutions:
-        s = s.replace(
-            f"{opening_delimiter}{var_name}{closing_delimiter}",
-            str(default_value),
-            1,
-        )
-
-    if _UNSET_MARKER in s:
+    if _UNSET_MARKER in value:
         return _UNSET  # type: ignore
+    return value
 
-    return s
+
+def _split_default(
+    inner: str, expression: str, opening_delimiter: str, closing_delimiter: str
+) -> tuple[str, str | None]:
+    """
+    Split an expression's interior at its default separator into the name
+    and the default (None if there is none), looking only outside any nested
+    expression, since the separator is syntax only where it is written there.
+    """
+    positions: list[int] = []
+    offset = 0
+    for piece in _pieces(inner, opening_delimiter, closing_delimiter):
+        if not piece.startswith(opening_delimiter):  # Not a nested expression
+            found = piece.find(VAR_DEFAULT_SEPARATOR)
+            while found != -1:
+                positions.append(offset + found)
+                found = piece.find(VAR_DEFAULT_SEPARATOR, found + 1)
+        offset += len(piece)
+
+    if not positions:
+        return inner, None
+    name = inner[: positions[0]]
+    if len(positions) > 1 or name in ("", ENV_VAR_SUB_PREFIX):
+        raise ValueError(
+            f"Malformed '<variable>{VAR_DEFAULT_SEPARATOR}<default>' substitution:"
+            f" '{expression}'"
+        )
+    return name, inner[positions[0] + len(VAR_DEFAULT_SEPARATOR) :]
+
+
+def _resolve_nested(text: str, opening_delimiter: str, closing_delimiter: str) -> str:
+    """
+    Text with each expression nested in it substituted, an unset one standing
+    as _UNSET_MARKER.
+    """
+    resolved = ""
+    for piece in _pieces(text, opening_delimiter, closing_delimiter):
+        result = process_untyped_variable_substitutions(
+            piece, opening_delimiter, closing_delimiter
+        )
+        resolved += _UNSET_MARKER if result is _UNSET else cast(str, result)
+    return resolved
+
+
+def _pieces(text: str, opening_delimiter: str, closing_delimiter: str) -> list[str]:
+    """
+    Text split into its expressions and the text between them.
+    """
+    if opening_delimiter in text and closing_delimiter in text:
+        return split_delimited_string(text, opening_delimiter, closing_delimiter)
+    return [text]
+
+
+def _value_of(name: str) -> str | None:
+    """
+    The value of a variable, or with 'env:' of an environment variable, or
+    None if it is not defined.
+    """
+    if name.startswith(ENV_VAR_SUB_PREFIX):
+        return os.getenv(name[len(ENV_VAR_SUB_PREFIX) :])
+    if name in VARIABLE_SUBSTITUTIONS:
+        return str(VARIABLE_SUBSTITUTIONS[name])
+    return None
 
 
 def process_typed_variable_substitution(

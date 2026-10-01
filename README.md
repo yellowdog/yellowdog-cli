@@ -972,6 +972,8 @@ templateId = "{{template_{{region::}}}}"      # removed if 'region' is not set
 name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' nor 'default_name' is set
 ```
 
+The nested form is the only way to combine a default with the unset suffix: written in one expression, as in `{{name:=x::}}`, they are an error, since a property with a default value is never removed.
+
 A variable defined with the unset syntax, in `[common.variables]` or elsewhere, is itself removed: `region = "{{::}}"`, or `region = "{{env:MY_REGION::}}"` with `MY_REGION` not set, leaves `region` undefined. A plain reference to it, `{{region}}`, is then treated like a reference to any undefined variable: it is left unsubstituted, with a [warning](#undefined-variables), and the property or variable containing it is kept. To make a property or variable conditional on it too, use the suffix there as well: `zone = "{{region::}}a"` is removed along with `region`.
 
 ### Undefined Variables

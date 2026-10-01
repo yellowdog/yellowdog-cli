@@ -219,6 +219,10 @@ class TestProcessVariableSubstitutions:
         with pytest.raises(Exception, match="Malformed"):
             var_module.process_variable_substitutions("{{:=value}}")
 
+    def test_malformed_default_empty_env_var_name_raises(self):
+        with pytest.raises(ValueError, match="Malformed"):
+            var_module.process_variable_substitutions("{{env::=value}}")
+
     def test_malformed_multiple_separators_raises(self):
         # '{{a:=b:=c}}' has two ':=' separators — should raise ValueError
         with pytest.raises(ValueError, match="Malformed"):
@@ -287,6 +291,53 @@ class TestMixedAndNested:
         var_module.VARIABLE_SUBSTITUTIONS["dyn_key"] = "myvar"
         result = var_module.process_variable_substitutions("{{{{dyn_key}}}}")
         assert result == "hello"
+
+
+class TestSubstitutedTextIsNotSyntax:
+    """
+    An expression is parsed before anything is substituted into it, so a
+    value -- a variable's, an environment variable's, or a nested
+    expression's -- is never read as the substitution syntax.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        var_module.VARIABLE_SUBSTITUTIONS["go"] = "x := {{.Name}}"
+        var_module.VARIABLE_SUBSTITUTIONS["make"] = "CC := gcc"
+
+    def test_value_containing_the_default_separator_is_kept(self):
+        result = var_module.process_variable_substitutions("run {{go}}")
+        assert result == "run x := {{.Name}}"
+
+    def test_default_whose_value_contains_the_separator(self):
+        result = var_module.process_variable_substitutions("{{nope:={{make}}}}")
+        assert result == "CC := gcc"
+
+    def test_env_var_with_an_unresolved_nested_default(self, monkeypatch):
+        monkeypatch.setenv("_YD_TEST_SET", "set")
+        result = var_module.process_variable_substitutions(
+            "{{env:_YD_TEST_SET:={{undefined}}}}"
+        )
+        assert result == "set"
+
+    def test_env_var_value_containing_the_separator_is_kept(self, monkeypatch):
+        monkeypatch.setenv("_YD_TEST_SET", "a := }}")
+        result = var_module.process_variable_substitutions("{{env:_YD_TEST_SET}}")
+        assert result == "a := }}"
+
+    def test_unresolved_default_is_left_for_a_later_pass(self):
+        result = var_module.process_variable_substitutions("{{nope:={{undefined}}}}")
+        assert result == "{{undefined}}"
+
+    def test_unresolved_name_keeps_its_resolved_parts(self):
+        result = var_module.process_variable_substitutions("{{x_{{myvar}}:=d_{{u}}}}")
+        assert result == "d_{{u}}"
+
+    @pytest.mark.parametrize("expression", ["{{myvar:=d::}}", "{{nope:=d::}}"])
+    def test_default_with_unset_suffix_is_malformed(self, expression):
+        # Ambiguous, so refused: '{{a:={{d::}}}}' says the nested form
+        with pytest.raises(ValueError, match="Malformed"):
+            var_module.process_variable_substitutions(expression)
 
 
 # ---------------------------------------------------------------------------
