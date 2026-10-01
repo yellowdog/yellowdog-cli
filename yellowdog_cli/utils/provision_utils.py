@@ -48,33 +48,35 @@ def _read_user_data(
                     f"Unable to switch to content directory '{source_dir}': {e}"
                 )
 
+        # Each part keeps its source, so that a file is substituted, and named
+        # in an error or a warning, by itself rather than with the others
         if user_data is not None:
-            content = user_data
+            parts = [(USERDATA, user_data)]
         elif user_data_file is not None:
             with open(user_data_file) as f:
-                content = f.read()
+                parts = [(user_data_file, f.read())]
         elif user_data_files is not None:
-            content = ""
+            parts = []
             for path in user_data_files:
                 with open(path) as f:
-                    content += f.read()
-                    content += "\n"
+                    parts.append((path, f.read() + "\n"))
         else:
             return None
     finally:
         chdir(original_directory)
 
-    # Named by where it came from, in an error or a warning
-    source = (
-        user_data_file
-        if user_data_file is not None
-        else ", ".join(user_data_files)
-        if user_data_files is not None
-        else USERDATA
-    )
+    return "".join(_substituted_user_data(source, text) for source, text in parts)
+
+
+def _substituted_user_data(source: str, text: str) -> str:
+    """
+    One part of the User Data with variables substituted. Substituted as text,
+    so no substitution pass walks it: an undefined variable left in it is
+    reported here, by 'source'.
+    """
     try:
         content = process_variable_substitutions_in_file_contents(
-            content,
+            text,
             prefix=WP_VARIABLES_PREFIX,
             postfix=WP_VARIABLES_POSTFIX,
             source=source,
@@ -82,7 +84,6 @@ def _read_user_data(
     except Exception as e:
         raise RuntimeError(f"Error processing variable substitutions: {e}")
 
-    # Substituted as text, so no substitution pass walks it
     warn_of_undefined_variables(
         {source: content}, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
     )

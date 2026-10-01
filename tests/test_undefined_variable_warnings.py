@@ -127,13 +127,14 @@ class TestUserDataFiles:
         [message] = _messages(warnings)
         assert "'__{{nope}}__'" in message and "setup.sh" in message
 
-    def test_concatenated_files_are_reported(self, warnings, tmp_path):
+    def test_concatenated_files_are_reported_by_file(self, warnings, tmp_path):
+        # Only the file holding the reference is named, not every file listed
         a, b = tmp_path / "a.sh", tmp_path / "b.sh"
         a.write_text("echo a\n")
         b.write_text("echo __{{nope}}__\n")
         get_user_data_property(ConfigWorkerPool(user_data_files=[str(a), str(b)]))
         [message] = _messages(warnings)
-        assert "a.sh" in message and "b.sh" in message
+        assert "b.sh" in message and "a.sh" not in message
 
 
 class TestNodeActionContentFiles:
