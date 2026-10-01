@@ -9,6 +9,7 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import cache
 from os.path import abspath, dirname, isfile, join, normpath, relpath
 from random import choice
 from typing import TYPE_CHECKING, TypeAlias
@@ -188,10 +189,35 @@ def find_delimited_expressions(
     """
     return [
         s[span.start : span.end]
-        for span in _scan_delimited(
-            s, opening_delimiter, closing_delimiter, lenient=True
+        for span in find_delimited_expression_spans(
+            s, opening_delimiter, closing_delimiter
         )
     ]
+
+
+def find_delimited_expression_spans(
+    s: str, opening_delimiter: str, closing_delimiter: str
+) -> list[Substring]:
+    """
+    Where find_delimited_expressions() finds its expressions, for a caller
+    that substitutes each by its position rather than by its text.
+    """
+    return _scan_delimited(s, opening_delimiter, closing_delimiter, lenient=True)
+
+
+@cache
+def _inside_expression_pattern(
+    opening_delimiter: str, closing_delimiter: str
+) -> re.Pattern:
+    """
+    What _scan_delimited() looks for inside an expression: either delimiter,
+    or a single brace. Compiled once per pair, since it is called per value.
+    """
+    opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
+    tokens = [opening_delimiter, closing_delimiter]
+    if opening_brace != closing_brace:
+        tokens += [opening_brace, closing_brace]
+    return re.compile("|".join(re.escape(token) for token in tokens))
 
 
 def _scan_delimited(
@@ -222,11 +248,8 @@ def _scan_delimited(
         f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
         f" in '{s}'"
     )
+    inside = _inside_expression_pattern(opening_delimiter, closing_delimiter)
     opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
-    tokens = [opening_delimiter, closing_delimiter]
-    if opening_brace != closing_brace:
-        tokens += [opening_brace, closing_brace]
-    inside = re.compile("|".join(re.escape(token) for token in tokens))
 
     spans: list[Substring] = []
     # For each expression open, innermost last, the braces its content has open

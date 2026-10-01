@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import tempfile
+from bisect import bisect_right
 from copy import deepcopy
 from getpass import getuser
 from json import JSONDecodeError
@@ -22,6 +23,7 @@ from yellowdog_cli.utils.misc_utils import (
     PROCESS_DISCRIMINATOR,
     UTCNOW,
     config_file_explicitly_selected,
+    find_delimited_expression_spans,
     find_delimited_expressions,
     format_yd_name,
     load_dotenv_file,
@@ -1217,6 +1219,7 @@ def process_variable_substitutions_in_file_contents(
     prefix: str = "",
     postfix: str = "",
     source: str | None = None,
+    jsonnet: bool = False,
 ) -> str:
     """
     Process substitutions in the raw contents of a complete file, repeating
@@ -1225,12 +1228,20 @@ def process_variable_substitutions_in_file_contents(
     resolved too, and a circular reference raises ValueError, naming
     'source' (the file) where it is given. An unset ('::') token is left in
     place, for the in-situ processing of a parsed specification to remove.
+
+    With 'jsonnet', the contents are Jsonnet code, and each substitution is
+    read and written through the escaping of the string it is in (see
+    _substitute_jsonnet_pass()); otherwise they are text, substituted as it.
     """
     label = source if source is not None else "file contents"
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
     for _ in range(VAR_SUBSTITUTION_MAX_PASSES):
-        substituted = _substitute_file_contents_pass(file_contents, prefix, postfix)
+        substituted = (
+            _substitute_jsonnet_pass(file_contents, prefix, postfix)
+            if jsonnet
+            else _substitute_file_contents_pass(file_contents, prefix, postfix)
+        )
         if substituted == file_contents:
             break
         previous, file_contents = file_contents, substituted
@@ -1301,6 +1312,157 @@ def _substitute_file_contents_pass(
     return file_contents
 
 
+# Jsonnet's string literals, each with the group its contents are in, and its
+# comments, matched only so that a quote inside one opens no string. A text
+# block's contents run from the line after its '|||' to the line before the
+# one closing it
+_JSONNET_LITERAL = re.compile(
+    r"//[^\n]*|\#[^\n]*|/\*.*?\*/"
+    r'|@"(?P<verbatim_double>(?:[^"]|"")*)"'
+    r"|@'(?P<verbatim_single>(?:[^']|'')*)'"
+    r'|"(?P<double>(?:[^"\\]|\\.)*)"'
+    r"|'(?P<single>(?:[^'\\]|\\.)*)'"
+    r"|\|\|\|-?[ \t]*\n(?P<block>.*?\n)[ \t]*\|\|\|",
+    re.DOTALL,
+)
+
+# A text block's indentation, read from its first line
+_INDENTATION = re.compile(r"[ \t]*")
+
+# A double- or single-quoted string's escapes: JSON's, with '\\'' too
+_JSONNET_ESCAPE = re.compile(r"\\(u[0-9a-fA-F]{4}|.)", re.DOTALL)
+_JSONNET_ESCAPED = {
+    '"': '"',
+    "'": "'",
+    "\\": "\\",
+    "/": "/",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
+
+
+def _jsonnet_unescaped(kind: str, text: str) -> str:
+    """
+    Text from inside a Jsonnet string of the given kind, as what it stands for.
+    """
+    match kind:
+        case "double" | "single":
+            return _JSONNET_ESCAPE.sub(
+                lambda m: (
+                    chr(int(m[1][1:], 16))
+                    if len(m[1]) == 5
+                    else _JSONNET_ESCAPED.get(m[1], m[0])
+                ),
+                text,
+            )
+        case "verbatim_double":
+            return text.replace('""', '"')
+        case "verbatim_single":
+            return text.replace("''", "'")
+    return text  # A text block has no escapes
+
+
+def _jsonnet_escaped(kind: str, text: str, indentation: str) -> str:
+    """
+    Text written for a Jsonnet string of the given kind: escaped, or in a
+    text block indented as the block is on every line after its first.
+    """
+    match kind:
+        case "double":
+            return json_dumps(text)[1:-1]
+        case "single":
+            return json_dumps(text)[1:-1].replace("'", "\\'")
+        case "verbatim_double":
+            return text.replace('"', '""')
+        case "verbatim_single":
+            return text.replace("'", "''")
+    return text.replace("\n", "\n" + indentation)
+
+
+def _substitute_jsonnet_pass(
+    file_contents: str, prefix: str = "", postfix: str = ""
+) -> str:
+    """
+    One substitution pass over the code of a Jsonnet file, which is evaluated
+    only once it is substituted, so it is the text that is substituted: each
+    expression by its position, since what is written depends on where it is.
+
+    Inside a string, an expression is read through the string's escapes and
+    its value written back with them, so a path's backslashes, a quote, and a
+    default's escaped JSON ('[\\"x\\"]') are themselves. A typed value is
+    written as its JSON in place of the whole string when the expression is
+    all of it, and otherwise left for the in-situ pass after evaluation to
+    substitute as text, as the text pass leaves one. Outside a string, in the
+    code, a value is written as it is, a typed one as its JSON: Jsonnet code.
+    """
+    opening = prefix + VAR_OPENING_DELIMITER
+    closing = VAR_CLOSING_DELIMITER + postfix
+    strings = [
+        (
+            match.lastgroup,
+            match.start(match.lastgroup),
+            match.end(match.lastgroup),
+            match,
+        )
+        for match in _JSONNET_LITERAL.finditer(file_contents)
+        if match.lastgroup is not None  # Not a comment
+    ]
+    starts = [start for _, start, _, _ in strings]
+
+    # Substituted once each per pass, however often it appears: an expression
+    # as written, with the kind of string it is in (None in the code)
+    values: dict[tuple[str | None, str], object] = {}
+    parts: list[str] = []
+    position = 0
+    for span in find_delimited_expression_spans(file_contents, opening, closing):
+        if span.start < position:
+            continue  # Inside a whole string already written as its value
+        index = bisect_right(starts, span.start) - 1
+        kind, content_start, content_end, literal = (
+            strings[index] if index >= 0 else (None, 0, 0, None)
+        )
+        if kind is None or span.end > content_end:
+            kind = None  # In the code, or across a string's end
+        as_written = file_contents[span.start : span.end]
+        expression = (
+            _jsonnet_unescaped(kind, as_written) if kind is not None else as_written
+        )
+        if (kind, as_written) not in values:
+            values[(kind, as_written)] = process_variable_substitutions(
+                expression, prefix=prefix, postfix=postfix
+            )
+        value = values[(kind, as_written)]
+
+        if value is _UNSET or value == expression:
+            # Left as it is: the in-situ pass removes an unset one's property
+            continue
+        if kind is None:
+            written = value if isinstance(value, str) else json_dumps(value)
+            start, end = span.start, span.end
+        elif isinstance(value, str):
+            indentation = (
+                _INDENTATION.match(file_contents, content_start).group()  # type: ignore[union-attr]
+                if kind == "block"
+                else ""
+            )
+            written = _jsonnet_escaped(kind, value, indentation)
+            start, end = span.start, span.end
+        elif (span.start, span.end) == (content_start, content_end) and kind != "block":
+            assert literal is not None
+            written = json_dumps(value)
+            start, end = literal.start(), literal.end()
+        else:
+            continue
+        parts += [file_contents[position:start], written]
+        position = end
+
+    parts.append(file_contents[position:])
+    return "".join(parts)
+
+
 class VariableSubstitutedJsonnetFile:
     """
     The jsonnet 'evaluate_file' function will only operate on files,
@@ -1322,7 +1484,11 @@ class VariableSubstitutedJsonnetFile:
         with open(self.filename) as file:
             file_contents = file.read()
         processed_file_contents: str = process_variable_substitutions_in_file_contents(
-            file_contents, self.prefix, self.postfix, source=self.filename
+            file_contents,
+            self.prefix,
+            self.postfix,
+            source=self.filename,
+            jsonnet=True,
         )
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, dir=os.getcwd()

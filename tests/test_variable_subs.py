@@ -397,6 +397,99 @@ class TestJsonFiles:
         assert "inside a JSON string" not in str(raised.value)
 
 
+class TestJsonnetFiles:
+    """
+    A Jsonnet file is substituted as text, before it is evaluated, so each
+    substitution is read through the escaping of the string it is in and its
+    value written back with it: a double- or single-quoted string's
+    backslashes, a verbatim string's doubled quote, or a text block's none.
+    Outside a string, in the code, a value is inserted as it is.
+    """
+
+    PATH = r"C:\temp\new"
+    MESSAGE = """say "hi", it's"""
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        var_module.VARIABLE_SUBSTITUTIONS["path"] = self.PATH
+        var_module.VARIABLE_SUBSTITUTIONS["msg"] = self.MESSAGE
+
+    @staticmethod
+    def _load(tmp_path, text: str) -> dict:
+        path = tmp_path / "spec.jsonnet"
+        path.write_text(text)
+        return _load_jsonnet(path)
+
+    @pytest.mark.parametrize(
+        "literal",
+        [
+            '"{{NAME}}"',
+            "'{{NAME}}'",
+            '@"{{NAME}}"',
+            "@'{{NAME}}'",
+            "|||\n  {{NAME}}\n|||",
+        ],
+        ids=["double", "single", "verbatim-double", "verbatim-single", "block"],
+    )
+    @pytest.mark.parametrize("name", ["path", "msg"])
+    def test_value_in_each_kind_of_string(self, tmp_path, literal, name):
+        result = self._load(tmp_path, "{v: " + literal.replace("NAME", name) + "}")
+        expected = var_module.VARIABLE_SUBSTITUTIONS[name]
+        assert result["v"] == (
+            expected + "\n" if literal.startswith("|||") else expected
+        )
+
+    def test_multi_line_value_in_a_text_block(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["lines"] = "one\ntwo"
+        result = self._load(tmp_path, "{v: |||\n    a\n    {{lines}}\n|||}")
+        assert result["v"] == "a\none\ntwo\n"
+
+    def test_value_within_a_longer_string(self, tmp_path):
+        result = self._load(tmp_path, '{v: "at {{path}}: {{msg}}!"}')
+        assert result["v"] == f"at {self.PATH}: {self.MESSAGE}!"
+
+    def test_default_read_through_escapes(self, tmp_path):
+        result = self._load(tmp_path, r'{v: "{{nope:=say \"hi\"}}"}')
+        assert result["v"] == 'say "hi"'
+
+    @pytest.mark.parametrize(
+        "text",
+        [r'{v: "{{array:a:=[\"x\"]}}"}', """{v: '{{array:a:=["x"]}}'}"""],
+        ids=["double", "single"],
+    )
+    def test_typed_default_read_through_escapes(self, tmp_path, text):
+        assert self._load(tmp_path, text)["v"] == ["x"]
+
+    def test_typed_value_within_a_longer_string(self, tmp_path):
+        result = self._load(tmp_path, '{v: "n-{{num:num_var}}"}')
+        assert result["v"] == "n-42"
+
+    def test_typed_value_in_code(self, tmp_path):
+        result = self._load(tmp_path, "{v: {{num:num_var}} + 1}")
+        assert result["v"] == 43
+
+    def test_untyped_value_in_code_is_code(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["sum"] = "1 + 2"
+        assert self._load(tmp_path, "{v: {{sum}}}")["v"] == 3
+
+    def test_one_expression_in_several_kinds_of_string(self, tmp_path):
+        result = self._load(tmp_path, """{a: "{{msg}}", b: '{{msg}}', c: @"{{msg}}"}""")
+        assert result == {"a": self.MESSAGE, "b": self.MESSAGE, "c": self.MESSAGE}
+
+    @pytest.mark.parametrize("comment", ["// don't", "# don't", "/* don't */"])
+    def test_a_quote_in_a_comment_opens_no_string(self, tmp_path, comment):
+        result = self._load(tmp_path, "{\n  " + comment + '\n  v: "{{path}}",\n}')
+        assert result["v"] == self.PATH
+
+    def test_unset_property_is_removed(self, tmp_path):
+        result = self._load(tmp_path, """{a: "{{nope::}}", b: '{{msg}}'}""")
+        assert result == {"b": self.MESSAGE}
+
+    def test_a_value_revealing_a_reference_is_resolved_too(self, tmp_path):
+        var_module.VARIABLE_SUBSTITUTIONS["outer"] = "{{path}}"
+        assert self._load(tmp_path, '{v: "{{outer}}"}')["v"] == self.PATH
+
+
 class TestSubstitutedTextIsNotSyntax:
     """
     An expression is parsed before anything is substituted into it, so a
