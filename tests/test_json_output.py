@@ -19,6 +19,7 @@ from yellowdog_client.model import (
     ComputeRequirementStatus,
     ComputeRequirementSummary,
     InstanceStatus,
+    TaskStatus,
     WorkerPoolStatus,
     WorkerPoolSummary,
     WorkRequirementStatus,
@@ -449,35 +450,246 @@ class TestFinish:
 # ---------------------------------------------------------------------------
 
 
+TASK_ID_2 = TASK_ID.replace("6666-6666", "6666-7777")
+TG_ID = "ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+
+
+def _task(id_=TASK_ID, name="t1", status=TaskStatus.EXECUTING, tg="tg-id"):
+    return SimpleNamespace(id=id_, name=name, status=status, taskGroupId=tg)
+
+
+def _tg(id_="tg-id", name="tg-1"):
+    return SimpleNamespace(id=id_, name=name)
+
+
 class TestAbort:
-    def test_task_ids(self, run):
+    @pytest.fixture()
+    def wrs(self, monkeypatch):
+        """
+        Work Requirements by (namespace, name): 'wr-a' (ID WR_ID_1) and
+        'wr-b' (ID WR_ID_2) in 'ns', each with Task Group 'tg-1'.
+        """
+        known = {
+            ("ns", "wr-a"): _wr(WR_ID_1, "wr-a"),
+            ("ns", "wr-b"): _wr(WR_ID_2, "wr-b"),
+        }
+        lookups = []
+
+        def lookup(client, name, namespace=None):
+            lookups.append((namespace, name))
+            return known.get((namespace, name))
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        monkeypatch.setattr(
+            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
+        )
+        return lookups
+
+    def _client(self, tasks=(), by_id=None):
         client = MagicMock()
-        client.work_client.cancel_task_by_id.side_effect = [None, RuntimeError("x")]
-        task_2 = TASK_ID.replace("6666-6666", "6666-7777")
-        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, task_2])
+        client.work_client.get_tasks.return_value.list_all.return_value = list(tasks)
+        if by_id is not None:
+            client.work_client.get_task_by_id.side_effect = lambda i: by_id[i]
+        return client
+
+    def test_task_ids(self, run):
+        client = self._client(
+            by_id={TASK_ID: _task(), TASK_ID_2: _task(TASK_ID_2, "t2")}
+        )
+        client.work_client.cancel_task.side_effect = [None, RuntimeError("x")]
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
         assert out == [
-            _action(TASK_ID, None, "tasks", "abort", "aborted"),
-            _action(task_2, None, "tasks", "abort", "failed", error="x"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+            _action(TASK_ID_2, "t2", "tasks", "abort", "failed", error="x"),
         ]
 
-    def test_tasks_in_a_work_requirement(self, run, monkeypatch):
-        monkeypatch.setattr(
-            yd_abort,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a"),
-        )
-        monkeypatch.setattr(yd_abort, "get_task_group_name", lambda *a: "tg")
-        client = MagicMock()
-        client.work_client.find_tasks.return_value = [
-            SimpleNamespace(id=TASK_ID, name="t1")
+    def test_a_task_not_executing_is_skipped_not_cancelled(self, run):
+        client = self._client(by_id={TASK_ID: _task(status=TaskStatus.PENDING)})
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert out == [
+            _action(
+                TASK_ID,
+                "t1",
+                "tasks",
+                "abort",
+                "skipped",
+                error="not executing (PENDING)",
+            )
         ]
+        client.work_client.cancel_task.assert_not_called()
+
+    def test_a_task_not_found(self, run):
+        client = self._client()
+        client.work_client.get_task_by_id.side_effect = _http_error(404)
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert out == [
+            _action(TASK_ID, None, "tasks", "abort", "failed", error="not found")
+        ]
+        assert run.exit_code == 1
+
+    def test_declined_is_skipped(self, run, monkeypatch):
+        monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
+        client = self._client(by_id={TASK_ID: _task()})
+        out, _, _ = run(
+            yd_abort, client=client, confirm=False, yes=False, task_id_list=[TASK_ID]
+        )
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "skipped")]
+        client.work_client.cancel_task.assert_not_called()
+
+    def test_tasks_not_selected_are_skipped(self, run, monkeypatch, wrs):
+        monkeypatch.setattr(
+            yd_abort, "select", lambda client, objects, **k: objects[:1]
+        )
+        client = self._client([_task(), _task(TASK_ID_2, "t2")])
+        out, _, _ = run(yd_abort, client=client, yes=False, task_id_list=["wr-a"])
+        assert out == [
+            _action(TASK_ID_2, "t2", "tasks", "abort", "skipped", error="not selected"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+        ]
+
+    def test_tasks_in_a_work_requirement(self, run, wrs):
+        client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a"])
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
 
-    def test_declined_is_skipped(self, run):
-        out, _, client = run(yd_abort, confirm=False, task_id_list=[TASK_ID])
-        assert out == [_action(TASK_ID, None, "tasks", "abort", "skipped")]
-        client.work_client.cancel_task_by_id.assert_not_called()
+    def test_namespace_work_requirement_and_task_group(self, run, wrs):
+        """'ns/wr/tg' used to raise ValueError from the namespace split."""
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-a/tg-1"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "wr-a")]
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.taskGroupId == "tg-id"
+
+    def test_work_requirement_and_task_group_is_tried_first(self, run, wrs):
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a/tg-1"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "wr-a")]
+
+    def test_namespace_and_work_requirement(self, run, wrs):
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-b"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "ns"), ("ns", "wr-b")]
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.workRequirementId == WR_ID_2
+
+    def test_task_group_not_found_by_name(self, run, wrs):
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["wr-a/nope"])
+        assert out == [
+            _action(
+                None, "wr-a/nope", "task-groups", "abort", "failed", error="not found"
+            )
+        ]
+
+    def test_nothing_executing_keeps_stdout_a_document(self, run, wrs):
+        """The message printed despite --quiet used to land on stdout too."""
+        out, _, _ = run(
+            yd_abort, client=self._client(), quiet=True, task_id_list=["wr-a"]
+        )
+        assert out == [
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "abort",
+                "skipped",
+                error="no executing Tasks",
+            )
+        ]
+
+    def test_task_group_lookup_failing_after_abort_is_still_aborted(
+        self, run, wrs, monkeypatch
+    ):
+        def fails(client, wr_id):
+            raise RuntimeError("lookup failed")
+
+        monkeypatch.setattr(yd_abort, "get_task_groups_from_wr_by_id", fails)
+        out, _, _ = run(yd_abort, client=self._client([_task()]), task_id_list=["wr-a"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+
+    def test_a_failing_lookup_does_not_stop_later_targets(self, run, wrs):
+        client = self._client()
+        client.work_client.get_tasks.side_effect = [
+            RuntimeError("boom"),
+            MagicMock(list_all=MagicMock(return_value=[_task()])),
+        ]
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a", "wr-b"])
+        assert out == [
+            _action(None, "wr-a", "work-requirements", "abort", "failed", error="boom"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+        ]
+        assert run.exit_code == 1
+
+    def test_a_session_failure_attempts_nothing_further(self, run, wrs):
+        client = self._client([_task(), _task(TASK_ID_2, "t2")])
+        client.work_client.cancel_task.side_effect = _http_error(401)
+        out, err, _ = run(yd_abort, client=client, task_id_list=["wr-a", "wr-b"])
+        assert out == [
+            _action(TASK_ID, "t1", "tasks", "abort", "failed", error="401 error"),
+            _action(
+                TASK_ID_2,
+                "t2",
+                "tasks",
+                "abort",
+                "skipped",
+                error="not attempted: 401 error",
+            ),
+            _action(
+                None,
+                "wr-b",
+                "work-requirements",
+                "abort",
+                "skipped",
+                error="not attempted: 401 error",
+            ),
+        ]
+        assert client.work_client.cancel_task.call_count == 1
+        assert "Not attempting the remaining 2 item(s)" in err
+        assert run.exit_code == 1
+
+    def test_duplicates_and_overlaps_are_aborted_once(self, run, wrs):
+        client = self._client([_task()], by_id={TASK_ID: _task()})
+        out, err, _ = run(
+            yd_abort, client=client, task_id_list=[TASK_ID, "wr-a", "wr-a"]
+        )
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert client.work_client.cancel_task.call_count == 1
+        assert "Ignoring 1 duplicate target(s)" in err
+
+    def test_targets_are_handled_in_the_order_given(self, run, wrs):
+        client = self._client([_task()], by_id={TASK_ID_2: _task(TASK_ID_2, "t2")})
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a", TASK_ID_2])
+        assert [item["id"] for item in out] == [TASK_ID, TASK_ID_2]
+
+    def test_work_requirement_id_in_another_namespace(self, run, wrs):
+        client = self._client([_task()])
+        client.work_client.get_work_requirement_by_id.return_value = _wr(
+            WR_ID_1, "wr-elsewhere"
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[WR_ID_1])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == []
+
+    def test_task_group_id_not_found_has_no_stray_quotes(self, run, monkeypatch):
+        monkeypatch.setattr(
+            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: []
+        )
+        out, err, _ = run(yd_abort, client=self._client(), task_id_list=[TG_ID])
+        assert out == [
+            _action(TG_ID, None, "task-groups", "abort", "failed", error="not found")
+        ]
+        assert f"Task Group '{TG_ID}' not found" in err
+        assert '"' not in err
+
+    def test_another_kind_of_id_is_refused(self, run):
+        out, _, client = run(yd_abort, task_id_list=[WP_ID])
+        assert out[0]["outcome"] == "failed"
+        assert "is a Worker Pool ID" in out[0]["error"]
+        client.work_client.get_tasks.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

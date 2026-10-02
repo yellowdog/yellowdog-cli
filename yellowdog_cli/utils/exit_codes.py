@@ -16,6 +16,11 @@ from yellowdog_cli.utils.settings import ExitCode
 MISSING_PERMISSION_TEXT = "MissingPermissionException"
 UNAUTHORIZED_TEXT = "Unauthorized"
 
+# Failures of the session rather than of the item being acted on: every later
+# call would fail in the same way, so an action command that classifies a
+# per-item failure as one of these attempts nothing further
+SESSION_FAILURES = frozenset({ExitCode.AUTHENTICATION, ExitCode.CONNECTION})
+
 if TYPE_CHECKING:
     from requests import HTTPError
 

@@ -67,10 +67,9 @@ from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
     TYPE_IMGGRP,
-    TYPE_TASKGRP,
-    TYPE_WORKREQ,
     YDIDType,
     get_ydid_type,
+    work_requirement_id_of_task_group,
 )
 
 
@@ -84,20 +83,6 @@ def get_task_groups_from_wr_by_id(
     """
     work_requirement = client.work_client.get_work_requirement_by_id(wr_id)
     return [] if work_requirement.taskGroups is None else work_requirement.taskGroups
-
-
-def get_task_group_name(
-    client: PlatformClient, wr_summary: WorkRequirementSummary, task: Task
-) -> str:
-    """
-    Function to find the Task Group Name for a given Task
-    within a Work Requirement.
-    """
-    for task_group in get_task_groups_from_wr_by_id(client, wr_summary.id):
-        if task.taskGroupId == task_group.id:
-            return task_group.name
-
-    raise RuntimeError(f"Task group name not found for Task ID {task.id}")
 
 
 def get_filtered_work_requirement_summaries(
@@ -1269,9 +1254,7 @@ def get_task_group_by_id(client: PlatformClient, task_group_id: str) -> TaskGrou
     """
     Get a task group by its ID.
     """
-    work_requirement_id = task_group_id.rsplit(":", 1)[0].replace(
-        TYPE_TASKGRP, TYPE_WORKREQ
-    )
+    work_requirement_id = work_requirement_id_of_task_group(task_group_id)
 
     try:
         task_groups = get_task_groups_from_wr_by_id(client, work_requirement_id)

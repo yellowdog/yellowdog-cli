@@ -122,6 +122,14 @@ def split_instance_specification(name_or_id: str) -> tuple[str, str] | None:
     return cr_id, instance_id
 
 
+def work_requirement_id_of_task_group(task_group_id: str) -> str:
+    """
+    The ID of the Work Requirement a Task Group belongs to: a Task Group's
+    YDID is its Work Requirement's, retyped, with the group's index appended.
+    """
+    return task_group_id.rsplit(":", 1)[0].replace(TYPE_TASKGRP, TYPE_WORKREQ, 1)
+
+
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _HEX = r"[0-9a-fA-F]+"
 

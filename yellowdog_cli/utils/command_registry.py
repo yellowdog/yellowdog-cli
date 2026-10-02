@@ -1006,12 +1006,12 @@ TASK_ID_LIST = option(
     metavar="<target>",
     type=str,
     help=(
-        "items to target: task YDID(s) to abort directly; Work Requirement"
-        " name(s) or YDID(s) to abort all executing tasks within; Task Group"
-        " YDID(s) to abort executing tasks in a specific group; or"
-        " 'wr-name/tg-name' to target a named Task Group within a named"
-        " Work Requirement. Without arguments, selects interactively by"
-        " namespace and tag."
+        "items to target: executing task YDID(s) to abort directly; Work"
+        " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
+        " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
+        " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
+        " group. Without arguments, selects interactively by namespace and"
+        " tag."
     ),
 )
 

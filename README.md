@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 09:12:30 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 11:05:23 BST 2026 -->
 
 <!--te-->
 
@@ -3636,11 +3636,15 @@ Aborting a Task sends `SIGTERM` to the Task's subprocess, giving it an opportuni
 
 The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to list for selection. Alternatively, targets can be supplied as positional arguments, each of which can be:
 
-- a Task YDID, to abort that Task directly
-- a Work Requirement name or YDID, to abort all executing Tasks within it
-- a Task Group YDID, or `<wr-name>/<tg-name>`, to abort executing Tasks in a specific Task Group
+- a Task YDID, to abort that Task if it is executing (a Task that has not started, or has finished, is skipped rather than cancelled)
+- a Work Requirement name, `<namespace>/<wr-name>` or YDID, to abort all executing Tasks within it (a YDID is found in whatever namespace it belongs to)
+- a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`, to abort executing Tasks in a specific Task Group
 
-With `--yes`/`-y`, all executing Tasks in all selected Work Requirements are aborted without prompting.
+`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`.
+
+Targets are handled in the order given, except that the Task YDIDs are confirmed together, where the first of them appears. A repeated target is ignored, and a Task included by more than one target is aborted once. If an attempt fails because the credentials are rejected or the platform cannot be reached, nothing further is attempted, and the remaining Tasks and targets are reported as skipped.
+
+Unless `--yes`/`-y` is given, the Tasks to be aborted are listed and confirmed before anything is aborted. With `--yes`/`-y`, all executing Tasks in all the selected Work Requirements are aborted without prompting.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))

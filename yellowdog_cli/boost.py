@@ -4,18 +4,13 @@
 A script to boost allowances.
 """
 
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import ET_ALLOWANCES, ExitCode
+from yellowdog_cli.utils.settings import ET_ALLOWANCES
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
-
-# Failures of the session rather than of one Allowance: every Allowance after
-# the first would fail in the same way, so none is attempted. Each is still a
-# per-item failure, exiting 1, as the action commands' failures are
-_FAILS_EVERY_ALLOWANCE = frozenset({ExitCode.AUTHENTICATION, ExitCode.CONNECTION})
 
 
 def _record(allowance: str, outcome: str, error: str | None = None, **extra) -> None:
@@ -81,7 +76,7 @@ def main() -> None:
             print_error(f"Unable to boost Allowance {allowance}: {e}")
             _record(allowance, "failed", str(e))
             failed += 1
-            if classify(e) in _FAILS_EVERY_ALLOWANCE:
+            if classify(e) in SESSION_FAILURES:
                 not_attempted = allowances[index + 1 :]
                 if not_attempted:
                     print_warning(

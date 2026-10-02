@@ -42,12 +42,11 @@ from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,
     TYPE_COMPSRC,
     TYPE_NODE,
-    TYPE_TASKGRP,
-    TYPE_WORKREQ,
     TYPE_WRKR,
     YDIDType,
     get_ydid_type,
     split_instance_specification,
+    work_requirement_id_of_task_group,
 )
 
 # An object to be shown, paired with any additional fields to add to its JSON
@@ -225,7 +224,7 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
         elif ydid_type == YDIDType.TASK_GROUP:
             print_info(f"Showing details of Task Group ID '{ydid}'")
             work_requirement = CLIENT.work_client.get_work_requirement_by_id(
-                ydid.rsplit(":", 1)[0].replace(TYPE_TASKGRP, TYPE_WORKREQ)
+                work_requirement_id_of_task_group(ydid)
             )
             for task_group in work_requirement.taskGroups or []:
                 if task_group.id == ydid:
