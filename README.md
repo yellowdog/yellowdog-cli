@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 15:48:04 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 16:03:01 BST 2026 -->
 
 <!--te-->
 
@@ -512,7 +512,7 @@ The documents, by command:
 | Listings | `yd-list` | an array of the listed objects |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
-| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
 | Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`, and Allowances removed by description `"count"`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "status", "succeeded"}`, one per ID, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched |
@@ -3741,20 +3741,20 @@ See [Worker Pools](#worker-pools) for the full specification reference.
 
 ### yd-shutdown
 
-The `yd-shutdown` command shuts down Worker Pools that match the `namespace` and `tag` found in the configuration file. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which the Compute Requirement will be terminated.
+The `yd-shutdown` command shuts down the Worker Pools in the configured `namespace` whose names include the `tag`. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which a Provisioned Worker Pool's Compute Requirement will be terminated. Worker Pools that are already `SHUTDOWN` or `TERMINATED` are left out.
 
 ```shell
 yd-shutdown [options] [<worker-pool-name-or-ID/node-id> ...]
 ```
 
-Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
+Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool or Node that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped.
 
 A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list worker-pools --name 'wp-*'` to preview the matches first.
 
 Key options:
-- `--terminate`/`-T` — immediately terminate the associated Compute Requirement(s) rather than waiting for executing Tasks to complete
+- `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement, and Node targets are unaffected
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
-- `--dry-run`/`-D` — show the matched Worker Pools before anything is shut down
+- `--dry-run`/`-D` — show the matched Worker Pools before anything is shut down, and with `--terminate` the Compute Requirements that would be terminated; it cannot be combined with explicit names or IDs
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell

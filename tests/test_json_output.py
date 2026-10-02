@@ -19,6 +19,7 @@ from yellowdog_client.model import (
     ComputeRequirementStatus,
     ComputeRequirementSummary,
     InstanceStatus,
+    ProvisionedWorkerPool,
     TaskStatus,
     WorkerPoolStatus,
     WorkerPoolSummary,
@@ -43,7 +44,10 @@ import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
 import yellowdog_cli.utils.wrapper as wrapper_module
-from yellowdog_cli.utils.entity_utils import get_worker_pool_id_by_name
+from yellowdog_cli.utils.entity_utils import (
+    get_worker_pool_by_id,
+    get_worker_pool_id_by_name,
+)
 from yellowdog_cli.utils.results import record_action, reset_results
 from yellowdog_cli.utils.settings import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
 
@@ -303,9 +307,20 @@ class TestShutdown:
         ]
 
     def test_by_id_with_a_node_and_the_compute_requirement(self, run):
+        from yellowdog_client.model import NodeStatus
+
+        get_worker_pool_by_id.cache_clear()
+        pool = ProvisionedWorkerPool(
+            id=WP_ID, name="wp-a", status=WorkerPoolStatus.RUNNING
+        )
+        pool.computeRequirementId = CR_ID
         client = MagicMock()
-        client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            computeRequirementId=CR_ID
+        client.worker_pool_client.get_worker_pool_by_id.return_value = pool
+        client.worker_pool_client.get_node_by_id.return_value = SimpleNamespace(
+            id=NODE_ID, status=NodeStatus.RUNNING
+        )
+        client.compute_client.terminate_compute_requirement_by_id.return_value = (
+            SimpleNamespace(name="cr-a")
         )
         client.worker_pool_client.shutdown_node_by_id.side_effect = RuntimeError("gone")
         out, _, _ = run(
@@ -314,34 +329,36 @@ class TestShutdown:
             terminate=True,
             worker_pool_nodes_list=[WP_ID, NODE_ID],
         )
+        get_worker_pool_by_id.cache_clear()
         assert out == [
-            _action(WP_ID, None, "worker-pools", "shutdown", "shut down"),
-            _action(CR_ID, None, "compute-requirements", "terminate", "terminated"),
+            _action(WP_ID, "wp-a", "worker-pools", "shutdown", "shut down"),
+            _action(
+                CR_ID,
+                "cr-a",
+                "compute-requirements",
+                "terminate",
+                "terminated",
+                workerPoolId=WP_ID,
+            ),
             _action(NODE_ID, None, "nodes", "shutdown", "failed", error="gone"),
         ]
 
-    def test_a_failed_refetch_records_the_terminate_as_failed(self, run):
-        # '-T' refetches the Worker Pool for its Compute Requirement; when
-        # that fails the termination is recorded as failed, keyed by the
-        # Worker Pool's ID (all that is known), and the command exits 1
+    def test_a_failed_lookup_shuts_nothing_down(self, run):
+        get_worker_pool_by_id.cache_clear()
         client = MagicMock()
         client.worker_pool_client.get_worker_pool_by_id.side_effect = RuntimeError(
-            "refetch failed"
+            "lookup failed"
         )
         out, _, _ = run(
             yd_shutdown, client=client, terminate=True, worker_pool_nodes_list=[WP_ID]
         )
+        get_worker_pool_by_id.cache_clear()
         assert out == [
-            _action(WP_ID, None, "worker-pools", "shutdown", "shut down"),
             _action(
-                WP_ID,
-                None,
-                "compute-requirements",
-                "terminate",
-                "failed",
-                error="refetch failed",
-            ),
+                WP_ID, None, "worker-pools", "shutdown", "failed", error="lookup failed"
+            )
         ]
+        client.worker_pool_client.shutdown_worker_pool_by_id.assert_not_called()
         assert run.exit_code == 1
 
 
