@@ -631,6 +631,55 @@ class TestJsonnetFiles:
         assert self._load(tmp_path, '{v: "{{outer}}"}')["v"] == self.PATH
 
 
+class TestJsonnetEvaluation:
+    """
+    A Jsonnet file is evaluated as the file it is, from where it is, with
+    nothing written to disk: its imports are found beside it, an error names
+    it, and the current directory need not be writable.
+    """
+
+    @pytest.fixture(autouse=True)
+    def spec(self, tmp_path, monkeypatch, patched_subs):
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "specs" / "lib.libsonnet").write_text('{ shared: "from lib" }')
+        monkeypatch.chdir(tmp_path)  # The parent of the specification's directory
+        return tmp_path
+
+    @staticmethod
+    def _write(name: str, text: str) -> str:
+        path = f"specs/{name}"
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def test_import_beside_the_file(self):
+        path = self._write(
+            "wr.jsonnet", 'local lib = import "lib.libsonnet"; {a: lib.shared}'
+        )
+        assert _load_jsonnet(path) == {"a": "from lib"}
+
+    def test_import_from_the_current_directory_still_resolves(self):
+        path = self._write(
+            "wr.jsonnet", 'local lib = import "specs/lib.libsonnet"; {a: lib.shared}'
+        )
+        assert _load_jsonnet(path) == {"a": "from lib"}
+
+    def test_error_names_the_file(self):
+        path = self._write("bad.jsonnet", "{\n  a: 1,\n  b: undefined_thing,\n}\n")
+        with pytest.raises(RuntimeError, match=r"specs/bad\.jsonnet:3:6"):
+            _load_jsonnet(path)
+
+    def test_nothing_is_written(self, spec):
+        path = self._write("wr.jsonnet", '{a: "{{myvar}}"}')
+        before = sorted(p.name for p in spec.rglob("*"))
+        spec.chmod(0o555)  # The current directory, read-only
+        try:
+            assert _load_jsonnet(path) == {"a": "hello"}
+        finally:
+            spec.chmod(0o755)
+        assert sorted(p.name for p in spec.rglob("*")) == before
+
+
 class TestSubstitutedTextIsNotSyntax:
     """
     An expression is parsed before anything is substituted into it, so a

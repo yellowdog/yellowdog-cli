@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 09:03:20 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 09:12:30 BST 2026 -->
 
 <!--te-->
 
@@ -3352,6 +3352,8 @@ pip install -U "yellowdog-cli[jsonnet]"
 The scripts provide full support for variable substitutions in Jsonnet files. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"`.
 
 Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion. Variables are fully resolved before the expansion, including those whose values themselves contain variable references, so Jsonnet code can compute with their values, e.g. `local count = std.parseInt('{{count}}');`.
+
+A Jsonnet file's `import` and `importstr` paths are resolved relative to the file itself, wherever the command is run from, and then, as a fallback, relative to the current directory. An error in the Jsonnet names the file and the line. The file is read as UTF-8.
 
 Because the substitution before the expansion is made in the Jsonnet text itself, a substitution can be placed anywhere in it, unlike in a JSON file:
 

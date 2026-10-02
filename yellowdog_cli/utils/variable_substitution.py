@@ -7,7 +7,6 @@ import math
 import os
 import re
 import sys
-import tempfile
 from bisect import bisect_right
 from copy import deepcopy
 from getpass import getuser
@@ -1256,18 +1255,24 @@ def load_jsonnet_file_with_variable_substitutions(
     substitutions processed.
     """
     check_jsonnet_import()
-    from _jsonnet import evaluate_file
+    from _jsonnet import evaluate_snippet
 
-    with VariableSubstitutedJsonnetFile(
-        filename=filename,
-        prefix=prefix,
-        postfix=postfix,
-    ) as preprocessed_filename:
-        try:
-            dict_data = json_loads(evaluate_file(preprocessed_filename))
-        except RuntimeError as e:
-            # Include only the first line of the exception message
-            raise RuntimeError(str(e).partition("\n")[0])
+    # Jsonnet source is UTF-8, whatever the platform's default encoding
+    with open(filename, encoding="utf-8") as f:
+        file_contents = process_variable_substitutions_in_file_contents(
+            f.read(), prefix, postfix, source=filename, jsonnet=True
+        )
+    # Evaluated as the file it came from, with nothing written to disk: its
+    # imports are found beside it, an error names it, and the current
+    # directory, the fallback for an import written relative to it, need not
+    # be writable
+    try:
+        dict_data = json_loads(
+            evaluate_snippet(filename, file_contents, jpathdir=[os.getcwd()])
+        )
+    except RuntimeError as e:
+        # Include only the first line of the exception message
+        raise RuntimeError(str(e).partition("\n")[0])
 
     # Secondary processing after Jsonnet expansion
     resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
@@ -1564,41 +1569,3 @@ def _substitute_jsonnet_pass(
 
     parts.append(file_contents[position:])
     return "".join(parts)
-
-
-class VariableSubstitutedJsonnetFile:
-    """
-    The jsonnet 'evaluate_file' function will only operate on files,
-    not strings, so this context manager class will create a
-    temporary, variable-processed file that can be used by the
-    evaluator, then deleted.
-    """
-
-    def __init__(self, filename: str, prefix: str = "", postfix: str = ""):
-        self.filename = filename
-        self.prefix = prefix
-        self.postfix = postfix
-
-    def __enter__(self) -> str:
-        """
-        Return the filename of the temporary variable-processed
-        jsonnet file.
-        """
-        with open(self.filename) as file:
-            file_contents = file.read()
-        processed_file_contents: str = process_variable_substitutions_in_file_contents(
-            file_contents,
-            self.prefix,
-            self.postfix,
-            source=self.filename,
-            jsonnet=True,
-        )
-        with tempfile.NamedTemporaryFile(
-            mode="w", delete=False, dir=os.getcwd()
-        ) as temp_file:
-            temp_file.write(processed_file_contents)
-        self.temp_filename: str = temp_file.name
-        return self.temp_filename
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        os.remove(self.temp_filename)

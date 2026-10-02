@@ -209,15 +209,12 @@ def command_line(command: str, *args: str) -> str:
     by teardown time -- which is not reliably CORPUS_DIR, since a test that
     chdir's for the duration of a call (load_corpus_file(), the atexit sweep in
     conftest.py's own run_id fixture) always restores the original directory
-    afterwards. Nine of the ten live corpus files start with "local base =
-    import 'lib/base.libsonnet'" (all but namespace-policy.jsonnet, which
-    needs no shared fragment), which Jsonnet resolves relative to the
-    process's cwd, not to the file doing the importing (see
-    resource_corpus.load_corpus_file()'s own docstring) -- so a create/remove
-    invocation that runs from anywhere else fails outright with "couldn't open
-    import ... no match locally or in the Jsonnet library paths", a live-only
-    finding (Task 8) invisible to the in-process loader tests, which already
-    chdir themselves. CORPUS_DIR is absolute (built from Path(__file__).parent),
+    afterwards. (Nine of the ten live corpus files import
+    'lib/base.libsonnet', which once resolved against the process's cwd rather
+    than beside the importing file, so a create/remove run from anywhere else
+    failed with "couldn't open import"; imports now resolve beside the file,
+    so that reason is gone, and the prefix stays for the convention.)
+    CORPUS_DIR is absolute (built from Path(__file__).parent),
     so this is safe to prepend unconditionally, including for a command (like
     yd-list/yd-show) that never touches a corpus file at all.
     """

@@ -6,7 +6,6 @@ rather than passing a path: going through the real entry point is the point, sin
 brings Jsonnet expansion, variable substitution and dependency re-sequencing with it.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -159,29 +158,17 @@ def load_corpus_file(path: Path) -> list[dict]:
     namespace); the assignment goes to the namespace attribute it reads from
     instead of to the property itself.
 
-    Also chdir's to the file's own directory for the duration of the load: a
-    Jsonnet 'import' is resolved relative to the current working directory, not to
-    the file doing the importing, because VariableSubstitutedJsonnetFile
-    (variable_substitution.py) writes its variable-substituted copy into
-    os.getcwd() before handing it to the Jsonnet evaluator (see that class's own
-    commit message, "Create Jsonnet temporary file in current directory to fix
-    import path issue") -- i.e. a real invocation is expected to run from the directory
-    containing the spec and anything it imports. Without matching that here,
-    'lib/base.libsonnet' resolves against the repo root (pytest's cwd) instead of
-    tests/resources/, and the import fails regardless of how correct the corpus
-    file itself is.
+    No chdir is needed: a Jsonnet file's imports ('lib/base.libsonnet') are
+    resolved beside it, wherever the loader is run from.
     """
     from yellowdog_cli.utils.args import ARGS_PARSER
     from yellowdog_cli.utils.load_resources import load_resource_specifications
 
     original = ARGS_PARSER.resource_specifications
-    original_cwd = os.getcwd()
     ARGS_PARSER.args.resource_specifications = [str(path.resolve())]
     try:
-        os.chdir(path.parent)
         return load_resource_specifications()
     finally:
-        os.chdir(original_cwd)
         ARGS_PARSER.args.resource_specifications = original
 
 
