@@ -36,7 +36,7 @@ class ConsoleWithInputBackspaceFixed(Console):
         prompt: TextType = "",
         *,
         markup: bool = True,
-        emoji: bool = True,
+        emoji: bool | None = None,  # The console's own setting
         password: bool = False,
         stream: TextIO | None = None,
     ) -> str:

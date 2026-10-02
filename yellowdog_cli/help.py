@@ -95,7 +95,7 @@ def main():
 
     # Rich drops the styles by itself where stdout is not a terminal, or
     # NO_COLOR is set; soft_wrap keeps a long summary on its one line
-    console = Console(theme=Theme(DEFAULT_THEME), highlight=False)
+    console = Console(theme=Theme(DEFAULT_THEME), highlight=False, emoji=False)
     console.print()
     console.print(Text(_heading(), style=HEADING_STYLE), soft_wrap=True)
     console.print()

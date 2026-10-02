@@ -933,8 +933,8 @@ class TestProfileLoadFailure:
         row = rows["Data client profile backup"]
         assert row["status"] == "FAIL"
         assert row["detail"] == (
-            "could not be loaded: Non-number used in variable number"
-            " substitution: 'abc'"
+            "could not be loaded: Cannot substitute '{{num:x:=abc}}':"
+            " 'abc' is not a number"
         )
         assert "[dataClient.backup]" in row["remedy"]
 

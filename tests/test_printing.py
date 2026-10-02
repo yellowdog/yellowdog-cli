@@ -569,3 +569,33 @@ class TestWorkRequirementTable:
         _, rows_no = work_requirement_table([self._wr(healthy=False)])
         assert rows_yes[0][6] == "Yes"
         assert rows_no[0][6] == "No"
+
+
+class TestNoEmojiCodes:
+    """
+    Text such as '{{num:x:=1}}' or '{{env:smile:}}' is printed as written:
+    Rich's ':name:' emoji codes are off on every console, since the CLI
+    prints user text and never means one.
+    """
+
+    TEXT = "'{{num:x:=1}}' and '{{env:smile:}}' and --no-binary :all:"
+
+    def test_every_console(self):
+        consoles = [
+            printing_module.CONSOLE,
+            printing_module.CONSOLE_TABLE,
+            printing_module.CONSOLE_ERR,
+            printing_module.CONSOLE_JSON,
+        ]
+        for console in consoles:
+            with console.capture() as capture:
+                console.print(self.TEXT)
+            assert capture.get().strip() == self.TEXT, console
+
+    def test_input_prompt(self, monkeypatch):
+        written = StringIO()
+        # '_file', not 'file': its getter answers sys.stdout when none is set,
+        # so restoring 'file' would pin the console to this test's capture
+        monkeypatch.setattr(printing_module.CONSOLE, "_file", written)
+        printing_module.CONSOLE.input("{{a:x:}} ? ", stream=StringIO("y\n"))
+        assert "{{a:x:}}" in written.getvalue()

@@ -138,12 +138,16 @@ class PrintTableHighlighter(RegexHighlighter):
 pyexamples_theme = Theme(DEFAULT_THEME)
 
 
+# Emoji codes are off: the CLI prints user text -- '{{num:x:=1}}' -- and never
+# means one, and Rich would print that as '{{num❌=1}}'
 CONSOLE = ConsoleWithInputBackspaceFixed(
-    highlighter=PrintLogHighlighter(), theme=pyexamples_theme
+    highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
 )
-CONSOLE_TABLE = Console(highlighter=PrintTableHighlighter(), theme=pyexamples_theme)
-CONSOLE_ERR = Console(stderr=True, highlighter=PrintLogHighlighter())
-CONSOLE_JSON = Console(highlighter=JSONHighlighter())
+CONSOLE_TABLE = Console(
+    highlighter=PrintTableHighlighter(), theme=pyexamples_theme, emoji=False
+)
+CONSOLE_ERR = Console(stderr=True, highlighter=PrintLogHighlighter(), emoji=False)
+CONSOLE_JSON = Console(highlighter=JSONHighlighter(), emoji=False)
 
 PREFIX_LEN = 0
 SUBSEQUENT_INDENT = ""

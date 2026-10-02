@@ -2,6 +2,7 @@
 Utilities for applying variable substitutions.
 """
 
+import math
 import os
 import re
 import sys
@@ -100,13 +101,82 @@ _UNDEFINED_VARIABLES_REPORTED: set[str | tuple[str, str]] = set()
 # name, or a variable name. Anything else -- Docker's '{{.ID}}', a Go
 # template's '{{ .Values.x }}', Handlebars' '{{#each}}' -- is text meant for
 # something else, since no variable can be defined with such a name.
-_TYPE_TAGS = (
-    NUMBER_TYPE_TAG,
-    BOOL_TYPE_TAG,
-    ARRAY_TYPE_TAG,
-    TABLE_TYPE_TAG,
-    FORMAT_NAME_TYPE_TAG,
-)
+
+
+def _finite(value: float) -> float:
+    """
+    A number JSON can carry: not NaN or an infinity, which Python's float()
+    and json.loads() both accept, and which no request body can hold.
+    """
+    if not math.isfinite(value):
+        raise ValueError("is not a finite number")
+    return value
+
+
+def _number(text: str) -> int | float:
+    """
+    A number, in JSON's syntax or Python's ('1e3', '1E3', '1_000', ' 5 ').
+    """
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError("is not a number") from None
+    return _finite(value)
+
+
+def _boolean(text: str) -> bool:
+    """
+    'true' or 'false', in any case and with any space around it, so JSON's
+    spelling and Python's.
+    """
+    match text.strip().lower():
+        case "true":
+            return True
+        case "false":
+            return False
+    raise ValueError("is not true or false")
+
+
+def _json_of(kind: type, description: str, example: str):
+    """
+    A converter reading JSON text as a value of the given kind, refusing the
+    NaN and infinities json.loads() accepts but JSON does not.
+    """
+
+    def _convert(text: str) -> list | dict:
+        def _refuse(constant: str):
+            raise ValueError(f"'{constant}' is not JSON")
+
+        try:
+            value = json_loads(
+                text,
+                parse_constant=_refuse,
+                parse_float=lambda f: _finite(float(f)),
+            )
+        except ValueError as e:
+            raise ValueError(f"is not a JSON {description}, e.g. {example} ({e})")
+        if not isinstance(value, kind):
+            raise ValueError(f"is not a JSON {description}, e.g. {example}")
+        return value
+
+    return _convert
+
+
+# Each type tag and what its value is converted by: every tag the syntax
+# recognises is here, and the tags are read from here, so one added here is
+# recognised everywhere and none can be recognised without a converter
+_TYPE_CONVERTERS = {
+    NUMBER_TYPE_TAG: _number,
+    BOOL_TYPE_TAG: _boolean,
+    ARRAY_TYPE_TAG: _json_of(list, "array", "[1, 2, 3]"),
+    TABLE_TYPE_TAG: _json_of(dict, "table", '{"key": "value"}'),
+    FORMAT_NAME_TYPE_TAG: lambda text: format_yd_name(text, add_prefix=False),
+}
+_TYPE_TAGS = tuple(_TYPE_CONVERTERS)
 _VARIABLE_REFERENCE = re.compile(
     "(?:"
     + "|".join(re.escape(tag) for tag in _TYPE_TAGS)
@@ -833,9 +903,9 @@ def process_variable_substitutions(
         # distinguishes ':=' (default separator) from a type tag.
         # This prevents '{{num:=default}}' from being treated as a typed variable.
         m = re.match(
-            f"^{opening_delimiter}({NUMBER_TYPE_TAG}|{BOOL_TYPE_TAG}"
-            f"|{TABLE_TYPE_TAG}|{ARRAY_TYPE_TAG}|{FORMAT_NAME_TYPE_TAG})"
-            f"(?!{TYPE_TAG_DEFAULT_GUARD})",
+            f"^{re.escape(opening_delimiter)}"
+            f"({'|'.join(re.escape(tag) for tag in _TYPE_TAGS)})"
+            f"(?!{re.escape(TYPE_TAG_DEFAULT_GUARD)})",
             element,
         )
         type_tag = m.group(0).replace(opening_delimiter, "") if m is not None else ""
@@ -864,19 +934,43 @@ def process_variable_substitutions(
             return_str += cast(str, element_processed)
             continue
 
-        if index == 0 and len(elements) == 1:
-            # The first and only element has a type tag:
-            # immediately return the type matching the tag
-            return process_typed_variable_substitution(
-                type_tag, cast(str, element_processed)
+        element_processed = cast(str, element_processed)
+        if _is_whole_expression(
+            element_processed, opening_delimiter, closing_delimiter
+        ):
+            # Its name was undefined once its nested parts were resolved:
+            # passed through, tag and all, as an untyped one is, for a later
+            # pass or the undefined-variable warning
+            element_processed = (
+                opening_delimiter
+                + type_tag
+                + element_processed[len(opening_delimiter) :]
             )
+            if len(elements) == 1:
+                return element_processed
+            return_str += element_processed
+            continue
 
-        # Just append the type as a string
-        return_str += str(
-            process_typed_variable_substitution(type_tag, cast(str, element_processed))
+        value = process_typed_variable_substitution(
+            type_tag, element_processed, expression=element
         )
+        if len(elements) == 1:
+            # The only element: the value itself, of the tag's type
+            return value
+        return_str += _typed_value_as_text(type_tag, value, element_processed)
 
     return return_str
+
+
+def _is_whole_expression(
+    text: str, opening_delimiter: str, closing_delimiter: str
+) -> bool:
+    """
+    Whether text is one delimited expression and nothing else.
+    """
+    return find_delimited_expressions(text, opening_delimiter, closing_delimiter) == [
+        text
+    ]
 
 
 def process_untyped_variable_substitutions(
@@ -1008,59 +1102,37 @@ def _value_of(name: str) -> str | None:
 
 
 def process_typed_variable_substitution(
-    type_string: str, input_string: str
-) -> str | int | bool | float | list | dict | None:
+    type_string: str, input_string: str, expression: str | None = None
+) -> str | int | bool | float | list | dict:
     """
-    Process a single typed substitution, returning the appropriate type.
-    Assumes there is a substitution present.
+    Convert the value of a type-tagged substitution to its type, raising
+    ValueError if it is not one, naming the 'expression' where it is given.
     """
-    if type_string == FORMAT_NAME_TYPE_TAG:
-        return format_yd_name(input_string, add_prefix=False)
-
-    if type_string == NUMBER_TYPE_TAG:
-        try:
-            return int(input_string)
-        except ValueError:
-            try:
-                return float(input_string)
-            except ValueError:
-                raise ValueError(
-                    f"Non-number used in variable number substitution: '{input_string}'"
-                )
-
-    if type_string == BOOL_TYPE_TAG:
-        if input_string.lower() == "true":
-            return True
-        if input_string.lower() == "false":
-            return False
-        raise ValueError(
-            f"Non-boolean used in variable boolean substitution: '{input_string}'"
+    converter = _TYPE_CONVERTERS.get(type_string)
+    if converter is None:
+        raise ValueError(f"Unknown variable type tag '{type_string}'")
+    try:
+        return converter(input_string)
+    except ValueError as e:
+        named = f"Cannot substitute '{expression}': " if expression else ""
+        # format_yd_name()'s message names the value itself
+        reason = (
+            str(e) if type_string == FORMAT_NAME_TYPE_TAG else f"'{input_string}' {e}"
         )
+        raise ValueError(named + reason) from e
 
-    if type_string == ARRAY_TYPE_TAG:
-        try:
-            return_value = json_loads(input_string)
-            if not isinstance(return_value, list):
-                raise TypeError("Not an array/list")
-            return return_value
-        except Exception as e:
-            raise ValueError(
-                f"Property cannot be parsed as an array: '{input_string}' ({e})"
-            )
 
-    if type_string == TABLE_TYPE_TAG:
-        try:
-            return_value = json_loads(input_string)
-            if not isinstance(return_value, dict):
-                raise TypeError("Not a table/dict")
-            return return_value
-        except Exception as e:
-            raise ValueError(
-                f"Property cannot be parsed as a table: '{input_string}' "
-                f'(Use JSON syntax, e.g. {{"key": "value"}}) ({e})'
-            )
-
-    return None
+def _typed_value_as_text(
+    type_string: str, value: str | int | bool | float | list | dict, text: str
+) -> str:
+    """
+    A typed value written into a longer string: as its JSON, as a variable's
+    value of any other type is held (see _stringify()), but a number as it
+    was written, so that '1.10' stays '1.10'. A name is already text.
+    """
+    if type_string == NUMBER_TYPE_TAG:
+        return text.strip()
+    return value if isinstance(value, str) else json_dumps(value)
 
 
 def load_json_file_with_variable_substitutions(

@@ -45,7 +45,18 @@ class TestProcessTypedVariableSubstitution:
     """This function is pure — no global state involved."""
 
     @pytest.mark.parametrize(
-        "s,expected", [("42", 42), ("3.14", 3.14), ("-7", -7), ("0", 0)]
+        "s,expected",
+        [
+            ("42", 42),
+            ("3.14", 3.14),
+            ("-7", -7),
+            ("0", 0),
+            # JSON's syntax and Python's, either case
+            ("1e3", 1000.0),
+            ("1E3", 1000.0),
+            ("1_000", 1000),
+            (" 5 ", 5),
+        ],
     )
     def test_number_valid(self, s, expected):
         assert (
@@ -54,22 +65,28 @@ class TestProcessTypedVariableSubstitution:
         )
 
     def test_number_invalid_raises(self):
-        with pytest.raises(Exception, match="Non-number"):
+        with pytest.raises(ValueError, match="'not-a-number' is not a number"):
             var_module.process_typed_variable_substitution(
                 NUMBER_TYPE_TAG, "not-a-number"
             )
 
-    @pytest.mark.parametrize("s", ["true", "True", "TRUE"])
+    @pytest.mark.parametrize("s", ["nan", "inf", "-Infinity", "1e400"])
+    def test_number_not_finite_raises(self, s):
+        # Not a number JSON can carry, so not one a request can
+        with pytest.raises(ValueError, match="not a finite number"):
+            var_module.process_typed_variable_substitution(NUMBER_TYPE_TAG, s)
+
+    @pytest.mark.parametrize("s", ["true", "True", "TRUE", "tRuE", " true "])
     def test_bool_true(self, s):
         assert var_module.process_typed_variable_substitution(BOOL_TYPE_TAG, s) is True
 
-    @pytest.mark.parametrize("s", ["false", "False"])
+    @pytest.mark.parametrize("s", ["false", "False", "FALSE", "false\n"])
     def test_bool_false(self, s):
         assert var_module.process_typed_variable_substitution(BOOL_TYPE_TAG, s) is False
 
     @pytest.mark.parametrize("s", ["yes", "1"])
     def test_bool_invalid_raises(self, s):
-        with pytest.raises(Exception, match="Non-boolean"):
+        with pytest.raises(ValueError, match="is not true or false"):
             var_module.process_typed_variable_substitution(BOOL_TYPE_TAG, s)
 
     @pytest.mark.parametrize(
@@ -87,7 +104,10 @@ class TestProcessTypedVariableSubstitution:
             == expected
         )
 
-    @pytest.mark.parametrize("s", ['{"a": 1}', "not-a-list", "['single', 'quotes']"])
+    @pytest.mark.parametrize(
+        "s",
+        ['{"a": 1}', "not-a-list", "['single', 'quotes']", "[NaN]", "[1e400]"],
+    )
     def test_array_invalid_raises(self, s):
         with pytest.raises(Exception, match="array"):
             var_module.process_typed_variable_substitution(ARRAY_TYPE_TAG, s)
@@ -106,7 +126,9 @@ class TestProcessTypedVariableSubstitution:
             == expected
         )
 
-    @pytest.mark.parametrize("s", ["[1, 2]", "not-a-dict", "{'single': 'quotes'}"])
+    @pytest.mark.parametrize(
+        "s", ["[1, 2]", "not-a-dict", "{'single': 'quotes'}", '{"a": Infinity}']
+    )
     def test_table_invalid_raises(self, s):
         with pytest.raises(Exception, match="table"):
             var_module.process_typed_variable_substitution(TABLE_TYPE_TAG, s)
@@ -121,10 +143,83 @@ class TestProcessTypedVariableSubstitution:
             == expected
         )
 
-    def test_unknown_type_tag_returns_none(self):
-        assert (
-            var_module.process_typed_variable_substitution("unknown:", "value") is None
+    def test_unknown_type_tag_raises(self):
+        with pytest.raises(ValueError, match="'unknown:'"):
+            var_module.process_typed_variable_substitution("unknown:", "value")
+
+    def test_error_names_the_expression(self):
+        with pytest.raises(
+            ValueError, match=r"Cannot substitute '\{\{num:x:=abc\}\}': 'abc' is"
+        ):
+            var_module.process_variable_substitutions("{{num:x:=abc}}")
+
+
+class TestTypeTagWithinALongerString:
+    """
+    A type-tagged expression inside a longer string is checked as its type,
+    then written as text: as JSON, as every non-string value is held, and a
+    number as it was written.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        var_module.VARIABLE_SUBSTITUTIONS.update(
+            {
+                "b": "True",
+                "arr": '["p","q"]',
+                "tab": '{"k":"x"}',
+                "v": "1.10",
+                "nm": "My Job/1",
+            }
         )
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("flag={{bool:b}}", "flag=true"),
+            ("x={{array:arr}}", 'x=["p", "q"]'),
+            ("t={{table:tab}}", 't={"k": "x"}'),
+            ("n-{{num:v}}", "n-1.10"),
+            ("id-{{format_name:nm}}", "id-my_job-1"),
+        ],
+    )
+    def test_written_as_text(self, text, expected):
+        assert var_module.process_variable_substitutions(text) == expected
+
+    def test_still_checked_as_its_type(self):
+        with pytest.raises(ValueError, match="'hello' is not a number"):
+            var_module.process_variable_substitutions("n-{{num:myvar}}")
+
+
+class TestTypeTagOnAnUnresolvedName:
+    """
+    A type-tagged expression whose name is still undefined once its nested
+    parts are resolved is passed through, tag and all, as an untyped one is,
+    rather than converted as its own text.
+    """
+
+    @pytest.fixture(autouse=True)
+    def use_known_subs(self, patched_subs):
+        var_module.VARIABLE_SUBSTITUTIONS["y"] = "Y"
+
+    @pytest.mark.parametrize("tag", ["num:", "bool:", "array:", "table:"])
+    def test_passed_through(self, tag):
+        result = var_module.process_variable_substitutions(f"{{{{{tag}x_{{{{y}}}}}}}}")
+        assert result == f"{{{{{tag}x_Y}}}}"
+
+    def test_resolved_once_defined(self):
+        var_module.VARIABLE_SUBSTITUTIONS["x_Y"] = "7"
+        assert var_module.process_variable_substitutions("{{num:x_{{y}}}}") == 7
+
+    def test_warned_of_as_undefined(self, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", True)
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
+        warning = MagicMock()
+        monkeypatch.setattr(var_module, "print_warning", warning)
+        result = var_module.resolve_variables_in_string("{{num:x_{{y}}}}", "p")
+        assert result == "{{num:x_Y}}"
+        [call] = warning.call_args_list
+        assert "'{{num:x_Y}}' is not defined" in call.args[0]
 
 
 # ---------------------------------------------------------------------------

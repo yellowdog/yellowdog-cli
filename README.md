@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct  1 18:14:29 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 08:41:40 BST 2026 -->
 
 <!--te-->
 
@@ -779,6 +779,10 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 - In the processed JSON (or TOML), these values would become `5`, `2.5`, `true`, `[1,2,3]`, and `{"A": 100, "B": 200}`, respectively, converted from strings to their correct JSON types
 
 > **Note:** `array:` and `table:` values must be valid JSON. Use double-quoted strings, and `true`/`false`/`null` for booleans and null values.
+
+A `num:` value may be written in JSON's syntax or Python's, e.g. `5`, `-2.5`, `1e3`, `1E3` or `1_000`, but must be a finite number: `nan` and `inf` are refused, as they are inside an `array:` or `table:`, since JSON cannot carry them. A `bool:` value is `true` or `false` in any case, so `True` and `TRUE` are accepted too. A value that is not of its tag's type is an error naming the substitution, e.g. `Cannot substitute '{{num:count}}': 'abc' is not a number`.
+
+A type-tagged substitution that is only part of a string, e.g. `"--retries={{num:retries}}"` or `"--tags={{array:tags}}"`, is checked as its type and then written into the string as text: a number as it was written (`1.10` stays `1.10`), and a boolean, array or table as JSON (`true`, `["a", "b"]`).
 
 Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd-variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
 
