@@ -13,7 +13,7 @@ from functools import cache
 from os.path import abspath, dirname, isfile, join, normpath, relpath
 from random import choice
 from typing import TYPE_CHECKING, TypeAlias
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
@@ -111,11 +111,35 @@ def link_entity(base_url: str, entity: _EntityType) -> str:
     )
 
 
+def portal_netloc(api_netloc: str) -> str | None:
+    """
+    The Portal's network location for the API's: each hostname label that is
+    exactly 'api' becomes 'portal' ('api.yellowdog.ai' gives
+    'portal.yellowdog.ai'; a port is kept). None when there is no such label,
+    so that 'capital.example.com' or 'myapihost' is never rewritten.
+    """
+    labels = api_netloc.split(".")
+    portal = ["portal" if label.lower() == "api" else label for label in labels]
+    return None if portal == labels else ".".join(portal)
+
+
+def portal_base_url(api_url: str) -> str:
+    """
+    The Portal's address for an API URL: the API URL with its network
+    location rewritten by portal_netloc() where it names an 'api' host, and
+    otherwise exactly as it is, path included ('https://host/api' is left
+    as it is), less any trailing '/', query or fragment.
+    """
+    parts = urlsplit(api_url)
+    netloc = portal_netloc(parts.netloc) or parts.netloc
+    return urlunsplit((parts.scheme, netloc, parts.path.rstrip("/"), "", ""))
+
+
 def link(base_url: str, url_suffix: str = "", text: str | None = None) -> str:
-    url_parts = urlparse(base_url)
-    netloc = url_parts.netloc.replace("api", "portal")
-    base_url = url_parts.scheme + "://" + netloc
-    url = base_url + "/" + url_suffix
+    """
+    A link to a Portal page: 'url_suffix' under portal_base_url(base_url).
+    """
+    url = portal_base_url(base_url) + "/" + url_suffix
     if not text:
         text = url
     if text == url:

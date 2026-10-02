@@ -359,10 +359,34 @@ class TestLink:
         result = link("https://api.example.com")
         assert result == "https://portal.example.com/"
 
-    def test_path_stripped_from_base_url(self):
-        # link() extracts only scheme + netloc from base_url, replacing api→portal
-        result = link("https://api.example.com/ignored/path", "newpath")
-        assert result == "https://portal.example.com/newpath"
+    @pytest.mark.parametrize(
+        "api_url, portal",
+        [
+            (
+                "https://api.example.com/base/path",
+                "https://portal.example.com/base/path",
+            ),
+            ("https://host/api", "https://host/api"),
+            ("https://host/api/", "https://host/api"),
+        ],
+    )
+    def test_the_api_urls_path_is_kept_as_it_is(self, api_url, portal):
+        assert link(api_url, "newpath") == f"{portal}/newpath"
+
+    @pytest.mark.parametrize(
+        "api_url, portal",
+        [
+            ("https://API.example.com", "https://portal.example.com"),
+            ("https://api.eu.example.com", "https://portal.eu.example.com"),
+            ("https://api.example.com:8443", "https://portal.example.com:8443"),
+            # 'api' only inside a word is not the API host: left as it is
+            ("https://capital.example.com", "https://capital.example.com"),
+            ("https://myapihost.example.com", "https://myapihost.example.com"),
+            ("https://rapid.api.example.com", "https://rapid.portal.example.com"),
+        ],
+    )
+    def test_only_a_whole_api_label_is_rewritten(self, api_url, portal):
+        assert link(api_url, "#/compute/x") == f"{portal}/#/compute/x"
 
     def test_text_same_as_url_returns_url_only(self):
         url = "https://portal.example.com/path"

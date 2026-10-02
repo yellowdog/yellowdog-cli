@@ -17,6 +17,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
 )
 from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.misc_utils import portal_netloc
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
 from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import (
@@ -71,10 +72,7 @@ def _portal_url(url: str, account_name: str | None) -> str | None:
     if not account_name:
         return None
     parts = urlsplit(url)
-    netloc = ".".join(
-        "portal" if label.lower() == "api" else label
-        for label in parts.netloc.split(".")
-    )
+    netloc = portal_netloc(parts.netloc) or parts.netloc
     path = "/".join(
         "portal" if segment.lower() == "api" else segment
         for segment in parts.path.rstrip("/").split("/")
