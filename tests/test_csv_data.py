@@ -6,13 +6,18 @@ Functions that require API calls or full Work Requirement pipelines are
 out of scope for unit tests.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
 import yellowdog_cli.utils.csv_data as csv_module
+from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.csv_data import (
     CSVDataCache,
     CSVTaskData,
-    make_string_substitutions,
+    csv_expand_toml_tasks,
+    csv_variables_substitution,
+    get_csv_file_index,
     substitutions_present,
 )
 
@@ -46,52 +51,111 @@ def single_row_csv(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# make_string_substitutions
+# csv_variables_substitution
 # ---------------------------------------------------------------------------
 
 
-class TestMakeStringSubstitutions:
-    def test_plain_substitution(self):
-        result = make_string_substitutions("Hello <<name>>", "name", "World")
-        assert result == "Hello World"
+def _sub(prototype, **row):
+    return csv_variables_substitution(
+        prototype, list(row), list(row.values()), where="'tasks.csv' row 2"
+    )
 
-    def test_no_matching_var_unchanged(self):
-        result = make_string_substitutions("Hello <<other>>", "name", "World")
-        assert result == "Hello <<other>>"
+
+class TestCsvVariablesSubstitution:
+    """
+    A CSV row is substituted into the prototype Task's data, string by
+    string, never into its text: a value is only ever a value.
+    """
+
+    def test_plain_substitution(self):
+        assert _sub({"a": "Hello <<name>>"}, name="World") == {"a": "Hello World"}
+
+    def test_other_text_unchanged(self):
+        prototype = {"a": "<<other>> {{x}} <<num:other>>"}
+        assert _sub(prototype, name="World") == prototype
 
     def test_multiple_occurrences(self):
-        result = make_string_substitutions("<<x>> and <<x>>", "x", "val")
-        assert result == "val and val"
+        assert _sub({"a": "<<x>> and <<x>>"}, x="val") == {"a": "val and val"}
 
-    def test_num_type_tag_replaces_quoted_expression(self):
-        # '<<num:count>>' in the input should be replaced with the bare number
-        result = make_string_substitutions("'<<num:count>>'", "count", "7")
-        assert result == "7"
+    @pytest.mark.parametrize(
+        "value",
+        ["it's", r"C:\temp\new", "v', 'injected': 'yes", 'say "hi"', "<<y>>"],
+        ids=["apostrophe", "backslashes", "would-be-key", "quotes", "a-reference"],
+    )
+    def test_value_is_only_ever_a_value(self, value):
+        assert _sub({"a": "<<x>>"}, x=value, y="Y") == {"a": value}
 
-    def test_num_type_tag_invalid_value_raises(self):
-        with pytest.raises(Exception, match="Invalid number"):
-            make_string_substitutions("'<<num:count>>'", "count", "not-a-number")
+    def test_property_names_are_substituted(self):
+        prototype = {"environment": {"<<k>>": "<<v>>", "FIXED": "1"}}
+        assert _sub(prototype, k="KEY", v="value") == {
+            "environment": {"KEY": "value", "FIXED": "1"}
+        }
 
-    @pytest.mark.parametrize("value,expected", [("TRUE", "True"), ("False", "False")])
-    def test_bool_type_tag(self, value, expected):
-        result = make_string_substitutions("'<<bool:flag>>'", "flag", value)
-        assert result == expected
+    def test_other_values_and_lists(self):
+        prototype = {
+            "n": 5,
+            "flag": True,
+            "none": None,
+            "args": ["<<x>>", 3, ["<<x>>"]],
+        }
+        assert _sub(prototype, x="a") == {
+            "n": 5,
+            "flag": True,
+            "none": None,
+            "args": ["a", 3, ["a"]],
+        }
 
-    def test_bool_type_tag_invalid_raises(self):
-        with pytest.raises(Exception, match="Invalid Boolean"):
-            make_string_substitutions("'<<bool:flag>>'", "flag", "yes")
+    def test_prototype_is_not_changed(self):
+        prototype = {"args": ["<<x>>"]}
+        _sub(prototype, x="a")
+        assert prototype == {"args": ["<<x>>"]}
 
-    def test_format_name_type_tag(self):
-        result = make_string_substitutions(
-            "<<format_name:label>>", "label", "My Job/Run"
-        )
-        assert result == "my_job-run"
+    @pytest.mark.parametrize(
+        "text,value,expected",
+        [
+            ("<<num:x>>", "7", 7),
+            ("<<num:x>>", "2.5", 2.5),
+            ("<<num:x>>", "1.10", 1.1),
+            ("<<num:x>>", "1e3", 1000.0),
+            ("<<bool:x>>", "TRUE", True),
+            ("<<bool:x>>", "false ", False),
+            ("<<array:x>>", '["a", 1]', ["a", 1]),
+            ("<<array:x>>", "['a', True]", ["a", True]),
+            ("<<table:x>>", '{"k": "v"}', {"k": "v"}),
+            ("<<format_name:x>>", "My Job/Run", "my_job-run"),
+        ],
+    )
+    def test_typed_whole_value(self, text, value, expected):
+        assert _sub({"a": text}, x=value) == {"a": expected}
 
-    def test_format_name_in_larger_string(self):
-        result = make_string_substitutions(
-            "task-<<format_name:label>>-end", "label", "Test Case"
-        )
-        assert result == "task-test_case-end"
+    @pytest.mark.parametrize(
+        "text,value,expected",
+        [
+            ("n-<<num:x>>", "1.10", "n-1.10"),
+            ("f=<<bool:x>>", "True", "f=true"),
+            ("--tags=<<array:x>>", "['a', 'b']", '--tags=["a", "b"]'),
+            ("task-<<format_name:x>>-end", "Test Case", "task-test_case-end"),
+        ],
+    )
+    def test_typed_within_a_longer_string(self, text, value, expected):
+        assert _sub({"a": text}, x=value) == {"a": expected}
+
+    @pytest.mark.parametrize(
+        "text,value,reason",
+        [
+            ("<<num:count>>", "abc", "'abc' is not a number"),
+            ("<<num:count>>", "nan", "is not a finite number"),
+            ("n-<<num:count>>", "abc", "'abc' is not a number"),
+            ("<<bool:count>>", "yes", "'yes' is not true or false"),
+            ("<<array:count>>", "1, 2", "it is a tuple"),
+        ],
+    )
+    def test_invalid_value_names_file_row_and_column(self, text, value, reason):
+        with pytest.raises(ValueError) as raised:
+            _sub({"a": text}, count=value)
+        message = str(raised.value)
+        assert message.startswith("'tasks.csv' row 2, column 'count': ")
+        assert reason in message
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +172,9 @@ class TestSubstitutionsPresent:
             (["count"], "'<<num:count>>'", True),
             (["flag"], "'<<bool:flag>>'", True),
             (["label"], "<<format_name:label>>", True),
+            (["tags"], "<<array:tags>>", True),
+            (["env"], {"a": ["x", {"<<env>>": 1}]}, True),
+            (["env"], {"a": ["<<other>>"], "n": 5}, False),
             (["a", "b", "c"], "only <<b>> here", True),
             (["x", "y"], "<<z>> is not in the list", False),
             ([], "<<anything>>", False),
@@ -238,6 +305,84 @@ class TestCSVTaskData:
 # ---------------------------------------------------------------------------
 # CSVDataCache
 # ---------------------------------------------------------------------------
+
+
+class TestCSVFiles:
+    def test_byte_order_mark_is_not_part_of_the_first_heading(self, tmp_path):
+        # Excel's "CSV UTF-8" begins the file with one
+        csv_file = tmp_path / "excel.csv"
+        csv_file.write_bytes(b"\xef\xbb\xbfname,n\nalpha,1\n")
+        assert CSVTaskData(str(csv_file)).var_names == ["name", "n"]
+
+    def test_utf8_is_read_as_utf8(self, tmp_path):
+        csv_file = tmp_path / "accents.csv"
+        csv_file.write_bytes("name\ncaf\u00e9\n".encode())
+        assert list(CSVTaskData(str(csv_file))) == [["caf\u00e9"]]
+
+    def test_blank_lines_are_skipped(self, tmp_path):
+        csv_file = tmp_path / "blank.csv"
+        csv_file.write_text("name\na\n\nb\n")
+        assert list(CSVTaskData(str(csv_file))) == [["a"], ["b"]]
+
+    def test_quoted_line_break_is_kept(self, tmp_path):
+        csv_file = tmp_path / "multiline.csv"
+        csv_file.write_bytes(b'name,text\na,"one\r\ntwo"\n')
+        assert list(CSVTaskData(str(csv_file))) == [["a", "one\r\ntwo"]]
+
+    def test_empty_file_raises(self, tmp_path):
+        csv_file = tmp_path / "empty.csv"
+        csv_file.write_text("")
+        with pytest.raises(ValueError, match="is empty"):
+            CSVTaskData(str(csv_file))
+
+    def test_line_number_is_the_line_in_the_file(self, tmp_path):
+        csv_file = tmp_path / "lines.csv"
+        csv_file.write_text('name,text\na,"one\ntwo"\n\nb,x\n')
+        data = CSVTaskData(str(csv_file))
+        lines = []
+        for _ in data:
+            lines.append(data.line_number)
+        assert lines == [3, 5]  # A quoted line break and a blank line before b
+
+
+class TestWindowsPaths:
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            (r"C:\data\tasks.csv", (r"C:\data\tasks.csv", None)),
+            (r"C:\data\tasks.csv:2", (r"C:\data\tasks.csv", 1)),
+            (r"C:\data\tasks.csv:group-b", (r"C:\data\tasks.csv", 1)),
+        ],
+    )
+    def test_a_drive_letter_is_not_a_task_group(self, name, expected, monkeypatch):
+        warning = MagicMock()
+        monkeypatch.setattr(csv_module, "print_warning", warning)
+        groups = [{"name": "group-a"}, {"name": "group-b"}]
+        assert get_csv_file_index(name, groups) == expected
+        warning.assert_not_called()
+
+    def test_csv_without_a_specification_opens_the_whole_path(
+        self, tmp_path, monkeypatch
+    ):
+        # The suffix is parsed once; the file is the path before it
+        monkeypatch.setattr(
+            csv_module, "ARGS_PARSER", MagicMock(process_csv_only=False)
+        )
+        monkeypatch.setattr(csv_module, "print_info", MagicMock())
+        opened = []
+        real = csv_module.CSV_DATA_CACHE.get_csv_task_data
+
+        def _get(filename):
+            opened.append(filename)
+            return real(str(tmp_path / "tasks.csv"))
+
+        (tmp_path / "tasks.csv").write_text("x\na\n")
+        monkeypatch.setattr(csv_module.CSV_DATA_CACHE, "get_csv_task_data", _get)
+        wr = csv_expand_toml_tasks(
+            ConfigWorkRequirement(task_type="<<x>>"), r"C:\data\tasks.csv:1"
+        )
+        assert opened[0] == r"C:\data\tasks.csv"
+        assert wr["taskGroups"][0]["tasks"] == [{"taskType": "a"}]
 
 
 class TestCSVDataCache:

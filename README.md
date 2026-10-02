@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 08:53:44 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 09:03:20 BST 2026 -->
 
 <!--te-->
 
@@ -2074,7 +2074,9 @@ When the CSV file data is processed, the only substitutions made are those which
 
 All variable substitutions unrelated to the CSV file data are left unchanged, for subsequent processing by `yd-submit`.
 
-If the value to be inserted is a number (an integer or floating point value) or Boolean, the `<<num:my_number_var>>` and `<<bool:my_boolean_var>>` forms can be used in the JSON file. The substituted value will assume the nominated type rather than being a string. (The `array:` and `table:` prefixes are not currently supported for CSV substitutions.)
+If the value to be inserted is a number, a Boolean, an array or a table, the `<<num:my_number_var>>`, `<<bool:my_boolean_var>>`, `<<array:my_array_var>>` and `<<table:my_table_var>>` forms can be used in the JSON file, and `<<format_name:my_var>>` for a name. The value is converted exactly as in a `{{...}}` [substitution](#variable-substitutions), so the same spellings are accepted: a substitution that is a whole string assumes the nominated type rather than being a string, and one inside a longer string is checked as its type and written as text. A value that is not of its type is an error naming the CSV file, the line in it and the column, e.g. `'tasks.csv' line 7, column 'count': 'abc' is not a number`.
+
+A CSV value is substituted as it is, whatever it contains: an apostrophe, a quotation mark, a backslash in a Windows path, or text that looks like a substitution. Substitutions are also made in property names, e.g. `"environment": {"<<var_name>>": "<<var_value>>"}`. The CSV file is read as UTF-8, a byte order mark (which Excel's *CSV UTF-8* format writes) is ignored, and blank lines are skipped.
 
 ### Property Inheritance
 

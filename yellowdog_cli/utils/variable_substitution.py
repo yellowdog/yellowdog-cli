@@ -218,10 +218,10 @@ _TYPE_CONVERTERS = {
     TABLE_TYPE_TAG: _collection_of(dict, "table", '{"key": "value"}'),
     FORMAT_NAME_TYPE_TAG: lambda text: format_yd_name(text, add_prefix=False),
 }
-_TYPE_TAGS = tuple(_TYPE_CONVERTERS)
+TYPE_TAGS = tuple(_TYPE_CONVERTERS)
 _VARIABLE_REFERENCE = re.compile(
     "(?:"
-    + "|".join(re.escape(tag) for tag in _TYPE_TAGS)
+    + "|".join(re.escape(tag) for tag in TYPE_TAGS)
     + f")?({re.escape(ENV_VAR_SUB_PREFIX)}{ENV_VARIABLE_NAME_PATTERN}"
     + f"|{VARIABLE_NAME_PATTERN})"
 )
@@ -537,7 +537,7 @@ def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
             if VAR_OPENING_DELIMITER in inner:
                 _check(inner)
                 continue
-            for tag in _TYPE_TAGS:
+            for tag in TYPE_TAGS:
                 if inner.startswith(tag):
                     inner = inner[len(tag) :]
                     break
@@ -946,7 +946,7 @@ def process_variable_substitutions(
         # This prevents '{{num:=default}}' from being treated as a typed variable.
         m = re.match(
             f"^{re.escape(opening_delimiter)}"
-            f"({'|'.join(re.escape(tag) for tag in _TYPE_TAGS)})"
+            f"({'|'.join(re.escape(tag) for tag in TYPE_TAGS)})"
             f"(?!{re.escape(TYPE_TAG_DEFAULT_GUARD)})",
             element,
         )
@@ -999,7 +999,7 @@ def process_variable_substitutions(
         if len(elements) == 1:
             # The only element: the value itself, of the tag's type
             return value
-        return_str += _typed_value_as_text(type_tag, value, element_processed)
+        return_str += typed_value_as_text(type_tag, value, element_processed)
 
     return return_str
 
@@ -1164,7 +1164,7 @@ def process_typed_variable_substitution(
         raise ValueError(named + reason) from e
 
 
-def _typed_value_as_text(
+def typed_value_as_text(
     type_string: str, value: str | int | bool | float | list | dict, text: str
 ) -> str:
     """
@@ -1370,7 +1370,7 @@ def process_variable_substitutions_in_file_contents(
             for reference in _unsubstituted_references(
                 {label: file_contents}, prefix=prefix, postfix=postfix
             )
-            if not reference[0][len(opening) :].startswith(_TYPE_TAGS)
+            if not reference[0][len(opening) :].startswith(TYPE_TAGS)
         ]
     )
     return file_contents

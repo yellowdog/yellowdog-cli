@@ -4,28 +4,38 @@ Module for handling Task data supplied in CSV files.
 
 import csv
 import re
-from ast import literal_eval
 from collections import OrderedDict
 from json import load as json_load
 from os.path import join, relpath
+from typing import cast
 
 from tomli import load as toml_load
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
-from yellowdog_cli.utils.misc_utils import format_yd_name
 from yellowdog_cli.utils.printing import print_info, print_json, print_warning
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
-    BOOL_TYPE_TAG,
     CSV_VAR_CLOSING_DELIMITER,
     CSV_VAR_OPENING_DELIMITER,
-    FORMAT_NAME_TYPE_TAG,
-    NUMBER_TYPE_TAG,
 )
 from yellowdog_cli.utils.variable_substitution import (
+    TYPE_TAGS,
     load_jsonnet_file_with_variable_substitutions,
+    process_typed_variable_substitution,
     resolve_variables_insitu,
+    typed_value_as_text,
+)
+
+# A CSV substitution: '<<name>>', or with a type tag, '<<num:name>>'. The
+# name is a CSV heading, which may be anything but a delimiter or a line
+# break; one that is no heading in the file is not substituted
+_CSV_EXPRESSION = re.compile(
+    re.escape(CSV_VAR_OPENING_DELIMITER)
+    + "("
+    + "|".join(re.escape(tag) for tag in TYPE_TAGS)
+    + ")?"
+    + f"([^<>\n]*?){re.escape(CSV_VAR_CLOSING_DELIMITER)}"
 )
 
 
@@ -39,21 +49,32 @@ class CSVTaskData:
         Load the data from the CSV file; validate row lengths
         """
         self._csv_data = []
+        # The line each row ends on, as an editor numbers it
+        self._line_numbers: list[int] = []
         row_length = None
 
-        with open(csv_filename) as csv_file:
+        # 'utf-8-sig' reads UTF-8, dropping the byte order mark Excel's "CSV
+        # UTF-8" begins with, which would otherwise begin the first heading;
+        # newline='' is what the csv module needs to keep a quoted line break
+        with open(csv_filename, encoding="utf-8-sig", newline="") as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=",", skipinitialspace=True)
-            for row_number, row in enumerate(csv_reader):
+            for row in csv_reader:
+                if not row:
+                    continue  # A blank line
                 if row_length is None:
                     row_length = len(row)
-                else:
-                    if len(row) != row_length:
-                        raise ValueError(
-                            f"Malformed CSV file (row {row_number + 1}): "
-                            "all rows must have the same number of items"
-                        )
+                elif len(row) != row_length:
+                    raise ValueError(
+                        f"Malformed CSV file (line {csv_reader.line_num}): "
+                        "all rows must have the same number of items"
+                    )
                 self._csv_data.append(row)
+                self._line_numbers.append(csv_reader.line_num)
 
+        if not self._csv_data:
+            raise ValueError(
+                f"CSV file '{csv_filename}' is empty: it needs a row of headings"
+            )
         self._index = 0
         self._total_tasks = len(self._csv_data) - 1
 
@@ -81,6 +102,13 @@ class CSVTaskData:
         Rewind the list of Tasks to the beginning
         """
         self._index = 0
+
+    @property
+    def line_number(self) -> int:
+        """
+        The line in the file of the row last returned
+        """
+        return self._line_numbers[self._index]
 
     @property
     def total_tasks(self):
@@ -206,7 +234,7 @@ def perform_csv_task_expansion(
         csv_data = CSV_DATA_CACHE.get_csv_task_data(resolved_csv_file)
         task_prototype = task_group[TASKS][0]
 
-        if not substitutions_present(csv_data.var_names, str(task_prototype)):
+        if not substitutions_present(csv_data.var_names, task_prototype):
             print_warning(
                 "No CSV substitutions to apply to Task Group "
                 f"{index + 1}; not expanding Task list"
@@ -217,7 +245,10 @@ def perform_csv_task_expansion(
         for task_data in csv_data:
             generated_task_list.append(
                 csv_variables_substitution(
-                    task_prototype, csv_data.var_names, task_data
+                    task_prototype,
+                    csv_data.var_names,
+                    task_data,
+                    where=f"'{resolved_csv_file}' line {csv_data.line_number}",
                 )
             )
         task_group[TASKS] = generated_task_list
@@ -234,53 +265,77 @@ def perform_csv_task_expansion(
 
 
 def csv_variables_substitution(
-    task_prototype: dict, csv_var_names: list, task_data: list
+    task_prototype: dict, csv_var_names: list, task_data: list, where: str = ""
 ) -> dict:
     """
-    Helper function to substitute using CSV data only. Leave all other
-    substitutions unchanged.
+    A Task from the prototype, with one CSV row's values substituted, and all
+    other substitutions left unchanged. The values are substituted into the
+    prototype's data, string by string, never into its text, so that a value
+    -- an apostrophe, a backslash, a quote, '<<other>>' -- is only ever a
+    value. 'where' names the row, for an error.
     """
-    subs_dict = {var_name: task_data[i] for i, var_name in enumerate(csv_var_names)}
-    new_task = str(task_prototype)
-    for var_name, value in subs_dict.items():
-        new_task = make_string_substitutions(new_task, var_name, value)
-    return literal_eval(new_task)  # Convert back from string
+    row = dict(zip(csv_var_names, task_data))
+    return cast(dict, _substituted(task_prototype, row, where))
 
 
-def make_string_substitutions(input: str, var_name: str, value: str) -> str:
+def _substituted(data: object, row: dict[str, str], where: str) -> object:
     """
-    Helper function to make string substitutions for CSV variables only.
+    A copy of 'data' with the row's values substituted into its strings,
+    property names included.
     """
-    input = input.replace(
-        f"{CSV_VAR_OPENING_DELIMITER}{var_name}{CSV_VAR_CLOSING_DELIMITER}", value
-    )
+    if isinstance(data, dict):
+        return {
+            str(_substituted_string(key, row, where, as_text=True)): _substituted(
+                value, row, where
+            )
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_substituted(item, row, where) for item in data]
+    if isinstance(data, str):
+        return _substituted_string(data, row, where)
+    return data
 
-    num_sub_str = f"{CSV_VAR_OPENING_DELIMITER}{NUMBER_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-    if num_sub_str in input:
+
+def _substituted_string(
+    text: str, row: dict[str, str], where: str, as_text: bool = False
+) -> object:
+    """
+    A string with the row's values substituted. A string that is only a
+    type-tagged substitution is its value, of the tag's type, unless
+    'as_text' (a property name); one inside a longer string is written as
+    text, as a '{{...}}' one is.
+    """
+    matches = [m for m in _CSV_EXPRESSION.finditer(text) if m.group(2) in row]
+    if not matches:
+        return text
+
+    def _value(match: re.Match) -> object:
+        tag, name = match.group(1), match.group(2)
+        if tag is None:
+            return row[name]
         try:
-            float(value)
-        except ValueError:
-            raise ValueError(f"Invalid number substitution in CSV: '{value}'")
-        input = input.replace(f"'{num_sub_str}'", value)
+            return process_typed_variable_substitution(tag, row[name])
+        except ValueError as e:
+            raise ValueError(f"{where}, column '{name}': {e}") from e
 
-    bool_sub_str = f"{CSV_VAR_OPENING_DELIMITER}{BOOL_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-    if bool_sub_str in input:
-        if value.lower() == "true":
-            value = "True"
-        elif value.lower() == "false":
-            value = "False"
-        else:
-            raise ValueError(f"Invalid Boolean substitution in CSV: '{value}'")
-        input = input.replace(f"'{bool_sub_str}'", value)
+    if not as_text and len(matches) == 1 and matches[0].group(0) == text:
+        return _value(matches[0])
 
-    lower_sub_str = f"{CSV_VAR_OPENING_DELIMITER}{FORMAT_NAME_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-    if lower_sub_str in input:
-        input = input.replace(
-            f"{lower_sub_str}",
-            format_yd_name(value, add_prefix=False),
+    parts: list[str] = []
+    position = 0
+    for match in matches:
+        value = _value(match)
+        tag = match.group(1)
+        written = (
+            typed_value_as_text(tag, value, row[match.group(2)])  # type: ignore[arg-type]
+            if tag is not None
+            else cast(str, value)
         )
-
-    return input
+        parts += [text[position : match.start()], written]
+        position = match.end()
+    parts.append(text[position:])
+    return "".join(parts)
 
 
 USED_FILE_INDEXES = []
@@ -296,10 +351,13 @@ def get_csv_file_index(
     integer (zero-based).
     """
 
+    filename, suffix = split_csv_file_suffix(csv_filename)
+    if suffix is None:
+        return filename, None
+
     # Task Group number matching
-    matches = re.findall(r":\d+$", csv_filename)
-    if len(matches) == 1:
-        index = int(matches[0][1:])
+    if suffix.isdigit():
+        index = int(suffix)
         if not 0 < index <= len(task_groups):
             raise ValueError(
                 f"CSV file Task Group index '{index}' is outside Task Group range"
@@ -307,54 +365,54 @@ def get_csv_file_index(
         if index in USED_FILE_INDEXES:
             raise ValueError(f"CSV file Task Group index '{index}' used more than once")
         USED_FILE_INDEXES.append(index)
-        return csv_filename.replace(matches[0], ""), index - 1
+        return filename, index - 1
 
-    # Task Group name matching; filter on valid name patterns
-    matches = re.findall(":[a-z][a-z0-9_-]+$", csv_filename)
-    if len(matches) == 1:
-        for index, task_group in enumerate(task_groups):
-            try:
-                if matches[0][1:] == task_group[NAME]:
-                    return csv_filename.replace(matches[0], ""), index
-            except KeyError:
-                pass
-        else:
-            raise KeyError(f"No matches for Task Group name '{matches[0][1:]}'")
+    # Task Group name matching
+    for index, task_group in enumerate(task_groups):
+        if task_group.get(NAME) == suffix:
+            return filename, index
+    raise KeyError(f"No matches for Task Group name '{suffix}'")
 
-    # Invalid Task Group naming?
-    split_name = csv_filename.split(":")
-    if len(split_name) > 1:
-        print_warning(f"Possible invalid Task Group name/number '{split_name[-1]}'?")
 
+# A Task Group suffix: a number, or something that could be a name
+_TASK_GROUP_NUMBER = re.compile(r"\d+")
+_TASK_GROUP_NAME = re.compile(r"[a-z][a-z0-9_-]+")
+
+
+def split_csv_file_suffix(csv_filename: str) -> tuple[str, str | None]:
+    """
+    A CSV file name and its Task Group suffix, ':<number>' or ':<name>', or
+    None if it has none. Only the text after the last ':' can be one, so a
+    Windows drive letter ('C:\\data\\tasks.csv') is never taken for one; what
+    is neither, and not part of a path, is warned of as a possible mistake.
+    """
+    filename, separator, suffix = csv_filename.rpartition(":")
+    if not separator:
+        return csv_filename, None
+    if _TASK_GROUP_NUMBER.fullmatch(suffix) or _TASK_GROUP_NAME.fullmatch(suffix):
+        return filename, suffix
+    if "/" not in suffix and "\\" not in suffix:
+        print_warning(f"Possible invalid Task Group name/number '{suffix}'?")
     return csv_filename, None
 
 
-def substitutions_present(var_names: list[str], task_prototype: str) -> bool:
+def substitutions_present(var_names: list[str], task_prototype: object) -> bool:
     """
-    Check if there are any CSV substitutions present in the Task prototype.
+    Check if there are any CSV substitutions present in the Task prototype:
+    in any of its strings, property names included.
     """
-    return (
-        any(
-            f"{CSV_VAR_OPENING_DELIMITER}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-            in task_prototype
-            for var_name in var_names
-        )
-        or any(
-            f"{CSV_VAR_OPENING_DELIMITER}{NUMBER_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-            in task_prototype
-            for var_name in var_names
-        )
-        or any(
-            f"{CSV_VAR_OPENING_DELIMITER}{BOOL_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-            in task_prototype
-            for var_name in var_names
-        )
-        or any(
-            f"{CSV_VAR_OPENING_DELIMITER}{FORMAT_NAME_TYPE_TAG}{var_name}{CSV_VAR_CLOSING_DELIMITER}"
-            in task_prototype
-            for var_name in var_names
-        )
-    )
+    names = set(var_names)
+
+    def _present(data: object) -> bool:
+        if isinstance(data, str):
+            return any(m.group(2) in names for m in _CSV_EXPRESSION.finditer(data))
+        if isinstance(data, dict):
+            return any(_present(key) or _present(value) for key, value in data.items())
+        if isinstance(data, list):
+            return any(_present(item) for item in data)
+        return False
+
+    return _present(task_prototype)
 
 
 def csv_expand_toml_tasks(
@@ -367,7 +425,7 @@ def csv_expand_toml_tasks(
     wr_data = {TASK_GROUPS: [{TASKS: [{}]}]}
     task_proto = wr_data[TASK_GROUPS][0][TASKS][0]
     csv_data = CSV_DATA_CACHE.get_csv_task_data(
-        join(files_directory, csv_file.split(":")[0])
+        join(files_directory, split_csv_file_suffix(csv_file)[0])
     )
     # Populate properties that can be set at Task level only
     for config_value, config_name in [
@@ -388,7 +446,7 @@ def csv_expand_toml_tasks(
         # Note: not TASK_COUNT; count determined by CSV data
     ]:
         if config_value is not None and substitutions_present(
-            csv_data.var_names, str(config_value)
+            csv_data.var_names, config_value
         ):
             task_proto[config_name] = config_value
 
