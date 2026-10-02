@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 08:41:40 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 08:53:44 BST 2026 -->
 
 <!--te-->
 
@@ -778,7 +778,7 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 
 - In the processed JSON (or TOML), these values would become `5`, `2.5`, `true`, `[1,2,3]`, and `{"A": 100, "B": 200}`, respectively, converted from strings to their correct JSON types
 
-> **Note:** `array:` and `table:` values must be valid JSON. Use double-quoted strings, and `true`/`false`/`null` for booleans and null values.
+> **Note:** `array:` and `table:` values are JSON, with double-quoted strings and `true`/`false`/`null`, or the same in Python's spelling, with single-quoted strings and `True`/`False`/`None`, which can be easier to quote on a command line: `-v "tags=['a','b']"` rather than `-v 'tags=["a","b"]'`, and on Windows rather than `-v "tags=[\"a\",\"b\"]"`. Python's spelling is read only where the value is not JSON, and only for what JSON could hold: a table's keys must be strings, and a tuple, a set, bytes or a complex number is refused. In a TOML single-quoted (literal) string, which cannot contain a single quote, use JSON.
 
 A `num:` value may be written in JSON's syntax or Python's, e.g. `5`, `-2.5`, `1e3`, `1E3` or `1_000`, but must be a finite number: `nan` and `inf` are refused, as they are inside an `array:` or `table:`, since JSON cannot carry them. A `bool:` value is `true` or `false` in any case, so `True` and `TRUE` are accepted too. A value that is not of its tag's type is an error naming the substitution, e.g. `Cannot substitute '{{num:count}}': 'abc' is not a number`.
 

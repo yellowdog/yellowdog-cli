@@ -2,6 +2,7 @@
 Utilities for applying variable substitutions.
 """
 
+import ast
 import math
 import os
 import re
@@ -141,26 +142,67 @@ def _boolean(text: str) -> bool:
     raise ValueError("is not true or false")
 
 
-def _json_of(kind: type, description: str, example: str):
+def _json_form(value: object) -> None:
     """
-    A converter reading JSON text as a value of the given kind, refusing the
-    NaN and infinities json.loads() accepts but JSON does not.
+    Raise ValueError, saying why, unless a value read as a Python literal is
+    one JSON could have held: lists, tables with string keys, strings,
+    finite numbers, booleans and None. A tuple, a set, bytes or a complex
+    number has no JSON form, and a key that is not a string would be changed
+    by being written as JSON ('{1: "a"}' as '{"1": "a"}'), so each is refused.
+    """
+    match value:
+        case bool() | int() | str() | None:
+            return
+        case float():
+            _finite(value)
+        case list():
+            for item in value:
+                _json_form(item)
+        case dict():
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise ValueError(f"its key {key!r} is not a string")
+                _json_form(item)
+        case tuple():
+            raise ValueError("it is a tuple: write an array in '[' and ']'")
+        case _:
+            raise ValueError(f"a {type(value).__name__} has no JSON form")
+
+
+def _collection_of(kind: type, description: str, example: str):
+    """
+    A converter reading text as a value of the given kind: as JSON, refusing
+    the NaN and infinities json.loads() accepts but JSON does not, or where
+    that fails as a Python literal ("['a', True]"), which is easier to quote
+    on a command line, but only one JSON could have held. Python's spelling
+    never changes what JSON's means: it is read only where JSON fails, and
+    by ast.literal_eval(), which evaluates no code.
     """
 
     def _convert(text: str) -> list | dict:
         def _refuse(constant: str):
             raise ValueError(f"'{constant}' is not JSON")
 
+        not_one = f"is not a JSON {description}, e.g. {example}"
         try:
             value = json_loads(
                 text,
                 parse_constant=_refuse,
                 parse_float=lambda f: _finite(float(f)),
             )
-        except ValueError as e:
-            raise ValueError(f"is not a JSON {description}, e.g. {example} ({e})")
+        except ValueError as json_error:
+            try:
+                value = ast.literal_eval(text)
+            except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+                raise ValueError(
+                    f"{not_one}, nor in Python's spelling ({json_error})"
+                ) from json_error
+            try:
+                _json_form(value)
+            except ValueError as e:
+                raise ValueError(f"{not_one} ({e})") from None
         if not isinstance(value, kind):
-            raise ValueError(f"is not a JSON {description}, e.g. {example}")
+            raise ValueError(not_one)
         return value
 
     return _convert
@@ -172,8 +214,8 @@ def _json_of(kind: type, description: str, example: str):
 _TYPE_CONVERTERS = {
     NUMBER_TYPE_TAG: _number,
     BOOL_TYPE_TAG: _boolean,
-    ARRAY_TYPE_TAG: _json_of(list, "array", "[1, 2, 3]"),
-    TABLE_TYPE_TAG: _json_of(dict, "table", '{"key": "value"}'),
+    ARRAY_TYPE_TAG: _collection_of(list, "array", "[1, 2, 3]"),
+    TABLE_TYPE_TAG: _collection_of(dict, "table", '{"key": "value"}'),
     FORMAT_NAME_TYPE_TAG: lambda text: format_yd_name(text, add_prefix=False),
 }
 _TYPE_TAGS = tuple(_TYPE_CONVERTERS)

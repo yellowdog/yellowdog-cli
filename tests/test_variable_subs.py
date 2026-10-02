@@ -7,6 +7,7 @@ and process_variable_substitutions / process_variable_substitutions_in_file_cont
 """
 
 import json
+import re
 import subprocess
 import sys
 from unittest.mock import MagicMock
@@ -96,6 +97,12 @@ class TestProcessTypedVariableSubstitution:
             ('["a", "b", "c"]', ["a", "b", "c"]),
             ("[true, false]", [True, False]),
             ("[]", []),
+            # Python's spelling, where JSON's fails
+            ("['single', 'quotes']", ["single", "quotes"]),
+            ("[True, None]", [True, None]),
+            ("[1, 2,]", [1, 2]),
+            ("['\\x41']", ["A"]),
+            ("[{'k': [1, 'x']}]", [{"k": [1, "x"]}]),
         ],
     )
     def test_array_valid(self, s, expected):
@@ -106,7 +113,7 @@ class TestProcessTypedVariableSubstitution:
 
     @pytest.mark.parametrize(
         "s",
-        ['{"a": 1}', "not-a-list", "['single', 'quotes']", "[NaN]", "[1e400]"],
+        ['{"a": 1}', "not-a-list", "[NaN]", "[1e400]", "{'a': 1}", "'text'"],
     )
     def test_array_invalid_raises(self, s):
         with pytest.raises(Exception, match="array"):
@@ -118,6 +125,8 @@ class TestProcessTypedVariableSubstitution:
             ('{"a": 1}', {"a": 1}),
             ('{"x": {"y": 2}}', {"x": {"y": 2}}),
             ('{"flag": true}', {"flag": True}),
+            ("{'single': 'quotes'}", {"single": "quotes"}),
+            ("{'a': {'b': False, 'c': None}}", {"a": {"b": False, "c": None}}),
         ],
     )
     def test_table_valid(self, s, expected):
@@ -126,9 +135,7 @@ class TestProcessTypedVariableSubstitution:
             == expected
         )
 
-    @pytest.mark.parametrize(
-        "s", ["[1, 2]", "not-a-dict", "{'single': 'quotes'}", '{"a": Infinity}']
-    )
+    @pytest.mark.parametrize("s", ["[1, 2]", "not-a-dict", '{"a": Infinity}', "['a']"])
     def test_table_invalid_raises(self, s):
         with pytest.raises(Exception, match="table"):
             var_module.process_typed_variable_substitution(TABLE_TYPE_TAG, s)
@@ -142,6 +149,45 @@ class TestProcessTypedVariableSubstitution:
             var_module.process_typed_variable_substitution(FORMAT_NAME_TYPE_TAG, s)
             == expected
         )
+
+    @pytest.mark.parametrize(
+        "tag,s,reason",
+        [
+            # What JSON has no form for, refused rather than changed
+            (ARRAY_TYPE_TAG, "1, 2", "a tuple"),
+            (ARRAY_TYPE_TAG, "(1, 2)", "a tuple"),
+            (ARRAY_TYPE_TAG, "[b'x']", "bytes"),
+            (ARRAY_TYPE_TAG, "[1j]", "complex"),
+            (ARRAY_TYPE_TAG, "[[1e400]]", "not a finite number"),
+            (TABLE_TYPE_TAG, "{1, 2}", "set"),
+            (TABLE_TYPE_TAG, "{1: 'a'}", "key 1 is not a string"),
+            (TABLE_TYPE_TAG, "{'a': {2: 'b'}}", "key 2 is not a string"),
+        ],
+    )
+    def test_python_literal_without_a_json_form_raises(self, tag, s, reason):
+        with pytest.raises(ValueError, match=re.escape(reason)):
+            var_module.process_typed_variable_substitution(tag, s)
+
+    @pytest.mark.parametrize("s", ["[float('nan')]", "[__import__('os')]"])
+    def test_python_literal_is_never_evaluated_as_code(self, s):
+        with pytest.raises(ValueError, match="nor in Python's spelling"):
+            var_module.process_typed_variable_substitution(ARRAY_TYPE_TAG, s)
+
+    def test_neither_spelling_reports_the_json_error(self):
+        with pytest.raises(ValueError) as raised:
+            var_module.process_typed_variable_substitution(ARRAY_TYPE_TAG, "[1, 2")
+        message = str(raised.value)
+        assert (
+            "is not a JSON array, e.g. [1, 2, 3], nor in Python's spelling" in message
+        )
+        assert "Expecting" in message  # json.loads()'s reason
+
+    def test_python_spelling_within_a_longer_string_is_written_as_json(
+        self, patched_subs
+    ):
+        var_module.VARIABLE_SUBSTITUTIONS["tags"] = "['a', True]"
+        result = var_module.process_variable_substitutions("--tags={{array:tags}}")
+        assert result == '--tags=["a", true]'
 
     def test_unknown_type_tag_raises(self):
         with pytest.raises(ValueError, match="'unknown:'"):
