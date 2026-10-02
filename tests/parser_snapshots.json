@@ -752,7 +752,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,

@@ -53,6 +53,8 @@ NODE_ID = "ydid:node:000000:44444444-4444-4444-4444-444444444444"
 CR_ID = "ydid:compreq:000000:55555555-5555-5555-5555-555555555555"
 TASK_ID = "ydid:task:000000:66666666-6666-6666-6666-666666666666"
 ALLOWANCE_ID = "ydid:allow:000000:77777777-7777-7777-7777-777777777777"
+ALLOWANCE_ID_2 = "ydid:allow:000000:88888888-8888-8888-8888-888888888888"
+ALLOWANCE_ID_3 = "ydid:allow:000000:99999999-9999-9999-9999-999999999999"
 INSTANCE_ID = "i-0123456789abcdef0"
 
 _DEFAULTS = {
@@ -599,10 +601,87 @@ class TestBoost:
         out, _, _ = run(
             yd_boost, boost_hours=2, allowance_list=[ALLOWANCE_ID, "not-an-id"]
         )
+        # The mock client's Allowance has no number of remaining hours
         assert out[0] == _action(
-            ALLOWANCE_ID, None, "allowances", "boost", "boosted", hours=2
+            ALLOWANCE_ID,
+            None,
+            "allowances",
+            "boost",
+            "boosted",
+            hours=2,
+            remainingHours=None,
         )
         assert out[1]["name"] == "not-an-id" and out[1]["outcome"] == "failed"
+
+    def test_remaining_hours_are_recorded(self, run):
+        client = MagicMock()
+        client.allowances_client.boost_allowance_by_id.return_value = SimpleNamespace(
+            id=ALLOWANCE_ID, remainingHours=12.5
+        )
+        out, _, _ = run(
+            yd_boost, client=client, boost_hours=2, allowance_list=[ALLOWANCE_ID]
+        )
+        assert out[0]["remainingHours"] == 12.5
+
+    def test_a_repeated_id_is_boosted_once(self, run):
+        out, err, client = run(
+            yd_boost, boost_hours=2, allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID]
+        )
+        boost = client.allowances_client.boost_allowance_by_id
+        assert boost.call_count == 1
+        assert [item["outcome"] for item in out] == ["boosted"]
+        assert "Ignoring 1 duplicate Allowance ID(s)" in err
+
+    def test_an_authentication_failure_stops_the_rest(self, run):
+        response = Response()
+        response.status_code = 401
+        client = MagicMock()
+        boost = client.allowances_client.boost_allowance_by_id
+        boost.side_effect = HTTPError("401 Unauthorized", response=response)
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2, ALLOWANCE_ID_3],
+        )
+        assert boost.call_count == 1
+        assert [item["outcome"] for item in out] == ["failed", "skipped", "skipped"]
+        assert out[1]["error"].startswith("not attempted:")
+        # Still a per-item failure: exit 1, the cause in the record
+        assert run.exit_code == 1
+
+    def test_a_failure_of_one_allowance_does_not_stop_the_rest(self, run):
+        response = Response()
+        response.status_code = 404
+        client = MagicMock()
+        boost = client.allowances_client.boost_allowance_by_id
+        boost.side_effect = [HTTPError("404", response=response), MagicMock()]
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert boost.call_count == 2
+        assert [item["outcome"] for item in out] == ["failed", "boosted"]
+        assert run.exit_code == 1
+
+    @pytest.mark.parametrize(
+        "hours, shown",
+        [(1, "1 hour"), (10, "10 hours"), (2.5, "2.50 hours"), (1000, "1,000 hours")],
+    )
+    def test_hours_are_worded_by_number(self, hours, shown):
+        assert yd_boost._hours(hours) == shown
+
+    @pytest.mark.parametrize("hours", ["0", "-5"])
+    def test_hours_below_one_are_a_usage_error(self, hours, capsys):
+        from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+
+        parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
+        with pytest.raises(SystemExit) as exit_info:
+            parser.parse_args([hours, ALLOWANCE_ID])
+        assert exit_info.value.code == 2
+        assert "must be a positive integer" in capsys.readouterr().err
 
     def test_declined_is_skipped(self, run):
         out, _, _ = run(

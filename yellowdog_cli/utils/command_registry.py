@@ -1047,8 +1047,8 @@ COMMANDS["yd-application"] = Command(
 BOOST_HOURS = option(
     "boost_hours",
     metavar="<boost hours>",
-    type=int,
-    help="the number of hours to boost the allowance by",
+    type=positive_int,
+    help="the number of hours to boost the allowance by (at least 1)",
 )
 ALLOWANCES = option(
     "allowances",
