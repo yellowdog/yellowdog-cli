@@ -4,7 +4,9 @@
 A script for reporting on the details of the Application being used.
 """
 
+import sys
 from typing import Any, cast
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import ApplicationDetails
@@ -14,7 +16,9 @@ from yellowdog_cli.utils.entity_utils import (
     get_application_details,
     get_application_group_summaries,
 )
+from yellowdog_cli.utils.exit_codes import classify
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
+from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import (
     ARGS_PARSER,
     CLIENT,
@@ -31,25 +35,54 @@ def main():
 def report_application():
     """
     Report the details of the Application, as JSON or as a readable report.
+
+    The groups and roles are left out (null in the JSON) when they can't be
+    determined. Lacking the permission to look them up is an ordinary state
+    for an Application, and is reported as such; any other failure is warned
+    of, and exits with the failure's exit code once the rest is reported.
     """
     application_details: ApplicationDetails = get_application_details(CLIENT)
     portal_url = _portal_url(CONFIG_COMMON.url, application_details.accountName)
     groups, roles, error = _groups_and_roles(cast(str, application_details.id))
+    exit_code = None if error is None else classify(error)
+    permission_denied = exit_code == ExitCode.PERMISSION
 
     if ARGS_PARSER.json_output:
         _print_json(application_details, portal_url, groups, roles)
     else:
-        _print_report(application_details, portal_url, groups, roles, error)
+        _print_report(application_details, portal_url, groups, roles, permission_denied)
+
+    if error is not None and not permission_denied:
+        print_warning(f"Unable to determine groups and roles: {error}")
+        if ARGS_PARSER.debug:
+            raise error
+        sys.exit(exit_code)
 
 
 def _portal_url(url: str, account_name: str | None) -> str | None:
     """
     The Portal sign-in URL for the account, or None when it can't be derived
-    from the configured API URL.
+    from the configured API URL. The Portal's URL is the API's with each
+    hostname label and path segment that is exactly 'api' replaced by
+    'portal' (so 'https://api.yellowdog.ai' gives
+    'https://portal.yellowdog.ai'); a URL with no such label or segment is
+    not in a form the Portal's URL can be derived from.
     """
-    if "api" not in url:
+    if not account_name:
         return None
-    return f"{url.replace('api', 'portal')}/#/signin?account={account_name}"
+    parts = urlsplit(url)
+    netloc = ".".join(
+        "portal" if label.lower() == "api" else label
+        for label in parts.netloc.split(".")
+    )
+    path = "/".join(
+        "portal" if segment.lower() == "api" else segment
+        for segment in parts.path.rstrip("/").split("/")
+    )
+    if netloc == parts.netloc and path == parts.path.rstrip("/"):
+        return None
+    portal = urlunsplit((parts.scheme, netloc, path, "", ""))
+    return f"{portal}/#/signin?account={quote(account_name, safe='')}"
 
 
 def _groups_and_roles(
@@ -99,12 +132,14 @@ def _print_report(
     portal_url: str | None,
     groups: list[str] | None,
     roles: dict | None,
-    error: Exception | None,
+    permission_denied: bool,
 ):
     """
-    Print the Application's details as a readable report.
+    Print the Application's details as a readable report. The groups and
+    roles are left out when they can't be determined, with a line saying so
+    when that is for want of permission.
     """
-    print()
+    print_simple(override_quiet=True)
     print_simple(
         f"  Application name:                  {application_details.name}",
         override_quiet=True,
@@ -151,32 +186,27 @@ def _print_report(
             override_quiet=True,
         )
 
-    if error is not None:
-        if "Forbidden" in str(error):
-            print_simple(
-                "  Groups and roles:                  "
-                "Cannot be determined due to application permissions",
-                override_quiet=True,
-            )
-        else:
-            print_warning(f"Unable to determine groups and roles: {error}")
-        print()
-        return
-
-    print_simple(
-        f"  In group(s):                       {', '.join(groups or [])}",
-        override_quiet=True,
-    )
-    for i, (role, namespaces) in enumerate((roles or {}).items()):
-        msg = f"{role} [{', '.join(namespaces)}]"
-        if i == 0:
-            print_simple(
-                f"  With role(s) [in namespace(s)]:    {msg}",
-                override_quiet=True,
-            )
-        else:
-            print_simple(
-                f"                                     {msg}",
-                override_quiet=True,
-            )
-    print()
+    if permission_denied:
+        print_simple(
+            "  Groups and roles:                  "
+            "Cannot be determined due to application permissions",
+            override_quiet=True,
+        )
+    elif groups is not None:
+        print_simple(
+            f"  In group(s):                       {', '.join(groups)}",
+            override_quiet=True,
+        )
+        for i, (role, namespaces) in enumerate((roles or {}).items()):
+            msg = f"{role} [{', '.join(namespaces)}]" if namespaces else role
+            if i == 0:
+                print_simple(
+                    f"  With role(s) [in namespace(s)]:    {msg}",
+                    override_quiet=True,
+                )
+            else:
+                print_simple(
+                    f"                                     {msg}",
+                    override_quiet=True,
+                )
+    print_simple(override_quiet=True)

@@ -2,7 +2,9 @@
 Unit tests for yd-application's output.
 
 Covers:
-  - report_application()   the '--json' payload and the human-readable report
+  - report_application()   the '--json' payload and the human-readable report,
+                           and what a failed groups/roles lookup does to each
+  - _portal_url()          deriving the Portal's sign-in URL from the API's
 """
 
 from json import loads as json_loads
@@ -10,14 +12,33 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from requests import ConnectionError as RequestsConnectionError
+from requests import HTTPError, Response
 from yellowdog_client.model import ApplicationDetails, Feature
 
 import yellowdog_cli.application as application_module
-from yellowdog_cli.application import report_application
+from yellowdog_cli.application import _portal_url, report_application
+from yellowdog_cli.utils.settings import ExitCode
 
 API_URL = "https://api.yellowdog.ai"
 NON_API_URL = "https://yd.example.com"
 APP_ID = "ydid:app:000000:1d0a6a5c-3f9e-4d1e-8a2e-3a2f1b0c9d8e"
+
+
+def _http_error(status_code: int, text: str) -> HTTPError:
+    response = Response()
+    response.status_code = status_code
+    return HTTPError(text, response=response)
+
+
+# As the SDK raises them: the Platform's MissingPermissionException is not
+# one of the SDK's error types, so it arrives as a plain HTTPError
+FORBIDDEN = _http_error(
+    403,
+    "403 Client Error: Forbidden for url: https://api.yellowdog.ai/x "
+    'Response Body: {"errorType": "MissingPermissionException"}',
+)
+CONNECTION_RESET = RequestsConnectionError("connection reset")
 
 
 def _application_details() -> ApplicationDetails:
@@ -35,6 +56,7 @@ def _application_details() -> ApplicationDetails:
 def _args(json_output: bool) -> MagicMock:
     args = MagicMock()
     args.json_output = json_output
+    args.debug = False
     args.quiet = False
     args.count_only = False
     args.no_format = True
@@ -50,6 +72,7 @@ def _run(
     groups: list[str] | None = None,
     roles: dict | None = None,
     groups_error: Exception | None = None,
+    debug: bool = False,
 ) -> str:
     """
     Run report_application() with the platform lookups stubbed, and return
@@ -71,6 +94,7 @@ def _run(
         mock_roles.return_value = roles
 
     args = _args(json_output)
+    args.debug = debug
     with (
         patch.object(application_module, "ARGS_PARSER", args),
         patch.object(application_module, "CLIENT", MagicMock()),
@@ -139,16 +163,24 @@ class TestJsonOutput:
         payload = json_loads(_run(capsys, json_output=True, url=NON_API_URL))
         assert payload["portalUrl"] is None
 
-    @pytest.mark.parametrize(
-        "error",
-        [Exception("Forbidden"), Exception("connection reset")],
-    )
-    def test_groups_and_roles_are_null_when_they_cannot_be_determined(
-        self, capsys, error
-    ):
-        payload = json_loads(_run(capsys, json_output=True, groups_error=error))
+    def test_groups_and_roles_are_null_without_the_permission_to_see_them(self, capsys):
+        output = _run(capsys, json_output=True, groups_error=FORBIDDEN)
+        payload = json_loads(output)
         assert payload["groups"] is None
         assert payload["roles"] is None
+
+    def test_any_other_failure_is_null_with_a_warning_and_its_exit_code(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            _run(capsys, json_output=True, groups_error=CONNECTION_RESET)
+        assert raised.value.code == ExitCode.CONNECTION
+        captured = capsys.readouterr()
+        payload = json_loads(captured.out)  # the document alone, on stdout
+        assert payload["groups"] is None
+        assert payload["roles"] is None
+        assert payload["name"] == "my-app"
+        assert "Unable to determine groups and roles: connection reset" in (
+            captured.err
+        )
 
     def test_no_groups_is_distinguishable_from_undeterminable_groups(self, capsys):
         payload = json_loads(_run(capsys, json_output=True, groups=[], roles={}))
@@ -183,13 +215,88 @@ class TestHumanReadableReport:
         assert "Portal URL:" not in output
 
     def test_report_explains_a_forbidden_groups_lookup(self, capsys):
-        output = _run(
-            capsys, json_output=False, groups_error=Exception("Forbidden: nope")
-        )
+        output = _run(capsys, json_output=False, groups_error=FORBIDDEN)
         assert "Cannot be determined due to application permissions" in output
+        assert "Unable to determine" not in output
 
-    def test_report_warns_on_any_other_groups_failure(self, capsys):
-        output = _run(
-            capsys, json_output=False, groups_error=Exception("connection reset")
-        )
+    def test_report_warns_on_any_other_groups_failure_and_exits(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            _run(capsys, json_output=False, groups_error=CONNECTION_RESET)
+        assert raised.value.code == ExitCode.CONNECTION
+        output = capsys.readouterr().out
+        assert "Application name:" in output  # the rest is still reported
+        assert "In group(s):" not in output
+        assert "due to application permissions" not in output
         assert "Unable to determine groups and roles: connection reset" in output
+
+    def test_an_unclassified_failure_exits_1(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            _run(capsys, json_output=False, groups_error=Exception("odd"))
+        assert raised.value.code == ExitCode.FAILURE
+
+    def test_debug_raises_the_failure_for_its_traceback(self, capsys):
+        with pytest.raises(RequestsConnectionError):
+            _run(
+                capsys,
+                json_output=False,
+                groups_error=CONNECTION_RESET,
+                debug=True,
+            )
+
+    def test_report_with_no_groups_or_roles(self, capsys):
+        output = _run(capsys, json_output=False, groups=[], roles={})
+        assert "In group(s):" in output
+        assert "With role(s)" not in output
+
+    def test_a_role_with_no_namespaces_has_no_empty_brackets(self, capsys):
+        output = _run(capsys, json_output=False, roles={"VIEWER": []})
+        assert "VIEWER" in output
+        assert "VIEWER []" not in output
+
+
+# ---------------------------------------------------------------------------
+# The Portal URL
+# ---------------------------------------------------------------------------
+
+
+class TestPortalUrl:
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("https://api.yellowdog.ai", "https://portal.yellowdog.ai"),
+            ("https://api.yellowdog.ai/", "https://portal.yellowdog.ai"),
+            ("https://API.yellowdog.ai", "https://portal.yellowdog.ai"),
+            ("https://api.eu.yellowdog.ai", "https://portal.eu.yellowdog.ai"),
+            ("https://yd.example.com/api", "https://yd.example.com/portal"),
+            ("https://yd.example.com/api/", "https://yd.example.com/portal"),
+            ("https://api.example.com:8443", "https://portal.example.com:8443"),
+        ],
+    )
+    def test_api_label_or_segment_becomes_portal(self, url, expected):
+        assert _portal_url(url, "acct") == f"{expected}/#/signin?account=acct"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://yd.example.com",
+            "https://capital.example.com/rapid",
+            "https://myapihost.example.com",
+            "https://example.com/apis",
+        ],
+    )
+    def test_api_only_inside_a_word_is_not_derivable(self, url):
+        assert _portal_url(url, "acct") is None
+
+    def test_only_whole_labels_and_segments_are_replaced(self):
+        assert _portal_url("https://api.capital.example.com/rapid", "acct") == (
+            "https://portal.capital.example.com/rapid/#/signin?account=acct"
+        )
+
+    @pytest.mark.parametrize("account_name", [None, ""])
+    def test_no_account_name_is_not_derivable(self, account_name):
+        assert _portal_url(API_URL, account_name) is None
+
+    def test_the_account_name_is_url_encoded(self):
+        assert _portal_url(API_URL, "a b&c") == (
+            "https://portal.yellowdog.ai/#/signin?account=a%20b%26c"
+        )

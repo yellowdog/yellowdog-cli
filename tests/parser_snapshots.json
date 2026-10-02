@@ -483,34 +483,6 @@
     },
     {
       "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
       "const": true,
       "default": false,
       "dest": "json",

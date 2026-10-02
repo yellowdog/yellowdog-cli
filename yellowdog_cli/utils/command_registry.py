@@ -1034,11 +1034,8 @@ COMMANDS["yd-application"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        NAMESPACE,
-        TAG,
         JSON.variant(help="emit the Application's details as JSON"),
     ),
-    requires_namespace_and_tag=True,
     tool=ToolKind.READ_ONLY,
 )
 
