@@ -74,7 +74,6 @@ from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variable_substitution import (
     load_json_file_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
-    resolve_filename,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 
@@ -124,7 +123,6 @@ def main():
     )
 
     if wp_json_file is not None:
-        wp_json_file = resolve_filename(files_directory, wp_json_file)
         print_info(f"Loading Worker Pool data from: '{wp_json_file}'")
         create_worker_pool_from_json(wp_json_file)
     elif ARGS_PARSER.validate:

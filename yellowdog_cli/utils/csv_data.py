@@ -7,7 +7,7 @@ import re
 from ast import literal_eval
 from collections import OrderedDict
 from json import load as json_load
-from os.path import relpath
+from os.path import join, relpath
 
 from tomli import load as toml_load
 
@@ -25,7 +25,6 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.variable_substitution import (
     load_jsonnet_file_with_variable_substitutions,
-    resolve_filename,
     resolve_variables_insitu,
 )
 
@@ -135,7 +134,7 @@ def load_json_file_with_csv_task_expansion(
     files. Return the expanded and variables-processed Work Requirement data.
     """
 
-    with open(resolve_filename(files_directory, json_file)) as f:
+    with open(json_file) as f:
         wr_data = json_load(f)
 
     return perform_csv_task_expansion(wr_data, csv_files, files_directory)
@@ -149,9 +148,7 @@ def load_jsonnet_file_with_csv_task_expansion(
     files. Return the expanded and variables-processed Work Requirement data.
     """
 
-    wr_data = load_jsonnet_file_with_variable_substitutions(
-        resolve_filename(files_directory, jsonnet_file)
-    )
+    wr_data = load_jsonnet_file_with_variable_substitutions(jsonnet_file)
     return perform_csv_task_expansion(wr_data, csv_files, files_directory)
 
 
@@ -164,7 +161,7 @@ def load_toml_file_with_csv_task_expansion(
     data.
     """
 
-    with open(resolve_filename(files_directory, toml_file), "rb") as f:
+    with open(toml_file, "rb") as f:
         wr_data = toml_load(f)
 
     return perform_csv_task_expansion(wr_data, csv_files, files_directory)
@@ -191,7 +188,9 @@ def perform_csv_task_expansion(
         if index is None:
             index = counter
 
-        resolved_csv_file = relpath(resolve_filename(files_directory, csv_file))
+        # Named from the files directory, as every file a specification
+        # refers to is (the specification itself is named from the current one)
+        resolved_csv_file = relpath(join(files_directory, csv_file))
 
         task_group = wr_data[TASK_GROUPS][index]
         print_info(
@@ -368,7 +367,7 @@ def csv_expand_toml_tasks(
     wr_data = {TASK_GROUPS: [{TASKS: [{}]}]}
     task_proto = wr_data[TASK_GROUPS][0][TASKS][0]
     csv_data = CSV_DATA_CACHE.get_csv_task_data(
-        resolve_filename(files_directory, csv_file.split(":")[0])
+        join(files_directory, csv_file.split(":")[0])
     )
     # Populate properties that can be set at Task level only
     for config_value, config_name in [

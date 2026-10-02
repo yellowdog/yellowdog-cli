@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
 from os import chdir, getcwd
-from os.path import abspath, exists
+from os.path import abspath, exists, join
 from pathlib import Path
 from time import sleep
 from typing import cast
@@ -73,7 +73,6 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions_in_file_contents,
-    resolve_filename,
     resolve_variables_insitu,
     warn_of_undefined_variables,
 )
@@ -901,7 +900,7 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
     text, so no substitution pass walks it: an undefined variable left in it
     is reported here, by file.
     """
-    with open(resolve_filename(files_directory, filename)) as f:
+    with open(join(files_directory, filename)) as f:
         contents = process_variable_substitutions_in_file_contents(
             f.read(), source=filename
         )

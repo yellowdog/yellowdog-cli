@@ -1063,18 +1063,8 @@ def process_typed_variable_substitution(
     return None
 
 
-def resolve_filename(files_directory: str, filename: str) -> str:
-    """
-    Check whether 'files_directory' is redundant.
-    This is a suboptimal approach, but works for now.
-    """
-    if os.path.dirname(os.path.abspath(filename)) == os.path.abspath(files_directory):
-        return filename
-    return os.path.join(files_directory, filename)
-
-
 def load_json_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = "", files_directory: str = ""
+    filename: str, prefix: str = "", postfix: str = ""
 ) -> dict:
     """
     Takes a JSON filename and returns a dictionary with its variable
@@ -1089,7 +1079,7 @@ def load_json_file_with_variable_substitutions(
     """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
-    with open(resolve_filename(files_directory, filename)) as f:
+    with open(filename) as f:
         file_contents = f.read()
     try:
         result = json_loads(file_contents)
@@ -1145,7 +1135,6 @@ def load_jsonnet_file_with_variable_substitutions(
     filename: str,
     prefix: str = "",
     postfix: str = "",
-    files_directory: str = "",
     exit_on_dry_run=True,
 ) -> dict:
     """
@@ -1156,7 +1145,7 @@ def load_jsonnet_file_with_variable_substitutions(
     from _jsonnet import evaluate_file
 
     with VariableSubstitutedJsonnetFile(
-        filename=resolve_filename(files_directory, filename),
+        filename=filename,
         prefix=prefix,
         postfix=postfix,
     ) as preprocessed_filename:
@@ -1186,13 +1175,13 @@ def load_jsonnet_file_with_variable_substitutions(
 
 
 def load_toml_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = "", files_directory: str = ""
+    filename: str, prefix: str = "", postfix: str = ""
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
     substitutions processed.
     """
-    with open(resolve_filename(files_directory, filename), "rb") as f:
+    with open(filename, "rb") as f:
         config = toml_load(f)
 
     # Add any variable substitutions in the TOML file before processing the

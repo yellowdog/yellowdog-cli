@@ -3565,7 +3565,7 @@ Key options:
 - `--pause-between-batches`/`-P [<seconds>]` — pause between batch submissions; with no interval, user input is required to advance. Only valid when `--parallel-batches` is `1`
 - `--overwrite`/`-O` — overwrite a file that already exists at the remote destination; by default, existing files are skipped
 - `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file
-- `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found
+- `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found; a relative path in the specification (a `taskDataFile`, a CSV file) is found there, while the specification file itself is always named from the current directory
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the created Work Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--progress`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
@@ -3706,7 +3706,7 @@ Once provisioned, the Worker Pool will appear in the **Workers** tab in the Yell
 
 Key options:
 - `--target`/`-T <n>` — override the `targetInstanceCount` from the specification or configuration
-- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
+- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found; a relative path in the specification (a `userDataFile`) is found there, while the specification file itself is always named from the current directory
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Specification Schemas](#specification-schemas))

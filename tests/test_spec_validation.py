@@ -407,6 +407,49 @@ class TestSubmit:
         assert "must be integer" in err  # The errors, on stderr
         client.work_client.add_work_requirement.assert_not_called()
 
+    @pytest.mark.parametrize("absolute", [False, True])
+    def test_content_path_holds_the_files_not_the_specification(
+        self, submit, tmp_path, monkeypatch, absolute
+    ):
+        # The specification is named from the current directory and its
+        # taskDataFile found in --content-path, wherever each of them is
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "input.txt").write_text("hello")
+        spec = {
+            "taskGroups": [
+                {"tasks": [{"taskType": "bash", "taskDataFile": "input.txt"}]}
+            ]
+        }
+        wr_file = _write(tmp_path / "specs", "wr.json", spec)
+        _, err, client = submit(
+            wr_file if absolute else "specs/wr.json", content_path="data"
+        )
+        assert submit.run.exit_code == 0, err
+        [call] = client.work_client.add_tasks_to_task_group_by_name.call_args_list
+        assert [task.taskData for task in call.args[3]] == ["hello"]
+
+    def test_task_data_file_is_found_beside_the_specification(
+        self, submit, tmp_path, monkeypatch
+    ):
+        # In a directory named as the specification's: the file it names
+        # there, not the one the same name finds from the current directory
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs" / "specs").mkdir(parents=True)
+        (tmp_path / "specs" / "input.json").write_text("from the current directory")
+        (tmp_path / "specs" / "specs" / "input.json").write_text("beside the spec")
+        spec = {
+            "taskGroups": [
+                {"tasks": [{"taskType": "bash", "taskDataFile": "specs/input.json"}]}
+            ]
+        }
+        _write(tmp_path / "specs", "wr.json", spec)
+        _, err, client = submit("specs/wr.json")
+        assert submit.run.exit_code == 0, err
+        [call] = client.work_client.add_tasks_to_task_group_by_name.call_args_list
+        assert [task.taskData for task in call.args[3]] == ["beside the spec"]
+
     def test_validate_ok(self, submit, tmp_path):
         out, _, client = submit(_write(tmp_path, "wr.json", GOOD), validate=True)
         assert submit.run.exit_code == 0
@@ -530,6 +573,21 @@ class TestProvision:
 
         _run.run = run  # type: ignore[attr-defined]
         return _run
+
+    def test_content_path_does_not_hold_the_specification(
+        self, provision, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "data").mkdir()
+        spec = {
+            "requirementTemplateUsage": {"templateId": "t", "targetInstanceCount": 1},
+            "provisionedProperties": {},
+        }
+        _write(tmp_path / "specs", "wp.json", spec)
+        out, err, _ = provision("specs/wp.json", content_path="data", validate=True)
+        assert provision.run.exit_code == 0, err
+        assert "valid against the worker-pool schema" in out
 
     def test_validate_stops_with_the_violations(self, provision, tmp_path):
         spec = {
