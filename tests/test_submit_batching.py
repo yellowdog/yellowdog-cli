@@ -52,6 +52,7 @@ def _run_add_tasks(
     batch_size: int,
     parallel_batches: int,
     pause_flag: int | None = None,
+    task_count: int | None = None,
 ) -> dict:
     """
     Call add_tasks_to_task_group with generate/submit mocked out.
@@ -60,10 +61,15 @@ def _run_add_tasks(
       generate_calls: list of (start, end) tuples — one per batch, in call order
       submit_calls:   list of task-counts per batch (order may vary in parallel mode)
       pause_mock:     the mock replacing the pause_between_batches function
+      wr_data:        the Work Requirement data, as add_tasks_to_task_group left it
+
+    'task_count' is passed as the no-specification path passes it, with the
+    configuration's 'taskCount' the same.
     """
     config_wr_mock = MagicMock()
-    config_wr_mock.task_count = None
+    config_wr_mock.task_count = task_count
     config_wr_mock.parallel_batches = None
+    wr_data = _make_wr_data(num_tasks)
     pause_mock = MagicMock()
 
     generate_calls: list[tuple[int, int]] = []
@@ -113,8 +119,8 @@ def _run_add_tasks(
         submit_module.add_tasks_to_task_group(
             tg_number=0,
             task_group=_make_tg(),
-            wr_data=_make_wr_data(num_tasks),
-            task_count=None,
+            wr_data=wr_data,
+            task_count=task_count,
             work_requirement=_make_wr(),
             files_directory=".",
         )
@@ -123,6 +129,7 @@ def _run_add_tasks(
         "generate_calls": generate_calls,
         "submit_calls": submit_calls,
         "pause_mock": pause_mock,
+        "wr_data": wr_data,
     }
 
 
@@ -333,6 +340,65 @@ class TestNoTasks:
         result = _run_add_tasks(num_tasks=0, batch_size=3, parallel_batches=4)
         assert result["generate_calls"] == []
         assert result["submit_calls"] == []
+
+
+# ---------------------------------------------------------------------------
+# Expanding 'taskCount'
+# ---------------------------------------------------------------------------
+
+
+class TestTaskCountExpansion:
+    """
+    With 'task_count' given (no specification file), every Task is generated
+    from the first, so copying it 'taskCount' times only built dicts to go
+    unread. From a specification, the copies are what is generated from.
+    """
+
+    def test_no_copies_are_made_when_task_count_is_given(self):
+        result = _run_add_tasks(
+            num_tasks=1, batch_size=10, parallel_batches=1, task_count=1000
+        )
+        assert len(result["wr_data"][TASK_GROUPS][0][TASKS]) == 1
+        assert sum(result["submit_calls"]) == 1000
+
+    def test_copies_are_still_made_from_a_specification(self):
+        # task_count None, but the specification's taskCount, read here
+        # through the configuration, is 5
+        config_wr_mock = MagicMock(task_count=5, parallel_batches=None)
+        wr_data = _make_wr_data(1)
+        with (
+            patch.object(submit_module, "CONFIG_WR", config_wr_mock),
+            patch.object(
+                submit_module,
+                "generate_batch_of_tasks_for_task_group",
+                side_effect=lambda start, end, *a, **k: [MagicMock()] * (end - start),
+            ),
+            patch.object(
+                submit_module,
+                "submit_batch_of_tasks_to_task_group",
+                side_effect=lambda tasks_list, *a, **k: len(tasks_list),
+            ),
+            patch.object(
+                CLIParser, "parallel_batches", new_callable=PropertyMock, return_value=1
+            ),
+            patch.object(
+                CLIParser,
+                "pause_between_batches",
+                new_callable=PropertyMock,
+                return_value=None,
+            ),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+        ):
+            submit_module.add_tasks_to_task_group(
+                tg_number=0,
+                task_group=_make_tg(),
+                wr_data=wr_data,
+                task_count=None,
+                work_requirement=_make_wr(),
+            )
+        assert len(wr_data[TASK_GROUPS][0][TASKS]) == 5
 
 
 # ---------------------------------------------------------------------------

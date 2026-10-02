@@ -4,6 +4,7 @@
 A script to submit a Work Requirement.
 """
 
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from datetime import timedelta
@@ -126,6 +127,7 @@ from yellowdog_cli.utils.settings import (
     L_TASK_NUMBER,
     L_WR_NAME,
     MAX_BATCH_SUBMIT_ATTEMPTS,
+    RAW_REQUEST_TIMEOUT,
     VAR_NAME_OF_UNNAMED_TASK,
 )
 from yellowdog_cli.utils.spec_schema import Family
@@ -219,11 +221,9 @@ def main():
         else ARGS_PARSER.work_requirement_file_positional
     )
 
-    csv_files = (
-        CONFIG_WR.csv_files if ARGS_PARSER.csv_files is None else ARGS_PARSER.csv_files
-    )
+    csv_files = _csv_files()
 
-    if not csv_files and ARGS_PARSER.process_csv_only:
+    if csv_files is None and ARGS_PARSER.process_csv_only:
         raise ValueError(
             "Option '--process-csv-only' is only valid if CSV file(s) specified"
         )
@@ -245,20 +245,22 @@ def main():
             raise ValueError(
                 "Option '--validate' needs a Work Requirement specification file"
             )
-        wr_data = csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
+        wr_data = _work_requirement_from_csv(csv_files, files_directory)
         _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
-        if ARGS_PARSER.jsonnet_dry_run and not wr_data_file.lower().endswith("jsonnet"):
+        if ARGS_PARSER.jsonnet_dry_run and not wr_data_file.lower().endswith(
+            ".jsonnet"
+        ):
             raise ValueError(
                 "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
             )
 
-        wr_data_file = relpath(wr_data_file)
+        wr_data_file = _relative_if_possible(wr_data_file)
         print_info(f"Loading Work Requirement data from: '{wr_data_file}'")
 
         # JSON file
-        if wr_data_file.lower().endswith("json"):
+        if wr_data_file.lower().endswith(".json"):
             if csv_files is not None:
                 wr_data = load_json_file_with_csv_task_expansion(
                     json_file=wr_data_file,
@@ -271,7 +273,7 @@ def main():
                 )
 
         # Jsonnet file
-        elif wr_data_file.lower().endswith("jsonnet"):
+        elif wr_data_file.lower().endswith(".jsonnet"):
             if csv_files is not None:
                 wr_data = load_jsonnet_file_with_csv_task_expansion(
                     jsonnet_file=wr_data_file,
@@ -284,7 +286,7 @@ def main():
                 )
 
         # TOML file (undocumented)
-        elif wr_data_file.lower().endswith("toml"):
+        elif wr_data_file.lower().endswith(".toml"):
             if csv_files is not None:
                 wr_data = load_toml_file_with_csv_task_expansion(
                     toml_file=wr_data_file,
@@ -325,6 +327,46 @@ def main():
             record_document(WR_SNAPSHOT.wr_data)
         else:
             WR_SNAPSHOT.print()
+
+
+def _csv_files() -> list[str] | None:
+    """
+    The CSV files named, on the command line or else in the configuration;
+    None if none is, as 'csvFiles = []' in the configuration names none.
+    """
+    csv_files = (
+        CONFIG_WR.csv_files if ARGS_PARSER.csv_files is None else ARGS_PARSER.csv_files
+    )
+    return csv_files or None
+
+
+def _work_requirement_from_csv(csv_files: list[str], files_directory: str) -> dict:
+    """
+    The Work Requirement built from the TOML configuration and a CSV file,
+    when there is no specification file. The configuration describes a single
+    Task Group, which takes one CSV file; with a specification, a CSV file per
+    Task Group is held to the same rule.
+    """
+    if len(csv_files) > 1:
+        raise ValueError(
+            f"Number of CSV files ({len(csv_files)}) exceeds number of Task"
+            " Groups (1): without a Work Requirement specification file, only"
+            " one CSV file can be used"
+        )
+    return csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
+
+
+def _relative_if_possible(path: str) -> str:
+    """
+    The path relative to the current directory, which reads better in the
+    messages that name it; or the path as given where there is no relative
+    path to it, as on Windows for a file on another drive, where relpath()
+    raises ValueError.
+    """
+    try:
+        return relpath(path)
+    except ValueError:
+        return path
 
 
 def _submit_or_add_to(
@@ -371,11 +413,8 @@ def submit_work_requirement(
             {TASK_GROUPS: []} if ARGS_PARSER.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
         )
     check_dict(wr_data)
-
-    # Remap 'task_type' at WR level to 'task_types' if 'task_types' is empty
-    if wr_data.get(TASK_TYPE) is not None:
-        if wr_data.get(TASK_TYPES) is None:
-            wr_data[TASK_TYPES] = [wr_data[TASK_TYPE]]
+    check_task_groups(wr_data)
+    promote_task_type(wr_data)
 
     # Overwrite the WR name?
     global ID, CONFIG_WR
@@ -451,7 +490,6 @@ def submit_work_requirement(
             CLIENT.work_client.hold_work_requirement(work_requirement)
             print_info("Work Requirement status is set to 'HELD'")
     else:
-        global WR_SNAPSHOT
         WR_SNAPSHOT.set_work_requirement(work_requirement)
 
     # Add Tasks to their Task Groups
@@ -466,14 +504,52 @@ def submit_work_requirement(
                 files_directory=files_directory,
             )
 
-        except Exception as e:
+        # An interrupt too: Ctrl-C part-way through would otherwise leave
+        # the Work Requirement live with only some of its Tasks
+        except (Exception, KeyboardInterrupt):
             cleanup_on_failure(work_requirement)
-            raise e
+            raise
 
     if ARGS_PARSER.progress:
         follow_progress_bar(work_requirement)
     elif ARGS_PARSER.follow:
         follow_progress(work_requirement)
+
+
+def check_task_groups(wr_data: dict) -> None:
+    """
+    A Work Requirement's 'taskGroups' is a list, each Task Group a table with
+    a 'tasks' list, as the schema requires. Checked before anything indexes
+    them, so that one missing is named rather than reported as a bare
+    KeyError ("ERROR : 'tasks'").
+    """
+    if TASK_GROUPS not in wr_data:
+        raise ValueError(
+            f"Property '{TASK_GROUPS}' is not defined (use '--empty' to submit a"
+            " Work Requirement with no Task Groups)"
+        )
+    for tg_number, task_group_data in enumerate(
+        check_list(wr_data[TASK_GROUPS], TASK_GROUPS)
+    ):
+        task_group = f"Task Group {tg_number + 1} of {len(wr_data[TASK_GROUPS])}"
+        if not isinstance(task_group_data, dict):
+            raise TypeError(f"{task_group} should be of type 'Dict'")
+        if TASKS not in task_group_data:
+            raise ValueError(f"Property '{TASKS}' is not defined in {task_group}")
+        for task_number, task in enumerate(check_list(task_group_data[TASKS], TASKS)):
+            if not isinstance(task, dict):
+                raise TypeError(
+                    f"Task {task_number + 1} in {task_group} should be of type 'Dict'"
+                )
+
+
+def promote_task_type(data: dict) -> None:
+    """
+    At the Work Requirement or Task Group level, a single 'taskType' stands
+    for 'taskTypes', as a convenience, where 'taskTypes' is not set.
+    """
+    if data.get(TASK_TYPE) is not None and data.get(TASK_TYPES) is None:
+        data[TASK_TYPES] = [data[TASK_TYPE]]
 
 
 def expand_task_groups(wr_data: dict) -> None:
@@ -548,19 +624,12 @@ def create_task_group(
       formatting; defaults to len(wr_data[TASK_GROUPS]).
     """
 
-    # Remap 'task_type' to 'task_types' in the Task Group if 'task_types'
-    # is empty, as a convenience
-    if task_group_data.get(TASK_TYPE) is not None:
-        if task_group_data.get(TASK_TYPES) is None:
-            task_group_data[TASK_TYPES] = [task_group_data[TASK_TYPE]]
+    promote_task_type(task_group_data)
 
-    # Gather task types
-    task_types_from_tasks = set()
-    for task in task_group_data[TASKS]:
-        try:
-            task_types_from_tasks.add(task[TASK_TYPE])
-        except KeyError:
-            pass
+    # Gather task types, in order of first appearance
+    task_types_from_tasks = [
+        task[TASK_TYPE] for task in task_group_data[TASKS] if TASK_TYPE in task
+    ]
 
     # Name the Task Group
     num_task_groups = (
@@ -617,12 +686,15 @@ def create_task_group(
     # Assemble the RunSpecification values for the Task Group;
     # 'task_types' can automatically be added to by the task_types
     # specified in the Tasks.
+    # De-duplicated in order, the declared types first, rather than through a
+    # set, whose order varies from run to run with string hashing
     task_types: list = list(
-        set(
+        dict.fromkeys(
             check_list(
                 task_group_data.get(TASK_TYPES, wr_data.get(TASK_TYPES, [])), TASK_TYPES
             )
-        ).union(task_types_from_tasks)
+            + task_types_from_tasks
+        )
     )
     # Use the task type from the config file if present and task_types is empty
     if config_wr.task_type is not None and not task_types:
@@ -841,7 +913,7 @@ def create_task_group(
             PRIORITY,
         ),
         completedTaskTtl=completed_task_ttl,
-        tag=task_group_data.get(TASK_GROUP_TAG),
+        tag=check_str(task_group_data.get(TASK_GROUP_TAG), TASK_GROUP_TAG),
         taskTemplate=task_template,
     )
 
@@ -889,10 +961,13 @@ def add_tasks_to_task_group(
                 f"Expanding number of Tasks in Task Group '{task_group.name}' to"
                 f" '{TASK_COUNT}={task_group_task_count}' Tasks"
             )
-            for _ in range(1, task_group_task_count):
-                wr_data[TASK_GROUPS][tg_number][TASKS].append(
-                    deepcopy(wr_data[TASK_GROUPS][tg_number][TASKS][0])
-                )
+            # With 'task_count' given, every Task is generated from the first,
+            # so the copies would only be built to go unread
+            if task_count is None:
+                for _ in range(1, task_group_task_count):
+                    wr_data[TASK_GROUPS][tg_number][TASKS].append(
+                        deepcopy(wr_data[TASK_GROUPS][tg_number][TASKS][0])
+                    )
         elif task_group_task_count > 1:
             print_warning(
                 f"Note: Task Group '{task_group.name}' already contains"
@@ -927,17 +1002,7 @@ def add_tasks_to_task_group(
 
     num_submitted_tasks = 0
 
-    # Determine number of parallel upload threads
-    parallel_upload_threads = (
-        CONFIG_WR.parallel_batches
-        if ARGS_PARSER.parallel_batches is None
-        else ARGS_PARSER.parallel_batches
-    )
-    parallel_upload_threads = (
-        DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
-        if parallel_upload_threads is None
-        else parallel_upload_threads
-    )
+    parallel_upload_threads = _parallel_batches()
 
     # Single batch or sequential batch submission; a Task Group with no Tasks
     # has no batches, and a pool of no threads cannot be built for it
@@ -1026,6 +1091,17 @@ def add_tasks_to_task_group(
             print_info(f"No Tasks added to Task Group '{task_group.name}'")
 
 
+def _parallel_batches() -> int:
+    """
+    The number of Task batches to upload in parallel: the command line's,
+    else the configuration's, else the default.
+    """
+    for parallel_batches in (ARGS_PARSER.parallel_batches, CONFIG_WR.parallel_batches):
+        if parallel_batches is not None:
+            return parallel_batches
+    return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
+
+
 def generate_batch_of_tasks_for_task_group(
     start_task_number: int,
     end_task_number: int,
@@ -1072,6 +1148,9 @@ def generate_batch_of_tasks_for_task_group(
         display_task_number = task_number + task_number_offset
         display_num_tasks = task_number_offset + num_tasks
 
+        # The global CONFIG_WR, not a per-Task copy: get_task_name() makes the
+        # Task-level lazy substitutions in the name itself, and the per-Task
+        # copy can only be made once the name it substitutes is known
         task_name = get_task_name(
             check_str(task.get(NAME, task.get(TASK_NAME, CONFIG_WR.task_name)), NAME),
             set_task_names,
@@ -1145,7 +1224,7 @@ def generate_batch_of_tasks_for_task_group(
         # Task timeout is automatically inherited from the Task Group level
         # unless overridden by the Task
         task_timeout_minutes = check_float_or_int(
-            task.get(TASK_LEVEL_TIMEOUT, CONFIG_WR.task_level_timeout),
+            task.get(TASK_LEVEL_TIMEOUT, config_wr.task_level_timeout),
             TASK_LEVEL_TIMEOUT,
         )
         task_timeout = (
@@ -1182,16 +1261,9 @@ def generate_batch_of_tasks_for_task_group(
             task_data_inputs, task_data_outputs
         )
 
-        # If there's no task type in the task definition, AND
-        # there's only one task type at the task group level,
-        # use that task type
-        try:
-            task_type = task[TASK_TYPE]
-        except KeyError:
-            if len(task_group.runSpecification.taskTypes) == 1:
-                task_type = task_group.runSpecification.taskTypes[0]
-            else:
-                task_type = config_wr.task_type
+        task_type = _task_type_of(
+            task, task_group, config_wr, task_name, display_task_number
+        )
 
         tasks_list.append(
             create_task(
@@ -1226,6 +1298,37 @@ def generate_batch_of_tasks_for_task_group(
     return tasks_list
 
 
+def _task_type_of(
+    task: dict,
+    task_group: TaskGroup,
+    config_wr: ConfigWorkRequirement,
+    task_name: str | None,
+    task_number: int,
+) -> str | None:
+    """
+    The Task's type: its own, else its Task Group's sole type, else the
+    configuration's if the Task Group allows it. Else, None if the Task
+    Group's template supplies one; anything else is an error here, rather
+    than a Task the Platform refuses.
+    """
+    if TASK_TYPE in task:
+        return task[TASK_TYPE]
+    task_types = task_group.runSpecification.taskTypes
+    if len(task_types) == 1:
+        return task_types[0]
+    if config_wr.task_type is not None and config_wr.task_type in task_types:
+        return config_wr.task_type
+    template = task_group.taskTemplate
+    if template is not None and template.taskType is not None:
+        return None
+    raise ValueError(
+        f"Task {task_number + 1}"
+        + ("" if task_name is None else f" ('{task_name}')")
+        + f" in Task Group '{task_group.name}' has no '{TASK_TYPE}', and the"
+        f" Task Group allows several {task_types}: set the Task's '{TASK_TYPE}'"
+    )
+
+
 def submit_batch_of_tasks_to_task_group(
     tasks_list: list[Task],
     work_requirement: WorkRequirement,
@@ -1240,7 +1343,6 @@ def submit_batch_of_tasks_to_task_group(
     submitted.
     """
     if ARGS_PARSER.dry_run:
-        global WR_SNAPSHOT
         WR_SNAPSHOT.add_tasks(task_group.name, tasks_list)
         return len(tasks_list)
 
@@ -1263,16 +1365,39 @@ def submit_batch_of_tasks_to_task_group(
                 f" Group '{task_group.name}'"
             )
 
-    for attempt in range(MAX_BATCH_SUBMIT_ATTEMPTS):
+    def attempt() -> None:
+        CLIENT.work_client.add_tasks_to_task_group_by_name(
+            CONFIG_COMMON.namespace,
+            work_requirement.name,
+            task_group.name,
+            tasks_list,
+        )
+
+    _submit_with_retries(
+        attempt,
+        report_success,
+        batch=f"batch {batch_number_str} of {num_task_batches}",
+        batch_in_full=f"batch {batch_number_str} {task_range_str}of {num_task_batches}",
+    )
+    return len(tasks_list)
+
+
+def _submit_with_retries(
+    attempt: Callable[[], None],
+    report_success: Callable[[], None],
+    batch: str,
+    batch_in_full: str,
+) -> None:
+    """
+    Make one batch submission, retrying it with a growing delay while it
+    fails in a way a retry could cure. Returns once it succeeds; raises its
+    last failure, as it was raised, once it cannot.
+    """
+    for attempt_number in range(MAX_BATCH_SUBMIT_ATTEMPTS):
         try:
-            CLIENT.work_client.add_tasks_to_task_group_by_name(
-                CONFIG_COMMON.namespace,
-                work_requirement.name,
-                task_group.name,
-                tasks_list,
-            )
+            attempt()
             report_success()
-            return len(tasks_list)
+            return
 
         except Exception as e:
             # On a retry, this implies that the previous attempt, which
@@ -1280,31 +1405,26 @@ def submit_batch_of_tasks_to_task_group(
             # attempt it is a genuine name collision: a failure, and one not
             # to retry, since the retry would take it for success.
             duplicate_names = "Task names must be unique within task group" in str(e)
-            if duplicate_names and attempt > 0:
+            if duplicate_names and attempt_number > 0:
                 report_success()
-                return len(tasks_list)
+                return
 
             # Raised as it is, not wrapped, so that the wrapper's classify()
             # still sees its type and the exit code names the kind of failure
             if (
                 duplicate_names
                 or _is_permanent_failure(e)
-                or attempt == MAX_BATCH_SUBMIT_ATTEMPTS - 1
+                or attempt_number == MAX_BATCH_SUBMIT_ATTEMPTS - 1
             ):
-                print_error(
-                    f"Failed to submit batch {batch_number_str} {task_range_str}"
-                    f"of {num_task_batches}"
-                )
+                print_error(f"Failed to submit {batch_in_full}")
                 raise
 
-            if attempt == 0:
-                print_warning(
-                    f"Failed to submit batch {batch_number_str} of {num_task_batches}: {e}"
-                )
-            delay = BATCH_SUBMIT_RETRY_DELAY * 2**attempt
+            if attempt_number == 0:
+                print_warning(f"Failed to submit {batch}: {e}")
+            delay = BATCH_SUBMIT_RETRY_DELAY * 2**attempt_number
             print_info(
-                f"Retrying submission of batch {batch_number_str} in {delay:g}s "
-                f"(retry attempt {attempt + 1} of {MAX_BATCH_SUBMIT_ATTEMPTS - 1})"
+                f"Retrying submission of {batch} in {delay:g}s "
+                f"(retry attempt {attempt_number + 1} of {MAX_BATCH_SUBMIT_ATTEMPTS - 1})"
             )
             sleep(delay)
 
@@ -1314,10 +1434,16 @@ def submit_batch_of_tasks_to_task_group(
 def _is_permanent_failure(exception: Exception) -> bool:
     """
     A failure that resubmitting the same batch cannot cure: the request
-    itself is invalid, or the credentials are refused or lack permission.
+    itself is invalid, or the credentials are refused or lack permission;
+    for a direct request ('--json-raw'), any 4xx but a timeout or 429.
     """
     if isinstance(exception, (InvalidRequestException, NotAuthorisedException)):
         return True
+    if isinstance(exception, requests.HTTPError):
+        # A refusal, but not a timeout or a request to slow down
+        status = getattr(exception.response, "status_code", None)
+        if isinstance(status, int) and 400 <= status < 500:
+            return status not in (408, 429)
     message = str(exception)
     return any(
         text in message
@@ -1363,15 +1489,24 @@ def follow_progress_bar(work_requirement: WorkRequirement) -> None:
 
 def cleanup_on_failure(work_requirement: WorkRequirement) -> None:
     """
-    Clean up the Work Requirement and any uploaded Objects on failure.
+    Clean up the Work Requirement and any uploaded Objects on failure. Each
+    step's own failure is reported and the next step still made, so that the
+    failure being cleaned up after, which the caller re-raises, is the one
+    the command reports.
     """
     if ARGS_PARSER.dry_run:
         return
 
-    CLIENT.work_client.cancel_work_requirement(work_requirement)
-    print_warning(f"Cancelled Work Requirement '{work_requirement.name}'")
+    try:
+        CLIENT.work_client.cancel_work_requirement(work_requirement)
+        print_warning(f"Cancelled Work Requirement '{work_requirement.name}'")
+    except Exception as e:
+        print_error(f"Unable to cancel Work Requirement '{work_requirement.name}': {e}")
 
-    RCLONE_UPLOADED_FILES.delete()  # type: ignore[union-attr]
+    try:
+        RCLONE_UPLOADED_FILES.delete()  # type: ignore[union-attr]
+    except Exception as e:
+        print_error(f"Unable to delete the files uploaded for its Tasks: {e}")
 
 
 def add_to_existing_work_requirement(
@@ -1421,10 +1556,8 @@ def add_to_existing_work_requirement(
     # Build spec data
     wr_data = {TASK_GROUPS: [{TASKS: [{}]}]} if wr_data is None else wr_data
     check_dict(wr_data)
-
-    if cast(dict, wr_data).get(TASK_TYPE) is not None:
-        if wr_data.get(TASK_TYPES) is None:
-            wr_data[TASK_TYPES] = [wr_data[TASK_TYPE]]
+    check_task_groups(wr_data)
+    promote_task_type(wr_data)
 
     resolve_variables_insitu(cast(dict, wr_data))
 
@@ -1565,7 +1698,7 @@ def add_to_existing_work_requirement(
                 task_number_offset=existing_task_count,
             )
 
-    except Exception:
+    except (Exception, KeyboardInterrupt):
         # Unlike a new Work Requirement, this one is not cancelled, so the
         # Tasks already added to it stay live -- and may read the files
         # uploaded for them, which are therefore left in place too
@@ -1632,6 +1765,7 @@ def submit_json_raw(wr_file: str):
         url=f"{CONFIG_COMMON.url}/work/requirements",
         headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
         json=wr_data,
+        timeout=RAW_REQUEST_TIMEOUT,
     )
 
     if response.status_code != 200:
@@ -1645,14 +1779,20 @@ def submit_json_raw(wr_file: str):
 
     try:
         _submit_json_raw_tasks(wr_id, wr_name, wr_data["namespace"], task_lists)
-    except Exception:
+    except (Exception, KeyboardInterrupt):
         # As for a Work Requirement built from a specification: one left
-        # with only some of its Tasks is cancelled
-        CLIENT.work_client.cancel_work_requirement_by_id(wr_id)
-        print_warning(f"Cancelled Work Requirement '{wr_name}'")
+        # with only some of its Tasks is cancelled, and a failure to cancel
+        # it is reported without masking the failure that is re-raised
+        try:
+            CLIENT.work_client.cancel_work_requirement_by_id(wr_id)
+            print_warning(f"Cancelled Work Requirement '{wr_name}'")
+        except Exception as e:
+            print_error(f"Unable to cancel Work Requirement '{wr_name}': {e}")
         raise
 
-    if ARGS_PARSER.follow:
+    if ARGS_PARSER.progress:
+        follow_progress_bar(CLIENT.work_client.get_work_requirement_by_id(wr_id))
+    elif ARGS_PARSER.follow:
         follow_progress(CLIENT.work_client.get_work_requirement_by_id(wr_id))
 
 
@@ -1674,14 +1814,7 @@ def _submit_json_raw_tasks(
             print_info(f"No Tasks to add to Task Group '{task_group_name}'")
             continue
         num_batches = ceil(len(task_list) / TASK_BATCH_SIZE)
-        max_workers = min(
-            num_batches,
-            (
-                DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
-                if ARGS_PARSER.parallel_batches is None
-                else ARGS_PARSER.parallel_batches
-            ),
-        )
+        max_workers = min(num_batches, _parallel_batches())
         print_info(
             f"Submitting task batches using {max_workers} parallel submission thread(s)"
         )
@@ -1720,36 +1853,40 @@ def submit_json_task_batch(
     namespace: str,
 ) -> int:
     """
-    Submit a batch of tasks using the REST API. Return the number of tasks submitted.
+    Submit a batch of tasks using the REST API, retrying it as the main path
+    does. Return the number of tasks submitted.
     """
     task_batch_compressed = compress(json_dumps(task_batch).encode("utf-8"))
+    batch_number_str = formatted_number_str(batch_number, num_batches)
 
-    response = requests.post(
-        url=(
-            f"{CONFIG_COMMON.url}/work/namespaces/{namespace}"
-            f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
-        ),
-        headers={
-            "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}",
-            "Content-Encoding": "gzip",
-            "Content-Type": "application/json",
-        },
-        data=task_batch_compressed,
-    )
+    def attempt() -> None:
+        response = requests.post(
+            url=(
+                f"{CONFIG_COMMON.url}/work/namespaces/{namespace}"
+                f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
+            ),
+            headers={
+                "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}",
+                "Content-Encoding": "gzip",
+                "Content-Type": "application/json",
+            },
+            data=task_batch_compressed,
+            timeout=RAW_REQUEST_TIMEOUT,
+        )
+        if response.status_code != 200:
+            _raise_for_response(response)
 
-    if response.status_code == 200:
+    def report_success() -> None:
         print_info(
             f"Added {len(task_batch)} Task(s) to Task Group "
-            f"'{task_group_name}' (Batch {formatted_number_str(batch_number, num_batches)} "
-            f"of {num_batches})"
+            f"'{task_group_name}' (Batch {batch_number_str} of {num_batches})"
         )
-        return len(task_batch)
 
-    print_error(
-        f"Failed to submit batch {batch_number + 1} of {num_batches}"
-        f" to Task Group '{task_group_name}'"
+    batch = (
+        f"batch {batch_number_str} of {num_batches} to Task Group '{task_group_name}'"
     )
-    _raise_for_response(response)
+    _submit_with_retries(attempt, report_success, batch=batch, batch_in_full=batch)
+    return len(task_batch)
 
 
 def _raise_for_response(response: requests.Response) -> NoReturn:

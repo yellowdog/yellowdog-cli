@@ -92,6 +92,10 @@ TASK_BATCH_SIZE_DEFAULT = 1_000
 DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS = 1
 MAX_BATCH_SUBMIT_ATTEMPTS = 4  # Initial attempt plus retries
 BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for each
+# (connect, read) for the CLI's direct Platform requests ('--json-raw', and
+# yd-provision's and yd-instantiate's raw paths): the read allows for a large
+# Task batch, while a silently dropped connection no longer hangs forever
+RAW_REQUEST_TIMEOUT = (10.0, 300.0)  # Seconds
 
 CR_MAX_INSTANCES = (
     10_000  # This is enforced by the platform (MAX_WORKER_POOL_NODE_COUNT)

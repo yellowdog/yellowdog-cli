@@ -47,6 +47,7 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.settings import (
     ET_COMPUTE_REQUIREMENTS,
+    RAW_REQUEST_TIMEOUT,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
@@ -367,6 +368,7 @@ def _create_compute_requirement_from_json(
         url=f"{CONFIG_COMMON.url}/compute/templates/provision",
         headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
         json=cr_data,
+        timeout=RAW_REQUEST_TIMEOUT,
     )
     name = cr_data["requirementName"]
     if response.status_code == 200:

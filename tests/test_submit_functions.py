@@ -33,6 +33,7 @@ from yellowdog_cli.utils.property_names import (
     PROVIDERS,
     RAM,
     TASK_GROUP_COUNT,
+    TASK_GROUP_TAG,
     TASK_GROUPS,
     TASK_TEMPLATE,
     TASK_TIMEOUT,
@@ -600,7 +601,14 @@ class TestSubmitWRTaskGroupCountExpansion:
 
 
 class TestSubmitWRCleanupOnFailure:
-    def test_cleanup_called_when_add_tasks_raises(self):
+    @pytest.mark.parametrize(
+        "error",
+        [RuntimeError("upload failed"), KeyboardInterrupt()],
+        ids=["failure", "interrupt"],
+    )
+    def test_cleanup_called_when_add_tasks_raises(self, error):
+        # An interrupt too: Ctrl-C part-way used to leave the Work
+        # Requirement live with only some of its Tasks
         wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
         mock_wr = _make_mock_wr()
         cleanup_mock = MagicMock()
@@ -626,7 +634,7 @@ class TestSubmitWRCleanupOnFailure:
             patch.object(
                 submit_module,
                 "add_tasks_to_task_group",
-                side_effect=RuntimeError("upload failed"),
+                side_effect=error,
             ),
             patch.object(
                 submit_module.CLIENT.work_client,
@@ -653,11 +661,49 @@ class TestSubmitWRCleanupOnFailure:
             patch.object(
                 CLIParser, "empty", new_callable=PropertyMock, return_value=False
             ),
-            pytest.raises(RuntimeError, match="upload failed"),
+            pytest.raises(type(error)) as raised,
         ):
             submit_module.submit_work_requirement(files_directory=".", wr_data=wr_data)
 
+        assert raised.value is error
         cleanup_mock.assert_called_once_with(mock_wr)
+
+
+class TestCleanupOnFailure:
+    """
+    A step of the cleanup that fails is reported, and the rest still made,
+    without the cleanup raising: the failure the caller re-raises, the one
+    being cleaned up after, is what the command must report.
+    """
+
+    def _cleanup(self, cancel_error=None, delete_error=None) -> dict:
+        client = MagicMock()
+        client.work_client.cancel_work_requirement.side_effect = cancel_error
+        uploaded = MagicMock()
+        uploaded.delete.side_effect = delete_error
+        with (
+            patch.object(submit_module, "CLIENT", client),
+            patch.object(submit_module, "RCLONE_UPLOADED_FILES", uploaded),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+        ):
+            submit_module.cleanup_on_failure(_make_mock_wr())
+        return {"client": client, "uploaded": uploaded}
+
+    def test_a_failed_cancel_still_deletes_the_uploaded_files(self, capsys):
+        result = self._cleanup(cancel_error=RuntimeError("cancel refused"))
+        result["uploaded"].delete.assert_called_once()
+        assert "cancel refused" in capsys.readouterr().err
+
+    def test_a_failed_delete_does_not_raise(self, capsys):
+        self._cleanup(delete_error=RuntimeError("rclone failed"))
+        assert "rclone failed" in capsys.readouterr().err
+
+    def test_both_steps_are_made_when_neither_fails(self):
+        result = self._cleanup()
+        result["client"].work_client.cancel_work_requirement.assert_called_once()
+        result["uploaded"].delete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -806,3 +852,44 @@ class TestTaskPropertiesTaskGroupOverWorkRequirement:
     def test_work_requirement_add_environment_is_inherited(self):
         wr_data = {ADD_ENVIRONMENT: {"X": "wr"}, TASK_GROUPS: [{TASKS: [{}]}]}
         assert _generate_one_task(wr_data).environment == {"X": "wr"}
+
+
+# ---------------------------------------------------------------------------
+# create_task_group — the order of taskTypes, and the tag's type
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTaskGroupTaskTypeOrder:
+    """
+    The types were gathered through a set, whose order varies from run to
+    run with string hashing, so a dry run's output did too. Declared types
+    come first, in order, then the Tasks' own, in order of first appearance.
+    """
+
+    def test_declared_types_then_the_tasks_types_in_order(self):
+        tg = _call_create_task_group(
+            {
+                TASK_TYPES: ["zeta", "alpha"],
+                TASKS: [
+                    {TASK_TYPE: "mu"},
+                    {TASK_TYPE: "alpha"},
+                    {TASK_TYPE: "beta"},
+                    {TASK_TYPE: "mu"},
+                ],
+            }
+        )
+        assert tg.runSpecification.taskTypes == ["zeta", "alpha", "mu", "beta"]
+
+
+class TestCreateTaskGroupTag:
+    def test_a_string_tag_is_used(self):
+        tg = _call_create_task_group(
+            {TASK_TYPES: ["bash"], TASK_GROUP_TAG: "t", TASKS: [{}]}
+        )
+        assert tg.tag == "t"
+
+    def test_a_non_string_tag_is_a_type_error_naming_the_property(self):
+        with pytest.raises(TypeError, match=f"'{TASK_GROUP_TAG}'"):
+            _call_create_task_group(
+                {TASK_TYPES: ["bash"], TASK_GROUP_TAG: 7, TASKS: [{}]}
+            )

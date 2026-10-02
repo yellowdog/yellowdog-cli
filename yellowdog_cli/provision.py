@@ -66,6 +66,7 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.settings import (
     ET_WORKER_POOLS,
+    RAW_REQUEST_TIMEOUT,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
@@ -295,6 +296,7 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         url=f"{CONFIG_COMMON.url}/workerPools/provisioned/template",
         headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
         json=wp_data,
+        timeout=RAW_REQUEST_TIMEOUT,
     )
     name = wp_data["requirementTemplateUsage"]["requirementName"]
     if response.status_code == 200:
