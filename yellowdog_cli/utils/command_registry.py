@@ -1781,9 +1781,8 @@ COMMANDS["yd-provision"] = Command(
     tool=ToolKind.ACTING,
     tool_description=(
         "Provision a Worker Pool from a specification (a file path, or the"
-        " specification itself). Returns {id, name, namespace, type}; a"
-        " Configured Worker Pool's record also carries its token and"
-        " expiryTime. With dry_run, the processed specification. Shut it"
+        " specification itself). Returns {id, name, namespace, type}. With"
+        " dry_run, the processed specification. Shut it"
         " down afterwards with yd_shutdown; yd_schema worker-pool gives the"
         " schema to compose against."
     ),

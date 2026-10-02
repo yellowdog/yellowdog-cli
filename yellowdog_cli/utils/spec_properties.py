@@ -541,7 +541,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     ),
     Property("targetInstanceCount", INT_CAST, description="the number of instances"),
     Property("minNodes", INT_CAST, description="the pool's minimum node count"),
-    Property("maxNodes", INT, description="the pool's maximum node count"),
+    Property("maxNodes", INT_CAST, description="the pool's maximum node count"),
     Property("workersPerNode", INT_CAST, description="Workers started per node"),
     Property(
         "workersPerVCPU",
@@ -579,7 +579,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property("metricsEnabled", BOOL, description="collect platform metrics"),
     Property(
         "computeRequirementBatchSize",
-        INT,
+        INT_CAST,
         description="instances per Compute Requirement when provisioning in batches",
     ),
     Property(

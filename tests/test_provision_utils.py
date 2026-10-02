@@ -19,6 +19,7 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
     resolve_user_data_in_spec,
+    shown_value,
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
@@ -348,3 +349,26 @@ class TestGetTemplateId:
         ):
             with pytest.raises(KeyError, match="not found"):
                 get_template_id(client, "nonexistent-template")
+
+
+# ---------------------------------------------------------------------------
+# shown_value
+# ---------------------------------------------------------------------------
+
+
+class TestShownValue:
+    @pytest.mark.parametrize(
+        "value, shown",
+        [
+            ("ydid:crt:x", "ydid:crt:x"),
+            (False, "false"),
+            (3, "3"),
+            (
+                {"enabled": True, "timeout": "PT5M"},
+                '{"enabled": true, "timeout": "PT5M"}',
+            ),
+            ({"team": "a"}, '{"team": "a"}'),
+        ],
+    )
+    def test_strings_as_they_are_anything_else_as_json(self, value, shown):
+        assert shown_value(value) == shown

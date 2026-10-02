@@ -2,6 +2,7 @@
 Utility functions for provisioning and instantiating.
 """
 
+from json import dumps as json_dumps
 from os import chdir, getcwd
 
 from yellowdog_client import PlatformClient
@@ -141,6 +142,15 @@ def resolve_user_data_in_spec(spec: dict, base_dir: str | None = None) -> None:
     spec.pop(USERDATAFILES, None)
     if content is not None:
         spec[USERDATA] = content
+
+
+def shown_value(value: object) -> str:
+    """
+    A value set in a specification, as a message shows it: a string as it
+    is, anything else as JSON, the form the specification is written in
+    (so 'true' and '{"enabled": true}', never Python's 'True').
+    """
+    return value if isinstance(value, str) else json_dumps(value)
 
 
 def get_template_id(client: PlatformClient, template_id_or_name: str) -> str:

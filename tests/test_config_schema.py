@@ -212,7 +212,7 @@ class TestValidateConfig:
 
     def test_a_wrong_type_is_named_with_its_path(self):
         assert _check({"workerPool": {"maxNodes": "ten"}}) == [
-            Violation("workerPool.maxNodes", "must be integer")
+            Violation("workerPool.maxNodes", "must be an integer")
         ]
 
     def test_a_misplaced_key_says_so(self):
@@ -243,7 +243,7 @@ class TestValidateConfig:
         assert set(violations) == {
             Violation("common", "'minNodes' is not read in this section"),
             Violation("common.usePAC", "must be boolean"),
-            Violation("workerPool.maxNodes", "must be integer"),
+            Violation("workerPool.maxNodes", "must be an integer"),
         }
 
     def test_unresolved_variables_pass(self):
@@ -330,7 +330,7 @@ class TestWarnOfConfigViolations:
         assert warnings == [
             "'config.toml': workRequirement: 'minNodes' is not read in this"
             " section (see yd-schema config)",
-            "'config.toml': workerPool.maxNodes: must be integer"
+            "'config.toml': workerPool.maxNodes: must be an integer"
             " (see yd-schema config)",
         ]
 
@@ -393,7 +393,7 @@ class TestAtCommandStart:
             ["yd-variables", "--nf", "namespace"], GOOD_COMMON + BAD_POOL, tmp_path
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "workerPool.maxNodes: must be integer" in result.stdout
+        assert "workerPool.maxNodes: must be an integer" in result.stdout
 
     def test_quiet_suppresses_the_warnings_and_the_json_parses(self, tmp_path):
         result = _run(

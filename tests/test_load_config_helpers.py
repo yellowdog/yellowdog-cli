@@ -11,7 +11,8 @@ Covers here:
   - load_config_common: CLI > env var > TOML precedence
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
-  - load_config_worker_pool: name type checking
+  - load_config_worker_pool: name type checking; maxNodes and
+    computeRequirementBatchSize cast with int(), the batch size at least 1
   - _resolve_section_variables: a circular variable reference in a section
     is reported and exits
 """
@@ -563,6 +564,31 @@ class TestLoadConfigWorkerPool:
             self._call(toml_wp_section={WP_NAME: value})
         message = str(print_error.call_args.args[0])
         assert f"'{WP_NAME}'" in message and "String" in message
+
+    @pytest.mark.parametrize("value, expected", [(5, 5), ("5", 5), (2.5, 2)])
+    def test_max_nodes_is_cast_as_min_nodes_is(self, value, expected):
+        # Left uncast, 2.5 crashed yd-provision formatting it with ':,d'
+        result = self._call(toml_wp_section={"maxNodes": value})
+        assert result.max_nodes == expected
+        assert isinstance(result.max_nodes, int)
+
+    def test_batch_size_is_cast(self):
+        result = self._call(toml_wp_section={"computeRequirementBatchSize": "50"})
+        assert result.compute_requirement_batch_size == 50
+
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_batch_size_below_one_is_a_configuration_error(self, value):
+        # 0 was a bare 'division by zero'; a negative size made no batches,
+        # so nothing was provisioned and the command still reported Done
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            self._call(toml_wp_section={"computeRequirementBatchSize": value})
+        assert exc.value.code == ExitCode.CONFIGURATION
+        assert "'computeRequirementBatchSize' must be at least 1" in str(
+            print_error.call_args.args[0]
+        )
 
 
 class TestResolveSectionVariables:

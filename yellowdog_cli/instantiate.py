@@ -39,6 +39,7 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    shown_value,
 )
 from yellowdog_cli.utils.results import (
     record_document,
@@ -143,6 +144,9 @@ def main():
     if num_batches > 1 and not ARGS_PARSER.report:
         print_info(f"Batching into {num_batches} Compute Requirements")
 
+    # Read once: every batch has the same user data
+    user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+
     compute_requirement_ids: list[str] = []
     for batch_number in range(num_batches):
         id = add_batch_number_postfix(
@@ -175,7 +179,7 @@ def main():
                 maintainInstanceCount=CONFIG_WP.maintainInstanceCount,
                 instanceTags=CONFIG_WP.instance_tags,
                 imagesId=CONFIG_WP.images_id,
-                userData=get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path),
+                userData=user_data,
             )
 
             if ARGS_PARSER.report:
@@ -231,12 +235,14 @@ def main():
                 print_yd_object(compute_requirement_template_usage)
                 print_dry_run("Complete")
 
-        except Exception as e:
-            raise RuntimeError(
+        except Exception:
+            # Re-raised as it is, so that the wrapper's exit code reflects it
+            print_error(
                 "Unable to"
                 f" {'report on' if ARGS_PARSER.report else 'provision'} Compute"
-                f" Requirement: {e}"
+                f" Requirement '{CONFIG_COMMON.namespace}/{id}'"
             )
+            raise
 
     if ARGS_PARSER.follow:
         follow_ids(compute_requirement_ids)
@@ -313,7 +319,8 @@ def _create_compute_requirement_from_json(
     cr_data = cr_data.get("requirementTemplateUsage", cr_data)
 
     # Some values are configurable via the TOML configuration file;
-    # values in the JSON file override values in the TOML file
+    # values in the JSON file override values in the TOML file, and
+    # '--target' overrides both
     try:
         for key, value in [
             # Generate a default name
@@ -331,15 +338,31 @@ def _create_compute_requirement_from_json(
                 ),
             ),
             ("templateId", CONFIG_WP.template_id),
-            ("userData", get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)),
             ("imagesId", CONFIG_WP.images_id),
             ("instanceTags", CONFIG_WP.instance_tags),
             ("targetInstanceCount", CONFIG_WP.target_instance_count),
             ("maintainInstanceCount", CONFIG_WP.maintainInstanceCount),
         ]:
             if cr_data.get(key) is None and value is not None:
-                print_info(f"Setting '{key}' to '{value}'")
+                print_info(f"Setting '{key}' to '{shown_value(value)}'")
                 cr_data[key] = value
+
+        # The TOML user data is read only if the specification has none
+        if cr_data.get("userData") is None:
+            user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+            if user_data is not None:
+                print_info(f"Setting 'userData' to '{user_data}'")
+                cr_data["userData"] = user_data
+
+        if (
+            ARGS_PARSER.target is not None
+            and cr_data.get("targetInstanceCount") != ARGS_PARSER.target
+        ):
+            print_info(
+                f"Setting 'targetInstanceCount' to '{ARGS_PARSER.target}'"
+                " (from '--target')"
+            )
+            cr_data["targetInstanceCount"] = ARGS_PARSER.target
 
     except KeyError as e:
         raise KeyError(f"Missing key error in JSON Compute Requirement definition: {e}")
@@ -385,7 +408,8 @@ def _create_compute_requirement_from_json(
             follow_events(id, YDIDType.COMPUTE_REQUIREMENT)
     else:
         print_error(f"Failed to provision Compute Requirement '{name}'")
-        raise RuntimeError(f"{response.text}")
+        # An HTTPError, so that the wrapper's exit code reflects the status
+        raise requests.HTTPError(response.text, response=response)
 
 
 # Standalone entry point

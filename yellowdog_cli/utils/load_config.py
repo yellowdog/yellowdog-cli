@@ -1024,7 +1024,15 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             else int(wp_section[WORKERS_PER_VCPU])
         )
 
-        cr_batch_size = wp_section.get(COMPUTE_REQUIREMENT_BATCH_SIZE, CR_MAX_INSTANCES)
+        cr_batch_size = int(
+            wp_section.get(COMPUTE_REQUIREMENT_BATCH_SIZE, CR_MAX_INSTANCES)
+        )
+        if cr_batch_size < 1:
+            print_error(
+                f"'{COMPUTE_REQUIREMENT_BATCH_SIZE}' must be at least 1"
+                f" (it is {cr_batch_size:,d})"
+            )
+            exit(ExitCode.CONFIGURATION)
         if cr_batch_size > CR_MAX_INSTANCES:
             print_warning(
                 f"'computeRequirementBatchSize' ({cr_batch_size:,d}) exceeds the"
@@ -1042,8 +1050,10 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             images_id=wp_section.get(IMAGES_ID),
             instance_tags=wp_section.get(INSTANCE_TAGS),
             maintainInstanceCount=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
-            max_nodes=wp_section.get(
-                MAX_NODES, max(1, int(wp_section.get(TARGET_INSTANCE_COUNT, 1)))
+            max_nodes=int(
+                wp_section.get(
+                    MAX_NODES, max(1, int(wp_section.get(TARGET_INSTANCE_COUNT, 1)))
+                )
             ),
             max_nodes_set=(False if wp_section.get(MAX_NODES) is None else True),
             metrics_enabled=wp_section.get(METRICS_ENABLED, False),
