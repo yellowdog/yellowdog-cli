@@ -254,6 +254,7 @@ class TestAddToPartitioning:
         spec_task_types: dict[str, list[str]] | None = None,
         dry_run: bool = False,
         capsys=None,
+        add_tasks_error: Exception | None = None,
     ) -> dict[str, Any]:
         existing_task_types = existing_task_types or {}
         spec_task_types = spec_task_types or {}
@@ -285,7 +286,7 @@ class TestAddToPartitioning:
             task_count,
             work_requirement,
             files_directory,
-            tg_number_offset,
+            wr_tg_number,
             total_num_task_groups,
             task_number_offset,
         ):
@@ -293,11 +294,13 @@ class TestAddToPartitioning:
                 {
                     "tg_name": task_group.name,
                     "tg_number": tg_number,
-                    "tg_number_offset": tg_number_offset,
+                    "wr_tg_number": wr_tg_number,
                     "task_number_offset": task_number_offset,
                     "total_num_task_groups": total_num_task_groups,
                 }
             )
+            if add_tasks_error is not None:
+                raise add_tasks_error
 
         def fake_update_wr(wr):
             update_wr_calls.append(list(wr.taskGroups))
@@ -336,7 +339,7 @@ class TestAddToPartitioning:
                 "update_config_work_requirement_object",
                 return_value=submit_module.CONFIG_WR,
             ),
-            patch.object(submit_module, "RcloneUploadedFiles"),
+            patch.object(submit_module, "RcloneUploadedFiles") as rclone_class,
             patch.object(
                 submit_module, "create_task_group", side_effect=fake_create_tg
             ),
@@ -356,6 +359,8 @@ class TestAddToPartitioning:
             ),
         ):
             submit_module.WR_SNAPSHOT = WorkRequirementSnapshot()
+            # Kept on the instance, so a test whose run raises can still see it
+            self.uploaded_files = rclone_class.return_value
             submit_module.add_to_existing_work_requirement(
                 files_directory=".", wr_data=wr_data
             )
@@ -403,24 +408,39 @@ class TestAddToPartitioning:
         result = self._run(existing_tg_names=["existing"], spec_tg_names=["brand-new"])
         assert result["add_tasks_calls"][0]["task_number_offset"] == 0
 
-    def test_tg_number_offset_equals_number_of_existing_tgs(self):
+    def test_new_tg_is_numbered_after_the_existing_tgs(self):
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["c"])
-        assert result["add_tasks_calls"][0]["tg_number_offset"] == 2
+        assert result["add_tasks_calls"][0]["wr_tg_number"] == 2
 
-    def test_tg_number_offset_zero_when_no_existing_tgs(self):
+    def test_new_tg_is_numbered_first_when_no_existing_tgs(self):
         result = self._run(existing_tg_names=[], spec_tg_names=["new"])
-        assert result["add_tasks_calls"][0]["tg_number_offset"] == 0
+        assert result["add_tasks_calls"][0]["wr_tg_number"] == 0
+
+    def test_matched_tg_keeps_its_own_position(self):
+        # 'b' is the second of the existing Task Groups, whatever its place
+        # in the specification
+        result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["b"])
+        assert result["add_tasks_calls"][0]["wr_tg_number"] == 1
+
+    def test_new_tgs_are_numbered_without_gaps_for_matched_ones(self):
+        # existing: [a]; spec: [a (matched), x (new), y (new)] -> x and y are
+        # appended as the Work Requirement's second and third Task Groups
+        result = self._run(existing_tg_names=["a"], spec_tg_names=["a", "x", "y"])
+        by_name = {c["tg_name"]: c for c in result["add_tasks_calls"]}
+        assert by_name["a"]["wr_tg_number"] == 0
+        assert by_name["x"]["wr_tg_number"] == 1
+        assert by_name["y"]["wr_tg_number"] == 2
 
     def test_total_num_task_groups_is_existing_plus_new(self):
         # 2 existing + 1 new = 3 total
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["c"])
         assert result["add_tasks_calls"][0]["total_num_task_groups"] == 3
 
-    def test_total_num_task_groups_is_existing_plus_spec_when_all_matched(self):
-        # 2 existing + 2 spec (all matched) → total = 2+2 = 4
+    def test_total_num_task_groups_is_existing_only_when_all_matched(self):
+        # 2 existing + 2 spec (all matched) → nothing is added: total = 2
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["a", "b"])
         for c in result["add_tasks_calls"]:
-            assert c["total_num_task_groups"] == 4
+            assert c["total_num_task_groups"] == 2
 
     def test_mixed_new_and_matched(self):
         # existing: ["grp-1"]; spec: ["grp-1" (matched), "grp-2" (new)]
@@ -436,12 +456,12 @@ class TestAddToPartitioning:
         assert len(result["update_wr_calls"]) == 1
 
     def test_total_for_mixed_scenario(self):
-        # 1 existing + 2 spec (1 matched + 1 new) = 1+2 = 3 total
+        # 1 existing + 2 spec (1 matched + 1 new) → 1 + 1 new = 2 total
         result = self._run(
             existing_tg_names=["grp-1"], spec_tg_names=["grp-1", "grp-2"]
         )
         for c in result["add_tasks_calls"]:
-            assert c["total_num_task_groups"] == 3
+            assert c["total_num_task_groups"] == 2
 
     def test_update_wr_called_with_existing_plus_new_tgs(self):
         result = self._run(existing_tg_names=["existing"], spec_tg_names=["new-one"])
@@ -483,6 +503,53 @@ class TestAddToPartitioning:
             spec_task_types={"grp": ["bash", "docker"]},
         )
         assert len(result["update_wr_calls"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# --add-to failing part-way
+# ---------------------------------------------------------------------------
+
+
+class TestAddToFailure:
+    """
+    The Work Requirement added to is not cancelled when adding fails, so the
+    Tasks already added stay live and the files uploaded for them must stay
+    too. The failure is still raised, after a warning saying what is left.
+    Uses the partitioning harness without inheriting its tests.
+    """
+
+    def setup_method(self):
+        self.harness = TestAddToPartitioning()
+
+    def _fail(self, capsys, dry_run: bool = False) -> str:
+        error = RuntimeError("batch failed")
+        with pytest.raises(RuntimeError) as raised:
+            self.harness._run(
+                existing_tg_names=["a"],
+                spec_tg_names=["b"],
+                add_tasks_error=error,
+                dry_run=dry_run,
+            )
+        assert raised.value is error
+        output = capsys.readouterr()
+        return " ".join((output.out + output.err).split())  # Unwrapped
+
+    def test_the_failure_is_reported_as_part_way(self, capsys):
+        assert "failed part-way" in self._fail(capsys)
+
+    def test_uploaded_files_are_left_in_place(self, capsys):
+        self._fail(capsys)
+        self.harness.uploaded_files.delete.assert_not_called()
+
+    def test_the_work_requirement_is_not_cancelled(self, capsys):
+        with patch.object(
+            submit_module.CLIENT.work_client, "cancel_work_requirement"
+        ) as cancel:
+            self._fail(capsys)
+        cancel.assert_not_called()
+
+    def test_a_dry_run_has_nothing_to_warn_of(self, capsys):
+        assert "failed part-way" not in self._fail(capsys, dry_run=True)
 
 
 # ---------------------------------------------------------------------------

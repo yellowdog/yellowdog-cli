@@ -1820,6 +1820,8 @@ A single `yd-submit --add-to` invocation can add a mix of new Task Groups and Ta
 
 As with a normal `yd-submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
 
+If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd-submit` exits with a non-zero status.
+
 If the spec contains `taskDataInputs` with `localFile` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
 
 ```bash
@@ -1836,7 +1838,7 @@ The specification printed shows the Work Requirement as it would be: the existin
 
 It's possible to use the JSON output of `yd-submit --dry-run` (such as the example above) as a self-contained, fully specified Work Requirement specification, using the `--json-raw` (or `-j`) command-line option, i.e. `yd-submit --json-raw <filename.json>`.
 
-This will submit the Work Requirement, then add all the specified Tasks.
+This will submit the Work Requirement, then add all the specified Tasks. If the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd-submit` exits with a non-zero status naming the kind of failure, as for any other submission.
 
 Note that variable substitutions **can** be used in the raw JSON file, just as in the other Work Requirement JSON examples, but there is no property inheritance, including from the `[workRequirement]` section of the TOML configuration or from Work Requirement properties supplied on the command line.
 

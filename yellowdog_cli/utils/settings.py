@@ -91,6 +91,7 @@ YD_URL_ALT = "YD_API_URL"
 TASK_BATCH_SIZE_DEFAULT = 1_000
 DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS = 1
 MAX_BATCH_SUBMIT_ATTEMPTS = 4  # Initial attempt plus retries
+BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for each
 
 CR_MAX_INSTANCES = (
     10_000  # This is enforced by the platform (MAX_WORKER_POOL_NODE_COUNT)

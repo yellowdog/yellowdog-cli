@@ -1,16 +1,30 @@
 """
 Tests for the sequential vs parallel batch task submission logic in
-add_tasks_to_task_group (submit.py).
+add_tasks_to_task_group (submit.py), and for the retrying of a batch that
+fails in submit_batch_of_tasks_to_task_group.
 """
 
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, PropertyMock, patch
 
+import requests
 from yellowdog_client.model import TaskGroup, WorkRequirement
+from yellowdog_client.model.exceptions.invalid_request_exception import (
+    InvalidRequestException,
+)
+from yellowdog_client.model.exceptions.not_authorised_exception import (
+    NotAuthorisedException,
+)
 
 import yellowdog_cli.submit as submit_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.exit_codes import classify
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
+from yellowdog_cli.utils.settings import (
+    BATCH_SUBMIT_RETRY_DELAY,
+    MAX_BATCH_SUBMIT_ATTEMPTS,
+    ExitCode,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -295,3 +309,124 @@ class TestParallelBatching:
             num_tasks=12, batch_size=3, parallel_batches=4
         )
         assert captured == [4]
+
+
+# ---------------------------------------------------------------------------
+# A Task Group with no Tasks
+# ---------------------------------------------------------------------------
+
+
+class TestNoTasks:
+    """
+    A Task Group with no Tasks has no batches. With parallel batches asked
+    for, it used to reach the parallel path and build a ThreadPoolExecutor of
+    no workers, which raises.
+    """
+
+    def test_no_pool_is_built_with_parallel_batches(self):
+        assert (
+            _run_add_tasks_tracking_tpe(num_tasks=0, batch_size=3, parallel_batches=4)
+            == []
+        )
+
+    def test_nothing_is_generated_or_submitted(self):
+        result = _run_add_tasks(num_tasks=0, batch_size=3, parallel_batches=4)
+        assert result["generate_calls"] == []
+        assert result["submit_calls"] == []
+
+
+# ---------------------------------------------------------------------------
+# Retrying a batch that fails
+# ---------------------------------------------------------------------------
+
+
+_DUPLICATE_NAMES = "Task names must be unique within task group"
+
+
+class TestBatchSubmitRetries:
+    """
+    submit_batch_of_tasks_to_task_group() against a stubbed Platform call.
+    """
+
+    def _submit(self, side_effect) -> dict:
+        add_tasks = MagicMock(side_effect=side_effect)
+        sleep_mock = MagicMock()
+        outcome: dict = {"add_tasks": add_tasks, "sleep": sleep_mock}
+        with (
+            patch.object(
+                submit_module.CLIENT.work_client,
+                "add_tasks_to_task_group_by_name",
+                add_tasks,
+            ),
+            patch.object(submit_module, "sleep", sleep_mock),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+        ):
+            try:
+                outcome["result"] = submit_module.submit_batch_of_tasks_to_task_group(
+                    [MagicMock(), MagicMock()],
+                    _make_wr(),
+                    _make_tg(),
+                    num_task_batches=1,
+                    batch_number=0,
+                    task_batch_size=10,
+                    total_num_tasks=2,
+                )
+            except Exception as e:
+                outcome["raised"] = e
+        return outcome
+
+    def test_duplicate_names_on_the_first_attempt_is_a_failure(self):
+        # A second answer is there to be taken, and must not be: a retry
+        # would see the same collision and report it as success
+        error = Exception(_DUPLICATE_NAMES)
+        outcome = self._submit([error, Exception(_DUPLICATE_NAMES)])
+        assert outcome["raised"] is error
+        assert outcome["add_tasks"].call_count == 1
+
+    def test_duplicate_names_on_a_retry_is_the_earlier_attempt_succeeding(self):
+        outcome = self._submit(
+            [Exception("502 Bad Gateway"), Exception(_DUPLICATE_NAMES)]
+        )
+        assert "raised" not in outcome
+        assert outcome["result"] == 2
+
+    def test_duplicate_names_as_an_invalid_request_on_a_retry_is_success_too(self):
+        outcome = self._submit(
+            [Exception("502 Bad Gateway"), InvalidRequestException(_DUPLICATE_NAMES)]
+        )
+        assert outcome["result"] == 2
+
+    def test_refused_credentials_are_not_retried(self):
+        error = NotAuthorisedException("Unauthorized")
+        outcome = self._submit([error, None])
+        assert outcome["raised"] is error
+        assert outcome["add_tasks"].call_count == 1
+        outcome["sleep"].assert_not_called()
+        assert classify(outcome["raised"]) == ExitCode.AUTHENTICATION
+
+    def test_an_invalid_request_is_not_retried(self):
+        outcome = self._submit([InvalidRequestException("bad task"), None])
+        assert isinstance(outcome["raised"], InvalidRequestException)
+        assert outcome["add_tasks"].call_count == 1
+
+    def test_a_transient_failure_is_retried_with_a_growing_delay(self):
+        outcome = self._submit([Exception("502"), Exception("502"), None])
+        assert outcome["result"] == 2
+        assert [c.args[0] for c in outcome["sleep"].call_args_list] == [
+            BATCH_SUBMIT_RETRY_DELAY,
+            BATCH_SUBMIT_RETRY_DELAY * 2,
+        ]
+
+    def test_the_last_failure_is_raised_as_it_is_so_its_kind_reaches_the_exit_code(
+        self,
+    ):
+        errors = [
+            requests.ConnectionError(f"attempt {n}")
+            for n in range(MAX_BATCH_SUBMIT_ATTEMPTS)
+        ]
+        outcome = self._submit(errors)
+        assert outcome["raised"] is errors[-1]
+        assert outcome["add_tasks"].call_count == MAX_BATCH_SUBMIT_ATTEMPTS
+        assert classify(outcome["raised"]) == ExitCode.CONNECTION

@@ -1,5 +1,6 @@
 """
-Tests for create_task_group and submit_work_requirement in submit.py.
+Tests for create_task_group, submit_work_requirement and
+generate_batch_of_tasks_for_task_group in submit.py.
 """
 
 from datetime import timedelta
@@ -9,6 +10,7 @@ import pytest
 from yellowdog_client.model import (
     CloudProvider,
     DoubleRange,
+    Task,
     TaskGroup,
     TaskTemplate,
     WorkRequirement,
@@ -19,6 +21,10 @@ import yellowdog_cli.submit as submit_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.property_names import (
+    ADD_ENVIRONMENT,
+    ARGS,
+    ARGS_POSTFIX,
+    ARGS_PREFIX,
     COMPLETED_TASK_TTL,
     INSTANCE_PRICING_PREFERENCE,
     MAX_WORKERS,
@@ -696,3 +702,107 @@ class TestSubmitWRGeneratedMessage:
         assert output.index("Generated Work Requirement") < output.index(
             "Generated Task Group"
         ), output
+
+
+# ---------------------------------------------------------------------------
+# submit_work_requirement — a whole-valued float taskGroupCount
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitWRTaskGroupCountAsFloat:
+    """
+    The schema accepts 2.0 as an integer, as JSON Schema does; range() does
+    not, so it used to raise "'float' object cannot be interpreted as an
+    integer".
+    """
+
+    def test_a_whole_valued_float_expands(self):
+        wr_data = {
+            TASK_GROUP_COUNT: 2.0,
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        assert len(_run_submit_wr(wr_data=wr_data)["create_tg_calls"]) == 2
+
+    def test_a_fractional_count_is_a_type_error_naming_the_property(self):
+        wr_data = {
+            TASK_GROUP_COUNT: 2.5,
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        with pytest.raises(TypeError, match=f"'{TASK_GROUP_COUNT}' value '2.5'"):
+            _run_submit_wr(wr_data=wr_data)
+
+
+# ---------------------------------------------------------------------------
+# generate_batch_of_tasks_for_task_group — Task Group over Work Requirement
+# ---------------------------------------------------------------------------
+
+
+def _generate_one_task(wr_data: dict) -> Task:
+    """
+    Generate the single Task of wr_data's single Task Group, as submission
+    would, with nothing uploaded.
+    """
+    config_common = MagicMock()
+    config_common.namespace = "test-ns"
+    with (
+        patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
+        patch.object(submit_module, "CONFIG_COMMON", config_common),
+        patch.object(submit_module, "ID", "test-wr"),
+        patch.object(submit_module, "RCLONE_UPLOADED_FILES", MagicMock()),
+    ):
+        task_group = MagicMock()
+        task_group.name = "tg"
+        task_group.runSpecification.taskTypes = ["bash"]
+        (task,) = submit_module.generate_batch_of_tasks_for_task_group(
+            start_task_number=0,
+            end_task_number=1,
+            wr_data=wr_data,
+            files_directory=".",
+            task_group=task_group,
+            tg_number=0,
+            tasks=wr_data[TASK_GROUPS][0][TASKS],
+            task_count=None,
+            num_tasks=1,
+            num_task_groups=1,
+        )
+    return task
+
+
+class TestTaskPropertiesTaskGroupOverWorkRequirement:
+    """
+    Task > Task Group > Work Requirement > TOML. 'arguments',
+    'argumentsPrefix', 'argumentsPostfix' and 'addEnvironment' used to look at
+    the Work Requirement before the Task Group, so a Task Group's own value
+    was lost whenever the Work Requirement set one too.
+    """
+
+    @pytest.mark.parametrize("prop", [ARGS, ARGS_PREFIX, ARGS_POSTFIX])
+    def test_task_group_arguments_win(self, prop):
+        wr_data = {
+            prop: ["wr"],
+            TASK_GROUPS: [{prop: ["tg"], TASKS: [{}]}],
+        }
+        assert _generate_one_task(wr_data).arguments == ["tg"]
+
+    @pytest.mark.parametrize("prop", [ARGS, ARGS_PREFIX, ARGS_POSTFIX])
+    def test_work_requirement_arguments_are_inherited(self, prop):
+        wr_data = {prop: ["wr"], TASK_GROUPS: [{TASKS: [{}]}]}
+        assert _generate_one_task(wr_data).arguments == ["wr"]
+
+    def test_task_arguments_win_over_both(self):
+        wr_data = {
+            ARGS: ["wr"],
+            TASK_GROUPS: [{ARGS: ["tg"], TASKS: [{ARGS: ["task"]}]}],
+        }
+        assert _generate_one_task(wr_data).arguments == ["task"]
+
+    def test_task_group_add_environment_wins(self):
+        wr_data = {
+            ADD_ENVIRONMENT: {"X": "wr"},
+            TASK_GROUPS: [{ADD_ENVIRONMENT: {"X": "tg"}, TASKS: [{}]}],
+        }
+        assert _generate_one_task(wr_data).environment == {"X": "tg"}
+
+    def test_work_requirement_add_environment_is_inherited(self):
+        wr_data = {ADD_ENVIRONMENT: {"X": "wr"}, TASK_GROUPS: [{TASKS: [{}]}]}
+        assert _generate_one_task(wr_data).environment == {"X": "wr"}
