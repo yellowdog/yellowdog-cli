@@ -1259,13 +1259,19 @@ COMMANDS["yd-compute-restart"] = Command(
     purpose="restarting Instances",
     summary="Restart Instances",
     kind=CommandKind.API,
-    options=_compute_action_options(
-        # Restart is instance-level only: no CR names/IDs
+    # Restart is instance-level only: no Compute Requirement names, IDs or
+    # listing, so none of the options that select or sort them
+    options=(
+        VARIABLE,
+        YES,
+        ACTIONS_JSON,
         COMPUTE_REQS_INSTANCES_OR_NODES.variant(
-            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format"
-        )
+            nargs="+",
+            metavar="<instance-or-node-ID>",
+            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+        ),
+        FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
-    requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-start"] = Command(
@@ -1274,6 +1280,7 @@ COMMANDS["yd-compute-start"] = Command(
     summary="Start stopped Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -1283,6 +1290,7 @@ COMMANDS["yd-compute-stop"] = Command(
     summary="Stop Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

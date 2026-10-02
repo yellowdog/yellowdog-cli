@@ -1780,37 +1780,6 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
-      "const": null,
-      "default": "name",
-      "dest": "sort",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--sort"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "reverse",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--reverse"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
       "choices": null,
       "const": null,
       "default": null,
@@ -1823,48 +1792,6 @@
       ],
       "required": false,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "interactive",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--interactive",
-        "-i"
-      ],
-      "required": false,
-      "type": null
     },
     {
       "choices": null,
@@ -1899,7 +1826,7 @@
       "default": "",
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"

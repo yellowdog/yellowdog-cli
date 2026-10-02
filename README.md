@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 15:23:15 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 15:35:06 BST 2026 -->
 
 <!--te-->
 
@@ -3934,7 +3934,9 @@ If no arguments are supplied, Compute Requirements that match the `namespace` an
 - Instances in `<compute-requirement-ydid>.<instance-id>` form, to stop individual Instances
 - Node YDIDs, to stop the Instances on which Worker Pool Nodes are running
 
-A Compute Requirement name may also be a glob pattern (e.g. `'cr-*'`). The `--follow`/`-f` option follows the event stream(s) of the affected Compute Requirement(s).
+A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name may also be a glob pattern (e.g. `'cr-*'`), which selects every `RUNNING` Compute Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
+
+Explicit names and IDs are handled in the order given, and are confirmed together: Instances in the same Compute Requirement are stopped in a single request. A Compute Requirement or Instance that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped. The `--follow`/`-f` option follows the event stream(s) of the Compute Requirement(s) acted on.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
@@ -3955,7 +3957,7 @@ The `yd-compute-start` command starts `STOPPED` Compute Requirements and Instanc
 yd-compute-start [options] [<name-or-ID> ...]
 ```
 
-It accepts the same arguments as `yd-compute-stop`: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
+It accepts the same arguments as `yd-compute-stop`, and handles them in the same way: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs, Instances in `<compute-requirement-ydid>.<instance-id>` form, or Node YDIDs.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
@@ -3969,10 +3971,10 @@ yd-compute-start my-compute-requirement --follow
 The `yd-compute-restart` command restarts (reboots) `RUNNING` Instances. Restarting applies to Instances only; whole Compute Requirements cannot be restarted.
 
 ```shell
-yd-compute-restart [options] [<name-or-ID> ...]
+yd-compute-restart [options] <instance-or-node-ID> ...
 ```
 
-Instances to restart are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs.
+Instances to restart are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs; at least one is required. They are handled as `yd-compute-stop` handles them: in the order given, confirmed together, one request per Compute Requirement, and an Instance that is not `RUNNING` is skipped with a warning.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))

@@ -978,7 +978,9 @@ class TestComputeActions:
     def test_a_compute_requirement_by_id_declined(self, run, monkeypatch):
         client = MagicMock()
         client.compute_client.get_compute_requirement_by_id.return_value = (
-            SimpleNamespace(status=ComputeRequirementStatus.RUNNING)
+            SimpleNamespace(
+                id=CR_ID, name="cr-a", status=ComputeRequirementStatus.RUNNING
+            )
         )
         out, _, _ = run(
             cac_module,
@@ -987,7 +989,9 @@ class TestComputeActions:
             client=client,
             compute_requirements_instances_or_nodes=[CR_ID],
         )
-        assert out == [_action(CR_ID, None, "compute-requirements", "stop", "skipped")]
+        assert out == [
+            _action(CR_ID, "cr-a", "compute-requirements", "stop", "skipped")
+        ]
 
 
 # ---------------------------------------------------------------------------
