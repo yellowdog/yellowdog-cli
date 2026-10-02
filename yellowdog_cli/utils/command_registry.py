@@ -1189,6 +1189,28 @@ RUNNING_NODES_ONLY = option(
     help="only compare against nodes in the RUNNING state",
 )
 
+
+def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-compare's positional IDs, by type, before anything is fetched: a Work
+    Requirement or Task Group ID, then Worker Pool IDs. The YDID parser is
+    imported here, so this module still imports nothing at load beyond
+    settings.py and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if get_ydid_type(args.wr_or_tg_id) not in (
+        YDIDType.WORK_REQUIREMENT,
+        YDIDType.TASK_GROUP,
+    ):
+        parser.error(
+            f"not a YellowDog Work Requirement or Task Group ID: '{args.wr_or_tg_id}'"
+        )
+    for worker_pool_id in args.worker_pool_ids:
+        if get_ydid_type(worker_pool_id) != YDIDType.WORKER_POOL:
+            parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool_id}'")
+
+
 COMMANDS["yd-compare"] = Command(
     name="yd-compare",
     purpose=(
@@ -1208,6 +1230,7 @@ COMMANDS["yd-compare"] = Command(
             )
         ),
     ),
+    validators=(check_compare_ids,),
     tool=ToolKind.READ_ONLY,
 )
 

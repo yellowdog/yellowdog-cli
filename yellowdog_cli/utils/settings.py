@@ -28,7 +28,7 @@ class ExitCode(IntEnum):
     |      |                | TOML, a variable error at load, a missing --config |
     | 4    | AUTHENTICATION | HTTP 401, NotAuthorisedException, 'Unauthorized'   |
     | 5    | PERMISSION     | HTTP 403, 'MissingPermissionException'             |
-    | 6    | NOT_FOUND      | HTTP 404 reaching the wrapper                      |
+    | 6    | NOT_FOUND      | HTTP 404 reaching the wrapper, or NotFoundError    |
     | 7    | PLATFORM       | HTTP 5xx, InternalServerException,                 |
     |      |                | ServerErrorException                               |
     | 8    | CONNECTION     | requests connection errors and timeouts            |

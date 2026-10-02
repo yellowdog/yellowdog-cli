@@ -267,3 +267,37 @@ class TestWrappers:
         wrapped(json_output=True, debug=True)
         assert _exit_code(wrapper, lambda: record({"id": "a"})) == 0
         assert json_loads(capsys.readouterr().out) == [{"id": "a"}]
+
+
+class TestClassifyChained:
+    def test_not_found_error(self):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        assert classify(NotFoundError("Worker Pool ID 'x' not found")) == (
+            ExitCode.NOT_FOUND
+        )
+
+    def test_not_found_error_prints_without_quotes(self):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        assert str(NotFoundError("x not found")) == "x not found"
+
+    @pytest.mark.parametrize(
+        "cause, code",
+        [
+            (RequestsConnectionError("reset"), ExitCode.CONNECTION),
+            (_http_error(404), ExitCode.NOT_FOUND),
+            (_http_error(503), ExitCode.PLATFORM),
+        ],
+    )
+    def test_a_rewrapped_failure_keeps_its_cause_code(self, cause, code):
+        try:
+            try:
+                raise cause
+            except Exception as e:
+                raise RuntimeError(f"Unable to do the thing: {e}") from e
+        except RuntimeError as wrapped_error:
+            assert classify(wrapped_error) == code
+
+    def test_an_unchained_failure_is_still_failure(self):
+        assert classify(RuntimeError("odd")) == ExitCode.FAILURE

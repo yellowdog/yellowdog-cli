@@ -391,3 +391,33 @@ class TestExcludedOptions:
             "--show-keyring-passwords",
             "--show-secrets",
         } <= MCP_EXCLUDED_OPTIONS
+
+
+class TestCompareIds:
+    WR = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
+    TG = "ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+    WP = "ydid:wrkrpool:000000:11111111-1111-1111-1111-111111111111"
+
+    def _check(self, wr_or_tg_id: str, *worker_pool_ids: str) -> None:
+        from argparse import Namespace
+
+        from yellowdog_cli.utils.command_registry import check_compare_ids
+
+        check_compare_ids(
+            Namespace(wr_or_tg_id=wr_or_tg_id, worker_pool_ids=list(worker_pool_ids)),
+            build_parser(COMMANDS["yd-compare"], prog="yd-compare"),
+        )
+
+    def test_a_work_requirement_or_task_group_and_pools_pass(self):
+        self._check(self.WR, self.WP)
+        self._check(self.TG, self.WP, self.WP)
+
+    @pytest.mark.parametrize(
+        "ids",
+        [("nonsense", WP), (WP, WP), (WR, WR), (TG, WP, "ydid:wrkrpool:bad")],
+    )
+    def test_anything_else_is_a_usage_error(self, ids, capsys):
+        with pytest.raises(SystemExit) as raised:
+            self._check(*ids)
+        assert raised.value.code == 2
+        assert "not a YellowDog" in capsys.readouterr().err

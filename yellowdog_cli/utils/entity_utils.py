@@ -59,6 +59,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
@@ -1260,13 +1261,13 @@ def get_task_group_by_id(client: PlatformClient, task_group_id: str) -> TaskGrou
         task_groups = get_task_groups_from_wr_by_id(client, work_requirement_id)
     except Exception as e:
         if is_http_not_found(e):
-            raise KeyError(f"Task Group ID '{task_group_id}' not found")
+            raise NotFoundError(f"Task Group ID '{task_group_id}' not found") from e
         raise RuntimeError(
             f"Unable to obtain Task Group details for '{task_group_id}': {e}"
-        )
+        ) from e
 
     for task_group in task_groups:
         if task_group.id == task_group_id:
             return task_group
 
-    raise KeyError(f"Task Group ID '{task_group_id}' not found")
+    raise NotFoundError(f"Task Group ID '{task_group_id}' not found")

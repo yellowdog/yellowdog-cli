@@ -21,6 +21,16 @@ UNAUTHORIZED_TEXT = "Unauthorized"
 # per-item failure as one of these attempts nothing further
 SESSION_FAILURES = frozenset({ExitCode.AUTHENTICATION, ExitCode.CONNECTION})
 
+
+class NotFoundError(LookupError):
+    """
+    An entity the command was given does not exist. Raised in place of the
+    HTTP 404 (chained to it, where there was one) to name the entity, and
+    classified NOT_FOUND like the 404 itself. A LookupError rather than a
+    KeyError, whose message str() would print in quotes.
+    """
+
+
 if TYPE_CHECKING:
     from requests import HTTPError
 
@@ -45,15 +55,20 @@ def classify(exception: BaseException) -> ExitCode:
     """
     The exit code for an exception. Typed checks come first (the HTTP status
     of a 'requests' HTTPError, the SDK's own exception classes, 'requests'
-    connection errors and timeouts), then the two message-text checks the
-    wrappers use for their friendly messages; anything else is FAILURE.
-    SystemExit is not classified: the wrappers pass its code through.
+    connection errors and timeouts, the CLI's own NotFoundError), then the
+    two message-text checks the wrappers use for their friendly messages,
+    then the exception's cause, so that a failure re-raised with a clearer
+    message ('raise RuntimeError(...) from e') keeps its exit code; anything
+    else is FAILURE. SystemExit is not classified: the wrappers pass its
+    code through.
 
     The typed checks import their classes here, and only if their package
     is already loaded, since an instance cannot exist otherwise: importing
     the SDK at all builds the whole Platform client, and 'requests' is
     ~50ms that a command which never used it should not pay to fail.
     """
+    if isinstance(exception, NotFoundError):
+        return ExitCode.NOT_FOUND
     requests_loaded = "requests" in sys.modules
     if requests_loaded:
         from requests import HTTPError
@@ -89,4 +104,6 @@ def classify(exception: BaseException) -> ExitCode:
         return ExitCode.PERMISSION
     if UNAUTHORIZED_TEXT in message:
         return ExitCode.AUTHENTICATION
+    if exception.__cause__ is not None:
+        return classify(exception.__cause__)
     return ExitCode.FAILURE

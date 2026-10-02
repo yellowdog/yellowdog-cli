@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 11:05:23 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 15:23:15 BST 2026 -->
 
 <!--te-->
 
@@ -535,7 +535,7 @@ The exit codes, with or without `--json`:
 | 3 | A configuration error: missing configuration data, an unreadable or invalid TOML file, a variable error at load, or a `--config` file that does not exist |
 | 4 | Authentication failed: the Application key ID and secret were not recognised (HTTP 401) |
 | 5 | Permission denied: the Application lacks a required permission (HTTP 403) |
-| 6 | Not found (HTTP 404) |
+| 6 | Not found: an entity named by an ID does not exist (HTTP 404) |
 | 7 | A platform error (HTTP 5xx) |
 | 8 | A connection error or timeout reaching the platform |
 | 130 | Interrupted from the keyboard |
@@ -4151,14 +4151,29 @@ Key options:
 yd-compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
 ```
 
-The match status of a Worker Pool falls into one of four categories:
+The properties are compared as follows. A property the Task Group leaves unset, or sets to an empty list, places no constraint on the Worker Pool.
 
-| **Match Status** | **Meaning**                                                                                                     |
-|------------------|-----------------------------------------------------------------------------------------------------------------|
-| **YES**          | The Worker Pool and every Node/Worker that has registered so far match the Task Group.                          |
-| **NO**           | The Worker Pool and/or none of the Nodes/Workers that have registered so far match the Task Group.              |
-| **MAYBE**        | The Worker Pool matches the Task Group but no Nodes have yet registered, so Node/Worker properties are unknown. |
-| **PARTIAL**      | The Worker Pool and some of the Nodes/Workers that have registered are a match for the Task Group.              |
+| **Property**         | **Compared with**                                                                       | **Matches when**                                                                                                 |
+|----------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| **Instance Type(s)** | The instance types of the Worker Pool's Compute Sources (an AWS Fleet's overrides included) | Every one of them is in the Task Group's list                                                                    |
+| **Provider(s)**      | The providers of the Worker Pool's Compute Sources                                      | Every one of them is in the Task Group's list; a source whose provider can't be determined is shown as `UNKNOWN`, and doesn't match |
+| **Region(s)**        | The regions of the Worker Pool's Compute Sources                                        | Every one of them is in the Task Group's list                                                                    |
+| **Namespace(s)**     | The Worker Pool's namespace                                                             | It is in the Task Group's list                                                                                   |
+| **Worker Tag(s)**    | The Worker Pool's worker tag                                                            | It is in the Task Group's list                                                                                   |
+| **Task Type(s)**     | The task types reported by one Node: a `RUNNING` one where there is one                 | The Node supports all of the Task Group's task types (the scheduler, too, takes a single Node's task types)     |
+| **RAM**, **vCPUs**   | The value reported by every Node                                                        | Every Node's value is within the Task Group's range                                                              |
+
+Only Nodes that have reported their details are compared: a Node that has registered but not yet reported them is left out rather than counted as a non-match.
+
+The match status of each property, and of the Worker Pool as a whole, is one of:
+
+| **Match Status** | **Meaning**                                                                                                                                                 |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **YES**          | The property matches; for the Worker Pool, every property does, so far as the Nodes that have reported their details show.                                |
+| **NO**           | The property doesn't match (for RAM and vCPUs, any one Node failing is enough); for the Worker Pool, at least one property doesn't.                         |
+| **MAYBE**        | The property depends on the Nodes (task types, RAM, vCPUs) and no Node has yet reported its details; for the Worker Pool, no property is NO but at least one is MAYBE. |
+
+A Worker Pool ID given more than once is compared once, with a warning. An ID of the wrong kind is a usage error (exit code 2), and a Work Requirement, Task Group or Worker Pool that does not exist exits with code 6.
 
 ### yd-application
 
