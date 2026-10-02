@@ -25,6 +25,7 @@ from yellowdog_client.model import (
     ComputeRequirementStatus,
     ConfiguredWorkerPool,
     InstanceStatus,
+    NodeStatus,
     ProvisionedWorkerPool,
 )
 
@@ -35,6 +36,7 @@ from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_RESTART,
     COMPUTE_START,
     COMPUTE_STOP,
+    COMPUTE_TERMINATE,
     apply_compute_action,
 )
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
@@ -112,6 +114,8 @@ class FakePlatform:
             "stop_instances",
             "start_instances",
             "restart_instances",
+            "terminate_compute_requirement_by_id",
+            "terminate_instances",
         ):
             getattr(compute, method).side_effect = self._action(method)
         client.worker_pool_client.get_node_by_id.side_effect = self._lookup(self.nodes)
@@ -199,11 +203,22 @@ def platform(monkeypatch):
     entity_utils._get_instances.cache_clear()
 
 
-def _run(monkeypatch, action, targets: list[str], follow: bool = False):
+def _run(
+    monkeypatch,
+    action,
+    targets: list[str],
+    follow: bool = False,
+    dry_run: bool | None = None,
+):
     monkeypatch.setattr(
         cac_module,
         "ARGS_PARSER",
-        SimpleNamespace(compute_requirements_instances_or_nodes=targets, follow=follow),
+        SimpleNamespace(
+            compute_requirements_instances_or_nodes=targets,
+            follow=follow,
+            dry_run=dry_run,
+            json_output=False,
+        ),
     )
     apply_compute_action(action)
 
@@ -444,6 +459,7 @@ class TestInstances:
 class TestNodes:
     def _node(self, platform, details=True, pool=None):
         platform.nodes[NODE_ID] = SimpleNamespace(
+            status=NodeStatus.RUNNING,
             workerPoolId=WP_ID,
             details=SimpleNamespace(instanceId=INSTANCE_ID) if details else None,
         )
@@ -518,6 +534,86 @@ class TestSessionFailures:
             "skipped",
         ]
         assert platform.calls == []
+
+
+# ---------------------------------------------------------------------------
+# Termination: yd-terminate
+# ---------------------------------------------------------------------------
+
+
+class TestTerminate:
+    @pytest.mark.parametrize(
+        "status",
+        [ComputeRequirementStatus.PROVISIONING, RUNNING, STOPPED],
+    )
+    def test_any_live_cr_can_be_terminated(self, platform, monkeypatch, status):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", status)
+        _run(monkeypatch, COMPUTE_TERMINATE, [CR_ID])
+        assert platform.calls == [("terminate_compute_requirement_by_id", CR_ID)]
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "terminated")]
+
+    def test_a_terminated_cr_is_skipped(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
+        _run(monkeypatch, COMPUTE_TERMINATE, ["cr-a"])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "skipped"
+
+    @pytest.mark.parametrize("status", [InstanceStatus.STOPPED, InstanceStatus.PENDING])
+    def test_an_instance_in_any_live_state(self, platform, monkeypatch, status):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(INSTANCE_ID, status)
+        _run(monkeypatch, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == [("terminate_instances", CR_ID, [INSTANCE_ID])]
+
+    def test_an_instance_already_terminating_is_skipped(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(
+            INSTANCE_ID, InstanceStatus.TERMINATING
+        )
+        _run(monkeypatch, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.records[0]["outcome"] == "skipped"
+
+    def test_a_terminated_node_is_skipped(self, platform, monkeypatch):
+        platform.nodes[NODE_ID] = SimpleNamespace(
+            status=NodeStatus.TERMINATED, workerPoolId=WP_ID, details=None
+        )
+        _run(monkeypatch, COMPUTE_TERMINATE, [NODE_ID])
+        assert platform.outcomes() == [(NODE_ID, "nodes", "skipped")]
+
+    def test_the_confirmation_says_immediately(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            cac_module, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(monkeypatch, COMPUTE_TERMINATE, [CR_ID])
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a")  # the fake left it as it was
+        _run(monkeypatch, COMPUTE_TERMINATE, [])
+        assert len(prompts) == 2
+        assert all(p.startswith("Immediately terminate ") for p in prompts)
+
+    def test_a_dry_run_reports_and_does_nothing(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
+        report = MagicMock()
+        monkeypatch.setattr(cac_module, "report_dry_run", report)
+        _run(monkeypatch, COMPUTE_TERMINATE, ["cr-*"], dry_run=True)
+        assert platform.calls == []
+        assert [s.id for s in report.call_args.args[1]] == [CR_ID]
+        assert report.call_args.args[3:6] == (
+            "terminated",
+            "compute-requirements",
+            "terminate",
+        )
+
+    def test_the_command_is_the_action(self, monkeypatch):
+        import yellowdog_cli.terminate as yd_terminate
+
+        apply = MagicMock()
+        monkeypatch.setattr(yd_terminate, "apply_compute_action", apply)
+        monkeypatch.setattr(
+            "yellowdog_cli.utils.wrapper.ARGS_PARSER",
+            MagicMock(debug=True, print_pid=True),
+        )
+        with pytest.raises(SystemExit):
+            yd_terminate.main()
+        apply.assert_called_once_with(COMPUTE_TERMINATE)
 
 
 # ---------------------------------------------------------------------------

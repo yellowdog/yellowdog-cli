@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Core functionality for stopping, starting and restarting Compute
-Requirements and Instances.
+Core functionality for stopping, starting, restarting and terminating
+Compute Requirements and Instances: yd-compute-stop, yd-compute-start,
+yd-compute-restart and yd-terminate.
 
 Explicit targets are handled in two passes. Each argument is first resolved,
 in the order given, to a Compute Requirement or to an Instance (a Node
@@ -23,9 +24,11 @@ from yellowdog_client.model import (
     ComputeRequirementSummary,
     Instance,
     InstanceStatus,
+    NodeStatus,
     ProvisionedWorkerPool,
 )
 
+from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,
@@ -62,6 +65,12 @@ class ComputeAction:
     instance_method_name: str  # ComputeClient method for instances
     valid_cr_statuses: list[ComputeRequirementStatus]
     valid_instance_statuses: list[InstanceStatus]
+    # How a confirmation names the action, where its name alone undersells it
+    confirmation_verb: str | None = None
+
+    @property
+    def prompt(self) -> str:
+        return self.confirmation_verb or self.name
 
     def record(
         self,
@@ -111,6 +120,33 @@ COMPUTE_RESTART = ComputeAction(
     instance_method_name="restart_instances",
     valid_cr_statuses=[],
     valid_instance_statuses=[InstanceStatus.RUNNING],
+)
+
+
+COMPUTE_TERMINATE = ComputeAction(
+    name="Terminate",
+    gerund="Terminating",
+    past_tense="Terminated",
+    cr_method_name="terminate_compute_requirement_by_id",
+    instance_method_name="terminate_instances",
+    # Every state but TERMINATING and TERMINATED
+    valid_cr_statuses=[
+        ComputeRequirementStatus.NEW,
+        ComputeRequirementStatus.PROVISIONING,
+        ComputeRequirementStatus.STARTING,
+        ComputeRequirementStatus.RUNNING,
+        ComputeRequirementStatus.STOPPING,
+        ComputeRequirementStatus.STOPPED,
+    ],
+    valid_instance_statuses=[
+        InstanceStatus.PENDING,
+        InstanceStatus.RUNNING,
+        InstanceStatus.STOPPING,
+        InstanceStatus.STOPPED,
+        InstanceStatus.UNAVAILABLE,
+        InstanceStatus.UNKNOWN,
+    ],
+    confirmation_verb="Immediately terminate",
 )
 
 
@@ -241,6 +277,18 @@ def apply_compute_action(action: ComputeAction):
             action.valid_cr_statuses,
         )
 
+    if ARGS_PARSER.dry_run:  # yd-terminate's, the only one to take --dry-run
+        report_dry_run(
+            CLIENT,
+            compute_requirement_summaries,
+            "Compute Requirement",
+            action.past_tense.lower(),
+            ET_COMPUTE_REQUIREMENTS,
+            action.name.lower(),
+            bool(ARGS_PARSER.json_output),
+        )
+        return
+
     _apply_action_to_summaries(action, compute_requirement_summaries)
 
 
@@ -254,7 +302,7 @@ def _apply_action_to_summaries(
     selected: list[ComputeRequirementSummary] = select(CLIENT, summaries)
 
     if selected and not confirmed(
-        f"{action.name} {len(selected)} Compute Requirement(s)?"
+        f"{action.prompt} {len(selected)} Compute Requirement(s)?"
     ):
         for compute_requirement_summary in selected:
             action.record(compute_requirement_summary, "skipped")
@@ -411,7 +459,7 @@ def _confirmation(action: ComputeAction, plan: _Plan) -> str:
             )
             + ")"
         )
-    return f"{action.name} {' and '.join(parts)}?"
+    return f"{action.prompt} {' and '.join(parts)}?"
 
 
 def _carry_out(action: ComputeAction, plan: _Plan):
@@ -600,6 +648,8 @@ def _resolve_node(
         if is_http_not_found(e):
             raise _Unresolved(f"Cannot find Node {node_id}") from e
         raise
+    if node.status == NodeStatus.TERMINATED:
+        raise _Unresolved(f"Node {node_id} is already TERMINATED", "skipped")
 
     try:
         worker_pool = CLIENT.worker_pool_client.get_worker_pool_by_id(

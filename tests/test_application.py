@@ -21,7 +21,7 @@ from yellowdog_cli.application import _portal_url, report_application
 from yellowdog_cli.utils.settings import ExitCode
 
 API_URL = "https://api.yellowdog.ai"
-NON_API_URL = "https://yd.example.com"
+NON_API_URL = "https://yd.example.com/api"
 APP_ID = "ydid:app:000000:1d0a6a5c-3f9e-4d1e-8a2e-3a2f1b0c9d8e"
 
 
@@ -159,9 +159,11 @@ class TestJsonOutput:
         assert payload["groups"] == ["group-a", "group-b"]
         assert payload["roles"] == {"ADMINISTRATOR": ["GLOBAL"]}
 
-    def test_portal_url_is_null_when_the_url_is_not_derivable(self, capsys):
+    def test_a_url_without_an_api_host_is_used_as_it_is(self, capsys):
         payload = json_loads(_run(capsys, json_output=True, url=NON_API_URL))
-        assert payload["portalUrl"] is None
+        assert payload["portalUrl"] == (
+            "https://yd.example.com/api/#/signin?account=my-account"
+        )
 
     def test_groups_and_roles_are_null_without_the_permission_to_see_them(self, capsys):
         output = _run(capsys, json_output=True, groups_error=FORBIDDEN)
@@ -210,9 +212,9 @@ class TestHumanReadableReport:
         assert "ADMINISTRATOR [GLOBAL]" in output
         assert "Readable namespaces:" in output
 
-    def test_report_omits_the_portal_url_when_it_is_not_derivable(self, capsys):
+    def test_report_shows_a_url_without_an_api_host_as_it_is(self, capsys):
         output = _run(capsys, json_output=False, url=NON_API_URL)
-        assert "Portal URL:" not in output
+        assert "https://yd.example.com/api/#/signin?account=my-account" in output
 
     def test_report_explains_a_forbidden_groups_lookup(self, capsys):
         output = _run(capsys, json_output=False, groups_error=FORBIDDEN)
@@ -267,29 +269,27 @@ class TestPortalUrl:
             ("https://api.yellowdog.ai/", "https://portal.yellowdog.ai"),
             ("https://API.yellowdog.ai", "https://portal.yellowdog.ai"),
             ("https://api.eu.yellowdog.ai", "https://portal.eu.yellowdog.ai"),
-            ("https://yd.example.com/api", "https://yd.example.com/portal"),
-            ("https://yd.example.com/api/", "https://yd.example.com/portal"),
             ("https://api.example.com:8443", "https://portal.example.com:8443"),
         ],
     )
-    def test_api_label_or_segment_becomes_portal(self, url, expected):
+    def test_an_api_host_becomes_portal(self, url, expected):
         assert _portal_url(url, "acct") == f"{expected}/#/signin?account=acct"
 
     @pytest.mark.parametrize(
-        "url",
+        "url, expected",
         [
-            "https://yd.example.com",
-            "https://capital.example.com/rapid",
-            "https://myapihost.example.com",
-            "https://example.com/apis",
+            ("https://yd.example.com/api", "https://yd.example.com/api"),
+            ("https://yd.example.com/api/", "https://yd.example.com/api"),
+            ("https://capital.example.com/rapid", "https://capital.example.com/rapid"),
+            ("https://myapihost.example.com", "https://myapihost.example.com"),
         ],
     )
-    def test_api_only_inside_a_word_is_not_derivable(self, url):
-        assert _portal_url(url, "acct") is None
+    def test_any_other_url_is_used_as_it_is(self, url, expected):
+        assert _portal_url(url, "acct") == f"{expected}/#/signin?account=acct"
 
-    def test_only_whole_labels_and_segments_are_replaced(self):
-        assert _portal_url("https://api.capital.example.com/rapid", "acct") == (
-            "https://portal.capital.example.com/rapid/#/signin?account=acct"
+    def test_a_path_is_kept_under_an_api_host(self):
+        assert _portal_url("https://api.capital.example.com/api", "acct") == (
+            "https://portal.capital.example.com/api/#/signin?account=acct"
         )
 
     @pytest.mark.parametrize("account_name", [None, ""])

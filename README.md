@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 15:35:06 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  2 15:48:04 BST 2026 -->
 
 <!--te-->
 
@@ -3897,7 +3897,7 @@ For example:
 
 ### yd-terminate
 
-The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. Compute Requirements in either `RUNNING` or `STOPPED` states can be terminated.
+The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated, as can an Instance.
 
 ```shell
 yd-terminate [options] [<name-or-ID> ...]
@@ -3909,10 +3909,12 @@ Specific targets can optionally be supplied as positional arguments instead of u
 - a single instance, in `<compute-requirement-ydid>.<instance-id>` form
 - a Node YDID (the node's instance is terminated)
 
-A Compute Requirement name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list compute-requirements --name 'ci-*'` to preview the matches first.
+A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `--dry-run`, or `yd-list compute-requirements --name 'ci-*'`, to preview the matches first.
+
+Explicit names and IDs are handled as [`yd-compute-stop`](#yd-compute-stop) handles them: in the order given, confirmed together, with the Instances in a Compute Requirement terminated in a single request. A Compute Requirement, Instance or Node that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 
 Key options:
-- `--dry-run`/`-D` — show which Compute Requirements would be terminated
+- `--dry-run`/`-D` — show which Compute Requirements would be terminated, when they are selected by `namespace` and `tag` or by glob pattern; it cannot be combined with explicit names or IDs
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 - `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 
@@ -4194,7 +4196,7 @@ Key options:
 yd-application --config prod.toml
 ```
 
-The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined. `portalUrl` is derived from the Platform API URL by replacing each hostname label or path segment that is exactly `api` with `portal` (so `https://api.yellowdog.ai` gives `https://portal.yellowdog.ai`), and is `null` when the URL has no such label or segment. `groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure; if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](#machine-readable-output-and-exit-codes) once the rest has been reported.
+The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined. `portalUrl` is derived from the Platform API URL as every Portal link the commands print is: a hostname label that is exactly `api` becomes `portal` (so `https://api.yellowdog.ai` gives `https://portal.yellowdog.ai`), and any other URL, such as `https://host/api`, is used as it is; it is `null` only when the account's name is not known. `groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure; if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](#machine-readable-output-and-exit-codes) once the rest has been reported.
 
 ```shell
 yd-application --json

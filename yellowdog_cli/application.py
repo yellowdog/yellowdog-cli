@@ -6,7 +6,7 @@ A script for reporting on the details of the Application being used.
 
 import sys
 from typing import Any, cast
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote
 
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import ApplicationDetails
@@ -17,7 +17,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
 )
 from yellowdog_cli.utils.exit_codes import classify
-from yellowdog_cli.utils.misc_utils import portal_netloc
+from yellowdog_cli.utils.misc_utils import portal_base_url
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
 from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import (
@@ -62,25 +62,15 @@ def report_application():
 
 def _portal_url(url: str, account_name: str | None) -> str | None:
     """
-    The Portal sign-in URL for the account, or None when it can't be derived
-    from the configured API URL. The Portal's URL is the API's with each
-    hostname label and path segment that is exactly 'api' replaced by
-    'portal' (so 'https://api.yellowdog.ai' gives
-    'https://portal.yellowdog.ai'); a URL with no such label or segment is
-    not in a form the Portal's URL can be derived from.
+    The Portal sign-in URL for the account, under the Portal's address as
+    the CLI's other Portal links derive it (misc_utils.portal_base_url():
+    'https://api.yellowdog.ai' gives 'https://portal.yellowdog.ai', and a
+    URL without an 'api' host, such as 'https://host/api', is used as it
+    is), or None when the account's name is not known.
     """
     if not account_name:
         return None
-    parts = urlsplit(url)
-    netloc = portal_netloc(parts.netloc) or parts.netloc
-    path = "/".join(
-        "portal" if segment.lower() == "api" else segment
-        for segment in parts.path.rstrip("/").split("/")
-    )
-    if netloc == parts.netloc and path == parts.path.rstrip("/"):
-        return None
-    portal = urlunsplit((parts.scheme, netloc, path, "", ""))
-    return f"{portal}/#/signin?account={quote(account_name, safe='')}"
+    return f"{portal_base_url(url)}/#/signin?account={quote(account_name, safe='')}"
 
 
 def _groups_and_roles(

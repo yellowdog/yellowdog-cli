@@ -357,23 +357,28 @@ def _cr(id_: str, name: str, status=ComputeRequirementStatus.RUNNING):
 class TestTerminate:
     def test_terminated(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_terminate,
+            cac_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
-        out, _, _ = run(yd_terminate, compute_requirements_instances_or_nodes=[])
+        out, _, _ = run(
+            cac_module, yd_terminate, compute_requirements_instances_or_nodes=[]
+        )
         assert out == [
             _action(CR_ID, "cr-a", "compute-requirements", "terminate", "terminated")
         ]
 
     def test_dry_run(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_terminate,
+            cac_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
         out, _, _ = run(
-            yd_terminate, dry_run=True, compute_requirements_instances_or_nodes=[]
+            cac_module,
+            yd_terminate,
+            dry_run=True,
+            compute_requirements_instances_or_nodes=[],
         )
         assert out == [
             _action(
@@ -388,10 +393,9 @@ class TestTerminate:
 
     def test_an_instance(self, run, monkeypatch):
         instance = MagicMock(status=InstanceStatus.RUNNING)
-        monkeypatch.setattr(
-            yd_terminate, "get_instance_by_id", lambda *a, **k: instance
-        )
+        monkeypatch.setattr(cac_module, "get_instance_by_id", lambda *a, **k: instance)
         out, _, _ = run(
+            cac_module,
             yd_terminate,
             compute_requirements_instances_or_nodes=[f"{CR_ID}.{INSTANCE_ID}"],
         )
