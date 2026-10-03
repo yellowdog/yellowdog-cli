@@ -3,7 +3,7 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from functools import lru_cache
 from typing import cast
 
@@ -53,6 +53,7 @@ from yellowdog_client.model import (
     WorkerPool,
     WorkerPoolSearch,
     WorkerPoolSummary,
+    WorkRequirement,
     WorkRequirementSearch,
     WorkRequirementStatus,
     WorkRequirementSummary,
@@ -193,31 +194,114 @@ def get_compute_requirement_id_by_name(
         return None
 
 
+class AmbiguousNameError(LookupError):
+    """
+    A name that two or more entities the command could act on share, so that
+    only an ID can say which is meant.
+    """
+
+
+# The Work Requirement states no action applies to
+FINISHED_WORK_REQUIREMENT_STATUSES = (
+    WorkRequirementStatus.COMPLETED,
+    WorkRequirementStatus.CANCELLED,
+    WorkRequirementStatus.FAILED,
+)
+
+
+def find_work_requirement_by_name(
+    client: PlatformClient,
+    name_or_namespaced_name: str,
+    default_namespace: str | None,
+    statuses: Collection[WorkRequirementStatus],
+) -> WorkRequirementSummary:
+    """
+    The Work Requirement with a name, in 'default_namespace' unless the name
+    has a 'namespace/' prefix, found by a search for the name (which the
+    Platform matches partially, so the results are filtered for equality),
+    never by listing the namespace. A name can be reused once a Work
+    Requirement has finished, so the one whose status is in 'statuses' is
+    preferred; with none, one in another state is returned, for the caller
+    to report as such. Raises NotFoundError when nothing has the name, and
+    AmbiguousNameError when two or more in 'statuses' do.
+    """
+    namespace, name = split_namespace_and_name(name_or_namespaced_name)
+    namespace = default_namespace if namespace is None else namespace
+    candidates = [
+        summary
+        for summary in get_filtered_work_requirement_summaries(
+            client, name=name, namespace=namespace
+        )
+        if summary.name == name
+    ]
+    if not candidates:
+        raise NotFoundError(
+            f"Cannot find Work Requirement '{name}' in namespace '{namespace}'"
+        )
+    preferred = [summary for summary in candidates if summary.status in statuses]
+    if len(preferred) > 1:
+        raise AmbiguousNameError(
+            f"{len(preferred)} Work Requirements in namespace '{namespace}' are"
+            f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
+            " please supply the ID of the one meant"
+        )
+    return (preferred or candidates)[0]
+
+
+def work_requirement_summary_of(
+    work_requirement: WorkRequirement,
+) -> WorkRequirementSummary:
+    """
+    A fetched Work Requirement as the summary a search would have returned,
+    less the Task counts and health, which only a search reports.
+    """
+    return WorkRequirementSummary(
+        id=work_requirement.id,
+        namespace=work_requirement.namespace,
+        name=work_requirement.name,
+        tag=work_requirement.tag,
+        createdTime=work_requirement.createdTime,
+        statusChangedTime=work_requirement.statusChangedTime,
+        priority=work_requirement.priority,
+        status=work_requirement.status,
+    )
+
+
 def get_work_requirement_summary_by_name_or_id(
     client: PlatformClient,
     work_requirement_name_or_id: str,
     namespace: str | None = None,
 ) -> WorkRequirementSummary | None:
     """
-    Get a Work Requirement Summary by its name or ID.
-    Scoped by namespace.
+    A Work Requirement's summary by its ID, fetched whatever its namespace, or by its
+    name, in 'namespace' unless the name has a 'namespace/' prefix, preferring
+    one that has not finished where the name has been reused. None means not
+    found; two unfinished Work Requirements of the name raise
+    AmbiguousNameError rather than one being guessed at.
     """
-    namespace_, name = split_namespace_and_name(work_requirement_name_or_id)
-    namespace_ = namespace if namespace_ is None else namespace_
-
-    # Don't include name in the search, to allow for name or ID
-    work_requirement_summaries = get_work_requirement_summaries(
-        client, namespace=namespace_, partial_name_matches=True
-    )
-
-    for work_requirement_summary in work_requirement_summaries:
-        if (
-            work_requirement_summary.name == name
-            or work_requirement_summary.id == work_requirement_name_or_id
-        ):
-            return work_requirement_summary
-
-    return None
+    if get_ydid_type(work_requirement_name_or_id) == YDIDType.WORK_REQUIREMENT:
+        try:
+            work_requirement = client.work_client.get_work_requirement_by_id(
+                work_requirement_name_or_id
+            )
+        except Exception as e:
+            if is_http_not_found(e):
+                return None
+            raise
+        return work_requirement_summary_of(work_requirement)
+    try:
+        return find_work_requirement_by_name(
+            client,
+            work_requirement_name_or_id,
+            namespace,
+            [
+                status
+                for status in WorkRequirementStatus
+                if status not in FINISHED_WORK_REQUIREMENT_STATUSES
+            ],
+        )
+    except NotFoundError:
+        return None
 
 
 @lru_cache

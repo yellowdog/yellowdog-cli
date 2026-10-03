@@ -25,6 +25,7 @@ from requests import HTTPError, Response
 from yellowdog_client.model import WorkRequirementStatus
 
 import yellowdog_cli.utils.start_hold_common as shc_module
+from yellowdog_cli.utils import entity_utils
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     check_glob_and_literal_names,
@@ -112,6 +113,9 @@ def platform(monkeypatch):
     monkeypatch.setattr(shc_module, "follow_ids", MagicMock())
     monkeypatch.setattr(
         shc_module, "get_filtered_work_requirement_summaries", fake.search
+    )
+    monkeypatch.setattr(
+        entity_utils, "get_filtered_work_requirement_summaries", fake.search
     )
 
     def record_action(entity, entity_type, action, outcome, error=None):
@@ -257,7 +261,7 @@ class TestExplicit:
         _run(monkeypatch, START, ["wr-a"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
-        assert "please supply its ID" in platform.records[0]["error"]
+        assert "please supply the ID" in platform.records[0]["error"]
 
     @pytest.mark.parametrize("target", [WR_A, "wr-a"])
     def test_the_wrong_state_is_skipped_saying_which(

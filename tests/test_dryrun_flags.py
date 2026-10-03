@@ -16,6 +16,7 @@ import yellowdog_cli.utils.dataclient_wrapper as dcw_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import entity_utils
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.results import reset_results
 from yellowdog_cli.utils.settings import ExitCode
@@ -131,9 +132,7 @@ class TestRealPathRecordsThroughARealParse:
         # which looks the Work Requirement up and records a failure when
         # it is not found -- no network mocking needed beyond that lookup.
         monkeypatch.setattr(
-            yd_cancel,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: None,
+            entity_utils, "get_filtered_work_requirement_summaries", lambda *a, **k: []
         )
 
         with pytest.raises(SystemExit) as exit_info:
@@ -147,7 +146,7 @@ class TestRealPathRecordsThroughARealParse:
                 "type": "work-requirements",
                 "action": "cancel",
                 "outcome": "failed",
-                "error": "not found",
+                "error": "Cannot find Work Requirement 'nonesuch-wr' in namespace 'ns'",
             }
         ]
         # A recorded 'failed' outcome exits 1 even though main() itself

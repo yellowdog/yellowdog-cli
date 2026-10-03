@@ -26,12 +26,13 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import (
+    AmbiguousNameError,
     describe_glob_scope,
     expand_name_globs,
+    find_work_requirement_by_name,
     get_filtered_work_requirement_summaries,
-    resolve_name_glob,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, NotFoundError, classify
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -243,33 +244,18 @@ def _resolve_name(
     action: WorkRequirementAction, name_or_namespaced_name: str
 ) -> WorkRequirementSummary:
     """
-    The Work Requirement with a name, in the configured namespace unless the
-    name has a 'namespace/' prefix. A name can be reused, so the one in the
-    state the action applies to is preferred; with none in that state, one
-    in another state is returned (to be skipped), and with two or more, the
-    name is ambiguous.
+    The Work Requirement with a name, preferring the one in the state the
+    action applies to (entity_utils.find_work_requirement_by_name()).
     """
-    namespace, name = resolve_name_glob(
-        name_or_namespaced_name, CONFIG_COMMON.namespace
-    )
-    candidates = [
-        summary
-        for summary in get_filtered_work_requirement_summaries(
-            CLIENT, name=name, namespace=namespace
+    try:
+        return find_work_requirement_by_name(
+            CLIENT,
+            name_or_namespaced_name,
+            CONFIG_COMMON.namespace,
+            [action.required_status],
         )
-        if summary.name == name  # The search matches partial names
-    ]
-    if not candidates:
-        raise _Unresolved(
-            f"Cannot find Work Requirement '{name}' in namespace '{namespace}'"
-        )
-    in_state = [s for s in candidates if s.status == action.required_status]
-    if len(in_state) > 1:
-        raise _Unresolved(
-            f"{len(in_state)} {action.required_status} Work Requirements are named"
-            f" '{namespace}/{name}'; please supply its ID"
-        )
-    return (in_state or candidates)[0]
+    except (NotFoundError, AmbiguousNameError) as e:
+        raise _Unresolved(str(e)) from e
 
 
 def _warn_not_attempted(count: int):

@@ -39,6 +39,7 @@ import yellowdog_cli.shutdown as yd_shutdown
 import yellowdog_cli.start as yd_start
 import yellowdog_cli.terminate as yd_terminate
 import yellowdog_cli.utils.compute_action_common as cac_module
+import yellowdog_cli.utils.entity_utils as entity_utils_module
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
@@ -235,34 +236,47 @@ class TestCancel:
 
     def test_by_name(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_cancel,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda client, name, namespace: (
-                _wr(WR_ID_1, "wr-a") if name == "wr-a" else None
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda client, name=None, namespace=None, **k: (
+                [_wr(WR_ID_1, "wr-a")] if name == "wr-a" else []
             ),
         )
         out, _, _ = run(yd_cancel, work_requirement_names=["wr-a", "missing"])
-        assert out[0] == _action(
+        assert out[0]["name"] == "missing" and out[0]["outcome"] == "failed"
+        assert "Cannot find" in out[0]["error"]
+        assert out[1] == _action(
             WR_ID_1, "wr-a", "work-requirements", "cancel", "cancelled"
         )
-        assert out[1]["name"] == "missing" and out[1]["outcome"] == "failed"
-        assert "not found" in out[1]["error"]
 
     def test_by_name_in_the_wrong_state_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_cancel,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a", WorkRequirementStatus.COMPLETED),
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a", WorkRequirementStatus.COMPLETED)],
         )
-        out, err, _ = run(yd_cancel, work_requirement_names=["wr-a"])
+        out, err, _ = run(yd_cancel, abort=False, work_requirement_names=["wr-a"])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "cancel", "skipped")
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "cancel",
+                "skipped",
+                error="Work Requirement 'ns/wr-a' is already COMPLETED",
+            )
         ]
-        assert "not in a valid state" in err  # the warning, on stderr
+        assert "is already COMPLETED" in err  # the warning, on stderr
 
     def test_a_task(self, run):
-        out, _, _ = run(yd_cancel, work_requirement_names=[TASK_ID])
-        assert out == [_action(TASK_ID, None, "tasks", "cancel", "cancelled")]
+        client = MagicMock()
+        client.work_client.get_task_by_id.return_value = SimpleNamespace(
+            id=TASK_ID, name="t1", status=TaskStatus.EXECUTING
+        )
+        out, _, _ = run(
+            yd_cancel, client=client, abort=False, work_requirement_names=[TASK_ID]
+        )
+        assert out == [_action(TASK_ID, "t1", "tasks", "cancel", "cancelled")]
 
 
 # ---------------------------------------------------------------------------
@@ -949,7 +963,7 @@ class TestStartHold:
 
     def test_by_name_in_the_wrong_state_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(
-            shc_module,
+            entity_utils_module,
             "get_filtered_work_requirement_summaries",
             lambda *a, **k: [_wr(WR_ID_1, "wr-a", WorkRequirementStatus.RUNNING)],
         )
