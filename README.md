@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  2 16:03:01 BST 2026 -->
+<!-- Added by: pwt, at: Sat Oct  3 17:40:50 BST 2026 -->
 
 <!--te-->
 
@@ -3664,11 +3664,16 @@ yd-start [options] [<work-requirement-name-or-ID> ...]
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
 
+A YDID names its Work Requirement in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the `HELD` Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead. A name may also be a glob pattern (e.g. `'proj-*'`), which selects every `HELD` Work Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
+
+Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped.
+
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-start my-analysis-run --follow
+yd-start 'analysis-*'
 ```
 
 Work Requirements are submitted in the `HELD` state using `yd-submit --hold`; `yd-hold` returns a `RUNNING` one to it.
@@ -3681,7 +3686,7 @@ The `yd-hold` command holds (pauses) `RUNNING` Work Requirements.
 yd-hold [options] [<work-requirement-name-or-ID> ...]
 ```
 
-It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
+It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements. Names, YDIDs and glob patterns are handled as [`yd-start`](#yd-start) handles them, with `RUNNING` in place of `HELD`.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))

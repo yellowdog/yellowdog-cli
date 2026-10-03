@@ -950,12 +950,19 @@ class TestStartHold:
     def test_by_name_in_the_wrong_state_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(
             shc_module,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a", WorkRequirementStatus.RUNNING),
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a", WorkRequirementStatus.RUNNING)],
         )
         out, _, _ = run(shc_module, yd_start, work_requirement_names=["wr-a"])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "start", "skipped")
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "start",
+                "skipped",
+                error="Work Requirement 'ns/wr-a' is RUNNING, not HELD",
+            )
         ]
 
 

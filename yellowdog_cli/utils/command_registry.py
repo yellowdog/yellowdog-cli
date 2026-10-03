@@ -1609,10 +1609,11 @@ COMMANDS["yd-hold"] = Command(
         WORK_REQUIREMENTS.variant(
             help=(
                 "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-                " held (paused)"
+                " held (paused); a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -1624,11 +1625,13 @@ COMMANDS["yd-start"] = Command(
     options=_work_requirement_action_options(
         WORK_REQUIREMENTS.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the held (paused) work requirement(s) to be"
-                " started"
+                "the name(s) or YellowDog ID(s) of the held (paused) work"
+                " requirement(s) to be started; a name may be a glob pattern"
+                " (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
