@@ -30,7 +30,7 @@ from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     check_glob_and_literal_names,
 )
-from yellowdog_cli.utils.start_hold_common import HOLD, START
+from yellowdog_cli.utils.start_hold_common import FINISH, HOLD, START
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 WR_A = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -41,6 +41,8 @@ TASK = "ydid:task:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1:1"
 HELD = WorkRequirementStatus.HELD
 RUNNING = WorkRequirementStatus.RUNNING
 COMPLETED = WorkRequirementStatus.COMPLETED
+FINISHING = WorkRequirementStatus.FINISHING
+CANCELLING = WorkRequirementStatus.CANCELLING
 
 
 def _http_error(status_code: int) -> HTTPError:
@@ -64,7 +66,11 @@ class FakePlatform:
         client = MagicMock()
         work = client.work_client
         work.get_work_requirement_by_id.side_effect = self._get
-        for method in ("start_work_requirement_by_id", "hold_work_requirement_by_id"):
+        for method in (
+            "start_work_requirement_by_id",
+            "hold_work_requirement_by_id",
+            "finish_work_requirement_by_id",
+        ):
             getattr(work, method).side_effect = self._act(method)
         self.client = client
 
@@ -320,10 +326,83 @@ class TestExplicit:
 
 
 # ---------------------------------------------------------------------------
+# Finishing: yd-finish
+# ---------------------------------------------------------------------------
+
+
+class TestFinish:
+    def test_running_and_held_ones_are_finished_finishing_ones_left_out(
+        self, platform, monkeypatch
+    ):
+        platform.wrs = {
+            WR_A: _wr(WR_A, "wr-a", RUNNING),
+            WR_B: _wr(WR_B, "wr-b", HELD),
+            WR_OLD: _wr(WR_OLD, "wr-c", FINISHING),
+        }
+        _run(monkeypatch, FINISH, [], follow=True)
+        assert platform.calls == [
+            ("finish_work_requirement_by_id", WR_A),
+            ("finish_work_requirement_by_id", WR_B),
+        ]
+        assert [r["outcome"] for r in platform.records] == ["finished", "finished"]
+        # Only those this run finished are followed
+        shc_module.follow_ids.assert_called_once_with([WR_A, WR_B])
+
+    def test_a_glob(self, platform, monkeypatch):
+        platform.wrs = {
+            WR_A: _wr(WR_A, "proj-1", RUNNING),
+            WR_B: _wr(WR_B, "proj-2", FINISHING),
+        }
+        _run(monkeypatch, FINISH, ["proj-*"])
+        assert platform.calls == [("finish_work_requirement_by_id", WR_A)]
+
+    def test_a_finishing_one_named_is_skipped_and_not_followed(
+        self, platform, monkeypatch
+    ):
+        platform.wrs[WR_A] = _wr(WR_A, "wr-a", FINISHING)
+        _run(monkeypatch, FINISH, ["wr-a"], follow=True)
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "skipped"
+        assert "is FINISHING, not RUNNING or HELD" in platform.records[0]["error"]
+        shc_module.follow_ids.assert_not_called()
+
+    def test_a_name_shared_with_a_cancelling_one_is_not_ambiguous(
+        self, platform, monkeypatch
+    ):
+        platform.wrs = {
+            WR_OLD: _wr(WR_OLD, "wr-a", CANCELLING),
+            WR_A: _wr(WR_A, "wr-a", RUNNING),
+        }
+        _run(monkeypatch, FINISH, ["wr-a"])
+        assert platform.calls == [("finish_work_requirement_by_id", WR_A)]
+
+    def test_a_running_and_a_held_one_of_a_name_are_ambiguous(
+        self, platform, monkeypatch
+    ):
+        platform.wrs = {WR_A: _wr(WR_A, "wr-a", RUNNING), WR_B: _wr(WR_B, "wr-a")}
+        _run(monkeypatch, FINISH, ["wr-a"])
+        assert platform.calls == []
+        assert "please supply the ID" in platform.records[0]["error"]
+
+    def test_the_command_is_the_action(self, monkeypatch):
+        import yellowdog_cli.finish as yd_finish
+
+        apply = MagicMock()
+        monkeypatch.setattr(shc_module, "apply_work_requirement_action", apply)
+        monkeypatch.setattr(
+            "yellowdog_cli.utils.wrapper.ARGS_PARSER",
+            MagicMock(debug=True, print_pid=True),
+        )
+        with pytest.raises(SystemExit):
+            yd_finish.main()
+        apply.assert_called_once_with(FINISH)
+
+
+# ---------------------------------------------------------------------------
 # The command line
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", ["yd-start", "yd-hold"])
+@pytest.mark.parametrize("command", ["yd-start", "yd-hold", "yd-finish"])
 def test_globs_and_explicit_names_do_not_mix(command):
     assert check_glob_and_literal_names in COMMANDS[command].validators

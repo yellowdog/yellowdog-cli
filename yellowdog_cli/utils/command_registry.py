@@ -1593,10 +1593,11 @@ COMMANDS["yd-finish"] = Command(
         WORK_REQUIREMENTS.variant(
             help=(
                 "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-                " finished"
+                " finished; a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

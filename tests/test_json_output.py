@@ -447,32 +447,36 @@ class TestTerminate:
 
 
 class TestFinish:
-    def test_finished_and_already_finishing(self, run, monkeypatch):
+    def test_finishing_ones_are_left_out(self, run, monkeypatch):
+        listed = [
+            _wr(WR_ID_1, "wr-a"),
+            _wr(WR_ID_2, "wr-b", WorkRequirementStatus.FINISHING),
+        ]
         monkeypatch.setattr(
-            yd_finish,
+            shc_module,
             "get_filtered_work_requirement_summaries",
-            lambda *a, **k: [
-                _wr(WR_ID_1, "wr-a"),
-                _wr(WR_ID_2, "wr-b", WorkRequirementStatus.FINISHING),
+            lambda *a, include_filter=None, **k: [
+                wr for wr in listed if wr.status in (include_filter or [wr.status])
             ],
         )
-        out, _, _ = run(yd_finish, work_requirement_names=[])
+        out, _, _ = run(shc_module, yd_finish, work_requirement_names=[])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "finish", "finished"),
-            _action(WR_ID_2, "wr-b", "work-requirements", "finish", "skipped"),
+            _action(WR_ID_1, "wr-a", "work-requirements", "finish", "finished")
         ]
 
     def test_by_name_failed(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_finish,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a"),
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a")],
         )
         client = MagicMock()
         client.work_client.finish_work_requirement_by_id.side_effect = RuntimeError(
             "no"
         )
-        out, _, _ = run(yd_finish, client=client, work_requirement_names=["wr-a"])
+        out, _, _ = run(
+            shc_module, yd_finish, client=client, work_requirement_names=["wr-a"]
+        )
         assert out == [
             _action(
                 WR_ID_1, "wr-a", "work-requirements", "finish", "failed", error="no"

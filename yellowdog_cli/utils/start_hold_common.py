@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Core functionality for starting and holding Work Requirements: yd-start and
-yd-hold.
+Core functionality for starting, holding and finishing Work Requirements:
+yd-start, yd-hold and yd-finish.
 
 Work Requirements are selected by the namespace and tag, by glob patterns
 matched against their names, or explicitly by name or ID. Explicit targets
@@ -53,7 +53,11 @@ class WorkRequirementAction:
     gerund: str  # E.g.: "Starting"
     past_tense: str  # E.g.: "Started"
     method_name: str  # WorkClient method, taking a Work Requirement ID
-    required_status: WorkRequirementStatus
+    statuses: tuple[WorkRequirementStatus, ...]  # Those it applies to
+
+    @property
+    def statuses_phrase(self) -> str:
+        return " or ".join(str(status) for status in self.statuses)
 
     def record(
         self, entity: object, outcome: str | None = None, error: str | None = None
@@ -76,7 +80,16 @@ START = WorkRequirementAction(
     gerund="Starting",
     past_tense="Started",
     method_name="start_work_requirement_by_id",
-    required_status=WorkRequirementStatus.HELD,
+    statuses=(WorkRequirementStatus.HELD,),
+)
+
+FINISH = WorkRequirementAction(
+    name="Finish",
+    gerund="Finishing",
+    past_tense="Finished",
+    method_name="finish_work_requirement_by_id",
+    # A FINISHING one is in neither, so it is left out or skipped
+    statuses=(WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD),
 )
 
 HOLD = WorkRequirementAction(
@@ -84,7 +97,7 @@ HOLD = WorkRequirementAction(
     gerund="Holding",
     past_tense="Held",
     method_name="hold_work_requirement_by_id",
-    required_status=WorkRequirementStatus.RUNNING,
+    statuses=(WorkRequirementStatus.RUNNING,),
 )
 
 
@@ -94,6 +107,10 @@ def start_work_requirements():
 
 def hold_work_requirements():
     apply_work_requirement_action(HOLD)
+
+
+def finish_work_requirements():
+    apply_work_requirement_action(FINISH)
 
 
 def apply_work_requirement_action(action: WorkRequirementAction):
@@ -120,7 +137,7 @@ def apply_work_requirement_action(action: WorkRequirementAction):
                 CLIENT,
                 name=prefix or None,
                 namespace=namespace,
-                include_filter=[action.required_status],
+                include_filter=list(action.statuses),
             ),
         )
     else:
@@ -133,7 +150,7 @@ def apply_work_requirement_action(action: WorkRequirementAction):
             client=CLIENT,
             namespace=CONFIG_COMMON.namespace,
             tag=CONFIG_COMMON.name_tag,
-            include_filter=[action.required_status],
+            include_filter=list(action.statuses),
         )
 
     selected: list[WorkRequirementSummary] = (
@@ -230,10 +247,10 @@ def _resolve(action: WorkRequirementAction, target: str) -> _Target:
     else:
         work_requirement = _resolve_name(action, target)
 
-    if work_requirement.status != action.required_status:
+    if work_requirement.status not in action.statuses:
         raise _Unresolved(
             f"Work Requirement {_label(work_requirement)} is"
-            f" {work_requirement.status}, not {action.required_status}",
+            f" {work_requirement.status}, not {action.statuses_phrase}",
             "skipped",
             work_requirement,
         )
@@ -252,7 +269,7 @@ def _resolve_name(
             CLIENT,
             name_or_namespaced_name,
             CONFIG_COMMON.namespace,
-            [action.required_status],
+            action.statuses,
         )
     except (NotFoundError, AmbiguousNameError) as e:
         raise _Unresolved(str(e)) from e
