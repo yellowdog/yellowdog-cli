@@ -72,6 +72,14 @@ class CLIParser:
     def tag_required(self) -> bool:
         return self.namespace_required
 
+    @property
+    def credentials_required(self) -> bool:
+        """
+        Whether the configuration must hold the application key and secret:
+        true for every command but those that never use the Platform.
+        """
+        return self.command is None or self.command.requires_credentials
+
     # -----------------------------------------------------------------------
     # Common args
     # -----------------------------------------------------------------------

@@ -136,6 +136,10 @@ class Command:
     # True for the commands that default a missing namespace and tag with a
     # debug message (load_config.py); yd-list has --namespace but is not one.
     requires_namespace_and_tag: bool = False
+    # False for a command on main_wrapper that never uses the Platform
+    # (yd-variables): its configuration is loaded without requiring the
+    # application key and secret
+    requires_credentials: bool = True
     # The MCP tool kind (see ToolKind), stated by every command
     tool: ToolKind = field(kw_only=True)
     # A hand-written description for a tool whose workflow needs explaining;
@@ -2731,6 +2735,24 @@ VARIABLE_NAMES = option(
     ),
 )
 
+
+def check_variable_names(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-variables' names: each one a variable could have, since any other
+    could only ever report 'null' ('{{x}}', 'env:HOME').
+    """
+    import re
+
+    from yellowdog_cli.utils.settings import VARIABLE_NAME_PATTERN
+
+    for name in args.variable_names:
+        if not re.fullmatch(VARIABLE_NAME_PATTERN, name):
+            parser.error(
+                f"not a variable name: '{name}' (a name is a letter, digit or '_',"
+                " then letters, digits, '_', '.' and '-')"
+            )
+
+
 COMMANDS["yd-variables"] = Command(
     name="yd-variables",
     purpose="reporting the processed values of variable substitutions",
@@ -2746,14 +2768,16 @@ COMMANDS["yd-variables"] = Command(
                 "include the values of the 'key' and 'secret' variables, of"
                 " variables whose names match"
                 f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}'"
-                " (case-insensitive), and the parameters of any value that is an inline"
-                " rclone connection string, when reporting all variables; they are always reported"
-                " when named explicitly. Any other variable is reported in full,"
-                " even one holding a credential"
+                " (case-insensitive), and the parameters of any value that is an"
+                " inline rclone connection string, whether named or not; any"
+                " other variable is reported in full, even one holding a"
+                " credential"
             )
         ),
     ),
+    validators=(check_variable_names,),
     requires_namespace_and_tag=True,
+    requires_credentials=False,
     tool=ToolKind.READ_ONLY,
 )
 

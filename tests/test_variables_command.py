@@ -64,6 +64,10 @@ INLINE_REMOTE_SECRETS = (
 )
 
 
+def _reported(variable_names: list[str], show_secrets: bool = False) -> dict:
+    return report_variables(variable_names, show_secrets=show_secrets).variables
+
+
 @pytest.fixture
 def substitutions(monkeypatch):
     monkeypatch.setattr(variables_module, "VARIABLE_SUBSTITUTIONS", dict(SUBSTITUTIONS))
@@ -76,10 +80,10 @@ def substitutions(monkeypatch):
 
 class TestSelection:
     def test_no_names_reports_every_variable(self, substitutions):
-        assert report_variables([], show_secrets=True) == SUBSTITUTIONS
+        assert _reported([], show_secrets=True) == SUBSTITUTIONS
 
     def test_names_report_only_those_variables(self, substitutions):
-        assert report_variables(["tag", "namespace"]) == {
+        assert _reported(["tag", "namespace"]) == {
             "namespace": "my-namespace",
             "tag": "my-tag",
         }
@@ -87,24 +91,24 @@ class TestSelection:
     def test_a_name_that_is_not_a_variable_reports_null(self, substitutions):
         # Not an error and not omitted: 'is this variable set?' is one of the
         # questions the command exists to answer
-        assert report_variables(["tag", "nonexistent"]) == {
+        assert _reported(["tag", "nonexistent"]) == {
             "nonexistent": None,
             "tag": "my-tag",
         }
 
     def test_a_repeated_name_is_reported_once(self, substitutions):
-        assert report_variables(["tag", "tag"]) == {"tag": "my-tag"}
+        assert _reported(["tag", "tag"]) == {"tag": "my-tag"}
 
     def test_all_is_not_a_keyword(self, substitutions):
         # Under 'yd-show -r', 'all' meant every variable. Empty now means that,
         # so the name is an ordinary one and may be used as a variable name
-        assert report_variables(["all"]) == {"all": SUBSTITUTIONS["all"]}
+        assert _reported(["all"]) == {"all": SUBSTITUTIONS["all"]}
 
     def test_all_is_not_a_keyword_when_undefined(self, monkeypatch):
         monkeypatch.setattr(
             variables_module, "VARIABLE_SUBSTITUTIONS", {"tag": "my-tag"}
         )
-        assert report_variables(["all"]) == {"all": None}
+        assert _reported(["all"]) == {"all": None}
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +118,7 @@ class TestSelection:
 
 class TestOrdering:
     def test_every_variable_is_reported_in_alphabetical_order(self, substitutions):
-        assert list(report_variables([])) == [
+        assert list(_reported([])) == [
             "APP_KEY_DEMO",
             "APP_SECRET_MINE",
             "all",
@@ -133,7 +137,7 @@ class TestOrdering:
 
     def test_named_variables_are_reported_in_alphabetical_order(self, substitutions):
         # Not in the order they were asked for
-        assert list(report_variables(["username", "namespace", "tag"])) == [
+        assert list(_reported(["username", "namespace", "tag"])) == [
             "namespace",
             "tag",
             "username",
@@ -147,27 +151,39 @@ class TestOrdering:
 
 class TestRedaction:
     def test_reporting_every_variable_redacts_the_credentials(self, substitutions):
-        reported = report_variables([])
+        reported = _reported([])
         assert reported["key"] == REDACTED_VALUE
         assert reported["secret"] == REDACTED_VALUE
 
     def test_show_secrets_reports_the_credentials(self, substitutions):
-        reported = report_variables([], show_secrets=True)
+        reported = _reported([], show_secrets=True)
         assert reported["key"] == SUBSTITUTIONS["key"]
         assert reported["secret"] == SUBSTITUTIONS["secret"]
 
     @pytest.mark.parametrize("name", ["key", "secret"])
-    def test_naming_a_credential_reports_it_without_show_secrets(
-        self, substitutions, name
-    ):
-        # Naming a variable is an explicit request for it
-        assert report_variables([name]) == {name: SUBSTITUTIONS[name]}
+    def test_naming_a_credential_does_not_reveal_it(self, substitutions, name):
+        # Naming is no way round the redaction: the MCP server's tools, which
+        # cannot pass --show-secrets, could otherwise ask for the secret
+        assert _reported([name]) == {name: REDACTED_VALUE}
+        report = report_variables([name])
+        assert report.credentials == [name]
 
-    def test_naming_a_credential_alongside_others_reports_it(self, substitutions):
-        assert report_variables(["secret", "tag"]) == {
-            "secret": SUBSTITUTIONS["secret"],
+    @pytest.mark.parametrize("name", ["key", "secret"])
+    def test_show_secrets_reveals_a_named_credential(self, substitutions, name):
+        assert _reported([name], show_secrets=True) == {name: SUBSTITUTIONS[name]}
+
+    def test_naming_a_credential_alongside_others_redacts_only_it(self, substitutions):
+        assert _reported(["secret", "tag"]) == {
+            "secret": REDACTED_VALUE,
             "tag": SUBSTITUTIONS["tag"],
         }
+
+    def test_unconfigured_credentials_are_null_in_the_full_report(self, monkeypatch):
+        # yd-variables runs without credentials; their absence is reported
+        monkeypatch.setattr(
+            variables_module, "VARIABLE_SUBSTITUTIONS", {"tag": "my-tag"}
+        )
+        assert _reported([]) == {"key": None, "secret": None, "tag": "my-tag"}
 
     def test_a_variable_whose_name_looks_like_a_credential_is_redacted(
         self, substitutions
@@ -175,7 +191,7 @@ class TestRedaction:
         # The heuristic: a user-defined name matching SECRET_VARIABLE_NAME_PATTERN
         # is redacted in the full report, and the command says so (see
         # TestCredentialNamePatternNote)
-        assert report_variables([])["APP_SECRET_MINE"] == REDACTED_VALUE
+        assert _reported([])["APP_SECRET_MINE"] == REDACTED_VALUE
 
     @pytest.mark.parametrize("name", ["APP_KEY_DEMO", "deploy_target"])
     def test_a_variable_whose_name_does_not_match_is_reported_in_full(
@@ -183,21 +199,21 @@ class TestRedaction:
     ):
         # 'key' alone is deliberately not in the pattern: APP_KEY_DEMO is an
         # identifier, not a secret
-        assert report_variables([])[name] == SUBSTITUTIONS[name]
+        assert _reported([])[name] == SUBSTITUTIONS[name]
 
     def test_only_the_known_and_matching_names_are_redacted(self, substitutions):
-        reported = report_variables([])
+        reported = _reported([])
         assert [
             name for name, value in reported.items() if value == REDACTED_VALUE
         ] == ["APP_SECRET_MINE", "key", "secret"]
 
-    def test_naming_a_matching_variable_reports_it(self, substitutions):
-        assert report_variables(["APP_SECRET_MINE"]) == {
-            "APP_SECRET_MINE": SUBSTITUTIONS["APP_SECRET_MINE"]
-        }
+    def test_naming_a_matching_variable_does_not_reveal_it(self, substitutions):
+        report = report_variables(["APP_SECRET_MINE"])
+        assert report.variables == {"APP_SECRET_MINE": REDACTED_VALUE}
+        assert report.by_pattern == ["APP_SECRET_MINE"]
 
     def test_show_secrets_reports_a_matching_variable(self, substitutions):
-        reported = report_variables([], show_secrets=True)
+        reported = _reported([], show_secrets=True)
         assert reported["APP_SECRET_MINE"] == SUBSTITUTIONS["APP_SECRET_MINE"]
 
     @pytest.mark.parametrize(
@@ -223,7 +239,7 @@ class TestRedaction:
         assert not SECRET_VARIABLE_NAME_PATTERN.search(name)
 
     def test_redaction_does_not_alter_the_variable_table(self, substitutions):
-        report_variables([])
+        _reported([])
         # get_all_user_variables() copies, but a regression there would leave
         # the process running on '<REDACTED>' as its actual credentials
         assert variables_module.VARIABLE_SUBSTITUTIONS["key"] == SUBSTITUTIONS["key"]
@@ -236,49 +252,50 @@ class TestRedaction:
     def test_reporting_every_variable_withholds_inline_remote_parameters(
         self, substitutions
     ):
-        shown = report_variables([])["dataClient.remote"]
+        shown = _reported([])["dataClient.remote"]
         assert "provider=AWS" in shown
         assert "2 parameters redacted" in shown
         assert not any(secret in shown for secret in INLINE_REMOTE_SECRETS)
 
     def test_a_profile_inline_remote_is_withheld_too(self, substitutions):
-        shown = report_variables([])["dataClient.other.remote"]
+        shown = _reported([])["dataClient.other.remote"]
         assert "1 parameter redacted" in shown
         assert "ALSOSECRET" not in shown
 
     def test_a_named_remote_is_reported_as_is(self, substitutions):
-        assert report_variables([])["dataClient.backup.remote"] == "myremote:"
+        assert _reported([])["dataClient.backup.remote"] == "myremote:"
 
     def test_show_secrets_reports_the_inline_remote_in_full(self, substitutions):
-        reported = report_variables([], show_secrets=True)
+        reported = _reported([], show_secrets=True)
         assert reported["dataClient.remote"] == SUBSTITUTIONS["dataClient.remote"]
 
-    def test_naming_the_remote_reports_it_in_full(self, substitutions):
-        assert report_variables(["dataClient.remote"]) == {
-            "dataClient.remote": SUBSTITUTIONS["dataClient.remote"]
-        }
+    def test_naming_the_remote_withholds_its_parameters(self, substitutions):
+        shown = _reported(["dataClient.remote"])["dataClient.remote"]
+        assert "2 parameters redacted" in shown
 
     # Any variable whose value is an inline connection string is shown the
     # same way, whatever it is called and whoever defined it
 
     def test_a_user_variable_holding_an_inline_remote_is_withheld(self, substitutions):
-        assert report_variables([])["remote_with_keys"] == (
+        assert _reported([])["remote_with_keys"] == (
             "rclone:S3,type=s3,provider=AWS,<3 parameters redacted>"
         )
 
     def test_a_comma_separated_value_that_is_not_a_remote_is_in_full(
         self, substitutions
     ):
-        assert report_variables([])["hosts"] == SUBSTITUTIONS["hosts"]
+        assert _reported([])["hosts"] == SUBSTITUTIONS["hosts"]
 
     def test_show_secrets_reports_the_user_remote_in_full(self, substitutions):
-        reported = report_variables([], show_secrets=True)
+        reported = _reported([], show_secrets=True)
         assert reported["remote_with_keys"] == SUBSTITUTIONS["remote_with_keys"]
 
-    def test_naming_the_user_remote_reports_it_in_full(self, substitutions):
-        assert report_variables(["remote_with_keys"]) == {
-            "remote_with_keys": SUBSTITUTIONS["remote_with_keys"]
+    def test_naming_the_user_remote_withholds_its_parameters(self, substitutions):
+        report = report_variables(["remote_with_keys"])
+        assert report.variables == {
+            "remote_with_keys": "rclone:S3,type=s3,provider=AWS,<3 parameters redacted>"
         }
+        assert report.by_value == ["remote_with_keys"]
 
 
 # ---------------------------------------------------------------------------
@@ -286,22 +303,17 @@ class TestRedaction:
 # ---------------------------------------------------------------------------
 
 
-def _run(*args: str, cwd) -> subprocess.CompletedProcess:
+def _run(*args: str, cwd, credentials: bool = True) -> subprocess.CompletedProcess:
     # Without the environment's own YD_VAR_* variables, which would otherwise
     # join every full report (and be counted by the credential-name note)
     env = {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith("YD_VAR_")
+        if not name.startswith("YD_VAR_") and name not in ("YD_KEY", "YD_SECRET")
     }
-    env.update(
-        {
-            "YD_KEY": "a-key",
-            "YD_SECRET": "a-secret",
-            "YD_NAMESPACE": "my-namespace",
-            "YD_TAG": "my-tag",
-        }
-    )
+    env.update({"YD_NAMESPACE": "my-namespace", "YD_TAG": "my-tag"})
+    if credentials:
+        env.update({"YD_KEY": "a-key", "YD_SECRET": "a-secret"})
     return subprocess.run(
         ["yd-variables", "--nc", *args],
         capture_output=True,
@@ -399,11 +411,46 @@ class TestCommandOutput:
         assert reported["key"] == "a-key"
         assert reported["secret"] == "a-secret"
 
-    def test_naming_them_reveals_them(self, tmp_path):
+    def test_naming_them_does_not_reveal_them(self, tmp_path):
+        result = _run("key", "secret", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert "Redacted 'key', 'secret': --show-secrets reports them." in _stdout(
+            result
+        )
         result = _run("-q", "key", "secret", cwd=tmp_path)
+        assert loads(result.stdout) == {"key": REDACTED_VALUE, "secret": REDACTED_VALUE}
+
+    def test_naming_them_with_show_secrets_reveals_them(self, tmp_path):
+        result = _run("-q", "--show-secrets", "key", "secret", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"key": "a-key", "secret": "a-secret"}
+
+    def test_no_credentials_are_needed(self, tmp_path):
+        # It never uses the Platform, so it reports what is configured, and
+        # the credentials' absence, rather than refusing to run
+        result = _run("-q", cwd=tmp_path, credentials=False)
+
+        assert result.returncode == 0, result.stderr
+        reported = loads(result.stdout)
+        assert reported["key"] is None and reported["secret"] is None
+        assert reported["namespace"] == "my-namespace"
+
+    def test_a_name_never_defined_is_warned_of(self, tmp_path):
+        result = _run("nonexistent", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert f"{WARNING_MARKER}Variable 'nonexistent' is not defined" in _stdout(
+            result
+        )
+
+    @pytest.mark.parametrize("name", ["{{tag}}", "env:HOME", ".hidden", "a b"])
+    def test_a_name_no_variable_could_have_is_refused(self, tmp_path, name):
+        result = _run(name, cwd=tmp_path)
+
+        assert result.returncode == 2
+        assert "not a variable name" in result.stderr
 
     def test_every_variable_includes_the_configured_ones(self, tmp_path):
         result = _run("-q", cwd=tmp_path)
@@ -443,12 +490,12 @@ class TestCredentialNamePatternNote:
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout)["MY_PASSWORD"] == REDACTED_VALUE
 
-    def test_no_note_when_the_variable_is_named(self, tmp_path):
+    def test_a_named_variable_is_redacted_with_the_note(self, tmp_path):
         result = _run("-v", "MY_PASSWORD=x", "MY_PASSWORD", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
-        assert "Redacted" not in result.stdout
-        assert '"MY_PASSWORD": "x"' in result.stdout
+        assert _stdout(result).count(self.NOTE) == 1
+        assert '"MY_PASSWORD": "<REDACTED>"' in result.stdout
 
     def test_no_note_under_show_secrets(self, tmp_path):
         result = _run("--show-secrets", "-v", "MY_PASSWORD=x", cwd=tmp_path)
@@ -595,7 +642,7 @@ class TestUndefinedVariableWarnings:
         # Their text is not for a warning, as for the configuration values
         env_secret = "s-{{missing}}"
         result = subprocess.run(
-            ["yd-variables", "--nc", "secret"],
+            ["yd-variables", "--nc", "--show-secrets", "secret"],
             capture_output=True,
             text=True,
             env={
@@ -787,3 +834,16 @@ class TestUnsetExplanationsInTheCommand:
         assert "'{{site}}' is unset, and has been left unsubstituted" in _stdout(result)
         assert "'site' is '{{::}}'" in _stdout(result)
         assert "not defined" not in _stdout(result)
+
+
+class TestCredentialsRequired:
+    def test_only_yd_variables_runs_without_credentials(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert CLIParser(command="yd-variables", argv=[]).credentials_required is False
+        assert CLIParser(command="yd-list", argv=["keyrings"]).credentials_required
+        assert [
+            name
+            for name, command in COMMANDS.items()
+            if not command.requires_credentials
+        ] == ["yd-variables"]

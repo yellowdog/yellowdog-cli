@@ -21,7 +21,6 @@ from yellowdog_cli.commander.arguments import (
     split_arguments,
 )
 from yellowdog_cli.commander.startup import variable_is_complete
-from yellowdog_cli.utils.settings import MISSING_CONFIG_DATA
 
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
 # The one retry after a timeout gets a longer budget: by then it is known that a
@@ -134,11 +133,10 @@ class ConfigDiscovery:
         The same goes for what _report_discovery_failure will say next. It
         suppresses a repeat of the message it said last, for the user-variables
         box that reparses after every edit — but a configuration file being
-        deselected and selected again is not a repeat, and a failure suppressed
-        in between (see _nothing_is_configured) would otherwise leave the last
-        message said no longer the last failure there was. Only the three
-        configuration-file paths reach here; an edit to the user variables does
-        not, which is what keeps that suppression doing its job.
+        deselected and selected again is not a repeat, and its failure is worth
+        saying again. Only the three configuration-file paths reach here; an
+        edit to the user variables does not, which is what keeps that
+        suppression doing its job.
         """
         self._config_parse_invalid = True
         self._config_parse_retried = False
@@ -270,33 +268,6 @@ class ConfigDiscovery:
             *self._override_args(),
         ]
 
-    def _nothing_is_configured(self, error_output: str) -> bool:
-        """
-        Whether a failed discovery means 'nothing is configured yet' rather than
-        'something is wrong', in which case it is not reported.
-
-        Only with no configuration file selected. 'yd-variables' is then given
-        '--nc' and has nothing but the environment to work from, and an environment
-        with no YellowDog credentials in it makes it exit 3 with "Missing
-        configuration data: 'key'" before it can resolve anything. Reported, that
-        put an error in the output window at startup, and again on every
-        Deselect, in front of a user who had done nothing wrong.
-
-        Deliberately narrow in both directions. With a configuration file
-        selected the same message means the selected file cannot be used, which
-        is the user's to see. And with none selected every *other* failure is
-        still reported, because discovery from the environment alone is a
-        supported way to run Commander — credentials and namespace/tag in YD_*
-        variables, with the definition files nominated by hand — and its
-        failures are as worth seeing as any other.
-
-        Matched on the message: the exit code, ExitCode.CONFIGURATION, is shared
-        by every configuration error, not only this one.
-        MISSING_CONFIG_DATA is the CLI's own definition of it, imported rather
-        than written out again here, so the two cannot drift apart silently.
-        """
-        return not self._config_selected() and MISSING_CONFIG_DATA in error_output
-
     def _parse_yd_config(
         self, quiet: bool = False, timeout_ms: int | None = None
     ) -> bool:
@@ -307,8 +278,9 @@ class ConfigDiscovery:
         'timeout_ms' defaults to CONFIG_PARSE_TIMEOUT_MS; the retry after a
         timeout passes a longer one. Every failure is reported through
         _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
-        announcement of a routine reparse, not the reason one failed. The one
-        exception is _nothing_is_configured() above.
+        announcement of a routine reparse, not the reason one failed.
+        'yd-variables' needs no credentials, so with nothing configured it
+        reports the defaults rather than failing.
         """
         if not self._config_parse_invalid:
             return True
@@ -356,8 +328,6 @@ class ConfigDiscovery:
 
         if yd_process.exitCode() != 0:
             error_output = yd_process.readAllStandardError().data().decode().strip()
-            if self._nothing_is_configured(error_output):
-                return False
             self._report_discovery_failure(
                 f"Error parsing config with 'yd-variables'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"

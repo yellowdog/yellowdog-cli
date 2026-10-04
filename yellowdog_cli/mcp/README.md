@@ -196,4 +196,4 @@ A specification given as a path is read by the command exactly as the CLI reads 
 
 Every option value a tool passes on is joined to its flag as one argument (`--namespace=<value>`), so a value that looks like an option, such as `--show-secrets`, is only ever read as the value.
 
-`--show-secrets` and `--show-keyring-passwords` are excluded from every tool that has them, so a credential already held in the configuration cannot be asked back out through a tool result.
+`--show-secrets` and `--show-keyring-passwords` are excluded from every tool that has them, so a credential already held in the configuration cannot be asked back out through a tool result. `yd_variables` redacts the application key and secret, variables whose names look like credentials, and the parameters of inline rclone connection strings whether or not the call names them, so naming `secret` reports `<REDACTED>` rather than the value.

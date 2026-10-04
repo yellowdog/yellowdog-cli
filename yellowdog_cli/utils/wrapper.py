@@ -45,9 +45,11 @@ if TYPE_CHECKING:
 
     CLIENT: PlatformClient
 
-CONFIG_COMMON: ConfigCommon = load_config_common()
-# A strict load never returns None for either; the assert narrows the types
-assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
+# Strict, so a missing key or secret exits, for every command that uses the
+# Platform; yd-variables, which never does, runs without them
+CONFIG_COMMON: ConfigCommon = load_config_common(
+    strict=ARGS_PARSER.credentials_required
+)
 
 
 def _create_client() -> PlatformClient:
@@ -64,6 +66,8 @@ def _create_client() -> PlatformClient:
     # direct) before the client is created or any request is made: every
     # command that makes a request imports CLIENT
     set_user_agent()
+    # A strict load, which every command using the client has, never
+    # returns None for either
     assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
     client = PlatformClient.create(
         ServicesSchema(defaultUrl=CONFIG_COMMON.url),
