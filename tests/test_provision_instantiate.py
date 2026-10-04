@@ -603,3 +603,117 @@ class TestProvisionReporting:
             "1 of 3 Worker Pools were provisioned before the failure, and are still"
             " running: ydid:wrkrpool:000000:1"
         ) in out + run.err
+
+
+# ---------------------------------------------------------------------------
+# yd-instantiate: what is merged and reported
+# ---------------------------------------------------------------------------
+
+
+class TestInstantiateReporting:
+    def _dry_run(self, run, path, config_wp=None, **values) -> dict:
+        out, _ = run(
+            yd_instantiate,
+            config_wp or ConfigWorkerPool(),
+            dry_run=True,
+            json_output=True,
+            compute_requirement_file_positional=path,
+            **values,
+        )
+        return json_loads(out)
+
+    def test_an_unset_toml_count_is_not_merged(self, run, cr_file):
+        # The configuration's default, 0, is no count at all
+        document = self._dry_run(run, cr_file({}))
+        assert "targetInstanceCount" not in document
+
+    def test_a_toml_count_that_is_set_is_merged(self, run, cr_file):
+        document = self._dry_run(
+            run,
+            cr_file({}),
+            ConfigWorkerPool(target_instance_count=3, target_instance_count_set=True),
+        )
+        assert document["targetInstanceCount"] == 3
+
+    def test_no_template_id_anywhere_is_reported_as_such(self, run, tmp_path):
+        path = tmp_path / "cr.json"
+        path.write_text(json_dumps({"targetInstanceCount": 1}))
+        run(
+            yd_instantiate,
+            ConfigWorkerPool(),
+            compute_requirement_file_positional=str(path),
+        )
+        assert run.exit_code == ExitCode.FAILURE
+        assert "No 'templateId' supplied" in run.err
+
+    def test_merged_user_data_is_described_not_printed(self, run, cr_file):
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(user_data_files=["a.sh", "b.sh"]),
+            user_data=_UserData("export TOKEN=s3cret\n"),
+            dry_run=True,
+            compute_requirement_file_positional=cr_file({"targetInstanceCount": 1}),
+        )
+        (setting,) = [line for line in out.splitlines() if "'userData'" in line]
+        assert "from 'a.sh', 'b.sh' (20 characters)" in setting
+        assert "s3cret" not in setting
+
+    def test_batches_provisioned_before_a_failure_are_reported(self, run):
+        client = MagicMock()
+        client.compute_client.provision_compute_requirement_template.side_effect = [
+            MagicMock(id="ydid:compreq:000000:1", name="cr-1"),
+            HTTPError("500", response=_response(500)),
+        ]
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(
+                template_id=CRT_ID,
+                target_instance_count=3,
+                compute_requirement_batch_size=1,
+            ),
+            client=client,
+        )
+        assert run.exit_code == ExitCode.PLATFORM
+        assert (
+            "1 of 3 Compute Requirements were provisioned before the failure, and"
+            " are still running: ydid:compreq:000000:1"
+        ) in out + run.err
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            ('{"message": "Template gone"}', "Template gone"),
+            ("<html>Not Found</html>", "Compute Requirement Template not found"),
+        ],
+    )
+    def test_a_report_on_a_missing_template_exits_6(self, run, body, message):
+        client = MagicMock()
+        client.compute_client.test_compute_requirement_template.side_effect = HTTPError(
+            "404", response=_response(404, body)
+        )
+        run(
+            yd_instantiate,
+            ConfigWorkerPool(template_id=CRT_ID, target_instance_count=1),
+            client=client,
+            report=True,
+        )
+        assert run.exit_code == ExitCode.NOT_FOUND
+        assert message in run.err
+
+    def test_a_batched_report_says_it_is_for_the_first_batch(self, run, monkeypatch):
+        monkeypatch.setattr(
+            yd_instantiate, "print_compute_template_test_result", lambda r: None
+        )
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(
+                template_id=CRT_ID,
+                target_instance_count=50,
+                compute_requirement_batch_size=20,
+            ),
+            report=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        assert (
+            "The report is for the first of 3 Compute Requirements, of 17 instance(s)"
+        ) in out + run.err

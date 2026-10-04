@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 16:04:57 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 16:13:21 BST 2026 -->
 
 <!--te-->
 
@@ -3881,6 +3881,8 @@ An example JSON specification is shown below:
 ```
 
 Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property.
+
+Values missing from a JSON specification are taken from the configuration file; `targetInstanceCount` only if the configuration actually sets it, so that a specification with no count is never sent with a count of zero. User Data merged in from the configuration is reported by its source and size, never printed. A target count larger than `computeRequirementBatchSize` is split across several Compute Requirements; if one of them fails, those already provisioned are listed, since they are still running, and `--report` reports on the first of them alone, saying so.
 
 If a Worker Pool is defined in JSON, using `workerPoolData` in the configuration file or by supplying the command-line positional argument, `yd-instantiate` will extract the Compute Requirement from the Worker Pool specification (ignoring Worker-Pool-specific data), and use that for instantiating the Compute Requirement.
 

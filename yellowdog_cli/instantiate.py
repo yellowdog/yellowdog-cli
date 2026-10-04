@@ -17,6 +17,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
@@ -33,6 +34,7 @@ from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_quiet_result,
+    print_warning,
     print_yd_object,
 )
 from yellowdog_cli.utils.provision_utils import (
@@ -40,6 +42,7 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
     shown_value,
+    user_data_source,
 )
 from yellowdog_cli.utils.results import (
     record_document,
@@ -76,7 +79,7 @@ GENERATED_ID: str = ""
 
 @main_wrapper
 def main():
-    global CONFIG_WP, GENERATED_ID
+    global GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
     GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
@@ -184,6 +187,14 @@ def main():
 
             if ARGS_PARSER.report:
                 print_info("Generating provisioning report only")
+                if num_batches > 1:
+                    # The Platform tests one Compute Requirement at a time
+                    print_warning(
+                        f"The report is for the first of {num_batches} Compute"
+                        f" Requirements, of {batches[0].target_instances:,d}"
+                        " instance(s): 'computeRequirementBatchSize' divides the"
+                        f" {CONFIG_WP.target_instance_count:,d} requested"
+                    )
                 try:
                     test_result: ComputeRequirementTemplateTestResult = (
                         CLIENT.compute_client.test_compute_requirement_template(
@@ -194,11 +205,7 @@ def main():
                 except requests.HTTPError as http_error:
                     resp = http_error.response
                     if resp is not None and resp.status_code == 404:
-                        raise RuntimeError(
-                            json_loads(resp.text).get(
-                                "message", "Template ID not found"
-                            )
-                        )
+                        raise NotFoundError(_message_of(resp.text)) from http_error
                     if resp is not None and "No sources" in resp.text:
                         print_info(
                             "No Compute Sources match the Template's constraints"
@@ -242,10 +249,28 @@ def main():
                 f" {'report on' if ARGS_PARSER.report else 'provision'} Compute"
                 f" Requirement '{CONFIG_COMMON.namespace}/{id}'"
             )
+            if compute_requirement_ids:
+                print_warning(
+                    f"{len(compute_requirement_ids)} of {num_batches} Compute"
+                    " Requirements were provisioned before the failure, and are"
+                    f" still running: {', '.join(compute_requirement_ids)}"
+                )
             raise
 
     if ARGS_PARSER.follow:
         follow_ids(compute_requirement_ids)
+
+
+def _message_of(response_text: str) -> str:
+    """
+    A Platform error response's 'message', or a default if it has none or
+    is not JSON.
+    """
+    try:
+        message = json_loads(response_text).get("message")
+    except (ValueError, AttributeError):
+        message = None
+    return message or "Compute Requirement Template not found"
 
 
 def _allocate_nodes_to_batches(
@@ -321,51 +346,59 @@ def _create_compute_requirement_from_json(
     # Some values are configurable via the TOML configuration file;
     # values in the JSON file override values in the TOML file, and
     # '--target' overrides both
-    try:
-        for key, value in [
-            # Generate a default name
+    for key, value in [
+        # Generate a default name
+        (
+            "requirementName",
+            (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
+        ),
+        ("requirementNamespace", CONFIG_COMMON.namespace),
+        (
+            "requirementTag",
+            (CONFIG_COMMON.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
+        ),
+        ("templateId", CONFIG_WP.template_id),
+        ("imagesId", CONFIG_WP.images_id),
+        ("instanceTags", CONFIG_WP.instance_tags),
+        # Only a count the configuration actually gives: its default, 0, is
+        # no count at all, and would provision an empty Compute Requirement
+        (
+            "targetInstanceCount",
             (
-                "requirementName",
-                (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
+                CONFIG_WP.target_instance_count
+                if CONFIG_WP.target_instance_count_set
+                else None
             ),
-            ("requirementNamespace", CONFIG_COMMON.namespace),
-            (
-                "requirementTag",
-                (
-                    CONFIG_COMMON.name_tag
-                    if CONFIG_WP.cr_tag is None
-                    else CONFIG_WP.cr_tag
-                ),
-            ),
-            ("templateId", CONFIG_WP.template_id),
-            ("imagesId", CONFIG_WP.images_id),
-            ("instanceTags", CONFIG_WP.instance_tags),
-            ("targetInstanceCount", CONFIG_WP.target_instance_count),
-            ("maintainInstanceCount", CONFIG_WP.maintainInstanceCount),
-        ]:
-            if cr_data.get(key) is None and value is not None:
-                print_info(f"Setting '{key}' to '{shown_value(value)}'")
-                cr_data[key] = value
+        ),
+        ("maintainInstanceCount", CONFIG_WP.maintainInstanceCount),
+    ]:
+        if cr_data.get(key) is None and value is not None:
+            print_info(f"Setting '{key}' to '{shown_value(value)}'")
+            cr_data[key] = value
 
-        # The TOML user data is read only if the specification has none
-        if cr_data.get("userData") is None:
-            user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
-            if user_data is not None:
-                print_info(f"Setting 'userData' to '{user_data}'")
-                cr_data["userData"] = user_data
-
-        if (
-            ARGS_PARSER.target is not None
-            and cr_data.get("targetInstanceCount") != ARGS_PARSER.target
-        ):
+    # The TOML user data is read only if the specification has none
+    if cr_data.get("userData") is None:
+        user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+        if user_data is not None:
+            # Its source and size, never the script itself
             print_info(
-                f"Setting 'targetInstanceCount' to '{ARGS_PARSER.target}'"
-                " (from '--target')"
+                f"Setting 'userData' from {user_data_source(CONFIG_WP)}"
+                f" ({len(user_data):,d} characters)"
             )
-            cr_data["targetInstanceCount"] = ARGS_PARSER.target
+            cr_data["userData"] = user_data
 
-    except KeyError as e:
-        raise KeyError(f"Missing key error in JSON Compute Requirement definition: {e}")
+    if (
+        ARGS_PARSER.target is not None
+        and cr_data.get("targetInstanceCount") != ARGS_PARSER.target
+    ):
+        print_info(
+            f"Setting 'targetInstanceCount' to '{ARGS_PARSER.target}' (from '--target')"
+        )
+        cr_data["targetInstanceCount"] = ARGS_PARSER.target
+
+    # Neither the specification nor the configuration names a template
+    if cr_data.get("templateId") is None:
+        raise ValueError("No 'templateId' supplied")
 
     # Allow use of CRT name instead of ID
     cr_data["templateId"] = get_template_id(
@@ -412,6 +445,6 @@ def _create_compute_requirement_from_json(
         raise requests.HTTPError(response.text, response=response)
 
 
-# Standalone entry point
+# Entry point
 if __name__ == "__main__":
     main()
