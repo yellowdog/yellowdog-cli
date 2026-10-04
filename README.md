@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:23:01 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:30:50 BST 2026 -->
 
 <!--te-->
 
@@ -4619,4 +4619,4 @@ yd-schema --check <dir>       # exit 0 if <dir> matches the installed CLI and SD
 yd-schema --list              # list the family names
 ```
 
-Exactly one of a `<family>`, `--write <dir>`, `--check <dir>` or `--list` must be given. `--write` writes `<family>.schema.json` for every family into `<dir>`, plus an `index.json` naming the CLI and SDK versions that generated them, and exits 1 naming the path if `<dir>` cannot be created or written; point an editor's JSON Schema support (VS Code's `json.schemas`, JetBrains' JSON Schema mappings) at the files it writes. After upgrading the CLI or the SDK, `yd-schema --check <dir>` says whether a written directory is still current, and `yd-schema --write <dir>` again refreshes it. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.
+Exactly one of a `<family>`, `--write <dir>`, `--check <dir>` or `--list` must be given. `--write` writes `<family>.schema.json` for every family into `<dir>`, plus an `index.json` naming the CLI and SDK versions that generated them, and exits 1 naming the path if `<dir>` cannot be created or written; point an editor's JSON Schema support (VS Code's `json.schemas`, JetBrains' JSON Schema mappings) at the files it writes. After upgrading the CLI or the SDK, `yd-schema --check <dir>` says whether a written directory is still current — the versions in its index, and every family's file, which must be there and be exactly what the installed CLI and SDK build, so a file edited or missing is reported — and `yd-schema --write <dir>` again refreshes it. A family printed with `yd-schema <family>` is exactly what `--write` writes for it, and each file is replaced whole or not at all. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.

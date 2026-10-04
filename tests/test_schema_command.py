@@ -32,7 +32,7 @@ def _run(*args, cwd=None):
 
 
 class TestList:
-    def test_names_the_five_families(self):
+    def test_names_the_families(self):
         result = _run("--list")
         assert result.returncode == 0, result.stdout + result.stderr
         lines = result.stdout.split()
@@ -48,9 +48,15 @@ class TestPrintOneFamily:
         assert document["$id"].endswith(f"{family}.schema.json")
         fastjsonschema.compile(document)  # raises on a malformed schema
 
+    def test_prints_exactly_what_write_writes(self, tmp_path):
+        target = tmp_path / "schemas"
+        _run("--write", str(target))
+        result = _run("resources")
+        assert result.stdout == (target / "resources.schema.json").read_text()
+
 
 class TestWrite:
-    def test_writes_five_schemas_and_an_index(self, tmp_path):
+    def test_writes_every_schema_and_an_index(self, tmp_path):
         target = tmp_path / "schemas"
         result = _run("--write", str(target))
         assert result.returncode == 0, result.stdout + result.stderr
@@ -113,6 +119,41 @@ class TestCheck:
 
         assert result.returncode == 1
         assert "written for" in (result.stdout + result.stderr)
+
+    @pytest.mark.parametrize("damage", ["edited", "missing"])
+    def test_exits_one_when_a_schema_is_not_what_is_built(self, tmp_path, damage):
+        # The index's versions alone would call this up to date
+        target = tmp_path / "schemas"
+        _run("--write", str(target))
+        path = target / "worker-pool.schema.json"
+        if damage == "edited":
+            path.write_text(path.read_text().replace('"type"', '"typo"', 1))
+        else:
+            path.unlink()
+
+        result = _run("--check", str(target))
+
+        assert result.returncode == 1
+        output = "".join((result.stdout + result.stderr).split())
+        assert "worker-pool.schema.json" in output
+
+
+class TestNoSdkAtStart:
+    def test_list_does_not_import_the_sdk(self):
+        # The SDK's version comes from its package metadata: importing
+        # anything from yellowdog_client builds the whole Platform client
+        probe = (
+            "import sys; sys.argv = ['yd-schema', '--list'];"
+            " import yellowdog_cli.schema as s; s.main();"
+            " print('SDK' if 'yellowdog_client' in sys.modules else 'none')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            env=_clean_env(),
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.split()[-1] == "none", result.stdout + result.stderr
 
 
 class TestArgumentErrors:

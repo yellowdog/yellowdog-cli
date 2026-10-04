@@ -1283,6 +1283,17 @@ def reset_json_document_printed() -> None:
     _JSON_DOCUMENT_PRINTED = False
 
 
+def print_json_text(json_text: str) -> None:
+    """
+    Print a JSON document's text exactly as given: no colouring and no
+    wrapping, so that what is printed is byte for byte what a file holding
+    it would hold (yd-schema prints a schema as --write writes it).
+    """
+    global _JSON_DOCUMENT_PRINTED
+    _JSON_DOCUMENT_PRINTED = True
+    print(json_text, end="" if json_text.endswith("\n") else "\n", flush=True)
+
+
 def print_json(
     data: Any,
     initial_indent: int = 0,

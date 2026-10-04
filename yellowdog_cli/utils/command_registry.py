@@ -2418,10 +2418,7 @@ SCHEMA_FAMILY = option(
     choices=list(SCHEMA_FAMILIES),
     metavar="<family>",
     type=str,
-    help=(
-        "the specification family to print: work-requirement, worker-pool,"
-        " compute-requirement, resources or node-actions"
-    ),
+    help=f"the specification family to print: {', '.join(SCHEMA_FAMILIES)}",
 )
 SCHEMA_WRITE = option(
     "--write",
@@ -2458,8 +2455,9 @@ COMMANDS["yd-schema"] = Command(
         "Print the JSON Schema a specification family must follow —"
         " work-requirement (yd_submit), worker-pool (yd_provision),"
         " compute-requirement (yd_instantiate), resources (yd_create),"
-        " node-actions (yd_nodeaction) — generated from the installed CLI"
-        " and SDK. Ask for it before composing an inline specification."
+        " node-actions (yd_nodeaction), or config, the TOML configuration"
+        " file — generated from the installed CLI and SDK. Ask for it before"
+        " composing an inline specification."
     ),
 )
 
