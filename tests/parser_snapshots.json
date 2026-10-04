@@ -4654,7 +4654,7 @@
       "default": [],
       "dest": "yellowdog_ids",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"

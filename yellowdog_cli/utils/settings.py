@@ -101,7 +101,13 @@ CR_MAX_INSTANCES = (
     10_000  # This is enforced by the platform (MAX_WORKER_POOL_NODE_COUNT)
 )
 
+# Reconnecting a dropped event stream: the first wait, doubling to the most,
+# for at most an outage this long before giving up
 EVENT_STREAM_RETRY_INTERVAL = 5.0  # Seconds
+EVENT_STREAM_MAX_RETRY_INTERVAL = 30.0  # Seconds
+EVENT_STREAM_MAX_OUTAGE = 300.0  # Seconds
+# The wait before reconnecting a stream closed while its entity is still live
+EVENT_STREAM_RECONNECT_DELAY = 1.0  # Seconds
 EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 # Generous read timeout: a silently dropped connection must not block the
 # event stream forever; a timeout during a quiet period just reconnects

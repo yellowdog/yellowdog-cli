@@ -1714,6 +1714,28 @@ COMMANDS["yd-start"] = Command(
 
 # --- yd-follow / yd-show / yd-wait ---------------------------------------
 
+
+def check_follow_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-follow's IDs: each a Work Requirement's, Worker Pool's or Compute
+    Requirement's, the entities with event streams, checked before anything
+    is followed.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    followable = (
+        YDIDType.WORK_REQUIREMENT,
+        YDIDType.WORKER_POOL,
+        YDIDType.COMPUTE_REQUIREMENT,
+    )
+    for ydid in args.yellowdog_ids:
+        if get_ydid_type(ydid) not in followable:
+            parser.error(
+                f"not a Work Requirement, Worker Pool or Compute Requirement ID:"
+                f" '{ydid}'"
+            )
+
+
 COMMANDS["yd-follow"] = Command(
     name="yd-follow",
     purpose="following event streams",
@@ -1721,7 +1743,7 @@ COMMANDS["yd-follow"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        YELLOWDOG_IDS,
+        YELLOWDOG_IDS.variant(nargs="+"),
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         ACTIONS_JSON.variant(
@@ -1731,7 +1753,7 @@ COMMANDS["yd-follow"] = Command(
             )
         ),
     ),
-    validators=(check_follow_json_excludes_progress,),
+    validators=(check_follow_json_excludes_progress, check_follow_ids),
     tool=ToolKind.ACTING,
     tool_description=(
         "Collect the events of Work Requirements, Worker Pools or Compute"

@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 18:51:55 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 18:59:02 BST 2026 -->
 
 <!--te-->
 
@@ -4119,12 +4119,14 @@ yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.
 The `yd-follow` command follows the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs.
 
 ```shell
-yd-follow [options] [<yellowdog-id> ...]
+yd-follow [options] <yellowdog-id> [<yellowdog-id> ...]
 ```
 
-The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state.
+At least one ID is required, and each must be a Work Requirement's, Worker Pool's or Compute Requirement's: anything else is refused before anything is followed (exit code 2). The IDs are followed in the order given, each once.
 
-It exits with code 1 if any of the supplied IDs could not be followed (invalid ID, entity not found, or a connection/stream error), and 0 otherwise. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
+The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
+
+It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd-follow` takes its exit code from them. Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-submit --exit-on-failure`) to act on Work Requirement outcomes.
 
 Key options:
 - `--progress` — display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)

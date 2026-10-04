@@ -2099,7 +2099,7 @@ class TestFollow:
             return ids
 
         monkeypatch.setattr(yd_follow, "follow_ids", follow)
-        monkeypatch.setattr(yd_follow, "follow_errors_occurred", lambda: False)
+        monkeypatch.setattr(yd_follow, "follow_exit_code", lambda: 0)
         with pytest.raises(SystemExit) as exit_info:
             yd_follow.main()
         assert exit_info.value.code == 0
@@ -2116,7 +2116,7 @@ class TestFollow:
             monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         monkeypatch.setattr(yd_follow, "follow_ids", lambda ids, auto_cr=False: ids)
-        monkeypatch.setattr(yd_follow, "follow_errors_occurred", lambda: False)
+        monkeypatch.setattr(yd_follow, "follow_exit_code", lambda: 0)
         with pytest.raises(SystemExit):
             yd_follow.main()
         assert capsys.readouterr().out == ""
