@@ -4066,7 +4066,7 @@
       "default": null,
       "dest": "remote_paths",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -10050,7 +10050,7 @@
       "default": null,
       "dest": "local_paths",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"

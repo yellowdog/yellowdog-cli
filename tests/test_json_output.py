@@ -2411,10 +2411,127 @@ class TestUpload:
             }
         ]
 
-    def test_a_directory_without_recursive_is_skipped(self, remote, run_dc):
+    def test_a_directory_without_recursive_fails(self, remote, run_dc):
+        # As 'cp' without '-r' does: almost always a mistake
         (remote / "d").mkdir()
-        out, _, _ = run_dc(yd_upload, local_paths=["d"])
-        assert [(r["source"], r["action"]) for r in out] == [("d", "skipped")]
+        out, _, code = run_dc(yd_upload, local_paths=["d"])
+        assert [(r["source"], r["action"]) for r in out] == [("d", "failed")]
+        assert code == 1
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
+        import yellowdog_cli.utils.dataclient_utils as dcu
+
+        (remote / "one.txt").write_text("1")
+        (remote / "two.txt").write_text("2")
+        real_copy_to = dcu._copy_to
+
+        def copy_to(rclone, src, dst):
+            if src.endswith("one.txt"):
+                return SimpleNamespace(returncode=1, stderr="refused")
+            return real_copy_to(rclone, src, dst)
+
+        monkeypatch.setattr(dcu, "_copy_to", copy_to)
+        out, err, code = run_dc(yd_upload, local_paths=["one.txt", "two.txt"])
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("one.txt", "failed"),
+            ("two.txt", "uploaded"),
+        ]
+        assert code == 1
+        assert "1 item(s) failed to upload" in " ".join(err.split())
+        assert (remote / "remote" / "two.txt").exists()
+
+    def test_several_directories_to_one_destination_keep_their_names(
+        self, remote, run_dc
+    ):
+        for name in ("a", "b"):
+            (remote / name).mkdir()
+            (remote / name / f"{name}.txt").write_text(name)
+        _, _, code = run_dc(
+            yd_upload, local_paths=["a", "b"], destination="out", recursive=True
+        )
+        assert code == 0
+        assert (remote / "remote" / "out" / "a" / "a.txt").exists()
+        assert (remote / "remote" / "out" / "b" / "b.txt").exists()
+
+    def test_colliding_destinations_upload_nothing(self, remote, run_dc):
+        # Two directories of one name would merge, and under --sync the
+        # second would delete what the first uploaded
+        for parent in ("x", "y"):
+            (remote / parent / "data").mkdir(parents=True)
+            (remote / parent / "data" / f"{parent}.txt").write_text(parent)
+        _, err, code = run_dc(
+            yd_upload, local_paths=["x/data", "y/data"], sync=True, recursive=True
+        )
+        assert code == 2
+        assert "would both be uploaded to 'loc:remote/data'" in " ".join(err.split())
+        assert not (remote / "remote" / "data").exists()
+
+    @pytest.mark.parametrize("names, code", [(("same", "same"), 2), (("x", "y"), 0)])
+    def test_flattened_directories_collide_only_on_a_file(
+        self, remote, run_dc, names, code
+    ):
+        # Flattened, two directories of one name land in one remote directory,
+        # which is refused only where a file would land on another's path
+        for parent, name in zip(("p", "q"), names):
+            (remote / parent / "data").mkdir(parents=True)
+            (remote / parent / "data" / f"{name}.txt").write_text(name)
+        _, _, exit_code = run_dc(
+            yd_upload,
+            local_paths=["p/data", "q/data"],
+            flatten=True,
+            json_output=False,
+        )
+        assert exit_code == code
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "d").mkdir()
+        (remote / "d" / "a.txt").write_text("hello")
+        out, _, code = run_dc(
+            yd_upload,
+            local_paths=["d"],
+            destination="loc:remote",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == ["loc:remote/sub/b.txt"]
+        assert (remote / "remote" / "sub" / "b.txt").exists()
+
+    def test_a_symbolic_link_is_not_recorded_as_uploaded(self, remote, run_dc):
+        (remote / "d").mkdir()
+        (remote / "d" / "real.txt").write_text("r")
+        (remote / "d" / "link.txt").symlink_to(remote / "d" / "real.txt")
+        out, err, _ = run_dc(yd_upload, local_paths=["d"], recursive=True)
+        assert [r["destination"] for r in out] == ["loc:remote/d/real.txt"]
+        assert "1 symbolic link(s)" in " ".join(err.split())
+
+    def test_an_empty_flattened_directory_is_recorded(self, remote, run_dc):
+        (remote / "empty").mkdir()
+        out, _, code = run_dc(yd_upload, local_paths=["empty"], flatten=True)
+        assert [(r["source"], r["action"]) for r in out] == [("empty", "skipped")]
+        assert code == 0
+
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            ([], "the following arguments are required: <local-path>"),
+            (["--sync", "--flatten", "x"], "--sync cannot be used with --flatten"),
+        ],
+    )
+    def test_refused_as_parsed(self, argv, message, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-upload", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
+
+    @pytest.mark.parametrize("command", ["yd-upload", "yd-download"])
+    def test_which_rclone_needs_no_paths(self, command):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command=command, argv=["--which-rclone"])
 
 
 @needs_rclone

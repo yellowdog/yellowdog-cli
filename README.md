@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 20:18:54 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 20:27:45 BST 2026 -->
 
 <!--te-->
 
@@ -518,7 +518,7 @@ The documents, by command:
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
 | Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches); several paths' entries are concatenated |
-| Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (a directory `yd-upload` was not told to recurse into), `failed` (plus `"error"`; a local path that does not exist, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist exits 1 although it carries on with the others. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
+| Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` dry run would remove. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
 | Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"`; a directory passed over for want of `--recursive` is not recorded |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
@@ -4386,14 +4386,18 @@ yd-upload [options] <local-path> [<local-path> ...]
 Key options:
 - `--recursive`/`-R` — upload directories recursively, preserving the directory structure
 - `--flatten` — upload all files in a directory tree to a flat (single-level) remote destination
-- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted
+- `--sync` — synchronise the remote destination to match the local source (implies `--recursive`); files present at the destination but absent locally are deleted; cannot be combined with `--flatten`
 - `--destination`/`-d <remote-path>` — override the destination path; supports `{{variable}}` substitution
-- `--dry-run`/`-D` — show what would be uploaded, without uploading
+- `--dry-run`/`-D` — show what would be uploaded, without uploading; with `--sync`, also each remote file that would be deleted
 - `--json` — emit the files uploaded as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-upload --recursive my_input_data/
 ```
+
+A file is uploaded to its own name under the configured prefix, and a directory's contents to a remote directory of the directory's own name. `--destination` names the remote path instead: for a single file, the file's own path (or, ending in `/`, the directory it goes into); for a single directory, the remote directory its contents go into. With more than one local path, `--destination` is a directory, and every file and directory keeps its own name inside it, so `yd-upload -R -d out a/ b/` produces `out/a/` and `out/b/`. A directory given without `--recursive`, `--flatten` or `--sync` is an error.
+
+Before anything is uploaded, `yd-upload` works out where every argument will land, and refuses the whole run (exit 2) if two of them would land on the same remote path — two directories of the same name would merge, and with `--sync` the second would delete what the first uploaded; with `--flatten`, it is two files landing on one path that is refused. A failed upload is reported and recorded, and the rest are still attempted; the command then exits 1. Symbolic links are not uploaded (rclone does not follow them), and a warning says how many were left out.
 
 ### yd-download
 

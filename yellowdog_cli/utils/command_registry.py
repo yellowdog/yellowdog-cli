@@ -68,6 +68,10 @@ class Option:
 
     flags: tuple[str, ...]
     kwargs: dict[str, Any]
+    # A positional argparse takes as optional only so that --which-rclone
+    # and --upgrade-rclone can run without it: required for every MCP tool,
+    # which offers neither, and by the command's own check otherwise
+    tool_required: bool = False
 
     @property
     def positional(self) -> bool:
@@ -88,7 +92,7 @@ class Option:
 
     def variant(self, **overrides: Any) -> Option:
         """The same option with some keyword arguments replaced."""
-        return Option(self.flags, {**self.kwargs, **overrides})
+        return Option(self.flags, {**self.kwargs, **overrides}, self.tool_required)
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
         return target.add_argument(*self.flags, **self.kwargs)
@@ -929,6 +933,23 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
     DRY_RUN_TRANSFERS,
 )
 
+
+def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    The paths a data client command needs, unless it is only asked for
+    --which-rclone or --upgrade-rclone: argparse takes them as optional so
+    that those two can run alone.
+    """
+    if args.which_rclone or args.upgrade_rclone:
+        return
+    for name, metavar in (
+        ("local_paths", "<local-path>"),
+        ("remote_paths", "<remote-path>"),
+    ):
+        if getattr(args, name, None) == []:
+            parser.error(f"the following arguments are required: {metavar}")
+
+
 DESTINATION = option(
     "--destination",
     "-d",
@@ -1625,7 +1646,11 @@ COMMANDS["yd-download"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
-        REMOTE_PATHS,
+        Option(
+            REMOTE_PATHS.flags,
+            {**REMOTE_PATHS.kwargs, "nargs": "*"},
+            tool_required=True,
+        ),
         # '--destination' names the local path corresponding to one remote
         # item; '--into' names a container directory that several items keep
         # their own names inside. Honouring both is meaningless, so let
@@ -1656,6 +1681,7 @@ COMMANDS["yd-download"] = Command(
             )
         ),
     ),
+    validators=(check_paths_given,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
     tool_description=(
@@ -2692,13 +2718,27 @@ COMMANDS["yd-terminate"] = Command(
 
 # --- yd-upload -----------------------------------------------------------
 
-LOCAL_PATHS = option(
-    "local_paths",
-    metavar="<local-path>",
-    type=str,
-    nargs="+",
-    help="local file(s) or directory(ies) to upload",
+LOCAL_PATHS = Option(
+    ("local_paths",),
+    {
+        "metavar": "<local-path>",
+        "type": str,
+        "nargs": "*",
+        "help": "local file(s) or directory(ies) to upload",
+    },
+    tool_required=True,
 )
+
+
+def check_upload_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-upload: its paths (see check_paths_given()); and not --sync with
+    --flatten, which would upload without the deletion --sync promises.
+    """
+    check_paths_given(args, parser)
+    if args.sync and args.flatten:
+        parser.error("--sync cannot be used with --flatten")
+
 
 COMMANDS["yd-upload"] = Command(
     name="yd-upload",
@@ -2717,6 +2757,7 @@ COMMANDS["yd-upload"] = Command(
         SYNC,
         TRANSFERS_JSON,
     ),
+    validators=(check_upload_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
 )

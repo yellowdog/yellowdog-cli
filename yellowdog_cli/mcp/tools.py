@@ -202,8 +202,10 @@ def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
         schema["description"] = ENTITY_TYPE_DESCRIPTION
     elif kwargs.get("help"):
         schema["description"] = kwargs["help"]
-    required = bool(kwargs.get("required")) or (
-        option.positional and kwargs.get("nargs") in (None, "+")
+    required = (
+        bool(kwargs.get("required"))
+        or option.tool_required
+        or (option.positional and kwargs.get("nargs") in (None, "+"))
     )
     return schema, required
 

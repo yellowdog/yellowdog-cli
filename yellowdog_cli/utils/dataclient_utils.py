@@ -5,6 +5,7 @@ yd-upload, yd-download, yd-delete, yd-ls.
 
 import fnmatch
 import json
+import os
 import subprocess
 import threading
 import warnings
@@ -19,7 +20,12 @@ from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
-from yellowdog_cli.utils.printing import print_dry_run, print_info, print_warning
+from yellowdog_cli.utils.printing import (
+    print_dry_run,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.rclone_utils import (
     make_rclone,
     make_rclone_for_copy,
@@ -146,7 +152,7 @@ def _lsjson(
 
 
 def record_transfer(
-    source: str,
+    source: str | None,
     destination: str | None,
     size: int | None,
     action: str,
@@ -157,7 +163,9 @@ def record_transfer(
     Record one file transferred by yd-upload, yd-download or yd-copy, as
     {"source", "destination", "size", "action"} (plus "error" when given, and
     any extra fields): 'action' is 'uploaded', 'downloaded' or 'copied',
-    'skipped', 'failed', or 'would upload' (and so on) under '--dry-run'.
+    'skipped', 'failed', or 'would upload' (and so on) under '--dry-run'; a
+    sync's dry run records each remote file it would remove as 'would
+    delete', with no source.
     """
     item = {
         "source": source,
@@ -272,24 +280,27 @@ def upload_file(
     local_path: Path,
     remote_path: str,
     dry_run: bool = False,
-) -> None:
+) -> bool:
     """
-    Upload a single local file to the given remote path.
+    Upload a single local file to the given remote path, recording the
+    outcome. Returns False, having reported and recorded it, if it failed.
     """
     size = local_path.stat().st_size
     if dry_run:
         print_dry_run(f"Would upload '{local_path}' → '{remote_path}'")
         record_transfer(str(local_path), remote_path, size, "would upload")
-        return
+        return True
 
     _, rclone = _rclone_for_config(config)
     print_info(f"Uploading '{local_path}' → '{remote_path}'")
     result = _copy_to(rclone, str(local_path.resolve()), remote_path)
     if result.returncode != 0:
-        error = f"Upload failed: {_rclone_error_detail(result)}"
+        error = f"Upload of '{local_path}' failed: {_rclone_error_detail(result)}"
+        print_error(error)
         record_transfer(str(local_path), remote_path, size, "failed", error=error)
-        raise RuntimeError(error)
+        return False
     record_transfer(str(local_path), remote_path, size, "uploaded")
+    return True
 
 
 def _rclone_sync(rclone: Rclone, src: str, dst: str):
@@ -325,9 +336,11 @@ def upload_directory(
     flatten: bool = False,
     sync: bool = False,
     dry_run: bool = False,
-) -> None:
+) -> bool:
     """
-    Upload a local directory to the given remote path.
+    Upload a local directory to the given remote path, recording the
+    outcome. Returns False, having reported and recorded it, if anything
+    failed.
 
     With flatten=True, all files are uploaded flat to the remote destination
     (no subdirectory structure preserved).
@@ -335,8 +348,7 @@ def upload_directory(
     (remote files not present locally are deleted).
     """
     if flatten:
-        _upload_directory_flat(config, local_path, remote_path, dry_run)
-        return
+        return _upload_directory_flat(config, local_path, remote_path, dry_run)
 
     # Walked only to be recorded, which nothing prints without '--json'
     files = _local_upload_files(local_path, remote_path) if json_requested() else []
@@ -346,7 +358,9 @@ def upload_directory(
         print_dry_run(f"Would {action} directory '{local_path}' → '{remote_path}'")
         for source, destination, size in files:
             record_transfer(source, destination, size, "would upload")
-        return
+        if sync:
+            _report_sync_deletions(config, local_path, remote_path)
+        return True
 
     _, rclone = _rclone_for_config(config)
     print_info(f"{'Syncing' if sync else 'Uploading'} '{local_path}' → '{remote_path}'")
@@ -356,12 +370,73 @@ def upload_directory(
         result = _copy(rclone, str(local_path.resolve()), remote_path)
     if result.returncode != 0:
         # One rclone run moved them all, so which of them failed is unknown
-        error = f"Directory upload failed: {_rclone_error_detail(result)}"
+        error = (
+            f"Upload of directory '{local_path}' failed: {_rclone_error_detail(result)}"
+        )
+        print_error(error)
         for source, destination, size in files:
             record_transfer(source, destination, size, "failed", error=error)
-        raise RuntimeError(error)
+        if not files:  # Not walked: the directory itself is the record
+            record_transfer(str(local_path), remote_path, None, "failed", error=error)
+        return False
     for source, destination, size in files:
         record_transfer(source, destination, size, "uploaded")
+    return True
+
+
+def _report_sync_deletions(
+    config: ConfigDataClient, local_path: Path, remote_path: str
+) -> None:
+    """
+    In a dry run of a sync, report and record each remote file the sync
+    would delete: those under the destination with no local counterpart.
+    """
+    _, rclone = _rclone_for_config(config)
+    result = _run_quietly(
+        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", remote_path]
+    )
+    if result.returncode == 3:  # rclone's 'directory not found': nothing there
+        return
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Cannot list '{remote_path}': {_rclone_error_detail(result)}"
+        )
+    local = {
+        Path(source).relative_to(local_path).as_posix()
+        for source in _local_files(local_path)
+    }
+    base = remote_path.rstrip("/")
+    for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
+        if entry["Path"] not in local:
+            destination = _join_remote(base, entry["Path"])
+            print_dry_run(f"Would delete '{destination}'")
+            record_transfer(None, destination, entry.get("Size"), "would delete")
+
+
+def _local_files(local_path: Path) -> list[str]:
+    """
+    The files under a local directory, sorted, as an upload sends them:
+    rclone does not follow symlinks, so those are left out, with a warning.
+    """
+    files: list[str] = []
+    symlinks = 0
+    for directory, subdirectories, names in os.walk(local_path):
+        symlinks += sum(
+            1
+            for name in subdirectories
+            if os.path.islink(os.path.join(directory, name))
+        )
+        for name in names:
+            path = os.path.join(directory, name)
+            if os.path.islink(path):
+                symlinks += 1
+            else:
+                files.append(path)
+    if symlinks:
+        print_warning(
+            f"{symlinks} symbolic link(s) under '{local_path}' will not be uploaded"
+        )
+    return sorted(files)
 
 
 def _local_upload_files(
@@ -373,9 +448,22 @@ def _local_upload_files(
     """
     base = remote_path.rstrip("/")
     return [
-        (str(f), f"{base}/{f.relative_to(local_path).as_posix()}", f.stat().st_size)
-        for f in sorted(local_path.rglob("*"))
-        if f.is_file()
+        (
+            path,
+            f"{base}/{Path(path).relative_to(local_path).as_posix()}",
+            Path(path).stat().st_size,
+        )
+        for path in _local_files(local_path)
+    ]
+
+
+def flattened_destinations(local_path: Path, remote_path: str) -> list[str]:
+    """
+    Where a flattened upload of a local directory puts each of its files.
+    """
+    return [
+        f"{remote_path.rstrip('/')}/{Path(path).name}"
+        for path in _local_files(local_path)
     ]
 
 
@@ -384,15 +472,17 @@ def _upload_directory_flat(
     local_path: Path,
     remote_path: str,
     dry_run: bool,
-) -> None:
+) -> bool:
     """
     Upload all files under local_path to remote_path without preserving
-    directory structure (all files land directly under remote_path).
+    directory structure (all files land directly under remote_path). Every
+    file is attempted; returns False if any failed.
     """
-    files = [f for f in local_path.rglob("*") if f.is_file()]
+    files = [Path(path) for path in _local_files(local_path)]
     if not files:
-        print_info(f"No files found under '{local_path}'")
-        return
+        print_warning(f"No files found under '{local_path}'")
+        record_transfer(str(local_path), remote_path, None, "skipped")
+        return True
 
     # Flattening collapses subdirectories, so same-named files in different
     # subdirectories would silently overwrite each other at the remote
@@ -406,9 +496,11 @@ def _upload_directory_flat(
         else:
             seen[local_file.name] = local_file
 
+    succeeded = True
     for local_file in files:
         dest = f"{remote_path.rstrip('/')}/{local_file.name}"
-        upload_file(config, local_file, dest, dry_run=dry_run)
+        succeeded = upload_file(config, local_file, dest, dry_run=dry_run) and succeeded
+    return succeeded
 
 
 def entry_to_name(entry: dict) -> str:
