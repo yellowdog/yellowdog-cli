@@ -192,9 +192,9 @@ class TestSchemaMapping:
         assert "entity_type" in TOOLS["yd_list"].input_schema["required"]  # nargs=None
         assert "yellowdog_ids" in TOOLS["yd_show"].input_schema["required"]  # '+'
         assert "yellowdog_ids" in TOOLS["yd_wait"].input_schema["required"]  # '+'
-        assert "src_path" not in TOOLS["yd_copy"].input_schema.get(
-            "required", []
-        )  # nargs='?'
+        # nargs='?' for --which-rclone alone, which no tool offers
+        assert "src_path" in TOOLS["yd_copy"].input_schema["required"]
+        assert "dst_path" in TOOLS["yd_copy"].input_schema["required"]
 
     def test_exclusive_pair_is_refused_by_schema(self):
         assert {"not": {"required": ["destination", "into"]}} in TOOLS[

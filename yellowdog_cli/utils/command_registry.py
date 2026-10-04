@@ -1430,20 +1430,47 @@ COMMANDS["yd-compute-stop"] = Command(
 
 # --- yd-copy -------------------------------------------------------------
 
-SRC_PATH = option(
-    "src_path",
-    metavar="<src-path>",
-    type=str,
-    nargs="?",
-    help="source path relative to the configured source remote/bucket/prefix",
+SRC_PATH = Option(
+    ("src_path",),
+    {
+        "metavar": "<src-path>",
+        "type": str,
+        "nargs": "?",
+        "help": "source path relative to the configured source remote/bucket/prefix",
+    },
+    tool_required=True,
 )
-DST_PATH = option(
-    "dst_path",
-    metavar="<dst-path>",
-    type=str,
-    nargs="?",
-    help="destination path relative to the configured destination remote/bucket/prefix",
+DST_PATH = Option(
+    ("dst_path",),
+    {
+        "metavar": "<dst-path>",
+        "type": str,
+        "nargs": "?",
+        "help": (
+            "destination path relative to the configured destination"
+            " remote/bucket/prefix"
+        ),
+    },
+    tool_required=True,
 )
+
+
+def check_copy_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-copy: both paths, unless it is only asked for --which-rclone or
+    --upgrade-rclone, which is why argparse takes them as optional.
+    """
+    if args.which_rclone or args.upgrade_rclone:
+        return
+    missing = [
+        metavar
+        for name, metavar in (("src_path", "<src-path>"), ("dst_path", "<dst-path>"))
+        if getattr(args, name) is None
+    ]
+    if missing:
+        parser.error(f"the following arguments are required: {', '.join(missing)}")
+
+
 DST_PROFILE = option(
     "--dst-profile",
     type=str,
@@ -1480,9 +1507,7 @@ COMMANDS["yd-copy"] = Command(
         DST_PATH,
         DST_PROFILE,
         DST_PREFIX,
-        RECURSIVE.variant(
-            help="copy directories recursively (rclone copies recursively by default)"
-        ),
+        RECURSIVE.variant(help="copy a directory, recursively (--sync implies it)"),
         SYNC.variant(
             help=(
                 "make the destination a mirror of the source, "
@@ -1491,6 +1516,7 @@ COMMANDS["yd-copy"] = Command(
         ),
         TRANSFERS_JSON.variant(help="emit the files copied as a JSON array"),
     ),
+    validators=(check_copy_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
 )

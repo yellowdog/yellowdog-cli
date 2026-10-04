@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 20:54:21 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:00:54 BST 2026 -->
 
 <!--te-->
 
@@ -518,7 +518,7 @@ The documents, by command:
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
 | Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches), with `"Listing"` added, the remote path it was listed under; several paths' entries are concatenated, and a path that does not exist adds none and exits 1 |
-| Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` dry run would remove, or local file a `yd-download --sync` dry run would. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd-download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
+| Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` or `yd-copy --sync` dry run would remove, or local file a `yd-download --sync` dry run would. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd-download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
 | Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
@@ -4478,14 +4478,14 @@ The `yd-copy` command copies files or directories between remote data client loc
 yd-copy [options] <src-path> <dst-path>
 ```
 
-`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution. The source remote is configured via the standard data client options; the destination defaults to the same, and is overridden with `--dst-profile` and/or `--dst-prefix`.
+`<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution. The source remote is configured via the standard data client options; the destination defaults to the same, and is overridden with `--dst-profile` and/or `--dst-prefix`. A source that does not exist is an error, reported before anything is copied, as is a directory given without `--recursive`.
 
 Key options:
 - `--dst-profile <name>` — use a named `[dataClient.<name>]` TOML profile for the destination (inherits unset fields from `[dataClient]`)
 - `--dst-prefix <prefix>` — override the destination path prefix; pass `''` to place files at the bucket root
-- `--sync` — mirror the source to the destination, deleting destination files not present in the source
-- `--recursive`/`-R` — accepted for explicitness; rclone copies recursively by default
-- `--dry-run`/`-D` — show what would happen, without performing any transfers
+- `--sync` — mirror the source directory to the destination, deleting destination files not present in the source (implies `--recursive`); not for a single file, and not to a remote's root or the destination bucket itself
+- `--recursive`/`-R` — copy a directory, recursively; a directory given without it is an error
+- `--dry-run`/`-D` — show what would happen, without performing any transfers; with `--sync`, also each destination file that would be deleted
 - `--json` — emit the files copied as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```bash
@@ -4496,10 +4496,10 @@ yd-copy input/data.csv output/data.csv
 yd-copy results/output.csv archive/output-{{date}}.csv
 
 # Copy a directory to a different prefix on the same remote
-yd-copy --dst-prefix staging input/ input/
+yd-copy -R --dst-prefix staging input/ input/
 
 # Copy results to a named profile (e.g. a separate bucket defined in config.toml)
-yd-copy --dst-profile production results/ results/
+yd-copy -R --dst-profile production results/ results/
 
 # Sync a directory to a backup profile (deletes destination files not in source)
 yd-copy --sync --dst-profile backup data/ data/
@@ -4508,7 +4508,7 @@ yd-copy --sync --dst-profile backup data/ data/
 yd-copy --no-prefix shared/configs/base.json configs/base.json
 
 # Dry-run to preview what would be copied without transferring anything
-yd-copy --dry-run input/ output/
+yd-copy -R --dry-run input/ output/
 ```
 
 ## Utility Commands

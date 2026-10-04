@@ -1150,46 +1150,24 @@ def list_remote(
     )
 
 
-def _is_remote_file(rclone: Rclone, remote_path: str) -> bool:
-    """
-    Return True if remote_path resolves to a single file (not a directory).
-    Lists the parent directory and checks whether the final path component
-    appears as a non-directory entry.
-    """
-    path = remote_path.rstrip("/")
-    path_part = path.split(":", 1)[-1]  # strip remote: prefix for the check
-    if "/" not in path_part:
-        return False
-    parent, name = path.rsplit("/", 1)
-    check = _run_quietly(rclone, ["lsjson", parent])
-    if check.returncode != 0:
-        return False
-    entries = json.loads(check.stdout or "[]")
-    matching = [e for e in entries if e["Name"] == name]
-    return bool(matching) and not matching[0]["IsDir"]
-
-
 def copy_remote(
     src_config: ConfigDataClient,
     src_path: str,
     dst_config: ConfigDataClient,
     dst_path: str,
+    src_is_file: bool,
     sync: bool = False,
     dry_run: bool = False,
 ) -> None:
     """
-    Copy from src_path to dst_path across (potentially different) remotes.
-    With sync=True, the destination is made to mirror the source.
-    When the source is a single file and the destination does not end with
-    '/', uses rclone copyto so the destination filename is preserved
-    (enabling file-to-file rename).
+    Copy from src_path to dst_path across (potentially different) remotes;
+    the caller has established that the source exists and whether it is a
+    file. With sync=True (a directory only), the destination is made to
+    mirror the source, and a dry run reports each destination file it
+    would delete. A single file is copied with 'rclone copyto', so the
+    destination names the file itself (a rename), unless it ends with '/',
+    when the file keeps its name inside it.
     """
-    if dry_run:
-        action = "sync" if sync else "copy"
-        print_dry_run(f"Would {action} '{src_path}' → '{dst_path}'")
-        if not json_requested():
-            return
-
     src_remote_str = _require_remote(src_config)
     dst_remote_str = _require_remote(dst_config)
 
@@ -1206,15 +1184,21 @@ def copy_remote(
     if dst_path.endswith("/."):
         dst_path = dst_path[:-1]
 
-    src_is_file = not sync and _is_remote_file(rclone, src_path)
     # Source is a single file: use copyto for precise destination naming.
     # If dst ends with '/', treat it as a directory and append the source filename.
     dst_file = (
         dst_path + src_path.rsplit("/", 1)[-1] if dst_path.endswith("/") else dst_path
     )
 
-    # Each file copied, named by the paths as the user gave them rather than
-    # by the collision-free names the transfer used
+    def _as_given(source: str, destination: str) -> tuple[str, str]:
+        # Named by the paths as the user gave them, rather than by the
+        # collision-free names the transfer used
+        return (
+            _renamed(source, src_name, src_orig_name),
+            _renamed(destination, dst_name, dst_orig_name),
+        )
+
+    # Each file copied, listed only to be recorded, which only '--json' needs
     files: list[tuple[str, str, int | None]] = []
     if json_requested():
         if src_is_file:
@@ -1229,18 +1213,15 @@ def copy_remote(
                 )
                 for f in _lsjson(rclone, src_path, recursive=True, files_only=True)
             ]
-        files = [
-            (
-                _renamed(source, src_name, src_orig_name),
-                _renamed(destination, dst_name, dst_orig_name),
-                size,
-            )
-            for source, destination, size in files
-        ]
+        files = [(*_as_given(source, dest), size) for source, dest, size in files]
 
     if dry_run:
+        action = "sync" if sync else "copy"
+        print_dry_run(f"Would {action} '{src_path}' → '{dst_path}'")
         for source, destination, size in files:
             record_transfer(source, destination, size, "would copy")
+        if sync:
+            _report_copy_sync_deletions(rclone, src_path, dst_path, _as_given)
         return
 
     action = "Syncing" if sync else "Copying"
@@ -1261,6 +1242,35 @@ def copy_remote(
         raise RuntimeError(error)
     for source, destination, size in files:
         record_transfer(source, destination, size, "copied")
+
+
+def _report_copy_sync_deletions(
+    rclone: Rclone,
+    src_path: str,
+    dst_path: str,
+    as_given: Callable[[str, str], tuple[str, str]],
+) -> None:
+    """
+    In a dry run of a copy sync, report and record each destination file
+    the sync would delete: those with no counterpart in the source.
+    """
+    result = _run_quietly(
+        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", dst_path]
+    )
+    if result.returncode == 3:  # rclone's 'directory not found': nothing there
+        return
+    if result.returncode != 0:
+        raise RuntimeError(f"Cannot list '{dst_path}': {_rclone_error_detail(result)}")
+    source = {
+        entry["Path"]
+        for entry in _lsjson(rclone, src_path, recursive=True, files_only=True)
+    }
+    base = dst_path.rstrip("/")
+    for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
+        if entry["Path"] not in source:
+            _, destination = as_given(src_path, _join_remote(base, entry["Path"]))
+            print_dry_run(f"Would delete '{destination}'")
+            record_transfer(None, destination, entry.get("Size"), "would delete")
 
 
 def _renamed(path: str, name: str, new_name: str) -> str:

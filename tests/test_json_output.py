@@ -2821,7 +2821,9 @@ class TestDownload:
 @needs_rclone
 class TestCopy:
     def test_a_directory_records_each_file(self, remote, run_dc):
-        out, _, code = run_dc(yd_copy, src_path="loc:remote/sub", dst_path="loc:dst")
+        out, _, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", recursive=True
+        )
         assert code == 0
         assert out == [
             {
@@ -2846,12 +2848,94 @@ class TestCopy:
 
     def test_dry_run(self, remote, run_dc):
         out, _, _ = run_dc(
-            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", dry_run=True
+            yd_copy,
+            src_path="loc:remote/sub",
+            dst_path="loc:dst",
+            dry_run=True,
+            recursive=True,
         )
         assert [(r["destination"], r["action"]) for r in out] == [
             ("loc:dst/b.txt", "would copy")
         ]
         assert not (remote / "dst").exists()
+
+    def test_a_directory_needs_recursive(self, remote, run_dc):
+        out, err, code = run_dc(yd_copy, src_path="loc:remote/sub", dst_path="loc:dst")
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"]
+        assert "use --recursive to copy it" in " ".join(err.split())
+        assert not (remote / "dst").exists()
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_missing_source_fails(self, remote, run_dc, dry_run):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/nope", dst_path="loc:dst", dry_run=dry_run
+        )
+        assert code == 1
+        assert "'loc:remote/nope' does not exist" in " ".join(err.split())
+
+    def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
+        self, remote, run_dc
+    ):
+        # Once taken for a directory, having no '/', and copied into the
+        # destination instead
+        (remote / "top.txt").write_text("t")
+        _, _, code = run_dc(yd_copy, src_path="loc:top.txt", dst_path="loc:renamed.txt")
+        assert code == 0
+        assert (remote / "renamed.txt").read_text() == "t"
+
+    def test_sync_from_a_file_is_refused(self, remote, run_dc):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/a.txt", dst_path="loc:dst", sync=True
+        )
+        assert code == 2
+        assert "--sync mirrors a directory" in " ".join(err.split())
+
+    @pytest.mark.parametrize("dst_path", ["loc:", "loc:remote"])
+    def test_sync_to_the_root_or_the_bucket_is_refused(self, remote, run_dc, dst_path):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path=dst_path, sync=True
+        )
+        assert code == 2
+        assert "Nothing was copied" in " ".join(err.split())
+        assert (remote / "remote" / "a.txt").exists()
+
+    def test_sync_implies_recursive(self, remote, run_dc):
+        _, _, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", sync=True
+        )
+        assert code == 0
+        assert (remote / "dst" / "b.txt").exists()
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "dst").mkdir()
+        (remote / "dst" / "b.txt").write_text("kept")
+        (remote / "dst" / "stale.txt").write_text("gone")
+        out, _, code = run_dc(
+            yd_copy,
+            src_path="loc:remote/sub",
+            dst_path="loc:dst",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == ["loc:dst/stale.txt"]
+        assert (remote / "dst" / "stale.txt").exists()
+
+    @pytest.mark.parametrize("argv", [[], ["only-a-source"]])
+    def test_both_paths_are_required_as_parsed(self, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-copy", argv=argv)
+        assert raised.value.code == 2
+        assert "the following arguments are required" in capsys.readouterr().err
+
+    def test_which_rclone_needs_no_paths(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command="yd-copy", argv=["--which-rclone"])
 
 
 @needs_rclone
