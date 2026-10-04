@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:10:36 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:17:38 BST 2026 -->
 
 <!--te-->
 
@@ -4579,8 +4579,10 @@ The rclone version is detected using the same lookup order as `yd-submit --which
 The `yd-format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored.
 
 ```shell
-yd-format-json <file.json> [<file.json> ...]
+yd-format-json [--check] <file.json> [<file.json> ...]
 ```
+
+Only the layout changes: numbers are written back exactly as they were written (`1.10` stays `1.10`), non-ASCII text is kept rather than escaped, and a file that repeats a key is refused, and left as it is, rather than losing all but one of them. A file is replaced only once its new text is complete, keeping its permissions, so an interruption leaves the original; a file already in this layout is left untouched. `--check` writes nothing, reporting the files that would be reformatted, and exits 1 if there are any, for use in CI. A file that cannot be read, parsed or written is reported on stderr, the others are still processed, and the command exits 1.
 
 ```shell
 yd-format-json my_file.json my_other_file.json

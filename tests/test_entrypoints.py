@@ -18,7 +18,7 @@ from cli_test_helpers import shell
         ("yd-download --help", 0),
         ("yd-finish --help", 0),
         ("yd-follow --help", 0),
-        ("yd-format-json", 0),
+        ("yd-format-json --help", 0),
         ("yd-help", 0),
         ("yd-hold --help", 0),
         ("yd-instantiate --help", 0),
