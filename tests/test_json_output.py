@@ -131,6 +131,12 @@ def run(monkeypatch, capsys):
     reset_results()
 
 
+def _response(status_code: int) -> Response:
+    response = Response()
+    response.status_code = status_code
+    return response
+
+
 def _wr(id_: str, name: str, status=WorkRequirementStatus.RUNNING):
     return WorkRequirementSummary(id=id_, name=name, namespace="ns", status=status)
 
@@ -919,27 +925,90 @@ class TestWorkerPoolIdByName:
 
 
 class TestBoost:
-    def test_boosted_and_invalid(self, run):
+    @staticmethod
+    def _client(descriptions=None, boost=None) -> MagicMock:
+        """
+        A client whose Allowances exist with the descriptions given (by ID;
+        every ID by default, described 'budget'), boosting as 'boost' says.
+        """
+        client = MagicMock()
+
+        def get(allowance_id):
+            if descriptions is not None and allowance_id not in descriptions:
+                raise HTTPError("404", response=_response(404))
+            description = (descriptions or {}).get(allowance_id, "budget")
+            return SimpleNamespace(id=allowance_id, description=description)
+
+        client.allowances_client.get_allowance_by_id.side_effect = get
+        if boost is not None:
+            client.allowances_client.boost_allowance_by_id.side_effect = boost
+        else:
+            client.allowances_client.boost_allowance_by_id.return_value = (
+                SimpleNamespace(remainingHours=None)
+            )
+        return client
+
+    def test_boosted_with_the_description(self, run):
         out, _, _ = run(
-            yd_boost, boost_hours=2, allowance_list=[ALLOWANCE_ID, "not-an-id"]
+            yd_boost,
+            client=self._client(),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID],
         )
-        # The mock client's Allowance has no number of remaining hours
-        assert out[0] == _action(
-            ALLOWANCE_ID,
-            None,
-            "allowances",
-            "boost",
-            "boosted",
-            hours=2,
-            remainingHours=None,
+        assert out == [
+            _action(
+                ALLOWANCE_ID,
+                None,
+                "allowances",
+                "boost",
+                "boosted",
+                hours=2,
+                description="budget",
+                remainingHours=None,
+            )
+        ]
+
+    def test_a_malformed_id_is_a_usage_error(self, capsys):
+        from yellowdog_cli.utils.command_registry import (
+            COMMANDS,
+            build_parser,
+            check_allowance_ids,
         )
-        assert out[1]["name"] == "not-an-id" and out[1]["outcome"] == "failed"
+
+        parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
+        args = parser.parse_args(["2", ALLOWANCE_ID, "not-an-id"])
+        with pytest.raises(SystemExit) as exit_info:
+            check_allowance_ids(args, parser)
+        assert exit_info.value.code == 2
+        assert "not a YellowDog Allowance ID: 'not-an-id'" in capsys.readouterr().err
+
+    def test_a_missing_one_fails_before_anything_is_boosted(self, run):
+        client = self._client({ALLOWANCE_ID: "a"})
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID_2, ALLOWANCE_ID],
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [
+            (ALLOWANCE_ID_2, "failed"),
+            (ALLOWANCE_ID, "boosted"),
+        ]
+        assert out[0]["error"] == "not found"
+        assert run.exit_code == 1
+
+    def test_one_confirmation_shows_the_descriptions(self):
+        found = [
+            (ALLOWANCE_ID, SimpleNamespace(description="gpu budget")),
+            (ALLOWANCE_ID_2, SimpleNamespace(description=None)),
+        ]
+        assert yd_boost._confirmation("2 hours", found) == (  # type: ignore[arg-type]
+            f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
+            f" {ALLOWANCE_ID_2})?"
+        )
 
     def test_remaining_hours_are_recorded(self, run):
-        client = MagicMock()
-        client.allowances_client.boost_allowance_by_id.return_value = SimpleNamespace(
-            id=ALLOWANCE_ID, remainingHours=12.5
-        )
+        client = self._client(boost=lambda *a: SimpleNamespace(remainingHours=12.5))
         out, _, _ = run(
             yd_boost, client=client, boost_hours=2, allowance_list=[ALLOWANCE_ID]
         )
@@ -947,44 +1016,64 @@ class TestBoost:
 
     def test_a_repeated_id_is_boosted_once(self, run):
         out, err, client = run(
-            yd_boost, boost_hours=2, allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID]
+            yd_boost,
+            client=self._client(),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID],
         )
-        boost = client.allowances_client.boost_allowance_by_id
-        assert boost.call_count == 1
+        assert client.allowances_client.boost_allowance_by_id.call_count == 1
         assert [item["outcome"] for item in out] == ["boosted"]
         assert "Ignoring 1 duplicate Allowance ID(s)" in err
 
     def test_an_authentication_failure_stops_the_rest(self, run):
-        response = Response()
-        response.status_code = 401
-        client = MagicMock()
-        boost = client.allowances_client.boost_allowance_by_id
-        boost.side_effect = HTTPError("401 Unauthorized", response=response)
+        def boost(*args):
+            raise HTTPError("401 Unauthorized", response=_response(401))
+
+        client = self._client(boost=boost)
         out, _, _ = run(
             yd_boost,
             client=client,
             boost_hours=2,
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2, ALLOWANCE_ID_3],
         )
-        assert boost.call_count == 1
+        assert client.allowances_client.boost_allowance_by_id.call_count == 1
         assert [item["outcome"] for item in out] == ["failed", "skipped", "skipped"]
         assert out[1]["error"].startswith("not attempted:")
+        assert out[1]["description"] == "budget"
         # The session's failure: its own exit code, the cause in the record
         assert run.exit_code == ExitCode.AUTHENTICATION
 
-    def test_a_failure_of_one_allowance_does_not_stop_the_rest(self, run):
-        response = Response()
-        response.status_code = 404
-        client = MagicMock()
-        boost = client.allowances_client.boost_allowance_by_id
-        boost.side_effect = [HTTPError("404", response=response), MagicMock()]
+    def test_an_authentication_failure_while_fetching_stops_the_rest(self, run):
+        client = self._client()
+        client.allowances_client.get_allowance_by_id.side_effect = HTTPError(
+            "401 Unauthorized", response=_response(401)
+        )
         out, _, _ = run(
             yd_boost,
             client=client,
             boost_hours=2,
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
         )
-        assert boost.call_count == 2
+        client.allowances_client.boost_allowance_by_id.assert_not_called()
+        assert [item["outcome"] for item in out] == ["failed", "skipped"]
+        assert run.exit_code == ExitCode.AUTHENTICATION
+
+    def test_a_failure_of_one_allowance_does_not_stop_the_rest(self, run):
+        results = iter([HTTPError("500", response=_response(500)), SimpleNamespace()])
+
+        def boost(*args):
+            result = next(results)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        client = self._client(boost=boost)
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
         assert [item["outcome"] for item in out] == ["failed", "boosted"]
         assert run.exit_code == 1
 
@@ -1007,10 +1096,22 @@ class TestBoost:
 
     def test_declined_is_skipped(self, run):
         out, _, _ = run(
-            yd_boost, confirm=False, boost_hours=2, allowance_list=[ALLOWANCE_ID]
+            yd_boost,
+            client=self._client(),
+            confirm=False,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID],
         )
         assert out == [
-            _action(ALLOWANCE_ID, None, "allowances", "boost", "skipped", hours=2)
+            _action(
+                ALLOWANCE_ID,
+                None,
+                "allowances",
+                "boost",
+                "skipped",
+                hours=2,
+                description="budget",
+            )
         ]
 
 

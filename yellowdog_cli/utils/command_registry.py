@@ -1049,11 +1049,25 @@ BOOST_HOURS = option(
 )
 ALLOWANCES = option(
     "allowances",
-    metavar="<allowance-ID> [<allowance-ID>]",
+    metavar="<allowance-ID>",
     nargs="+",
     type=str,
     help="the YellowDog ID(s) of the allowance(s) to boost",
 )
+
+
+def check_allowance_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-boost's Allowance IDs, before anything is fetched or boosted. The
+    YDID parser is imported here, so this module still imports nothing at
+    load beyond settings.py and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    for allowance_id in args.allowances:
+        if get_ydid_type(allowance_id) != YDIDType.ALLOWANCE:
+            parser.error(f"not a YellowDog Allowance ID: '{allowance_id}'")
+
 
 COMMANDS["yd-boost"] = Command(
     name="yd-boost",
@@ -1061,6 +1075,7 @@ COMMANDS["yd-boost"] = Command(
     summary="Boost Allowances",
     kind=CommandKind.API,
     options=(VARIABLE, YES, ACTIONS_JSON, BOOST_HOURS, ALLOWANCES),
+    validators=(check_allowance_ids,),
     tool=ToolKind.DESTRUCTIVE,
 )
 
