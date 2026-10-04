@@ -20,7 +20,7 @@ import pytest
 from requests import HTTPError, Response
 
 import yellowdog_cli.create as yd_create
-from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils import entity_utils, resource_processing
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
 from yellowdog_cli.utils.settings import RAW_REQUEST_TIMEOUT, ExitCode
 
@@ -68,6 +68,7 @@ def env(monkeypatch):
         )
 
     monkeypatch.setattr(yd_create, "record_resource", _record)
+    monkeypatch.setattr(resource_processing, "record_resource", _record)
     return SimpleNamespace(client=client, args=args, records=records)
 
 

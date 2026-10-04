@@ -4,16 +4,14 @@
 A script to remove YellowDog resources.
 """
 
+from collections.abc import Callable
 from copy import deepcopy
-from typing import cast
+from dataclasses import dataclass
+from typing import Any, cast
 
-from requests import delete
+from requests import Response, delete
 from requests.exceptions import HTTPError
-from yellowdog_client.model import (
-    MachineImage,
-    MachineImageFamily,
-    MachineImageGroup,
-)
+from yellowdog_client.model import MachineImageFamily
 
 from yellowdog_cli.utils.entity_utils import (
     clear_application_caches,
@@ -26,27 +24,33 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_template_id_by_name,
     get_compute_source_template_id_by_name,
     get_group_id_by_name,
+    get_keyring_summary_by_name,
     get_namespace_id_by_name,
     get_worker_pool_summaries,
     remove_allowances_matching_description,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.load_resources import (
-    load_resource_specifications,
-    resource_display_name,
-)
+from yellowdog_cli.utils.load_resources import load_resource_specifications
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.resource_processing import (
+    missing_property,
+    process_each,
+    process_resources,
+)
 from yellowdog_cli.utils.results import record_resource
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
     PROP_CREDENTIAL,
     PROP_DESCRIPTION,
+    PROP_ID,
     PROP_KEYRING_NAME,
     PROP_NAME,
     PROP_NAMESPACE,
-    PROP_RESOURCE,
     PROP_SOURCE,
+    PROP_USERNAME,
+    RAW_REQUEST_TIMEOUT,
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -66,7 +70,7 @@ from yellowdog_cli.utils.settings import (
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
-from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType, get_ydid_type
 
 
 @main_wrapper
@@ -80,12 +84,15 @@ def remove_resources(resources: list[dict] | None = None):
     or loaded from files, or by ID.
     """
     if ARGS_PARSER.ids:
-        failed = 0
-        for resource_id in ARGS_PARSER.resource_specifications:
-            if not remove_resource_by_id(resource_id):
-                failed += 1
-        if failed:
-            raise RuntimeError(f"{failed} resource(s) failed to remove")
+        # The IDs were checked as the command line was parsed; each is
+        # removed once, in the order given
+        process_each(
+            list(dict.fromkeys(ARGS_PARSER.resource_specifications)),
+            _remove_and_record_by_id,
+            lambda resource_id: resource_id,
+            _record_by_id,
+            "remove",
+        )
         return
 
     if resources is None:
@@ -93,75 +100,54 @@ def remove_resources(resources: list[dict] | None = None):
     else:
         resources = deepcopy(resources)  # Avoid overwriting the input argument
 
-    failed = 0
-    for resource in resources or []:
-        name = resource_display_name(resource.get(PROP_RESOURCE), resource)
-        try:
-            resource_type = resource.pop(PROP_RESOURCE)
-        except KeyError:
-            error = (
-                "Missing required 'resource' property in the following resource"
-                f" specification: {resource}"
-            )
-            print_error(error)
-            record_resource(None, name, None, "failed", error=error)
-            failed += 1
-            continue
-        try:
-            if resource_type == RN_SOURCE_TEMPLATE:
-                remove_compute_source_template(resource)
-            elif resource_type == RN_REQUIREMENT_TEMPLATE:
-                remove_compute_requirement_template(resource)
-            elif resource_type == RN_KEYRING:
-                remove_keyring(resource)
-            elif resource_type == RN_CREDENTIAL:
-                remove_credential(resource)
-            elif resource_type == RN_IMAGE_FAMILY:
-                remove_image_family(resource)
-            elif resource_type == RN_CONFIGURED_POOL:
-                remove_configured_worker_pool(resource)
-            elif resource_type == RN_ALLOWANCE:
-                if ARGS_PARSER.match_allowances_by_description:
-                    remove_allowance(resource, name)
-                else:
-                    print_warning(
-                        "To remove Allowances by matching on their 'description', "
-                        "please use the '--match-allowances-by-description' flag; "
-                        "alternatively, Allowances can be removed by their "
-                        "YellowDog IDs (yd-remove --ids)"
-                    )
-                    record_resource(resource_type, name, None, "skipped")
-            elif resource_type in [
-                RN_STRING_ATTRIBUTE_DEFINITION,
-                RN_NUMERIC_ATTRIBUTE_DEFINITION,
-            ]:
-                remove_attribute_definition(resource, resource_type)
-            elif resource_type == RN_NAMESPACE_POLICY:
-                remove_namespace_policy(resource)
-            elif resource_type == RN_GROUP:
-                remove_group(resource)
-            elif resource_type == RN_APPLICATION:
-                remove_application(resource)
-            elif resource_type in [RN_INTERNAL_USER, RN_EXTERNAL_USER]:
-                print_warning(
-                    "Users cannot be removed by the CLI; please use the YellowDog Portal"
-                )
-                record_resource(resource_type, name, None, "skipped")
-            elif resource_type == RN_NAMESPACE:
-                remove_namespace(resource)
-            else:
-                error = f"Unknown resource type '{resource_type}'"
-                print_error(error)
-                record_resource(resource_type, name, None, "failed", error=error)
-                failed += 1
-        except Exception as e:
-            print_error(f"Failed to remove resource: {e}")
-            record_resource(resource_type, name, None, "failed", error=str(e))
-            # Allow removal to continue
-            failed += 1
+    process_resources(resources or [], _remove_resource, "remove")
 
-    if failed:
-        raise RuntimeError(f"{failed} resource(s) failed to remove")
+
+def _remove_resource(resource_type: str, resource: dict) -> None:
+    """
+    Remove one resource, by its type.
+    """
+    if resource_type == RN_SOURCE_TEMPLATE:
+        remove_compute_source_template(resource)
+    elif resource_type == RN_REQUIREMENT_TEMPLATE:
+        remove_compute_requirement_template(resource)
+    elif resource_type == RN_KEYRING:
+        remove_keyring(resource)
+    elif resource_type == RN_CREDENTIAL:
+        remove_credential(resource)
+    elif resource_type == RN_IMAGE_FAMILY:
+        remove_image_family(resource)
+    elif resource_type == RN_CONFIGURED_POOL:
+        remove_configured_worker_pool(resource)
+    elif resource_type == RN_ALLOWANCE:
+        remove_allowance(resource)
+    elif resource_type in [
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    ]:
+        remove_attribute_definition(resource, resource_type)
+    elif resource_type == RN_NAMESPACE_POLICY:
+        remove_namespace_policy(resource)
+    elif resource_type == RN_GROUP:
+        remove_group(resource)
+    elif resource_type == RN_APPLICATION:
+        remove_application(resource)
+    elif resource_type in [RN_INTERNAL_USER, RN_EXTERNAL_USER]:
+        print_warning(
+            "Users cannot be removed by the CLI; please use the YellowDog Portal"
+        )
+        record_resource(
+            resource_type,
+            resource.get(PROP_NAME)
+            or resource.get(PROP_USERNAME)
+            or resource.get(PROP_ID),
+            None,
+            "skipped",
+        )
+    elif resource_type == RN_NAMESPACE:
+        remove_namespace(resource)
+    else:
+        raise ValueError(f"Unknown resource type '{resource_type}'")
 
 
 def remove_compute_source_template(resource: dict):
@@ -174,7 +160,7 @@ def remove_compute_source_template(resource: dict):
         source = resource.pop(PROP_SOURCE)  # Extract the Source properties
         name = source[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -188,15 +174,10 @@ def remove_compute_source_template(resource: dict):
         record_resource(RN_SOURCE_TEMPLATE, name, source_id, "skipped")
         return
 
-    try:
-        CLIENT.compute_client.delete_compute_source_template_by_id(source_id)
-        clear_compute_source_template_cache()
-        print_info(f"Removed Compute Source Template '{name}' ({source_id})")
-        record_resource(RN_SOURCE_TEMPLATE, name, source_id, "removed")
-    except Exception as e:
-        raise RuntimeError(
-            f"Unable to remove Compute Source Template '{name}' ({source_id}): {e}"
-        )
+    CLIENT.compute_client.delete_compute_source_template_by_id(source_id)
+    clear_compute_source_template_cache()
+    print_info(f"Removed Compute Source Template '{name}' ({source_id})")
+    record_resource(RN_SOURCE_TEMPLATE, name, source_id, "removed")
 
 
 def remove_compute_requirement_template(resource: dict):
@@ -207,7 +188,7 @@ def remove_compute_requirement_template(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -221,43 +202,36 @@ def remove_compute_requirement_template(resource: dict):
         record_resource(RN_REQUIREMENT_TEMPLATE, name, template_id, "skipped")
         return
 
-    try:
-        CLIENT.compute_client.delete_compute_requirement_template_by_id(template_id)
-        clear_compute_requirement_template_cache()
-        print_info(f"Removed Compute Requirement Template '{name}' ({template_id})")
-        record_resource(RN_REQUIREMENT_TEMPLATE, name, template_id, "removed")
-    except Exception as e:
-        raise RuntimeError(
-            f"Unable to remove Compute Requirement Template '{name}'"
-            f" ({template_id}): {e}"
-        )
+    CLIENT.compute_client.delete_compute_requirement_template_by_id(template_id)
+    clear_compute_requirement_template_cache()
+    print_info(f"Removed Compute Requirement Template '{name}' ({template_id})")
+    record_resource(RN_REQUIREMENT_TEMPLATE, name, template_id, "removed")
 
 
 def remove_keyring(resource: dict):
     """
-    Remove a Keyring.
+    Remove a Keyring, found by its name first, so that one that does not
+    exist is reported before anything is asked, and the record has its ID.
     """
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
-    if not confirmed(f"Remove Keyring '{name}'?"):
+    keyring = get_keyring_summary_by_name(CLIENT, name)
+    if keyring is None:
+        print_warning(f"Cannot find Keyring '{name}'")
         record_resource(RN_KEYRING, name, None, "skipped")
         return
 
-    try:
-        CLIENT.keyring_client.delete_keyring_by_name(name)
-        clear_keyring_cache()
-        print_info(f"Removed Keyring '{name}'")
-        record_resource(RN_KEYRING, name, None, "removed")
-    except HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            print_warning(f"Cannot find Keyring '{name}'")
-            record_resource(RN_KEYRING, name, None, "skipped")
-        else:
-            print_error(f"Unable to remove Keyring '{name}': {e}")
-            raise
+    if not confirmed(f"Remove Keyring '{name}' ({keyring.id})?"):
+        record_resource(RN_KEYRING, name, keyring.id, "skipped")
+        return
+
+    CLIENT.keyring_client.delete_keyring_by_name(name)
+    clear_keyring_cache()
+    print_info(f"Removed Keyring '{name}' ({keyring.id})")
+    record_resource(RN_KEYRING, name, keyring.id, "removed")
 
 
 def remove_credential(resource: dict):
@@ -269,7 +243,7 @@ def remove_credential(resource: dict):
         credential_data = resource[PROP_CREDENTIAL]
         credential_name = credential_data[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     if not confirmed(
         f"Remove Credential '{credential_name}' from Keyring '{keyring_name}'?"
@@ -281,25 +255,26 @@ def remove_credential(resource: dict):
 
     try:
         CLIENT.keyring_client.delete_credential_by_name(keyring_name, credential_name)
-        print_info(
-            f"Removed Credential '{credential_name}' from Keyring '{keyring_name}' (if"
-            " it was present)"
+    except HTTPError as e:
+        if not is_http_not_found(e):
+            raise
+        print_warning(
+            f"Cannot find Keyring '{keyring_name}' (possibly already removed,"
+            " with its Credentials)"
         )
         record_resource(
-            RN_CREDENTIAL, credential_name, None, "removed", keyring=keyring_name
+            RN_CREDENTIAL, credential_name, None, "skipped", keyring=keyring_name
         )
-    except HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            print_warning(
-                f"Cannot find Keyring '{keyring_name}'(possibly already deleted,"
-                " including its credentials?)"
-            )
-            record_resource(
-                RN_CREDENTIAL, credential_name, None, "skipped", keyring=keyring_name
-            )
-        else:
-            print_error(f"Unable to remove Keyring '{keyring_name}': {e}")
-            raise
+        return
+
+    # The Platform does not say whether the Keyring held the Credential
+    print_info(
+        f"Removed Credential '{credential_name}' from Keyring '{keyring_name}'"
+        " (the Platform does not report whether it was there)"
+    )
+    record_resource(
+        RN_CREDENTIAL, credential_name, None, "removed", keyring=keyring_name
+    )
 
 
 def remove_image_family(resource: dict):
@@ -310,7 +285,7 @@ def remove_image_family(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -322,253 +297,317 @@ def remove_image_family(resource: dict):
             )
         )
     except HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            print_warning(f"Cannot find Machine Image Family '{fq_name}'")
-            record_resource(RN_IMAGE_FAMILY, fq_name, None, "skipped")
-            return
-        else:
-            raise e
+        if not is_http_not_found(e):
+            raise
+        print_warning(f"Cannot find Machine Image Family '{fq_name}'")
+        record_resource(RN_IMAGE_FAMILY, fq_name, None, "skipped")
+        return
 
     if not confirmed(f"Remove Machine Image Family '{fq_name}'?"):
         record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "skipped")
         return
 
-    try:
-        CLIENT.images_client.delete_image_family(image_family)
-        clear_image_caches()
-        print_info(f"Removed Image Family '{fq_name}' ({image_family.id})")
-        record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "removed")
-    except Exception as e:
-        print_error(f"Unable to remove Image Family '{fq_name}': {e}")
-        raise
+    CLIENT.images_client.delete_image_family(image_family)
+    clear_image_caches()
+    print_info(f"Removed Image Family '{fq_name}' ({image_family.id})")
+    record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "removed")
 
 
 def remove_configured_worker_pool(resource: dict):
     """
-    Shutdown a Configured Worker Pool.
+    Shut down the Configured Worker Pool(s) of a name that have not finished.
+    A pool that has been shut down stays listed under its name, so a name
+    can match finished pools as well as a live one; the finished ones are
+    left alone.
     """
     try:
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
-    try:
-        worker_pool = get_worker_pool_summaries(
-            CLIENT, namespace, name, partial_name_matches=False
-        )[0]
-    except IndexError:
+    worker_pools = get_worker_pool_summaries(
+        CLIENT, namespace, name, partial_name_matches=False
+    )
+    if not worker_pools:
         print_warning(f"Cannot find Configured Worker Pool '{fq_name}'")
         record_resource(RN_CONFIGURED_POOL, fq_name, None, "skipped")
         return
 
-    # Shut down if a configured worker pool, in an appropriate state
-    if worker_pool.type.split(".")[-1] != "ConfiguredWorkerPool":  # type: ignore[union-attr]
-        print_warning(
-            f"Worker Pool '{fq_name}' is not a Configured Pool ({worker_pool.id})"
-        )
-        record_resource(RN_CONFIGURED_POOL, fq_name, worker_pool.id, "skipped")
+    configured = [
+        worker_pool
+        for worker_pool in worker_pools
+        if cast(str, worker_pool.type).split(".")[-1] == "ConfiguredWorkerPool"
+    ]
+    if not configured:
+        print_warning(f"Worker Pool '{fq_name}' is not a Configured Worker Pool")
+        record_resource(RN_CONFIGURED_POOL, fq_name, worker_pools[0].id, "skipped")
         return
 
-    if worker_pool.status.finished:  # type: ignore[union-attr]
-        print_info(
-            f"Not shutting down already {worker_pool.status} Configured "
-            f"Worker Pool '{fq_name}' ({worker_pool.id})"
-        )
-        record_resource(RN_CONFIGURED_POOL, fq_name, worker_pool.id, "skipped")
+    unfinished = [
+        worker_pool
+        for worker_pool in configured
+        if not cast(Any, worker_pool.status).finished
+    ]
+    if not unfinished:
+        print_info(f"Configured Worker Pool '{fq_name}' has already been shut down")
+        record_resource(RN_CONFIGURED_POOL, fq_name, configured[0].id, "skipped")
         return
 
-    if not confirmed(
-        f"Shut down Configured Worker Pool '{fq_name}' ({worker_pool.id})?"
-    ):
-        record_resource(RN_CONFIGURED_POOL, fq_name, worker_pool.id, "skipped")
-        return
-
-    try:
-        CLIENT.worker_pool_client.shutdown_worker_pool_by_id(worker_pool.id)  # type: ignore[arg-type]
+    for worker_pool in unfinished:
+        if not confirmed(
+            f"Shut down Configured Worker Pool '{fq_name}' ({worker_pool.id})?"
+        ):
+            record_resource(RN_CONFIGURED_POOL, fq_name, worker_pool.id, "skipped")
+            continue
+        CLIENT.worker_pool_client.shutdown_worker_pool_by_id(cast(str, worker_pool.id))
         print_info(
             f"Shut down {worker_pool.status} Configured Worker Pool"
             f" '{fq_name}' ({worker_pool.id})"
         )
         record_resource(RN_CONFIGURED_POOL, fq_name, worker_pool.id, "removed")
-        return
-    except Exception as e:
-        print_error(f"Failed to shut down Configured Worker Pool: {e}")
-        raise
 
 
-def remove_allowance(resource: dict, name: str | None = None):
+def remove_allowance(resource: dict):
     """
-    Remove an allowance, matching on the 'description' property. 'name' is
-    the display name the caller reports the specification by.
+    Remove the Allowances matching an Allowance specification's
+    'description', with '--match-allowances-by-description'; each is
+    recorded with its ID.
     """
     description = resource.get(PROP_DESCRIPTION)
-    if description is not None:
-        print_info(f"Removing allowance(s) matching description '{description}'")
-        num_removed = len(
-            remove_allowances_matching_description(CLIENT, cast(str, description))
+    if not ARGS_PARSER.match_allowances_by_description:
+        print_warning(
+            "To remove Allowances by matching on their 'description', "
+            "please use the '--match-allowances-by-description' flag; "
+            "alternatively, Allowances can be removed by their "
+            "YellowDog IDs (yd-remove --ids)"
         )
-        if num_removed > 0:
-            print_info(f"Removed {num_removed} Allowance(s)")
-        # Removed by description, so no IDs: the count says how many
-        record_resource(
-            RN_ALLOWANCE,
-            description,
-            None,
-            "removed" if num_removed > 0 else "skipped",
-            count=num_removed,
+        record_resource(RN_ALLOWANCE, description, None, "skipped")
+        return
+
+    if description is None:
+        print_warning(
+            "An Allowance specification without a 'description' cannot be"
+            " matched; it is skipped"
         )
-    else:
-        record_resource(RN_ALLOWANCE, name, None, "skipped")
+        record_resource(RN_ALLOWANCE, None, None, "skipped")
+        return
+
+    print_info(f"Removing Allowance(s) matching description '{description}'")
+    removed_ids = remove_allowances_matching_description(CLIENT, cast(str, description))
+    if not removed_ids:
+        record_resource(RN_ALLOWANCE, description, None, "skipped")
+        return
+    print_info(f"Removed {len(removed_ids)} Allowance(s)")
+    for removed_id in removed_ids:
+        record_resource(RN_ALLOWANCE, description, removed_id, "removed")
 
 
-class _IdNotFound(Exception):
+# ---------------------------------------------------------------------------
+# Removal by YellowDog ID
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _RemovableById:
     """
-    A resource named by its YDID was not found.
+    How one type of resource is removed by its YellowDog ID: fetched first,
+    so an ID that does not exist is reported before anything is asked.
     """
 
+    resource_type: str  # As '--json' reports it
+    label: str  # As the messages name it
+    fetch: Callable[[str], Any]
+    name_of: Callable[[Any], str | None]
+    remove: Callable[[str, Any], None]  # (ID, the fetched entity)
+    clear: Callable[[], None] | None = None
 
-# The 'resource' a YDID's removal is reported as, for '--json'
-_RESOURCE_BY_YDID_TYPE: dict[YDIDType, str] = {
-    YDIDType.COMPUTE_SOURCE_TEMPLATE: RN_SOURCE_TEMPLATE,
-    YDIDType.COMPUTE_REQUIREMENT_TEMPLATE: RN_REQUIREMENT_TEMPLATE,
-    YDIDType.IMAGE_FAMILY: RN_IMAGE_FAMILY,
-    YDIDType.IMAGE_GROUP: RN_IMAGE_GROUP,
-    YDIDType.IMAGE: RN_IMAGE,
-    YDIDType.KEYRING: RN_KEYRING,
-    YDIDType.WORKER_POOL: "WorkerPool",
-    YDIDType.ALLOWANCE: RN_ALLOWANCE,
-    YDIDType.GROUP: RN_GROUP,
-    YDIDType.APPLICATION: RN_APPLICATION,
-}
+
+def _qualified(namespace: str | None, name: str | None) -> str | None:
+    if name is None or namespace is None:
+        return name
+    return f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
+
+
+def _removable_by_id(ydid_type: YDIDType) -> _RemovableById:
+    """
+    The removal for a type of YellowDog ID, one of REMOVABLE_YDID_TYPES.
+    Built when asked for, since the calls are CLIENT's.
+    """
+    compute = CLIENT.compute_client
+    images = CLIENT.images_client
+    account = CLIENT.account_client
+    match ydid_type:
+        case YDIDType.COMPUTE_SOURCE_TEMPLATE:
+            return _RemovableById(
+                RN_SOURCE_TEMPLATE,
+                "Compute Source Template",
+                compute.get_compute_source_template,
+                lambda t: _qualified(t.namespace, t.source.name),
+                lambda ydid, _: compute.delete_compute_source_template_by_id(ydid),
+                clear_compute_source_template_cache,
+            )
+        case YDIDType.COMPUTE_REQUIREMENT_TEMPLATE:
+            return _RemovableById(
+                RN_REQUIREMENT_TEMPLATE,
+                "Compute Requirement Template",
+                compute.get_compute_requirement_template_by_id,
+                lambda t: _qualified(t.namespace, t.name),
+                lambda ydid, _: compute.delete_compute_requirement_template_by_id(ydid),
+                clear_compute_requirement_template_cache,
+            )
+        case YDIDType.IMAGE_FAMILY:
+            return _RemovableById(
+                RN_IMAGE_FAMILY,
+                "Machine Image Family",
+                images.get_image_family_by_id,
+                lambda f: _qualified(f.namespace, f.name),
+                lambda _, family: images.delete_image_family(family),
+                clear_image_caches,
+            )
+        case YDIDType.IMAGE_GROUP:
+            return _RemovableById(
+                RN_IMAGE_GROUP,
+                "Machine Image Group",
+                images.get_image_group_by_id,
+                lambda g: g.name,
+                lambda _, group: images.delete_image_group(group),
+                clear_image_caches,
+            )
+        case YDIDType.IMAGE:
+            return _RemovableById(
+                RN_IMAGE,
+                "Machine Image",
+                images.get_image,
+                lambda i: i.name,
+                lambda _, image: images.delete_image(image),
+                clear_image_caches,
+            )
+        case YDIDType.KEYRING:
+            return _RemovableById(
+                RN_KEYRING,
+                "Keyring",
+                CLIENT.keyring_client.get_keyring,
+                lambda k: k.name,
+                lambda _, keyring: CLIENT.keyring_client.delete_keyring_by_name(
+                    keyring.name
+                ),
+                clear_keyring_cache,
+            )
+        case YDIDType.WORKER_POOL:
+            return _RemovableById(
+                "WorkerPool",
+                "Worker Pool",
+                CLIENT.worker_pool_client.get_worker_pool_by_id,
+                lambda p: _qualified(p.namespace, p.name),
+                lambda ydid, _: CLIENT.worker_pool_client.shutdown_worker_pool_by_id(
+                    ydid
+                ),
+            )
+        case YDIDType.ALLOWANCE:
+            return _RemovableById(
+                RN_ALLOWANCE,
+                "Allowance",
+                CLIENT.allowances_client.get_allowance_by_id,
+                lambda a: a.description,
+                lambda ydid, _: CLIENT.allowances_client.delete_allowance_by_id(ydid),
+            )
+        case YDIDType.GROUP:
+            return _RemovableById(
+                RN_GROUP,
+                "Group",
+                account.get_group,
+                lambda g: g.name,
+                lambda ydid, _: account.delete_group(ydid),
+                clear_group_caches,
+            )
+        case YDIDType.APPLICATION:
+            return _RemovableById(
+                RN_APPLICATION,
+                "Application",
+                account.get_application,
+                lambda a: a.name,
+                lambda ydid, _: account.delete_application(ydid),
+                clear_application_caches,
+            )
+    raise ValueError(f"Resources of this type cannot be removed by ID: {ydid_type}")
+
+
+def _record_by_id(resource_id: str, action: str, error: str) -> None:
+    """
+    Record a removal by ID that failed, or was not attempted.
+    """
+    ydid_type = get_ydid_type(resource_id)
+    if ydid_type not in REMOVABLE_YDID_TYPES:  # Reported as given
+        record_resource(None, resource_id, None, action, error=error)
+        return
+    resource_type = _removable_by_id(cast(YDIDType, ydid_type)).resource_type
+    record_resource(resource_type, None, resource_id, action, error=error)
+
+
+def _remove_and_record_by_id(resource_id: str) -> None:
+    """
+    Remove a resource by its YellowDog ID, and record the outcome: 'removed',
+    or 'skipped' when declined, or when a Worker Pool has already been shut
+    down. Raises NotFoundError for an ID that does not exist, and any other
+    failure, for the caller to record.
+    """
+    ydid_type = get_ydid_type(resource_id)
+    if ydid_type not in REMOVABLE_YDID_TYPES:
+        raise ValueError(f"Not the ID of a resource that can be removed: {resource_id}")
+    removable = _removable_by_id(cast(YDIDType, ydid_type))
+
+    try:
+        entity = removable.fetch(resource_id)
+    except HTTPError as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find {removable.label} {resource_id}") from e
+        raise
+    name = removable.name_of(entity)
+    described = f"{removable.label} {resource_id}" + (
+        "" if name is None else f" ('{name}')"
+    )
+
+    def _record(action: str) -> None:
+        record_resource(removable.resource_type, name, resource_id, action)
+
+    shut_down = ydid_type == YDIDType.WORKER_POOL
+    if shut_down and entity.status is not None and entity.status.finished:
+        print_info(f"{described} has already been shut down")
+        _record("skipped")
+        return
+
+    if not confirmed(f"{'Shut down' if shut_down else 'Remove'} {described}?"):
+        _record("skipped")
+        return
+
+    removable.remove(resource_id, entity)
+    if removable.clear is not None:
+        removable.clear()
+    print_info(f"{'Shut down' if shut_down else 'Removed'} {described}")
+    _record("removed")
 
 
 def remove_resource_by_id(resource_id: str) -> bool:
     """
     Remove a resource by its YDID, and record the outcome. Returns False on
-    failure.
+    failure, which is reported. For callers other than yd-remove itself
+    (the Cloud Wizard).
     """
-    ydid_type = get_ydid_type(resource_id)
-    resource_type = _RESOURCE_BY_YDID_TYPE.get(ydid_type) if ydid_type else None
-
-    def _failed(error: str) -> bool:
-        print_error(error)
-        if ydid_type is None:  # Not an ID: it's reported as the name given
-            record_resource(None, resource_id, None, "failed", error=error)
-        else:
-            record_resource(resource_type, None, resource_id, "failed", error=error)
-        return False
-
-    if ydid_type is None:
-        return _failed(f"Invalid YellowDog ID '{resource_id}'")
-    if resource_type is None:
-        return _failed(f"Resource ID type is unknown/unsupported: {resource_id}")
-
     try:
-        action = _remove_resource_by_id(resource_id, ydid_type)
-    except _IdNotFound as e:
-        print_warning(str(e))
-        record_resource(resource_type, None, resource_id, "failed", error=str(e))
-        return False
+        _remove_and_record_by_id(resource_id)
     except Exception as e:
-        return _failed(f"Unable to remove resource with ID {resource_id}: {e}")
-
-    record_resource(resource_type, None, resource_id, action)
+        print_error(f"Failed to remove {resource_id}: {e}")
+        _record_by_id(resource_id, "failed", str(e))
+        return False
     return True
 
 
-def _remove_resource_by_id(resource_id: str, ydid_type: YDIDType) -> str:
-    """
-    Remove a resource of a supported type by its YDID: return 'removed', or
-    'skipped' if declined; raise _IdNotFound if it is not found (which the
-    caller records as 'failed'), or any other failure.
-    """
-    if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
-        if not confirmed(f"Remove Compute Source Template {resource_id}?"):
-            return "skipped"
-        CLIENT.compute_client.delete_compute_source_template_by_id(resource_id)
-        clear_compute_source_template_cache()
-        print_info(f"Removed Compute Source Template {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.COMPUTE_REQUIREMENT_TEMPLATE:
-        if not confirmed(f"Remove Compute Requirement Template {resource_id}?"):
-            return "skipped"
-        CLIENT.compute_client.delete_compute_requirement_template_by_id(resource_id)
-        clear_compute_requirement_template_cache()
-        print_info(f"Removed Compute Requirement Template {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.IMAGE_FAMILY:
-        if not confirmed(f"Remove Image Family '{resource_id}'?"):
-            return "skipped"
-        family: MachineImageFamily = CLIENT.images_client.get_image_family_by_id(
-            resource_id
-        )
-        CLIENT.images_client.delete_image_family(family)
-        clear_image_caches()
-        print_info(f"Removed Image Family {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.IMAGE_GROUP:
-        if not confirmed(f"Remove Image Group '{resource_id}'?"):
-            return "skipped"
-        group: MachineImageGroup = CLIENT.images_client.get_image_group_by_id(
-            resource_id
-        )
-        CLIENT.images_client.delete_image_group(group)
-        clear_image_caches()
-        print_info(f"Removed Image Group {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.IMAGE:
-        if not confirmed(f"Remove Image '{resource_id}'?"):
-            return "skipped"
-        image: MachineImage = CLIENT.images_client.get_image(resource_id)
-        CLIENT.images_client.delete_image(image)
-        clear_image_caches()
-        print_info(f"Removed Image {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.KEYRING:
-        if not confirmed(f"Remove Keyring {resource_id}?"):
-            return "skipped"
-        try:
-            keyring = CLIENT.keyring_client.get_keyring(resource_id)
-        except HTTPError as e:
-            if e.response is not None and e.response.status_code == 404:
-                # A failure, as it always was here, unlike a name not
-                # found, though reported as a warning
-                raise _IdNotFound(f"Cannot find Keyring {resource_id}")
-            raise
-        CLIENT.keyring_client.delete_keyring_by_name(keyring.name)  # type: ignore[arg-type]
-        clear_keyring_cache()
-        print_info(f"Removed Keyring {resource_id}")
-
-    elif ydid_type == YDIDType.WORKER_POOL:
-        if not confirmed(f"Shut down Worker Pool {resource_id}?"):
-            return "skipped"
-        CLIENT.worker_pool_client.shutdown_worker_pool_by_id(resource_id)
-        print_info(f"Shut down Worker Pool {resource_id}")
-
-    elif ydid_type == YDIDType.ALLOWANCE:
-        if not confirmed(f"Remove Allowance {resource_id}?"):
-            return "skipped"
-        CLIENT.allowances_client.delete_allowance_by_id(resource_id)
-        print_info(f"Removed Allowance {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.GROUP:
-        if not confirmed(f"Remove Group {resource_id}?"):
-            return "skipped"
-        CLIENT.account_client.delete_group(resource_id)
-        clear_group_caches()
-        print_info(f"Removed Group {resource_id} (if present)")
-
-    elif ydid_type == YDIDType.APPLICATION:
-        if not confirmed(f"Remove Application {resource_id}?"):
-            return "skipped"
-        CLIENT.account_client.delete_application(resource_id)
-        clear_application_caches()
-        print_info(f"Removed Application {resource_id} (if present)")
-
-    return "removed"
+# ---------------------------------------------------------------------------
+# The other resources removed by specification
+# ---------------------------------------------------------------------------
 
 
 def remove_attribute_definition(resource: dict, resource_type: str):
@@ -578,7 +617,7 @@ def remove_attribute_definition(resource: dict, resource_type: str):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     if not confirmed(f"Remove Attribute Definition '{name}'?"):
         record_resource(resource_type, name, None, "skipped")
@@ -586,14 +625,27 @@ def remove_attribute_definition(resource: dict, resource_type: str):
 
     url = f"{CONFIG_COMMON.url}/compute/attributes/user/{name}"
     headers = {"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"}
-    response = delete(url=url, headers=headers)
+    response = delete(url=url, headers=headers, timeout=RAW_REQUEST_TIMEOUT)
 
-    if response.status_code == 200:
-        print_info(f"Removed Attribute Definition '{name}' (if present)")
+    if response.ok:
+        print_info(f"Removed Attribute Definition '{name}'")
         record_resource(resource_type, name, None, "removed")
         return
 
-    raise RuntimeError(f"HTTP {response.status_code} ({response.text})")
+    if response.status_code == 404:
+        print_warning(f"Cannot find Attribute Definition '{name}'")
+        record_resource(resource_type, name, None, "skipped")
+        return
+
+    _raise_for_response(response)
+
+
+def _raise_for_response(response: Response) -> None:
+    """
+    Raise a failed raw response as an HTTPError carrying it, so its status
+    gives the exit code, with the Platform's own message.
+    """
+    raise HTTPError(f"HTTP {response.status_code} ({response.text})", response=response)
 
 
 def remove_namespace_policy(resource: dict):
@@ -603,7 +655,7 @@ def remove_namespace_policy(resource: dict):
     try:
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     # Test for existing policy
     try:
@@ -619,13 +671,9 @@ def remove_namespace_policy(resource: dict):
         record_resource(RN_NAMESPACE_POLICY, namespace, None, "skipped")
         return
 
-    try:
-        CLIENT.namespaces_client.delete_namespace_policy(namespace)
-        print_info(f"Removed Namespace Policy '{namespace}'")
-        record_resource(RN_NAMESPACE_POLICY, namespace, None, "removed")
-    except Exception as e:
-        print_error(f"Unable to remove Namespace Policy '{namespace}': {e}")
-        raise
+    CLIENT.namespaces_client.delete_namespace_policy(namespace)
+    print_info(f"Removed Namespace Policy '{namespace}'")
+    record_resource(RN_NAMESPACE_POLICY, namespace, None, "removed")
 
 
 def remove_group(resource: dict):
@@ -635,7 +683,7 @@ def remove_group(resource: dict):
     try:
         group_name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     group_id = get_group_id_by_name(CLIENT, group_name)
     if group_id is None:
@@ -647,14 +695,10 @@ def remove_group(resource: dict):
         record_resource(RN_GROUP, group_name, group_id, "skipped")
         return
 
-    try:
-        CLIENT.account_client.delete_group(group_id)
-        print_info(f"Removed Group '{group_name}' ({group_id})")
-        record_resource(RN_GROUP, group_name, group_id, "removed")
-        clear_group_caches()
-    except Exception as e:
-        print_error(f"Unable to remove Group '{group_name}' ({group_id}): {e}")
-        raise
+    CLIENT.account_client.delete_group(group_id)
+    clear_group_caches()
+    print_info(f"Removed Group '{group_name}' ({group_id})")
+    record_resource(RN_GROUP, group_name, group_id, "removed")
 
 
 def remove_application(resource: dict):
@@ -664,7 +708,7 @@ def remove_application(resource: dict):
     try:
         app_name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     app_id = get_application_id_by_name(CLIENT, app_name)
     if app_id is None:
@@ -676,14 +720,10 @@ def remove_application(resource: dict):
         record_resource(RN_APPLICATION, app_name, app_id, "skipped")
         return
 
-    try:
-        CLIENT.account_client.delete_application(app_id)
-        print_info(f"Removed Application '{app_name}' ({app_id})")
-        record_resource(RN_APPLICATION, app_name, app_id, "removed")
-        clear_application_caches()
-    except Exception as e:
-        print_error(f"Unable to remove Application '{app_name}' ({app_id}): {e}")
-        raise
+    CLIENT.account_client.delete_application(app_id)
+    clear_application_caches()
+    print_info(f"Removed Application '{app_name}' ({app_id})")
+    record_resource(RN_APPLICATION, app_name, app_id, "removed")
 
 
 def remove_namespace(resource: dict):
@@ -693,7 +733,7 @@ def remove_namespace(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise missing_property(e) from e
 
     namespace_id = get_namespace_id_by_name(CLIENT, name)
     if namespace_id is None:
@@ -706,22 +746,16 @@ def remove_namespace(resource: dict):
         return
 
     try:
-        CLIENT.namespaces_client.delete_namespace(
-            get_namespace_id_by_name(CLIENT, name)  # type: ignore[arg-type]
-        )
-        print_info(f"Removed Namespace '{name}' ({namespace_id})")
-        record_resource(RN_NAMESPACE, name, namespace_id, "removed")
+        CLIENT.namespaces_client.delete_namespace(namespace_id)
     except Exception as e:
         if "ConflictException" in str(e):
-            error = (
-                f"Unable to remove Namespace '{name}'; note: Namespaces that "
-                f"have been populated cannot currently be removed"
-            )
-            print_error(error)
-            record_resource(RN_NAMESPACE, name, namespace_id, "failed", error=error)
-        else:
-            print_error(f"Unable to remove Namespace '{name}': {e}")
-            raise
+            raise RuntimeError(
+                f"Unable to remove Namespace '{name}'; note: Namespaces that"
+                f" have been populated cannot currently be removed ({e})"
+            ) from e
+        raise
+    print_info(f"Removed Namespace '{name}' ({namespace_id})")
+    record_resource(RN_NAMESPACE, name, namespace_id, "removed")
 
 
 # Entry point

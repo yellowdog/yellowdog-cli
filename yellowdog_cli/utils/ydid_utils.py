@@ -51,6 +51,23 @@ class YDIDType(Enum):
     WORK_REQUIREMENT = "Work Requirement"
 
 
+# The YellowDog IDs 'yd-remove --ids' removes (a Worker Pool's is shut down)
+REMOVABLE_YDID_TYPES = frozenset(
+    {
+        YDIDType.ALLOWANCE,
+        YDIDType.APPLICATION,
+        YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+        YDIDType.COMPUTE_SOURCE_TEMPLATE,
+        YDIDType.GROUP,
+        YDIDType.IMAGE,
+        YDIDType.IMAGE_FAMILY,
+        YDIDType.IMAGE_GROUP,
+        YDIDType.KEYRING,
+        YDIDType.WORKER_POOL,
+    }
+)
+
+
 def get_ydid_type(ydid: str | None) -> YDIDType | None:
     """
     Validate and find the type of a YellowDog ID.

@@ -1498,6 +1498,30 @@ IDS = option(
     help="remove resources using their YellowDog IDs (YDIDs)",
 )
 
+
+def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-remove --ids: each argument the ID of a resource it can remove,
+    checked before anything is removed; and none of the options that act
+    only on specification files.
+    """
+    from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
+
+    if not args.ids:
+        return
+    for option, given in (
+        ("--match-allowances-by-description", args.match_allowances_by_description),
+        ("--jsonnet-dry-run", args.jsonnet_dry_run),
+    ):
+        if given:
+            parser.error(f"{option} applies to specification files, not to --ids")
+    for resource_id in args.resource_specifications:
+        if get_ydid_type(resource_id) not in REMOVABLE_YDID_TYPES:
+            parser.error(
+                f"not the ID of a resource yd-remove can remove: '{resource_id}'"
+            )
+
+
 COMMANDS["yd-remove"] = Command(
     name="yd-remove",
     purpose="removing resources",
@@ -1514,6 +1538,7 @@ COMMANDS["yd-remove"] = Command(
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
+    validators=(check_remove_ids,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

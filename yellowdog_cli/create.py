@@ -58,27 +58,26 @@ from yellowdog_cli.utils.entity_utils import (
     remove_allowances_matching_description,
 )
 from yellowdog_cli.utils.exit_codes import (
-    SESSION_FAILURES,
     NotFoundError,
-    ReportedFailure,
-    classify,
 )
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
     load_resource_specifications,
-    resource_display_name,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_dry_run,
-    print_error,
     print_info,
     print_json,
     print_quiet_result,
     print_warning,
 )
 from yellowdog_cli.utils.provision_utils import resolve_user_data_in_spec
+from yellowdog_cli.utils.resource_processing import (
+    missing_property,
+    process_resources,
+)
 from yellowdog_cli.utils.results import record, record_resource
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
@@ -162,24 +161,10 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
             " 'resource' property is removed."
         )
 
-    specifications = cast(list[dict], resources)  # Keep typing happy
-    failures: list[Exception] = []
-    for index, resource in enumerate(specifications):
-        name = resource_display_name(resource.get(PROP_RESOURCE), resource)
-        resource_type = resource.pop(PROP_RESOURCE, None)
+    def _process(resource_type: str, resource: dict) -> None:
         # Strip the internal source-dir stamp before any further processing
         # so it never reaches _get_model_object or appears in dry-run output.
         source_dir: str | None = resource.pop(RESOURCE_SOURCE_DIR, None)
-        if resource_type is None:
-            error = (
-                f"Missing required '{PROP_RESOURCE}' property in the following resource"
-                f" specification: {resource}"
-            )
-            print_error(error)
-            _record_failure(None, name, error)
-            failures.append(ValueError(error))
-            continue
-
         # There is potential additional processing for CRTs, CSTs and
         # Allowances; print JSON from within their creation functions
         if ARGS_PARSER.dry_run and resource_type not in [
@@ -188,26 +173,17 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
             RN_SOURCE_TEMPLATE,
         ]:
             _show_dry_run_specification(resource_type, resource)
-            continue
+            return
+        _create_resource(resource_type, resource, source_dir, show_secrets)
 
-        try:
-            _create_resource(resource_type, resource, source_dir, show_secrets)
-        except Exception as e:
-            described = resource_type if name is None else f"{resource_type} '{name}'"
-            print_error(f"Failed to create {described}: {e}")
-            _record_failure(resource_type, name, str(e))
-            failures.append(e)
-            if classify(e) in SESSION_FAILURES:
-                # Every later call would fail the same way
-                _record_not_attempted(specifications[index + 1 :], e)
-                raise ReportedFailure(e)
-
-    if failures:
-        message = f"{len(failures)} resource(s) failed to create"
-        print_error(message)
-        codes = {classify(e) for e in failures}
-        # The shared cause's exit code, or FAILURE for different causes
-        raise ReportedFailure(failures[0] if len(codes) == 1 else RuntimeError(message))
+    # In a dry run, '--json' is the processed specifications, so failures
+    # are reported on stderr and in the exit code instead
+    process_resources(
+        cast(list[dict], resources),
+        _process,
+        "create",
+        record_outcomes=not ARGS_PARSER.dry_run,
+    )
 
 
 def _create_resource(
@@ -251,31 +227,6 @@ def _create_resource(
         raise ValueError(f"Unknown resource type '{resource_type}'")
 
 
-def _record_not_attempted(specifications: list[dict], cause: Exception) -> None:
-    """
-    Record the specifications a session failure left unattempted.
-    """
-    if ARGS_PARSER.dry_run:
-        return
-    for specification in specifications:
-        resource_type = specification.get(PROP_RESOURCE)
-        record_resource(
-            resource_type,
-            resource_display_name(resource_type, specification),
-            None,
-            "skipped",
-            error=f"not attempted: {cause}",
-        )
-
-
-def _missing_property(e: KeyError) -> ValueError:
-    """
-    The error for a required property a specification lacks; 'e' is the
-    KeyError its lookup raised, whose str() is the quoted property name.
-    """
-    return ValueError(f"Expected property {e} to be defined")
-
-
 def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
     """
     Show one processed resource specification in a dry run: printed, or
@@ -289,16 +240,6 @@ def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
         print_json(resource)
 
 
-def _record_failure(resource_type: str | None, name: str | None, error: str) -> None:
-    """
-    Record a resource that failed. Not in a dry run, whose document under
-    '--json' is the array of processed specifications: the error is
-    reported on stderr and in the exit code instead.
-    """
-    if not ARGS_PARSER.dry_run:
-        record_resource(resource_type, name, None, "failed", error=error)
-
-
 def create_compute_source_template(resource: dict, source_dir: str | None = None):
     """
     Create or update a Compute Source Template using a resource specification.
@@ -310,7 +251,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         source_type = source.pop(PROP_TYPE).split(".")[-1]  # Extract Source type
         name = source[PROP_NAME]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     # Google CSTs use property name 'image' instead of 'imageId'
     image_property_name = (
@@ -386,7 +327,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     def _get_images_id(image_str: str, context: dict, key: str):
         """
@@ -500,7 +441,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         name = resource[PROP_NAME]
         description = resource[PROP_DESCRIPTION]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     existing = get_keyring_summary_by_name(CLIENT, name)
     if existing is not None:
@@ -548,7 +489,7 @@ def create_credential(resource: dict):
         ]  # Extract Source type
         name = credential_data[PROP_NAME]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     credential = _get_model_object(credential_type, credential_data)
     try:
@@ -577,7 +518,7 @@ def create_image_family(resource):
         namespace = resource[PROP_NAMESPACE]
         os_type_str = resource.pop(PROP_OS_TYPE)
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{family_name}"
 
@@ -757,7 +698,7 @@ def create_configured_worker_pool(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
@@ -801,7 +742,7 @@ def create_allowance(resource: dict):
         original_type = resource.pop(PROP_TYPE)
         type = original_type.split(".")[-1]  # Extract type
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     if type == "SourcesAllowance":
         _resolve_allowance_template(
@@ -929,7 +870,7 @@ def create_attribute_definition(resource: dict, resource_type: str):
         if resource_type == RN_NUMERIC_ATTRIBUTE_DEFINITION:
             default_rank_order = resource[PROP_DEFAULT_RANK_ORDER]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     url = f"{CONFIG_COMMON.url}/compute/attributes/user"
     headers = {"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"}
@@ -1000,7 +941,7 @@ def create_namespace_policy(resource: dict):
             autoscalingMaxNodes=resource.get(PROP_AUTOSCALING_MAX_NODES),
         )
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     # Test for existing policy
     try:
@@ -1057,7 +998,7 @@ def create_group(resource: dict):
         name = resource[PROP_NAME]
         description = resource.get(PROP_DESCRIPTION)
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     roles_input = resource.get(PROP_ROLES)
     role_specifications = (
@@ -1247,7 +1188,7 @@ def create_application(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     groups: list[str] | None = resource.pop(PROP_GROUPS, None)
     keyrings: list[str] = resource.pop(PROP_KEYRINGS, None) or []
@@ -1500,7 +1441,7 @@ def create_namespace(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise _missing_property(e) from e
+        raise missing_property(e) from e
 
     try:
         namespace_id = CLIENT.namespaces_client.create_namespace(

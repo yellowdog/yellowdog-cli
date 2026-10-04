@@ -1347,6 +1347,7 @@ class TestInteractiveSelection:
 
 KEYRING_ID = "ydid:keyring:000000:88888888-8888-8888-8888-888888888888"
 GROUP_ID = "ydid:group:000000:99999999-9999-9999-9999-999999999999"
+APP_ID = "ydid:app:000000:99999999-9999-9999-9999-999999999999"
 
 _CREATOR_DEFAULTS = {
     "show_keyring_passwords": False,
@@ -1602,12 +1603,15 @@ class TestRemove:
         assert out[0]["name"] == "g1"
 
     def test_by_id(self, run_remove):
+        client = MagicMock()
+        client.account_client.get_group.return_value = SimpleNamespace(name="g1")
+        client.account_client.get_application.side_effect = _http_error(404)
         out, _, _ = run_remove(
-            ids=True, resource_specifications=[GROUP_ID, "not-an-id"]
+            ids=True, resource_specifications=[GROUP_ID, APP_ID], client=client
         )
-        assert out[0] == _resource("Group", None, GROUP_ID, "removed")
-        assert out[1]["id"] is None and out[1]["action"] == "failed"
-        assert out[1]["name"] == "not-an-id"
+        assert out[0] == _resource("Group", "g1", GROUP_ID, "removed")
+        assert out[1]["id"] == APP_ID and out[1]["action"] == "failed"
+        assert out[1]["error"] == f"Cannot find Application {APP_ID}"
 
     def test_an_allowance_by_description_without_one_is_skipped(self, run_remove):
         # Recorded by the display name remove_resources() read, as every
@@ -1628,8 +1632,8 @@ class TestRemove:
 
     def test_a_401_on_a_namespace_policy_is_a_failure(self, run, run_remove):
         # Not a 'not found': the existence check's failure is recorded as
-        # 'failed' with its cause, like any other per-resource failure, and
-        # the run goes on to the next resource and exits 1
+        # 'failed' with its cause, and being an authentication failure it
+        # stops the run, which exits 4
         client = MagicMock()
         client.namespaces_client.get_namespace_policy.side_effect = _http_error(401)
         out, _, _ = run_remove(
@@ -1639,7 +1643,7 @@ class TestRemove:
         assert out[0]["resource"] == "NamespacePolicy"
         assert out[0]["action"] == "failed"
         assert "401" in out[0]["error"]
-        assert run.exit_code == 1
+        assert run.exit_code == 4
 
 
 # ---------------------------------------------------------------------------

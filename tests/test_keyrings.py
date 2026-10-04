@@ -159,7 +159,8 @@ def _run_remove(remove_module, client, ydid: str, capsys) -> tuple[bool, str]:
         patch.object(remove_module, "confirmed", lambda _: True),
     ):
         result = remove_module.remove_resource_by_id(ydid)
-    return result, capsys.readouterr().out
+    captured = capsys.readouterr()
+    return result, " ".join((captured.out + captured.err).split())
 
 
 class TestRemoveById:
@@ -190,7 +191,7 @@ class TestRemoveById:
 
         assert get_keyring_summary_by_name(client, "proj") is None
 
-    def test_an_unknown_id_is_a_warning_not_an_error(self, remove_module, capsys):
+    def test_an_unknown_id_is_not_found(self, remove_module, capsys):
         client = _client([])
         client.keyring_client.get_keyring.side_effect = HTTPError(
             response=MagicMock(status_code=404)
