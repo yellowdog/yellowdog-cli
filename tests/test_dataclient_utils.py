@@ -97,11 +97,38 @@ class TestResolveRemotePath:
         result = resolve_remote_path(config, relative_path="r2:other/path")
         assert result == "r1:b/r2:other/path"
 
-    def test_strips_leading_slashes_keeps_directory_intent(self):
-        # Leading slashes are stripped; a trailing '/' is preserved because it
-        # denotes directory-destination intent (yd-copy / yd-upload)
+    def test_an_absolute_bucket_keeps_its_leading_slash(self):
+        # On a local or SFTP remote, '/data' is an absolute path; stripped, it
+        # was taken relative to the current directory. Inner slashes are
+        # tidied, and a trailing '/' is preserved because it denotes
+        # directory-destination intent (yd-copy / yd-upload)
         config = self._config(bucket="/b/", prefix="/p/")
-        assert resolve_remote_path(config, relative_path="/sub/") == "myremote:b/p/sub/"
+        assert resolve_remote_path(config, relative_path="/sub/") == (
+            "myremote:/b/p/sub/"
+        )
+
+    def test_an_absolute_prefix_with_no_bucket_keeps_its_leading_slash(self):
+        config = self._config(bucket=None, prefix="/data/results")
+        assert resolve_remote_path(config) == "myremote:/data/results"
+
+    def test_an_object_store_bucket_is_unchanged(self):
+        config = self._config(bucket="b/", prefix="/p/")
+        assert resolve_remote_path(config, relative_path="x") == "myremote:b/p/x"
+
+    def test_a_root_bucket_is_the_root(self):
+        assert resolve_remote_path(self._config(bucket="/", prefix=None)) == (
+            "myremote:/"
+        )
+
+    def test_the_bucket_path_keeps_the_same_rule(self):
+        from yellowdog_cli.utils.dataclient_utils import resolve_bucket_path
+
+        assert resolve_bucket_path(self._config(bucket="/data/", prefix="p")) == (
+            "myremote:/data"
+        )
+        assert resolve_bucket_path(self._config(bucket="b", prefix="p")) == (
+            "myremote:b"
+        )
 
     def test_no_trailing_slash_unchanged(self):
         config = self._config(bucket="b")
@@ -595,3 +622,24 @@ class TestFailedTransfer:
         assert code != 0
         assert user_warnings == []
         assert "Download of " in err and " failed: " in err
+
+
+@needs_rclone
+def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch):
+    # From a working directory elsewhere: with the leading '/' stripped, the
+    # bucket was taken relative to it
+    from yellowdog_cli.utils.dataclient_utils import upload_file
+
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    source = tmp_path / "a.txt"
+    source.write_text("a", encoding="utf-8")
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(results_module, "ARGS_PARSER", MagicMock(json_output=False))
+    config = ConfigDataClient(remote="loc,type=local", bucket=str(bucket), prefix="p")
+
+    assert upload_file(config, source, resolve_remote_path(config, filename="a.txt"))
+    assert (bucket / "p" / "a.txt").read_text(encoding="utf-8") == "a"
+    assert not (elsewhere / str(bucket).lstrip("/")).exists()

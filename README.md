@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:40:15 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:46:18 BST 2026 -->
 
 <!--te-->
 
@@ -2629,7 +2629,7 @@ The `remote` field accepts either:
 
 The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command-line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
 
-> **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target.
+> **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target. A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one; without the `/` it is relative to the remote's default directory (for a local remote, the current directory). With no bucket, the same holds for a prefix beginning with `/`.
 
 ## Named Profiles
 

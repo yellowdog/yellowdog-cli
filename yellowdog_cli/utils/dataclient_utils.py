@@ -243,6 +243,10 @@ def resolve_remote_path(
     If relative_path already starts with '<remote_name>:', it is returned
     verbatim (absolute rclone path).  Otherwise, the path is assembled as:
         <remote_name>:<bucket>/<prefix>/<relative_path_or_filename>
+    keeping a leading '/' on the bucket (or, with no bucket, the prefix):
+    on a local or SFTP remote that is an absolute path ('/data/results'),
+    which without it would be taken relative to the current directory.
+    Object-store bucket names never begin with one.
     """
     remote_str = _require_remote(config)
     remote_name, _ = parse_rclone_config(remote_str)
@@ -258,11 +262,7 @@ def resolve_remote_path(
     if relative_path is not None and relative_path.startswith(f"{remote_name}:"):
         return relative_path
 
-    parts: list[str] = []
-    if config.bucket:
-        parts.append(config.bucket.strip("/"))
-    if config.prefix:
-        parts.append(config.prefix.strip("/"))
+    parts = _configured_parts(config)
     if relative_path:
         stripped = relative_path.strip("/")
         if stripped:
@@ -272,7 +272,42 @@ def resolve_remote_path(
     elif filename:
         parts.append(filename)
 
-    return f"{remote_name}:{'/'.join(parts)}"
+    return f"{remote_name}:{_rooted(config)}{'/'.join(parts)}"
+
+
+def _configured_parts(config: ConfigDataClient, prefix: bool = True) -> list[str]:
+    """
+    The configured bucket and (unless not wanted) prefix, as path parts,
+    without their slashes; _rooted() says whether the path is absolute.
+    """
+    parts = [
+        part.strip("/")
+        for part in (config.bucket, config.prefix if prefix else None)
+        if part
+    ]
+    return [part for part in parts if part]
+
+
+def _rooted(config: ConfigDataClient) -> str:
+    """
+    '/' when the configured path is absolute: the bucket, or with no bucket
+    the prefix, begins with one (a local or SFTP remote's '/data/results').
+    """
+    first = config.bucket or config.prefix or ""
+    return "/" if first.startswith("/") else ""
+
+
+def resolve_bucket_path(config: ConfigDataClient) -> str:
+    """
+    The configured bucket's own path, '<remote_name>:<bucket>', a leading
+    '/' kept as resolve_remote_path() keeps it.
+    """
+    remote_name, _ = parse_rclone_config(_require_remote(config))
+    bucket_only = ConfigDataClient(remote=config.remote, bucket=config.bucket)
+    return (
+        f"{remote_name}:{_rooted(bucket_only)}"
+        f"{'/'.join(_configured_parts(bucket_only, prefix=False))}"
+    )
 
 
 def upload_file(

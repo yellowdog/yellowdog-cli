@@ -879,7 +879,11 @@ def check_data_client_remote(ctx: Context) -> Result:
     although every command would work. A prefix not created yet is OK:
     the first upload creates it.
     """
-    from yellowdog_cli.utils.dataclient_utils import remote_stat, resolve_remote_path
+    from yellowdog_cli.utils.dataclient_utils import (
+        remote_stat,
+        resolve_bucket_path,
+        resolve_remote_path,
+    )
 
     profile = f"profile {ctx.data_client_name}"
     _, rclone = _rclone_for_config(ctx.data_client)
@@ -899,9 +903,8 @@ def check_data_client_remote(ctx: Context) -> Result:
         # The prefix is not there: fine if the bucket is, which the first
         # upload then writes into, but a bucket that is not there (a typo
         # in its name) is no 'not created yet'
-        bucket = (ctx.data_client.bucket or "").strip("/")
-        if bucket:
-            bucket_path = f"{target.split(':', 1)[0]}:{bucket}"
+        if (ctx.data_client.bucket or "").strip("/"):
+            bucket_path = resolve_bucket_path(ctx.data_client)
             try:
                 found = with_timeout(
                     lambda: remote_stat(rclone, bucket_path), ctx.timeout

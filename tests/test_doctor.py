@@ -1370,6 +1370,22 @@ class TestDataClientUnderTest:
         assert row["status"] == "OK", row
         assert row["detail"] == "loc:other/pfx reachable (profile backup)"
 
+    def test_an_absolute_bucket_is_reached_where_it_is(self, tmp_path):
+        (tmp_path / "abs" / "pfx").mkdir(parents=True)
+        config = (
+            f'[dataClient]\nremote = "loc,type=local"\n'
+            f'bucket = "{tmp_path / "abs"}"\nprefix = "pfx"\n'
+        )
+        # Run from elsewhere: the bucket must not be taken relative to it
+        (tmp_path / "elsewhere").mkdir()
+        rows = _run_doctor_online(tmp_path / "elsewhere", _clean_env(), config)
+        row = rows["Remote reachable"]
+        assert row["status"] == "OK", row
+        assert (
+            row["detail"]
+            == f"loc:{tmp_path / 'abs' / 'pfx'} reachable (profile [dataClient])"
+        )
+
     def test_a_missing_bucket_fails(self, tmp_path):
         config = '[dataClient]\nremote = "loc,type=local"\nbucket = "absent"\n'
         rows = _run_doctor_online(tmp_path, _clean_env(), config)
