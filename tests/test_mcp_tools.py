@@ -190,7 +190,8 @@ class TestSchemaMapping:
             "remote_paths" in TOOLS["yd_download"].input_schema["required"]
         )  # nargs='+'
         assert "entity_type" in TOOLS["yd_list"].input_schema["required"]  # nargs=None
-        assert "yellowdog_ids" not in TOOLS["yd_show"].input_schema.get(
+        assert "yellowdog_ids" in TOOLS["yd_show"].input_schema["required"]  # '+'
+        assert "yellowdog_ids" not in TOOLS["yd_follow"].input_schema.get(
             "required", []
         )  # nargs='*'
         assert "src_path" not in TOOLS["yd_copy"].input_schema.get(

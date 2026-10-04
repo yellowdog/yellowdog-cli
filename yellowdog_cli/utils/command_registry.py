@@ -1752,28 +1752,54 @@ SHOW_TOKEN = option(
     ),
 )
 
+
+def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-show's '--substitute-ids', refused when none of the IDs is of a kind
+    whose details it substitutes names into (Compute Source and Requirement
+    Templates, Allowances), rather than ignored. '--show-token' is left
+    alone: whether a Worker Pool is a Configured one is known only once it
+    has been fetched.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    substitutable = (
+        YDIDType.COMPUTE_SOURCE_TEMPLATE,
+        YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+        YDIDType.ALLOWANCE,
+    )
+    if args.substitute_ids and not any(
+        get_ydid_type(ydid) in substitutable for ydid in args.yellowdog_ids
+    ):
+        parser.error(
+            "--substitute-ids applies only to Compute Source Template, Compute"
+            " Requirement Template and Allowance IDs, and none was given"
+        )
+
+
 COMMANDS["yd-show"] = Command(
     name="yd-show",
     purpose="showing the JSON details of entities referenced by their YDIDs",
     summary="Show the JSON details of entities referenced by their YDIDs",
     kind=CommandKind.API,
+    # A YDID names its entity in whatever namespace it is in: no namespace
+    # or tag is used
     options=(
         VARIABLE,
-        NAMESPACE,
-        TAG,
         YELLOWDOG_IDS.variant(
+            nargs="+",
             help=(
                 "the YellowDog ID(s) of the item(s) to show"
                 "; Instances have no ID of their own and are specified "
                 "in 'cr_id.instance_id' format"
-            )
+            ),
         ),
         SHOW_TOKEN,
         SUBSTITUTE_IDS,
         STRIP_IDS,
         OUTPUT_FILE,
     ),
-    requires_namespace_and_tag=True,
+    validators=(check_show_ids,),
     tool=ToolKind.READ_ONLY,
 )
 

@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 18:44:39 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 18:51:55 BST 2026 -->
 
 <!--te-->
 
@@ -4074,7 +4074,7 @@ The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-fi
 The `yd-show` command shows the details (in JSON) of any YellowDog entity that has a YellowDog ID.
 
 ```shell
-yd-show [options] [<yellowdog-id> ...]
+yd-show [options] <yellowdog-id> [<yellowdog-id> ...]
 ```
 
 It supports IDs referring to:
@@ -4101,11 +4101,13 @@ Instances have no YellowDog ID of their own: they're identified by the combinati
 
 Key options:
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
-- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list)
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
+
+At least one ID is required. A YDID names its entity in whatever namespace it is in, so `yd-show` takes no `--namespace` or `--tag`.
 
 Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
 
-It exits with code 1 if any of the supplied IDs could not be shown (invalid ID, entity not found, or an API error), and 0 otherwise. The IDs that could be shown are still emitted.
+It exits with code 0 if every ID was shown; 6 if those that were not all name entities that do not exist; and 1 if any could not be shown for another reason (an invalid ID, or an API error). The IDs that could be shown are still emitted. If a lookup fails because the Application's credentials are not accepted, or the platform cannot be reached, the remaining IDs are not attempted, what was shown is still emitted, and the command exits with that failure's code (4 or 8).
 
 ```shell
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0

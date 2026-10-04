@@ -16,13 +16,16 @@ code is arranged.
 """
 
 from json import loads
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from requests import HTTPError, Response
 
 import yellowdog_cli.show as show_module
 import yellowdog_cli.utils.printing as printing_module
 from yellowdog_cli.show import show_ydids
+from yellowdog_cli.utils.settings import ExitCode
 
 UUID = "98879b5a-9192-4a56-ad25-fc1330e49185"
 
@@ -294,13 +297,84 @@ class TestFailures:
         assert _names(loads(output)) == [obj.payload["name"], obj.payload["name"]]
 
     def test_every_id_failing_leaves_an_empty_array(self, capsys):
-        failures, output = _run(
+        exit_code, output = _run(
             ["not-a-ydid", "also-not"], MagicMock(), _args(), capsys
         )
-        assert failures == 2
+        assert exit_code == ExitCode.FAILURE
         assert loads(output) == []
 
-    def test_no_ids_produces_no_output(self, capsys):
-        failures, output = _run([], MagicMock(), _args(), capsys)
-        assert failures == 0
-        assert output == ""
+
+# ---------------------------------------------------------------------------
+# Exit codes, and the IDs not attempted after a session failure
+# ---------------------------------------------------------------------------
+
+
+def _http_error(status_code: int) -> HTTPError:
+    response = Response()
+    response.status_code = status_code
+    return HTTPError(f"{status_code} Client Error", response=response)
+
+
+class TestExitCodes:
+    def test_every_failure_a_not_found_exits_6(self, capsys):
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = _http_error(404)
+        exit_code, output = _run(
+            [_ydid("task"), _ydid("task")], client, _args(), capsys
+        )
+        assert exit_code == ExitCode.NOT_FOUND
+        assert loads(output) == []
+
+    def test_a_not_found_among_other_failures_exits_1(self, capsys):
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = _http_error(404)
+        exit_code, _ = _run([_ydid("task"), "not-a-ydid"], client, _args(), capsys)
+        assert exit_code == ExitCode.FAILURE
+
+    def test_a_not_found_found_by_search_counts_as_not_found(self, capsys):
+        # A Task Group absent from its (existing) Work Requirement
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
+            taskGroups=[]
+        )
+        tg = "ydid:taskgrp:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1"
+        exit_code, _ = _run([tg], client, _args(), capsys)
+        assert exit_code == ExitCode.NOT_FOUND
+
+    def test_a_session_failure_stops_and_keeps_what_was_shown(self, capsys):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
+
+        client = MagicMock()
+        ydid, obj = _task(client)
+        node = _ydid("node")
+        client.worker_pool_client.get_node_by_id.side_effect = _http_error(401)
+        with pytest.raises(ReportedFailure) as raised:
+            _run([ydid, node, _ydid("node"), _ydid("node")], client, _args(), capsys)
+        assert classify(raised.value) == ExitCode.AUTHENTICATION
+        # The one shown is still printed, as the array the request asked for
+        assert _names(loads(capsys.readouterr().out)) == [obj.payload["name"]]
+        assert client.worker_pool_client.get_node_by_id.call_count == 1
+
+
+class TestCommandLine:
+    def test_an_id_is_required(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-show", argv=[])
+        assert raised.value.code == 2
+
+    def test_substitute_ids_needs_an_id_it_applies_to(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-show", argv=["-U", _ydid("task")])
+        assert raised.value.code == 2
+        assert "--substitute-ids applies only to" in capsys.readouterr().err
+        CLIParser(command="yd-show", argv=["-U", _ydid("task"), _ydid("allow")])
+
+    def test_namespace_and_tag_are_not_options(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit):
+            CLIParser(command="yd-show", argv=["-n", "ns", _ydid("task")])
