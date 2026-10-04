@@ -22,7 +22,7 @@ from cli_test_helpers import shell
         ("yd-help", 0),
         ("yd-hold --help", 0),
         ("yd-instantiate --help", 0),
-        ("yd-jsonnet2json", 1),
+        ("yd-jsonnet2json --help", 0),
         ("yd-list --help", 0),
         ("yd-nodeaction --help", 0),
         ("yd-ls --help", 0),

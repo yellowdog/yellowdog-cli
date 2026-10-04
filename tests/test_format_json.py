@@ -72,7 +72,9 @@ def test_an_interrupted_write_leaves_the_original(tmp_path, monkeypatch, capsys)
     def interrupted(source, destination):
         raise OSError("disk full")
 
-    monkeypatch.setattr(yd_format_json.os, "replace", interrupted)
+    import yellowdog_cli.utils.atomic_write as atomic_write
+
+    monkeypatch.setattr(atomic_write.os, "replace", interrupted)
     _, err, code = _run(monkeypatch, capsys, str(path))
     assert code == 1 and "disk full" in err
     assert path.read_text(encoding="utf-8") == '{"a":1}'

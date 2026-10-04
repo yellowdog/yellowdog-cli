@@ -11,11 +11,10 @@ so an interruption leaves the original.
 """
 
 import json
-import os
 import sys
-import tempfile
 from argparse import ArgumentParser
 
+from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.compact_json import (
     CompactJSONEncoder,
     FloatAsWritten,
@@ -49,25 +48,6 @@ def reformatted(text: str) -> str:
         parse_int=IntAsWritten,
     )
     return json.dumps(data, indent=2, cls=CompactJSONEncoder, ensure_ascii=False) + "\n"
-
-
-def _replace(filename: str, text: str) -> None:
-    """
-    Write 'text' to a temporary file beside 'filename', with its
-    permissions, and move it into place: the file is either the original or
-    the complete new text, never something in between.
-    """
-    directory = os.path.dirname(os.path.abspath(filename))
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=directory, prefix=".yd-format-", delete=False
-    ) as temporary:
-        temporary.write(text)
-    try:
-        os.chmod(temporary.name, os.stat(filename).st_mode & 0o7777)
-        os.replace(temporary.name, filename)
-    except BaseException:
-        os.unlink(temporary.name)
-        raise
 
 
 def _error(message: str) -> None:
@@ -119,7 +99,7 @@ def main():
             continue
 
         try:
-            _replace(filename, new_text)
+            write_text_atomically(filename, new_text)
         except Exception as e:
             _error(f"Unable to write '{filename}': {e}")
             failed += 1
