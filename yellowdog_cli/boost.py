@@ -4,7 +4,7 @@
 A script to boost allowances.
 """
 
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_action
@@ -85,8 +85,7 @@ def main() -> None:
                     )
                 for remaining in not_attempted:
                     _record(remaining, "skipped", f"not attempted: {e}")
-                skipped += len(not_attempted)
-                break
+                raise ReportedFailure(e)
             continue
 
         remaining_hours = _remaining_hours(result)

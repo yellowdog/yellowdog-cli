@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from requests import ConnectionError as ConnectionError_
 from requests import HTTPError, Response
 from yellowdog_client.model import (
     ComputeRequirementStatus,
@@ -50,7 +51,11 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
 )
 from yellowdog_cli.utils.results import record_action, reset_results
-from yellowdog_cli.utils.settings import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
+from yellowdog_cli.utils.settings import (
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    ExitCode,
+)
 
 WR_ID_1 = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
 WR_ID_2 = "ydid:workreq:000000:22222222-2222-2222-2222-222222222222"
@@ -267,6 +272,21 @@ class TestCancel:
             )
         ]
         assert "is already COMPLETED" in err  # the warning, on stderr
+
+    @pytest.mark.parametrize(
+        "error, code",
+        [
+            (RuntimeError("401 Unauthorized"), ExitCode.AUTHENTICATION),
+            (ConnectionError_("reset"), ExitCode.CONNECTION),
+        ],
+    )
+    def test_a_session_failure_exits_with_its_code(self, run, monkeypatch, error, code):
+        self._fetch(monkeypatch, [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")])
+        client = MagicMock()
+        client.work_client.cancel_work_requirement_by_id.side_effect = error
+        out, _, _ = run(yd_cancel, client=client, work_requirement_names=[])
+        assert [r["outcome"] for r in out] == ["failed", "skipped"]
+        assert run.exit_code == code
 
     def test_a_task(self, run):
         client = MagicMock()
@@ -544,20 +564,66 @@ class TestAbort:
             _action(TASK_ID_2, "t2", "tasks", "abort", "failed", error="x"),
         ]
 
-    def test_a_task_not_executing_is_skipped_not_cancelled(self, run):
-        client = self._client(by_id={TASK_ID: _task(status=TaskStatus.PENDING)})
+    @pytest.mark.parametrize(
+        "status", [TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.COMPLETED]
+    )
+    def test_a_task_named_by_id_is_aborted_whatever_its_state(self, run, status):
+        task = _task(status=status)
+        client = self._client(by_id={TASK_ID: task})
         out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
-        assert out == [
-            _action(
-                TASK_ID,
-                "t1",
-                "tasks",
-                "abort",
-                "skipped",
-                error="not executing (PENDING)",
-            )
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        client.work_client.cancel_task.assert_called_once_with(task, abort=True)
+
+    def test_a_work_requirement_aborts_its_running_tasks(self, run, wrs):
+        client = self._client([_task()])
+        run(yd_abort, client=client, task_id_list=["wr-a"])
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.statuses == [
+            TaskStatus.DOWNLOADING,
+            TaskStatus.EXECUTING,
+            TaskStatus.UPLOADING,
         ]
-        client.work_client.cancel_task.assert_not_called()
+
+    def test_an_ambiguous_name_still_tries_the_namespace_reading(
+        self, run, monkeypatch
+    ):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def lookup(client, name, namespace=None):
+            if (namespace, name) == ("ns", "a"):
+                raise AmbiguousNameError("two named 'a'")
+            if (namespace, name) == ("a", "b"):
+                return _wr(WR_ID_1, "b")
+            return None
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["a/b"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+
+    def test_an_ambiguous_name_with_no_other_reading_fails(self, run, monkeypatch):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def lookup(client, name, namespace=None):
+            if name == "a":
+                raise AmbiguousNameError("two named 'a'")
+            return None
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["a/b", "a"])
+        assert [(r["name"], r["outcome"], r["error"]) for r in out] == [
+            ("a/b", "failed", "two named 'a'"),
+            ("a", "failed", "two named 'a'"),
+        ]
+
+    def test_a_ydid_of_the_wrong_kind_is_recorded_as_its_own_type(self, run):
+        node = "ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=[node])
+        assert (out[0]["type"], out[0]["outcome"]) == ("nodes", "failed")
 
     def test_a_task_not_found(self, run):
         client = self._client()
@@ -574,7 +640,9 @@ class TestAbort:
         out, _, _ = run(
             yd_abort, client=client, confirm=False, yes=False, task_id_list=[TASK_ID]
         )
-        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "skipped")]
+        assert out == [
+            _action(TASK_ID, "t1", "tasks", "abort", "skipped", error="declined")
+        ]
         client.work_client.cancel_task.assert_not_called()
 
     def test_tasks_not_selected_are_skipped(self, run, monkeypatch, wrs):
@@ -636,7 +704,7 @@ class TestAbort:
                 "work-requirements",
                 "abort",
                 "skipped",
-                error="no executing Tasks",
+                error="no running Tasks",
             )
         ]
 
@@ -688,7 +756,10 @@ class TestAbort:
         ]
         assert client.work_client.cancel_task.call_count == 1
         assert "Not attempting the remaining 2 item(s)" in err
-        assert run.exit_code == 1
+        # The session's failure, not a per-item one: its own exit code, and
+        # reported once, by the command, not again by the wrapper
+        assert run.exit_code == ExitCode.AUTHENTICATION
+        assert err.count("401 error") == 1
 
     def test_duplicates_and_overlaps_are_aborted_once(self, run, wrs):
         client = self._client([_task()], by_id={TASK_ID: _task()})
@@ -898,8 +969,8 @@ class TestBoost:
         assert boost.call_count == 1
         assert [item["outcome"] for item in out] == ["failed", "skipped", "skipped"]
         assert out[1]["error"].startswith("not attempted:")
-        # Still a per-item failure: exit 1, the cause in the record
-        assert run.exit_code == 1
+        # The session's failure: its own exit code, the cause in the record
+        assert run.exit_code == ExitCode.AUTHENTICATION
 
     def test_a_failure_of_one_allowance_does_not_stop_the_rest(self, run):
         response = Response()

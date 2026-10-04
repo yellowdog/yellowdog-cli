@@ -32,7 +32,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -256,7 +256,7 @@ def shutdown_by_names_or_ids(names_or_ids: list[str]):
                         f"not attempted: {e}",
                         ET_NODES if _is_node(remaining) else ET_WORKER_POOLS,
                     )
-                return
+                raise ReportedFailure(e)
             continue
 
         if entity_type == ET_NODES:
@@ -375,7 +375,7 @@ def _carry_out(pools: list[_Pool], nodes: list[Node]):
                 _record(
                     remaining, "skipped", f"not attempted: {e.cause}", remaining_type
                 )
-            break
+            raise ReportedFailure(e.cause)
 
     if shut_down_pool_ids or nodes_shut_down:
         if shut_down_pool_ids:

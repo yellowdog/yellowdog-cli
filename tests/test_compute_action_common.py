@@ -39,6 +39,7 @@ from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_TERMINATE,
     apply_compute_action,
 )
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
@@ -262,7 +263,9 @@ class TestListing:
     def test_a_session_failure_stops(self, platform, monkeypatch, error):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         platform.failures["stop_compute_requirement_by_id"] = error
-        _run(monkeypatch, COMPUTE_STOP, [])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, COMPUTE_STOP, [])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
 
@@ -516,7 +519,9 @@ class TestSessionFailures:
         platform.client.compute_client.get_compute_requirement_by_id.side_effect = (
             get_cr
         )
-        _run(monkeypatch, COMPUTE_STOP, [*targets, f"{CR_ID}.{INSTANCE_ID}"])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, COMPUTE_STOP, [*targets, f"{CR_ID}.{INSTANCE_ID}"])
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []  # nothing is acted on
         assert [(r["id"], r["outcome"]) for r in platform.records] == [
             (CR_ID_2, "failed"),
@@ -527,7 +532,9 @@ class TestSessionFailures:
     def test_while_acting(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         platform.failures["stop_compute_requirement_by_id"] = _http_error(401)
-        _run(monkeypatch, COMPUTE_STOP, [CR_ID, CR_ID_2, f"{CR_ID}.{INSTANCE_ID}"])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, COMPUTE_STOP, [CR_ID, CR_ID_2, f"{CR_ID}.{INSTANCE_ID}"])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == [
             "failed",
             "skipped",

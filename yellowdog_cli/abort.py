@@ -16,11 +16,12 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import (
+    AmbiguousNameError,
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
     get_work_requirement_summary_by_name_or_id,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -37,7 +38,17 @@ from yellowdog_cli.utils.ydid_utils import (
     work_requirement_id_of_task_group,
 )
 
-NO_EXECUTING_TASKS = "no executing Tasks"
+NO_RUNNING_TASKS = "no running Tasks"
+
+# The states of a Task running on a Worker, which a Work Requirement's or
+# Task Group's abort applies to: one yet to start would be cancelled
+# instead, and a finished one has nothing to abort. A Task named by its ID
+# is aborted whatever its state.
+_RUNNING_TASK_STATUSES = [
+    TaskStatus.DOWNLOADING,
+    TaskStatus.EXECUTING,
+    TaskStatus.UPLOADING,
+]
 
 
 @dataclass
@@ -158,7 +169,7 @@ def _run_units(units: list[_Unit], tally: _Tally) -> None:
                 f"Not attempting the remaining {not_attempted} item(s),"
                 " which would fail in the same way"
             )
-        return
+        raise ReportedFailure(failure.cause)
 
 
 def _target_units(targets: list[str], tally: _Tally) -> list[_Unit]:
@@ -203,7 +214,7 @@ def _target_units(targets: list[str], tally: _Tally) -> list[_Unit]:
         else:
             units.append(
                 (
-                    [(target, ET_WORK_REQUIREMENTS)],
+                    [(target, _ydid_entity_type(ydid_type))],
                     lambda t=target, y=ydid_type: _not_a_target(t, y),
                 )
             )
@@ -216,7 +227,15 @@ def _not_a_target(target: str, ydid_type: YDIDType) -> None:
         " Work Requirement ID"
     )
     print_error(message)
-    _record(target, "failed", message, ET_WORK_REQUIREMENTS)
+    _record(target, "failed", message, _ydid_entity_type(ydid_type))
+
+
+def _ydid_entity_type(ydid_type: YDIDType) -> str:
+    """
+    The type a YDID of the wrong kind is recorded as: its own, spelled as
+    yd-list spells types ('Worker Pool' as 'worker-pools').
+    """
+    return f"{ydid_type.value.lower().replace(' ', '-')}s"
 
 
 def _named_target_type(target: str) -> str:
@@ -232,7 +251,8 @@ def _interactive_units(tally: _Tally) -> list[_Unit]:
         f"including '{CONFIG_COMMON.name_tag}'"
     )
 
-    # Abort Tasks is always interactive
+    # The Work Requirements, and then their Tasks, are chosen from lists,
+    # unless --yes is given
     ARGS_PARSER.interactive = True
 
     work_requirement_summaries: list[WorkRequirementSummary] = (
@@ -266,16 +286,16 @@ def _interactive_units(tally: _Tally) -> list[_Unit]:
     ]
 
 
-def _executing_tasks(search: TaskSearch) -> list[Task]:
+def _running_tasks(search: TaskSearch) -> list[Task]:
     return CLIENT.work_client.get_tasks(search).list_all()
 
 
-def _nothing_executing(entity: object, entity_type: str, where: str) -> None:
+def _nothing_running(entity: object, entity_type: str, where: str) -> None:
     print_info(
-        f"No currently executing Tasks in this {where}",
+        f"No Tasks running in this {where}",
         override_quiet=not json_requested(),
     )
-    _record(entity, "skipped", NO_EXECUTING_TASKS, entity_type)
+    _record(entity, "skipped", NO_RUNNING_TASKS, entity_type)
 
 
 def _task_group_part(work_requirement_id: str | None, task: Task) -> str:
@@ -298,14 +318,14 @@ def _abort_in_work_requirement(
     work_requirement_id: str | None, work_requirement_name: str | None, tally: _Tally
 ) -> None:
     print_info(f"Aborting Tasks in Work Requirement '{work_requirement_name}'")
-    tasks = _executing_tasks(
+    tasks = _running_tasks(
         TaskSearch(
-            workRequirementId=work_requirement_id, statuses=[TaskStatus.EXECUTING]
+            workRequirementId=work_requirement_id, statuses=_RUNNING_TASK_STATUSES
         )
     )
     entity = {"id": work_requirement_id, "name": work_requirement_name}
     if not tasks:
-        _nothing_executing(entity, ET_WORK_REQUIREMENTS, "Work Requirement")
+        _nothing_running(entity, ET_WORK_REQUIREMENTS, "Work Requirement")
         return
     _abort_tasks(
         tasks,
@@ -319,11 +339,11 @@ def _abort_in_task_group(
     task_group_id: str | None, task_group_name: str | None, context: str, tally: _Tally
 ) -> None:
     print_info(f"Aborting Tasks in {context}")
-    tasks = _executing_tasks(
-        TaskSearch(taskGroupId=task_group_id, statuses=[TaskStatus.EXECUTING])
+    tasks = _running_tasks(
+        TaskSearch(taskGroupId=task_group_id, statuses=_RUNNING_TASK_STATUSES)
     )
     if not tasks:
-        _nothing_executing(
+        _nothing_running(
             {"id": task_group_id, "name": task_group_name},
             ET_TASK_GROUPS,
             "Task Group",
@@ -424,7 +444,12 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
 
     if len(parts) == 2:
         first, second = parts
-        work_requirement = _work_requirement_named(first, namespace)
+        # An ambiguous Work Requirement name rules out only this reading
+        ambiguous: AmbiguousNameError | None = None
+        try:
+            work_requirement = _work_requirement_named(first, namespace)
+        except AmbiguousNameError as e:
+            work_requirement, ambiguous = None, e
         if work_requirement is not None and _abort_in_named_task_group(
             work_requirement, second, tally
         ):
@@ -433,6 +458,8 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
         if namespaced is not None:
             _abort_in_work_requirement(namespaced.id, namespaced.name, tally)
             return
+        if ambiguous is not None:
+            raise ambiguous
         if work_requirement is not None:
             _not_found(
                 f"Task Group '{second}' in Work Requirement '{first}'",
@@ -479,9 +506,9 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
 
 def _abort_tasks_by_id(task_ids: list[str], tally: _Tally) -> None:
     """
-    Abort Tasks by their YDIDs. Only an executing Task is aborted, as in a
-    Work Requirement or Task Group: aborting one that has yet to start would
-    cancel it instead.
+    Abort Tasks by their YDIDs, whatever their state: a Task named by its
+    ID is aborted as asked, and the Platform decides what that means for
+    one that is not running.
     """
     tasks: list[Task] = []
     for index, task_id in enumerate(task_ids):
@@ -494,16 +521,6 @@ def _abort_tasks_by_id(task_ids: list[str], tally: _Tally) -> None:
             tally.failed += 1
             tally.handled.add(task_id)
             _stop_if_session_failure(e, [*tasks, *task_ids[index + 1 :]], tally)
-            continue
-        if task.status != TaskStatus.EXECUTING:
-            status = getattr(task.status, "value", task.status)
-            print_info(
-                f"Task '{task.name}' is not executing ({status})",
-                override_quiet=not json_requested(),
-            )
-            _record(task, "skipped", f"not executing ({status})")
-            tally.skipped += 1
-            tally.handled.add(task_id)
             continue
         tasks.append(task)
 
@@ -556,7 +573,7 @@ def _abort_tasks(
             return
         if not confirmed(f"Abort {len(selected)} Task(s)?"):
             for task in selected:
-                _record(task, "skipped")
+                _record(task, "skipped", "declined")
                 tally.skipped += 1
                 tally.handled.add(task.id)
             return

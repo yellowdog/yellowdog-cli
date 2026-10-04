@@ -22,6 +22,21 @@ UNAUTHORIZED_TEXT = "Unauthorized"
 SESSION_FAILURES = frozenset({ExitCode.AUTHENTICATION, ExitCode.CONNECTION})
 
 
+class ReportedFailure(Exception):
+    """
+    A failure the command has already reported and recorded, raised so that
+    the wrapper exits with the failure's own code rather than the FAILURE a
+    recorded 'failed' outcome gives, and without printing it a second time.
+    The action commands raise it once a SESSION_FAILURES failure has stopped
+    them and the items not attempted have been recorded. classify() reaches
+    the code through the cause.
+    """
+
+    def __init__(self, cause: BaseException):
+        super().__init__(str(cause))
+        self.__cause__ = cause
+
+
 class NotFoundError(LookupError):
     """
     An entity the command was given does not exist. Raised in place of the

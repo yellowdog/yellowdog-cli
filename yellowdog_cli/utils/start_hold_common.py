@@ -32,7 +32,12 @@ from yellowdog_cli.utils.entity_utils import (
     find_work_requirement_by_name,
     get_filtered_work_requirement_summaries,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, NotFoundError, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -201,7 +206,7 @@ def _apply_by_name_or_id(action: WorkRequirementAction, names_or_ids: list[str])
                     action.record(work_requirement, "skipped", f"not attempted: {e}")
                 for remaining in targets[index + 1 :]:
                     action.record(remaining, "skipped", f"not attempted: {e}")
-                return
+                raise ReportedFailure(e)
             continue
         if all(wr.id != work_requirement.id for wr in resolved):  # name and ID
             resolved.append(work_requirement)
@@ -305,7 +310,7 @@ def _carry_out(action: WorkRequirementAction, work_requirements: list[_Target]):
                 _warn_not_attempted(len(not_attempted))
                 for remaining in not_attempted:
                     action.record(remaining, "skipped", f"not attempted: {e}")
-                break
+                raise ReportedFailure(e)
             continue
         actioned_ids.append(cast(str, work_requirement.id))
         action.record(work_requirement)

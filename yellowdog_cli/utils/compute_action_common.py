@@ -36,7 +36,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_instance_by_id,
     resolve_name_glob,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -323,7 +323,7 @@ def _apply_action_to_summaries(
                 _warn_not_attempted(len(not_attempted))
                 for remaining in not_attempted:
                     action.record(remaining, "skipped", f"not attempted: {e}")
-                break
+                raise ReportedFailure(e)
             continue  # Don't follow Compute Requirements that weren't actioned
         actioned_ids.append(cast(str, compute_requirement_summary.id))
 
@@ -424,7 +424,7 @@ def _apply_action_by_name_or_id(action: ComputeAction, names_or_ids: list[str]):
                         f"not attempted: {e}",
                         remaining_type,
                     )
-                return
+                raise ReportedFailure(e)
 
     if plan.is_empty():
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
@@ -497,7 +497,7 @@ def _carry_out(action: ComputeAction, plan: _Plan):
                         action.record(
                             entity, "skipped", f"not attempted: {e}", remaining_type
                         )
-                break
+                raise ReportedFailure(e)
             continue
         if cr_id not in actioned_ids:
             actioned_ids.append(cr_id)

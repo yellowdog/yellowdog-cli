@@ -21,6 +21,7 @@ from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.exit_codes import (
     MISSING_PERMISSION_TEXT,
     UNAUTHORIZED_TEXT,
+    ReportedFailure,
     classify,
 )
 from yellowdog_cli.utils.load_config import (
@@ -144,7 +145,9 @@ def main_wrapper(func):
                     # the run
                     exit_code = ExitCode.FAILURE
             except Exception as e:
-                if MISSING_PERMISSION_TEXT in str(e):
+                if isinstance(e, ReportedFailure):
+                    pass  # The command has reported it already
+                elif MISSING_PERMISSION_TEXT in str(e):
                     print_error(
                         "Your Application does not have the required permissions to"
                         " perform the requested operation. Please check that the"

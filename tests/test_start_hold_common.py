@@ -30,6 +30,7 @@ from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     check_glob_and_literal_names,
 )
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.start_hold_common import FINISH, HOLD, START
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -207,7 +208,9 @@ class TestListing:
     def test_a_session_failure_stops(self, platform, monkeypatch, error):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["start_work_requirement_by_id"] = error
-        _run(monkeypatch, START, [])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, START, [])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
 
@@ -310,7 +313,9 @@ class TestExplicit:
     def test_a_session_failure_while_resolving_stops(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["search"] = _http_error(401)
-        _run(monkeypatch, START, [WR_A, "wr-b", WR_B])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, START, [WR_A, "wr-b", WR_B])
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert _outcomes(platform) == [
             (None, "failed"),  # 'wr-b', by name
@@ -321,7 +326,9 @@ class TestExplicit:
     def test_a_session_failure_while_acting_stops(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["start_work_requirement_by_id"] = _http_error(401)
-        _run(monkeypatch, START, [WR_A, WR_B])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, START, [WR_A, WR_B])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
 
 

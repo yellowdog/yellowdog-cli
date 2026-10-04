@@ -301,3 +301,34 @@ class TestClassifyChained:
 
     def test_an_unchained_failure_is_still_failure(self):
         assert classify(RuntimeError("odd")) == ExitCode.FAILURE
+
+
+class TestReportedFailure:
+    def test_it_is_classified_by_its_cause(self):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        assert classify(ReportedFailure(_http_error(401))) == ExitCode.AUTHENTICATION
+        assert (
+            classify(ReportedFailure(RequestsConnectionError("reset")))
+            == ExitCode.CONNECTION
+        )
+
+    @pytest.mark.parametrize("wrapper", WRAPPERS)
+    def test_the_wrapper_exits_with_its_code_without_reporting_it_again(
+        self, wrapped, wrapper, capsys
+    ):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        wrapped(json_output=True)
+
+        def func():
+            # What an action command does on a session failure: record the
+            # failure and what it did not attempt, then raise
+            record({"id": "a", "outcome": "failed", "error": "reset"})
+            record({"id": "b", "outcome": "skipped", "error": "not attempted: reset"})
+            raise ReportedFailure(RequestsConnectionError("reset"))
+
+        assert _exit_code(wrapper, func) == ExitCode.CONNECTION
+        out, err = capsys.readouterr()
+        assert [item["outcome"] for item in json_loads(out)] == ["failed", "skipped"]
+        assert "reset" not in err  # the command printed it; the wrapper did not

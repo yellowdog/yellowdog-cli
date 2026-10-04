@@ -31,6 +31,7 @@ from yellowdog_client.model import (
 
 import yellowdog_cli.shutdown as yd_shutdown
 from yellowdog_cli.utils.entity_utils import get_worker_pool_by_id
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 WP_A = "ydid:wrkrpool:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -385,7 +386,9 @@ class TestSessionFailures:
     def test_while_shutting_down(self, platform, monkeypatch, error):
         platform.pools[WP_B] = _provisioned(WP_B, "wp-b")
         platform.failures["shutdown_worker_pool_by_id"] = error
-        _run(monkeypatch, [WP_A, WP_B, NODE])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [WP_A, WP_B, NODE])
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [r["outcome"] for r in platform.records] == [
             "failed",
@@ -397,7 +400,9 @@ class TestSessionFailures:
     def test_while_terminating(self, platform, monkeypatch):
         platform.pools[WP_B] = _provisioned(WP_B, "wp-b")
         platform.failures["terminate_compute_requirement_by_id"] = _http_error(401)
-        _run(monkeypatch, [WP_A, WP_B], terminate=True)
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [WP_A, WP_B], terminate=True)
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
         assert [(r["type"], r["outcome"]) for r in platform.records] == [
             ("worker-pools", "shut down"),
@@ -418,7 +423,9 @@ class TestSessionFailures:
             return platform.pools[pool_id]
 
         get.side_effect = failing_second
-        _run(monkeypatch, [WP_A, WP_B, NODE])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [WP_A, WP_B, NODE])
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [(r["id"], r["outcome"]) for r in platform.records] == [
             (WP_B, "failed"),

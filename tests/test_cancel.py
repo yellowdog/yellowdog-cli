@@ -25,6 +25,7 @@ from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 
 import yellowdog_cli.cancel as yd_cancel
 from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 WR_A = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -200,7 +201,9 @@ class TestListing:
     def test_a_session_failure_stops(self, platform, monkeypatch, error):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["cancel_work_requirement_by_id"] = error
-        _run(monkeypatch, [])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
 
@@ -320,7 +323,9 @@ class TestExplicit:
             return platform.wrs[wr_id]
 
         get.side_effect = failing_second
-        _run(monkeypatch, [WR_A, WR_B, TASK])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [WR_A, WR_B, TASK])
+        assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [(r["id"], r["outcome"]) for r in platform.records] == [
             (WR_B, "failed"),
@@ -330,5 +335,7 @@ class TestExplicit:
 
     def test_a_session_failure_while_cancelling_stops(self, platform, monkeypatch):
         platform.failures["cancel_work_requirement_by_id"] = _http_error(401)
-        _run(monkeypatch, [WR_A, TASK])
+        with pytest.raises(ReportedFailure) as raised:
+            _run(monkeypatch, [WR_A, TASK])
+        assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]

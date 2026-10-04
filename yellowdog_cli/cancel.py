@@ -34,7 +34,12 @@ from yellowdog_cli.utils.entity_utils import (
     find_work_requirement_by_name,
     get_filtered_work_requirement_summaries,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, NotFoundError, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -214,7 +219,7 @@ def _cancel_by_name_or_id(names_or_ids: list[str]):
                         f"not attempted: {e}",
                         ET_TASKS if _is_task(remaining) else ET_WORK_REQUIREMENTS,
                     )
-                return
+                raise ReportedFailure(e)
             continue
 
         if entity_type == ET_TASKS:
@@ -357,7 +362,7 @@ def _carry_out(work_requirements: list[_WorkRequirementTarget], tasks: list[Task
                 _warn_not_attempted(len(not_attempted))
                 for remaining_type, remaining in not_attempted:
                     _record(remaining, "skipped", f"not attempted: {e}", remaining_type)
-                break
+                raise ReportedFailure(e)
 
     if cancelled_ids or tasks_cancelled:
         if cancelled_ids:

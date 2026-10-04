@@ -7,7 +7,7 @@ run without YellowDog API credentials.
 from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
 from yellowdog_cli.utils.load_config import (
     warn_of_config_violations,
     warn_of_undefined_config_variables,
@@ -49,9 +49,10 @@ def dataclient_wrapper(func):
                 exit_code = e.code if isinstance(e.code, int) else ExitCode.FAILURE
                 flush_results_after_failure()
             except Exception as e:
-                # Include the exception type when there's no message,
-                # to avoid printing a blank error
-                print_error(str(e) or f"{type(e).__name__} (no error message)")
+                if not isinstance(e, ReportedFailure):  # else reported already
+                    # Include the exception type when there's no message,
+                    # to avoid printing a blank error
+                    print_error(str(e) or f"{type(e).__name__} (no error message)")
                 # Set before the flush, so a flush that fails cannot turn the
                 # failure into a success; what was done is still reported
                 exit_code = classify(e)
