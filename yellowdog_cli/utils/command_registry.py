@@ -229,6 +229,52 @@ ENTITY_TYPES = [
     ET_WORKERS,
 ]
 
+# The entity types each of yd-list's filtering options applies to; the option
+# is refused for any other (check_list_options), rather than ignored
+LIST_NAME_TYPES = frozenset(
+    {
+        ET_WORK_REQUIREMENTS,
+        ET_WORKER_POOLS,
+        ET_COMPUTE_REQUIREMENTS,
+        ET_COMPUTE_REQUIREMENT_TEMPLATES,
+        ET_COMPUTE_SOURCE_TEMPLATES,
+        ET_IMAGE_FAMILIES,
+        ET_USERS,
+        ET_APPLICATIONS,
+        ET_GROUPS,
+        ET_ROLES,
+        ET_KEYRINGS,
+        ET_PERMISSIONS,
+    }
+)
+# Those with a status to filter on
+LIST_STATUS_TYPES = frozenset(
+    {
+        ET_WORK_REQUIREMENTS,
+        ET_TASK_GROUPS,
+        ET_TASKS,
+        ET_WORKER_POOLS,
+        ET_NODES,
+        ET_WORKERS,
+        ET_COMPUTE_REQUIREMENTS,
+        ET_INSTANCES,
+    }
+)
+# Those listed from active Work Requirements, Worker Pools or Compute
+# Requirements, or themselves active or not
+LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Those with YellowDog IDs: attribute definitions, namespace policies and
+# permissions have none
+LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
+    ET_ATTRIBUTE_DEFINITIONS,
+    ET_NAMESPACE_POLICIES,
+    ET_PERMISSIONS,
+}
+# Those whose details carry IDs that --substitute-ids replaces with names
+LIST_SUBSTITUTE_TYPES = frozenset(
+    {ET_COMPUTE_REQUIREMENT_TEMPLATES, ET_COMPUTE_SOURCE_TEMPLATES, ET_ALLOWANCES}
+)
+
 # Single uppercase letter synonyms for each entity type.
 SYNONYMS: dict[str, str] = {
     "A": ET_ALLOWANCES,
@@ -1928,6 +1974,37 @@ AUTO_SELECT_ALL = option(
     help="automatically select all listed objects (implies '--details')",
 )
 
+
+def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-list's filtering options, refused for an entity type they do not
+    apply to rather than ignored: a script would otherwise take an
+    unfiltered listing for a filtered one.
+    """
+    entity_type = args.entity_type
+    for dest, flag, types in (
+        ("name_glob", "--name", LIST_NAME_TYPES),
+        ("status_filter", "--status", LIST_STATUS_TYPES),
+        ("active_only", "--active-only", LIST_ACTIVE_TYPES),
+        ("ids_only", "--ids-only", LIST_ID_TYPES),
+        ("substitute_ids", "--substitute-ids", LIST_SUBSTITUTE_TYPES),
+        ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
+    ):
+        if getattr(args, dest, None) and entity_type not in types:
+            parser.error(
+                f"{flag} does not apply to {entity_type}; it applies to "
+                + ", ".join(sorted(types))
+            )
+    if args.public_ips_only:
+        for dest, flag in (
+            ("json", "--json"),
+            ("ids_only", "--ids-only"),
+            ("details", "--details"),
+        ):
+            if getattr(args, dest, False):
+                parser.error(f"--public-ips-only cannot be used with {flag}")
+
+
 COMMANDS["yd-list"] = Command(
     name="yd-list",
     purpose="listing all kinds of YellowDog items",
@@ -1953,6 +2030,7 @@ COMMANDS["yd-list"] = Command(
         STRIP_IDS,
         OUTPUT_FILE,
     ),
+    validators=(check_list_options,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "List entities of one type in the namespace, optionally filtered by"

@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from yellowdog_cli.utils.settings import (
     ET_APPLICATIONS,
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
@@ -11,7 +13,6 @@ from yellowdog_cli.utils.settings import (
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_KEYRINGS,
-    ET_NODES,
     ET_PERMISSIONS,
     ET_ROLES,
     ET_USERS,
@@ -501,44 +502,26 @@ def test_name_glob_filters_roles(capsys):
     assert capsys.readouterr().out.strip() == "1"
 
 
-def test_name_glob_rejected_for_unsupported_entity_type():
+def test_name_glob_rejected_for_unsupported_entity_type(capsys):
     """
-    '--name' must be rejected for entity types outside
-    NAME_GLOB_SUPPORTED_ENTITY_TYPES, e.g. 'nodes' (which would otherwise route
-    through the Worker-Pool-supporting list_worker_pools()). The helper returns
-    False and logs the error; main() then stops before dispatching.
+    '--name' is refused, as the command line is parsed, for an entity type
+    that does not support it, e.g. 'nodes' (which would otherwise route
+    through the Worker-Pool-supporting list_worker_pools()).
     """
-    import yellowdog_cli.list as yd_list
+    from yellowdog_cli.utils.args import CLIParser
 
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="x*")),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_NODES) is False
-
-    mock_print_error.assert_called_once()
-    assert "not supported" in mock_print_error.call_args.args[0]
-    assert "nodes" in mock_print_error.call_args.args[0]
+    with pytest.raises(SystemExit) as raised:
+        CLIParser(command="yd-list", argv=["nodes", "--name", "x*"])
+    assert raised.value.code == 2
+    assert "--name does not apply to nodes" in capsys.readouterr().err
 
 
-def test_name_glob_supported_for_supported_type_and_when_unset():
-    import yellowdog_cli.list as yd_list
+def test_name_glob_accepted_for_a_supported_type():
+    from yellowdog_cli.utils.args import CLIParser
 
-    # A supported entity type with a glob is allowed, with no error logged.
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="x*")),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_USERS) is True
-    mock_print_error.assert_not_called()
-
-    # With no glob, any entity type is allowed.
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob=None)),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_NODES) is True
-    mock_print_error.assert_not_called()
+    assert (
+        CLIParser(command="yd-list", argv=["users", "--name", "x*"]).name_glob == "x*"
+    )
 
 
 def test_name_glob_filters_keyrings_and_warns_on_unnamed():

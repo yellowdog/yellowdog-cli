@@ -4,11 +4,12 @@
 Command to list YellowDog entities.
 """
 
+from collections.abc import Callable
 from json import loads as json_loads
 from os.path import exists
-from typing import cast
+from typing import Any, cast
 
-from requests import get
+from requests import HTTPError, get
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
     Allowance,
@@ -19,6 +20,7 @@ from yellowdog_client.model import (
     Group,
     Instance,
     InstanceSearch,
+    InstanceStatus,
     KeyringSearch,
     KeyringSummary,
     MachineImageFamilySearch,
@@ -68,7 +70,6 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.glob_utils import glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import (
-    print_error,
     print_info,
     print_json,
     print_numbered_object_list,
@@ -102,6 +103,7 @@ from yellowdog_cli.utils.settings import (
     ET_WORKERS,
     PROP_GROUPS,
     PROP_RESOURCE,
+    RAW_REQUEST_TIMEOUT,
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_GROUP,
@@ -115,37 +117,6 @@ from yellowdog_cli.utils.settings import (
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
-
-NAME_GLOB_SUPPORTED_ENTITY_TYPES: frozenset[str] = frozenset(
-    {
-        ET_WORK_REQUIREMENTS,
-        ET_WORKER_POOLS,
-        ET_COMPUTE_REQUIREMENTS,
-        ET_COMPUTE_REQUIREMENT_TEMPLATES,
-        ET_COMPUTE_SOURCE_TEMPLATES,
-        ET_IMAGE_FAMILIES,
-        ET_USERS,
-        ET_APPLICATIONS,
-        ET_GROUPS,
-        ET_ROLES,
-        ET_KEYRINGS,
-        ET_PERMISSIONS,
-    }
-)
-
-
-def _name_glob_supported(entity_type: str | None) -> bool:
-    """
-    Return True unless '--name' was supplied for an entity type that does not
-    support name-glob filtering. In the unsupported case, log an error (the
-    caller should then stop). Gating on 'entity_type' here also rejects
-    sub-entities (e.g. 'nodes') that route through a supporting top-level
-    listing function.
-    """
-    if ARGS_PARSER.name_glob and entity_type not in NAME_GLOB_SUPPORTED_ENTITY_TYPES:
-        print_error(f"--name is not supported for entity type '{entity_type}'")
-        return False
-    return True
 
 
 def _filter_by_name_glob_with_warning(
@@ -174,6 +145,7 @@ _KNOWN_STATUSES: dict[str, frozenset[str]] = {
     ET_NODES: frozenset(e.value for e in NodeStatus),
     ET_WORKERS: frozenset(e.value for e in WorkerStatus),
     ET_COMPUTE_REQUIREMENTS: frozenset(e.value for e in ComputeRequirementStatus),
+    ET_INSTANCES: frozenset(e.value for e in InstanceStatus),
 }
 
 
@@ -200,6 +172,30 @@ def _print_json_or_count(objects: list) -> None:
         print(len(objects))
     else:
         print_objects_as_json(objects)
+
+
+def _listing_all() -> bool:
+    """
+    The non-interactive modes, which list every matching entity, the
+    children of every matching parent included, without asking which:
+    '--json', '--count' and '--ids-only'.
+    """
+    return bool(
+        ARGS_PARSER.json_output or ARGS_PARSER.count_only or ARGS_PARSER.ids_only
+    )
+
+
+def _print_all(objects: list, id_of: Callable[[Any], object] | None = None) -> None:
+    """
+    Final output for the non-interactive modes: the IDs for '--ids-only'
+    ('id_of' gives an entity's, its 'id' by default), otherwise as
+    _print_json_or_count().
+    """
+    if ARGS_PARSER.ids_only:
+        for obj in objects:
+            print(obj.id if id_of is None else id_of(obj))
+    else:
+        _print_json_or_count(objects)
 
 
 def _print_empty(message: str) -> None:
@@ -275,9 +271,8 @@ def main():
                     f"Known values: {', '.join(sorted(known))}"
                 )
 
-    if not _name_glob_supported(entity_type):
-        return
-
+    # An option that does not apply to the entity type has been refused as
+    # the command line was parsed ('check_list_options' in the registry)
     if entity_type in (ET_WORK_REQUIREMENTS, ET_TASK_GROUPS, ET_TASKS):
         list_work_requirements()
     elif entity_type in (ET_WORKER_POOLS, ET_NODES, ET_WORKERS):
@@ -352,7 +347,7 @@ def list_work_requirements():
         )
     else:
         print_info(
-            f"Listing Work Requirements in namespace  '{CONFIG_COMMON.namespace}' "
+            f"Listing Work Requirements in namespace '{CONFIG_COMMON.namespace}' "
             f"with '{CONFIG_COMMON.name_tag}' in tag",
         )
         work_requirement_summaries = get_filtered_work_requirement_summaries(
@@ -393,7 +388,7 @@ def list_work_requirements():
                 print(wr_summary.id)
         else:
             print_numbered_object_list(CLIENT, work_requirement_summaries)
-    elif ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+    elif _listing_all():
         # Collect all task groups / tasks across all work requirements
         all_objects: list = []
         for work_summary in work_requirement_summaries:
@@ -409,7 +404,7 @@ def list_work_requirements():
                             get_all_tasks_in_task_group(CLIENT, cast(str, tg.id))
                         )
                     )
-        _print_json_or_count(all_objects)
+        _print_all(all_objects)
     else:
         selected_work_summaries = select(
             CLIENT, work_requirement_summaries, single_result=True
@@ -462,6 +457,7 @@ def list_worker_pools():
             f"Displaying Worker Pools in namespace '{namespace}' "
             f"matching name pattern '{name}'"
         )
+        searched_namespace = namespace
         worker_pool_summaries = filter_summaries_by_name_glob(
             get_worker_pool_summaries(
                 CLIENT,
@@ -482,6 +478,7 @@ def list_worker_pools():
             CONFIG_COMMON.name_tag,
             partial_name_matches=True,
         )
+        searched_namespace = CONFIG_COMMON.namespace
 
     excluded_states = (
         [WorkerPoolStatus.TERMINATED, WorkerPoolStatus.SHUTDOWN]
@@ -492,16 +489,20 @@ def list_worker_pools():
     if ARGS_PARSER.active_only:
         print_info("Displaying active Worker Pools only")
 
-    worker_pool_summaries = _apply_status_filter(
-        [
-            wp_summary
-            for wp_summary in worker_pool_summaries
-            if wp_summary.status not in excluded_states
-            and (
-                bool(ARGS_PARSER.name_glob)
-                or CONFIG_COMMON.namespace in cast(str, wp_summary.namespace)
-            )
-        ]
+    # Only the namespace searched, matched exactly: a substring match let
+    # 'dev' take in 'dev-team'
+    worker_pools = [
+        wp_summary
+        for wp_summary in worker_pool_summaries
+        if wp_summary.status not in excluded_states
+        and (not searched_namespace or wp_summary.namespace == searched_namespace)
+    ]
+    # A Worker Pool's own status filters Worker Pools, not their Nodes or
+    # Workers, which are filtered on theirs
+    worker_pool_summaries = (
+        worker_pools
+        if ARGS_PARSER.entity_type in (ET_NODES, ET_WORKERS)
+        else _apply_status_filter(worker_pools)
     )
 
     if not worker_pool_summaries:
@@ -509,7 +510,7 @@ def list_worker_pools():
         return
 
     if ARGS_PARSER.entity_type in (ET_NODES, ET_WORKERS):
-        if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
+        if _listing_all():
             list_nodes(worker_pool_summaries)
             return
         print_info(
@@ -557,6 +558,7 @@ def list_compute_requirements():
         print_info("Listing active Compute Requirements only")
         included_statuses = [
             ComputeRequirementStatus.NEW,
+            ComputeRequirementStatus.PROVISIONING,
             ComputeRequirementStatus.STARTING,
             ComputeRequirementStatus.RUNNING,
             ComputeRequirementStatus.STOPPING,
@@ -589,7 +591,7 @@ def list_compute_requirements():
         print_info(
             "Listing Compute Requirements in "
             f"namespace '{CONFIG_COMMON.namespace}' with "
-            f" names containing '{CONFIG_COMMON.name_tag}'"
+            f"names containing '{CONFIG_COMMON.name_tag}'"
         )
         compute_requirement_summaries = get_compute_requirement_summaries(
             CLIENT, CONFIG_COMMON.namespace, CONFIG_COMMON.name_tag, included_statuses
@@ -599,22 +601,36 @@ def list_compute_requirements():
         _print_empty("No matching Compute Requirements")
         return
 
-    compute_requirement_summaries = _apply_status_filter(
-        sorted_objects(compute_requirement_summaries)
-    )
+    compute_requirement_summaries = sorted_objects(compute_requirement_summaries)
+    # A Compute Requirement's own status filters Compute Requirements, not
+    # their Instances, which are filtered on theirs
+    if ARGS_PARSER.entity_type != ET_INSTANCES:
+        compute_requirement_summaries = _apply_status_filter(
+            compute_requirement_summaries
+        )
     if not compute_requirement_summaries:
         _print_empty("No matching Compute Requirements")
         return
 
     if ARGS_PARSER.entity_type == ET_INSTANCES:
-        if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
-            all_instances: list = []
+        if _listing_all():
+            # Each with its Compute Requirement's ID, for '--ids-only': an
+            # Instance is named as 'cr_id.instance_id' by the commands that
+            # take one
+            all_instances: list[tuple[str, Instance]] = []
             for cr_summary in compute_requirement_summaries:
                 sc: SearchClient = CLIENT.compute_client.get_instances(
                     instance_search=InstanceSearch(computeRequirementId=cr_summary.id)
                 )
-                all_instances.extend(sc.list_all())
-            _print_json_or_count(all_instances)
+                all_instances.extend(
+                    (cast(str, cr_summary.id), instance)
+                    for instance in _apply_status_filter(sc.list_all())
+                )
+            if ARGS_PARSER.ids_only:
+                for cr_id, instance in all_instances:
+                    print(f"{cr_id}.{instance.id.instanceId}")  # type: ignore[union-attr]
+            else:
+                _print_json_or_count([instance for _, instance in all_instances])
             return
         for compute_requirement_summary in select(
             CLIENT, compute_requirement_summaries, single_result=True
@@ -623,11 +639,26 @@ def list_compute_requirements():
         return
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
-        _print_json_or_count(compute_requirement_summaries)
+        if ARGS_PARSER.details:
+            print_objects_as_json(
+                [
+                    CLIENT.compute_client.get_compute_requirement_by_id(
+                        cast(str, cr.id)
+                    )
+                    for cr in compute_requirement_summaries
+                ]
+            )
+        else:
+            _print_json_or_count(compute_requirement_summaries)
     elif ARGS_PARSER.details:
         print_yd_object_list(
             [
-                (compute_requirement, None)
+                (
+                    CLIENT.compute_client.get_compute_requirement_by_id(
+                        cast(str, compute_requirement.id)
+                    ),
+                    None,
+                )
                 for compute_requirement in select(CLIENT, compute_requirement_summaries)
             ]
         )
@@ -646,7 +677,7 @@ def list_instances(compute_requirement_id: str):
     search_client: SearchClient = CLIENT.compute_client.get_instances(
         instance_search=instance_search
     )
-    instances: list[Instance] = search_client.list_all()
+    instances: list[Instance] = _apply_status_filter(search_client.list_all())
     if not instances:
         print_info("No instances to list")
         return
@@ -654,20 +685,14 @@ def list_instances(compute_requirement_id: str):
     if ARGS_PARSER.public_ips_only:
         print_info("Listing public IP addresses only:")
         for instance in instances:
-            try:
-                if instance.publicIpAddress is not None:
-                    print(instance.publicIpAddress)
-            except Exception:
-                pass
+            if instance.publicIpAddress is not None:
+                print(instance.publicIpAddress)
         return
 
     if ARGS_PARSER.details:
         print_yd_object_list(
             [(instance, None) for instance in select(CLIENT, instances)]
         )
-    elif ARGS_PARSER.ids_only:
-        for instance in instances:
-            print(instance.id.instanceId)  # type: ignore[union-attr]
     else:
         print_numbered_object_list(CLIENT, instances)
 
@@ -697,13 +722,10 @@ def list_nodes(worker_pool_summaries: list[WorkerPoolSummary]):
         list_workers(nodes_all)
         return
 
-    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
-        _print_json_or_count(nodes_all)
+    if _listing_all():
+        _print_all(nodes_all)
     elif ARGS_PARSER.details:
         print_yd_object_list([(node, None) for node in select(CLIENT, nodes_all)])
-    elif ARGS_PARSER.ids_only:
-        for node in nodes_all:
-            print(node.id)
     else:
         print_numbered_object_list(CLIENT, nodes_all)
 
@@ -737,13 +759,10 @@ def list_workers(nodes: list[Node]):
         _print_empty("No Workers to display")
         return
 
-    if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
-        _print_json_or_count(workers_all)
+    if _listing_all():
+        _print_all(workers_all)
     elif ARGS_PARSER.details:
         print_yd_object_list([(worker, None) for worker in select(CLIENT, workers_all)])
-    elif ARGS_PARSER.ids_only:
-        for worker in workers_all:
-            print(worker.id)
     else:
         print_numbered_object_list(CLIENT, workers_all)
 
@@ -1042,7 +1061,7 @@ def list_allowances():
     search_client: SearchClient = CLIENT.allowances_client.get_allowances(
         allowances_search
     )
-    allowances: list[Allowance] = search_client.list_all()
+    allowances: list[Allowance] = sorted_objects(search_client.list_all())
     if not allowances:
         _print_empty("No Allowances to display")
         return
@@ -1091,12 +1110,16 @@ def list_attribute_definitions():
     response = get(
         url=f"{CONFIG_COMMON.url}/compute/attributes/user",
         headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        timeout=RAW_REQUEST_TIMEOUT,
     )
 
     if response.status_code != 200:
-        raise RuntimeError(
+        # An HTTPError carrying the response, so that the exit code names
+        # the kind of failure (a 401 exits 4)
+        raise HTTPError(
             "Unable to list user attribute definitions: HTTP "
-            f"{response.status_code} ({response.text})"
+            f"{response.status_code} ({response.text})",
+            response=response,
         )
 
     attribute_definition_list = json_loads(response.text)
@@ -1104,13 +1127,6 @@ def list_attribute_definitions():
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         _print_json_or_count(attribute_definition_list)
-        return
-
-    if ARGS_PARSER.ids_only:
-        print_warning(
-            "'--ids-only' is not supported for Attribute Definitions"
-            " (they have no YellowDog IDs)"
-        )
         return
 
     if not ARGS_PARSER.details:
@@ -1193,13 +1209,6 @@ def list_namespace_policies():
         _print_json_or_count(namespace_policies)
         return
 
-    if ARGS_PARSER.ids_only:
-        print_warning(
-            "'--ids-only' is not supported for Namespace Policies"
-            " (they have no YellowDog IDs)"
-        )
-        return
-
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, namespace_policies)
         return
@@ -1224,13 +1233,13 @@ def list_users():
     users: list[User] = get_all_users(CLIENT)
 
     if ARGS_PARSER.name_glob:
-        users = filter_summaries_by_name_glob(users, ARGS_PARSER.name_glob)
+        users = _filter_by_name_glob_with_warning(users, ARGS_PARSER.name_glob, "User")
 
     if not users:
         _print_empty("No Users to display")
         return
 
-    users.sort(key=lambda user: user.name)
+    users.sort(key=lambda user: user.name or "")
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         _print_json_or_count(users)
@@ -1270,15 +1279,15 @@ def list_applications():
     applications = get_all_applications(CLIENT)
 
     if ARGS_PARSER.name_glob:
-        applications = filter_summaries_by_name_glob(
-            applications, ARGS_PARSER.name_glob
+        applications = _filter_by_name_glob_with_warning(
+            applications, ARGS_PARSER.name_glob, "Application"
         )
 
     if not applications:
         _print_empty("No Applications to display")
         return
 
-    applications.sort(key=lambda app: app.name)
+    applications.sort(key=lambda app: app.name or "")
 
     if ARGS_PARSER.json_output or ARGS_PARSER.count_only:
         _print_json_or_count(applications)
@@ -1330,13 +1339,20 @@ def list_groups():
 
     group_summaries.sort(key=lambda group: group.name if group.name is not None else "")  # type: ignore[arg-type]
 
+    # The summaries are enough to count the Groups or give their IDs; the
+    # table, '--json' and '--details' show each one's roles, which only the
+    # Group itself carries, so it is fetched, one call each, only for those
     if ARGS_PARSER.count_only:
-        # Avoid the per-group detail fetches below just to count them
         print(len(group_summaries))
         return
 
+    if ARGS_PARSER.ids_only:
+        for group_summary in group_summaries:
+            print(group_summary.id)
+        return
+
     groups: list[Group] = [
-        CLIENT.account_client.get_group(group.id)  # type: ignore[arg-type]
+        CLIENT.account_client.get_group(cast(str, group.id))
         for group in group_summaries
     ]
 
@@ -1344,19 +1360,12 @@ def list_groups():
         print_objects_as_json(groups)
         return
 
-    if ARGS_PARSER.ids_only:
-        for group in groups:
-            print(group.id)
-        return
-
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, groups, object_type_name="Group")
         return
 
-    selected_groups = select(CLIENT, groups)
-
     print_yd_object_list(
-        [(group, {PROP_RESOURCE: RN_GROUP}) for group in selected_groups]
+        [(group, {PROP_RESOURCE: RN_GROUP}) for group in select(CLIENT, groups)]
     )
 
 
@@ -1377,14 +1386,22 @@ def list_roles():
 
     role_summaries.sort(key=lambda role_: role_.name if role_.name is not None else "")
 
+    # The summaries are enough to count the Roles or give their IDs; the
+    # table, '--json' and '--details' show each one's permissions, which only
+    # the Role itself carries, so it is fetched, one call each, only for those
     if ARGS_PARSER.count_only:
-        # Avoid the per-role permission fetches below just to count them
         print(len(role_summaries))
         return
 
-    print_info("Obtaining permissions for each role ...")
-    roles: list[Role] = [CLIENT.account_client.get_role(x.id) for x in role_summaries]  # type: ignore[arg-type]
+    if ARGS_PARSER.ids_only:
+        for role_summary in role_summaries:
+            print(role_summary.id)
+        return
 
+    print_info("Obtaining permissions for each role ...")
+    roles: list[Role] = [
+        CLIENT.account_client.get_role(cast(str, role.id)) for role in role_summaries
+    ]
     # Sort permissions alphabetically (contorting the type)
     for role in roles:
         role.permissions = list(role.permissions)
@@ -1392,11 +1409,6 @@ def list_roles():
 
     if ARGS_PARSER.json_output:
         print_objects_as_json(roles)
-        return
-
-    if ARGS_PARSER.ids_only:
-        for role in roles:
-            print(role.id)
         return
 
     if not ARGS_PARSER.details:
@@ -1423,12 +1435,6 @@ def list_permissions():
         _print_json_or_count(permissions)
         return
 
-    if ARGS_PARSER.ids_only:
-        print_warning(
-            "'--ids-only' is not supported for Permissions (they have no YellowDog IDs)"
-        )
-        return
-
     if not ARGS_PARSER.details:
         print_numbered_object_list(CLIENT, permissions, object_type_name="Permission")
         return
@@ -1444,6 +1450,7 @@ def get_autoscaling_capacity(namespace: str) -> dict:
     response = get(
         url=f"{CONFIG_COMMON.url}/workerPools/namespaces/{namespace}/autoscalingCapacity",
         headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        timeout=RAW_REQUEST_TIMEOUT,
     )
     if response.status_code == 200:
         return response.json()

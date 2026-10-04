@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 16:31:14 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 18:44:39 BST 2026 -->
 
 <!--te-->
 
@@ -4040,6 +4040,8 @@ Valid entity types are:
 | `worker-pools` | `P` | Worker Pools |
 | `workers` | `F` | Workers (interactive: select a Worker Pool first) |
 
+The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking.
+
 Unambiguous prefix matching is supported — for example `yd-list work-r` resolves to `yd-list work-requirements`, and `yd-list key` resolves to `yd-list keyrings`. Single uppercase synonyms also work, e.g. `yd-list W` and `yd-list K`.
 
 `yd-list` has more options than are listed here; use `yd-list --help` to inspect the full set. Commonly used options are:
@@ -4047,21 +4049,23 @@ Unambiguous prefix matching is supported — for example `yd-list work-r` resolv
 | Option | Description |
 |---|---|
 | `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
-| `--active-only`/`-l` | List only entities in a non-terminated state, where applicable (e.g. Work Requirements, Worker Pools) |
-| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and errors for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd-cancel`/`yd-shutdown`/`yd-terminate` would select |
-| `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses |
-| `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line |
+| `--active-only`/`-l` | List only entities in a non-terminated state: Work Requirements (and their Task Groups and Tasks), Worker Pools (and their Nodes and Workers) and Compute Requirements (and their Instances); a Compute Requirement that is still provisioning counts as active |
+| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and is refused for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd-cancel`/`yd-shutdown`/`yd-terminate` would select |
+| `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses. Applies to the entity types that have a status: Work Requirements, Task Groups, Tasks, Worker Pools, Nodes, Workers, Compute Requirements and Instances |
+| `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line. Like `--json`, this lists non-interactively: e.g. `yd-list tasks --ids-only` gives the IDs of all Tasks across all matching Work Requirements and Task Groups. An Instance is given as `<compute-requirement-ydid>.<instance-id>`, the form `yd-compute-stop` and the other Instance commands take. Refused for attribute definitions, namespace policies and permissions, which have no IDs |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
 | `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd-list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
 | `--sort <name\|created\|status\|namespace>` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
 | `--reverse` | List items in reverse (descending) order of the active `--sort` key |
-| `--public-ips-only` | With `instances`, list public IP addresses only |
+| `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
 
 ```shell
 yd-list work-requirements --name 'myproject-*' --active-only
 ```
 
 For convenience, `tag` is set to the empty string unless explicitly set on the command line; `namespace` falls back to the configured value as usual.
+
+An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list).
 
