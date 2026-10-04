@@ -26,8 +26,10 @@
 // exist, so groups.jsonnet and keyrings.jsonnet must run first -- within a
 // single yd-create invocation covering all three files,
 // load_resources.py's resource_creation_order already sequences Keyring
-// before Group before Application, so this only needs calling out if the
-// live layer creates each corpus file as a separate invocation instead.
+// before Group before Application. The live layer creates each corpus file
+// as a separate invocation, though, and create_application() refuses a
+// Group that does not exist, so application-max fails there:
+// resource_live.KNOWN_PARTIAL_FAILURE_NAMES records it.
 
 local base = import 'lib/base.libsonnet';
 

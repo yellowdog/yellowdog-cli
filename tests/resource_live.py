@@ -53,13 +53,17 @@ SECRET_EMITTING = {
 
 # Corpus files with at least one specification that cannot be created standalone:
 # requirement-templates.jsonnet's staticMin/dynamicMin and configured-worker-pools.
-# jsonnet's poolMin (see each file's own header comment). create_compute_requirement
+# jsonnet's poolMin (see each file's own header comment), and applications.jsonnet's
+# application-max, whose Group and Keyring (made by groups.jsonnet and
+# keyrings.jsonnet) do not exist when the file is created alone: create_application()
+# refuses a Group that does not exist before changing anything, and fails on a
+# Keyring grant that cannot be made. create_compute_requirement
 # _template() and create_configured_worker_pool() (create.py) read 'namespace' out
 # of the resource dict with a plain subscript before any model is ever built, which
 # is stricter than the SDK model's own optional field -- a known finding from
 # Tasks 5/6, not a bug for the live layer to work around. create_resources()
 # (create.py) catches each resource's exception, continues to the next resource in
-# the same file, and only raises (a single RuntimeError, after the whole file) if
+# the same file, and only raises (a single ReportedFailure, after the whole file) if
 # at least one failed -- so running one of these files live still creates every
 # *other* resource in it, and 'yd-create' exits non-zero for the file as a whole
 # despite that partial success. Not consulted by anything in this module yet --
@@ -70,7 +74,9 @@ SECRET_EMITTING = {
 KNOWN_PARTIAL_FAILURES = {
     "requirement-templates.jsonnet",
     "configured-worker-pools.jsonnet",
+    "applications.jsonnet",
 }
+
 
 # Which specification(s) in a KNOWN_PARTIAL_FAILURES file are expected to fail,
 # named by their own base.name() suffix (the part after 'yd-test-{run_id}-') so
@@ -78,12 +84,26 @@ KNOWN_PARTIAL_FAILURES = {
 # file's overall exit code is non-zero -- the "make it explicit rather than
 # tolerant of any failure" a partial failure demands. Every other specification
 # in each file is expected to succeed.
-KNOWN_PARTIAL_FAILURE_NAMES: dict[str, frozenset[str]] = {
+#
+# MISSING_NAMESPACE_FAILURE_NAMES are those that fail for want of a
+# 'namespace', which the specification schema requires too, so the schema
+# rejects exactly those; application-max is valid, and fails only live.
+MISSING_NAMESPACE_FAILURE_NAMES: dict[str, frozenset[str]] = {
     "requirement-templates.jsonnet": frozenset(
         {"static-template-min", "dynamic-template-min"}
     ),
     "configured-worker-pools.jsonnet": frozenset({"configured-pool-min"}),
 }
+KNOWN_PARTIAL_FAILURE_NAMES: dict[str, frozenset[str]] = {
+    **MISSING_NAMESPACE_FAILURE_NAMES,
+    "applications.jsonnet": frozenset({"application-max"}),
+}
+
+# The KNOWN_PARTIAL_FAILURES files whose removal fails too: the specifications
+# missing a 'namespace' read it with a plain subscript in remove.py as in
+# create.py. applications.jsonnet's removal succeeds, an Application never
+# created being skipped as not found.
+KNOWN_PARTIAL_REMOVAL_FAILURES = set(MISSING_NAMESPACE_FAILURE_NAMES)
 
 # Entity types yd-list has no YellowDog ID for at all ('--ids-only' warns "not
 # supported ... they have no YellowDog IDs" and lists nothing) -- so ydids()'s

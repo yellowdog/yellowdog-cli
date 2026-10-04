@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 19:37:10 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 19:58:21 BST 2026 -->
 
 <!--te-->
 
@@ -513,7 +513,7 @@ The documents, by command:
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
 | Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
-| Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`, and Allowances removed by description `"count"`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Any `failed` entry exits the command 1, even where the command otherwise completes normally |
+| Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`; a Group whose roles were set adds `"rolesAdded"` and, when updated, `"rolesRemoved"` (the roles' names); and Allowances removed by description by `yd-remove` add `"count"`, while those `yd-create -M` replaces are each recorded as `removed` with their `id`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Any `failed` entry exits `yd-remove` 1, even where the command otherwise completes normally; `yd-create` exits with its failures' shared code, or 1 if they had different causes |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
@@ -540,7 +540,7 @@ The exit codes, with or without `--json`:
 | 8 | A connection error or timeout reaching the platform |
 | 130 | Interrupted from the keyboard |
 
-A failure a command handles per item, such as a 404 for one of several IDs, is reported in that item's record's `error` and exits 1 whatever its cause: a script wanting the cause reads `error`. The exception is a failure every later request would repeat, an authentication failure (4) or a connection failure (8): it stops the action commands (`yd-abort`, `yd-boost`, `yd-cancel`, `yd-finish`, `yd-hold`, `yd-start`, `yd-shutdown`, `yd-terminate` and the `yd-compute-*` commands), which record the item that failed as `failed` and those not attempted as `skipped`, and exit with that failure's code. `yd-create` and `yd-remove` carry on past such a failure, and exit 1. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
+A failure a command handles per item, such as a 404 for one of several IDs, is reported in that item's record's `error` and exits 1 whatever its cause: a script wanting the cause reads `error`. The exception is a failure every later request would repeat, an authentication failure (4) or a connection failure (8): it stops the action commands (`yd-abort`, `yd-boost`, `yd-cancel`, `yd-finish`, `yd-hold`, `yd-start`, `yd-shutdown`, `yd-terminate` and the `yd-compute-*` commands), which record the item that failed as `failed` and those not attempted as `skipped`, and exit with that failure's code. `yd-create` stops in the same way, recording the specifications not attempted as `skipped`, and otherwise carries on past a failed resource and exits with the code its failures share (6 if every one was a resource not found, for example), or 1 if they had different causes. `yd-remove` carries on past such a failure, and exits 1. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
 
 Exit codes 2 (usage) and 3 (configuration) occur before the command runs, so stdout is empty: a script should check the exit code before parsing stdout.
 
@@ -3124,11 +3124,11 @@ Example:
 }
 ```
 
-The `effectiveFrom` and `effectiveUntil` date-time string fields can use any format supported by the **[dateparser](https://dateparser.readthedocs.io/en/latest/)** library, including some natural language formulations.
+The `effectiveFrom` and `effectiveUntil` date-time string fields can use any format supported by the **[dateparser](https://dateparser.readthedocs.io/en/latest/)** library, including some natural language formulations. In a TOML resource specification, a TOML date or date-time value can be used as it is. A dry run shows the parsed dates in ISO 8601 form.
 
 Compute Source Template and Compute Requirement Template IDs can use names instead of IDs, and the IDs will be substituted by `yd-create`. However, if a Source allowance is created (type `co.yellowdog.platform.model.SourceAllowance`), then the Compute Source ID (note: **not** the Compute Source Template ID) itself must be used in the `sourceId` property.
 
-Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd-create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, these can optionally be removed before new Allowances are created. If multiple existing, matching Allowances are found, the user will be asked to select which ones (if any) to remove.
+Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd-create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, these can optionally be removed once the new Allowance has been created, so a creation that fails leaves the existing ones in place. If multiple existing, matching Allowances are found, the user will be asked to select which ones (if any) to remove.
 
 When using `yd-remove`, Allowances are again matched using their `description` property only if `--match-allowances-by-description`/`-M` is used. As with other resources, Allowances can also be removed by their IDs (`yd-remove --ids <allowance_id> [<allowance_id>]`).
 
@@ -3188,7 +3188,7 @@ Namespace Policies are matched by their `namespace` property when using `yd-crea
 
 ## Groups
 
-When creating and updating groups, a list of roles with their scopes can be supplied and the group will be created or updated with the roles specified. Roles can be identified by their names or YellowDog IDs.
+When creating and updating groups, a list of roles with their scopes can be supplied and the group will be created or updated with the roles specified. Roles can be identified by their names or YellowDog IDs. When an existing group is updated with a `roles` list, roles it holds that the list does not name are removed, so `"roles": []` removes them all; without a `roles` property its roles are left as they are. A role that does not exist fails the group before anything is changed.
 
 Example:
 
@@ -3218,7 +3218,7 @@ Example:
 
 ## Applications
 
-When creating and updating Applications, a list of groups to which the Application should belong can optionally be supplied. Groups can be specified by their names or YellowDog IDs.
+When creating and updating Applications, a list of groups to which the Application should belong can optionally be supplied. Groups can be specified by their names or YellowDog IDs. When an existing Application is updated with a `groups` list, it is removed from groups the list does not name, so `"groups": []` removes it from them all; without a `groups` property its groups are left as they are. A group that does not exist fails the Application before anything is changed.
 
 Example:
 
@@ -3245,7 +3245,7 @@ An optional `keyrings` list can be supplied to grant the Application access to o
 
 When an Application is **created**, the full API key returned at creation time is used to perform the grant — no additional options are required.
 
-When an Application is **updated**, the grant is attempted without an API key secret. If the platform requires the key secret (e.g. for initial access setup), re-run the update with `--regenerate-app-keys`; the newly generated key will be used to perform the grant.
+When an Application is **updated**, the grant needs the Application's API key, which the platform returns only when the key is created, so an update with a `keyrings` list is refused unless `--regenerate-app-keys` is used, in which case the newly generated key is used to perform the grant. A grant that fails (for example, because the Keyring does not exist) fails the Application, after the other Keyrings have been tried.
 
 ### Creating and Regenerating Application Keys
 
@@ -3255,7 +3255,7 @@ When an Application is updated, the `--regenerate-app-keys` option can be used. 
 
 ## Users
 
-Users cannot be created or removed using the resource specification approach, but their groups can be managed. Groups can be specified by their names or YellowDog IDs.
+Users cannot be created or removed using the resource specification approach, but their groups can be managed. Groups can be specified by their names or YellowDog IDs. With a `groups` list, the user is removed from groups the list does not name, so `"groups": []` removes them from all of them; without a `groups` property their groups are left as they are. A user or group that does not exist fails the specification before anything is changed, as do identifying properties that name different users.
 
 Users can be identified as follows:
 
@@ -4314,9 +4314,9 @@ yd-create [options] <resource-specification> [<resource-specification> ...]
 Key options:
 - `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
-- `--regenerate-app-keys` — regenerate the application key and secret when updating an Application
+- `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
-- `--dry-run`/`-D` — report what would be created or updated, without applying any changes
+- `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
 - `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Specification Schemas](#specification-schemas))
 - `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))

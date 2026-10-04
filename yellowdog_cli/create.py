@@ -7,12 +7,12 @@ A script to create or update YellowDog resources.
 import dataclasses
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
-from typing import cast
+from datetime import date, datetime
+from typing import Any, cast
 
 import yellowdog_client.model as model
 from dateparser import parse as date_parse
-from requests import post, put
+from requests import Response, post, put
 from requests.exceptions import HTTPError
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
@@ -57,12 +57,19 @@ from yellowdog_cli.utils.entity_utils import (
     get_user_groups,
     remove_allowances_matching_description,
 )
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
     load_resource_specifications,
     resource_display_name,
 )
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
@@ -108,6 +115,7 @@ from yellowdog_cli.utils.settings import (
     PROP_TYPE,
     PROP_UNITS,
     PROP_USERNAME,
+    RAW_REQUEST_TIMEOUT,
     REDACTED_VALUE,
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,
@@ -132,12 +140,6 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-CLEAR_CST_CACHE: bool = False  # Track whether the CST cache needs to be cleared
-CLEAR_CRT_CACHE: bool = False  # Track whether the CRT cache needs to be cleared
-CLEAR_IMAGE_FAMILY_CACHE: bool = (
-    False  # Track whether the image caches need to be cleared
-)
-
 
 @main_wrapper
 def main():
@@ -160,79 +162,118 @@ def create_resources(resources: list[dict] | None = None, show_secrets: bool = F
             " 'resource' property is removed."
         )
 
-    failed = 0
-    for resource in cast(list[dict], resources):  # Keep typing happy
+    specifications = cast(list[dict], resources)  # Keep typing happy
+    failures: list[Exception] = []
+    for index, resource in enumerate(specifications):
         name = resource_display_name(resource.get(PROP_RESOURCE), resource)
-        try:
-            resource_type = resource.pop(PROP_RESOURCE)
-            # Strip the internal source-dir stamp before any further processing
-            # so it never reaches _get_model_object or appears in dry-run output.
-            source_dir: str | None = resource.pop(RESOURCE_SOURCE_DIR, None)
-            # There is potential additional processing for CRTs, CSTs and
-            # Allowances; print JSON from within their creation functions
-            if ARGS_PARSER.dry_run and resource_type not in [
-                RN_ALLOWANCE,
-                RN_REQUIREMENT_TEMPLATE,
-                RN_SOURCE_TEMPLATE,
-            ]:
-                _show_dry_run_specification(resource_type, resource)
-                continue
-        except KeyError:
+        resource_type = resource.pop(PROP_RESOURCE, None)
+        # Strip the internal source-dir stamp before any further processing
+        # so it never reaches _get_model_object or appears in dry-run output.
+        source_dir: str | None = resource.pop(RESOURCE_SOURCE_DIR, None)
+        if resource_type is None:
             error = (
                 f"Missing required '{PROP_RESOURCE}' property in the following resource"
                 f" specification: {resource}"
             )
             print_error(error)
             _record_failure(None, name, error)
-            failed += 1
+            failures.append(ValueError(error))
             continue
-        try:
-            if resource_type == RN_SOURCE_TEMPLATE:
-                create_compute_source_template(resource, source_dir)
-            elif resource_type == RN_REQUIREMENT_TEMPLATE:
-                create_compute_requirement_template(resource, source_dir)
-            elif resource_type == RN_KEYRING:
-                create_keyring(resource, show_secrets)
-            elif resource_type == RN_CREDENTIAL:
-                create_credential(resource)
-            elif resource_type == RN_IMAGE_FAMILY:
-                create_image_family(resource)
-            elif resource_type == RN_CONFIGURED_POOL:
-                create_configured_worker_pool(resource)
-            elif resource_type == RN_ALLOWANCE:
-                create_allowance(resource)
-            elif resource_type in [
-                RN_STRING_ATTRIBUTE_DEFINITION,
-                RN_NUMERIC_ATTRIBUTE_DEFINITION,
-            ]:
-                create_attribute_definition(resource, resource_type)
-            elif resource_type == RN_NAMESPACE_POLICY:
-                create_namespace_policy(resource)
-            elif resource_type == RN_GROUP:
-                create_group(resource)
-            elif resource_type == RN_APPLICATION:
-                create_application(resource)
-            elif resource_type == RN_INTERNAL_USER:
-                update_user(resource, internal_user=True)
-            elif resource_type == RN_EXTERNAL_USER:
-                update_user(resource, internal_user=False)
-            elif resource_type == RN_NAMESPACE:
-                create_namespace(resource)
-            else:
-                print_error(f"Unknown resource type '{resource_type}'")
-                _record_failure(
-                    resource_type, name, f"Unknown resource type '{resource_type}'"
-                )
-                failed += 1
-        except Exception as e:
-            print_error(f"Failed to create resource: {e}")
-            _record_failure(resource_type, name, str(e))
-            # Allow resource creation to continue, if exceptions were not
-            # already caught in the creation functions
-            failed += 1
 
-    if failed:
-        raise RuntimeError(f"{failed} resource(s) failed to create")
+        # There is potential additional processing for CRTs, CSTs and
+        # Allowances; print JSON from within their creation functions
+        if ARGS_PARSER.dry_run and resource_type not in [
+            RN_ALLOWANCE,
+            RN_REQUIREMENT_TEMPLATE,
+            RN_SOURCE_TEMPLATE,
+        ]:
+            _show_dry_run_specification(resource_type, resource)
+            continue
+
+        try:
+            _create_resource(resource_type, resource, source_dir, show_secrets)
+        except Exception as e:
+            described = resource_type if name is None else f"{resource_type} '{name}'"
+            print_error(f"Failed to create {described}: {e}")
+            _record_failure(resource_type, name, str(e))
+            failures.append(e)
+            if classify(e) in SESSION_FAILURES:
+                # Every later call would fail the same way
+                _record_not_attempted(specifications[index + 1 :], e)
+                raise ReportedFailure(e)
+
+    if failures:
+        message = f"{len(failures)} resource(s) failed to create"
+        print_error(message)
+        codes = {classify(e) for e in failures}
+        # The shared cause's exit code, or FAILURE for different causes
+        raise ReportedFailure(failures[0] if len(codes) == 1 else RuntimeError(message))
+
+
+def _create_resource(
+    resource_type: str, resource: dict, source_dir: str | None, show_secrets: bool
+) -> None:
+    """
+    Create or update one resource, by its type.
+    """
+    if resource_type == RN_SOURCE_TEMPLATE:
+        create_compute_source_template(resource, source_dir)
+    elif resource_type == RN_REQUIREMENT_TEMPLATE:
+        create_compute_requirement_template(resource, source_dir)
+    elif resource_type == RN_KEYRING:
+        create_keyring(resource, show_secrets)
+    elif resource_type == RN_CREDENTIAL:
+        create_credential(resource)
+    elif resource_type == RN_IMAGE_FAMILY:
+        create_image_family(resource)
+    elif resource_type == RN_CONFIGURED_POOL:
+        create_configured_worker_pool(resource)
+    elif resource_type == RN_ALLOWANCE:
+        create_allowance(resource)
+    elif resource_type in [
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    ]:
+        create_attribute_definition(resource, resource_type)
+    elif resource_type == RN_NAMESPACE_POLICY:
+        create_namespace_policy(resource)
+    elif resource_type == RN_GROUP:
+        create_group(resource)
+    elif resource_type == RN_APPLICATION:
+        create_application(resource)
+    elif resource_type == RN_INTERNAL_USER:
+        update_user(resource, internal_user=True)
+    elif resource_type == RN_EXTERNAL_USER:
+        update_user(resource, internal_user=False)
+    elif resource_type == RN_NAMESPACE:
+        create_namespace(resource)
+    else:
+        raise ValueError(f"Unknown resource type '{resource_type}'")
+
+
+def _record_not_attempted(specifications: list[dict], cause: Exception) -> None:
+    """
+    Record the specifications a session failure left unattempted.
+    """
+    if ARGS_PARSER.dry_run:
+        return
+    for specification in specifications:
+        resource_type = specification.get(PROP_RESOURCE)
+        record_resource(
+            resource_type,
+            resource_display_name(resource_type, specification),
+            None,
+            "skipped",
+            error=f"not attempted: {cause}",
+        )
+
+
+def _missing_property(e: KeyError) -> ValueError:
+    """
+    The error for a required property a specification lacks; 'e' is the
+    KeyError its lookup raised, whose str() is the quoted property name.
+    """
+    return ValueError(f"Expected property {e} to be defined")
 
 
 def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
@@ -269,13 +310,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         source_type = source.pop(PROP_TYPE).split(".")[-1]  # Extract Source type
         name = source[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
-
-    # Allow image families (etc.) to be referenced by name rather than ID
-    global CLEAR_IMAGE_FAMILY_CACHE
-    if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
-        clear_image_caches()
-        CLEAR_IMAGE_FAMILY_CACHE = False
+        raise _missing_property(e) from e
 
     # Google CSTs use property name 'image' instead of 'imageId'
     image_property_name = (
@@ -337,9 +372,6 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         )
         record_resource(RN_SOURCE_TEMPLATE, name, compute_source.id, "updated")
 
-    global CLEAR_CST_CACHE
-    CLEAR_CST_CACHE = True
-
     if compute_source.id is not None:
         print_quiet_result(compute_source.id)
 
@@ -354,20 +386,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
-
-    # Allow source templates to be referenced by name instead of ID:
-    # substitute ID for name
-    global CLEAR_CST_CACHE
-    if CLEAR_CST_CACHE:  # Update the CST cache if required
-        clear_compute_source_template_cache()
-        CLEAR_CST_CACHE = False
-
-    # Allow image families to be referenced by name rather than ID
-    global CLEAR_IMAGE_FAMILY_CACHE
-    if CLEAR_IMAGE_FAMILY_CACHE:  # Update the IF cache if required
-        clear_image_caches()
-        CLEAR_IMAGE_FAMILY_CACHE = False
+        raise _missing_property(e) from e
 
     def _get_images_id(image_str: str, context: dict, key: str):
         """
@@ -395,7 +414,15 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
                 client=CLIENT, name=template_name_or_id, namespace=namespace
             )
             if template_id is None:
-                raise ValueError(
+                if ARGS_PARSER.dry_run:
+                    # It may be created by an earlier specification, which
+                    # a dry run does not create
+                    print_dry_run(
+                        f"Compute Source Template '{template_name_or_id}' not found"
+                        " (yet): its name is left unresolved"
+                    )
+                    continue
+                raise NotFoundError(
                     f"Compute Source Template name '{template_name_or_id}' not found"
                 )
             source[PROP_CST_ID] = template_id
@@ -439,8 +466,6 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
             compute_template
         )
         clear_compute_requirement_template_cache()
-        global CLEAR_CRT_CACHE
-        CLEAR_CRT_CACHE = True
         print_info(f"Created Compute Requirement Template '{name}' ({template.id})")
         record_resource(RN_REQUIREMENT_TEMPLATE, name, template.id, "created")
         print_quiet_result(template.id)
@@ -475,7 +500,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         name = resource[PROP_NAME]
         description = resource[PROP_DESCRIPTION]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     existing = get_keyring_summary_by_name(CLIENT, name)
     if existing is not None:
@@ -491,28 +516,24 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         print_quiet_result(keyring.id)
         return
 
-    try:
-        keyring_response = CLIENT.keyring_client.add_keyring(name, description)
-        clear_keyring_cache()
-        keyring = keyring_response.keyring
-        keyring_password = keyring_response.keyringPassword
-        show_password = bool(ARGS_PARSER.show_keyring_passwords or show_secrets)
-        keyring_password = keyring_password if show_password else REDACTED_VALUE
-        print_info(
-            f"Created Keyring '{name}' ({keyring.id}): Password = {keyring_password}"  # type: ignore[union-attr]
-        )
-        # The password only when asked for: never even as REDACTED_VALUE
-        record_resource(
-            RN_KEYRING,
-            name,
-            keyring.id,  # type: ignore[union-attr]
-            "created",
-            **({"password": keyring_password} if show_password else {}),
-        )
-        print_quiet_result(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
-    except Exception as e:
-        print_error(f"Failed to create Keyring '{name}': {e}")
-        raise
+    keyring_response = CLIENT.keyring_client.add_keyring(name, description)
+    clear_keyring_cache()
+    keyring = keyring_response.keyring
+    keyring_password = keyring_response.keyringPassword
+    show_password = bool(ARGS_PARSER.show_keyring_passwords or show_secrets)
+    keyring_password = keyring_password if show_password else REDACTED_VALUE
+    print_info(
+        f"Created Keyring '{name}' ({keyring.id}): Password = {keyring_password}"  # type: ignore[union-attr]
+    )
+    # The password only when asked for: never even as REDACTED_VALUE
+    record_resource(
+        RN_KEYRING,
+        name,
+        keyring.id,  # type: ignore[union-attr]
+        "created",
+        **({"password": keyring_password} if show_password else {}),
+    )
+    print_quiet_result(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
 
 
 def create_credential(resource: dict):
@@ -527,7 +548,7 @@ def create_credential(resource: dict):
         ]  # Extract Source type
         name = credential_data[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     credential = _get_model_object(credential_type, credential_data)
     try:
@@ -536,14 +557,14 @@ def create_credential(resource: dict):
         # A put: the Platform does not say whether it replaced one
         record_resource(RN_CREDENTIAL, name, None, "created", keyring=keyring_name)
     except HTTPError as e:
-        print_error(f"Failed to add Credential '{name}' to Keyring '{keyring_name}'")
         resp = e.response
         if resp is not None and resp.status_code == 400:
-            print_error(f"{resp.text}")
-        elif resp is not None and resp.status_code == 404:
-            print_error(f"Keyring '{keyring_name}' not found")
-        else:
-            print_error(e)
+            raise ValueError(
+                f"Credential '{name}' was refused for Keyring '{keyring_name}':"
+                f" {resp.text}"
+            ) from e
+        if resp is not None and resp.status_code == 404:
+            raise NotFoundError(f"Keyring '{keyring_name}' not found") from e
         raise
 
 
@@ -556,7 +577,7 @@ def create_image_family(resource):
         namespace = resource[PROP_NAMESPACE]
         os_type_str = resource.pop(PROP_OS_TYPE)
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     fq_name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{family_name}"
 
@@ -566,48 +587,47 @@ def create_image_family(resource):
         raise ValueError(
             f"Property '{PROP_OS_TYPE}' has invalid value '{os_type_str}'; valid values are"
             f" {[e.value for e in ImageOsType]}"
-        )
+        ) from None
 
     # Start by updating the outer Image Family
     image_family = _get_model_object("MachineImageFamily", resource, osType=os_type)
 
     # Check for existing Image Family
     try:
-        existing_image_family: MachineImageFamily = (
+        existing_image_family: MachineImageFamily | None = (
             CLIENT.images_client.get_image_family_by_name(
                 namespace=namespace, family_name=family_name
             )
-        )  # Raises HTTP 404 Error if not found
-        if not confirmed(f"Update existing Machine Image Family '{fq_name}'?"):
-            record_resource(
-                RN_IMAGE_FAMILY, fq_name, existing_image_family.id, "skipped"
-            )
-            return
-        image_family.id = existing_image_family.id
-        # This will update the Image Family but not its constituent
-        # Image Group/Image resources
-        CLIENT.images_client.update_image_family(image_family)
-        clear_image_caches()
-        print_info(
-            f"Updated existing Machine Image Family '{fq_name}' ('{image_family.id}')"
         )
-        record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "updated")
-        print_quiet_result(image_family.id)
     except HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            # This will create the Image Family and all of its constituent
-            # Image Group/Image resources
-            image_family = _create_image_family(image_family, fq_name)
-            print_info(f"Created Machine Image Family '{fq_name}' ({image_family.id})")
-            record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "created")
-            print_quiet_result(image_family.id)
-            return
-        else:
-            print_error(f"Failed to create/update Image Family '{fq_name}': {e}")
+        if not is_http_not_found(e):
             raise
+        existing_image_family = None
+
+    if existing_image_family is None:
+        # This will create the Image Family and all of its constituent
+        # Image Group/Image resources
+        image_family = _create_image_family(image_family, fq_name)
+        print_info(f"Created Machine Image Family '{fq_name}' ({image_family.id})")
+        print_quiet_result(image_family.id)
+        return
+
+    if not confirmed(f"Update existing Machine Image Family '{fq_name}'?"):
+        record_resource(RN_IMAGE_FAMILY, fq_name, existing_image_family.id, "skipped")
+        return
+    image_family.id = existing_image_family.id
+    # This will update the Image Family but not its constituent
+    # Image Group/Image resources
+    CLIENT.images_client.update_image_family(image_family)
+    clear_image_caches()
+    print_info(
+        f"Updated existing Machine Image Family '{fq_name}' ('{image_family.id}')"
+    )
+    record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "updated")
+    print_quiet_result(image_family.id)
 
     # This is an update, so Image Groups have been ignored
-    image_groups: list[MachineImageGroup] = image_family.imageGroups
+    image_groups: list[MachineImageGroup] = image_family.imageGroups or []
 
     # Delete Image Groups that have been removed from
     # the new resource specification
@@ -616,6 +636,7 @@ def create_image_family(resource):
         if existing_image_group.name not in updated_image_group_names:
             if confirmed(f"Remove existing Image Group '{existing_image_group.name}'?"):
                 CLIENT.images_client.delete_image_group(existing_image_group)
+                clear_image_caches()
                 print_info(f"Deleted Image Group '{existing_image_group.name}'")
                 record_resource(
                     RN_IMAGE_GROUP,
@@ -628,9 +649,6 @@ def create_image_family(resource):
     for image_group in image_groups:
         _create_image_group(namespace, image_family, image_group)
 
-    global CLEAR_IMAGE_FAMILY_CACHE
-    CLEAR_IMAGE_FAMILY_CACHE = True
-
 
 def _create_image_group(
     namespace: str, image_family: MachineImageFamily, image_group: MachineImageGroup
@@ -640,37 +658,37 @@ def _create_image_group(
     """
     # Check for existing Image Group
     try:
-        existing_image_group: MachineImageGroup = (
+        existing_image_group: MachineImageGroup | None = (
             CLIENT.images_client.get_image_group_by_name(
                 namespace=namespace,
                 family_name=image_family.name,
                 group_name=image_group.name,
             )
-        )  # Raises HTTP 404 Error if not found
-        if not confirmed(f"Update existing Machine Image Group '{image_group.name}'?"):
-            record_resource(
-                RN_IMAGE_GROUP, image_group.name, existing_image_group.id, "skipped"
-            )
-            return
-        image_group.id = existing_image_group.id
-        CLIENT.images_client.update_image_group(image_group)
-        print_info(f"Updated existing Machine Image Group '{image_group.name}'")
-        record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "updated")
-        print_quiet_result(image_group.id)
+        )
     except HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            image_group = CLIENT.images_client.add_image_group(
-                image_family, image_group
-            )
-            print_info(f"Created Machine Image Group '{image_group.name}'")
-            record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "created")
-            print_quiet_result(image_group.id)
-            return
-        else:
-            print_error(
-                f"Failed to create/update Image Group '{image_group.name}': {e}"
-            )
+        if not is_http_not_found(e):
             raise
+        existing_image_group = None
+
+    if existing_image_group is None:
+        image_group = CLIENT.images_client.add_image_group(image_family, image_group)
+        clear_image_caches()
+        print_info(f"Created Machine Image Group '{image_group.name}'")
+        _record_image_group_created(image_group)
+        print_quiet_result(image_group.id)
+        return
+
+    if not confirmed(f"Update existing Machine Image Group '{image_group.name}'?"):
+        record_resource(
+            RN_IMAGE_GROUP, image_group.name, existing_image_group.id, "skipped"
+        )
+        return
+    image_group.id = existing_image_group.id
+    CLIENT.images_client.update_image_group(image_group)
+    clear_image_caches()
+    print_info(f"Updated existing Machine Image Group '{image_group.name}'")
+    record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "updated")
+    print_quiet_result(image_group.id)
 
     # This is an update, so Images have been ignored
     images: list[MachineImage] = image_group.images or []
@@ -682,18 +700,19 @@ def _create_image_group(
         if existing_image.name not in updated_image_names:
             if confirmed(f"Remove existing Image '{existing_image.name}'?"):
                 CLIENT.images_client.delete_image(existing_image)
+                clear_image_caches()
                 print_info(f"Deleted Image '{existing_image.name}'")
                 record_resource(
                     RN_IMAGE, existing_image.name, existing_image.id, "removed"
                 )
 
     # Update Images
+    existing_image_ids = {
+        existing_image.name: existing_image.id
+        for existing_image in existing_image_group.images or []
+    }
     for image in images:
-        # Populate the Image ID (this could be made more efficient)
-        for existing_image in existing_image_group.images or []:
-            if image.name == existing_image.name:
-                image.id = existing_image.id
-                break
+        image.id = existing_image_ids.get(image.name)
         _create_image(image, image_group)
 
 
@@ -703,21 +722,31 @@ def _create_image(image: MachineImage, image_group: MachineImageGroup):
     """
     try:
         if image.id is not None:  # Existing Image
-            if confirmed(f"Update existing Machine Image '{image.name}'?"):
-                image = CLIENT.images_client.update_image(image)
-                print_info(f"Updated existing Machine Image '{image.name}'")
-                record_resource(RN_IMAGE, image.name, image.id, "updated")
-            else:
+            if not confirmed(f"Update existing Machine Image '{image.name}'?"):
                 record_resource(RN_IMAGE, image.name, image.id, "skipped")
+                return
+            image = CLIENT.images_client.update_image(image)
+            clear_image_caches()
+            print_info(f"Updated existing Machine Image '{image.name}'")
+            record_resource(RN_IMAGE, image.name, image.id, "updated")
         else:  # New Image
             image = CLIENT.images_client.add_image(image_group, image)
+            clear_image_caches()
             print_info(f"Created Machine Image '{image.name}'")
             record_resource(RN_IMAGE, image.name, image.id, "created")
     except InvalidRequestException as e:
-        print_error(f"Unable to create/update Image '{image.name}': {e}")
-        raise
+        raise RuntimeError(f"Unable to create/update Image '{image.name}': {e}") from e
 
     print_quiet_result(image.id)
+
+
+def _record_image_group_created(image_group: MachineImageGroup) -> None:
+    """
+    Record a newly created Image Group, and the Images created with it.
+    """
+    record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "created")
+    for image in image_group.images or []:
+        record_resource(RN_IMAGE, image.name, image.id, "created")
 
 
 def create_configured_worker_pool(resource: dict):
@@ -728,45 +757,40 @@ def create_configured_worker_pool(resource: dict):
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
-    try:
-        cwp_request = _get_model_object("AddConfiguredWorkerPoolRequest", resource)
-        cwp_response: AddConfiguredWorkerPoolResponse = (
-            CLIENT.worker_pool_client.add_configured_worker_pool(cwp_request)
-        )
-        print_info(
-            f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
-        )
-        print_info(
-            f"                   Worker Pool Token = '{cwp_response.token.secret}'"  # type: ignore[union-attr]
-        )
-        print_info(
-            "                   Worker Pool Expiry Time = "
-            f"{str(cwp_response.token.expiryTime).split('.')[0]}"  # type: ignore[union-attr]
-        )
-        # The token too, which '--json' otherwise silences with the prints
-        # above, and which is how a Configured Worker Pool is used
-        token = cwp_response.token
-        record_resource(
-            RN_CONFIGURED_POOL,
-            name,
-            cwp_response.workerPool.id,  # type: ignore[union-attr]
-            "created",
-            token=None if token is None else token.secret,
-            expiryTime=(
-                None
-                if token is None or token.expiryTime is None
-                else token.expiryTime.isoformat()
-            ),
-        )
-        print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
-
-    except Exception as e:
-        print_error(f"Unable to create Configured Worker Pool '{name}': {e}")
-        raise
+    cwp_request = _get_model_object("AddConfiguredWorkerPoolRequest", resource)
+    cwp_response: AddConfiguredWorkerPoolResponse = (
+        CLIENT.worker_pool_client.add_configured_worker_pool(cwp_request)
+    )
+    print_info(
+        f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
+    )
+    print_info(
+        f"                   Worker Pool Token = '{cwp_response.token.secret}'"  # type: ignore[union-attr]
+    )
+    print_info(
+        "                   Worker Pool Expiry Time = "
+        f"{str(cwp_response.token.expiryTime).split('.')[0]}"  # type: ignore[union-attr]
+    )
+    # The token too, which '--json' otherwise silences with the prints
+    # above, and which is how a Configured Worker Pool is used
+    token = cwp_response.token
+    record_resource(
+        RN_CONFIGURED_POOL,
+        name,
+        cwp_response.workerPool.id,  # type: ignore[union-attr]
+        "created",
+        token=None if token is None else token.secret,
+        expiryTime=(
+            None
+            if token is None or token.expiryTime is None
+            else token.expiryTime.isoformat()
+        ),
+    )
+    print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
 
 def create_allowance(resource: dict):
@@ -777,128 +801,121 @@ def create_allowance(resource: dict):
         original_type = resource.pop(PROP_TYPE)
         type = original_type.split(".")[-1]  # Extract type
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     if type == "SourcesAllowance":
-        template_name_or_id = resource.get(PROP_SOURCE_CREATED_FROM)
-        if template_name_or_id is not None:
-            if get_ydid_type(template_name_or_id) != YDIDType.COMPUTE_SOURCE_TEMPLATE:
-                global CLEAR_CST_CACHE
-                if CLEAR_CST_CACHE:  # Update the CST cache if required
-                    clear_compute_source_template_cache()
-                    CLEAR_CST_CACHE = False
-                template_id = get_compute_source_template_id_by_name(
-                    client=CLIENT,
-                    name=cast(str, template_name_or_id),
-                    namespace=CONFIG_COMMON.namespace,  # Worth a try if namespace not included in name
-                )
-                if template_id is None:
-                    error = f"Compute Source Template name '{template_name_or_id}' not found"
-                    print_error(error)
-                    _record_failure(RN_ALLOWANCE, resource.get(PROP_DESCRIPTION), error)
-                    return
-                print_info(
-                    f"Replaced Source Template name '{template_name_or_id}'"
-                    f" with ID {template_id}"
-                )
-                resource[PROP_SOURCE_CREATED_FROM] = template_id
-
+        _resolve_allowance_template(
+            resource,
+            PROP_SOURCE_CREATED_FROM,
+            YDIDType.COMPUTE_SOURCE_TEMPLATE,
+            "Compute Source Template",
+            get_compute_source_template_id_by_name,
+        )
     elif type == "RequirementsAllowance":
-        template_name_or_id = resource.get(PROP_REQUIREMENT_CREATED_FROM)
-        if template_name_or_id is not None:
-            if (
-                get_ydid_type(template_name_or_id)
-                != YDIDType.COMPUTE_REQUIREMENT_TEMPLATE
-            ):
-                global CLEAR_CRT_CACHE
-                if CLEAR_CRT_CACHE:  # Update the CRT cache if required
-                    clear_compute_requirement_template_cache()
-                    CLEAR_CRT_CACHE = False
-                template_id = get_compute_requirement_template_id_by_name(
-                    client=CLIENT, name=cast(str, template_name_or_id)
-                )
-                if template_id is None:
-                    error = (
-                        f"Compute Requirement Template name '{template_name_or_id}'"
-                        " not found"
-                    )
-                    print_error(error)
-                    _record_failure(RN_ALLOWANCE, resource.get(PROP_DESCRIPTION), error)
-                    return
-                print_info(
-                    f"Replaced Requirement Template name '{template_name_or_id}'"
-                    f" with ID {template_id}"
-                )
-                resource[PROP_REQUIREMENT_CREATED_FROM] = template_id
-
-    # Datetime string conversion
-    def _display_datetime(dt: datetime, canonical: bool = False) -> str:
-        if canonical:
-            return dt.strftime("%Y-%m-%dT%H:%M:%S%Z%z").rstrip()
-        else:
-            return dt.strftime("%Y-%m-%d %H:%M:%S %Z%z").rstrip()
-
-    effective_from = resource.get(PROP_EFFECTIVE_FROM)
-    if effective_from is not None:
-        resource[PROP_EFFECTIVE_FROM] = date_parse(cast(str, effective_from))
-        if resource[PROP_EFFECTIVE_FROM] is None:
-            raise ValueError(
-                f"Unable to parse '{PROP_EFFECTIVE_FROM}' date '{effective_from}'"
-            )
-        print_info(
-            f"Property '{PROP_EFFECTIVE_FROM}' = '{effective_from}' set to "
-            f"'{_display_datetime(resource[PROP_EFFECTIVE_FROM])}'"
+        _resolve_allowance_template(
+            resource,
+            PROP_REQUIREMENT_CREATED_FROM,
+            YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+            "Compute Requirement Template",
+            get_compute_requirement_template_id_by_name,
         )
 
-    effective_until = resource.get(PROP_EFFECTIVE_UNTIL)
-    if effective_until is not None:
-        resource[PROP_EFFECTIVE_UNTIL] = date_parse(cast(str, effective_until))
-        if resource[PROP_EFFECTIVE_UNTIL] is None:
-            raise ValueError(
-                f"Unable to parse '{PROP_EFFECTIVE_UNTIL}' date '{effective_until}'"
+    for property_ in [PROP_EFFECTIVE_FROM, PROP_EFFECTIVE_UNTIL]:
+        value = resource.get(property_)
+        if value is not None:
+            resource[property_] = _parsed_datetime(property_, value)
+            print_info(
+                f"Property '{property_}' = '{value}' set to "
+                f"'{_display_datetime(resource[property_])}'"
             )
-        print_info(
-            f"Property '{PROP_EFFECTIVE_UNTIL}' = '{effective_until}' set to "
-            f"'{_display_datetime(resource[PROP_EFFECTIVE_UNTIL])}'"
-        )
 
     if ARGS_PARSER.dry_run:
         _get_model_object(type, resource)  # Report extras and omissions
         # Datetime objects must be converted to strings for JSON presentation
         for property_ in [PROP_EFFECTIVE_FROM, PROP_EFFECTIVE_UNTIL]:
             if resource.get(property_) is not None:
-                resource[property_] = _display_datetime(
-                    resource[property_], canonical=True
-                )
+                resource[property_] = resource[property_].isoformat()
         resource[PROP_TYPE] = original_type  # Reinstate property
         _show_dry_run_specification(RN_ALLOWANCE, resource)
         return
 
     description = resource.get(PROP_DESCRIPTION)
-    if ARGS_PARSER.match_allowances_by_description:
-        # Look for existing Allowances that match the description string
-        if description is not None:
-            print_info(
-                "Checking for and removing existing Allowance(s) matching "
-                f"description '{description}'"
-            )
-            remove_allowances_matching_description(CLIENT, description)
-
-    try:
-        allowance = CLIENT.allowances_client.add_allowance(
-            _get_model_object(type, resource)
-        )
-        if description is None:
-            print_info(f"Created new Allowance {allowance.id}")
-        else:
-            print_info(f"Created new Allowance '{description}' ({allowance.id})")
-        record_resource(RN_ALLOWANCE, description, allowance.id, "created")
-    except Exception as e:
-        print_error(f"Unable to create Allowance: {e}")
-        raise
-
+    allowance = CLIENT.allowances_client.add_allowance(
+        _get_model_object(type, resource)
+    )
+    if description is None:
+        print_info(f"Created new Allowance {allowance.id}")
+    else:
+        print_info(f"Created new Allowance '{description}' ({allowance.id})")
+    record_resource(RN_ALLOWANCE, description, allowance.id, "created")
     if allowance.id is not None:
         print_quiet_result(allowance.id)
+
+    # Replace existing Allowances with the same description: removed only
+    # once the new one exists, so a creation that fails loses nothing
+    if ARGS_PARSER.match_allowances_by_description and description is not None:
+        print_info(
+            "Checking for and removing existing Allowance(s) matching "
+            f"description '{description}'"
+        )
+        for removed_id in remove_allowances_matching_description(
+            CLIENT, description, keep=allowance.id
+        ):
+            record_resource(RN_ALLOWANCE, description, removed_id, "removed")
+
+
+def _resolve_allowance_template(
+    resource: dict,
+    property_: str,
+    ydid_type: YDIDType,
+    label: str,
+    lookup,
+) -> None:
+    """
+    Replace a template name in an Allowance with its ID. A name without a
+    namespace is looked for in the configured namespace. In a dry run, a
+    name not found is left as it is: an earlier specification may create it.
+    """
+    template_name_or_id = resource.get(property_)
+    if template_name_or_id is None or get_ydid_type(template_name_or_id) == ydid_type:
+        return
+    template_id = lookup(
+        CLIENT, cast(str, template_name_or_id), CONFIG_COMMON.namespace
+    )
+    if template_id is None:
+        if ARGS_PARSER.dry_run:
+            print_dry_run(
+                f"{label} '{template_name_or_id}' not found (yet): its name is"
+                " left unresolved"
+            )
+            return
+        raise NotFoundError(f"{label} name '{template_name_or_id}' not found")
+    print_info(f"Replaced {label} name '{template_name_or_id}' with ID {template_id}")
+    resource[property_] = template_id
+
+
+def _parsed_datetime(property_: str, value: object) -> datetime:
+    """
+    An Allowance date: a TOML datetime or date as it is, or a string as
+    dateparser reads it ('2026-01-01', 'in 2 days').
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    if not isinstance(value, str):
+        raise ValueError(f"Property '{property_}' must be a date, not '{value}'")
+    parsed = date_parse(value)
+    if parsed is None:
+        raise ValueError(f"Unable to parse '{property_}' date '{value}'")
+    return parsed
+
+
+def _display_datetime(dt: datetime) -> str:
+    """
+    A date as the 'set to' message shows it.
+    """
+    return dt.strftime("%Y-%m-%d %H:%M:%S %Z%z").rstrip()
 
 
 def create_attribute_definition(resource: dict, resource_type: str):
@@ -912,7 +929,7 @@ def create_attribute_definition(resource: dict, resource_type: str):
         if resource_type == RN_NUMERIC_ATTRIBUTE_DEFINITION:
             default_rank_order = resource[PROP_DEFAULT_RANK_ORDER]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     url = f"{CONFIG_COMMON.url}/compute/attributes/user"
     headers = {"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"}
@@ -944,25 +961,33 @@ def create_attribute_definition(resource: dict, resource_type: str):
 
     # Attempt attribute creation
     print_info(f"Attempting to create or update Attribute Definition '{name}'")
-    response = post(url=url, headers=headers, json=payload)
+    response = post(url=url, headers=headers, json=payload, timeout=RAW_REQUEST_TIMEOUT)
 
-    if response.status_code == 200:
+    if response.ok:
         print_info(f"Created new Attribute Definition '{name}'")
         record_resource(resource_type, name, None, "created")
         return
 
-    if "Attribute already exists" in response.text:
-        if not confirmed(f"Update existing Attribute Definition '{name}'?"):
-            record_resource(resource_type, name, None, "skipped")
-            return
+    if "Attribute already exists" not in response.text:
+        _raise_for_response(response)
 
-        response = put(url=url, headers=headers, json=payload)
-        if response.status_code == 200:
-            print_info(f"Updated existing Attribute Definition '{name}'")
-            record_resource(resource_type, name, None, "updated")
-            return
+    if not confirmed(f"Update existing Attribute Definition '{name}'?"):
+        record_resource(resource_type, name, None, "skipped")
+        return
 
-    raise RuntimeError(f"HTTP {response.status_code} ({response.text})")
+    response = put(url=url, headers=headers, json=payload, timeout=RAW_REQUEST_TIMEOUT)
+    if not response.ok:
+        _raise_for_response(response)
+    print_info(f"Updated existing Attribute Definition '{name}'")
+    record_resource(resource_type, name, None, "updated")
+
+
+def _raise_for_response(response: Response) -> None:
+    """
+    Raise a failed raw response as an HTTPError carrying it, so its status
+    gives the exit code, with the Platform's own message.
+    """
+    raise HTTPError(f"HTTP {response.status_code} ({response.text})", response=response)
 
 
 def create_namespace_policy(resource: dict):
@@ -975,7 +1000,7 @@ def create_namespace_policy(resource: dict):
             autoscalingMaxNodes=resource.get(PROP_AUTOSCALING_MAX_NODES),
         )
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     # Test for existing policy
     try:
@@ -983,8 +1008,9 @@ def create_namespace_policy(resource: dict):
             namespace=namespace_policy.namespace
         )
         existing = True
-    except Exception:
-        # Assume it's not found ... 404 from API
+    except Exception as e:
+        if not is_http_not_found(e):
+            raise
         existing = False
     if existing and not confirmed(
         f"Update existing Namespace Policy '{namespace_policy.namespace}'?"
@@ -994,13 +1020,7 @@ def create_namespace_policy(resource: dict):
         )
         return
 
-    try:
-        CLIENT.namespaces_client.save_namespace_policy(namespace_policy)
-    except Exception as e:
-        print_error(
-            f"Unable to create or update Namespace Policy for '{namespace_policy.namespace}': {e}"
-        )
-        raise
+    CLIENT.namespaces_client.save_namespace_policy(namespace_policy)
 
     print_info(
         f"Created or updated Namespace Policy '{namespace_policy.namespace}' with "
@@ -1028,212 +1048,218 @@ class RoleSpecification:
 
 def create_group(resource: dict):
     """
-    Create or update a group. Will also add or remove scoped
-    roles specified by their names or IDs.
+    Create or update a group, and the scoped roles it holds, specified by
+    their names or IDs. Without 'roles' an existing group's roles are left
+    as they are; with 'roles' they are made to match it, so '[]' removes
+    them all. Every role is resolved before anything is changed.
     """
     try:
         name = resource[PROP_NAME]
         description = resource.get(PROP_DESCRIPTION)
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
-    def get_updated_role_specifications() -> list[RoleSpecification]:
-        """
-        Helper function to generate the list of supplied role specifications.
-        """
-        roles_input = resource.get(PROP_ROLES)
-        if roles_input is None:
-            return []
+    roles_input = resource.get(PROP_ROLES)
+    role_specifications = (
+        None if roles_input is None else _role_specifications(roles_input)
+    )
 
-        role_specifications = []
-        for role_item in roles_input or []:
-            # Get the role
-            role = role_item.get(PROP_ROLE)
-            if role is None:
-                raise ValueError("Role must have 'role' specified")
-
-            # Get the ID and name of the role
-            id_ = role.get(PROP_ID)
-            if id_ is None:
-                name_ = role.get(PROP_NAME)
-                if name_ is None:
-                    raise ValueError("Group role must have 'id' or 'name' specified")
-                id_ = get_role_id_by_name(CLIENT, name_)
-            else:
-                name_ = role.get(PROP_NAME)
-                if name_ is None:
-                    name_ = get_role_name_by_id(CLIENT, id_)
-
-            # Get the scope of the role
-            scope = role_item.get(PROP_SCOPE)
-            if scope is None:
-                raise ValueError(f"Group role '{name_}' must have 'scope' specified")
-            global_ = scope.get(PROP_GLOBAL)
-            if global_ is None or global_ is False:
-                namespaces_ = scope.get(PROP_NAMESPACES)
-                if namespaces_ is None:
-                    raise ValueError(
-                        f"Non-global group role '{name_}' must have 'namespaces' specified"
-                    )
-                namespace_names = []
-                for namespace_ in namespaces_:
-                    namespace_name = namespace_.get(PROP_NAMESPACE)
-                    if namespace_name is None:
-                        raise ValueError(
-                            f"Namespace applied to role '{name_}' "
-                            "must have 'namespace' property"
-                        )
-                    namespace_names.append(namespace_name)
-
-                # Construct the role specification & add to the list
-                if not namespace_names:
-                    raise ValueError(
-                        f"Non-global role '{name_}' must have at least one namespace scope"
-                    )
-                role_specifications.append(
-                    RoleSpecification(
-                        id=cast(str, id_),
-                        name=cast(str, name_),
-                        global_=False,
-                        namespaces=set(namespace_names),
-                    )
-                )
-            else:
-                role_specifications.append(
-                    RoleSpecification(
-                        id=cast(str, id_),
-                        name=cast(str, name_),
-                        global_=True,
-                        namespaces=None,
-                    )
-                )
-
-        return role_specifications
-
-    def add_or_update_roles(
-        group_id_: str, role_specifications: list[RoleSpecification]
-    ):
-        """
-        Helper function to add/update a list of roles.
-        """
-        for role_spec in role_specifications:
-            CLIENT.account_client.add_role_to_group(
-                group_id_,
-                role_spec.id,
-                RoleScope(cast(bool, role_spec.global_), role_spec.namespaces),
-            )
-            if role_spec.global_:
-                print_info(f"Added/updated role '{role_spec.name}' with global scope")
-            else:
-                ns_list_quoted = [f"'{ns}'" for ns in role_spec.namespaces or []]
-                print_info(
-                    f"Added/updated role '{role_spec.name}' scoped to "
-                    f"namespace(s): {', '.join(ns_list_quoted)}"
-                )
-
-    def remove_roles(group_id_: str, role_specifications: list[RoleSpecification]):
-        """
-        Helper function to remove a list of roles.
-        """
-        for role_spec in role_specifications:
-            CLIENT.account_client.remove_role_from_group(
-                group_id_,
-                role_spec.id,
-            )
-            print_info(f"Removed role '{role_spec.name}'")
-
-    def get_roles_to_remove(
-        existing_roles: list[GroupRole], new_roles: list[RoleSpecification]
-    ) -> list[RoleSpecification]:
-        """
-        Helper function to determine the roles to be removed.
-        """
-        existing_role_specifications = [
-            RoleSpecification(
-                id=cast(str, role.role.id),
-                name=cast(str, role.role.name),
-                global_=role.scope.global_,
-                namespaces=(
-                    None
-                    if role.scope.namespaces is None
-                    else {ns.namespace for ns in role.scope.namespaces}
-                ),
-            )
-            for role in existing_roles
-        ]
-        # Select roles to remove
-        return [
-            role_spec
-            for role_spec in existing_role_specifications
-            if role_spec.name not in [role_spec.name for role_spec in new_roles]
-        ]
-
-    def add_group() -> Group:
-        """
-        Helper function to add a new group.
-        Return the ID of the newly created group.
-        """
-        group_: Group = CLIENT.account_client.add_group(
-            AddGroupRequest(name=name, description=description)
-        )
-        print_info(f"Created Group '{group_.name}' ({group_.id})")
-        clear_group_caches()
-        record_resource(RN_GROUP, name, group_.id, "created")
-        return group_
-
-    def update_group(group_id_: str) -> Group | None:
-        """
-        Helper function to update an existing group, including updating
-        its roles.
-        """
-        if not confirmed(f"Update Group '{name}' ({group_id_})?"):
-            record_resource(RN_GROUP, name, group_id_, "skipped")
-            return None
-        group_: Group = CLIENT.account_client.update_group(
-            group_id_, UpdateGroupRequest(name=name, description=description)
-        )
-        clear_group_caches()
-        print_info(f"Updated Group '{group_.name}' ({group_.id})")
-        record_resource(RN_GROUP, name, group_.id, "updated")
-        return group_
-
-    # Main logic
     group_id = get_group_id_by_name(CLIENT, name)
     if group_id is None:  # New group
-        group = add_group()
-        add_or_update_roles(group.id, get_updated_role_specifications())  # type: ignore[arg-type]
-    else:  # Existing group
-        group = update_group(group_id)
-        if group is not None:
-            updated_role_specs = get_updated_role_specifications()
-            add_or_update_roles(group_id, updated_role_specs)
-            remove_roles(
-                group_id, get_roles_to_remove(group.roles or [], updated_role_specs)
+        group: Group = CLIENT.account_client.add_group(
+            AddGroupRequest(name=name, description=description)
+        )
+        clear_group_caches()
+        print_info(f"Created Group '{group.name}' ({group.id})")
+        added = _add_or_update_roles(cast(str, group.id), role_specifications or [])
+        record_resource(RN_GROUP, name, group.id, "created", rolesAdded=added)
+        print_quiet_result(group.id)
+        return
+
+    if not confirmed(f"Update Group '{name}' ({group_id})?"):
+        record_resource(RN_GROUP, name, group_id, "skipped")
+        return
+    group = CLIENT.account_client.update_group(
+        group_id, UpdateGroupRequest(name=name, description=description)
+    )
+    clear_group_caches()
+    print_info(f"Updated Group '{group.name}' ({group.id})")
+    if role_specifications is None:
+        record_resource(RN_GROUP, name, group.id, "updated")
+    else:
+        added = _add_or_update_roles(group_id, role_specifications)
+        removed = _remove_roles(
+            group_id, _roles_to_remove(group.roles or [], role_specifications)
+        )
+        clear_group_caches()
+        record_resource(
+            RN_GROUP,
+            name,
+            group.id,
+            "updated",
+            rolesAdded=added,
+            rolesRemoved=removed,
+        )
+    print_quiet_result(group.id)
+
+
+def _role_specifications(roles_input: list[dict]) -> list[RoleSpecification]:
+    """
+    The role specifications of a Group's 'roles', each role resolved by its
+    name or ID; a role that does not exist is an error.
+    """
+    role_specifications = []
+    for role_item in roles_input:
+        role = role_item.get(PROP_ROLE)
+        if role is None:
+            raise ValueError("Role must have 'role' specified")
+
+        # Get the ID and name of the role
+        id_ = role.get(PROP_ID)
+        name_ = role.get(PROP_NAME)
+        if id_ is None:
+            if name_ is None:
+                raise ValueError("Group role must have 'id' or 'name' specified")
+            id_ = get_role_id_by_name(CLIENT, name_)
+            if id_ is None:
+                raise NotFoundError(f"Role '{name_}' not found")
+        elif name_ is None:
+            name_ = get_role_name_by_id(CLIENT, id_)
+            if name_ is None:
+                raise NotFoundError(f"Role ID '{id_}' not found")
+
+        # Get the scope of the role
+        scope = role_item.get(PROP_SCOPE)
+        if scope is None:
+            raise ValueError(f"Group role '{name_}' must have 'scope' specified")
+        if scope.get(PROP_GLOBAL):
+            role_specifications.append(
+                RoleSpecification(id=id_, name=name_, global_=True, namespaces=None)
             )
+            continue
+
+        namespaces_ = scope.get(PROP_NAMESPACES)
+        if namespaces_ is None:
+            raise ValueError(
+                f"Non-global group role '{name_}' must have 'namespaces' specified"
+            )
+        namespace_names = []
+        for namespace_ in namespaces_:
+            namespace_name = namespace_.get(PROP_NAMESPACE)
+            if namespace_name is None:
+                raise ValueError(
+                    f"Namespace applied to role '{name_}' "
+                    "must have 'namespace' property"
+                )
+            namespace_names.append(namespace_name)
+        if not namespace_names:
+            raise ValueError(
+                f"Non-global role '{name_}' must have at least one namespace scope"
+            )
+        role_specifications.append(
+            RoleSpecification(
+                id=id_, name=name_, global_=False, namespaces=set(namespace_names)
+            )
+        )
+
+    return role_specifications
+
+
+def _add_or_update_roles(
+    group_id: str, role_specifications: list[RoleSpecification]
+) -> list[str]:
+    """
+    Add or update a Group's roles; returns their names.
+    """
+    for role_spec in role_specifications:
+        CLIENT.account_client.add_role_to_group(
+            group_id,
+            role_spec.id,
+            RoleScope(cast(bool, role_spec.global_), role_spec.namespaces),
+        )
+        if role_spec.global_:
+            print_info(f"Added/updated role '{role_spec.name}' with global scope")
+        else:
+            ns_list_quoted = [f"'{ns}'" for ns in sorted(role_spec.namespaces or [])]
+            print_info(
+                f"Added/updated role '{role_spec.name}' scoped to "
+                f"namespace(s): {', '.join(ns_list_quoted)}"
+            )
+    return [role_spec.name for role_spec in role_specifications]
+
+
+def _remove_roles(
+    group_id: str, role_specifications: list[RoleSpecification]
+) -> list[str]:
+    """
+    Remove roles from a Group; returns their names.
+    """
+    for role_spec in role_specifications:
+        CLIENT.account_client.remove_role_from_group(group_id, role_spec.id)
+        print_info(f"Removed role '{role_spec.name}'")
+    return [role_spec.name for role_spec in role_specifications]
+
+
+def _roles_to_remove(
+    existing_roles: list[GroupRole], new_roles: list[RoleSpecification]
+) -> list[RoleSpecification]:
+    """
+    The roles a Group holds that its specification does not name.
+    """
+    new_role_ids = {role_spec.id for role_spec in new_roles}
+    return [
+        RoleSpecification(
+            id=cast(str, role.role.id),
+            name=cast(str, role.role.name),
+            global_=role.scope.global_,
+            namespaces=(
+                None
+                if role.scope.namespaces is None
+                else {ns.namespace for ns in role.scope.namespaces}
+            ),
+        )
+        for role in existing_roles
+        if role.role.id not in new_role_ids
+    ]
+
+
+def _group_ids(group_names: list[str]) -> set[str]:
+    """
+    The IDs of Groups named by name or ID; a Group that does not exist is an
+    error, before anything is changed, since memberships are made to match.
+    """
+    group_ids = set()
+    for group_name in group_names:
+        group_id = get_group_id_by_name(CLIENT, group_name)
+        if group_id is None:
+            raise NotFoundError(f"Group '{group_name}' not found")
+        group_ids.add(group_id)
+    return group_ids
 
 
 def create_application(resource: dict):
     """
-    Create or update an application. Will also add or remove groups specified
-    by their names or IDs.
+    Create or update an application, the groups it belongs to (by their
+    names or IDs) and the Keyrings it may access. Without 'groups' an
+    existing application's groups are left as they are; with 'groups' they
+    are made to match it, so '[]' removes them all.
     """
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
-    groups: list[str] = resource.pop(PROP_GROUPS, [])
-    keyrings: list[str] = resource.pop(PROP_KEYRINGS, [])
-    # Convert group names to IDs
-    new_group_ids = set()
-    for group_name in groups:
-        app_id = get_group_id_by_name(CLIENT, group_name)
-        if app_id is None:
-            print_warning(f"Group '{group_name}' not found ... ignoring")
-        else:
-            new_group_ids.add(app_id)
+    groups: list[str] | None = resource.pop(PROP_GROUPS, None)
+    keyrings: list[str] = resource.pop(PROP_KEYRINGS, None) or []
+    # Every Group is resolved before anything is changed
+    new_group_ids = None if groups is None else _group_ids(groups)
 
-    def grant_keyrings(app_id: str, api_key: ApiKey):
+    def grant_keyrings(app_id: str, api_key: ApiKey, outcome: str):
+        """
+        Grant the application access to its Keyrings; a grant that fails
+        fails the resource, after the others have been tried.
+        """
+        failures: list[tuple[str, Exception]] = []
         for keyring_name in keyrings:
             try:
                 CLIENT.keyring_client.grant_application_access_to_keyring(
@@ -1241,18 +1267,20 @@ def create_application(resource: dict):
                 )
                 print_info(f"Granted Application access to Keyring '{keyring_name}'")
             except Exception as e:
-                print_error(
-                    f"Failed to grant Application access to Keyring '{keyring_name}': {e}"
-                )
-                if api_key.id is None:
-                    print_warning(
-                        "Re-run with '--regenerate-app-keys' to supply a valid API key"
-                    )
+                failures.append((keyring_name, e))
+        if failures:
+            keyring_names = ", ".join(f"'{k}'" for k, _ in failures)
+            raise RuntimeError(
+                f"Application {outcome}, but access to Keyring(s) {keyring_names}"
+                f" could not be granted: {failures[0][1]}"
+            ) from failures[0][1]
 
     def update_groups(app: Application):
         """
         Helper function to add/remove groups from an application.
         """
+        if new_group_ids is None:
+            return
         current_group_ids = {
             group.id
             for group in get_application_group_summaries(CLIENT, cast(str, app.id))
@@ -1306,31 +1334,39 @@ def create_application(resource: dict):
         app_response: AddApplicationResponse = CLIENT.account_client.add_application(
             _get_model_object(RN_ADD_APPLICATION_REQUEST, resource)
         )
-        app = app_response.application
-        print_info(f"Created Application '{app.name}' ({app.id})")  # type: ignore[union-attr]
+        app = cast(Application, app_response.application)
+        print_info(f"Created Application '{app.name}' ({app.id})")
         show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
         record_resource(
             RN_APPLICATION,
             name,
-            app.id,  # type: ignore[union-attr]
+            app.id,
             "created",
             **key_and_secret(app_response.apiKey),
         )
         clear_application_caches()
-        update_groups(app)  # type: ignore[arg-type]
-        if (
-            keyrings
-            and app_response.apiKey is not None
-            and app is not None
-            and app.id is not None
-        ):
-            grant_keyrings(app.id, app_response.apiKey)
+        print_quiet_result(app.id)
+        update_groups(app)
+        if keyrings:
+            if app_response.apiKey is None:
+                raise RuntimeError(
+                    "Application created, but no API key was returned with which"
+                    " to grant it access to its Keyring(s)"
+                )
+            grant_keyrings(cast(str, app.id), app_response.apiKey, "created")
 
     def update_application(app_id: str):
         """
         Helper function to update an existing application, including updating
         its groups.
         """
+        if keyrings and not ARGS_PARSER.regenerate_app_keys:
+            # A grant needs the key, which the Platform returns only when
+            # the application is created or its key regenerated
+            raise ValueError(
+                f"Application '{name}' exists: granting it access to Keyring(s)"
+                " needs its API key; re-run with '--regenerate-app-keys'"
+            )
         if not confirmed(f"Update Application '{name}' ({app_id})?"):
             record_resource(RN_APPLICATION, name, app_id, "skipped")
             return
@@ -1347,16 +1383,17 @@ def create_application(resource: dict):
             print_info("Regenerating Application key and secret")
             api_key = CLIENT.account_client.regenerate_application_api_key(app_id)
             clear_application_caches()
-            if api_key is None:
-                print_error("New API key/secret not returned")
-            else:
+            if api_key is not None:
                 show_key_and_secret(api_key)
         record_resource(
             RN_APPLICATION, name, app.id, "updated", **key_and_secret(api_key)
         )
+        print_quiet_result(app.id)
+        if ARGS_PARSER.regenerate_app_keys and api_key is None:
+            raise RuntimeError("Application updated, but no new API key was returned")
 
         if keyrings:
-            grant_keyrings(app_id, api_key if api_key is not None else ApiKey())
+            grant_keyrings(app_id, cast(ApiKey, api_key), "updated")
 
     # Main logic
     app_id = get_application_id_by_name(CLIENT, name)
@@ -1368,12 +1405,15 @@ def create_application(resource: dict):
 
 def update_user(resource: dict, internal_user: bool):
     """
-    Update a user specified by name, username or ID. Will also add or remove
-    groups specified by their names or IDs.
+    Update the groups of a user specified by name, username or ID; the
+    groups are named by their names or IDs. Without 'groups' the user's
+    groups are left as they are; with 'groups' they are made to match it,
+    so '[]' removes them all. Users cannot be created by the CLI.
     """
     name = resource.get(PROP_NAME)
     username = resource.get(PROP_USERNAME)
     id = resource.get(PROP_ID)
+    resource_type = RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER
 
     # Check we have a user identity
     if internal_user:
@@ -1388,78 +1428,68 @@ def update_user(resource: dict, internal_user: bool):
             f"resource '{RN_EXTERNAL_USER}' ({resource})"
         )
 
-    groups: list[str] = resource.pop(PROP_GROUPS, [])
-    new_group_ids = set()
-    # Convert group names to IDs
-    for group_name in groups:
-        group_id = get_group_id_by_name(CLIENT, group_name)
-        if group_id is None:
-            print_warning(f"Group '{group_name}' not found ... ignoring")
-        else:
-            new_group_ids.add(group_id)
+    groups: list[str] | None = resource.pop(PROP_GROUPS, None)
+    # Every Group is resolved before anything is changed
+    new_group_ids = None if groups is None else _group_ids(groups)
+
+    # Every identifier given must find the same User, if it finds one
+    identifiers = [i for i in (name, username, id) if i is not None]
+    users = {}
+    for identifier in identifiers:
+        found = get_user_by_name_or_id(CLIENT, cast(str, identifier))
+        if found is not None:
+            users[found.id] = found
+    if not users:
+        raise NotFoundError(
+            f"User not found ({', '.join(map(str, identifiers))}); Users cannot be"
+            " created using the CLI, please use the YellowDog Portal"
+        )
+    if len(users) > 1:
+        raise ValueError(
+            f"The identifiers {', '.join(map(str, identifiers))} name different Users"
+        )
+    user: User = next(iter(users.values()))
+    if id is not None and user.id != id:
+        raise ValueError(f"User name and supplied ID do not match ({resource})")
+    username = user.username if isinstance(user, InternalUser) else user.name
 
     def update_groups() -> bool:
         """
         Helper function to add/remove groups from a user. False if the
         update was declined.
         """
-        current_group_ids = {group.id for group in get_user_groups(CLIENT, user.id)}  # type: ignore[union-attr]
+        if new_group_ids is None:
+            print_info("No Groups specified: the User's Groups are left unchanged")
+            return True
+
+        current_group_ids = {group.id for group in get_user_groups(CLIENT, user.id)}  # type: ignore[arg-type]
 
         if current_group_ids == new_group_ids:
             print_info("No Group additions or deletions required")
             return True
 
-        if not confirmed(f"Update Groups for User '{username}' ({user.id})?"):  # type: ignore[union-attr]
+        if not confirmed(f"Update Groups for User '{username}' ({user.id})?"):
             return False
 
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
-            CLIENT.account_client.remove_user_from_group(group_id, user.id)  # type: ignore[union-attr]
+            CLIENT.account_client.remove_user_from_group(group_id, user.id)  # type: ignore[arg-type]
             print_info(
                 f"Removed Group '{get_group_name_by_id(CLIENT, group_id)}' ({group_id})"
             )
 
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
-            CLIENT.account_client.add_user_to_group(group_id, user.id)  # type: ignore[union-attr]
+            CLIENT.account_client.add_user_to_group(group_id, user.id)  # type: ignore[arg-type]
             print_info(
                 f"Added Group '{get_group_name_by_id(CLIENT, group_id)}' ({group_id})"
             )
         return True
 
-    # Main logic: try name, username, then ID if present; check for ID match
-    user: User | None = None
-    if name is not None:
-        user = get_user_by_name_or_id(CLIENT, name)
-    if user is None and username is not None:
-        user = get_user_by_name_or_id(CLIENT, username)
-    if user is not None and id is not None:
-        if user.id != id:
-            raise ValueError(f"User name and supplied ID do not match ({resource})")
-    if user is None and id is not None:
-        user = get_user_by_name_or_id(CLIENT, cast(str, id))
-
-    if user is None:
-        print_warning(
-            f"User not found ({resource}); Users cannot be created using "
-            "the CLI, please use the YellowDog Portal"
-        )
-        record_resource(
-            RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER,
-            name or username or id,
-            None,
-            "skipped",
-        )
-        return
-
-    username = user.username if isinstance(user, InternalUser) else user.name
     updated = update_groups()
     print_info(f"Actions complete for User '{username}' ({user.id})")
     record_resource(
-        RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER,
-        username,
-        user.id,
-        "updated" if updated else "skipped",
+        resource_type, username, user.id, "updated" if updated else "skipped"
     )
 
 
@@ -1470,7 +1500,7 @@ def create_namespace(resource: dict):
     try:
         name = resource[PROP_NAME]
     except KeyError as e:
-        raise KeyError(f"Expected property to be defined ({e})")
+        raise _missing_property(e) from e
 
     try:
         namespace_id = CLIENT.namespaces_client.create_namespace(
@@ -1482,7 +1512,7 @@ def create_namespace(resource: dict):
             record_resource(RN_NAMESPACE, name, None, "skipped")
             return
         else:
-            raise RuntimeError(f"Failed to create namespace '{name}' ({e})")
+            raise RuntimeError(f"Failed to create namespace '{name}' ({e})") from e
 
     print_info(f"Created namespace '{name}' ({namespace_id})")
     record_resource(RN_NAMESPACE, name, namespace_id, "created")
@@ -1511,7 +1541,10 @@ def _get_model_object(class_name: str, resource: dict, **kwargs):
         and f.default_factory is dataclasses.MISSING
     ]
     if missing:
-        raise KeyError(f"Missing expected property '{missing[0]}'")
+        names = ", ".join(f"'{name}'" for name in missing)
+        raise ValueError(
+            f"Missing expected propert{'y' if len(missing) == 1 else 'ies'} {names}"
+        )
 
     # Normalize all values to their JSON-compatible representations so that
     # Json.load can properly structure nested typed fields (e.g. enums,
@@ -1526,19 +1559,23 @@ def _get_model_object(class_name: str, resource: dict, **kwargs):
     return Json.load(merged, cls)
 
 
-def _get_model_class(class_name: str):
+def _get_model_class(class_name: str) -> Any:
     """
     Return a YellowDog model class using its class name.
     """
-    return getattr(model, class_name)
+    cls = getattr(model, class_name, None)
+    if not (isinstance(cls, type) and dataclasses.is_dataclass(cls)):
+        raise ValueError(f"Unknown type '{class_name}'")
+    return cls
 
 
 def _create_image_family(
     image_family: MachineImageFamily, fq_name: str
 ) -> MachineImageFamily:
     """
-    Creates a new image family. Only one image group can be added at the time of
-    image family creation, so any additional image groups must be added separately.
+    Creates a new image family, recording it and the Image Groups and Images
+    created with it. Only one image group can be added at the time of image
+    family creation, so any additional image groups are added separately.
     """
 
     # Remove all except the first image group; keep the rest as a separate list
@@ -1552,22 +1589,27 @@ def _create_image_family(
         image_family = CLIENT.images_client.add_image_family(image_family)
         clear_image_caches()
     except Exception as e:
-        raise RuntimeError(f"Failed to create Machine Image Family '{fq_name}': {e}")
-
-    if not image_groups:
-        return image_family
+        raise RuntimeError(
+            f"Failed to create Machine Image Family '{fq_name}': {e}"
+        ) from e
+    record_resource(RN_IMAGE_FAMILY, fq_name, image_family.id, "created")
+    for image_group in image_family.imageGroups or []:
+        _record_image_group_created(image_group)
 
     # Create any additional image groups
-    for image_group in image_groups:
+    for image_group in image_groups or []:
         try:
             image_group = CLIENT.images_client.add_image_group(
                 image_family, image_group
             )
+            clear_image_caches()
         except Exception as e:
             raise RuntimeError(
                 f"Failed to add Machine Image Group '{image_group.name}' to "
                 f"Image Family '{fq_name}': {e}"
-            )
+            ) from e
+        print_info(f"Created Machine Image Group '{image_group.name}'")
+        _record_image_group_created(image_group)
 
     return image_family
 

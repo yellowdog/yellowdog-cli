@@ -718,11 +718,12 @@ def get_image_name_or_id(
 
 
 def remove_allowances_matching_description(
-    client: PlatformClient, description: str
-) -> int:
+    client: PlatformClient, description: str, keep: str | None = None
+) -> list[str]:
     """
-    Remove Allowances that match on the description property.
-    Return the number of allowances removed.
+    Remove Allowances that match on the description property, other than
+    the one whose ID is 'keep' (yd-create's replacement). Return the IDs of
+    the Allowances removed: those declined are not.
     """
     allowances = client.allowances_client.get_allowances(
         AllowanceSearch(description=description)
@@ -730,12 +731,14 @@ def remove_allowances_matching_description(
 
     # Ensure exact match
     allowances = [
-        allowance for allowance in allowances if description == allowance.description
+        allowance
+        for allowance in allowances
+        if description == allowance.description and allowance.id != keep
     ]
 
     if not allowances:
         print_info(f"Cannot find Allowance matching description '{description}'")
-        return 0
+        return []
 
     if len(allowances) > 1:
         print_info(f"Multiple Allowances match the description '{description}'")
@@ -748,12 +751,14 @@ def remove_allowances_matching_description(
             force_interactive=True,
         )
 
+    removed = []
     for allowance in allowances:
         if confirmed(f"Remove Allowance with YellowDog ID {allowance.id}?"):
             client.allowances_client.delete_allowance_by_id(allowance.id)  # type: ignore[arg-type]
             print_info(f"Removed Allowance with YellowDog ID {allowance.id}")
+            removed.append(cast(str, allowance.id))
 
-    return len(allowances)
+    return removed
 
 
 @lru_cache

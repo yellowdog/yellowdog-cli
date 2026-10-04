@@ -2,10 +2,8 @@
 Every yd-create and yd-remove mutation clears the cached lookups it
 invalidates, in the function that mutates: a specification later in the same
 run must see the change (a name created earlier found, a name removed
-earlier not found, an updated resource read back as updated). The clears
-made *before* a lookup elsewhere (the requirement template creator clearing
-the source template cache before resolving its sources, say) stay as they
-are; these tests are about the mutating side.
+earlier not found, an updated resource read back as updated). These tests
+are about the mutating side.
 
 Each case drives the real create_*/remove_* function against a MagicMock
 client, with the name lookups it needs patched to reach the mutation, and

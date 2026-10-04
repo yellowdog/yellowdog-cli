@@ -16,7 +16,7 @@ from pathlib import Path
 
 import fastjsonschema
 import pytest
-from resource_live import KNOWN_PARTIAL_FAILURE_NAMES
+from resource_live import MISSING_NAMESPACE_FAILURE_NAMES
 
 from yellowdog_cli.utils import sdk_models
 from yellowdog_cli.utils.spec_schema import (
@@ -689,7 +689,7 @@ def _known_partial_failure(file_name: str, resource_name: str) -> bool:
     """A corpus specification the live layer expects yd-create to reject."""
     return any(
         resource_name.endswith(f"-{suffix}")
-        for suffix in KNOWN_PARTIAL_FAILURE_NAMES.get(file_name, ())
+        for suffix in MISSING_NAMESPACE_FAILURE_NAMES.get(file_name, ())
     )
 
 
@@ -720,7 +720,7 @@ class TestCorpusAndExamples:
         finally:
             resource_corpus.remove_variables(previous)
         assert count > 20
-        assert exempted == sum(map(len, KNOWN_PARTIAL_FAILURE_NAMES.values()))
+        assert exempted == sum(map(len, MISSING_NAMESPACE_FAILURE_NAMES.values()))
 
     def _json_blocks(self, start: str, end: str) -> list:
         """The README's parseable JSON blocks from the line starting 'start' to

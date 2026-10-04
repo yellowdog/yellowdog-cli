@@ -12,6 +12,8 @@ import resource_corpus
 import resource_live
 import resource_models
 
+from yellowdog_cli.utils.exit_codes import ReportedFailure
+
 resource_corpus.require_jsonnet()
 
 
@@ -366,9 +368,11 @@ def dry_run_create():
 
     patches = {
         "get_image_name_or_id": _identity_image,
-        "get_compute_source_template_id_by_name": lambda **kwargs: _DRY_RUN_FAKE_CST_ID,
+        "get_compute_source_template_id_by_name": (
+            lambda *args, **kwargs: _DRY_RUN_FAKE_CST_ID
+        ),
         "get_compute_requirement_template_id_by_name": (
-            lambda **kwargs: _DRY_RUN_FAKE_CRT_ID
+            lambda *args, **kwargs: _DRY_RUN_FAKE_CRT_ID
         ),
     }
     originals = {name: getattr(create, name) for name in patches}
@@ -395,7 +399,7 @@ def _dry_run_one(dry_run_create, resource: dict) -> bool:
 
     One call per specification, rather than one per file, purely for
     attribution: create_resources() catches each resource's exception, prints it
-    and continues, raising a single RuntimeError naming only a count at the end
+    and continues, raising a single ReportedFailure naming only a count at the end
     -- which cannot say *which* specification failed. Calling it per resource
     makes the answer the caller's own loop variable. The list is passed as an
     argument, so create_resources() deep-copies it and the caller's specification
@@ -404,7 +408,7 @@ def _dry_run_one(dry_run_create, resource: dict) -> bool:
     try:
         dry_run_create([resource])
         return False
-    except RuntimeError:
+    except ReportedFailure:
         return True
 
 
