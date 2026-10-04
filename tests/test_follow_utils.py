@@ -328,6 +328,46 @@ class TestFollowIds:
         valid = fu.follow_ids(ids + ids[:2])
         assert valid == ids
 
+    def test_a_timeout_stops_every_stream(self, monkeypatch):
+        # yd-wait --timeout: the main thread gives up at the deadline and
+        # tells the streams to stop, rather than waiting for them
+        warnings = []
+        monkeypatch.setattr(
+            fu, "ARGS_PARSER", MagicMock(progress=False, print_pid=False)
+        )
+        monkeypatch.setattr(fu, "print_info", lambda *a, **k: None)
+        monkeypatch.setattr(fu, "print_warning", lambda m, **k: warnings.append(m))
+        stopped = []
+
+        def stream(ydid, ydid_type):
+            fu._STOP_FOLLOWING.wait(5)
+            stopped.append(fu._STOP_FOLLOWING.is_set())
+
+        monkeypatch.setattr(fu, "follow_events", stream)
+        fu.follow_ids([WR], timeout=0.2)
+        assert fu._STOP_FOLLOWING.is_set()
+        assert warnings == ["Stopped following after 0.2 second(s)"]
+        for _ in range(50):
+            if stopped:
+                break
+            fu.sleep(0.02)
+        assert stopped == [True]
+
+    def test_following_again_clears_the_stop(self, monkeypatch):
+        monkeypatch.setattr(
+            fu, "ARGS_PARSER", MagicMock(progress=False, print_pid=False)
+        )
+        monkeypatch.setattr(fu, "print_info", lambda *a, **k: None)
+        fu._STOP_FOLLOWING.set()
+        seen = []
+        monkeypatch.setattr(
+            fu,
+            "follow_events",
+            lambda ydid, ydid_type: seen.append(fu._STOP_FOLLOWING.is_set()),
+        )
+        fu.follow_ids([WR])
+        assert seen == [False]
+
     def test_an_auto_cr_lookup_failure_is_recorded(self, monkeypatch):
         client = MagicMock()
         client.worker_pool_client.get_worker_pool_by_id.side_effect = _http_404()

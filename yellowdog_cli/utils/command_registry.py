@@ -1835,9 +1835,19 @@ COMMANDS["yd-wait"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        YELLOWDOG_IDS.variant(help="the YellowDog ID(s) of the item(s) to wait"),
+        YELLOWDOG_IDS.variant(
+            nargs="+", help="the YellowDog ID(s) of the item(s) to wait for"
+        ),
+        TIMEOUT.variant(
+            default=None,
+            help=(
+                "stop waiting after this many seconds, and fail if anything has"
+                " not finished (default: no limit)"
+            ),
+        ),
         ACTIONS_JSON.variant(help="emit each item's final status as a JSON array"),
     ),
+    validators=(check_follow_ids,),
     tool=ToolKind.ACTING,
 )
 

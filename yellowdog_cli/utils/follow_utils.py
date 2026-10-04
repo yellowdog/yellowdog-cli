@@ -5,7 +5,7 @@ Utility function to follow event streams.
 import signal
 from collections.abc import Callable
 from json import loads as json_loads
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
 
 import requests
@@ -349,9 +349,19 @@ _FOLLOWABLE = frozenset(
 )
 
 
-def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
+# Set once a deadline (yd-wait's '--timeout') stops the following: each
+# stream's thread then prints nothing more and does not reconnect, and ends
+# with the process, being a daemon
+_STOP_FOLLOWING = Event()
+
+
+def follow_ids(
+    ydids: list[str], auto_cr: bool = False, timeout: float | None = None
+) -> list[str]:
     """
-    Creates an event thread for each YDID passed on the command line.
+    Creates an event thread for each YDID passed on the command line. With
+    'timeout', stops following once that many seconds have passed, whether
+    or not every stream has concluded.
 
     Returns the deduplicated list of valid original IDs (WR/WP/CR only, before
     any auto-CR expansion) — callers that need to inspect final status after
@@ -402,6 +412,8 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
         )
         use_progress = False
 
+    # Before any stream starts, or one could see a stop left by an earlier call
+    _STOP_FOLLOWING.clear()
     threads: list[Thread] = []
 
     for ydid in to_follow:
@@ -448,7 +460,12 @@ def follow_ids(ydids: list[str], auto_cr: bool = False) -> list[str]:
     # KeyboardInterrupt (Ctrl-C) is delivered promptly on Windows.
     # sleep() releases the GIL and Python checks for pending signals on
     # return, so Ctrl-C is handled within ~100ms on all platforms.
+    deadline = None if timeout is None else monotonic() + timeout
     while any(t.is_alive() for t in threads):
+        if deadline is not None and monotonic() >= deadline:
+            _STOP_FOLLOWING.set()
+            print_warning(f"Stopped following after {timeout:,g} second(s)")
+            break
         sleep(0.1)
 
     if ARGS_PARSER.progress:
@@ -559,7 +576,7 @@ def follow_events(
     outage = _Outage()
     connected = False
     concluded = False
-    while True:
+    while not _STOP_FOLLOWING.is_set():
         try:
             response = requests.get(
                 headers={
@@ -599,6 +616,8 @@ def follow_events(
 
             try:
                 for event in response.iter_lines(decode_unicode=True):
+                    if _STOP_FOLLOWING.is_set():
+                        return
                     if event and isinstance(event, str):
                         if on_event is not None:
                             on_event(event, ydid_type)
@@ -629,6 +648,8 @@ def follow_events(
 
         # Closed cleanly: by the Platform once the entity has finished, or by
         # something in between, in which case it is reconnected
+        if _STOP_FOLLOWING.is_set():
+            return
         if _entity_finished(ydid, ydid_type):
             concluded = True
             break

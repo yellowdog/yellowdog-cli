@@ -2,15 +2,30 @@
 
 """
 Wait for Work Requirements, Worker Pools, or Compute Requirements to reach
-a terminal state. Exits with code 1 if any Work Requirement ended in a
-FAILED or CANCELLED state.
+a terminal state.
+
+Each is followed to the end of its event stream (or until '--timeout'), and
+its status then fetched. The exit code is 0 if every one reached a terminal
+state and no Work Requirement FAILED or was CANCELLED; 1 if one did, or if
+the failures had different causes; otherwise the code of the one cause --
+6 for an entity that does not exist, 4 for credentials not accepted, 8 for a
+connection lost for good. An entity not in a terminal state when following
+ends (a timeout, a stream that could not be followed) is a failure: it has
+not finished, whatever the reason.
 """
 
 import sys
+from typing import Any
 
-from yellowdog_cli.utils.follow_utils import WR_FAILURE_STATUS_VALUES, follow_ids
+from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.follow_utils import (
+    WR_FAILURE_STATUS_VALUES,
+    follow_exit_code,
+    follow_ids,
+)
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record
+from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -23,9 +38,9 @@ _TERMINAL_STATUSES = {
 }
 
 
-def _record_status(ydid: str, status: str | None) -> None:
+def _record_status(ydid: str, name: str | None, status: str | None) -> None:
     """
-    Record one ID's final status for '--json', as {"id", "status",
+    Record one ID's final status for '--json', as {"id", "name", "status",
     "succeeded"}: 'succeeded' is false for a failed Work Requirement, a
     state that is not terminal, or a status that could not be fetched.
     """
@@ -36,74 +51,70 @@ def _record_status(ydid: str, status: str | None) -> None:
         and status in _TERMINAL_STATUSES[ydid_type]
         and status not in WR_FAILURE_STATUS_VALUES
     )
-    record({"id": ydid, "status": status, "succeeded": succeeded})
+    record({"id": ydid, "name": name, "status": status, "succeeded": succeeded})
+
+
+def _fetch(ydid: str, ydid_type: YDIDType | None) -> Any:
+    if ydid_type == YDIDType.WORK_REQUIREMENT:
+        return CLIENT.work_client.get_work_requirement_by_id(ydid)
+    if ydid_type == YDIDType.WORKER_POOL:
+        return CLIENT.worker_pool_client.get_worker_pool_by_id(ydid)
+    return CLIENT.compute_client.get_compute_requirement_by_id(ydid)
 
 
 @main_wrapper
 def main():
-    if not ARGS_PARSER.yellowdog_ids:
-        print_info("No YellowDog IDs to wait for")
-        return
+    # At least one ID is required, each a Work Requirement's, Worker Pool's or
+    # Compute Requirement's, as the command line is parsed
+    follow_ids(ARGS_PARSER.yellowdog_ids, timeout=ARGS_PARSER.timeout)
+    # Why an entity may still be live once following has ended: a stream
+    # that could not be followed (its cause), else the timeout
+    following_code = follow_exit_code() or ExitCode.FAILURE
 
-    # follow_ids handles deduplication, validation, and event-stream following;
-    # it returns the valid original IDs (WR/WP/CR) for the post-stream status check.
-    valid_ydids = follow_ids(ARGS_PARSER.yellowdog_ids)
-
-    # Recorded in the order given, once each; an ID that could not be
-    # followed has no status
-    requested = list(dict.fromkeys(ARGS_PARSER.yellowdog_ids))
-
-    if not valid_ydids:
-        for ydid in requested:
-            _record_status(ydid, None)
-        raise Exception("No valid YellowDog IDs to wait for")
-
-    # Check final status of each entity and determine exit code.
     # Errors and failure warnings are always printed, including with
-    # '--quiet': exiting 1 silently is unhelpful.
-    any_failed = False
-    any_fetch_errors = False
-    for ydid in requested:
-        if ydid not in valid_ydids:
-            _record_status(ydid, None)
-            continue
+    # '--quiet': exiting non-zero silently is unhelpful. Recorded in the order
+    # given, once each.
+    failures: list[ExitCode] = []
+    work_requirement_failed = False
+    for ydid in dict.fromkeys(ARGS_PARSER.yellowdog_ids):
         ydid_type = get_ydid_type(ydid)
-        status: str | None = None
+        label = ydid_type.value if ydid_type is not None else "Entity"
         try:
-            if ydid_type == YDIDType.WORK_REQUIREMENT:
-                wr = CLIENT.work_client.get_work_requirement_by_id(ydid)
-                status = wr.status.value if wr.status else "UNKNOWN"
-                if status in WR_FAILURE_STATUS_VALUES:
-                    print_warning(
-                        f"Work Requirement '{ydid}' ended with status '{status}'",
-                        override_quiet=True,
-                    )
-                    any_failed = True
-                else:
-                    print_info(
-                        f"Work Requirement '{ydid}' completed with status '{status}'"
-                    )
-            elif ydid_type == YDIDType.WORKER_POOL:
-                wp = CLIENT.worker_pool_client.get_worker_pool_by_id(ydid)
-                status = wp.status.value if wp.status else "UNKNOWN"
-                print_info(f"Worker Pool '{ydid}' reached terminal status '{status}'")
-            else:  # COMPUTE_REQUIREMENT
-                cr = CLIENT.compute_client.get_compute_requirement_by_id(ydid)
-                status = cr.status.value if cr.status else "UNKNOWN"
-                print_info(
-                    f"Compute Requirement '{ydid}' reached terminal status '{status}'"
-                )
+            entity = _fetch(ydid, ydid_type)
         except Exception as e:
             print_error(f"Could not fetch final status for '{ydid}': {e}")
-            any_fetch_errors = True
-            status = None
-        _record_status(ydid, status)
+            failures.append(classify(e))
+            _record_status(ydid, None, None)
+            continue
 
-    if any_failed:
+        status = entity.status.value if entity.status else "UNKNOWN"
+        _record_status(ydid, entity.name, status)
+        if ydid_type is None or status not in _TERMINAL_STATUSES[ydid_type]:
+            print_error(
+                f"{label} '{ydid}' is still {status}: following ended before it"
+                " finished"
+            )
+            failures.append(following_code)
+        elif status in WR_FAILURE_STATUS_VALUES:
+            print_warning(
+                f"{label} '{ydid}' ended with status '{status}'", override_quiet=True
+            )
+            failures.append(ExitCode.FAILURE)
+            work_requirement_failed = True
+        else:
+            print_info(f"{label} '{ydid}' finished with status '{status}'")
+
+    if work_requirement_failed:
         print_error("One or more Work Requirements did not complete successfully")
-    if any_failed or any_fetch_errors:
-        sys.exit(1)
+    if failures:
+        codes = set(failures)
+        sys.exit(
+            codes.pop()
+            if len(codes) == 1 and not work_requirement_failed
+            else ExitCode.FAILURE
+        )
 
 
+# Entry point
 if __name__ == "__main__":
     main()

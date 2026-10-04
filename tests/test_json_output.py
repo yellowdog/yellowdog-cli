@@ -1988,60 +1988,123 @@ class TestWait:
     def _client(self, wr_status=WorkRequirementStatus.COMPLETED):
         client = MagicMock()
         client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
-            status=wr_status
+            name="wr", status=wr_status
         )
         client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            status=WorkerPoolStatus.TERMINATED
+            name="wp", status=WorkerPoolStatus.TERMINATED
         )
         client.compute_client.get_compute_requirement_by_id.return_value = (
-            SimpleNamespace(status=ComputeRequirementStatus.TERMINATED)
+            SimpleNamespace(name="cr", status=ComputeRequirementStatus.TERMINATED)
         )
         return client
 
-    def _follow(self, monkeypatch, valid):
-        monkeypatch.setattr(yd_wait, "follow_ids", lambda ids: valid)
+    def _follow(self, monkeypatch, exit_code=0):
+        monkeypatch.setattr(yd_wait, "follow_ids", lambda ids, timeout=None: ids)
+        monkeypatch.setattr(yd_wait, "follow_exit_code", lambda: exit_code)
 
     def test_each_id_is_recorded_with_its_status(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1, WP_ID, CR_ID])
+        self._follow(monkeypatch)
         out, _, _ = run(
-            yd_wait, client=self._client(), yellowdog_ids=[WR_ID_1, WP_ID, CR_ID]
+            yd_wait,
+            client=self._client(),
+            timeout=None,
+            yellowdog_ids=[WR_ID_1, WP_ID, CR_ID],
         )
         assert out == [
-            {"id": WR_ID_1, "status": "COMPLETED", "succeeded": True},
-            {"id": WP_ID, "status": "TERMINATED", "succeeded": True},
-            {"id": CR_ID, "status": "TERMINATED", "succeeded": True},
+            {"id": WR_ID_1, "name": "wr", "status": "COMPLETED", "succeeded": True},
+            {"id": WP_ID, "name": "wp", "status": "TERMINATED", "succeeded": True},
+            {"id": CR_ID, "name": "cr", "status": "TERMINATED", "succeeded": True},
         ]
+        assert run.exit_code == 0
 
     def test_a_failed_work_requirement_did_not_succeed(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
+        self._follow(monkeypatch)
         out, err, _ = run(
             yd_wait,
             client=self._client(WorkRequirementStatus.FAILED),
+            timeout=None,
             yellowdog_ids=[WR_ID_1],
         )
-        assert out == [{"id": WR_ID_1, "status": "FAILED", "succeeded": False}]
+        assert out == [
+            {"id": WR_ID_1, "name": "wr", "status": "FAILED", "succeeded": False}
+        ]
         assert "ended with status 'FAILED'" in err
+        assert run.exit_code == 1
 
-    def test_a_non_terminal_state_at_exit_did_not_succeed(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
-        out, _, _ = run(
+    def test_a_non_terminal_state_is_a_failure_not_a_success(self, run, monkeypatch):
+        # Following ended (a timeout, a stream not followed) with the Work
+        # Requirement still running: that used to exit 0
+        self._follow(monkeypatch)
+        out, err, _ = run(
             yd_wait,
             client=self._client(WorkRequirementStatus.RUNNING),
+            timeout=None,
             yellowdog_ids=[WR_ID_1],
         )
-        assert out == [{"id": WR_ID_1, "status": "RUNNING", "succeeded": False}]
+        assert out == [
+            {"id": WR_ID_1, "name": "wr", "status": "RUNNING", "succeeded": False}
+        ]
+        assert "is still RUNNING" in err
+        assert run.exit_code == 1
 
-    def test_an_unfetchable_status_is_null(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
+    def test_a_non_terminal_state_takes_the_following_failures_code(
+        self, run, monkeypatch
+    ):
+        # The stream was lost for good (8): that is why it is still running
+        self._follow(monkeypatch, exit_code=8)
+        run(
+            yd_wait,
+            client=self._client(WorkRequirementStatus.RUNNING),
+            timeout=None,
+            yellowdog_ids=[WR_ID_1],
+        )
+        assert run.exit_code == 8
+
+    def test_an_unfetchable_status_is_null_with_its_exit_code(self, run, monkeypatch):
+        self._follow(monkeypatch)
         client = self._client()
-        client.work_client.get_work_requirement_by_id.side_effect = Exception("boom")
-        out, _, _ = run(yd_wait, client=client, yellowdog_ids=[WR_ID_1])
-        assert out == [{"id": WR_ID_1, "status": None, "succeeded": False}]
+        response = Response()
+        response.status_code = 404
+        client.work_client.get_work_requirement_by_id.side_effect = HTTPError(
+            "404", response=response
+        )
+        out, _, _ = run(yd_wait, client=client, timeout=None, yellowdog_ids=[WR_ID_1])
+        assert out == [
+            {"id": WR_ID_1, "name": None, "status": None, "succeeded": False}
+        ]
+        assert run.exit_code == 6
 
-    def test_an_invalid_id_is_recorded_before_the_failure(self, run, monkeypatch):
-        self._follow(monkeypatch, [])
-        out, _, _ = run(yd_wait, client=self._client(), yellowdog_ids=["not-an-id"])
-        assert out == [{"id": "not-an-id", "status": None, "succeeded": False}]
+    def test_a_work_requirement_failure_with_another_failure_exits_1(
+        self, run, monkeypatch
+    ):
+        self._follow(monkeypatch)
+        client = self._client(WorkRequirementStatus.CANCELLED)
+        response = Response()
+        response.status_code = 404
+        client.worker_pool_client.get_worker_pool_by_id.side_effect = HTTPError(
+            "404", response=response
+        )
+        run(yd_wait, client=client, timeout=None, yellowdog_ids=[WR_ID_1, WP_ID])
+        assert run.exit_code == 1
+
+    @pytest.mark.parametrize(
+        "argv",
+        [[], ["not-an-id"], ["ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]],
+    )
+    def test_no_id_or_one_that_cannot_be_waited_for_is_a_usage_error(self, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-wait", argv=argv)
+        assert raised.value.code == 2
+
+    def test_a_timeout(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert (
+            CLIParser(command="yd-wait", argv=["--timeout", "60", WR_ID_1]).timeout
+            == 60
+        )
 
 
 # ---------------------------------------------------------------------------

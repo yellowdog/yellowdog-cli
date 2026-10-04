@@ -10567,10 +10567,23 @@
       "default": [],
       "dest": "yellowdog_ids",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
     },
     {
       "choices": null,
