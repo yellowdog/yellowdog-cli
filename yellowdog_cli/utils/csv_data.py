@@ -162,7 +162,7 @@ def load_json_file_with_csv_task_expansion(
     files. Return the expanded and variables-processed Work Requirement data.
     """
 
-    with open(json_file) as f:
+    with open(json_file, encoding="utf-8") as f:
         wr_data = json_load(f)
 
     return perform_csv_task_expansion(wr_data, csv_files, files_directory)

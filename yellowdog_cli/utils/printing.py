@@ -1715,7 +1715,9 @@ def print_to_file(json_string: str, output_file: str, with_final_comma: bool = F
     global FIRST_OUTPUT_TO_FILE
 
     try:
-        with open(output_file, "w" if FIRST_OUTPUT_TO_FILE else "a") as f:
+        with open(
+            output_file, "w" if FIRST_OUTPUT_TO_FILE else "a", encoding="utf-8"
+        ) as f:
             with redirect_stdout(f):
                 if with_final_comma:
                     print(json_string, end=",\n", flush=True)

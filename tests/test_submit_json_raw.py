@@ -144,14 +144,15 @@ class TestJsonRawBatchFails:
         cancel.assert_called_once_with(WR_ID)
 
     def test_no_later_task_group_is_attempted(self, outcome):
-        # The Work Requirement, tg-1's three batches (the third still tried,
-        # since its Task Group's batches all are), and none of tg-2's
+        # The Work Requirement, tg-1's first two batches, and none of tg-2's
         urls = [c.kwargs["url"] for c in outcome["post"].call_args_list]
         assert not any("tg-2" in url for url in urls)
 
     def test_a_platform_failure_is_retried_as_the_main_path_retries(self, outcome):
-        # 1 Work Requirement + 1 batch + 2 failing batches of every attempt
-        assert outcome["post"].call_count == 2 + 2 * MAX_BATCH_SUBMIT_ATTEMPTS
+        # 1 Work Requirement + 1 batch + 1 failing batch of every attempt: the
+        # third batch, not yet started when the second failed, is cancelled
+        # rather than submitted to a Work Requirement about to be cancelled
+        assert outcome["post"].call_count == 2 + MAX_BATCH_SUBMIT_ATTEMPTS
 
 
 class TestJsonRawBatchRetries:
@@ -163,8 +164,9 @@ class TestJsonRawBatchRetries:
     def test_a_refused_batch_is_not_retried(self):
         outcome = _submit([_created(), _response(400, "bad task")])
         assert isinstance(outcome["raised"], requests.HTTPError)
-        # Each of tg-1's three batches posted once, none of them again
-        assert outcome["post"].call_count == 1 + 3
+        # tg-1's first batch posted once and not again, and its other two
+        # not at all: they would only go to a Work Requirement being cancelled
+        assert outcome["post"].call_count == 1 + 1
         outcome["sleep"].assert_not_called()
 
     def test_a_request_to_slow_down_is_retried(self):
@@ -184,3 +186,31 @@ class TestJsonRawProgress:
             outcome = _submit([_created()] + [_response(200)] * 4, progress=True)
         assert "raised" not in outcome
         progress_bar.assert_called_once()
+
+
+class TestJsonRawMissingProperties:
+    @pytest.mark.parametrize(
+        "data, message",
+        [
+            ({"taskGroups": []}, "Property 'name' is not defined in 'raw.json'"),
+            ({"name": "wr"}, "Property 'taskGroups' is not defined"),
+            (
+                {"name": "wr", "taskGroups": [{"name": "a"}, {"tasks": []}]},
+                "Task Group 2 of 2 has no 'name' property",
+            ),
+        ],
+    )
+    def test_a_missing_property_is_named(self, data, message):
+        with (
+            patch.object(
+                submit_module,
+                "load_json_file_with_variable_substitutions",
+                return_value=data,
+            ),
+            patch.object(submit_module, "add_substitutions_without_overwriting"),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+            pytest.raises(ValueError, match=message),
+        ):
+            submit_module.submit_json_raw("raw.json")

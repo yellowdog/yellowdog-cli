@@ -14,6 +14,7 @@ from json import loads as json_loads
 from math import ceil
 from os.path import dirname, relpath
 from sys import exit as sys_exit
+from threading import Event
 from time import sleep
 from typing import NoReturn, cast
 
@@ -44,8 +45,15 @@ from yellowdog_cli.utils.csv_data import (
     load_jsonnet_file_with_csv_task_expansion,
     load_toml_file_with_csv_task_expansion,
 )
-from yellowdog_cli.utils.entity_utils import get_work_requirement_summary_by_name_or_id
-from yellowdog_cli.utils.exit_codes import MISSING_PERMISSION_TEXT, UNAUTHORIZED_TEXT
+from yellowdog_cli.utils.entity_utils import (
+    AmbiguousNameError,
+    find_work_requirement_by_name,
+)
+from yellowdog_cli.utils.exit_codes import (
+    MISSING_PERMISSION_TEXT,
+    UNAUTHORIZED_TEXT,
+    NotFoundError,
+)
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
@@ -55,7 +63,12 @@ from yellowdog_cli.utils.load_config import (
     CONFIG_FILE_DIR,
     load_config_work_requirement,
 )
-from yellowdog_cli.utils.misc_utils import format_yd_name, generate_id, link_entity
+from yellowdog_cli.utils.misc_utils import (
+    format_yd_name,
+    generate_id,
+    is_http_not_found,
+    link_entity,
+)
 from yellowdog_cli.utils.printing import (
     WorkRequirementSnapshot,
     print_dry_run,
@@ -169,7 +182,7 @@ from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
-from yellowdog_cli.utils.ydid_utils import YDIDType
+from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # Import the Work Requirement configuration from the TOML file
 CONFIG_WR: ConfigWorkRequirement = load_config_work_requirement()
@@ -200,13 +213,10 @@ def main():
     global ID
     ID = generate_id(CONFIG_COMMON.name_tag)
 
-    if not 1 <= TASK_BATCH_SIZE <= 10000:
-        raise ValueError("Task batch size must be between 1 and 10,000")
-
+    # The task batch size is checked as the configuration is loaded, and
+    # the options '--json-raw' cannot be combined with as the command line is
+    # parsed ('check_submit_combinations' in the registry)
     if ARGS_PARSER.json_raw:
-        # Raw Platform JSON, not a CLI specification: there is no schema for it
-        if ARGS_PARSER.validate:
-            raise ValueError("Option '--validate' cannot be used with '--json-raw'")
         submit_json_raw(ARGS_PARSER.json_raw)
         return
 
@@ -486,15 +496,19 @@ def submit_work_requirement(
             f"('{CONFIG_COMMON.namespace}/{work_requirement.name}')"
         )
         print_info(f"YellowDog ID is '{work_requirement.id}'")
-        if ARGS_PARSER.hold:
-            CLIENT.work_client.hold_work_requirement(work_requirement)
-            print_info("Work Requirement status is set to 'HELD'")
     else:
         WR_SNAPSHOT.set_work_requirement(work_requirement)
 
-    # Add Tasks to their Task Groups
-    for tg_number, task_group in enumerate(task_groups):
-        try:
+    try:
+        # Held before any Task is added, so that none starts; inside the
+        # clean-up, as a Work Requirement that cannot be held as asked is
+        # one left live without its Tasks
+        if ARGS_PARSER.hold and not ARGS_PARSER.dry_run:
+            CLIENT.work_client.hold_work_requirement(work_requirement)
+            print_info("Work Requirement status is set to 'HELD'")
+
+        # Add Tasks to their Task Groups
+        for tg_number, task_group in enumerate(task_groups):
             add_tasks_to_task_group(
                 tg_number,
                 task_group,
@@ -504,11 +518,11 @@ def submit_work_requirement(
                 files_directory=files_directory,
             )
 
-        # An interrupt too: Ctrl-C part-way through would otherwise leave
-        # the Work Requirement live with only some of its Tasks
-        except (Exception, KeyboardInterrupt):
-            cleanup_on_failure(work_requirement)
-            raise
+    # An interrupt too: Ctrl-C part-way through would otherwise leave the
+    # Work Requirement live with only some of its Tasks
+    except (Exception, KeyboardInterrupt):
+        cleanup_on_failure(work_requirement)
+        raise
 
     if ARGS_PARSER.progress:
         follow_progress_bar(work_requirement)
@@ -1051,35 +1065,32 @@ def add_tasks_to_task_group(
             f"Submitting Task batches using {max_workers} parallel submission threads"
         )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executors: list[Future] = []
+            batches = _Batches(executor)
             for batch_number in range(num_task_batches):
-                executors.append(
-                    executor.submit(
-                        submit_batch_of_tasks_to_task_group,
-                        generate_batch_of_tasks_for_task_group(
-                            (TASK_BATCH_SIZE * batch_number),
-                            min(TASK_BATCH_SIZE * (batch_number + 1), num_tasks),
-                            wr_data,
-                            files_directory,
-                            task_group,
-                            effective_tg_number,
-                            tasks,
-                            task_count,
-                            num_tasks,
-                            num_task_groups,
-                            task_number_offset=task_number_offset,
-                            wr_tg_index=tg_number,
-                        ),
-                        work_requirement,
+                batches.submit(
+                    submit_batch_of_tasks_to_task_group,
+                    generate_batch_of_tasks_for_task_group(
+                        (TASK_BATCH_SIZE * batch_number),
+                        min(TASK_BATCH_SIZE * (batch_number + 1), num_tasks),
+                        wr_data,
+                        files_directory,
                         task_group,
-                        num_task_batches,
-                        batch_number,
-                        TASK_BATCH_SIZE,
+                        effective_tg_number,
+                        tasks,
+                        task_count,
                         num_tasks,
-                    )
+                        num_task_groups,
+                        task_number_offset=task_number_offset,
+                        wr_tg_index=tg_number,
+                    ),
+                    work_requirement,
+                    task_group,
+                    num_task_batches,
+                    batch_number,
+                    TASK_BATCH_SIZE,
+                    num_tasks,
                 )
-
-        num_submitted_tasks = sum(x.result() for x in executors)
+            num_submitted_tasks = batches.total()
 
     if not ARGS_PARSER.dry_run:
         if num_submitted_tasks > 0:
@@ -1089,6 +1100,49 @@ def add_tasks_to_task_group(
             )
         else:
             print_info(f"No Tasks added to Task Group '{task_group.name}'")
+
+
+class _Batches:
+    """
+    A Task Group's batches, uploaded on a pool of threads. Once one fails,
+    a batch not yet started is skipped: the Work Requirement is about to be
+    cancelled, and its Tasks would only be submitted to it. Each batch checks
+    as it starts, rather than the queue being cancelled, since a thread takes
+    the next batch as soon as it is free, before the failure can be seen.
+    """
+
+    def __init__(self, executor: ThreadPoolExecutor):
+        self._executor = executor
+        self._stop = Event()
+        self._futures: list[Future] = []
+
+    def submit(self, function: Callable[..., int], *args) -> None:
+        self._futures.append(self._executor.submit(self._run, function, *args))
+
+    def _run(self, function: Callable[..., int], *args) -> int:
+        if self._stop.is_set():
+            return 0
+        try:
+            return function(*args)
+        except BaseException:
+            self._stop.set()
+            raise
+
+    def total(self) -> int:
+        """
+        The Tasks submitted, once every batch has finished or been skipped;
+        the first failure is raised then.
+        """
+        total = 0
+        failure: BaseException | None = None
+        for future in self._futures:
+            try:
+                total += future.result()
+            except BaseException as e:
+                failure = failure or e
+        if failure is not None:
+            raise failure
+        return total
 
 
 def _parallel_batches() -> int:
@@ -1518,29 +1572,7 @@ def add_to_existing_work_requirement(
     Add task groups and/or tasks to an existing Work Requirement identified
     by the --add-to argument (name or YellowDog ID).
     """
-    wr_summary = get_work_requirement_summary_by_name_or_id(
-        CLIENT,
-        ARGS_PARSER.add_to,  # type: ignore[arg-type]
-        CONFIG_COMMON.namespace,
-    )
-    if wr_summary is None:
-        raise ValueError(
-            f"Work Requirement '{ARGS_PARSER.add_to}' not found in namespace"
-            f" '{CONFIG_COMMON.namespace}'"
-        )
-
-    if (
-        wr_summary.status.finished  # type: ignore[union-attr]
-        or wr_summary.status == WorkRequirementStatus.CANCELLING
-    ):
-        raise ValueError(
-            f"Work Requirement '{wr_summary.name}' has terminal status"
-            f" '{wr_summary.status}': cannot add tasks"
-        )
-
-    work_requirement = CLIENT.work_client.get_work_requirement_by_id(
-        cast(str, wr_summary.id)
-    )
+    work_requirement = _work_requirement_to_add_to(cast(str, ARGS_PARSER.add_to))
     existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
 
     # Use the existing WR's name as the ID for substitutions
@@ -1716,6 +1748,45 @@ def add_to_existing_work_requirement(
         follow_progress(work_requirement)
 
 
+# The states of a Work Requirement that can still take Tasks: a FINISHING one
+# takes no new ones, and the rest have finished or are being cancelled
+_ADDABLE_STATUSES = (WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD)
+
+
+def _work_requirement_to_add_to(target: str) -> WorkRequirement:
+    """
+    The Work Requirement '--add-to' names, fetched in full: by its YDID,
+    whatever its namespace, or by its name, preferring the one that can still
+    take Tasks. Raises NotFoundError if there is none, and ValueError if it
+    cannot take Tasks (or the name is ambiguous).
+    """
+    if get_ydid_type(target) == YDIDType.WORK_REQUIREMENT:
+        work_requirement_id = target
+    else:
+        try:
+            summary = find_work_requirement_by_name(
+                CLIENT, target, CONFIG_COMMON.namespace, _ADDABLE_STATUSES
+            )
+        except AmbiguousNameError as e:
+            raise ValueError(str(e)) from e
+        work_requirement_id = cast(str, summary.id)
+    try:
+        work_requirement = CLIENT.work_client.get_work_requirement_by_id(
+            work_requirement_id
+        )
+    except Exception as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find Work Requirement {target}") from e
+        raise
+    if work_requirement.status not in _ADDABLE_STATUSES:
+        raise ValueError(
+            f"Work Requirement '{work_requirement.namespace}/{work_requirement.name}'"
+            f" is {work_requirement.status}, and cannot take Tasks: only a"
+            " RUNNING or HELD one can"
+        )
+    return work_requirement
+
+
 def submit_json_raw(wr_file: str):
     """
     Submit a 'raw' JSON Work Requirement, consisting of a combined Work
@@ -1731,6 +1802,11 @@ def submit_json_raw(wr_file: str):
         raise ValueError(
             f"Work Requirement file '{wr_file}' must end in '.json' or '.jsonnet'"
         )
+
+    if not isinstance(wr_data, dict):
+        raise ValueError(f"Work Requirement file '{wr_file}' must be a JSON object")
+    if "name" not in wr_data:
+        raise ValueError(f"Property '{NAME}' is not defined in '{wr_file}'")
 
     # Lazy substitution of Work Requirement name
     wr_data["name"] = format_yd_name(check_str(wr_data["name"], NAME))
@@ -1750,15 +1826,19 @@ def submit_json_raw(wr_file: str):
 
     # Extract Tasks from Task Groups
     task_lists = {}
-    try:
-        task_groups = wr_data["taskGroups"]
-    except KeyError:
-        raise KeyError("Property 'taskGroups' is not defined")
+    if TASK_GROUPS not in wr_data:
+        raise ValueError(f"Property '{TASK_GROUPS}' is not defined")
+    task_groups = check_list(wr_data[TASK_GROUPS], TASK_GROUPS)
     if not task_groups:
         raise ValueError("There must be at least one Task Group")
-    for task_group in task_groups:
-        task_lists[task_group["name"]] = task_group.get("tasks", [])
-        task_group.pop("tasks", None)
+    for tg_number, task_group in enumerate(task_groups):
+        if not isinstance(task_group, dict) or "name" not in task_group:
+            raise ValueError(
+                f"Task Group {tg_number + 1} of {len(task_groups)} has no"
+                f" '{NAME}' property"
+            )
+        task_lists[task_group["name"]] = task_group.get(TASKS, [])
+        task_group.pop(TASKS, None)
 
     # Submit the Work Requirement and its Task Groups
     response = requests.post(
@@ -1773,12 +1853,13 @@ def submit_json_raw(wr_file: str):
         _raise_for_response(response)
 
     wr_id = json_loads(response.text)["id"]
-    print_info(f"Created Work Requirement '{wr_data['namespace']}/{wr_name}' ({wr_id})")
-    record_entity(wr_id, wr_name, wr_data.get("namespace"), ET_WORK_REQUIREMENTS)
+    namespace = cast(str, wr_data.get("namespace"))
+    print_info(f"Created Work Requirement '{namespace}/{wr_name}' ({wr_id})")
+    record_entity(wr_id, wr_name, namespace, ET_WORK_REQUIREMENTS)
     print_quiet_result(wr_id)
 
     try:
-        _submit_json_raw_tasks(wr_id, wr_name, wr_data["namespace"], task_lists)
+        _submit_json_raw_tasks(wr_id, wr_name, namespace, task_lists)
     except (Exception, KeyboardInterrupt):
         # As for a Work Requirement built from a specification: one left
         # with only some of its Tasks is cancelled, and a failure to cancel
@@ -1801,8 +1882,8 @@ def _submit_json_raw_tasks(
 ) -> None:
     """
     Hold the newly created raw Work Requirement if asked, then submit each
-    Task Group's Tasks in batches. A batch that fails raises, once every
-    batch of its Task Group has been attempted.
+    Task Group's Tasks in batches. A batch that fails raises, once the
+    batches already under way have finished; those not yet started are not.
     """
     if ARGS_PARSER.hold:
         CLIENT.work_client.hold_work_requirement_by_id(wr_id)
@@ -1819,26 +1900,23 @@ def _submit_json_raw_tasks(
             f"Submitting task batches using {max_workers} parallel submission thread(s)"
         )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executors: list[Future] = []
+            batches = _Batches(executor)
             for batch_number in range(num_batches):
                 task_batch = task_list[
                     batch_number * TASK_BATCH_SIZE : min(
                         len(task_list), (batch_number + 1) * TASK_BATCH_SIZE
                     )
                 ]
-                executors.append(
-                    executor.submit(
-                        submit_json_task_batch,
-                        task_batch,
-                        batch_number,
-                        num_batches,
-                        task_group_name,
-                        wr_name,
-                        namespace,
-                    )
+                batches.submit(
+                    submit_json_task_batch,
+                    task_batch,
+                    batch_number,
+                    num_batches,
+                    task_group_name,
+                    wr_name,
+                    namespace,
                 )
-
-        num_submitted_tasks = sum(x.result() for x in executors)
+            num_submitted_tasks = batches.total()
         print_info(
             f"Added a total of {num_submitted_tasks} Task(s) to Task Group '{task_group_name}'"
         )
@@ -1900,6 +1978,6 @@ def _raise_for_response(response: requests.Response) -> NoReturn:
     )
 
 
-# Standalone entry point
+# Entry point
 if __name__ == "__main__":
     main()

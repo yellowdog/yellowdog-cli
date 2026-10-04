@@ -1192,7 +1192,7 @@ def load_json_file_with_variable_substitutions(
     """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         file_contents = f.read()
     try:
         result = json_loads(file_contents)

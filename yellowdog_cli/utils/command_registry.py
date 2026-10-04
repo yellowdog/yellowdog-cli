@@ -2415,6 +2415,37 @@ WORK_REQUIREMENT_FILE_POSITIONAL = option(
     ),
 )
 
+
+def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-submit's options that cannot apply together, refused rather than
+    ignored: '--json-raw' is a complete Platform document, so the options
+    that build or extend a specification do not apply to it; '--add-to'
+    adds to a Work Requirement that already has its own state and Task
+    Groups; and '--exit-on-failure' needs something to wait on.
+    """
+    if args.json_raw is not None:
+        for dest, flag in (
+            ("work_requirement", "--work-requirement"),
+            ("work_requirement_file_positional", "a Work Requirement file"),
+            ("add_to", "--add-to"),
+            ("csv_file", "--csv-file"),
+            ("process_csv_only", "--process-csv-only"),
+            ("task_count", "--task-count"),
+            ("task_group_count", "--task-group-count"),
+            ("empty", "--empty"),
+            ("validate", "--validate"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--json-raw cannot be used with {flag}")
+    if args.add_to is not None:
+        for dest, flag in (("hold", "--hold"), ("empty", "--empty")):
+            if getattr(args, dest, False):
+                parser.error(f"--add-to cannot be used with {flag}")
+    if args.exit_on_failure and not (args.follow or args.progress):
+        parser.error("--exit-on-failure needs --follow or --progress")
+
+
 COMMANDS["yd-submit"] = Command(
     name="yd-submit",
     purpose="submitting a Work Requirement",
@@ -2456,7 +2487,7 @@ COMMANDS["yd-submit"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
-    validators=(check_json_excludes_streaming,),
+    validators=(check_json_excludes_streaming, check_submit_combinations),
     tool=ToolKind.ACTING,
     tool_description=(
         "Submit a Work Requirement from a specification (a file path, or the"

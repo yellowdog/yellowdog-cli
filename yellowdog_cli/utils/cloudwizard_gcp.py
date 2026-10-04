@@ -212,7 +212,7 @@ class GCPConfig(CommonCloudConfig):
         """
         Generate a GCP Credential resource definition.
         """
-        with open(self._service_account_file) as f:
+        with open(self._service_account_file, encoding="utf-8") as f:
             service_account_file_contents = f.read()
         return {
             "resource": "Credential",

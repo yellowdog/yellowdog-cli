@@ -880,6 +880,17 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             if ARGS_PARSER.task_batch_size is None
             else ARGS_PARSER.task_batch_size
         )
+        # The Platform takes at most 10,000 Tasks in one request
+        if (
+            not isinstance(task_batch_size, int)
+            or isinstance(task_batch_size, bool)
+            or not 1 <= task_batch_size <= 10_000
+        ):
+            print_error(
+                f"'{TASK_BATCH_SIZE}' must be a whole number from 1 to 10,000"
+                f" (it is {task_batch_size!r})"
+            )
+            exit(ExitCode.CONFIGURATION)
 
         task_count = (
             ARGS_PARSER.task_count

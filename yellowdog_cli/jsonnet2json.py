@@ -60,7 +60,7 @@ def main():
         out_path = filepath[: -len(".jsonnet")] + ".json"
         try:
             json_data = json.loads(evaluate_file(filepath))
-            with open(out_path, "w") as f:
+            with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(json_data, f, indent=2, cls=CompactJSONEncoder)
                 f.write("\n")
             print(f"Converted: '{filepath}' → '{out_path}'")

@@ -41,7 +41,7 @@ def _suppress_rclone_download_output():
     old_handlers = root.handlers[:]
     root.handlers = [logging.NullHandler()]
     old_stdout, old_stderr = sys.stdout, sys.stderr
-    devnull = open(os.devnull, "w")
+    devnull = open(os.devnull, "w", encoding="utf-8")
     sys.stdout = sys.stderr = devnull
     try:
         yield
@@ -118,7 +118,7 @@ def make_rclone_for_copy(
     taken: set[str] = set()
     if src_ini is None or dst_ini is None:
         # Include the system conf so named remotes are accessible
-        sys_conf = _find_rclone_conf().read_text()
+        sys_conf = _find_rclone_conf().read_text(encoding="utf-8")
         sections.append(sys_conf)
         taken.update(re.findall(r"^\[(.+)\]", sys_conf, flags=re.MULTILINE))
 

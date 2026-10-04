@@ -146,7 +146,7 @@ class TestMakeRcloneForCopy:
             patch.object(
                 rcu,
                 "_find_rclone_conf",
-                return_value=MagicMock(read_text=lambda: sys_conf or ""),
+                return_value=MagicMock(read_text=lambda **k: sys_conf or ""),
             ),
         ):
             src_name, dst_name, _ = rcu.make_rclone_for_copy(src, dst)

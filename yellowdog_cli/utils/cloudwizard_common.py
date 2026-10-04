@@ -243,7 +243,7 @@ class CommonCloudConfig(ABC):
                 return False
 
         try:
-            with open(resources_file, "w") as f:
+            with open(resources_file, "w", encoding="utf-8") as f:
                 json.dump(resource_list, f, indent=2, cls=CompactJSONEncoder)
                 f.write("\n")
                 print_info(

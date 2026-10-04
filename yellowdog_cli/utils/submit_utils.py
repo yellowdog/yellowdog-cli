@@ -900,7 +900,7 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
     text, so no substitution pass walks it: an undefined variable left in it
     is reported here, by file.
     """
-    with open(join(files_directory, filename)) as f:
+    with open(join(files_directory, filename), encoding="utf-8") as f:
         contents = process_variable_substitutions_in_file_contents(
             f.read(), source=filename
         )

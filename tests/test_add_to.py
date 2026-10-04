@@ -45,6 +45,7 @@ def _make_tg(
 def _make_wr(name: str, status: WorkRequirementStatus, tgs: list[TaskGroup]):
     wr = MagicMock(spec=WorkRequirement)
     wr.name = name
+    wr.namespace = "ns"
     wr.id = f"ydid:wr:{name}"
     wr.status = status
     wr.taskGroups = tgs
@@ -136,22 +137,24 @@ class TestTaskNameWithOffset:
 
 class TestAddToNotFound:
     def test_raises_when_wr_not_found(self):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
         with (
             patch.object(
                 submit_module,
-                "get_work_requirement_summary_by_name_or_id",
-                return_value=None,
+                "find_work_requirement_by_name",
+                side_effect=NotFoundError("Cannot find Work Requirement 'ghost-wr'"),
             ),
             patch.object(
                 CLIParser, "add_to", new_callable=PropertyMock, return_value="ghost-wr"
             ),
-            pytest.raises(ValueError, match="not found"),
+            pytest.raises(NotFoundError, match="Cannot find"),
         ):
             submit_module.add_to_existing_work_requirement(files_directory=".")
 
 
 # ---------------------------------------------------------------------------
-# add_to_existing_work_requirement: terminal status rejection
+# add_to_existing_work_requirement: only a RUNNING or HELD one takes Tasks
 # ---------------------------------------------------------------------------
 
 
@@ -163,21 +166,30 @@ class TestAddToTerminalStatusRejection:
             WorkRequirementStatus.CANCELLED,
             WorkRequirementStatus.FAILED,
             WorkRequirementStatus.CANCELLING,
+            # A FINISHING Work Requirement takes no new Tasks
+            WorkRequirementStatus.FINISHING,
         ],
     )
-    def test_raises_for_terminal_status(self, status: WorkRequirementStatus):
+    def test_raises_for_a_state_that_takes_no_tasks(
+        self, status: WorkRequirementStatus
+    ):
         wr_summary = _make_wr_summary("my-wr", status, "ydid:wr:123")
 
         with (
             patch.object(
                 submit_module,
-                "get_work_requirement_summary_by_name_or_id",
+                "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
             patch.object(
                 CLIParser, "add_to", new_callable=PropertyMock, return_value="my-wr"
             ),
-            pytest.raises(ValueError, match="terminal status"),
+            patch.object(
+                submit_module.CLIENT.work_client,
+                "get_work_requirement_by_id",
+                return_value=_make_wr("my-wr", status, []),
+            ),
+            pytest.raises(ValueError, match="cannot take Tasks"),
         ):
             submit_module.add_to_existing_work_requirement(files_directory=".")
 
@@ -186,7 +198,6 @@ class TestAddToTerminalStatusRejection:
         [
             WorkRequirementStatus.RUNNING,
             WorkRequirementStatus.HELD,
-            WorkRequirementStatus.FINISHING,
         ],
     )
     def test_does_not_raise_for_non_terminal_status(
@@ -198,7 +209,7 @@ class TestAddToTerminalStatusRejection:
         with (
             patch.object(
                 submit_module,
-                "get_work_requirement_summary_by_name_or_id",
+                "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
             patch.object(
@@ -322,7 +333,7 @@ class TestAddToPartitioning:
         with (
             patch.object(
                 submit_module,
-                "get_work_requirement_summary_by_name_or_id",
+                "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
             patch.object(
@@ -682,3 +693,22 @@ class TestSubmitOrAddToDispatch:
 
     def test_without_add_to_a_dry_run_is_a_plain_submission(self):
         assert self._route(add_to=None, dry_run=True) == "submit"
+
+
+class TestAddToById:
+    def test_a_ydid_is_fetched_whatever_its_namespace(self):
+        wr_id = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        existing = _make_wr("elsewhere-wr", WorkRequirementStatus.RUNNING, [])
+        existing.namespace = "elsewhere"
+        find = MagicMock()
+        with (
+            patch.object(submit_module, "find_work_requirement_by_name", find),
+            patch.object(
+                submit_module.CLIENT.work_client,
+                "get_work_requirement_by_id",
+                return_value=existing,
+            ) as get,
+        ):
+            assert submit_module._work_requirement_to_add_to(wr_id) is existing
+        find.assert_not_called()
+        get.assert_called_once_with(wr_id)

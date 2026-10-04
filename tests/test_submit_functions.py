@@ -669,6 +669,74 @@ class TestSubmitWRCleanupOnFailure:
         cleanup_mock.assert_called_once_with(mock_wr)
 
 
+class TestSubmitWRHoldFailure:
+    def test_a_failed_hold_cancels_the_work_requirement(self):
+        # The Work Requirement is created, then held: a hold that fails used
+        # to leave it live without its Tasks, outside the clean-up
+        wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
+        mock_wr = _make_mock_wr()
+        cleanup_mock = MagicMock()
+        add_tasks_mock = MagicMock()
+        error = RuntimeError("hold refused")
+
+        with (
+            patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
+            patch.object(
+                submit_module,
+                "CONFIG_COMMON",
+                MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
+            ),
+            patch.object(submit_module, "ID", "test-wr"),
+            patch.object(submit_module, "RcloneUploadedFiles"),
+            patch.object(
+                submit_module,
+                "update_config_work_requirement_object",
+                side_effect=lambda x: x,
+            ),
+            patch.object(submit_module, "add_substitutions_without_overwriting"),
+            patch.object(
+                submit_module, "create_task_group", return_value=_make_mock_tg()
+            ),
+            patch.object(submit_module, "add_tasks_to_task_group", add_tasks_mock),
+            patch.object(
+                submit_module.CLIENT.work_client,
+                "add_work_requirement",
+                return_value=mock_wr,
+            ),
+            patch.object(
+                submit_module.CLIENT.work_client,
+                "hold_work_requirement",
+                side_effect=error,
+            ),
+            patch.object(submit_module, "link_entity", return_value="[link]"),
+            patch.object(submit_module, "cleanup_on_failure", cleanup_mock),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "hold", new_callable=PropertyMock, return_value=True
+            ),
+            patch.object(
+                CLIParser, "quiet", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "progress", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "follow", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "empty", new_callable=PropertyMock, return_value=False
+            ),
+            pytest.raises(RuntimeError) as raised,
+        ):
+            submit_module.submit_work_requirement(files_directory=".", wr_data=wr_data)
+
+        assert raised.value is error
+        cleanup_mock.assert_called_once_with(mock_wr)
+        add_tasks_mock.assert_not_called()
+
+
 class TestCleanupOnFailure:
     """
     A step of the cleanup that fails is reported, and the rest still made,

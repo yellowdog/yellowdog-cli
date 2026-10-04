@@ -2741,7 +2741,7 @@ class YellowDogApp(QMainWindow):
         if not self._check_config_file():
             return
         self._output.log(f"Displaying contents of '{self._config_file}':\n")
-        with open(cast(str, self._config_file)) as f:
+        with open(cast(str, self._config_file), encoding="utf-8") as f:
             self._output.log(f.read(), prefix=False)
 
     def _get_config_data_file(self, key: str) -> str | None:
@@ -2753,7 +2753,7 @@ class YellowDogApp(QMainWindow):
         if self._config_file is None or not exists(self._config_file):
             return None
         try:
-            with open(self._config_file) as f:
+            with open(self._config_file, encoding="utf-8") as f:
                 content = f.read()
         except OSError:
             return None
@@ -2809,7 +2809,7 @@ class YellowDogApp(QMainWindow):
             self._output.log("No Work Requirement definition file selected")
             return
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 self._output.log(f"Displaying contents of '{path}':\n")
                 self._output.log(f.read(), prefix=False)
         except OSError as e:
@@ -2821,7 +2821,7 @@ class YellowDogApp(QMainWindow):
             self._output.log("No Worker Pool definition file selected")
             return
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 self._output.log(f"Displaying contents of '{path}':\n")
                 self._output.log(f.read(), prefix=False)
         except OSError as e:

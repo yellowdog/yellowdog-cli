@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 16:13:21 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 16:31:14 BST 2026 -->
 
 <!--te-->
 
@@ -1105,7 +1105,7 @@ The following table outlines all the properties available for defining Work Requ
 | `retryableErrors`           | (Deprecated — see `retryPolicy`.) A list of error condition combinations under which Tasks will be retried (up to `maximumTaskRetries`). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.                 | Yes  | Yes | Yes  |      |
 | `setTaskNames`              | Set this to `false` to suppress automatic generation of Task names. Defaults to `true`. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.                  | Yes  | Yes | Yes  | Yes  |
 | `tag`                       | A tag that can be associated with a Work Requirement, Task Group or Task. Note there is **no property inheritance** for these tags.                                                                                                 | Yes  | Yes | Yes  | Yes  |
-| `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups. Default is 1,000.                                                                                                                                                       | Yes  |     |      |      |
+| `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups, from 1 to 10,000. Default is 1,000.                                                                                                                                                     | Yes  |     |      |      |
 | `taskCount`                 | The number of times to execute the Task.                                                                                                                                                                                            | Yes  | Yes | Yes  |      |
 | `taskDataFile`              | Populate the Task's `taskData` with the contents of the specified file. E.g. `"my_task_data_file.txt"`.                                                                                                                             | Yes  | Yes | Yes  | Yes  |
 | `taskDataFiles`             | Populate the Task's `taskData` by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g. `["header.txt", "body.txt"]`.                                                          | Yes  | Yes | Yes  | Yes  |
@@ -1806,9 +1806,9 @@ or a Task Group with no Tasks:
 }
 ```
 
-The `--add-to` (`-A`) option allows Task Groups and/or Tasks to be added to a Work Requirement that has already been submitted, as long as it is not in a terminal state.
+The `--add-to` (`-A`) option allows Task Groups and/or Tasks to be added to a Work Requirement that has already been submitted, as long as it is `RUNNING` or `HELD`: a `FINISHING` one takes no new Tasks, and the rest have finished or are being cancelled. It cannot be combined with `--hold` or `--empty`, which apply only to a new Work Requirement.
 
-The argument to `--add-to` is the name or YellowDog ID of the target Work Requirement:
+The argument to `--add-to` is the name or YellowDog ID of the target Work Requirement. A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`, and since a name can be reused, the `RUNNING` or `HELD` Work Requirement of that name is chosen (if there are two, its YDID must be given instead). A target that does not exist exits with code 6:
 
 ```bash
 yd-submit --add-to my-work-requirement my-spec.json
@@ -1833,7 +1833,7 @@ yd-submit --add-to my-work-requirement --overwrite my-spec.json
 
 By default, `yd-submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
 
-`--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is not in a terminal state, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
+`--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
 
 The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
 
@@ -3566,18 +3566,18 @@ Once submitted, the Work Requirement will appear in the **Work** tab in the Yell
 Key options:
 - `--follow`/`-f` — report on Tasks as they conclude, and don't return until the Work Requirement has finished
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
-- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state
-- `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-start`
+- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state; needs `--follow` or `--progress`
+- `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
 - `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group
 - `--csv-file`/`-V <data.csv>` — read Task data from one or more CSV files; `--process-csv-only`/`-p` outputs the intermediate JSON specification without submitting
 - `--task-batch-size`/`-b <n>` — the batch size for Task submission, between 1 and 10,000
-- `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential)
+- `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential); once a batch fails, those not yet started are not submitted
 - `--pause-between-batches`/`-P [<seconds>]` — pause between batch submissions; with no interval, user input is required to advance. Only valid when `--parallel-batches` is `1`
 - `--overwrite`/`-O` — overwrite a file that already exists at the remote destination; by default, existing files are skipped
-- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file
+- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty` or `--validate`, none of which applies to it
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found; a relative path in the specification (a `taskDataFile`, a CSV file) is found there, while the specification file itself is always named from the current directory
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](#specification-schemas))

@@ -499,17 +499,17 @@ class TestSubmit:
         _, err, _ = submit(None, validate=True)
         assert submit.run.exit_code == 1 and "'--validate' needs" in err
 
-    def test_validate_with_json_raw_is_refused(self, submit, tmp_path, monkeypatch):
-        import yellowdog_cli.submit as yd_submit
+    def test_validate_with_json_raw_is_refused(self, capsys):
+        # As the command line is parsed (exit 2): a raw Platform document has
+        # no schema to check it against
+        from yellowdog_cli.utils.args import CLIParser
 
-        submit_json_raw = MagicMock()
-        monkeypatch.setattr(yd_submit, "submit_json_raw", submit_json_raw)
-        _, err, client = submit(
-            None, json_raw=_write(tmp_path, "raw.json", {"x": 1}), validate=True
-        )
-        assert submit.run.exit_code == 1 and "'--json-raw'" in err
-        submit_json_raw.assert_not_called()
-        client.work_client.add_work_requirement.assert_not_called()
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(
+                command="yd-submit", argv=["--json-raw", "raw.json", "--validate"]
+            )
+        assert raised.value.code == 2
+        assert "--json-raw cannot be used with --validate" in capsys.readouterr().err
 
     def test_an_unbuildable_schema_warns_once_and_proceeds(
         self, submit, tmp_path, unbuildable

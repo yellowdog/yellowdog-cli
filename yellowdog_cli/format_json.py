@@ -22,7 +22,7 @@ def main():
 
         # Load contents
         try:
-            with open(filename) as f:
+            with open(filename, encoding="utf-8") as f:
                 contents = f.read()
                 f.seek(0)
                 data = json.load(f)
@@ -41,7 +41,7 @@ def main():
 
         # Write the reformatted JSON file
         try:
-            with open(filename, "w") as f:
+            with open(filename, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, cls=CompactJSONEncoder)
                 f.write("\n")
             print(f"Reformatted: '{filename}'")

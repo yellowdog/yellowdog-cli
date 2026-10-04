@@ -441,6 +441,21 @@ class TestLoadConfigWorkRequirement:
         )
         assert result.task_batch_size == 200
 
+    @pytest.mark.parametrize("value", [0, 10_001, -1, "100", 2.5, True])
+    def test_a_task_batch_size_out_of_range_is_a_configuration_error(self, value):
+        # Checked as the configuration is loaded (exit 3), not when yd-submit
+        # runs (which exited 1)
+        with pytest.raises(SystemExit) as raised:
+            self._call(toml_wr_section={TASK_BATCH_SIZE: value})
+        assert raised.value.code == 3
+
+    @pytest.mark.parametrize("value", [1, 10_000])
+    def test_a_task_batch_size_at_either_end_is_accepted(self, value):
+        assert (
+            self._call(toml_wr_section={TASK_BATCH_SIZE: value}).task_batch_size
+            == value
+        )
+
     def test_cli_task_count_overrides_toml(self):
         result = self._call(
             toml_wr_section={TASK_COUNT: 3},

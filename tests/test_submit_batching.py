@@ -7,6 +7,7 @@ fails in submit_batch_of_tasks_to_task_group.
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, PropertyMock, patch
 
+import pytest
 import requests
 from yellowdog_client.model import TaskGroup, WorkRequirement
 from yellowdog_client.model.exceptions.invalid_request_exception import (
@@ -496,3 +497,40 @@ class TestBatchSubmitRetries:
         assert outcome["raised"] is errors[-1]
         assert outcome["add_tasks"].call_count == MAX_BATCH_SUBMIT_ATTEMPTS
         assert classify(outcome["raised"]) == ExitCode.CONNECTION
+
+
+class TestBatchesStopAfterAFailure:
+    """
+    Once a batch fails, those not yet started are skipped: the Work
+    Requirement is about to be cancelled. Each batch checks as it starts, so
+    this holds even for a single thread, which takes the next batch before
+    the failure could be seen and the queue cancelled.
+    """
+
+    @pytest.mark.parametrize("threads", [1, 2])
+    def test_later_batches_are_skipped(self, threads):
+        started: list[int] = []
+
+        def batch(number: int) -> int:
+            started.append(number)
+            if number == 1:
+                raise RuntimeError("refused")
+            return 10
+
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            batches = submit_module._Batches(executor)
+            for number in range(6):
+                batches.submit(batch, number)
+            with pytest.raises(RuntimeError, match="refused"):
+                batches.total()
+        assert 1 in started
+        if threads == 1:
+            assert started == [0, 1]
+        assert len(started) < 6
+
+    def test_all_batches_succeeding_are_totalled(self):
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            batches = submit_module._Batches(executor)
+            for number in range(5):
+                batches.submit(lambda n: n + 1, number)
+            assert batches.total() == 15
