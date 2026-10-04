@@ -82,7 +82,7 @@ def test_capture_objects_parses_enumeration(window, monkeypatch):
     monkeypatch.setattr(
         window,
         "_capture_dry_run_json",
-        lambda command, extra_args=None: [
+        lambda command, extra_args=None, failures_recorded=False: [
             {"name": "pyex-001", "path": "S3:b/pfx/pyex-001", "isDir": False}
         ],
     )
@@ -107,7 +107,7 @@ def test_capture_objects_groups_download_records_into_items(window, monkeypatch)
     # 'path'), so a swapped dispatch fails here.
     seen: list = []
 
-    def enumerate_files(command, extra_args=None):
+    def enumerate_files(command, extra_args=None, failures_recorded=False):
         seen.append(command)
         return [
             _download_record("S3:b/pfx/pyex-001", "S3:b/pfx/pyex-001"),
@@ -125,7 +125,7 @@ def test_capture_objects_does_not_group_delete_records(window, monkeypatch):
     monkeypatch.setattr(
         window,
         "_capture_dry_run_json",
-        lambda command, extra_args=None: [
+        lambda command, extra_args=None, failures_recorded=False: [
             {"path": "S3:b/pfx/pyex-logs", "name": "pyex-logs/", "isDir": True}
         ],
     )
@@ -153,7 +153,9 @@ def test_capture_objects_logs_when_download_records_lack_matches(window, monkeyp
     monkeypatch.setattr(
         window,
         "_capture_dry_run_json",
-        lambda command, extra_args=None: [{"source": "S3:b/pfx/pyex-001"}],
+        lambda command, extra_args=None, failures_recorded=False: [
+            {"source": "S3:b/pfx/pyex-001"}
+        ],
     )
     window.log_output.setPlainText("")
     assert window._capture_dry_run_objects("yd-download", ["pyex*"]) is None
@@ -162,7 +164,9 @@ def test_capture_objects_logs_when_download_records_lack_matches(window, monkeyp
 
 def test_capture_objects_none_on_enumeration_failure(window, monkeypatch):
     monkeypatch.setattr(
-        window, "_capture_dry_run_json", lambda command, extra_args=None: None
+        window,
+        "_capture_dry_run_json",
+        lambda command, extra_args=None, failures_recorded=False: None,
     )
     assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None
 
@@ -171,7 +175,9 @@ def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
     monkeypatch.setattr(
         window,
         "_capture_dry_run_json",
-        lambda command, extra_args=None: [{"name": "pyex-001"}],
+        lambda command, extra_args=None, failures_recorded=False: [
+            {"name": "pyex-001"}
+        ],
     )
     window.log_output.setPlainText("")
     assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None

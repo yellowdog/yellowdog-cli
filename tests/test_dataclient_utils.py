@@ -562,7 +562,7 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err
         records = json.loads(out)
         assert [(r["source"], r["action"]) for r in records] == [
             ("loc:remote/a.txt", "failed")
@@ -581,7 +581,7 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err
         assert {(r["source"], r["action"]) for r in json.loads(out)} == {
             ("loc:remote/mydir/b.txt", "failed"),
             ("loc:remote/mydir/sub/c.txt", "failed"),
@@ -594,4 +594,4 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err

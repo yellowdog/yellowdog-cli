@@ -552,37 +552,74 @@ def _format_glob_matches(remote_path: str, matches: list[dict]) -> str:
     return f"Wildcard '{remote_path}' matches: {', '.join(names)}"
 
 
+def remote_stat(rclone: Rclone, remote_path: str) -> dict | None:
+    """
+    The lsjson entry of a remote path itself -- a file, or a directory,
+    empty or not -- or None if it does not exist (rclone's exit code 3,
+    'directory not found'). Any other failure to reach it raises, with
+    rclone's own message, rather than reading as 'not there'.
+    """
+    result = _run_quietly(rclone, ["lsjson", "--stat", "--no-mimetype", remote_path])
+    if result.returncode == 3:
+        return None
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Cannot access '{remote_path}': {_rclone_error_detail(result)}"
+        )
+    return json.loads(result.stdout or "null")
+
+
+def glob_matches(rclone: Rclone, remote_path: str) -> tuple[str, list[dict]]:
+    """
+    (parent directory, matching entries) for a wildcard remote path. The
+    parent not existing, or nothing matching, raises FileNotFoundError, and
+    any other failure to list the parent raises with rclone's message.
+    """
+    remote_dir, pattern = _split_glob_remote_path(remote_path)
+    check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
+    if check.returncode == 3:
+        raise FileNotFoundError(f"'{remote_dir}' does not exist")
+    if check.returncode != 0:
+        raise RuntimeError(
+            f"Cannot access '{remote_dir}': {_rclone_error_detail(check)}"
+        )
+    entries = json.loads(check.stdout or "[]")
+    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
+    if not matches:
+        raise FileNotFoundError(f"No matches for wildcard '{remote_path}'")
+    return remote_dir, matches
+
+
+def config_glob_matches(
+    config: ConfigDataClient, remote_path: str
+) -> tuple[str, list[dict]]:
+    """
+    glob_matches() for a data client configuration.
+    """
+    _, rclone = _rclone_for_config(config)
+    return glob_matches(rclone, remote_path)
+
+
 def _download_with_glob(
     config: ConfigDataClient,
     remote_path: str,
     local_destination: Path,
     sync: bool = False,
     flatten: bool = False,
-) -> None:
+) -> bool:
     """
-    Download files whose names match a glob pattern.
+    Download files whose names match a glob pattern. Returns False, having
+    reported and recorded it, if any match failed; every match is tried.
 
     remote_path must contain wildcard characters in its final component, e.g.
     'S3:bucket/prefix/data_*.csv'.  Directory structure is preserved relative
     to the parent directory of the pattern, unless flatten=True, when every
     file of a matched directory is placed directly in local_destination.
-    With sync=True, local files not present in the remote (among the matched
-    set) are deleted.
+    With sync=True, each matched directory is mirrored to its local copy,
+    local files not present in the remote being deleted.
     """
-    remote_dir, pattern = _split_glob_remote_path(remote_path)
     _, rclone = _rclone_for_config(config)
-
-    # Preflight: list the parent directory and check whether any entry
-    # (file or directory) matches the glob pattern.
-    check = _run_quietly(rclone, ["lsjson", remote_dir])
-    if check.returncode != 0:
-        print_warning(f"Cannot access '{remote_dir}'")
-        return
-    entries = json.loads(check.stdout or "[]")
-    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
-    if not matches:
-        print_info(f"No matches for wildcard '{remote_path}'")
-        return
+    remote_dir, matches = glob_matches(rclone, remote_path)
     print_info(_format_glob_matches(remote_path, matches))
 
     action = "Syncing" if sync else "Downloading"
@@ -600,12 +637,13 @@ def _download_with_glob(
         else [[] for _ in matches]
     )
     flattened: dict[str, str] = {}
+    succeeded = True
     for entry, files in zip(matches, files_of_matches):
         src = _join_remote(remote_dir, entry["Name"])
         if flatten:
             _warn_of_flattened_collisions(files, flattened)
             if entry["IsDir"]:
-                _download_each(rclone, files, src)
+                succeeded = _download_each(rclone, files, src) and succeeded
                 continue
         dst = str(local_destination / entry["Name"])
         if entry["IsDir"]:
@@ -613,10 +651,28 @@ def _download_with_glob(
         else:
             result = _copy_to(rclone, src, dst)
         if result.returncode != 0:
-            error = f"Download failed for '{src}': {_rclone_error_detail(result)}"
-            _record_downloads(files, src, "failed", error=error)
-            raise RuntimeError(error)
+            _download_failed(files, src, dst, _rclone_error_detail(result))
+            succeeded = False
+            continue
         _record_downloads(files, src, "downloaded")
+    return succeeded
+
+
+def _download_failed(
+    files: list[tuple[str, str, int | None]], source: str, destination: str, detail: str
+) -> None:
+    """
+    Report and record a transfer that failed: each of its files, or when
+    they were not listed, the item itself.
+    """
+    error = f"Download of '{source}' failed: {detail}"
+    print_error(error)
+    if files:
+        _record_downloads(files, source, "failed", error=error)
+    else:
+        record_transfer(
+            source, destination, None, "failed", error=error, match=source.rstrip("/")
+        )
 
 
 def _download_files_of(
@@ -737,18 +793,23 @@ def _warn_of_flattened_collisions(
 
 def _download_each(
     rclone: Rclone, files: list[tuple[str, str, int | None]], match: str
-) -> None:
+) -> bool:
     """
     Download each (source, destination, size) to its own destination with
-    'rclone copyto', recording each, and raising on the first that fails.
+    'rclone copyto', recording each; every file is tried, and False is
+    returned if any failed.
     """
+    succeeded = True
     for source, destination, size in files:
         result = _copy_to(rclone, source, destination)
         if result.returncode != 0:
-            error = f"Download failed for '{source}': {_rclone_error_detail(result)}"
+            error = f"Download of '{source}' failed: {_rclone_error_detail(result)}"
+            print_error(error)
             _record_downloads([(source, destination, size)], match, "failed", error)
-            raise RuntimeError(error)
+            succeeded = False
+            continue
         _record_downloads([(source, destination, size)], match, "downloaded")
+    return succeeded
 
 
 def download_files(
@@ -759,100 +820,44 @@ def download_files(
     sync: bool = False,
     dry_run: bool = False,
     destination_is_item: bool = False,
-) -> None:
+) -> bool:
     """
-    Download from remote_path to local_destination.
+    Download from remote_path to local_destination. Returns False, having
+    reported and recorded it, if a transfer failed; a remote path that does
+    not exist, or a wildcard that matches nothing, raises FileNotFoundError,
+    and a remote that cannot be reached raises, for the caller to record.
 
-    remote_path may be a single file, a directory, or include glob patterns
-    (delegated to rclone).  With flatten=True, all remote files are placed
-    directly in local_destination without preserving directory structure.
-    With sync=True, local files not present in the remote are deleted.
-    With destination_is_item=True, local_destination is the remote item's own
-    path rather than a directory to copy it into, so a single file is written
-    to that path itself.
+    remote_path may be a single file, a directory, or include glob patterns.
+    With flatten=True, all remote files are placed directly in
+    local_destination without preserving directory structure (never with
+    sync, which the command line refuses). With sync=True, local files not
+    present in the remote are deleted. With destination_is_item=True,
+    local_destination is the remote item's own path rather than a directory
+    to copy it into, so a single file is written to that path itself.
     """
-    if flatten and sync:
-        print_warning("--sync is not supported with --flatten; ignoring --sync")
-        sync = False
-
     if dry_run:
-        action = "sync" if sync else "download"
-        if is_glob(remote_path):
-            remote_dir, matches = list_remote_glob(config, remote_path)
-            if not matches:
-                print_info(f"No wildcard matches for '{remote_path}'")
-                return
-            names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
-            print_dry_run(
-                f"Would {action} {len(matches)} matched item(s)"
-                f" → '{local_destination}': {', '.join(names)}"
-            )
-            if json_requested() or flatten:
-                _, rclone = _rclone_for_config(config)
-                files_of_matches = _files_of_matches(
-                    rclone, remote_dir, matches, local_destination, flatten
-                )
-                flattened: dict[str, str] = {}
-                for entry, files in zip(matches, files_of_matches):
-                    if flatten:
-                        _warn_of_flattened_collisions(files, flattened)
-                    _record_downloads(
-                        files, _join_remote(remote_dir, entry["Name"]), "would download"
-                    )
-        else:
-            listing = list_remote(config, remote_path)
-            if not listing.dirs and not listing.files:
-                print_warning(f"'{remote_path}' does not exist")
-                return
-            n_files = len(listing.files)
-            n_dirs = len(listing.dirs)
-            ies = "y" if n_dirs == 1 else "ies"
-            print_dry_run(
-                f"Would {action} '{remote_path}' → '{local_destination}'"
-                f" ({n_files} file(s), {n_dirs} director{ies})"
-            )
-            if json_requested() or flatten:
-                _, rclone = _rclone_for_config(config)
-                files = _literal_download_files(
-                    rclone, remote_path, local_destination, flatten, destination_is_item
-                )
-                if flatten:
-                    _warn_of_flattened_collisions(files, {})
-                _record_downloads(files, remote_path, "would download")
-        return
+        _dry_run_download(
+            config, remote_path, local_destination, flatten, sync, destination_is_item
+        )
+        return True
 
     if is_glob(remote_path):
-        _download_with_glob(
+        return _download_with_glob(
             config, remote_path, local_destination, sync=sync, flatten=flatten
         )
-        return
-
-    listing = list_remote(config, remote_path)
-    if not listing.dirs and not listing.files:
-        print_warning(f"'{remote_path}' does not exist")
-        return
 
     _, rclone = _rclone_for_config(config)
+    stat = remote_stat(rclone, remote_path)
+    if stat is None:
+        raise FileNotFoundError(f"'{remote_path}' does not exist")
+    is_file = not stat["IsDir"]
     dst = str(local_destination)
 
-    # The listing that decides between the transfers is only needed for an
-    # item's own path or a flat tree; a plain copy handles a file or a
-    # directory alike
-    is_file = (destination_is_item or flatten) and _is_remote_file(rclone, remote_path)
     if destination_is_item and is_file:
         # 'rclone copy' would treat the path as a directory to copy into
-        files = (
-            _download_files_of(rclone, remote_path, False, local_destination)
-            if json_requested()
-            else []
-        )
+        files = [(remote_path, dst, stat.get("Size"))] if json_requested() else []
         print_info(f"Downloading '{remote_path}' → '{local_destination}'")
         result = _copy_to(rclone, remote_path, dst)
-        if result.returncode != 0:
-            error = f"Download failed: {_rclone_error_detail(result)}"
-            _record_downloads(files, remote_path, "failed", error=error)
-            raise RuntimeError(error)
-        _record_downloads(files, remote_path, "downloaded")
     elif flatten and not is_file:
         # Each file of the tree to its own name directly in the destination
         print_info(f"Downloading (flat) '{remote_path}' → '{local_destination}'")
@@ -861,27 +866,118 @@ def download_files(
         )
         _warn_of_flattened_collisions(files, {})
         local_destination.mkdir(parents=True, exist_ok=True)
-        _download_each(rclone, files, remote_path)
+        return _download_each(rclone, files, remote_path)
     else:
         files = (
             _literal_download_files(
-                rclone, remote_path, local_destination, flatten, destination_is_item
+                rclone,
+                remote_path,
+                local_destination,
+                flatten,
+                destination_is_item,
+                stat,
             )
             if json_requested()
             else []
         )
-        action = "Syncing" if sync else "Downloading"
+        action = "Syncing" if sync and not is_file else "Downloading"
         print_info(f"{action} '{remote_path}' → '{local_destination}'")
-        if sync:
+        if sync and not is_file:
             result = _rclone_sync(rclone, src=remote_path, dst=dst)
         else:
             result = _copy(rclone, remote_path, dst)
-        if result.returncode != 0:
-            # One rclone run fetched them all, so which of them failed is unknown
-            error = f"Download failed: {_rclone_error_detail(result)}"
-            _record_downloads(files, remote_path, "failed", error=error)
-            raise RuntimeError(error)
-        _record_downloads(files, remote_path, "downloaded")
+    if result.returncode != 0:
+        # One rclone run fetched them all, so which of them failed is unknown
+        _download_failed(files, remote_path, dst, _rclone_error_detail(result))
+        return False
+    _record_downloads(files, remote_path, "downloaded")
+    return True
+
+
+def _dry_run_download(
+    config: ConfigDataClient,
+    remote_path: str,
+    local_destination: Path,
+    flatten: bool,
+    sync: bool,
+    destination_is_item: bool,
+) -> None:
+    """
+    Report what download_files() would do, recording each file under
+    '--json' (and listing them anyway to warn of flattened collisions);
+    with sync, also each local file it would delete.
+    """
+    action = "sync" if sync else "download"
+    _, rclone = _rclone_for_config(config)
+    if is_glob(remote_path):
+        remote_dir, matches = glob_matches(rclone, remote_path)
+        names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
+        print_dry_run(
+            f"Would {action} {len(matches)} matched item(s)"
+            f" → '{local_destination}': {', '.join(names)}"
+        )
+        if json_requested() or flatten:
+            files_of_matches = _files_of_matches(
+                rclone, remote_dir, matches, local_destination, flatten
+            )
+            flattened: dict[str, str] = {}
+            for entry, files in zip(matches, files_of_matches):
+                if flatten:
+                    _warn_of_flattened_collisions(files, flattened)
+                _record_downloads(
+                    files, _join_remote(remote_dir, entry["Name"]), "would download"
+                )
+        if sync:
+            for entry in matches:
+                if entry["IsDir"]:
+                    _report_local_sync_deletions(
+                        rclone,
+                        _join_remote(remote_dir, entry["Name"]),
+                        local_destination / entry["Name"],
+                    )
+        return
+
+    stat = remote_stat(rclone, remote_path)
+    if stat is None:
+        raise FileNotFoundError(f"'{remote_path}' does not exist")
+    if stat["IsDir"]:
+        print_dry_run(
+            f"Would {action} directory '{remote_path}' → '{local_destination}'"
+        )
+    else:
+        print_dry_run(f"Would download '{remote_path}' → '{local_destination}'")
+    if json_requested() or flatten:
+        files = _literal_download_files(
+            rclone, remote_path, local_destination, flatten, destination_is_item, stat
+        )
+        if flatten:
+            _warn_of_flattened_collisions(files, {})
+        _record_downloads(files, remote_path, "would download")
+    if sync and stat["IsDir"]:
+        _report_local_sync_deletions(rclone, remote_path, local_destination)
+
+
+def _report_local_sync_deletions(
+    rclone: Rclone, remote_path: str, local_path: Path
+) -> None:
+    """
+    In a dry run of a download sync, report and record each local file the
+    sync would delete: those under the local copy with no remote
+    counterpart.
+    """
+    if not local_path.is_dir():
+        return
+    remote = {
+        entry["Path"]
+        for entry in _lsjson(rclone, remote_path, recursive=True, files_only=True)
+    }
+    for path in _local_files(local_path):
+        relative = Path(path).relative_to(local_path).as_posix()
+        if relative not in remote:
+            print_dry_run(f"Would delete '{path}'")
+            record_transfer(
+                None, path, None, "would delete", match=remote_path.rstrip("/")
+            )
 
 
 def _literal_download_files(
@@ -889,19 +985,21 @@ def _literal_download_files(
     remote_path: str,
     local_destination: Path,
     flatten: bool,
-    destination_is_item: bool = False,
+    destination_is_item: bool,
+    stat: dict,
 ) -> list[tuple[str, str, int | None]]:
     """
     The files a download of a literal (not wildcard) remote path fetches:
     a file to the destination itself when that is the item's own path, and
     otherwise inside the destination directory, under its own name, as
     'rclone copy' puts it; a directory's contents in the destination.
+    'stat' is the path's own lsjson entry.
     """
-    if _is_remote_file(rclone, remote_path):
+    if not stat["IsDir"]:
         if destination_is_item:
-            return _download_files_of(rclone, remote_path, False, local_destination)
+            return [(remote_path, str(local_destination), stat.get("Size"))]
         name = remote_path.rstrip("/").rsplit("/", 1)[-1]
-        return _download_files_of(rclone, remote_path, False, local_destination / name)
+        return [(remote_path, str(local_destination / name), stat.get("Size"))]
     return _download_files_of(
         rclone, remote_path, True, local_destination, flatten=flatten
     )

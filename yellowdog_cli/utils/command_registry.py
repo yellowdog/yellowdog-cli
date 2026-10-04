@@ -950,6 +950,17 @@ def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
             parser.error(f"the following arguments are required: {metavar}")
 
 
+def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-upload and yd-download: their paths (see check_paths_given()); and
+    not --sync with --flatten, which would transfer without the deletion
+    --sync promises.
+    """
+    check_paths_given(args, parser)
+    if args.sync and args.flatten:
+        parser.error("--sync cannot be used with --flatten")
+
+
 DESTINATION = option(
     "--destination",
     "-d",
@@ -1681,7 +1692,7 @@ COMMANDS["yd-download"] = Command(
             )
         ),
     ),
-    validators=(check_paths_given,),
+    validators=(check_transfer_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
     tool_description=(
@@ -2730,16 +2741,6 @@ LOCAL_PATHS = Option(
 )
 
 
-def check_upload_args(args: Namespace, parser: ArgumentParser) -> None:
-    """
-    yd-upload: its paths (see check_paths_given()); and not --sync with
-    --flatten, which would upload without the deletion --sync promises.
-    """
-    check_paths_given(args, parser)
-    if args.sync and args.flatten:
-        parser.error("--sync cannot be used with --flatten")
-
-
 COMMANDS["yd-upload"] = Command(
     name="yd-upload",
     purpose="uploading files to a remote data client",
@@ -2757,7 +2758,7 @@ COMMANDS["yd-upload"] = Command(
         SYNC,
         TRANSFERS_JSON,
     ),
-    validators=(check_upload_args,),
+    validators=(check_transfer_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
 )

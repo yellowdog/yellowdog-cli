@@ -2638,12 +2638,109 @@ class TestDownload:
         assert all(r["match"] == "loc:remote/sub" for r in out)
         assert (remote / "flat" / "c.txt").exists() != dry_run
 
-    def test_a_missing_path_records_nothing(self, remote, run_dc):
-        # The local backend fails the listing, an object store lists nothing
-        # and warns; either way no transfer is recorded, and stdout still
-        # parses
-        out, _, _ = run_dc(yd_download, remote_paths=["loc:remote/nope"])
-        assert out == []
+    def test_a_missing_path_fails(self, remote, run_dc):
+        # Nothing downloaded is not a success: a script fetching results
+        # must not read it as one
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/nope"])
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed")
+        ]
+        assert "does not exist" in out[0]["error"]
+        assert code == 1
+
+    def test_a_wildcard_matching_nothing_fails(self, remote, run_dc):
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/zz*"])
+        assert out[0]["error"] == "No matches for wildcard 'loc:remote/zz*'"
+        assert code == 1
+
+    def test_an_empty_directory_downloads_nothing_successfully(self, remote, run_dc):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/empty"])
+        assert out == [] and code == 0
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc):
+        out, err, code = run_dc(
+            yd_download, remote_paths=["loc:remote/nope", "loc:remote/a.txt"]
+        )
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed"),
+            ("loc:remote/a.txt", "downloaded"),
+        ]
+        assert code == 1
+        assert "1 item(s) failed to download" in " ".join(err.split())
+        assert (remote / "a.txt").exists()
+
+    def test_a_mid_path_wildcard_fails_only_its_argument(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:re*/a.txt", "loc:remote/a.txt"]
+        )
+        assert [r["action"] for r in out] == ["failed", "downloaded"]
+        assert code == 1
+
+    def test_syncs_into_one_destination_download_nothing(self, remote, run_dc):
+        _, err, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub", "loc:remote"],
+            destination="out",
+            sync=True,
+        )
+        assert code == 2
+        assert "would both be synced to 'out'" in " ".join(err.split())
+        assert not (remote / "out").exists()
+
+    def test_a_sync_into_the_current_directory_is_refused(self, remote, run_dc):
+        _, err, code = run_dc(yd_download, remote_paths=["/"], sync=True)
+        assert code == 2
+        assert "name it with '-d .'" in " ".join(err.split())
+
+    def test_a_sync_into_the_current_directory_named_explicitly_runs(
+        self, remote, run_dc
+    ):
+        # A dry run, so the test's own directory is left as it is
+        _, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub"],
+            sync=True,
+            destination=".",
+            dry_run=True,
+        )
+        assert code == 0
+
+    def test_without_sync_one_destination_still_merges(self, remote, run_dc):
+        (remote / "remote" / "other").mkdir()
+        (remote / "remote" / "other" / "c.txt").write_text("c")
+        _, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub", "loc:remote/other"],
+            destination="out",
+        )
+        assert code == 0
+        assert (remote / "out" / "b.txt").exists()
+        assert (remote / "out" / "c.txt").exists()
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "out").mkdir()
+        (remote / "out" / "b.txt").write_text("kept")
+        (remote / "out" / "stale.txt").write_text("gone")
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub"],
+            destination="out",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == [str(_Path("out") / "stale.txt")]
+        assert (remote / "out" / "stale.txt").exists()
+
+    def test_sync_with_flatten_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-download", argv=["--sync", "--flatten", "x"])
+        assert raised.value.code == 2
+        assert "--sync cannot be used with --flatten" in capsys.readouterr().err
 
 
 @needs_rclone

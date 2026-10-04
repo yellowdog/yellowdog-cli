@@ -1431,7 +1431,10 @@ class YellowDogApp(QMainWindow):
         return dialog, accept_btn
 
     def _capture_dry_run_json(
-        self, command: str, extra_args: list[str] | None = None
+        self,
+        command: str,
+        extra_args: list[str] | None = None,
+        failures_recorded: bool = False,
     ) -> list | None:
         """
         Run '<command> -D --json' (quiet, no formatting) with the current config
@@ -1440,16 +1443,25 @@ class YellowDogApp(QMainWindow):
         output that is not a JSON array) so callers can fall back to a
         scope-level confirmation.
         """
-        return self._capture_json(command, ["-D", "--json"], extra_args)
+        return self._capture_json(
+            command, ["-D", "--json"], extra_args, failures_recorded
+        )
 
     def _capture_json(
-        self, command: str, flags: list[str], extra_args: list[str] | None = None
+        self,
+        command: str,
+        flags: list[str],
+        extra_args: list[str] | None = None,
+        failures_recorded: bool = False,
     ) -> list | None:
         """
         Run '<command> <flags>' (quiet, no formatting) with the current config
         source and namespace/tag/user variables, then 'extra_args', and return
         the parsed JSON array; 'flags' must ask for JSON. None on any failure: a
         process error, a non-zero exit, or output that is not a JSON array.
+        With 'failures_recorded', an exit 1 still returns the array, for a
+        command (yd-download) that records what failed -- a path that matched
+        nothing -- in it, for the caller to read.
         """
         yd_process = QProcess()
         event_loop = QEventLoop()
@@ -1475,7 +1487,8 @@ class YellowDogApp(QMainWindow):
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             return None
-        if yd_process.exitCode() != 0:
+        exit_code = yd_process.exitCode()
+        if exit_code != 0 and not (failures_recorded and exit_code == 1):
             return None
 
         output = yd_process.readAllStandardOutput().data().decode().strip()
@@ -1517,9 +1530,22 @@ class YellowDogApp(QMainWindow):
         selection: yd-delete's '--dry-run --json' records one row per item,
         yd-download's one per file, naming the item each belongs to.
         """
-        parsed = self._capture_dry_run_json(command, extra_args)
+        downloading = command == "yd-download"
+        parsed = self._capture_dry_run_json(
+            command, extra_args, failures_recorded=downloading
+        )
         if parsed is None:
             return None
+        if downloading:
+            # A path that matched nothing is a recorded failure, which says why
+            failed = [
+                row
+                for row in parsed
+                if isinstance(row, dict) and row.get("action") == "failed"
+            ]
+            for row in failed:
+                self._output.log(str(row.get("error")))
+            parsed = [row for row in parsed if row not in failed]
         summaries = (
             parse_download_summaries(parsed)
             if command == "yd-download"
