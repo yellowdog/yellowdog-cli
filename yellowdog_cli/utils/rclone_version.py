@@ -9,6 +9,13 @@ that must not import the args/wrapper machinery — and by rclone_utils.
 import shutil
 import subprocess
 
+# How long 'rclone --version' may take: a binary that hangs (a quarantine
+# prompt, a stalled mount, a broken wrapper) must not hang yd-version
+RCLONE_VERSION_TIMEOUT = 5
+
+NOT_INSTALLED = "Not installed"
+UNKNOWN = "unknown"
+
 
 def find_rclone() -> tuple[str, str] | None:
     """
@@ -34,15 +41,19 @@ def find_rclone() -> tuple[str, str] | None:
 def rclone_version_line(rclone_path: str) -> str:
     """
     The first line of `rclone --version` (e.g. 'rclone v1.74.3'), or 'unknown'
-    if the binary cannot be run or produces no output.
+    if the binary cannot be run, produces no output, or takes longer than
+    RCLONE_VERSION_TIMEOUT.
     """
     try:
         result = subprocess.run(
-            [rclone_path, "--version"], capture_output=True, text=True
+            [rclone_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=RCLONE_VERSION_TIMEOUT,
         )
-    except OSError:
-        return "unknown"
-    return result.stdout.splitlines()[0] if result.stdout else "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        return UNKNOWN
+    return result.stdout.splitlines()[0] if result.stdout else UNKNOWN
 
 
 def rclone_version() -> str:
@@ -53,11 +64,11 @@ def rclone_version() -> str:
     """
     found = find_rclone()
     if found is None:
-        return "Not installed"
+        return NOT_INSTALLED
 
     line = rclone_version_line(found[0])
-    if line == "unknown":
-        return "unknown"
+    if line == UNKNOWN:
+        return UNKNOWN
 
     tokens = line.split()
     version = tokens[1] if len(tokens) >= 2 else tokens[0]

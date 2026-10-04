@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:00:54 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:05:50 BST 2026 -->
 
 <!--te-->
 
@@ -522,7 +522,7 @@ The documents, by command:
 | Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
-| Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a missing optional component; `--debug` adds `"executable"` and `"path"` |
+| Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a component not installed or whose version could not be read; `--debug` adds `"executable"` and `"path"` |
 | Utility | `yd-help` | an array of `{"command", "summary"}` |
 
 The exit codes, with or without `--json`:
@@ -4563,8 +4563,8 @@ yd-version [options]
 
 Key options:
 - `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
-- `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error)
-- `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+- `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error); with the full report or `--json` only, not with a single-version option
+- `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed or whose version could not be read; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-version           # report all versions
@@ -4572,7 +4572,7 @@ yd-version --cli     # print the CLI version number only
 yd-version --rclone  # print the rclone binary version only
 ```
 
-The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download. `--jsonnet`, `--rclone` and `--mcp` exit with a non-zero status if the respective component is not installed.
+The rclone version is detected using the same lookup order as `yd-submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download; an rclone binary that does not answer within 5 seconds is reported as `unknown`. Each single-version option prints nothing and exits 1 if its component is not installed, or its version could not be read, so a script never takes `Not installed` or `unknown` for a version number. The documentation link is the release's own README, or `main`'s for a development build.
 
 ### yd-format-json
 

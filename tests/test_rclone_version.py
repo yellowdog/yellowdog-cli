@@ -91,3 +91,14 @@ def test_find_rclone_reports_cache_source():
 def test_rclone_version_line_returns_first_line():
     with patch("subprocess.run", return_value=_run("rclone v1.74.3\nmore\n")):
         assert rv.rclone_version_line("/usr/bin/rclone") == "rclone v1.74.3"
+
+
+def test_a_binary_that_hangs_reads_as_unknown(monkeypatch):
+    import subprocess
+
+    def hang(*args, **kwargs):
+        assert kwargs["timeout"] == rv.RCLONE_VERSION_TIMEOUT
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(rv.subprocess, "run", hang)
+    assert rv.rclone_version_line("/usr/bin/rclone") == "unknown"
