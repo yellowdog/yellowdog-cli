@@ -974,6 +974,15 @@ def check_delete_args(args: Namespace, parser: ArgumentParser) -> None:
     )
 
 
+def check_ls_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-ls: not --long with --json, whose entries carry sizes and times
+    whatever is asked for.
+    """
+    if args.long and args.json:
+        parser.error("--long cannot be used with --json")
+
+
 DESTINATION = option(
     "--destination",
     "-d",
@@ -2209,6 +2218,7 @@ COMMANDS["yd-ls"] = Command(
             help="emit the listing as a JSON array of rclone 'lsjson' entries"
         ),
     ),
+    validators=(check_ls_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.READ_ONLY,
 )

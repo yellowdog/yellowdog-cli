@@ -9,17 +9,19 @@ from collections import defaultdict
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import (
+    config_glob_matches,
+    config_remote_stat,
     is_glob,
     list_remote,
-    list_remote_glob,
     lsjson_listing,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_info, print_simple
+from yellowdog_cli.utils.printing import print_error, print_info, print_simple
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.results import json_requested, record
+from yellowdog_cli.utils.settings import ExitCode
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
 
@@ -46,7 +48,7 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
     Non-recursive: show matching files and directories as a flat table.
     Recursive: show matching files inline; show matching directories as trees.
     """
-    remote_dir, matches = list_remote_glob(config, remote_path)
+    remote_dir, matches = config_glob_matches(config, remote_path, allow_empty=True)
     if not matches:
         print_simple("  (no wildcard matches)")
         return
@@ -103,28 +105,67 @@ def main():
         return
 
     recursive = ARGS_PARSER.recursive or False
-    remote_paths = ARGS_PARSER.remote_paths or []
 
-    if not remote_paths:
-        # Default to the configured prefix
-        remote_paths = [resolve_remote_path(CONFIG_DATA_CLIENT)]
+    # The configured prefix by default; each path given listed once
+    remote_paths = [
+        resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=path)
+        for path in dict.fromkeys(ARGS_PARSER.remote_paths or [])
+    ] or [resolve_remote_path(CONFIG_DATA_CLIENT)]
 
-    for remote_path_str in remote_paths:
-        remote_path = resolve_remote_path(
-            CONFIG_DATA_CLIENT, relative_path=remote_path_str
-        )
+    failed = 0
+    for remote_path in remote_paths:
         print_info(f"Listing '{remote_path}'")
-        if json_requested():
-            # The entries as rclone's 'lsjson' gives them, in place of the table
-            for entry in lsjson_listing(
-                CONFIG_DATA_CLIENT, remote_path, recursive=recursive
-            ):
-                record(entry)
-        elif is_glob(remote_path):
-            _ls_glob(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
-        else:
-            listing = list_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
-            _print_listing(listing, recursive=recursive)
+        try:
+            _list(remote_path, recursive)
+        except Exception as e:
+            # Not there, not reachable, or not a usable wildcard: reported,
+            # and the other paths still listed
+            print_error(str(e))
+            failed += 1
+
+    if failed:
+        print_error(f"{failed} path(s) could not be listed")
+        raise SystemExit(ExitCode.FAILURE)
+
+
+def _list(remote_path: str, recursive: bool) -> None:
+    """
+    List one remote path: under '--json' as records, otherwise as a table.
+    A path that does not exist, or cannot be reached, raises.
+    """
+    if json_requested():
+        # The entries as rclone's 'lsjson' gives them, in place of the table,
+        # each naming the path it was listed under, since its 'Path' is
+        # relative to that
+        for entry in lsjson_listing(
+            CONFIG_DATA_CLIENT, remote_path, recursive=recursive
+        ):
+            record({**entry, "Listing": remote_path})
+    elif is_glob(remote_path):
+        _ls_glob(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
+    else:
+        stat = config_remote_stat(CONFIG_DATA_CLIENT, remote_path)
+        if stat is None:
+            raise FileNotFoundError(f"'{remote_path}' does not exist")
+        if not stat["IsDir"]:
+            _print_file(stat)
+            return
+        listing = list_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
+        _print_listing(listing, recursive=recursive)
+
+
+def _print_file(entry: dict) -> None:
+    """
+    A file named by its own path, as a listing shows one.
+    """
+    if ARGS_PARSER.long_listing:
+        line = (
+            f"  {_fmt_size(entry.get('Size'))}  {entry['Name']}"
+            f"  {_fmt_modtime(entry.get('ModTime'))}"
+        ).rstrip()
+    else:
+        line = f"  {entry['Name']}"
+    print_simple(line, override_quiet=True)
 
 
 def _print_listing(listing, recursive: bool = False) -> None:

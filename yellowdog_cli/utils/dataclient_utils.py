@@ -60,7 +60,7 @@ def _rclone_error_detail(result) -> str:
 def _join_remote(remote_dir: str, name: str) -> str:
     """
     A name within a remote directory: 'remote_dir' may end with '/', or be a
-    bare 'remote:' (as list_remote_glob() returns it for a path with no
+    bare 'remote:' (as glob_matches() returns it for a path with no
     directory part), which a '/' would turn into a different path.
     """
     if remote_dir.endswith(("/", ":")):
@@ -569,11 +569,15 @@ def remote_stat(rclone: Rclone, remote_path: str) -> dict | None:
     return json.loads(result.stdout or "null")
 
 
-def glob_matches(rclone: Rclone, remote_path: str) -> tuple[str, list[dict]]:
+def glob_matches(
+    rclone: Rclone, remote_path: str, allow_empty: bool = False
+) -> tuple[str, list[dict]]:
     """
     (parent directory, matching entries) for a wildcard remote path. The
-    parent not existing, or nothing matching, raises FileNotFoundError, and
-    any other failure to list the parent raises with rclone's message.
+    parent not existing, or nothing matching, raises FileNotFoundError --
+    unless 'allow_empty', for a listing, to which 'nothing matches' is an
+    answer -- and any other failure to list the parent raises with rclone's
+    message.
     """
     remote_dir, pattern = split_glob_remote_path(remote_path)
     check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
@@ -585,19 +589,27 @@ def glob_matches(rclone: Rclone, remote_path: str) -> tuple[str, list[dict]]:
         )
     entries = json.loads(check.stdout or "[]")
     matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
-    if not matches:
+    if not matches and not allow_empty:
         raise FileNotFoundError(f"No matches for wildcard '{remote_path}'")
     return remote_dir, matches
 
 
 def config_glob_matches(
-    config: ConfigDataClient, remote_path: str
+    config: ConfigDataClient, remote_path: str, allow_empty: bool = False
 ) -> tuple[str, list[dict]]:
     """
     glob_matches() for a data client configuration.
     """
     _, rclone = _rclone_for_config(config)
-    return glob_matches(rclone, remote_path)
+    return glob_matches(rclone, remote_path, allow_empty)
+
+
+def config_remote_stat(config: ConfigDataClient, remote_path: str) -> dict | None:
+    """
+    remote_stat() for a data client configuration.
+    """
+    _, rclone = _rclone_for_config(config)
+    return remote_stat(rclone, remote_path)
 
 
 def _download_with_glob(
@@ -1086,25 +1098,6 @@ def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
     return True
 
 
-def list_remote_glob(
-    config: ConfigDataClient,
-    remote_path: str,
-) -> tuple[str, list[dict]]:
-    """
-    List entries in the parent directory whose names match the glob in remote_path.
-
-    Returns (remote_dir, matching_entries) where each entry is an rclone lsjson
-    dict with keys including Name, IsDir, Size, ModTime.
-    """
-    remote_dir, pattern = split_glob_remote_path(remote_path)
-    _, rclone = _rclone_for_config(config)
-    check = _run_quietly(rclone, ["lsjson", remote_dir])
-    if check.returncode != 0:
-        return remote_dir, []
-    entries = json.loads(check.stdout or "[]")
-    return remote_dir, [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
-
-
 def lsjson_listing(
     config: ConfigDataClient, remote_path: str, recursive: bool = False
 ) -> list[dict]:
@@ -1113,13 +1106,17 @@ def lsjson_listing(
     'remote_path', each reduced to LSJSON_KEYS. A wildcard path gives the
     matching entries of its parent directory -- with a matching directory's
     contents too when recursive, their 'Path' relative to that parent, as
-    rclone's own recursive listing of the parent would give it.
+    rclone's own recursive listing of the parent would give it -- and none
+    when nothing matches. A path that does not exist raises
+    FileNotFoundError, and one that cannot be reached raises.
     """
     _, rclone = _rclone_for_config(config)
     if not is_glob(remote_path):
+        if remote_stat(rclone, remote_path) is None:
+            raise FileNotFoundError(f"'{remote_path}' does not exist")
         entries = _lsjson(rclone, remote_path, recursive=recursive)
     else:
-        remote_dir, matches = list_remote_glob(config, remote_path)
+        remote_dir, matches = glob_matches(rclone, remote_path, allow_empty=True)
         entries = []
         for match in matches:
             entries.append(match)

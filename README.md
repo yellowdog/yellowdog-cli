@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 20:46:27 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 20:54:21 BST 2026 -->
 
 <!--te-->
 
@@ -517,7 +517,7 @@ The documents, by command:
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
-| Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches); several paths' entries are concatenated |
+| Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches), with `"Listing"` added, the remote path it was listed under; several paths' entries are concatenated, and a path that does not exist adds none and exits 1 |
 | Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` dry run would remove, or local file a `yd-download --sync` dry run would. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd-download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
 | Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
@@ -4459,10 +4459,12 @@ If no remote paths are specified, the configured prefix is listed.
 
 Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). Only entries in the configured prefix whose names match the pattern are listed. With `--recursive`, matching directories are expanded into full trees.
 
+A path that does not exist, or a remote that cannot be reached, is an error: it is reported, the other paths are still listed, and the command exits 1. An empty directory, and a wildcard that matches nothing in a directory that exists, are empty listings rather than errors. A path given twice is listed once.
+
 Key options:
 - `--recursive`/`-R` — list recursively; output is displayed as a directory tree
 - `--long`/`-l` — long listing, showing file sizes and modification timestamps
-- `--json` — emit the listing as a JSON array of rclone `lsjson` entries (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+- `--json` — emit the listing as a JSON array of rclone `lsjson` entries; not with `--long`, since the entries carry sizes and times anyway (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-ls -Rl 'results_*'

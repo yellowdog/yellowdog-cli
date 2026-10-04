@@ -2281,7 +2281,8 @@ def _comparable(entries: list[dict]) -> list[dict]:
         {
             k: v
             for k, v in e.items()
-            if k in ("Path", "Name", "IsDir") or (k == "Size" and not e["IsDir"])
+            if k in ("Path", "Name", "IsDir", "Listing")
+            or (k == "Size" and not e["IsDir"])
         }
         for e in entries
     ]
@@ -2292,12 +2293,86 @@ class TestLs:
     def test_the_lsjson_entries(self, remote, run_dc):
         out, _, code = run_dc(yd_ls, remote_paths=["loc:remote"])
         assert code == 0
-        # Exactly the spec's keys, as rclone spells them
-        assert all(set(e) == {"Path", "Name", "Size", "ModTime", "IsDir"} for e in out)
+        # Exactly the spec's keys, as rclone spells them, and the path the
+        # entry was listed under
+        assert all(
+            set(e) == {"Path", "Name", "Size", "ModTime", "IsDir", "Listing"}
+            for e in out
+        )
         assert sorted(_comparable(out), key=lambda e: e["Path"]) == [
-            {"Path": "a.txt", "Name": "a.txt", "Size": 5, "IsDir": False},
-            {"Path": "sub", "Name": "sub", "IsDir": True},
+            {
+                "Path": "a.txt",
+                "Name": "a.txt",
+                "Size": 5,
+                "IsDir": False,
+                "Listing": "loc:remote",
+            },
+            {"Path": "sub", "Name": "sub", "IsDir": True, "Listing": "loc:remote"},
         ]
+
+    def test_entries_from_several_paths_name_their_listing(self, remote, run_dc):
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote", "loc:remote/sub"])
+        assert code == 0
+        assert sorted((e["Listing"], e["Path"]) for e in out) == [
+            ("loc:remote", "a.txt"),
+            ("loc:remote", "sub"),
+            ("loc:remote/sub", "b.txt"),
+        ]
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_a_missing_path_fails_and_the_rest_are_listed(
+        self, remote, run_dc, json_output
+    ):
+        out, err, code = run_dc(
+            yd_ls,
+            remote_paths=["loc:remote/nope", "loc:remote/sub"],
+            json_output=json_output,
+        )
+        assert code == 1
+        text = " ".join(err.split())
+        assert "'loc:remote/nope' does not exist" in text
+        assert "1 path(s) could not be listed" in text
+        if json_output:
+            assert [e["Path"] for e in out] == ["b.txt"]
+        else:
+            assert "b.txt" in out
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_an_empty_directory_is_an_empty_listing(self, remote, run_dc, json_output):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(
+            yd_ls, remote_paths=["loc:remote/empty"], json_output=json_output
+        )
+        assert code == 0
+        assert out == [] if json_output else "(empty)" in out
+
+    def test_a_wildcard_matching_nothing_is_an_empty_listing(self, remote, run_dc):
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote/zz*"])
+        assert out == [] and code == 0
+
+    def test_a_wildcard_in_a_missing_directory_fails(self, remote, run_dc):
+        _, err, code = run_dc(yd_ls, remote_paths=["loc:nosuch/*"])
+        assert code == 1
+        assert "does not exist" in " ".join(err.split())
+
+    def test_a_file_named_by_its_path_is_listed(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_ls, remote_paths=["loc:remote/a.txt"], json_output=False
+        )
+        assert code == 0
+        assert "a.txt" in out
+
+    def test_a_repeated_path_is_listed_once(self, remote, run_dc):
+        out, _, _ = run_dc(yd_ls, remote_paths=["loc:remote/sub", "loc:remote/sub"])
+        assert [e["Path"] for e in out] == ["b.txt"]
+
+    def test_long_with_json_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-ls", argv=["--long", "--json"])
+        assert raised.value.code == 2
+        assert "--long cannot be used with --json" in capsys.readouterr().err
 
     def test_recursive(self, remote, run_dc):
         out, _, _ = run_dc(yd_ls, remote_paths=["loc:remote"], recursive=True)
