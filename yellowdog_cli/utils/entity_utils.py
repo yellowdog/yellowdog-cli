@@ -248,6 +248,45 @@ def find_work_requirement_by_name(
     return (preferred or candidates)[0]
 
 
+def find_compute_requirement_by_name(
+    client: PlatformClient,
+    name_or_namespaced_name: str,
+    default_namespace: str | None,
+    statuses: Collection[ComputeRequirementStatus],
+) -> ComputeRequirementSummary:
+    """
+    The Compute Requirement with a name, found as
+    find_work_requirement_by_name() finds a Work Requirement: in
+    'default_namespace' unless the name has a 'namespace/' prefix, by a name
+    search filtered for equality, preferring the one whose status is in
+    'statuses' (a name can be reused once a Compute Requirement has
+    terminated), else one in another state for the caller to report. Raises
+    NotFoundError when nothing has the name, and AmbiguousNameError when two
+    or more in 'statuses' do.
+    """
+    namespace, name = split_namespace_and_name(name_or_namespaced_name)
+    namespace = default_namespace if namespace is None else namespace
+    candidates = [
+        summary
+        for summary in get_compute_requirement_summaries(
+            client, namespace, tag=None, statuses=None, name=name
+        )
+        if summary.name == name
+    ]
+    if not candidates:
+        raise NotFoundError(
+            f"Cannot find Compute Requirement '{name}' in namespace '{namespace}'"
+        )
+    preferred = [summary for summary in candidates if summary.status in statuses]
+    if len(preferred) > 1:
+        raise AmbiguousNameError(
+            f"{len(preferred)} Compute Requirements in namespace '{namespace}' are"
+            f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
+            " please supply the ID of the one meant"
+        )
+    return (preferred or candidates)[0]
+
+
 def work_requirement_summary_of(
     work_requirement: WorkRequirement,
 ) -> WorkRequirementSummary:

@@ -182,6 +182,9 @@ def platform(monkeypatch):
         ]
 
     monkeypatch.setattr(cac_module, "get_compute_requirement_summaries", get_summaries)
+    monkeypatch.setattr(
+        entity_utils, "get_compute_requirement_summaries", get_summaries
+    )
 
     def record_action(entity, entity_type, action, outcome, error=None):
         if isinstance(entity, str):  # as results.record_action() names it

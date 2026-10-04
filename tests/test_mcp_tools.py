@@ -154,6 +154,10 @@ class TestSchemaMapping:
         tool, option = positive
         assert tool.input_schema["properties"][_property_name(option)]["minimum"] == 1
 
+    def test_non_negative_int_has_a_minimum_of_zero(self):
+        # A Worker Pool or Compute Requirement can be resized to nothing
+        assert self._prop("yd_resize", "worker_pool_size")["minimum"] == 0
+
     def test_strings_lists_and_appends(self):
         assert self._prop("yd_cancel", "namespace")["type"] == "string"
         assert self._prop("yd_cancel", "work_requirements") == {

@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 09:38:50 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 09:47:14 BST 2026 -->
 
 <!--te-->
 
@@ -3778,7 +3778,9 @@ The `yd-resize` command resizes Worker Pools, and also Compute Requirements when
 yd-resize [options] <worker-pool-or-compute-requirement-name-or-ID> <new-node/instance-count>
 ```
 
-The name or ID of the Worker Pool or Compute Requirement is supplied along with the new target number of Nodes or Instances.
+The name or ID of the Worker Pool or Compute Requirement is supplied along with the new target number of Nodes or Instances, which may be zero but not negative. A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`.
+
+What cannot be resized is reported before anything is asked. A Worker Pool or Compute Requirement that does not exist exits with code 6. A Worker Pool fails if it is a Configured Worker Pool, is awaiting nodes, or would be taken outside its minimum or maximum number of nodes; it is skipped if it has already shut down or terminated, or already expects the number of nodes asked for. Only a `RUNNING` Compute Requirement is resized: one in any other state is skipped, as is one whose target is already the number of instances asked for, and a name shared by two `RUNNING` Compute Requirements is ambiguous, so the YDID must be given instead. The confirmation shows the current and new sizes.
 
 Key options:
 - `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool

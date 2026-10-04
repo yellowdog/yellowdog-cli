@@ -7496,7 +7496,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": "int"
+      "type": "non_negative_int"
     },
     {
       "choices": null,

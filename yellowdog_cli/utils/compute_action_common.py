@@ -30,13 +30,19 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_utils import (
+    AmbiguousNameError,
     describe_glob_scope,
     expand_name_globs,
+    find_compute_requirement_by_name,
     get_compute_requirement_summaries,
     get_instance_by_id,
-    resolve_name_glob,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -562,7 +568,7 @@ def _resolve_target(action: ComputeAction, target: str, plan: _Plan):
         compute_requirement: _ComputeRequirementTarget = (
             _get_compute_requirement(target)
             if ydid_type == YDIDType.COMPUTE_REQUIREMENT
-            else _resolve_compute_requirement_name(target)
+            else _resolve_compute_requirement_name(action, target)
         )
         if compute_requirement.status not in action.valid_cr_statuses:
             raise _Unresolved(
@@ -584,35 +590,21 @@ def _get_compute_requirement(cr_id: str) -> ComputeRequirement:
 
 
 def _resolve_compute_requirement_name(
-    name_or_namespaced_name: str,
+    action: ComputeAction, name_or_namespaced_name: str
 ) -> ComputeRequirementSummary:
     """
-    The Compute Requirement with a name, in the configured namespace unless
-    the name has a 'namespace/' prefix. Names can be reused once a Compute
-    Requirement has terminated, so a live one is preferred over a TERMINATED
-    one, which is returned (to be skipped) only if there is no other.
+    The Compute Requirement with a name, preferring one in a state the action
+    applies to (entity_utils.find_compute_requirement_by_name()).
     """
-    namespace, name = resolve_name_glob(
-        name_or_namespaced_name, CONFIG_COMMON.namespace
-    )
-    candidates = [
-        summary
-        for summary in get_compute_requirement_summaries(
-            CLIENT, namespace, tag=None, statuses=None, name=name
+    try:
+        summary = find_compute_requirement_by_name(
+            CLIENT,
+            name_or_namespaced_name,
+            CONFIG_COMMON.namespace,
+            action.valid_cr_statuses,
         )
-        if summary.name == name
-    ]
-    if not candidates:
-        raise _Unresolved(
-            f"Cannot find Compute Requirement '{name}' in namespace '{namespace}'"
-        )
-    live = [s for s in candidates if s.status != ComputeRequirementStatus.TERMINATED]
-    if len(live) > 1:
-        raise _Unresolved(
-            f"More than one Compute Requirement is named '{name}' in namespace"
-            f" '{namespace}'; please supply its ID"
-        )
-    summary = (live or candidates)[0]
+    except (NotFoundError, AmbiguousNameError) as e:
+        raise _Unresolved(str(e)) from e
     print_info(f"Found Compute Requirement ID: {summary.id}")
     return summary
 

@@ -273,6 +273,20 @@ def positive_int(value: str) -> int:
     return number
 
 
+def non_negative_int(value: str) -> int:
+    """
+    An argparse type for a size that may be zero, as a Worker Pool or
+    Compute Requirement can be scaled to nothing, but not less.
+    """
+    try:
+        number = int(value)
+    except ValueError:
+        raise ArgumentTypeError(f"invalid int value: '{value}'") from None
+    if number < 0:
+        raise ArgumentTypeError(f"must be zero or more, not {number}")
+    return number
+
+
 def resolve_entity_type(value: str) -> str:
     """
     Resolve an entity type string to its canonical form.
@@ -2071,7 +2085,7 @@ WORKER_POOL_POSITIONAL = option(
 WORKER_POOL_SIZE = option(
     "worker_pool_size",
     metavar="<new-node/instance-count>",
-    type=int,
+    type=non_negative_int,
     help="the desired number of (total) nodes in the worker pool",
 )
 # Not a variant of COMPUTE_REQUIREMENT: this one is a flag, with no type.

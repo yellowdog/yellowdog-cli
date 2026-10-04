@@ -11,6 +11,7 @@ the contract, so nothing here asserts what was handed to a printer.
 import warnings
 from json import loads as json_loads
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,6 +20,7 @@ from requests import HTTPError, Response
 from yellowdog_client.model import (
     ComputeRequirementStatus,
     ComputeRequirementSummary,
+    ConfiguredWorkerPool,
     InstanceStatus,
     ProvisionedWorkerPool,
     TaskStatus,
@@ -62,6 +64,7 @@ WR_ID_2 = "ydid:workreq:000000:22222222-2222-2222-2222-222222222222"
 WP_ID = "ydid:wrkrpool:000000:33333333-3333-3333-3333-333333333333"
 NODE_ID = "ydid:node:000000:44444444-4444-4444-4444-444444444444"
 CR_ID = "ydid:compreq:000000:55555555-5555-5555-5555-555555555555"
+CR_ID_2 = CR_ID.replace("5555-5555-5555", "5555-5555-7777")
 TASK_ID = "ydid:task:000000:66666666-6666-6666-6666-666666666666"
 ALLOWANCE_ID = "ydid:allow:000000:77777777-7777-7777-7777-777777777777"
 ALLOWANCE_ID_2 = "ydid:allow:000000:88888888-8888-8888-8888-888888888888"
@@ -823,25 +826,52 @@ class TestResize:
             **values,
         }
 
-    def _client(self):
+    @staticmethod
+    def _pool(
+        status=WorkerPoolStatus.RUNNING,
+        expected=2,
+        awaiting=False,
+        min_nodes=0,
+        max_nodes=10,
+        configured=False,
+    ) -> Any:
+        if configured:
+            return ConfiguredWorkerPool(
+                id=WP_ID, name="wp-a", namespace="ns", status=status
+            )
+        pool = ProvisionedWorkerPool(
+            id=WP_ID,
+            name="wp-a",
+            namespace="ns",
+            status=status,
+            expectedNodeCount=expected,
+            awaitingNodes=awaiting,
+            properties=SimpleNamespace(minNodes=min_nodes, maxNodes=max_nodes),
+        )
+        return pool
+
+    def _client(self, pool=None):
         client = MagicMock()
-        client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            id=WP_ID, name="wp-a"
+        client.worker_pool_client.get_worker_pool_by_id.return_value = (
+            pool or self._pool()
         )
         return client
 
+    def _resized(self, outcome="resized", **extra):
+        return _action(
+            WP_ID,
+            "wp-a",
+            "worker-pools",
+            "resize",
+            outcome,
+            targetInstanceCount=4,
+            **extra,
+        )
+
     def test_a_worker_pool(self, run):
-        out, _, _ = run(yd_resize, client=self._client(), **self._args())
-        assert out == [
-            _action(
-                WP_ID,
-                "wp-a",
-                "worker-pools",
-                "resize",
-                "resized",
-                targetInstanceCount=4,
-            )
-        ]
+        out, _, client = run(yd_resize, client=self._client(), **self._args())
+        assert out == [self._resized()]
+        client.worker_pool_client.resize_worker_pool.assert_called_once()
 
     def test_dry_run(self, run):
         out, _, client = run(
@@ -856,21 +886,37 @@ class TestResize:
             "too big"
         )
         out, _, _ = run(yd_resize, client=client, **self._args())
-        assert out == [
-            _action(
-                WP_ID,
-                "wp-a",
-                "worker-pools",
-                "resize",
-                "failed",
-                error="too big",
-                targetInstanceCount=4,
-            )
-        ]
+        assert out == [self._resized("failed", error="too big")]
 
-    def test_a_compute_requirement(self, run, monkeypatch):
+    @pytest.mark.parametrize(
+        "pool_args, outcome, words",
+        [
+            ({"configured": True}, "failed", "Configured Worker Pool"),
+            ({"status": WorkerPoolStatus.SHUTDOWN}, "skipped", "is SHUTDOWN"),
+            ({"awaiting": True}, "failed", "awaiting nodes"),
+            ({"max_nodes": 3}, "failed", "outside"),
+            ({"min_nodes": 5}, "failed", "outside"),
+            ({"expected": 4}, "skipped", "already expects 4"),
+        ],
+    )
+    def test_what_cannot_or_need_not_be_resized(self, run, pool_args, outcome, words):
+        client = self._client(self._pool(**pool_args))
+        out, _, _ = run(yd_resize, client=client, **self._args())
+        client.worker_pool_client.resize_worker_pool.assert_not_called()
+        assert out[0]["outcome"] == outcome
+        assert words in out[0]["error"]
+        assert run.exit_code == (1 if outcome == "failed" else 0)
+
+    def test_a_worker_pool_not_found_is_recorded_and_exits_6(self, run):
+        client = MagicMock()
+        client.worker_pool_client.get_worker_pool_by_id.side_effect = _http_error(404)
+        out, _, _ = run(yd_resize, client=client, **self._args())
+        assert [(r["id"], r["outcome"]) for r in out] == [(WP_ID, "failed")]
+        assert run.exit_code == 6
+
+    def test_a_compute_requirement_by_name(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_resize,
+            entity_utils_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
@@ -887,6 +933,65 @@ class TestResize:
                 targetInstanceCount=4,
             )
         ]
+
+    def test_a_compute_requirement_id_in_another_namespace(self, run):
+        client = MagicMock()
+        client.compute_client.get_compute_requirement_by_id.return_value = (
+            SimpleNamespace(
+                id=CR_ID,
+                name="cr-a",
+                namespace="elsewhere",
+                status=ComputeRequirementStatus.RUNNING,
+                targetInstanceCount=2,
+                expectedInstanceCount=2,
+            )
+        )
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(compute_req_resize=True, worker_pool_name=CR_ID),
+        )
+        assert out[0]["outcome"] == "resized"
+        client.compute_client.get_compute_requirement_summaries.assert_not_called()
+
+    def test_two_running_compute_requirements_of_a_name_are_ambiguous(
+        self, run, monkeypatch
+    ):
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a"), _cr(CR_ID_2, "cr-a")],
+        )
+        out, _, client = run(
+            yd_resize, **self._args(compute_req_resize=True, worker_pool_name="cr-a")
+        )
+        client.compute_client.update_compute_requirement.assert_not_called()
+        assert out[0]["outcome"] == "failed"
+        assert "please supply the ID" in out[0]["error"]
+        assert run.exit_code == 1
+
+    def test_a_compute_requirement_not_running_is_skipped(self, run, monkeypatch):
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [
+                _cr(CR_ID, "cr-a", status=ComputeRequirementStatus.STOPPED)
+            ],
+        )
+        out, _, _ = run(
+            yd_resize, **self._args(compute_req_resize=True, worker_pool_name="cr-a")
+        )
+        assert out[0]["outcome"] == "skipped"
+        assert "is STOPPED" in out[0]["error"]
+
+    def test_a_negative_size_is_a_usage_error(self, capsys):
+        from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+
+        parser = build_parser(COMMANDS["yd-resize"], prog="yd-resize")
+        assert parser.parse_args(["wp", "0"]).worker_pool_size == 0
+        with pytest.raises(SystemExit) as exit_info:
+            parser.parse_args(["wp", "-1"])
+        assert exit_info.value.code == 2
 
     def test_a_401_looking_up_the_name_reaches_the_wrapper(self, run):
         # Not a 'not found': the lookup's failure is classified by the
