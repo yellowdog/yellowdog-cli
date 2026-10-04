@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 09:47:14 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 09:56:03 BST 2026 -->
 
 <!--te-->
 
@@ -3802,13 +3802,17 @@ The `yd-nodeaction` command submits Node Actions to running Worker Pool nodes.
 yd-nodeaction [options]
 ```
 
-The command takes no positional arguments: the actions are supplied with `--actions`, which is required unless `--status` is used. `--worker-pool` accepts a pool name or a Worker Pool YDID; if omitted, an interactive selection is shown. When `--node` is given with a node YDID, the Worker Pool is resolved automatically.
+The command takes no positional arguments: the actions are supplied with `--actions`, which is required unless `--status` is used (and is refused with it). `--worker-pool` accepts a pool name or a Worker Pool YDID; if omitted, an interactive selection of the active pools is shown. Without `--node` or `--all-nodes`, the nodes are chosen interactively from the pool's running ones.
+
+The specification is checked first, so a faulty one fails (exit 1) before anything is looked up or submitted. Nodes given with `--node` must be node YDIDs, and are each targeted once however often they are given; they must all be in one Worker Pool, which is then found from them (or, with `--worker-pool`, must be the one it names), and a node that has terminated or deregistered is skipped with a warning. A Worker Pool or node that does not exist exits with code 6, and one that has shut down or terminated is refused. If a submission fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the command exits with that failure's code.
 
 Key options:
 - `--actions`/`-S <file>` — the Node Action spec file, in JSON or Jsonnet format
 - `--worker-pool`/`-p <name>` — the target Worker Pool
 - `--node`/`-N <node-id>` — target a specific node by ID; can be supplied multiple times
-- `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec
+- `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec; cannot be combined with `--node`
+- `--follow`/`-f` — poll the node action queues after submission until every one is `EMPTY` or `FAILED`
+- `--timeout <seconds>` — with `--follow`, stop after this many seconds, failing (exit 1) if any queue has not finished; by default there is no limit
 - `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
 - `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Specification Schemas](#specification-schemas))

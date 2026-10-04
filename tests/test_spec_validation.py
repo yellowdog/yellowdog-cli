@@ -793,16 +793,21 @@ class TestNodeAction:
         _run.run = run  # type: ignore[attr-defined]
         return _run
 
-    def test_validate_without_actions_is_refused(self, nodeaction):
-        _, err, client = nodeaction(None, validate=True, json_output=True)
-        assert nodeaction.run.exit_code == 1 and "'--validate' needs" in err
-        client.worker_pool_client.get_worker_pool_by_id.assert_not_called()
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            (["--validate"], "--actions is required"),
+            (["--status", "--validate"], "--validate cannot be used with --status"),
+        ],
+    )
+    def test_validate_is_refused_where_it_checks_nothing(self, argv, message, capsys):
+        # As the command line is parsed (exit 2), before anything is looked up
+        from yellowdog_cli.utils.args import CLIParser
 
-    def test_validate_with_status_is_refused(self, nodeaction, tmp_path):
-        spec = _write(tmp_path, "a.json", {"actions": [{"type": "runCommand"}]})
-        _, err, client = nodeaction(spec, status=True, validate=True, json_output=True)
-        assert nodeaction.run.exit_code == 1 and "'--status'" in err
-        client.worker_pool_client.get_worker_pool_by_id.assert_not_called()
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-nodeaction", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
 
     def test_validate_stops_with_the_violations(self, nodeaction, tmp_path):
         out, _, client = nodeaction(

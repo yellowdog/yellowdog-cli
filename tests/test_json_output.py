@@ -2676,9 +2676,14 @@ class TestNodeAction:
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock(), MagicMock()]
         )
         monkeypatch.setattr(
-            yd_nodeaction, "_get_worker_pool_id_for_node", lambda n: WP_ID
+            yd_nodeaction,
+            "_resolve_targets",
+            lambda: (
+                SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
+                [NODE_ID],
+                [],
+            ),
         )
-        monkeypatch.setattr(yd_nodeaction, "_resolve_node_ids", lambda wp: [NODE_ID])
         out, _, _ = run(
             yd_nodeaction,
             status=False,
@@ -2706,9 +2711,14 @@ class TestNodeActionOutcomes:
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock()]
         )
         monkeypatch.setattr(
-            yd_nodeaction, "_get_worker_pool_id_for_node", lambda n: WP_ID
+            yd_nodeaction,
+            "_resolve_targets",
+            lambda: (
+                SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
+                [NODE_ID],
+                [],
+            ),
         )
-        monkeypatch.setattr(yd_nodeaction, "_resolve_node_ids", lambda wp: [NODE_ID])
         return run(
             yd_nodeaction,
             status=False,
@@ -2879,7 +2889,7 @@ class TestRemainingParsers:
             ("yd-upload", ["f"]),
             ("yd-copy", ["a", "b"]),
             ("yd-compare", [WR_ID_1, WP_ID]),
-            ("yd-nodeaction", []),
+            ("yd-nodeaction", ["--status"]),
         ],
     )
     def test_json_without_a_short_flag(self, command, argv, capsys):

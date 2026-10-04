@@ -6533,6 +6533,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "details",

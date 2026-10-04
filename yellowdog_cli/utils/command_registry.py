@@ -2033,6 +2033,38 @@ NODE_ACTION_STATUS = option(
     help="show the node action queue for the selected node(s)",
 )
 
+
+def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-nodeaction's options, as they combine: --actions unless --status,
+    which takes neither it nor --validate; node and Worker Pool IDs of the
+    right kind; and --timeout only with --follow. The YDID parser is
+    imported here, so this module still imports nothing at load beyond
+    settings.py and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if args.status:
+        if getattr(args, "validate", False):
+            parser.error("--validate cannot be used with --status")
+        if args.actions is not None:
+            parser.error("--actions cannot be used with --status")
+    elif args.actions is None:
+        parser.error("--actions is required, unless --status is given")
+    for node_id in args.node or []:
+        if get_ydid_type(node_id) != YDIDType.NODE:
+            parser.error(f"not a YellowDog Node ID: '{node_id}'")
+    worker_pool = args.worker_pool
+    if (
+        worker_pool is not None
+        and worker_pool.startswith("ydid:")
+        and get_ydid_type(worker_pool) != YDIDType.WORKER_POOL
+    ):
+        parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool}'")
+    if args.timeout is not None and not args.follow:
+        parser.error("--timeout needs --follow")
+
+
 COMMANDS["yd-nodeaction"] = Command(
     name="yd-nodeaction",
     purpose="submitting Node Actions to Worker Pool nodes",
@@ -2057,9 +2089,15 @@ COMMANDS["yd-nodeaction"] = Command(
         WORKER_POOL.variant(
             help="name of the target worker pool", metavar="<worker-pool-name>"
         ),
-        NODE,
-        ALL_NODES,
+        Exclusive((NODE, ALL_NODES)),
         NODE_ACTION_STATUS,
+        TIMEOUT.variant(
+            default=None,
+            help=(
+                "with --follow, stop following after this many seconds, and fail"
+                " if any node action queue has not finished (default: no limit)"
+            ),
+        ),
         DETAILS.variant(help="show the full JSON details for --status output"),
         ACTIONS_JSON.variant(
             help=(
@@ -2068,6 +2106,7 @@ COMMANDS["yd-nodeaction"] = Command(
             )
         ),
     ),
+    validators=(check_node_action_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

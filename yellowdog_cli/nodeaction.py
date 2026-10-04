@@ -7,7 +7,7 @@ A script to submit Node Actions to Worker Pool nodes.
 import time
 from os.path import abspath, dirname
 from os.path import join as path_join
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from yellowdog_client.model import (
     Node,
@@ -19,6 +19,7 @@ from yellowdog_client.model import (
     NodeIdFilter,
     NodeRunCommandAction,
     NodeSearch,
+    NodeStatus,
     NodeWorkerTarget,
     NodeWriteFileAction,
     WorkerPool,
@@ -29,8 +30,15 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
 )
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     NODE_ACTION_QUEUE_HEADINGS,
     node_action_queue_table,
@@ -124,56 +132,94 @@ def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
 
 @main_wrapper
 def main():
+    # '--validate' with '--status', and a missing '--actions', are refused as
+    # the command line is parsed ('check_node_action_args' in the registry)
     if ARGS_PARSER.status:
-        if ARGS_PARSER.validate:
-            raise ValueError("Option '--validate' cannot be used with '--status'")
         _show_status()
     else:
         _submit_actions()
 
 
-def _get_worker_pool_id_for_node(node_id: str) -> str | None:
-    """
-    Look up the worker pool ID that owns the given node.
-    """
+# The states of a node that can take Node Actions, offered for selection and
+# targeted by '--all-nodes'; a TERMINATED or DEREGISTERED one is skipped
+_LIVE_NODE_STATUSES = (NodeStatus.RUNNING, NodeStatus.LATE)
+_FINISHED_NODE_STATUSES = (NodeStatus.TERMINATED, NodeStatus.DEREGISTERED)
+
+# A Worker Pool to act on: fetched, or chosen from a listing
+_Pool: TypeAlias = WorkerPool | WorkerPoolSummary
+
+
+def _pool_label(pool: _Pool) -> str:
+    return f"'{pool.namespace}/{pool.name}'" if pool.name else str(pool.id)
+
+
+def _get_worker_pool(worker_pool_id: str) -> WorkerPool:
     try:
-        node = CLIENT.worker_pool_client.get_node_by_id(node_id)
+        return CLIENT.worker_pool_client.get_worker_pool_by_id(
+            worker_pool_id=worker_pool_id
+        )
     except Exception as e:
-        print_error(f"Node '{node_id}' not found: {e}")
-        return None
-    return node.workerPoolId
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find Worker Pool {worker_pool_id}") from e
+        raise
 
 
-def _resolve_worker_pool_id() -> str | None:
+def _get_node(node_id: str) -> Node:
+    try:
+        return CLIENT.worker_pool_client.get_node_by_id(node_id)
+    except Exception as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find Node {node_id}") from e
+        raise
+
+
+def _without_duplicates(node_ids: list[str]) -> list[str]:
     """
-    Resolve the worker pool ID. Uses --worker-pool if given, otherwise
-    falls back to interactive selection.
+    The node IDs in the order given, each once: a repeated node would
+    otherwise be sent the actions again.
+    """
+    unique = list(dict.fromkeys(node_ids))
+    if len(unique) < len(node_ids):
+        print_warning(f"Ignoring {len(node_ids) - len(unique)} duplicate node ID(s)")
+    return unique
+
+
+def _resolve_worker_pool() -> _Pool:
+    """
+    The Worker Pool named by --worker-pool (a name, or a YDID, checked as
+    the command line is parsed), else one chosen interactively from the
+    unfinished pools in the namespace whose names include the tag. Raises
+    NotFoundError for one that does not exist, and ValueError for one that
+    has finished or when none can be chosen.
     """
     wp_name = ARGS_PARSER.worker_pool_name
 
     if wp_name is not None:
         if get_ydid_type(wp_name) == YDIDType.WORKER_POOL:
-            return wp_name
-        if wp_name.startswith("ydid:"):
-            print_error(f"'{wp_name}' is not a valid Worker Pool ID")
-            return None
-        wp_id = get_worker_pool_id_by_name(CLIENT, wp_name, CONFIG_COMMON.namespace)
-        if wp_id is None:
-            print_warning(f"Worker Pool '{wp_name}' not found")
-        return wp_id
+            pool: _Pool = _get_worker_pool(wp_name)
+        else:
+            wp_id = get_worker_pool_id_by_name(CLIENT, wp_name, CONFIG_COMMON.namespace)
+            if wp_id is None:
+                raise NotFoundError(f"Cannot find Worker Pool '{wp_name}'")
+            pool = _get_worker_pool(wp_id)
+        if pool.status is not None and pool.status.finished:
+            raise ValueError(f"Worker Pool {_pool_label(pool)} is {pool.status}")
+        return pool
 
-    # Interactive selection
-    summaries: list[WorkerPoolSummary] = get_worker_pool_summaries(
-        CLIENT,
-        namespace=CONFIG_COMMON.namespace,
-        name=CONFIG_COMMON.name_tag if CONFIG_COMMON.name_tag else None,
-    )
-
+    summaries: list[WorkerPoolSummary] = [
+        summary
+        for summary in get_worker_pool_summaries(
+            CLIENT,
+            namespace=CONFIG_COMMON.namespace,
+            name=CONFIG_COMMON.name_tag if CONFIG_COMMON.name_tag else None,
+        )
+        if summary.status is None or not summary.status.finished
+    ]
     if not summaries:
-        print_warning(f"No Worker Pools found in namespace '{CONFIG_COMMON.namespace}'")
-        return None
-
-    summaries = cast(
+        raise ValueError(
+            f"No active Worker Pools found in namespace '{CONFIG_COMMON.namespace}'"
+        )
+    selected = cast(
         list[WorkerPoolSummary],
         select(
             CLIENT,
@@ -181,64 +227,90 @@ def _resolve_worker_pool_id() -> str | None:
             single_result=True,
             force_interactive=True,
             override_quiet=True,
+            result_required=True,
         ),
     )
-    if not summaries:
-        return None
-
-    if len(summaries) > 1:
-        print_warning("Multiple Worker Pools selected; using the first")
-
-    wp_id = summaries[0].id
-    if wp_id is None:
-        print_warning("Selected Worker Pool has no ID")
-        return None
-    wp: WorkerPool = CLIENT.worker_pool_client.get_worker_pool_by_id(
-        worker_pool_id=wp_id
-    )
-    return wp.id
+    return selected[0]
 
 
-def _get_nodes_for_pool(wp_id: str) -> list[Node]:
+def _get_nodes_for_pool(wp_id: str, live_only: bool = True) -> list[Node]:
     """
-    Return all nodes registered to the given worker pool.
+    The nodes registered to the Worker Pool: those that can take Node
+    Actions, unless 'live_only' is False.
     """
-    return CLIENT.worker_pool_client.get_nodes(
+    nodes = CLIENT.worker_pool_client.get_nodes(
         NodeSearch(workerPoolId=wp_id)
     ).list_all()
+    if not live_only:
+        return nodes
+    return [node for node in nodes if node.status in _LIVE_NODE_STATUSES]
 
 
-def _resolve_node_ids(wp_id: str) -> list[str] | None:
-    """
-    Resolve target node IDs. Uses --node if given; otherwise prompts
-    interactively from the pool's current nodes.
-    Returns None if no nodes are selected or an error occurs.
-    """
-    node_ids = ARGS_PARSER.node_ids
-    if node_ids:
-        return node_ids
-
-    # Interactive selection from the pool's current nodes
-    nodes = _get_nodes_for_pool(wp_id)
-
-    if not nodes:
-        print_warning(f"No nodes found in Worker Pool '{wp_id}'")
-        return None
-
-    selected: list[Node] = cast(
+def _choose_nodes(pool: _Pool) -> list[str]:
+    """The IDs of the nodes chosen interactively from the pool's live ones."""
+    live = _get_nodes_for_pool(cast(str, pool.id))
+    if not live:
+        raise ValueError(f"No running nodes in Worker Pool {_pool_label(pool)}")
+    selected = cast(
         list[Node],
         select(
             CLIENT,
-            cast(list[Any], nodes),
+            cast(list[Any], live),
             force_interactive=True,
             sort_objects=False,
             override_quiet=True,
+            result_required=True,
         ),
     )
-    if not selected:
-        return None
+    return [cast(str, node.id) for node in selected]
 
-    return [n.id for n in selected if n.id is not None]
+
+def _resolve_targets() -> tuple[_Pool, list[str] | None, list[str]]:
+    """
+    The Worker Pool, the nodes to target (None for all of them, with
+    --all-nodes) and the nodes given that are skipped, having finished.
+
+    Nodes given with --node are fetched, each once: one that does not exist
+    raises NotFoundError, and they must all be in the one Worker Pool, which
+    is theirs unless --worker-pool names it (and must then be theirs too).
+    Without --node, the nodes are chosen interactively from the pool's live
+    ones.
+    """
+    node_ids = _without_duplicates(ARGS_PARSER.node_ids or [])
+
+    if not node_ids:
+        pool = _resolve_worker_pool()
+        if ARGS_PARSER.all_nodes:
+            return pool, None, []
+        return pool, _choose_nodes(pool), []
+
+    nodes = [_get_node(node_id) for node_id in node_ids]
+    pool_ids = list(dict.fromkeys(cast(str, node.workerPoolId) for node in nodes))
+    if ARGS_PARSER.worker_pool_name is not None:
+        pool = _resolve_worker_pool()
+        strangers = [node.id for node in nodes if node.workerPoolId != pool.id]
+        if strangers:
+            raise ValueError(
+                f"Node(s) {', '.join(cast(list[str], strangers))} are not in"
+                f" Worker Pool {_pool_label(pool)}"
+            )
+    elif len(pool_ids) > 1:
+        raise ValueError(
+            f"The nodes given are in {len(pool_ids)} Worker Pools"
+            f" ({', '.join(pool_ids)}); give the nodes of one pool at a time"
+        )
+    else:
+        pool = _get_worker_pool(pool_ids[0])
+
+    targets: list[str] = []
+    skipped: list[str] = []
+    for node in nodes:
+        if node.status in _FINISHED_NODE_STATUSES:
+            print_warning(f"Node {node.id} is {node.status}, and is skipped")
+            skipped.append(cast(str, node.id))
+        else:
+            targets.append(cast(str, node.id))
+    return pool, targets, skipped
 
 
 def _parse_node_worker_target(workers_spec: dict) -> NodeWorkerTarget | None:
@@ -318,7 +390,9 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                 return None
             if content_file is not None:
                 try:
-                    with open(path_join(source_dir, cast(str, content_file))) as f:
+                    with open(
+                        path_join(source_dir, cast(str, content_file)), encoding="utf-8"
+                    ) as f:
                         raw = f.read()
                     content_val = process_variable_substitutions_in_file_contents(
                         raw,
@@ -342,7 +416,9 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                 parts = []
                 for file_path in content_files:
                     try:
-                        with open(path_join(source_dir, file_path)) as f:
+                        with open(
+                            path_join(source_dir, file_path), encoding="utf-8"
+                        ) as f:
                             raw = f.read()
                         part = process_variable_substitutions_in_file_contents(
                             raw,
@@ -471,187 +547,166 @@ def _submission_error(
     return f"Failed to submit: {e}"
 
 
+def _invalid(spec_file: str) -> ReportedFailure:
+    """
+    The failure for a specification whose faults have been reported: the
+    command exits 1 without submitting anything.
+    """
+    return ReportedFailure(
+        ValueError(f"Node Action specification '{spec_file}' is not valid")
+    )
+
+
+def _after_failure(e: Exception, not_attempted: list[str], submission: tuple) -> None:
+    """
+    Having recorded a failed submission: if the failure is the session's,
+    record the nodes not yet attempted as skipped and raise ReportedFailure,
+    which exits with the failure's own code.
+    """
+    if classify(e) not in SESSION_FAILURES:
+        return
+    wp_id, _, groups, actions = submission
+    if not_attempted:
+        print_warning(
+            f"Not attempting the remaining {len(not_attempted)} node(s),"
+            " which would fail in the same way"
+        )
+        _record_submission(
+            wp_id, not_attempted, groups, actions, "skipped", f"not attempted: {e}"
+        )
+    raise ReportedFailure(e)
+
+
 def _submit_actions():
     """
     Load a node action spec and submit actions to the target worker pool/nodes.
     """
-    spec_file = ARGS_PARSER.node_action_spec
-    if spec_file is None:
-        if ARGS_PARSER.validate:
-            raise ValueError(
-                "Option '--validate' needs a Node Action specification file"
-                " (use --actions)"
-            )
-        print_error("A spec file is required (use --actions)")
-        return
-
+    spec_file = cast(str, ARGS_PARSER.node_action_spec)
     spec = _load_spec(spec_file)
     if spec is None:
-        return
+        raise _invalid(spec_file)
 
     # Resolve the directory to use when opening contentFile(s).
     # Priority: --content-path > spec file's directory > config file directory.
     source_dir = (
         ARGS_PARSER.content_path
-        or (dirname(abspath(spec_file)) if spec_file else None)
+        or dirname(abspath(spec_file))
         or CONFIG_FILE_DIR
         or "."
     )
 
-    # If explicit node YDIDs are given without --worker-pool, derive the pool
-    # from the first node rather than prompting interactively.
-    node_ids_arg = ARGS_PARSER.node_ids
-    if (
-        node_ids_arg
-        and all(get_ydid_type(n) == YDIDType.NODE for n in node_ids_arg)
-        and ARGS_PARSER.worker_pool_name is None
-    ):
-        wp_id = _get_worker_pool_id_for_node(node_ids_arg[0])
-    else:
-        wp_id = _resolve_worker_pool_id()
-    if wp_id is None:
-        return
-
-    # Grouped actions
-    if ACTION_GROUPS in spec:
+    # The actions are parsed before anything is looked up, so that a faulty
+    # specification fails first
+    grouped = ACTION_GROUPS in spec
+    if grouped:
         group_specs = spec[ACTION_GROUPS]
         if not isinstance(group_specs, list):
             print_error(f"'{ACTION_GROUPS}' must be a list")
-            return
-
+            raise _invalid(spec_file)
         action_groups = _parse_action_groups(group_specs, source_dir)
         if action_groups is None:
-            return
-
-        if ARGS_PARSER.all_nodes:
-            node_id_filter_list = None
-            target_desc = "all nodes"
-        else:
-            node_id_filter_list = _resolve_node_ids(wp_id)
-            if not node_id_filter_list:
-                return
-            target_desc = f"{len(node_id_filter_list)} node(s)"
-
-        # The platform requires NodeIdFilter.LIST on every action when
-        # node_id_filter_list is provided.
-        if node_id_filter_list:
-            for group in action_groups:
-                for action in group.actions or []:
-                    action.nodeIdFilter = NodeIdFilter.LIST
-
-        submission = (
-            wp_id,
-            node_id_filter_list,
-            len(action_groups),
-            sum(len(group.actions or []) for group in action_groups),
-        )
-        if not confirmed(
-            f"Submit {len(action_groups)} action group(s) to "
-            f"Worker Pool '{wp_id}' targeting {target_desc}?"
-        ):
-            _record_submission(*submission, "skipped")
-            return
-
-        try:
-            CLIENT.worker_pool_client.add_node_actions_grouped_by_id(
-                wp_id,
-                action_groups=action_groups,
-                node_id_filter_list=node_id_filter_list,
-            )
-            print_info(
-                f"Submitted {len(action_groups)} action group(s) to "
-                f"Worker Pool '{wp_id}'"
-            )
-            _record_submission(*submission, "submitted")
-        except Exception as e:
-            error = _submission_error(e, specific_nodes=bool(node_id_filter_list))
-            print_error(error)
-            _record_submission(*submission, "failed", error=error)
-            return
-
-        if ARGS_PARSER.follow:
-            follow_ids = node_id_filter_list or [
-                n.id for n in _get_nodes_for_pool(wp_id) if n.id is not None
-            ]
-            if follow_ids:
-                _follow_node_actions(follow_ids, initial_delay=True)
-        return
-
-    # Actions
-    if ACTIONS in spec:
+            raise _invalid(spec_file)
+        group_count: int | None = len(action_groups)
+        action_count = sum(len(group.actions or []) for group in action_groups)
+    elif ACTIONS in spec:
         action_specs = spec[ACTIONS]
         if not isinstance(action_specs, list):
             print_error(f"'{ACTIONS}' must be a list")
-            return
-
+            raise _invalid(spec_file)
         actions = _parse_actions(action_specs, source_dir)
         if actions is None:
-            return
+            raise _invalid(spec_file)
+        group_count = None
+        action_count = len(actions)
+    else:
+        print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
+        raise _invalid(spec_file)
 
-        if ARGS_PARSER.all_nodes:
-            if not confirmed(
-                f"Submit {len(actions)} action(s) to all nodes in "
-                f"Worker Pool '{wp_id}'?"
-            ):
-                _record_submission(wp_id, None, None, len(actions), "skipped")
-                return
-            try:
-                CLIENT.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
-                print_info(
-                    f"Submitted {len(actions)} action(s) to all nodes in "
-                    f"Worker Pool '{wp_id}'"
-                )
-                _record_submission(wp_id, None, None, len(actions), "submitted")
-            except Exception as e:
-                error = _submission_error(e)
-                print_error(error)
-                _record_submission(wp_id, None, None, len(actions), "failed", error)
-                return
-
-            if ARGS_PARSER.follow:
-                all_node_ids = [
-                    n.id for n in _get_nodes_for_pool(wp_id) if n.id is not None
-                ]
-                if all_node_ids:
-                    _follow_node_actions(all_node_ids, initial_delay=True)
-        else:
-            # Specific nodes: --node IDs or interactive selection
-            node_ids = _resolve_node_ids(wp_id)
-            if not node_ids:
-                return
-
-            if not confirmed(
-                f"Submit {len(actions)} action(s) to "
-                f"{len(node_ids)} node(s) in Worker Pool '{wp_id}'?"
-            ):
-                _record_submission(wp_id, node_ids, None, len(actions), "skipped")
-                return
-
-            submitted_node_ids = []
-            for node_id in node_ids:
-                try:
-                    CLIENT.worker_pool_client.add_node_actions_for_node_by_id(
-                        wp_id, node_id, *actions
-                    )
-                    print_info(
-                        f"Submitted {len(actions)} action(s) to node '{node_id}'"
-                    )
-                    _record_submission(
-                        wp_id, [node_id], None, len(actions), "submitted"
-                    )
-                    submitted_node_ids.append(node_id)
-                except Exception as e:
-                    error = _submission_error(e, node_id=node_id)
-                    print_error(error)
-                    _record_submission(
-                        wp_id, [node_id], None, len(actions), "failed", error
-                    )
-
-            if ARGS_PARSER.follow and submitted_node_ids:
-                _follow_node_actions(submitted_node_ids, initial_delay=True)
+    pool, node_ids, skipped = _resolve_targets()
+    wp_id = cast(str, pool.id)
+    submission = (wp_id, node_ids, group_count, action_count)
+    if skipped:
+        _record_submission(
+            wp_id, skipped, group_count, action_count, "skipped", "node finished"
+        )
+    if node_ids is not None and not node_ids:
+        print_info("No nodes to submit Node Actions to")
         return
 
-    print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
+    what = f"{group_count} action group(s)" if grouped else f"{action_count} action(s)"
+    target_desc = "all nodes" if node_ids is None else f"{len(node_ids)} node(s)"
+    if not confirmed(
+        f"Submit {what} to {target_desc} in Worker Pool {_pool_label(pool)}?"
+    ):
+        _record_submission(*submission, "skipped")
+        return
+
+    if grouped:
+        # The platform requires NodeIdFilter.LIST on every action when
+        # node_id_filter_list is provided.
+        if node_ids:
+            for group in action_groups:
+                for action in group.actions or []:
+                    action.nodeIdFilter = NodeIdFilter.LIST
+        try:
+            CLIENT.worker_pool_client.add_node_actions_grouped_by_id(
+                wp_id, action_groups=action_groups, node_id_filter_list=node_ids
+            )
+        except Exception as e:
+            error = _submission_error(e, specific_nodes=bool(node_ids))
+            print_error(error)
+            _record_submission(*submission, "failed", error=error)
+            _after_failure(e, [], submission)
+            return
+        print_info(
+            f"Submitted {what} to {target_desc} in Worker Pool {_pool_label(pool)}"
+        )
+        _record_submission(*submission, "submitted")
+        submitted = node_ids
+
+    elif node_ids is None:
+        try:
+            CLIENT.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
+        except Exception as e:
+            error = _submission_error(e)
+            print_error(error)
+            _record_submission(*submission, "failed", error)
+            _after_failure(e, [], submission)
+            return
+        print_info(f"Submitted {what} to all nodes in Worker Pool {_pool_label(pool)}")
+        _record_submission(*submission, "submitted")
+        submitted = None
+
+    else:
+        submitted = []
+        for index, node_id in enumerate(node_ids):
+            try:
+                CLIENT.worker_pool_client.add_node_actions_for_node_by_id(
+                    wp_id, node_id, *actions
+                )
+            except Exception as e:
+                error = _submission_error(e, node_id=node_id)
+                print_error(error)
+                _record_submission(
+                    wp_id, [node_id], None, action_count, "failed", error
+                )
+                _after_failure(e, node_ids[index + 1 :], submission)
+                continue
+            print_info(f"Submitted {what} to node {node_id}")
+            _record_submission(wp_id, [node_id], None, action_count, "submitted")
+            submitted.append(node_id)
+
+    if ARGS_PARSER.follow:
+        follow_ids = (
+            submitted
+            if submitted is not None
+            else [cast(str, n.id) for n in _get_nodes_for_pool(wp_id)]
+        )
+        if follow_ids:
+            try:
+                _follow_node_actions(follow_ids, initial_delay=True)
+            except _FollowTimedOut as e:
+                raise ReportedFailure(TimeoutError(str(e)))
 
 
 def _follow_node_actions(
@@ -660,10 +715,15 @@ def _follow_node_actions(
     """
     Poll the node action queue for each node until all reach EMPTY or FAILED
     status, printing the table at each poll (not under '--json'), and return
-    the final rows.
+    the final rows. With --timeout, stop polling after that many seconds:
+    the rows are then each node's latest, and the caller raises
+    _FollowTimedOut once it has recorded them.
     """
     pending = set(node_ids)
     done: dict[str, NodeActionQueueSnapshot] = {}
+    latest: dict[str, NodeActionQueueSnapshot] = {}
+    timeout = ARGS_PARSER.timeout
+    deadline = None if timeout is None else time.monotonic() + timeout
     print_info(f"Following node action queue(s) for {len(pending)} node(s)...")
     if initial_delay:
         time.sleep(0.5)  # Allow submission to stabilize
@@ -677,11 +737,14 @@ def _follow_node_actions(
                     CLIENT.worker_pool_client.get_node_actions_by_id(node_id)
                 )
             except Exception as e:
+                if classify(e) in SESSION_FAILURES:
+                    raise
                 print_error(f"Failed to get status for node '{node_id}': {e}")
                 completed.add(node_id)
                 continue
 
             live_rows.append((node_id, snapshot))
+            latest[node_id] = snapshot
             if snapshot.status in (
                 NodeActionQueueStatus.EMPTY,
                 NodeActionQueueStatus.FAILED,
@@ -697,6 +760,13 @@ def _follow_node_actions(
         if all_rows and not json_requested():
             print_node_action_queue_table(all_rows)
         pending -= completed
+        if pending and deadline is not None and time.monotonic() >= deadline:
+            print_warning(
+                f"Stopped following after {timeout:,d} second(s): the queue(s) of"
+                f" {len(pending)} node(s) had not finished"
+            )
+            rows = {**latest, **done}
+            raise _FollowTimedOut(sorted(rows.items(), key=lambda row: row[0]))
         if pending:
             time.sleep(NODE_ACTION_QUEUE_POLL_INTERVAL)
 
@@ -704,39 +774,57 @@ def _follow_node_actions(
     return sorted(done.items(), key=lambda row: row[0])
 
 
+class _FollowTimedOut(Exception):
+    """
+    --timeout ran out before every queue finished: 'rows' are each node's
+    latest queue, for the caller to record before the failure is raised.
+    """
+
+    def __init__(self, rows: list[tuple[str, NodeActionQueueSnapshot]]):
+        super().__init__("Node action queue(s) had not finished when --timeout ran out")
+        self.rows = rows
+
+
 def _show_status():
     """
     Show the node action queue status for selected node(s).
     """
-    node_ids = ARGS_PARSER.node_ids
+    node_ids = _without_duplicates(ARGS_PARSER.node_ids or [])
     if not node_ids:
-        wp_id = _resolve_worker_pool_id()
-        if wp_id is None:
-            return
+        pool = _resolve_worker_pool()
+        wp_id = cast(str, pool.id)
         if ARGS_PARSER.all_nodes:
-            node_ids = [n.id for n in _get_nodes_for_pool(wp_id) if n.id is not None]
+            node_ids = [cast(str, n.id) for n in _get_nodes_for_pool(wp_id)]
             if not node_ids:
-                print_warning(f"No nodes found in Worker Pool '{wp_id}'")
+                print_warning(f"No running nodes in Worker Pool {_pool_label(pool)}")
                 return
         else:
-            node_ids = _resolve_node_ids(wp_id)
-            if not node_ids:
-                return
+            node_ids = _choose_nodes(pool)
 
     if ARGS_PARSER.follow:
-        final_rows = _follow_node_actions(node_ids)
+        try:
+            final_rows = _follow_node_actions(node_ids)
+        except _FollowTimedOut as e:
+            if json_requested():
+                _record_queues(e.rows)
+            raise ReportedFailure(TimeoutError(str(e)))
         if json_requested():
             _record_queues(final_rows)
         return
 
     rows: list[tuple[str, NodeActionQueueSnapshot]] = []
+    failures: list[Exception] = []
     for node_id in node_ids:
         try:
             snapshot: NodeActionQueueSnapshot = (
                 CLIENT.worker_pool_client.get_node_actions_by_id(node_id)
             )
         except Exception as e:
-            print_error(f"Failed to get node action status for '{node_id}': {e}")
+            if classify(e) in SESSION_FAILURES:
+                raise
+            error = "not found" if is_http_not_found(e) else str(e)
+            print_error(f"Failed to get the node action queue for '{node_id}': {error}")
+            failures.append(e)
             continue
 
         # Under '--json' the table's rows, '--details' or not
@@ -750,6 +838,13 @@ def _show_status():
         _record_queues(rows)
     elif rows:
         print_node_action_queue_table(rows)
+    if failures:
+        raise ReportedFailure(
+            RuntimeError(
+                f"The node action queue(s) of {len(failures)} node(s) could not be"
+                " fetched"
+            )
+        )
 
 
 # Entry point
