@@ -1546,6 +1546,14 @@ class YellowDogApp(QMainWindow):
             for row in failed:
                 self._output.log(str(row.get("error")))
             parsed = [row for row in parsed if row not in failed]
+        else:
+            # A path already gone is recorded 'skipped': nothing to offer
+            parsed = [
+                row
+                for row in parsed
+                if not isinstance(row, dict)
+                or row.get("action", "would delete") == "would delete"
+            ]
         summaries = (
             parse_download_summaries(parsed)
             if command == "yd-download"

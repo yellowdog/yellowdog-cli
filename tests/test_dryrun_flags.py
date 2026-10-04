@@ -49,9 +49,10 @@ def test_dry_run_with_explicit_names_errors(cmd):
         "yd-cancel",
         "yd-shutdown",
         "yd-terminate",
-        "yd-delete",
-        # yd-download takes a required positional, so give it one: the point is
+        # yd-delete and yd-download need a path, so give them one: the point is
         # that --json alone is accepted, not that the arguments are incomplete.
+        # '--nc', so that no configured remote is ever reached
+        "yd-delete --nc somepath",
         "yd-download somepath",
     ],
 )
@@ -164,12 +165,18 @@ class TestRealPathRecordsThroughARealParse:
             yd_delete, "resolve_remote_path", lambda *a, **k: "loc:some/path"
         )
 
-        def fake_delete_remote(config, remote_path, recursive=False, dry_run=False):
-            assert remote_path == "loc:some/path"
-            assert dry_run is False
-            results_module.record({"path": remote_path, "action": "deleted"})
+        monkeypatch.setattr(
+            yd_delete,
+            "deletion_targets",
+            lambda config, remote_path, recursive: ([(remote_path, False)], 0),
+        )
 
-        monkeypatch.setattr(yd_delete, "delete_remote", fake_delete_remote)
+        def fake_delete_item(config, path, is_dir):
+            assert path == "loc:some/path"
+            results_module.record({"path": path, "action": "deleted"})
+            return True
+
+        monkeypatch.setattr(yd_delete, "delete_item", fake_delete_item)
         monkeypatch.setattr(yd_delete, "confirmed", lambda msg: True)
 
         with pytest.raises(SystemExit) as exit_info:

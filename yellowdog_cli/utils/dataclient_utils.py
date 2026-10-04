@@ -179,14 +179,14 @@ def record_transfer(
     record(item)
 
 
-def _record_deletion(
+def record_deletion(
     remote_path: str, is_dir: bool, action: str, error: str | None = None
 ) -> None:
     """
     Record one item removed by yd-delete, as {"path", "action"} with its
     display "name" (a directory's with a trailing '/') and "isDir", which
-    Commander offers its selection from; 'action' is 'deleted', 'failed' or
-    'would delete'. The path carries no trailing '/', because it is the
+    Commander offers its selection from; 'action' is 'deleted', 'failed',
+    'skipped' (not there, or declined) or 'would delete'. The path carries no trailing '/', because it is the
     handle passed back to delete that one item.
     """
     path = remote_path.rstrip("/")
@@ -519,7 +519,7 @@ def entries_to_names(entries: list[dict]) -> list[str]:
     return [entry_to_name(entry) for entry in entries]
 
 
-def _split_glob_remote_path(remote_path: str) -> tuple[str, str]:
+def split_glob_remote_path(remote_path: str) -> tuple[str, str]:
     """
     Split a glob remote path into (parent_dir, pattern).
 
@@ -575,7 +575,7 @@ def glob_matches(rclone: Rclone, remote_path: str) -> tuple[str, list[dict]]:
     parent not existing, or nothing matching, raises FileNotFoundError, and
     any other failure to list the parent raises with rclone's message.
     """
-    remote_dir, pattern = _split_glob_remote_path(remote_path)
+    remote_dir, pattern = split_glob_remote_path(remote_path)
     check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
     if check.returncode == 3:
         raise FileNotFoundError(f"'{remote_dir}' does not exist")
@@ -1005,148 +1005,85 @@ def _literal_download_files(
     )
 
 
-def _delete_with_glob(
-    config: ConfigDataClient,
-    remote_path: str,
-    recursive: bool = False,
-) -> None:
+def deletion_targets(
+    config: ConfigDataClient, remote_path: str, recursive: bool
+) -> tuple[list[tuple[str, bool]], int]:
     """
-    Delete remote entries whose names match a glob pattern.
-
-    Files are deleted directly; directories require recursive=True (matching
-    the behaviour of non-glob delete).
+    The (path, is_dir) items a deletion of 'remote_path' removes -- the path
+    itself, or what a wildcard matches now, listed once so that what is
+    confirmed is exactly what is deleted -- and how many items failed
+    already: a directory without 'recursive' is reported and recorded as
+    'failed', as 'rm' without '-r' fails. A path that does not exist, or a
+    wildcard matching nothing, is reported and recorded as 'skipped' (gone
+    already is what a deletion wants); a remote that cannot be reached
+    raises, with rclone's message.
     """
-    remote_dir, pattern = _split_glob_remote_path(remote_path)
     _, rclone = _rclone_for_config(config)
-
-    check = _run_quietly(rclone, ["lsjson", remote_dir])
-    if check.returncode != 0:
-        print_warning(f"Cannot access '{remote_dir}'")
-        return
-    entries = json.loads(check.stdout or "[]")
-    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
-    if not matches:
-        print_info(f"No matches for wildcard '{remote_path}'")
-        return
-
-    for entry in matches:
-        entry_path = _join_remote(remote_dir, entry["Name"])
-        is_dir = bool(entry["IsDir"])
-        if is_dir:
-            if recursive:
-                print_info(f"Deleting directory '{entry_path}'")
-                result = rclone.purge(entry_path)
-            else:
-                print_warning(
-                    f"'{entry_path}' is a directory; use --recursive to delete it"
-                )
-                continue
-        else:
-            print_info(f"Deleting '{entry_path}'")
-            result = rclone.delete_files(entry_path)
-        if result.returncode != 0:
-            error = f"Delete failed: {_rclone_error_detail(result)}"
-            _record_deletion(entry_path, is_dir, "failed", error=error)
-            raise RuntimeError(error)
-        _record_deletion(entry_path, is_dir, "deleted")
-
-
-def delete_remote(
-    config: ConfigDataClient,
-    remote_path: str,
-    recursive: bool = False,
-    dry_run: bool = False,
-) -> None:
-    """
-    Delete a remote file or, with recursive=True, a directory tree.
-    """
-    if dry_run:
-        action = "recursively delete" if recursive else "delete"
-        if is_glob(remote_path):
-            remote_dir, matches = list_remote_glob(config, remote_path)
-            if not matches:
-                print_info(f"No wildcard matches for '{remote_path}'")
-                return
-            # As the deletion itself does, pass over a directory without
-            # '--recursive'
-            deletable = []
-            for entry in matches:
-                if entry["IsDir"] and not recursive:
-                    print_warning(
-                        f"'{_join_remote(remote_dir, entry['Name'])}' is a"
-                        " directory; use --recursive to delete it"
-                    )
-                else:
-                    deletable.append(entry)
-            if not deletable:
-                return
-            names = [f"'{entry_to_name(e)}'" for e in deletable]
-            print_dry_run(
-                f"Would {action} {len(deletable)} matched item(s): {', '.join(names)}"
-            )
-            for entry in deletable:
-                _record_deletion(
-                    _join_remote(remote_dir, entry["Name"]),
-                    bool(entry["IsDir"]),
-                    "would delete",
-                )
-        else:
-            listing = list_remote(config, remote_path)
-            if not listing.dirs and not listing.files:
-                print_warning(f"'{remote_path}' does not exist")
-                return
-            _, rclone = _rclone_for_config(config)
-            is_file = _is_remote_file(rclone, remote_path)
-            if not is_file and not recursive:
-                print_warning(
-                    f"'{remote_path}' is a directory; use --recursive to delete it"
-                )
-                return
-            if is_file:
-                print_dry_run(f"Would delete '{remote_path}'")
-            else:
-                rec_listing = list_remote(config, remote_path, recursive=True)
-                n_files = len(rec_listing.files)
-                n_dirs = len(rec_listing.dirs)
-                ies = "y" if n_dirs == 1 else "ies"
-                print_dry_run(
-                    f"Would {action} '{remote_path}'"
-                    f" ({n_files} file(s), {n_dirs} subdirector{ies})"
-                )
-            _record_deletion(remote_path, not is_file, "would delete")
-        return
-
     if is_glob(remote_path):
-        _delete_with_glob(config, remote_path, recursive=recursive)
-        return
-
-    _, rclone = _rclone_for_config(config)
-
-    listing = list_remote(config, remote_path)
-    if not listing.dirs and not listing.files:
-        print_warning(f"'{remote_path}' does not exist")
-        return
-
-    # Classify by listing the parent directory: a basename comparison against
-    # the path's own listing misclassifies a directory containing a single
-    # same-named file (e.g. 'foo/foo')
-    is_file = _is_remote_file(rclone, remote_path)
-
-    if is_file:
-        print_info(f"Deleting '{remote_path}'")
-        result = rclone.delete_files(remote_path)
-    elif recursive:
-        print_info(f"Deleting directory '{remote_path}'")
-        result = rclone.purge(remote_path)
+        try:
+            remote_dir, matches = glob_matches(rclone, remote_path)
+        except FileNotFoundError as e:
+            print_warning(str(e))
+            record_deletion(remote_path, False, "skipped")
+            return [], 0
+        candidates = [
+            (_join_remote(remote_dir, entry["Name"]), bool(entry["IsDir"]))
+            for entry in matches
+        ]
     else:
-        print_warning(f"'{remote_path}' is a directory; use --recursive to delete it")
-        return
+        stat = remote_stat(rclone, remote_path)
+        if stat is None:
+            print_warning(f"'{remote_path}' does not exist")
+            record_deletion(remote_path, False, "skipped")
+            return [], 0
+        candidates = [(remote_path, bool(stat["IsDir"]))]
 
+    targets: list[tuple[str, bool]] = []
+    failed = 0
+    for path, is_dir in candidates:
+        if is_dir and not recursive:
+            error = f"'{path}' is a directory; use --recursive to delete it"
+            print_error(error)
+            record_deletion(path, True, "failed", error=error)
+            failed += 1
+        else:
+            targets.append((path, is_dir))
+    return targets, failed
+
+
+def describe_deletion(config: ConfigDataClient, path: str, is_dir: bool) -> str:
+    """
+    One item a deletion removes, as a dry run reports it: a directory with
+    the number of files and subdirectories it holds.
+    """
+    if not is_dir:
+        return f"'{path}'"
+    _, rclone = _rclone_for_config(config)
+    entries = _lsjson(rclone, path, recursive=True)
+    n_dirs = sum(1 for entry in entries if entry["IsDir"])
+    ies = "y" if n_dirs == 1 else "ies"
+    return f"'{path}' ({len(entries) - n_dirs} file(s), {n_dirs} subdirector{ies})"
+
+
+def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
+    """
+    Delete one remote file, or a directory tree, recording the outcome.
+    Returns False, having reported and recorded it, if it failed.
+    """
+    _, rclone = _rclone_for_config(config)
+    if is_dir:
+        print_info(f"Deleting directory '{path}'")
+        result = _without_rclone_api_warnings(lambda: rclone.purge(path))
+    else:
+        print_info(f"Deleting '{path}'")
+        result = _without_rclone_api_warnings(lambda: rclone.delete_files(path))
     if result.returncode != 0:
-        error = f"Delete failed: {_rclone_error_detail(result)}"
-        _record_deletion(remote_path, not is_file, "failed", error=error)
-        raise RuntimeError(error)
-    _record_deletion(remote_path, not is_file, "deleted")
+        error = f"Deletion of '{path}' failed: {_rclone_error_detail(result)}"
+        print_error(error)
+        record_deletion(path, is_dir, "failed", error=error)
+        return False
+    record_deletion(path, is_dir, "deleted")
+    return True
 
 
 def list_remote_glob(
@@ -1159,7 +1096,7 @@ def list_remote_glob(
     Returns (remote_dir, matching_entries) where each entry is an rclone lsjson
     dict with keys including Name, IsDir, Size, ModTime.
     """
-    remote_dir, pattern = _split_glob_remote_path(remote_path)
+    remote_dir, pattern = split_glob_remote_path(remote_path)
     _, rclone = _rclone_for_config(config)
     check = _run_quietly(rclone, ["lsjson", remote_dir])
     if check.returncode != 0:

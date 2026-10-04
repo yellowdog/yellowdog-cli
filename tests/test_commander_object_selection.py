@@ -420,3 +420,29 @@ def test_delete_runs_when_selected_paths_have_no_glob_metacharacters(
     window._delete_objects_action()
     _command, args, _kwargs = captured[0]
     assert args == ["-Ry"] + [obj.path for obj in objects()]
+
+
+def test_capture_objects_offers_only_what_would_be_deleted(window, monkeypatch):
+    # A path already gone is recorded 'skipped' by yd-delete's dry run, and is
+    # nothing to offer
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_json",
+        lambda command, extra_args=None, failures_recorded=False: [
+            {
+                "path": "S3:b/pfx/gone",
+                "name": "gone",
+                "isDir": False,
+                "action": "skipped",
+            },
+            {
+                "path": "S3:b/pfx/pyex-001",
+                "name": "pyex-001",
+                "isDir": False,
+                "action": "would delete",
+            },
+        ],
+    )
+    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+        objects()[0]
+    ]

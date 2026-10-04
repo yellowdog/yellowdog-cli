@@ -961,6 +961,19 @@ def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
         parser.error("--sync cannot be used with --flatten")
 
 
+def check_delete_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-delete: a path, unless --recursive asks for the entire default
+    prefix (or it is only asked for --which-rclone or --upgrade-rclone).
+    """
+    if args.remote_paths or args.recursive or args.which_rclone or args.upgrade_rclone:
+        return
+    parser.error(
+        "no remote path given: name one, or use --recursive to delete the entire"
+        " default prefix"
+    )
+
+
 DESTINATION = option(
     "--destination",
     "-d",
@@ -1607,6 +1620,7 @@ COMMANDS["yd-delete"] = Command(
             )
         ),
     ),
+    validators=(check_delete_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

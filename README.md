@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 20:40:20 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 20:46:27 BST 2026 -->
 
 <!--te-->
 
@@ -519,7 +519,7 @@ The documents, by command:
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
 | Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches); several paths' entries are concatenated |
 | Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` dry run would remove, or local file a `yd-download --sync` dry run would. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd-download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
-| Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"`; a directory passed over for want of `--recursive` is not recorded |
+| Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
 | Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a missing optional component; `--debug` adds `"executable"` and `"path"` |
@@ -4433,9 +4433,9 @@ The `yd-delete` command deletes files or directories from a remote data store. `
 yd-delete [options] [<remote-path> ...]
 ```
 
-If no remote paths are specified, the command operates on the entire configured prefix.
+If no remote paths are specified, `--recursive` deletes the entire configured prefix; without `--recursive` that is refused. The remote's root and the configured bucket itself are never deleted (with `--no-prefix`, the 'prefix' is the bucket, or the root), nor is a wildcard over the remote's root: the command refuses them before deleting anything (exit 2).
 
-Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested before any deletions take place. Matching directories require `--recursive` to be deleted.
+Remote paths support `{{variable}}` substitution and may also contain wildcard characters (`*`, `?`, `[…]`). The wildcard is expanded first and the matched names are displayed; confirmation is then requested, and exactly the items shown are deleted — anything that starts matching in the meantime is left alone. A directory, given or matched, requires `--recursive`, and without it is an error. A path that does not exist, or a wildcard that matches nothing, is skipped with a warning, so a deletion of something already gone succeeds. A failed deletion is reported and recorded, the other paths are still attempted, and the command then exits 1.
 
 Key options:
 - `--recursive`/`-R` — recursively delete a remote directory tree

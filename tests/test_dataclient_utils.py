@@ -168,27 +168,27 @@ class TestResolveRemotePathVariableSubstitution:
 
 class TestSplitGlobRemotePath:
     def test_glob_in_final_component(self):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
 
-        assert _split_glob_remote_path("S3:bucket/prefix/xxx*") == (
+        assert split_glob_remote_path("S3:bucket/prefix/xxx*") == (
             "S3:bucket/prefix/",
             "xxx*",
         )
 
     def test_glob_at_top_level(self):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
 
-        assert _split_glob_remote_path("S3:xxx*") == ("S3:", "xxx*")
+        assert split_glob_remote_path("S3:xxx*") == ("S3:", "xxx*")
 
     @pytest.mark.parametrize(
         "path",
         ["S3:bucket/dir*/file.txt", "S3:buck?t/prefix/file*", "S3:a[1]/b/c*"],
     )
     def test_mid_path_glob_rejected(self, path):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
 
         with pytest.raises(ValueError, match="final path component"):
-            _split_glob_remote_path(path)
+            split_glob_remote_path(path)
 
 
 class TestUploadDirectoryWalksOnlyForJson:

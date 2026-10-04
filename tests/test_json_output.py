@@ -2802,10 +2802,92 @@ class TestDelete:
         ]
         assert not (remote / "remote" / "sub").exists()
 
-    def test_a_directory_without_recursive_is_not_recorded(self, remote, run_dc):
-        out, _, _ = run_dc(yd_delete, remote_paths=["loc:remote/*"])
-        assert [r["path"] for r in out] == ["loc:remote/a.txt"]
+    def test_a_directory_without_recursive_fails(self, remote, run_dc):
+        # As 'rm' without '-r' does; the file it matched is still deleted
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/*"])
+        assert sorted((r["path"], r["action"]) for r in out) == [
+            ("loc:remote/a.txt", "deleted"),
+            ("loc:remote/sub", "failed"),
+        ]
+        assert code == 1
         assert (remote / "remote" / "sub" / "b.txt").exists()
+
+    def test_what_was_confirmed_is_what_is_deleted(self, remote, run_dc, monkeypatch):
+        # A file that starts matching after the confirmation is not deleted:
+        # the matches are listed once
+        def confirm(question):
+            (remote / "remote" / "late.txt").write_text("late")
+            return True
+
+        monkeypatch.setattr(yd_delete, "confirmed", confirm)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/*.txt"])
+        assert [r["path"] for r in out] == ["loc:remote/a.txt"]
+        assert (remote / "remote" / "late.txt").exists()
+        assert code == 0
+
+    def test_a_path_already_gone_is_skipped(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/nope", "loc:remote/zz*"]
+        )
+        assert [(r["path"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "skipped"),
+            ("loc:remote/zz*", "skipped"),
+        ]
+        assert code == 0
+
+    def test_an_empty_directory_is_deleted(self, remote, run_dc):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/empty"], recursive=True
+        )
+        assert [r["action"] for r in out] == ["deleted"]
+        assert not (remote / "remote" / "empty").exists()
+        assert code == 0
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
+        import yellowdog_cli.utils.dataclient_utils as dcu
+
+        real = dcu.delete_item
+
+        def delete_item(config, path, is_dir):
+            if path.endswith("a.txt"):
+                dcu.record_deletion(path, is_dir, "failed", error="refused")
+                return False
+            return real(config, path, is_dir)
+
+        monkeypatch.setattr(yd_delete, "delete_item", delete_item)
+        out, err, code = run_dc(
+            yd_delete,
+            remote_paths=["loc:remote/a.txt", "loc:remote/sub"],
+            recursive=True,
+        )
+        assert [r["action"] for r in out] == ["failed", "deleted"]
+        assert code == 1
+        assert "1 item(s) failed to delete" in " ".join(err.split())
+
+    @pytest.mark.parametrize(
+        "paths", [["loc:"], ["loc:remote"], ["loc:remote/"], ["loc:*"]]
+    )
+    def test_the_root_or_the_bucket_is_refused(self, remote, run_dc, paths):
+        _, err, code = run_dc(yd_delete, remote_paths=paths, recursive=True)
+        assert code == 2
+        assert "Nothing was deleted" in " ".join(err.split())
+        assert (remote / "remote" / "a.txt").exists()
+
+    def test_a_repeated_path_is_deleted_once(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/a.txt", "loc:remote/a.txt"]
+        )
+        assert [r["action"] for r in out] == ["deleted"]
+        assert code == 0
+
+    def test_no_path_without_recursive_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-delete", argv=[])
+        assert raised.value.code == 2
+        assert "use --recursive to delete the entire" in capsys.readouterr().err
 
     def test_a_literal_directory_needs_recursive(self, remote, run_dc):
         out, _, _ = run_dc(yd_delete, remote_paths=["loc:remote/sub"], recursive=True)
