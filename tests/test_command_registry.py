@@ -338,7 +338,8 @@ class TestHelpCommand:
 
     def test_every_extra_named_has_a_probe(self):
         named = {r["extra"] for r in help_module.entries() if "extra" in r}
-        assert named == set(help_module.EXTRA_PROBES)
+        # jsonnet is an extra no command needs, so its probe is the doctor's
+        assert named <= set(help_module.EXTRA_PROBES)
 
     def test_every_probed_extra_is_one_pyproject_offers(self):
         with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:

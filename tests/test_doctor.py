@@ -662,14 +662,16 @@ class TestInstallation:
             "Python version",
             "Install kind",
             "CLI and SDK versions",
-            "Newer CLI on PyPI",
+            "SDK imports",
             "Jsonnet",
             "Cloud Wizard",
             "Commander",
             "MCP Server",
             "rclone",
+            # Ahead of PyPI, which goes through the proxy PAC resolves
             "Proxy",
             "Certificates",
+            "Newer CLI on PyPI",
         ]
 
 
@@ -1132,13 +1134,15 @@ class TestLive:
         assert r.status is dc.Status.FAIL and "no answer" in r.detail
 
     def test_groups_and_roles(self, monkeypatch):
+        import yellowdog_cli.utils.entity_utils as entity_utils
+
         monkeypatch.setattr(
-            dc,
+            entity_utils,
             "get_application_group_summaries",
             lambda client, app_id: [SimpleNamespace(name="administrators")],
         )
         monkeypatch.setattr(
-            dc,
+            entity_utils,
             "get_all_roles_and_namespaces_for_application",
             lambda client, app_id: {"admin": ["GLOBAL"]},
         )
@@ -1148,9 +1152,15 @@ class TestLive:
         assert r.detail == "groups: administrators; roles: admin (GLOBAL)"
 
     def test_no_roles_warns(self, monkeypatch):
-        monkeypatch.setattr(dc, "get_application_group_summaries", lambda c, a: [])
+        import yellowdog_cli.utils.entity_utils as entity_utils
+
         monkeypatch.setattr(
-            dc, "get_all_roles_and_namespaces_for_application", lambda c, a: {}
+            entity_utils, "get_application_group_summaries", lambda c, a: []
+        )
+        monkeypatch.setattr(
+            entity_utils,
+            "get_all_roles_and_namespaces_for_application",
+            lambda c, a: {},
         )
         ctx = _ctx(config_loaded=True, config_common=self._cfg(), client=object())
         ctx.application = SimpleNamespace(id="ydid:app:1")
@@ -1185,42 +1195,102 @@ class TestLive:
         )
         assert dc.check_namespace_granted(ctx).status is dc.Status.OK
 
-    def test_data_client_remote_listing_ok_names_the_profile(self, monkeypatch):
-        rclone = SimpleNamespace(
-            ls=lambda path, max_depth: SimpleNamespace(dirs=[], files=[])
-        )
-        monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: ("remote", rclone))
+    def _remote(self, monkeypatch, stats: dict, name: str = "backup"):
+        """
+        The Remote reachable row, remote_stat answering from 'stats' (a
+        path to its entry, None, or an exception to raise).
+        """
+        import yellowdog_cli.utils.dataclient_utils as dcu
+
+        def stat(rclone, path):
+            answer = stats[path]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: ("remote", None))
+        monkeypatch.setattr(dcu, "remote_stat", stat)
         ctx = _ctx(
             config_loaded=True,
-            data_client=SimpleNamespace(remote="remote:", bucket="b", prefix="p"),
-            data_client_name="backup",
+            data_client=SimpleNamespace(remote="remote", bucket="b", prefix="p"),
+            data_client_name=name,
         )
-        r = dc.check_data_client_remote(ctx)
+        return dc.check_data_client_remote(ctx)
+
+    def test_data_client_remote_checks_the_prefix_and_names_the_profile(
+        self, monkeypatch
+    ):
+        # The prefix, where the commands work: a policy scoped to it may
+        # refuse the bucket's root although every command would work
+        r = self._remote(monkeypatch, {"remote:b/p": {"IsDir": True}})
         assert (r.status, r.detail) == (
             dc.Status.OK,
-            "remote:b listed (profile backup)",
+            "remote:b/p reachable (profile backup)",
+        )
+
+    def test_a_prefix_not_created_yet_is_ok_in_a_bucket_that_is_there(
+        self, monkeypatch
+    ):
+        r = self._remote(monkeypatch, {"remote:b/p": None, "remote:b": {"IsDir": True}})
+        assert r.status is dc.Status.OK and "not created yet" in r.detail
+
+    def test_a_bucket_that_is_not_there_fails(self, monkeypatch):
+        r = self._remote(monkeypatch, {"remote:b/p": None, "remote:b": None})
+        assert (r.status, r.detail) == (
+            dc.Status.FAIL,
+            "remote:b (profile backup): bucket not found",
         )
 
     def test_data_client_remote_failure_is_rclones_error(self, monkeypatch):
-        def ls(path, max_depth):
-            raise subprocess.CalledProcessError(
-                3,
-                ["rclone"],
-                "",
-                "2026/09/25 ERROR : noise\nFailed to lsjson: directory not found\n",
-            )
-
-        rclone = SimpleNamespace(ls=ls)
-        monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: ("remote", rclone))
-        ctx = _ctx(
-            config_loaded=True,
-            data_client=SimpleNamespace(remote="remote:", bucket="b", prefix="p"),
-            data_client_name="[dataClient]",
+        error = RuntimeError(
+            "Cannot access 'remote:b/p': 2026/09/25 ERROR : noise\n"
+            "Failed to lsjson: permission denied\n"
         )
-        r = dc.check_data_client_remote(ctx)
+        r = self._remote(monkeypatch, {"remote:b/p": error}, name="[dataClient]")
         assert r.status is dc.Status.FAIL
         assert r.detail == (
-            "remote:b (profile [dataClient]): Failed to lsjson: directory not found"
+            "remote:b/p (profile [dataClient]): Failed to lsjson: permission denied"
+        )
+
+    def test_a_server_error_from_the_platform_warns(self, monkeypatch):
+        monkeypatch.setattr(
+            dc.requests, "get", lambda url, timeout: SimpleNamespace(status_code=503)
+        )
+        ctx = _ctx(config_loaded=True, config_common=self._cfg())
+        r = dc.check_platform_reachable(ctx)
+        assert r.status is dc.Status.WARN and "503" in r.detail
+
+    @pytest.mark.parametrize(
+        "status, detail",
+        [
+            (401, "key or secret not recognised"),
+            (403, "the Application is not permitted to read its own details"),
+            (502, "the platform reported a server error"),
+        ],
+    )
+    def test_authentication_failures_are_classified(self, monkeypatch, status, detail):
+        from requests import HTTPError, Response
+
+        response = Response()
+        response.status_code = status
+
+        def refuse():
+            raise HTTPError(f"HTTP {status}", response=response)
+
+        client = SimpleNamespace(
+            application_client=SimpleNamespace(get_application_details=refuse)
+        )
+        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        ctx = _ctx(config_loaded=True, config_common=self._cfg())
+        r = dc.check_authenticated(ctx)
+        assert (r.status, r.detail) == (dc.Status.FAIL, detail)
+        assert r.remedy
+
+    def test_authenticated_skips_when_the_sdk_did_not_import(self):
+        ctx = _ctx(config_loaded=True, config_common=self._cfg())
+        ctx.sdk_error = "No module named 'yellowdog_client'"
+        assert dc.check_authenticated(ctx) == dc.Result(
+            dc.Status.SKIP, "SDK did not import"
         )
 
     def test_live_checks_registered_in_order_and_needs(self):
@@ -1270,38 +1340,42 @@ class TestDataClientUnderTest:
         if find_rclone() is None:
             pytest.skip("rclone not installed")
 
+    # The buckets are relative, resolved from the doctor's working directory
+    # (tmp_path): resolve_remote_path(), whose path the commands use and so
+    # the row checks, takes a bucket's leading '/' off
+
     def test_environment_alone_configures_it(self, tmp_path):
         (tmp_path / "data").mkdir()
         env = _clean_env(
-            YD_DATA_CLIENT_REMOTE="loc,type=local",
-            YD_DATA_CLIENT_BUCKET=str(tmp_path / "data"),
+            YD_DATA_CLIENT_REMOTE="loc,type=local", YD_DATA_CLIENT_BUCKET="data"
         )
         rows = _run_doctor_online(tmp_path, env, "")
         assert rows["Data client profile"]["status"] == "SKIP"
         row = rows["Remote reachable"]
         assert row["status"] == "OK", row
-        assert row["detail"] == f"loc:{tmp_path / 'data'} listed (profile [dataClient])"
+        # The default prefix is not there yet, in a bucket that is
+        assert row["detail"].startswith("loc:data/")
+        assert row["detail"].endswith(
+            "reachable, not created yet (profile [dataClient])"
+        )
 
     def test_yd_data_client_names_the_profile(self, tmp_path):
-        (tmp_path / "other").mkdir()
+        (tmp_path / "other" / "pfx").mkdir(parents=True)
         config = (
-            f'[dataClient]\nremote = "loc,type=local"\nbucket = "{tmp_path / "absent"}"\n'
-            f'[dataClient.backup]\nbucket = "{tmp_path / "other"}"\n'
+            '[dataClient]\nremote = "loc,type=local"\nbucket = "absent"\n'
+            '[dataClient.backup]\nbucket = "other"\nprefix = "pfx"\n'
         )
         rows = _run_doctor_online(tmp_path, _clean_env(YD_DATA_CLIENT="backup"), config)
         row = rows["Remote reachable"]
         assert row["status"] == "OK", row
-        assert row["detail"] == f"loc:{tmp_path / 'other'} listed (profile backup)"
+        assert row["detail"] == "loc:other/pfx reachable (profile backup)"
 
-    def test_missing_directory_fails_with_rclones_text(self, tmp_path):
-        config = f'[dataClient]\nremote = "loc,type=local"\nbucket = "{tmp_path / "absent"}"\n'
+    def test_a_missing_bucket_fails(self, tmp_path):
+        config = '[dataClient]\nremote = "loc,type=local"\nbucket = "absent"\n'
         rows = _run_doctor_online(tmp_path, _clean_env(), config)
         row = rows["Remote reachable"]
         assert row["status"] == "FAIL"
-        assert row["detail"].startswith(
-            f"loc:{tmp_path / 'absent'} (profile [dataClient]): "
-        )
-        assert "\n" not in row["detail"]
+        assert row["detail"] == "loc:absent (profile [dataClient]): bucket not found"
 
     def test_a_profile_that_does_not_load_is_named(self, tmp_path):
         config = '[dataClient]\nremote = "loc,type=local"\n'
@@ -1477,3 +1551,40 @@ class TestLogging:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout == ""
+
+
+class TestWithoutTheSdk:
+    """
+    An SDK that will not import is a diagnosis, not a crash: the doctor
+    imports none at module level, reports it in the 'SDK imports' row, and
+    the checks that need it skip.
+    """
+
+    def test_the_row_fails_and_records_why(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "yellowdog_client", None)
+        ctx = _ctx()
+        r = dc.check_sdk_imports(ctx)
+        assert r.status is dc.Status.FAIL and r.remedy
+        assert ctx.sdk_error
+
+    def test_the_row_passes_with_the_sdk(self):
+        assert dc.check_sdk_imports(_ctx()).status is dc.Status.OK
+
+    def test_the_doctor_runs_with_the_sdk_blocked(self, tmp_path):
+        # A fresh interpreter, the SDK made unimportable before anything
+        # else is: the doctor must still print its rows
+        probe = (
+            "import sys; sys.modules['yellowdog_client'] = None;"
+            " sys.argv = ['yd-doctor', '--offline', '--json'];"
+            " from yellowdog_cli import doctor; doctor.main()"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=tmp_path,
+            env=_clean_env(),
+            capture_output=True,
+            text=True,
+        )
+        rows = {row["check"]: row for row in json.loads(result.stdout)}
+        assert rows["SDK imports"]["status"] == "FAIL", result.stderr
+        assert result.returncode == 1

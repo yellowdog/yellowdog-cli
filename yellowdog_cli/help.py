@@ -14,6 +14,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.check_imports import EXTRA_PROBES
 from yellowdog_cli.utils.command_registry import COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.settings import DEFAULT_THEME, JSON_INDENT
@@ -35,16 +36,6 @@ NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|synonym: yd-[\w-
 EXTRA = re.compile(r" \(needs the (\w+) extra\)$")
 SYNONYM = "A synonym for "
 
-# One package each extra installs, looked for -- never imported, which for
-# PyQt6 or the cloud SDKs would cost far more than the listing -- to say
-# whether the extra is installed. check_imports.py's guards look for the
-# same ones; tests/test_help.py holds this table to the extras the summaries
-# name and to pyproject.toml's.
-EXTRA_PROBES: dict[str, str] = {
-    "cloudwizard": "boto3",
-    "commander": "PyQt6",
-    "mcp": "mcp",
-}
 
 # The entry points that are not registry commands: they take none of the
 # CLI's options, so the registry has nothing to say about them, but a user
