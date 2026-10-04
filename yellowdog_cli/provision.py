@@ -57,6 +57,7 @@ from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
     shown_value,
+    user_data_source,
 )
 from yellowdog_cli.utils.results import (
     record_document,
@@ -182,8 +183,10 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         if reqt_template_usage.get(USERDATA) is None:
             user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
             if user_data is not None:
+                # Its source and size, never the script itself
                 print_info(
-                    f"Setting 'requirementTemplateUsage.{USERDATA}': '{user_data}'"
+                    f"Setting 'requirementTemplateUsage.{USERDATA}' from"
+                    f" {user_data_source(CONFIG_WP)} ({len(user_data):,d} characters)"
                 )
                 reqt_template_usage[USERDATA] = user_data
 
@@ -279,7 +282,10 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 provisioned_properties[key] = value
 
     except KeyError as e:
-        raise KeyError(f"Key error in JSON Worker Pool definition: {e}")
+        raise ValueError(
+            f"The Worker Pool specification '{wp_json_file}' has no"
+            f" '{e.args[0]}' property"
+        ) from e
 
     # The name lookups are outside the 'try' above: a name that is not found
     # raises a KeyError too, and is no error in the specification's keys
@@ -298,6 +304,25 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         )
 
     _rationalise_specification_node_counts(reqt_template_usage, provisioned_properties)
+
+    # As for a TOML Worker Pool: a Worker Pool's Compute Requirement must not
+    # maintain its instance count
+    if reqt_template_usage.get(MAINTAIN_INSTANCE_COUNT) is True:
+        print_warning(
+            f"Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
+            "'false' when creating a Worker Pool"
+        )
+        reqt_template_usage[MAINTAIN_INSTANCE_COUNT] = False
+
+    # Batching is the TOML path's alone: a specification is one Worker Pool
+    max_nodes = _integer_or_none(provisioned_properties.get(MAX_NODES))
+    if max_nodes is not None and max_nodes > CONFIG_WP.compute_requirement_batch_size:
+        print_warning(
+            f"'maxNodes' ({max_nodes:,d}) is more than"
+            f" 'computeRequirementBatchSize' ({CONFIG_WP.compute_requirement_batch_size:,d}),"
+            " which applies only to a Worker Pool defined in the configuration: this"
+            " specification is provisioned as a single Worker Pool"
+        )
 
     if ARGS_PARSER.dry_run:
         if ARGS_PARSER.json_output:
@@ -494,6 +519,12 @@ def create_worker_pool_from_toml() -> None:
             print_error(
                 f"Unable to provision Worker Pool '{CONFIG_COMMON.namespace}/{id}'"
             )
+            if worker_pool_ids:
+                print_warning(
+                    f"{len(worker_pool_ids)} of {num_batches} Worker Pools were"
+                    " provisioned before the failure, and are still running:"
+                    f" {', '.join(worker_pool_ids)}"
+                )
             raise
 
     idle_node_shutdown_string = (

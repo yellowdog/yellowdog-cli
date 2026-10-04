@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 import yellowdog_cli.utils.provision_utils as pu_module
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.provision_utils import (
     get_template_id,
     get_user_data_property,
@@ -347,7 +348,7 @@ class TestGetTemplateId:
                 return_value=None,
             ),
         ):
-            with pytest.raises(KeyError, match="not found"):
+            with pytest.raises(NotFoundError, match="not found"):
                 get_template_id(client, "nonexistent-template")
 
 

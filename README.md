@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 09:56:03 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 16:04:57 BST 2026 -->
 
 <!--te-->
 
@@ -3610,7 +3610,7 @@ yd-cancel [options] [<work-requirement-name-or-ID> ...]
 
 The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
 
-A YDID names its Work Requirement or Task in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the Work Requirement of that name that can still be cancelled is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead. Explicit names and IDs are handled in the order given, and are confirmed together; one that has already finished, or a Task that has, is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped.
+A YDID names its Work Requirement or Task in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the Work Requirement of that name that can still be cancelled is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead. Explicit names and IDs are handled in the order given, and are confirmed together; one that has already finished, or a Task that has, is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list work-requirements --name 'myproject-*'` to preview the matches first.
 
@@ -3670,7 +3670,7 @@ It can optionally be supplied with a list of the names and/or YDIDs of the speci
 
 A YDID names its Work Requirement in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the `HELD` Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead. A name may also be a glob pattern (e.g. `'proj-*'`), which selects every `HELD` Work Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
 
-Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped.
+Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
@@ -3744,6 +3744,8 @@ yd-provision my_worker_pool.json --target 10 --follow
 
 When `--quiet` (`-q`) is used, only the YDID of the provisioned Worker Pool is printed to stdout.
 
+A Worker Pool defined in the configuration whose `maxNodes` exceeds `computeRequirementBatchSize` is provisioned as several Worker Pools; if one of them fails, those already provisioned are listed, since they are still running. A Worker Pool specification is always provisioned as a single Worker Pool, with a warning if its `maxNodes` exceeds the batch size, and its `maintainInstanceCount` is set to `false`, as a Worker Pool requires. User Data merged in from the configuration is reported by its source and size, never printed.
+
 The specification file may also be supplied using the deprecated `--worker-pool`/`-p` option; the positional argument is preferred.
 
 See [Worker Pools](#worker-pools) for the full specification reference.
@@ -3756,7 +3758,7 @@ The `yd-shutdown` command shuts down the Worker Pools in the configured `namespa
 yd-shutdown [options] [<worker-pool-name-or-ID/node-id> ...]
 ```
 
-Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool or Node that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped.
+Specific Worker Pool names or YDIDs, and/or Node YDIDs (to shut down individual nodes), can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool or Node that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list worker-pools --name 'wp-*'` to preview the matches first.
 
@@ -3953,7 +3955,7 @@ If no arguments are supplied, Compute Requirements that match the `namespace` an
 
 A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name may also be a glob pattern (e.g. `'cr-*'`), which selects every `RUNNING` Compute Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
 
-Explicit names and IDs are handled in the order given, and are confirmed together: Instances in the same Compute Requirement are stopped in a single request. A Compute Requirement or Instance that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, and the remaining items are reported as skipped. The `--follow`/`-f` option follows the event stream(s) of the Compute Requirement(s) acted on.
+Explicit names and IDs are handled in the order given, and are confirmed together: Instances in the same Compute Requirement are stopped in a single request. A Compute Requirement or Instance that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)). The `--follow`/`-f` option follows the event stream(s) of the Compute Requirement(s) acted on.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))

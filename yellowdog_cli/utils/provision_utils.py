@@ -12,6 +12,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_template_id_by_name,
     get_image_name_or_id,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
@@ -54,12 +55,12 @@ def _read_user_data(
         if user_data is not None:
             parts = [(USERDATA, user_data)]
         elif user_data_file is not None:
-            with open(user_data_file) as f:
+            with open(user_data_file, encoding="utf-8") as f:
                 parts = [(user_data_file, f.read())]
         elif user_data_files is not None:
             parts = []
             for path in user_data_files:
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     parts.append((path, f.read() + "\n"))
         else:
             return None
@@ -144,6 +145,19 @@ def resolve_user_data_in_spec(spec: dict, base_dir: str | None = None) -> None:
         spec[USERDATA] = content
 
 
+def user_data_source(config: ConfigWorkerPool) -> str:
+    """
+    Where the configuration's User Data comes from, for a message that
+    reports it without printing it: a boot script can be long, and can
+    carry credentials.
+    """
+    if config.user_data_file is not None:
+        return f"'{config.user_data_file}'"
+    if config.user_data_files is not None:
+        return ", ".join(f"'{path}'" for path in config.user_data_files)
+    return f"the configuration's '{USERDATA}'"
+
+
 def shown_value(value: object) -> str:
     """
     A value set in a specification, as a message shows it: a string as it
@@ -165,7 +179,7 @@ def get_template_id(client: PlatformClient, template_id_or_name: str) -> str:
         client=client, name=template_id_or_name
     )
     if template_id is None:
-        raise KeyError(
+        raise NotFoundError(
             f"Compute Requirement Template '{template_id_or_name}' not found"
         )
 

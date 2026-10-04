@@ -349,8 +349,10 @@ class TestInstantiate:
 
 class TestProvisionTemplateLookup:
     def test_a_template_not_found_is_not_a_key_error_in_the_file(self, run, wp_file):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
         def _not_found(*a, **k):
-            raise KeyError("Compute Requirement Template 'nope' not found")
+            raise NotFoundError("Compute Requirement Template 'nope' not found")
 
         run(
             yd_provision,
@@ -358,9 +360,12 @@ class TestProvisionTemplateLookup:
             template_id=_not_found,
             worker_pool_file_positional=wp_file({"targetInstanceCount": 1}, {}),
         )
-        assert run.exit_code == ExitCode.FAILURE
-        assert "Compute Requirement Template 'nope' not found" in run.err
-        assert "Key error in JSON Worker Pool definition" not in run.err
+        assert run.exit_code == ExitCode.NOT_FOUND
+        # Not quoted, as a KeyError's message would be
+        assert run.err.endswith(
+            "ERROR : Compute Requirement Template 'nope' not found\n"
+        )
+        assert "has no" not in run.err
 
     def test_no_template_id_anywhere_is_reported_as_such(self, run, tmp_path):
         path = tmp_path / "wp.json"
@@ -531,3 +536,70 @@ class TestMinutes:
     )
     def test_whole_minutes_lose_their_fraction(self, minutes, shown):
         assert yd_provision._minutes(minutes) == shown
+
+
+# ---------------------------------------------------------------------------
+# yd-provision: what is reported, and what a specification cannot do
+# ---------------------------------------------------------------------------
+
+
+class TestProvisionReporting:
+    def test_merged_user_data_is_described_not_printed(self, run, wp_file):
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(user_data_file="boot.sh"),
+            user_data=_UserData("export TOKEN=s3cret\n"),
+            dry_run=True,
+            worker_pool_file_positional=wp_file({"targetInstanceCount": 1}, {}),
+        )
+        (setting,) = [
+            line
+            for line in out.splitlines()
+            if "requirementTemplateUsage.userData" in line
+        ]
+        assert "from 'boot.sh' (20 characters)" in setting
+        assert "s3cret" not in setting
+
+    def test_a_missing_section_names_the_file_and_the_property(self, run, tmp_path):
+        path = tmp_path / "wp.json"
+        path.write_text(
+            json_dumps({"requirementTemplateUsage": {"templateId": CRT_ID}})
+        )
+        run(yd_provision, ConfigWorkerPool(), worker_pool_file_positional=str(path))
+        assert run.exit_code == ExitCode.FAILURE
+        assert f"'{path}' has no 'provisionedProperties' property" in run.err
+
+    def test_maintain_instance_count_is_set_false(self, run, wp_file):
+        path = wp_file({"targetInstanceCount": 1, "maintainInstanceCount": True}, {})
+        document = _provision_dry_run(run, path)
+        assert document["requirementTemplateUsage"]["maintainInstanceCount"] is False
+        assert "will be set to 'false'" in run.err
+
+    def test_a_batch_size_the_specification_exceeds_is_explained(self, run, wp_file):
+        path = wp_file({"targetInstanceCount": 1}, {"maxNodes": 10})
+        _provision_dry_run(
+            run, path, config_wp=ConfigWorkerPool(compute_requirement_batch_size=4)
+        )
+        assert "provisioned as a single Worker Pool" in run.err
+
+    def test_batches_provisioned_before_a_failure_are_reported(self, run):
+        client = MagicMock()
+        client.worker_pool_client.provision_worker_pool.side_effect = [
+            MagicMock(id="ydid:wrkrpool:000000:1", name="wp-1"),
+            HTTPError("500", response=_response(500)),
+        ]
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(
+                template_id=CRT_ID,
+                target_instance_count=3,
+                max_nodes=3,
+                compute_requirement_batch_size=1,
+            ),
+            client=client,
+        )
+        assert run.exit_code == ExitCode.PLATFORM
+        assert (
+            "1 of 3 Worker Pools were provisioned before the failure, and are still"
+            " running: ydid:wrkrpool:000000:1"
+        ) in out + run.err
