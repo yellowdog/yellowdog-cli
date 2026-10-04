@@ -211,6 +211,12 @@ class TestRegistryMatchesEntryPoints:
 
 
 class TestHelpCommand:
+    @pytest.fixture(autouse=True)
+    def _no_extras_installed(self, monkeypatch):
+        # Whatever this machine has installed: each test that needs an
+        # extra installed says so
+        monkeypatch.setattr(help_module, "extra_installed", lambda extra: False)
+
     def test_lists_every_command_once_with_its_summary(self, capsys):
         help_module.main()
         out = capsys.readouterr().out
@@ -300,6 +306,53 @@ class TestHelpCommand:
         help_module.main()
         listed = {row["command"] for row in json.loads(capsys.readouterr().out)}
         assert {"yd-commander", "yd-mcp"} <= listed
+
+    def test_the_json_states_extras_and_synonyms_as_fields(self, monkeypatch):
+        monkeypatch.setattr(
+            help_module, "extra_installed", lambda extra: extra == "commander"
+        )
+        records = {r["command"]: r for r in help_module.entries()}
+        assert records["yd-commander"]["extra"] == "commander"
+        assert records["yd-commander"]["installed"] is True
+        assert records["yd-mcp"]["installed"] is False
+        assert records["yd-rm"]["synonymOf"] == "yd-delete"
+        # The summary itself is unchanged, and a plain command has neither
+        assert records["yd-commander"]["summary"].endswith(
+            "(needs the commander extra)"
+        )
+        assert set(records["yd-cancel"]) == {"command", "summary"}
+
+    def test_an_installed_extra_says_so(self, monkeypatch):
+        monkeypatch.setattr(
+            help_module, "extra_installed", lambda extra: extra == "mcp"
+        )
+        lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
+        assert lines["yd-mcp"].plain.endswith("(mcp extra installed)")
+        assert lines["yd-commander"].plain.endswith("(needs the commander extra)")
+        dimmed = [
+            lines["yd-mcp"].plain[s.start : s.end]
+            for s in lines["yd-mcp"].spans
+            if s.style == help_module.NOTE_STYLE
+        ]
+        assert dimmed == [" (mcp extra installed)"]
+
+    def test_every_extra_named_has_a_probe(self):
+        named = {r["extra"] for r in help_module.entries() if "extra" in r}
+        assert named == set(help_module.EXTRA_PROBES)
+
+    def test_every_probed_extra_is_one_pyproject_offers(self):
+        with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+            extras = set(tomllib.load(f)["project"]["optional-dependencies"])
+        assert set(help_module.EXTRA_PROBES) <= extras
+
+    def test_the_listing_ends_with_where_to_go_next(self, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["yd-help", "--no-format"])
+        help_module.main()
+        out = capsys.readouterr().out.strip()
+        assert out.splitlines()[-1].startswith("Run 'yd-<command> --help'")
+        assert "README.md" in out.splitlines()[-1]
 
 
 class TestToolKinds:

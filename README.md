@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:05:50 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct  4 21:10:36 BST 2026 -->
 
 <!--te-->
 
@@ -523,7 +523,7 @@ The documents, by command:
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase` |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
 | Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a component not installed or whose version could not be read; `--debug` adds `"executable"` and `"path"` |
-| Utility | `yd-help` | an array of `{"command", "summary"}` |
+| Utility | `yd-help` | an array of `{"command", "summary"}`, with `"extra"` and `"installed"` for a command needing an optional extra, and `"synonymOf"` for a synonym |
 
 The exit codes, with or without `--json`:
 
@@ -4545,13 +4545,13 @@ The exit code is 1 if any check failed, else 0, so it can gate a script or a CI 
 
 ### yd-help
 
-The `yd-help` command lists all available `yd-*` commands and their purposes, `yd-commander` and `yd-mcp` included, with the extra each of those two needs.
+The `yd-help` command lists all available `yd-*` commands and their purposes, `yd-commander` and `yd-mcp` included, with the extra each command that needs one requires, or `(<extra> extra installed)` where it is installed already, and closes with how to see a command's options and where the documentation is.
 
 ```shell
 yd-help [--json] [--no-format]
 ```
 
-The listing is coloured on a terminal, with the command names and the notes on extras and synonyms picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+The listing is coloured on a terminal, with the command names and the notes on extras and synonyms picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"`, and a synonym `"synonymOf"` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 ### yd-version
 

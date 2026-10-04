@@ -7,6 +7,7 @@ List all available yd-* commands and their purposes.
 import json
 import re
 from argparse import ArgumentParser
+from importlib.util import find_spec
 
 from rich.console import Console
 from rich.text import Text
@@ -16,6 +17,7 @@ from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.command_registry import COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.settings import DEFAULT_THEME, JSON_INDENT
+from yellowdog_cli.version import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
 # table's content, and a note -- the extra a command needs, or what it is a
@@ -25,9 +27,24 @@ from yellowdog_cli.utils.settings import DEFAULT_THEME, JSON_INDENT
 NAME_STYLE = "pyexamples.table_content"
 NOTE_STYLE = "dim"
 HEADING_STYLE = "bold"
-# The notes dimmed: a trailing '(needs the <extra> extra)' or '(synonym: yd-x)'
-# -- never a parenthesis inside the summary's own prose ('Hold (pause) ...')
-NOTE = re.compile(r" \((needs the \w+ extra|synonym: yd-[\w-]+)\)$")
+# The notes dimmed: a trailing '(needs the <extra> extra)', '(<extra> extra
+# installed)' or '(synonym: yd-x)' -- never a parenthesis inside the
+# summary's own prose ('Hold (pause) ...')
+NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|synonym: yd-[\w-]+)\)$")
+# A summary's extra, as the registry and OTHER_COMMANDS write it
+EXTRA = re.compile(r" \(needs the (\w+) extra\)$")
+SYNONYM = "A synonym for "
+
+# One package each extra installs, looked for -- never imported, which for
+# PyQt6 or the cloud SDKs would cost far more than the listing -- to say
+# whether the extra is installed. check_imports.py's guards look for the
+# same ones; tests/test_help.py holds this table to the extras the summaries
+# name and to pyproject.toml's.
+EXTRA_PROBES: dict[str, str] = {
+    "cloudwizard": "boto3",
+    "commander": "PyQt6",
+    "mcp": "mcp",
+}
 
 # The entry points that are not registry commands: they take none of the
 # CLI's options, so the registry has nothing to say about them, but a user
@@ -57,6 +74,50 @@ def column_width() -> int:
     return max(len(name) for name, _ in _listing())
 
 
+def extra_installed(extra: str) -> bool:
+    """
+    Whether an optional extra is installed: its probe package can be found.
+    """
+    return find_spec(EXTRA_PROBES[extra]) is not None
+
+
+def entries() -> list[dict]:
+    """
+    The listing as '--json' gives it: each command's name and summary, with
+    the extra it needs and whether that is installed, or the command it is
+    a synonym for, as fields of their own so that no script has to pick
+    them out of the summary.
+    """
+    records = []
+    for name, summary in _listing():
+        record: dict = {"command": name, "summary": summary}
+        if (match := EXTRA.search(summary)) is not None:
+            record["extra"] = match.group(1)
+            record["installed"] = extra_installed(match.group(1))
+        elif summary.startswith(SYNONYM):
+            record["synonymOf"] = summary[len(SYNONYM) :]
+        records.append(record)
+    return records
+
+
+def shown_summary(summary: str) -> str:
+    """
+    A summary as the listing shows it: an extra that is installed says so,
+    rather than that it is needed.
+    """
+    match = EXTRA.search(summary)
+    if match is None or not extra_installed(match.group(1)):
+        return summary
+    return f"{summary[: match.start()]} ({match.group(1)} extra installed)"
+
+
+def _footer() -> str:
+    return (
+        f"Run 'yd-<command> --help' for a command's options; documentation:"
+        f" {docs_url()}"
+    )
+
+
 def main():
     parser = ArgumentParser(
         prog="yd-help",
@@ -76,21 +137,15 @@ def main():
     args = parser.parse_args()
 
     if args.json:
-        print(
-            json.dumps(
-                [{"command": name, "summary": summary} for name, summary in _listing()],
-                indent=JSON_INDENT,
-                cls=CompactJSONEncoder,
-            )
-        )
+        print(json.dumps(entries(), indent=JSON_INDENT, cls=CompactJSONEncoder))
         return
 
     if args.no_format:
         width = column_width()
         print(f"\n{_heading()}\n")
         for name, summary in _listing():
-            print(f"  {name:<{width}}  {summary}")
-        print()
+            print(f"  {name:<{width}}  {shown_summary(summary)}")
+        print(f"\n{_footer()}\n")
         return
 
     # Rich drops the styles by itself where stdout is not a terminal, or
@@ -101,6 +156,8 @@ def main():
     console.print()
     for line in styled_lines():
         console.print(line, soft_wrap=True)
+    console.print()
+    console.print(Text(_footer(), style=NOTE_STYLE), soft_wrap=True)
     console.print()
 
 
@@ -116,6 +173,7 @@ def styled_lines() -> list[Text]:
     width = column_width()
     lines: list[Text] = []
     for name, summary in _listing():
+        summary = shown_summary(summary)
         line = Text("  ")
         line.append(f"{name:<{width}}", style=NAME_STYLE)
         line.append("  ")
