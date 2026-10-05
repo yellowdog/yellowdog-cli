@@ -88,10 +88,11 @@ def set_proxy():
     if CONFIG_COMMON.use_pac:
         from pypac import pac_context_for_url
 
-        from yellowdog_cli.utils.user_agent import set_user_agent
+        from yellowdog_cli.utils.user_agent import set_default_user_agent
 
-        # The PAC file is fetched with 'requests', as the CLI's own request
-        set_user_agent()
+        # The PAC file is fetched with 'requests', as the CLI's own request;
+        # the baseline only, which imports no SDK (yd-variables uses none)
+        set_default_user_agent()
         print_debug("Using Proxy Auto-Configuration (PAC)")
         with pac_context_for_url(CONFIG_COMMON.url):
             https_proxy = os.getenv(proxy_var, None)
