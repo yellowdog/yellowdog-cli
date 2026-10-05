@@ -21,6 +21,9 @@ from argparse import (
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from functools import cache
+from importlib.metadata import entry_points
+from importlib.util import find_spec
 from typing import Any
 
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
@@ -175,6 +178,33 @@ COMMON_OPTIONS: dict[CommandKind, tuple[Option, ...]] = {
 COMMANDS: dict[str, Command] = {}
 
 _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
+
+
+@cache
+def _console_script_modules() -> dict[str, str]:
+    """This package's console scripts, each with the module it runs."""
+    return {
+        point.name: point.value.split(":")[0]
+        for point in entry_points(group="console_scripts")
+        if point.value.startswith("yellowdog_cli.")
+    }
+
+
+def command_module(command_name: str) -> str | None:
+    """
+    The module a 'yd-*' command runs, for 'python -m': its console script's
+    entry point ('yd-rm' runs yellowdog_cli.delete, which no rule on the
+    name gives), else, where the package is not installed, the module named
+    for the command if there is one; None for anything else. Commander and
+    the MCP server both run commands this way, under their own interpreter.
+    """
+    module = _console_script_modules().get(command_name)
+    if module is not None:
+        return module
+    if not command_name.startswith("yd-"):
+        return None
+    candidate = "yellowdog_cli." + command_name.removeprefix("yd-").replace("-", "_")
+    return candidate if find_spec(candidate) is not None else None
 
 
 def command_from_argv0(argv0: str) -> str:

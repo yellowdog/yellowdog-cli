@@ -16,7 +16,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 30 14:06:15 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 15:20:43 BST 2026 -->
 
 <!--te-->
 
@@ -48,7 +48,7 @@ A configuration file, given either as the positional argument or with `-c`/`--co
 
 Without a configuration file, every command runs with `--nc`, so only the environment (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_DATA_CLIENT_*`) and the launch-time `-n`/`-t`/`-v` options are available to it.
 
-Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call.
+Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call, as is a `-v` variable whose name the CLI would refuse: one that is not `name=value`, a name breaking the CLI's rule for variable names, or one of the names the CLI sets itself (`namespace`, `tag`, `key`, `secret`, `url`), which `-n`/`-t` or the configuration set instead.
 
 A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped` to stderr. A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
 
@@ -160,7 +160,7 @@ Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s defaul
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
-Stopping a timed-out data-client command (`yd_upload`, `yd_download`, `yd_copy`, `yd_delete`, `yd_ls`) kills only the CLI's own process, not the `rclone` process it has already started, which inherits the command's output pipes. On Linux and macOS the server returns at the timeout and `rclone` may outlive it; on Windows the call does not return until `rclone` has exited, since the server waits for those pipes to close.
+Each command runs in a process group of its own, and stopping it at the timeout stops the whole group: a data-client command's (`yd_upload`, `yd_download`, `yd_copy`, `yd_delete`, `yd_ls`) `rclone` process stops with it, so nothing goes on transferring after the call has returned. A transfer stopped that way may leave a partly written file behind.
 
 ## What Is Not Exposed, and Why
 

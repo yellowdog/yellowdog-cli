@@ -6,10 +6,16 @@ install hint work without the extra installed.
 
 import argparse
 import os
+import re
 import sys
 
 from yellowdog_cli.mcp.tools import ServerSettings
 from yellowdog_cli.utils.check_imports import check_mcp_imports
+from yellowdog_cli.utils.settings import (
+    RESERVED_VARIABLE_NAMES,
+    VARIABLE_NAME_PATTERN,
+    VARIABLE_NAME_RULE,
+)
 
 TRANSPORTS = ("stdio",)  # streamable-http is phase 2
 
@@ -21,9 +27,23 @@ def _existing_file(value: str) -> str:
 
 
 def _variable(value: str) -> str:
+    """
+    A launch-time variable, held to the rule every command holds its own to
+    (variable_substitution.check_user_variable_name(), which cannot be
+    imported here: it parses the command line at import), so that a name the
+    CLI refuses is refused at launch rather than failing every tool call.
+    """
     name, separator, _ = value.partition("=")
     if not separator or not name:
         raise argparse.ArgumentTypeError(f"a variable is name=value, not '{value}'")
+    if not re.fullmatch(VARIABLE_NAME_PATTERN, name):
+        raise argparse.ArgumentTypeError(
+            f"invalid variable name '{name}': {VARIABLE_NAME_RULE}"
+        )
+    if name in RESERVED_VARIABLE_NAMES:
+        raise argparse.ArgumentTypeError(
+            f"'{name}' is not a variable to set: use {RESERVED_VARIABLE_NAMES[name]}"
+        )
     return value
 
 

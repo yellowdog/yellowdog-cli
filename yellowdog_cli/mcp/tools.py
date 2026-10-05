@@ -355,13 +355,14 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
         args.append("--quiet")
     if command.option_named("--yes") is not None:
         args.append("--yes")
+    # Joined, as a tool's own values are (see _joined()): a launch-time value
+    # beginning with '-' is a value, never a flag
     if settings.namespace and command.option_named("--namespace") is not None:
-        args += ["-n", settings.namespace]
+        args.append(f"--namespace={settings.namespace}")
     if settings.tag and command.option_named("--tag") is not None:
-        args += ["-t", settings.tag]
+        args.append(f"--tag={settings.tag}")
     if command.option_named("--variable") is not None:
-        for variable in settings.variables:
-            args += ["-v", variable]
+        args += [f"--variable={variable}" for variable in settings.variables]
     return args
 
 

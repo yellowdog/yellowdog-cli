@@ -232,12 +232,9 @@ class TestFixedArgs:
             "--nf",
             "--json",
             "--yes",
-            "-n",
-            "ns",
-            "-t",
-            "t",
-            "-v",
-            "a=1",
+            "--namespace=ns",
+            "--tag=t",
+            "--variable=a=1",
         ]
         assert settings.working_dir == str(tmp_path)
 
@@ -547,3 +544,12 @@ class TestSdkFreeImport:
             text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_launch_value_beginning_with_a_dash_stays_a_value():
+    settings = ServerSettings(
+        config_file=None, namespace="-x", tag="--show-secrets", variables=()
+    )
+    args = fixed_args(COMMANDS["yd-variables"], settings)
+    assert "--namespace=-x" in args and "--tag=--show-secrets" in args
+    assert "--show-secrets" not in args
