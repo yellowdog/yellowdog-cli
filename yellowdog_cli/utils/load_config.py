@@ -5,7 +5,7 @@ Common utility functions, mostly related to loading configuration data.
 import copy
 import json
 import os
-from os.path import abspath, dirname, join, relpath
+from os.path import abspath, dirname, join
 from pathlib import Path
 from sys import exit
 from typing import cast
@@ -26,6 +26,7 @@ from yellowdog_cli.utils.misc_utils import (
 from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     print_debug,
     print_error,
@@ -280,6 +281,30 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             CLI_DEFINED_VARIABLES.add(path[1])
 
 
+_DATA_CLIENT_PROFILE_KEYS = (DATA_CLIENT_REMOTE, DATA_CLIENT_BUCKET, DATA_CLIENT_PREFIX)
+
+
+def _validate_data_client_profiles(data_client_section: dict) -> None:
+    """
+    Hold each '[dataClient.<profile>]' table to the keys a profile takes, as
+    validate_properties() holds the rest of the file to ALL_KEYS: a profile
+    is left out of that check, its name being the user's own, so a
+    misspelt key ('bukcet') would otherwise only be warned of while the
+    profile quietly used the base section's value instead.
+    """
+    for name, profile in data_client_section.items():
+        if not isinstance(profile, dict):
+            continue
+        unknown = sorted(key for key in profile if key not in _DATA_CLIENT_PROFILE_KEYS)
+        if unknown:
+            raise ValueError(
+                f"Unknown propert{'y' if len(unknown) == 1 else 'ies'}"
+                f" {', '.join(repr(key) for key in unknown)} in"
+                f" '[{DATA_CLIENT_SECTION}.{name}]' in '{CONFIG_FILE}': a profile"
+                f" takes {', '.join(repr(key) for key in _DATA_CLIENT_PROFILE_KEYS)}"
+            )
+
+
 # Support for alternative common env. vars; written into the normal vars.
 for norm, alt in [
     (YD_KEY, YD_KEY_ALT),
@@ -291,7 +316,8 @@ for norm, alt in [
         os.environ[norm] = alt_value
 
 # CLI > 'config.toml'
-CONFIG_FILE = relpath(
+# Relative where it can be, absolute where it cannot (Windows, another drive)
+CONFIG_FILE = relative_if_possible(
     "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
 )
 
@@ -331,6 +357,7 @@ else:
                     if not isinstance(v, dict)
                 }
             validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
+            _validate_data_client_profiles(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
         except Exception as e:
             print_error(e)
             exit(ExitCode.CONFIGURATION)
@@ -526,7 +553,9 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
 
 def _imported_file_name(filename: str) -> str:
     """The path an 'importCommon' file is read from, as import_toml() reads it."""
-    return relpath(join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename))))
+    return relative_if_possible(
+        join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename)))
+    )
 
 
 def import_toml(filename: str) -> dict:
@@ -960,7 +989,31 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
+        # A configuration error, as a rule; under '--debug', its traceback,
+        # in case it is a fault in this loader instead
+        if ARGS_PARSER.debug:
+            raise
         print_error(f"{e}")
+        exit(ExitCode.CONFIGURATION)
+
+
+def _number(
+    section: dict, key: str, kind: type[int] | type[float], default=None
+) -> int | float | None:
+    """
+    A section's numeric property, converted as it always has been (int() or
+    float(), which also take a string of digits), or 'default' when it is
+    not set; one that will not convert exits, naming the property, which
+    the conversion's own error does not.
+    """
+    value = section.get(key, default)
+    if value is None:
+        return None
+    try:
+        return kind(value)
+    except (TypeError, ValueError):
+        what = "a whole number" if kind is int else "a number"
+        print_error(f"'{key}' must be {what} (it is {value!r})")
         exit(ExitCode.CONFIGURATION)
 
 
@@ -994,7 +1047,8 @@ def load_config_worker_pool() -> ConfigWorkerPool:
     if duplicate_keys:
         print_error(
             f"Duplicate keys in '{WORKER_POOL_SECTION}' and"
-            f" '{COMPUTE_REQUIREMENT_SECTION}': {duplicate_keys}"
+            f" '{COMPUTE_REQUIREMENT_SECTION}':"
+            f" {', '.join(repr(key) for key in sorted(duplicate_keys))}"
         )
         exit(ExitCode.CONFIGURATION)
     wp_section.update(cr_section)
@@ -1029,14 +1083,11 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             compute_requirement_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, compute_requirement_data_file
             )
-        workers_per_vcpu = (
-            None
-            if wp_section.get(WORKERS_PER_VCPU) is None
-            else int(wp_section[WORKERS_PER_VCPU])
-        )
+        workers_per_vcpu = cast(int | None, _number(wp_section, WORKERS_PER_VCPU, int))
 
-        cr_batch_size = int(
-            wp_section.get(COMPUTE_REQUIREMENT_BATCH_SIZE, CR_MAX_INSTANCES)
+        cr_batch_size = cast(
+            int,
+            _number(wp_section, COMPUTE_REQUIREMENT_BATCH_SIZE, int, CR_MAX_INSTANCES),
         )
         if cr_batch_size < 1:
             print_error(
@@ -1056,26 +1107,40 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             compute_requirement_batch_size=cr_batch_size,
             compute_requirement_data_file=compute_requirement_data_file,
             cr_tag=wp_section.get(CR_TAG),
-            idle_node_timeout=float(wp_section.get(IDLE_NODE_TIMEOUT, 5.0)),
-            idle_pool_timeout=float(wp_section.get(IDLE_POOL_TIMEOUT, 30.0)),
+            idle_node_timeout=cast(
+                float, _number(wp_section, IDLE_NODE_TIMEOUT, float, 5.0)
+            ),
+            idle_pool_timeout=cast(
+                float, _number(wp_section, IDLE_POOL_TIMEOUT, float, 30.0)
+            ),
             images_id=wp_section.get(IMAGES_ID),
             instance_tags=wp_section.get(INSTANCE_TAGS),
             maintainInstanceCount=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
-            max_nodes=int(
-                wp_section.get(
-                    MAX_NODES, max(1, int(wp_section.get(TARGET_INSTANCE_COUNT, 1)))
-                )
+            max_nodes=cast(
+                int,
+                _number(
+                    wp_section,
+                    MAX_NODES,
+                    int,
+                    max(
+                        1, cast(int, _number(wp_section, TARGET_INSTANCE_COUNT, int, 1))
+                    ),
+                ),
             ),
             max_nodes_set=(False if wp_section.get(MAX_NODES) is None else True),
             metrics_enabled=wp_section.get(METRICS_ENABLED, False),
-            min_nodes=int(wp_section.get(MIN_NODES, 0)),
+            min_nodes=cast(int, _number(wp_section, MIN_NODES, int, 0)),
             min_nodes_set=(False if wp_section.get(MIN_NODES) is None else True),
             name=cast(
                 str | None,
                 _resolve_value(check_str(wp_section.get(WP_NAME), WP_NAME)),
             ),
-            node_boot_timeout=float(wp_section.get(NODE_BOOT_TIMEOUT, 10.0)),
-            target_instance_count=int(wp_section.get(TARGET_INSTANCE_COUNT, 1)),
+            node_boot_timeout=cast(
+                float, _number(wp_section, NODE_BOOT_TIMEOUT, float, 10.0)
+            ),
+            target_instance_count=cast(
+                int, _number(wp_section, TARGET_INSTANCE_COUNT, int, 1)
+            ),
             target_instance_count_set=(
                 False if wp_section.get(TARGET_INSTANCE_COUNT) is None else True
             ),
@@ -1087,7 +1152,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             worker_tag=worker_tag,
             workers_custom_command=wp_section.get(WORKERS_CUSTOM_COMMAND),
             workers_per_vcpu=workers_per_vcpu,
-            workers_per_node=int(wp_section.get(WORKERS_PER_NODE, 1)),
+            workers_per_node=cast(int, _number(wp_section, WORKERS_PER_NODE, int, 1)),
         )
 
     except KeyError as e:

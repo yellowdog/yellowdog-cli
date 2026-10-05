@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import cache
-from os.path import abspath, dirname, isfile, join, normpath, relpath
+from os.path import abspath, dirname, isfile, join, normpath
 from random import choice
 from typing import TYPE_CHECKING, TypeAlias
 from urllib.parse import urlsplit, urlunsplit
@@ -18,6 +18,7 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 from yellowdog_cli.utils.type_check import check_str
@@ -38,7 +39,7 @@ def pathname_relative_to_config_file(config_file_dir: str, file: str) -> str:
     Find the pathname of a file relative to the location
     of the config file
     """
-    return normpath(relpath(join(config_file_dir, file)))
+    return normpath(relative_if_possible(join(config_file_dir, file)))
 
 
 # Lower case base 36, for the process discriminator added by generate_id()

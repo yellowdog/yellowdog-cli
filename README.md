@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 08:20:06 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 08:50:39 BST 2026 -->
 
 <!--te-->
 
@@ -2658,7 +2658,7 @@ yd-download --data-client-profile staging results/
 
 The active profile can also be set via the `YD_DATA_CLIENT` environment variable. The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation.
 
-Profile names are free-form; the only reserved names are `remote`, `bucket`, and `prefix` (the scalar field names of `[dataClient]` itself).
+Profile names are free-form; the only reserved names are `remote`, `bucket`, and `prefix` (the scalar field names of `[dataClient]` itself). A profile takes only those three keys: any other, such as a misspelt `bukcet`, is an error, as an unknown key elsewhere in the file is, rather than being ignored while the profile uses the base section's value.
 
 ## Variable Substitutions for Data Client Properties
 

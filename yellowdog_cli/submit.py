@@ -12,7 +12,7 @@ from gzip import compress
 from json import dumps as json_dumps
 from json import loads as json_loads
 from math import ceil
-from os.path import dirname, relpath
+from os.path import dirname
 from sys import exit as sys_exit
 from threading import Event
 from time import sleep
@@ -69,6 +69,7 @@ from yellowdog_cli.utils.misc_utils import (
     is_http_not_found,
     link_entity,
 )
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     WorkRequirementSnapshot,
     print_dry_run,
@@ -266,7 +267,7 @@ def main():
                 "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
             )
 
-        wr_data_file = _relative_if_possible(wr_data_file)
+        wr_data_file = relative_if_possible(wr_data_file)
         print_info(f"Loading Work Requirement data from: '{wr_data_file}'")
 
         # JSON file
@@ -364,19 +365,6 @@ def _work_requirement_from_csv(csv_files: list[str], files_directory: str) -> di
             " one CSV file can be used"
         )
     return csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
-
-
-def _relative_if_possible(path: str) -> str:
-    """
-    The path relative to the current directory, which reads better in the
-    messages that name it; or the path as given where there is no relative
-    path to it, as on Windows for a file on another drive, where relpath()
-    raises ValueError.
-    """
-    try:
-        return relpath(path)
-    except ValueError:
-        return path
 
 
 def _submit_or_add_to(

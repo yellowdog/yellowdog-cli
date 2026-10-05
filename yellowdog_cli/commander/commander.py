@@ -13,13 +13,14 @@ from functools import partial as functools_partial
 from typing import cast
 
 from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS, shell_command
+from yellowdog_cli.utils.paths import relative_if_possible
 
 if WINDOWS:
     import ctypes
 
 from collections.abc import Callable
 from json import loads
-from os.path import abspath, basename, dirname, exists, join, relpath
+from os.path import abspath, basename, dirname, exists, join
 
 _PKG_DIR = dirname(abspath(__file__))
 
@@ -536,7 +537,8 @@ class YellowDogApp(QMainWindow):
             self._output.log(f"Config file '{config_file}' does not exist")
             return
 
-        selected_config_file = relpath(config_file)
+        # Absolute where there is no relative path (Windows, another drive)
+        selected_config_file = relative_if_possible(config_file)
         self._config_file = selected_config_file
         self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")

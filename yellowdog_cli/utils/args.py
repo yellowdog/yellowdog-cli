@@ -54,15 +54,22 @@ class CLIParser:
         self.parser = build_parser(
             self.command, prog=self.command_name if self.command else None
         )
-        self.args = self.parser.parse_args(sys.argv[1:] if argv is None else argv)
+        argv = sys.argv[1:] if argv is None else argv
+
+        # '--docs', like '--help', is answered before anything else is
+        # checked: a required argument missing, or a validator's refusal,
+        # would otherwise stand in the way of asking where the docs are
+        if "--docs" in argv and any(
+            "--docs" in action.option_strings for action in self.parser._actions
+        ):
+            docs()
+            sys.exit(0)
+
+        self.args = self.parser.parse_args(argv)
 
         if self.command is not None:
             for validator in self.command.validators:
                 validator(self.args, self.parser)
-
-        if getattr(self.args, "docs", False):
-            docs()
-            exit(0)
 
     @property
     def namespace_required(self) -> bool:

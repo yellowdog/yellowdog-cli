@@ -115,19 +115,27 @@ class TestCheckTaskGroups:
 
 
 class TestRelativeIfPossible:
-    def test_a_relative_path_where_there_is_one(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        assert submit_module._relative_if_possible(str(tmp_path / "wr.json")) == (
-            "wr.json"
-        )
+    # utils/paths.py, shared by the configuration loader, the CSV loader,
+    # yd-submit and Commander
 
-    def test_the_path_as_given_where_there_is_none(self):
+    def test_a_relative_path_where_there_is_one(self, tmp_path, monkeypatch):
+        from yellowdog_cli.utils.paths import relative_if_possible
+
+        monkeypatch.chdir(tmp_path)
+        assert relative_if_possible(str(tmp_path / "wr.json")) == "wr.json"
+
+    def test_the_absolute_path_where_there_is_none(self, tmp_path, monkeypatch):
         # As on Windows, for a file on a different drive from the current
         # directory, where relpath() raises
+        import yellowdog_cli.utils.paths as paths_module
+
+        monkeypatch.chdir(tmp_path)
         with patch.object(
-            submit_module, "relpath", side_effect=ValueError("different mount")
+            paths_module, "relpath", side_effect=ValueError("different mount")
         ):
-            assert submit_module._relative_if_possible("D:\\wr.json") == "D:\\wr.json"
+            assert paths_module.relative_if_possible("wr.json") == str(
+                tmp_path / "wr.json"
+            )
 
 
 # ---------------------------------------------------------------------------

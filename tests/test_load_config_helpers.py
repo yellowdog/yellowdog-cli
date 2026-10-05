@@ -76,6 +76,8 @@ def _mock_args(
     config_file=None,
 ):
     args = MagicMock()
+    # A MagicMock's unset attribute is truthy: '--debug' would re-raise
+    args.debug = False
     args.namespace = namespace
     args.tag = tag
     args.task_type = task_type
@@ -716,3 +718,42 @@ class TestResolveValue:
             lc_module._resolve_value("{{env:YD_TEST_A}}", "common.tag")
         assert exc.value.code == ExitCode.CONFIGURATION
         assert "'common.tag'" in str(print_error.call_args.args[0])
+
+
+class TestReviewedLoaderErrors:
+    """
+    What the review of load_config.py changed: a profile's misspelt key is
+    an error, a number that will not convert names its property, the
+    duplicate-keys error names the keys plainly, and '--debug' shows a
+    loader's own fault rather than a configuration error.
+    """
+
+    def test_a_misspelt_profile_key_is_an_error(self):
+        with pytest.raises(ValueError, match=r"'bukcet' in '\[dataClient\.prod\]'"):
+            lc_module._validate_data_client_profiles(
+                {"remote": "r", "prod": {"bukcet": "typo"}}
+            )
+
+    def test_a_profiles_known_keys_pass(self):
+        lc_module._validate_data_client_profiles(
+            {"remote": "r", "prod": {"remote": "x", "bucket": "b", "prefix": "p"}}
+        )
+
+    @pytest.mark.parametrize(
+        "kind, value, words",
+        [(int, "ten", "a whole number"), (float, "soon", "a number")],
+    )
+    def test_a_number_that_will_not_convert_names_its_property(
+        self, kind, value, words, capsys
+    ):
+        with pytest.raises(SystemExit) as raised:
+            lc_module._number({"maxNodes": value}, "maxNodes", kind)
+        assert raised.value.code == ExitCode.CONFIGURATION
+        assert f"'maxNodes' must be {words} (it is '{value}')" in " ".join(
+            capsys.readouterr().err.split()
+        )
+
+    def test_a_number_converts_as_it_always_has(self):
+        assert lc_module._number({"maxNodes": "7"}, "maxNodes", int) == 7
+        assert lc_module._number({}, "maxNodes", int, 3) == 3
+        assert lc_module._number({}, "maxNodes", int) is None

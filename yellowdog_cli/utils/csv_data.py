@@ -6,13 +6,14 @@ import csv
 import re
 from collections import OrderedDict
 from json import load as json_load
-from os.path import join, relpath
+from os.path import join
 from typing import cast
 
 from tomli import load as toml_load
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_info, print_json, print_warning
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
@@ -218,7 +219,7 @@ def perform_csv_task_expansion(
 
         # Named from the files directory, as every file a specification
         # refers to is (the specification itself is named from the current one)
-        resolved_csv_file = relpath(join(files_directory, csv_file))
+        resolved_csv_file = relative_if_possible(join(files_directory, csv_file))
 
         task_group = wr_data[TASK_GROUPS][index]
         print_info(

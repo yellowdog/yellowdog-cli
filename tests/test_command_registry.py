@@ -475,3 +475,32 @@ class TestCompareIds:
             self._check(*ids)
         assert raised.value.code == 2
         assert "not a YellowDog" in capsys.readouterr().err
+
+
+class TestArgsProperties:
+    def test_every_property_reads_an_option_some_command_registers(self):
+        # A property reading a destination no option has would return None
+        # under @allow_missing_attribute, silently disabling its option
+        import inspect
+        import re
+
+        from yellowdog_cli.utils import args as args_module
+
+        destinations = {
+            action.dest
+            for name, command in [*COMMANDS.items(), ("x", None)]
+            for action in build_parser(command, prog=name)._actions
+        }
+        read = set(re.findall(r"self\.args\.(\w+)", inspect.getsource(args_module)))
+        assert read and read <= destinations, sorted(read - destinations)
+
+    @pytest.mark.parametrize("command", ["yd-delete", "yd-wait", "yd-copy"])
+    def test_docs_is_answered_before_anything_is_checked(self, command, capsys):
+        # A required argument missing, or a validator's refusal, used to stand
+        # in the way of '--docs'
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command=command, argv=["--docs"])
+        assert raised.value.code == 0
+        assert "Online documentation" in capsys.readouterr().out
