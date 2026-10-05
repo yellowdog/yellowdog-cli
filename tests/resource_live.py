@@ -41,10 +41,8 @@ _RUN_ID = f"{int(time.time())}-{os.getpid()}"
 # output on its own -- callers that invoke yd-create on one of these must not
 # assert using result.stdout/stderr in a failure message (see the module
 # docstring); this set exists so a caller can check membership before deciding
-# whether it is safe to quote a command's output. Not consulted by anything in
-# this module yet -- Task 7 only exercises keyrings.jsonnet, whose test hard-codes
-# the "withhold output" rule inline. Task 8, which creates all three files, is
-# what will actually branch on membership; this is not wired-up behaviour today.
+# whether it is safe to quote a command's output: test_system_resources.py,
+# which creates every live corpus file, branches on membership.
 SECRET_EMITTING = {
     "keyrings.jsonnet",
     "configured-worker-pools.jsonnet",
@@ -66,11 +64,10 @@ SECRET_EMITTING = {
 # the same file, and only raises (a single ReportedFailure, after the whole file) if
 # at least one failed -- so running one of these files live still creates every
 # *other* resource in it, and 'yd-create' exits non-zero for the file as a whole
-# despite that partial success. Not consulted by anything in this module yet --
-# Task 7 never creates either file live. Task 8, which drives every live corpus
-# file, is what must expect exactly these two files to behave this way, checking
+# despite that partial success. test_system_resources.py, which drives every
+# live corpus file, expects exactly these files to behave this way, checking
 # how many resources were actually created rather than asserting a zero exit
-# code; this is not wired-up behaviour today.
+# code.
 KNOWN_PARTIAL_FAILURES = {
     "requirement-templates.jsonnet",
     "configured-worker-pools.jsonnet",
@@ -155,7 +152,7 @@ NO_YDID_KEY_FIELD: dict[str, str] = {
 #     Compute Source Template by name in the specification, and
 #     create_compute_requirement_template()/create_allowance() (create.py)
 #     resolve that name to a YellowDog ID before the request is sent -- live
-#     evidence (Task 8) that the corpus's own header comments anticipated
+#     evidence that the corpus's own header comments anticipated
 #     ("the raw name round-trips as a plain string" offline, but not live).
 LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
     "tokenTtl": "AddConfiguredWorkerPoolRequest's own field, not a field of the "
@@ -185,7 +182,7 @@ LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
 #
 # SimulatorComputeSource.userData/subregion: addComputeSourceTemplate accepts
 # either being set, but yd-show never echoes them back afterwards (probed
-# live, Task 8) -- accepted-then-silently-dropped, not rejected outright. This
+# live) -- accepted-then-silently-dropped, not rejected outright. This
 # is NOT recorded in resource_models.SERVER_ASSIGNED_COVERAGE: that registry's
 # contract is "the platform assigns this" (a genuinely server-assigned
 # property comes back -- see 'provider'/'traits'/'id', confirmed by this same
@@ -278,7 +275,7 @@ def list_details(entity_type: str, namespace: str | None = None) -> list[dict]:
     """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
     result = yd("yd-list", entity_type, "--details", "-J", "-q", namespace_arg, "-t=''")
-    # Live evidence (Task 8): '--json' prints nothing at all -- not even '[]' --
+    # Live evidence: '--json' prints nothing at all -- not even '[]' --
     # when nothing matches, unlike a normal, non-empty result.
     return json.loads(result.stdout) if result.stdout.strip() else []
 
@@ -356,7 +353,7 @@ def mismatches(spec: dict, returned: dict, path: str = "") -> list[str]:
     property is visible rather than assumed fine. Uses resource_models.comparable()
     for the actual leaf-level value comparison -- the same normalisation the
     offline model checks use, rather than a second one -- which is also where the
-    fully-qualified 'type' suffix match (a Task 1 finding: 'source.type' comes back
+    fully-qualified 'type' suffix match (a live-probe finding: 'source.type' comes back
     as 'co.yellowdog.platform.model.AwsInstancesComputeSource' where the
     specification sent the short name) lives, so both directions of comparison
     share one rule, including for a 'type' discriminator nested inside a list
@@ -416,7 +413,7 @@ def _compare_dict(expected: dict, actual: dict, path: str) -> list[str]:
 
 
 # Properties whose list order is not semantic, each because live evidence
-# (Task 8) showed the platform actually reordering it: an Allowance's
+# showed the platform actually reordering it: an Allowance's
 # monitoredStatuses came back ['RUNNING', 'PENDING'] where the specification
 # sent ['PENDING', 'RUNNING'], and a Group's roles came back with
 # 'work-manager' before 'work-viewer' where the specification sent the other
@@ -486,8 +483,8 @@ def _compare_natural_language_date(
     effectiveFrom/effectiveUntil are natural-language strings in the corpus
     ('Now', 'After six months'), not ISO datetimes -- create_allowance() feeds
     each through dateparser at the exact moment 'yd-create' sends the request,
-    so the instant it resolves to depends on wall-clock time. Live evidence
-    (Task 8): re-resolving the same string here, when this comparison runs
+    so the instant it resolves to depends on wall-clock time. Live evidence:
+    re-resolving the same string here, when this comparison runs
     (necessarily some seconds after creation), does not reproduce that exact
     instant even for a spec-side bug-free round trip, so exact string equality
     (what the general leaf-level comparison would do) fails every single

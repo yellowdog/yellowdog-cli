@@ -52,6 +52,28 @@ from yellowdog_cli.utils.ydid_utils import get_ydid_type
 RESOURCE_SOURCE_DIR = "_sourceDir"
 
 
+# The order resources are created in, so that what one refers to exists
+# first (removal is the reverse): every type yd-create accepts, which
+# tests/test_load_resources.py holds to sdk_models.RESOURCE_TYPES
+RESOURCE_CREATION_ORDER: tuple[str, ...] = (
+    RN_NAMESPACE,
+    RN_KEYRING,
+    RN_CREDENTIAL,
+    RN_IMAGE_FAMILY,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_SOURCE_TEMPLATE,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_ALLOWANCE,
+    RN_NAMESPACE_POLICY,
+    RN_CONFIGURED_POOL,
+    RN_GROUP,
+    RN_APPLICATION,
+    RN_INTERNAL_USER,
+    RN_EXTERNAL_USER,
+)
+
+
 def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
     """
     Load and return a list of resource specifications assembled from the
@@ -172,24 +194,6 @@ def _resequence_resources(
     if len(resources) == 1:
         return resources
 
-    resource_creation_order = [
-        RN_NAMESPACE,
-        RN_KEYRING,
-        RN_CREDENTIAL,
-        RN_IMAGE_FAMILY,
-        RN_STRING_ATTRIBUTE_DEFINITION,
-        RN_NUMERIC_ATTRIBUTE_DEFINITION,
-        RN_SOURCE_TEMPLATE,
-        RN_REQUIREMENT_TEMPLATE,
-        RN_ALLOWANCE,
-        RN_NAMESPACE_POLICY,
-        RN_CONFIGURED_POOL,
-        RN_GROUP,
-        RN_APPLICATION,
-        RN_INTERNAL_USER,
-        RN_EXTERNAL_USER,
-    ]
-
     # Don't fail the whole batch for a missing or unknown resource type here:
     # each is reported (and counted as a failure) during per-resource
     # processing, sequenced last (first on removal)
@@ -197,7 +201,7 @@ def _resequence_resources(
         str(r[PROP_RESOURCE])
         for r in resources
         if r.get(PROP_RESOURCE) is not None
-        and r[PROP_RESOURCE] not in resource_creation_order
+        and r[PROP_RESOURCE] not in RESOURCE_CREATION_ORDER
     }
     if unknown_types:
         print_warning(
@@ -207,10 +211,10 @@ def _resequence_resources(
 
     def _sequence(resource: dict) -> int:
         try:
-            return resource_creation_order.index(str(resource.get(PROP_RESOURCE)))
+            return RESOURCE_CREATION_ORDER.index(str(resource.get(PROP_RESOURCE)))
         except ValueError:
             # Unknown or missing types sequence last
-            return len(resource_creation_order)
+            return len(RESOURCE_CREATION_ORDER)
 
     resources.sort(key=_sequence, reverse=not creation_or_update)
 

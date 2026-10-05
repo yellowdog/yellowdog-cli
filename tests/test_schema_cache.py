@@ -1,7 +1,9 @@
 """
 The compiled validator cache (yellowdog_cli/utils/schema_cache.py): a
 validator is stored on a miss and loaded on a hit, the same validator either
-way; a changed schema misses and replaces the stem's old file; a directory
+way; a changed schema misses, and the stem keeps its CACHE_KEEP most
+recently used files, so two environments sharing the cache do not delete
+each other's; a directory
 that cannot be trusted, and a file that cannot be read, fall back to
 compiling, and say why to the registered reporter (print_debug(), under
 '--debug', in a real command), once per reason.
@@ -19,6 +21,7 @@ import pytest
 from yellowdog_cli.utils import schema_cache
 from yellowdog_cli.utils.schema_cache import (
     CACHE_DIRECTORY_NAME,
+    CACHE_KEEP,
     CACHE_SUFFIX,
     REPORT_PREFIX,
     cache_directory,
@@ -124,23 +127,62 @@ class TestHitAndMiss:
 
 
 class TestInvalidation:
-    def test_a_changed_schema_replaces_the_old_file(self, root):
+    @staticmethod
+    def _variant(minimum: int) -> dict:
+        changed = copy.deepcopy(SCHEMA)
+        changed["properties"]["n"]["minimum"] = minimum
+        return changed
+
+    def test_a_changed_schema_is_a_second_file_not_a_replacement(self, root):
+        # Two environments building different schemas each keep theirs
         _compile()
         (before,) = _files(root)
-        changed = copy.deepcopy(SCHEMA)
-        changed["properties"]["n"]["minimum"] = 0
-        _compile(changed)
-        (after,) = _files(root)
-        assert after != before
+        _compile(self._variant(0))
+        files = _files(root)
+        assert len(files) == 2 and before in files
+
+    def test_only_the_most_recently_used_are_kept(self, root):
+        _compile()
+        (first,) = _files(root)
+        for minimum in range(CACHE_KEEP):
+            # The first, long unused, is the oldest whatever the clock's grain
+            os.utime(cache_directory() / first, (1, 1))  # type: ignore[operator]
+            _compile(self._variant(minimum))
+        files = _files(root)
+        assert len(files) == CACHE_KEEP
+        assert first not in files
+
+    def test_a_file_used_is_kept_ahead_of_older_ones(self, root):
+        _compile()
+        (first,) = _files(root)
+        directory = cache_directory()
+        assert directory is not None
+        for minimum in range(CACHE_KEEP - 1):
+            _compile(self._variant(minimum))
+        for name in _files(root):
+            os.utime(directory / name, (1, 1))  # All long unused...
+        _compile()  # ...but the first, loaded now
+        _compile(self._variant(99))  # One too many: the oldest goes
+        assert first in _files(root)
+        assert len(_files(root)) == CACHE_KEEP
 
     def test_another_stem_is_left_alone(self, root):
         _compile(stem="config-common")
         _compile(stem="config-common-workerPool")
-        changed = copy.deepcopy(SCHEMA)
-        changed["properties"]["n"]["minimum"] = 0
-        _compile(changed, stem="config-common")
-        assert len(_files(root, "config-common")) == 1
+        for minimum in range(CACHE_KEEP + 1):
+            _compile(self._variant(minimum), stem="config-common")
+        assert len(_files(root, "config-common")) == CACHE_KEEP
         assert len(_files(root, "config-common-workerPool")) == 1
+
+    def test_cached_code_that_fails_as_it_loads_is_recompiled(self, root, reported):
+        _compile()
+        (name,) = _files(root)
+        path = cache_directory() / name  # type: ignore[operator]
+        path.write_bytes(marshal.dumps(compile("raise OSError('x')", "<x>", "exec")))
+        _failure(_compile(), {"n": "x"})
+        assert reported == [
+            f"{REPORT_PREFIX}'{path}' failed as it loaded (x); recompiling"
+        ]
 
     def test_a_corrupt_file_is_recompiled_and_replaced(self, root, reported):
         _compile()

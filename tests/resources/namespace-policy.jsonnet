@@ -2,7 +2,7 @@
 // MODEL_FOR_RESOURCE -- create_namespace_policy() constructs a plain
 // NamespacePolicy(namespace=..., autoscalingMaxNodes=...) directly rather
 // than going through _get_model_object), so it contributes nothing to the
-// coverage gate. Written anyway for the live layer (Tasks 7-8), which needs
+// coverage gate. Written anyway for the live layer, which needs
 // a specification to create/update against.
 //
 // Namespace Policies are matched by their 'namespace' property, and there is

@@ -99,6 +99,10 @@ class TestDescriptions:
         def walk(fragment):
             if isinstance(fragment, dict):
                 for key, value in fragment.items():
+                    if key in ("if", "then", "else"):
+                        # A condition or a constraint on properties declared
+                        # beside it, where their descriptions are
+                        continue
                     if key == "properties":
                         for name, sub in value.items():
                             assert (

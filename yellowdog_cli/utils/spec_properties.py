@@ -302,9 +302,22 @@ _USER_DATA_FILES = Property(
     ),
 )
 
+# A scope is global, or names at least one namespace, as create.py demands;
+# 'if'/'else' rather than an 'anyOf', so a violation keeps its path. A
+# 'global' still a {{variable}} counts as global: it is not known yet
 _ROLE_SCOPE: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
+    "if": {
+        "properties": {
+            "global": {"anyOf": [{"const": True}, {"$ref": "#/$defs/variable"}]}
+        },
+        "required": ["global"],
+    },
+    "else": {
+        "required": ["namespaces"],
+        "properties": {"namespaces": {"minItems": 1}},
+    },
     "properties": {
         "global": {**BOOL, "description": "grant the Role in every namespace"},
         "namespaces": {

@@ -161,7 +161,7 @@ def test_server_assigned_coverage_does_not_infer_an_unprobed_class():
     first version of SERVER_ASSIGNED_COVERAGE (then a plain field.init check):
     each is a different resource family that merely happens to declare 'id' or
     'createdTime' the same way a probed class does. All seven are now settled
-    by a direct live probe (see task-4-report.md) and belong in the gate as
+    by a direct live probe (a create-then-show round trip) and belong in the gate as
     excluded -- this test is the regression guard, not a statement that they
     are still open questions.
     """
@@ -176,7 +176,7 @@ def test_server_assigned_coverage_does_not_infer_an_unprobed_class():
     ):
         assert property_name not in resource_models.settable_properties(model_name), (
             f"{model_name}.{property_name} is expected to be SERVER_ASSIGNED "
-            "(confirmed by a live probe; see task-4-report.md) -- if this now "
+            "(confirmed by a live create-then-show probe) -- if this now "
             "fails, either the probe evidence changed or "
             "SERVER_ASSIGNED_COVERAGE regressed"
         )

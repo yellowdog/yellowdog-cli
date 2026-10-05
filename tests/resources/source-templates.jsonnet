@@ -50,7 +50,7 @@ local awsInstancesMax = awsInstancesMin {
   enableInstanceMetadataTags: true,
   instanceMetadataHttpPutResponseHopLimit: 2,
   useCapacityBlock: false,
-  // Live-only finding (Task 8): the platform rejects secondaryNetworkInterfaces
+  // Live-only finding: the platform rejects secondaryNetworkInterfaces
   // together with assignPublicIp = true ("source must not specify
   // secondaryNetworkInterfaces when assignPublicIp = true"), a business rule the
   // offline model-building path this corpus is otherwise checked against never
@@ -58,7 +58,7 @@ local awsInstancesMax = awsInstancesMin {
   // maximal compute source below that also sets it.
   assignPublicIp: false,
   createClusterPlacementGroup: false,
-  // Live-only finding (Task 8): AwsPlacementGroup also only accepts exactly one
+  // Live-only finding: AwsPlacementGroup also only accepts exactly one
   // of groupName/groupId ("source.existingPlacementGroup must specify either
   // groupName or id") -- awsFleetMax below sets the other, so both fields are
   // still covered across the corpus.
@@ -101,7 +101,7 @@ local awsFleetMin = {
 
 local awsFleetMax = awsFleetMin {
   name: base.name('aws-fleet-max'),
-  // No 'fleetId': live-only finding (Task 8) -- addComputeSourceTemplate
+  // No 'fleetId': live-only finding -- addComputeSourceTemplate
   // rejects it ("...source.fleetId must be null"), the same server-assigned
   // shape as every other field the SDK declares init=False on this class.
   // Moved to resource_models.SERVER_ASSIGNED_COVERAGE now that it's evidenced.
@@ -135,7 +135,7 @@ local awsFleetMax = awsFleetMin {
     preference: 'CAPACITY_RESERVATIONS_ONLY',
   },
   limit: 4,
-  // Live-only finding (Task 8): the platform also rejects maintainCapacity
+  // Live-only finding: the platform also rejects maintainCapacity
   // together with a single instance type on either purchase option ("source
   // must not specify maintainCapacity if On-Demand/Spot single instance type
   // is specified") -- another business rule invisible to the offline model
@@ -160,7 +160,7 @@ local awsFleetMax = awsFleetMin {
   spotOptions: {
     allocationStrategy: 'PRICE_CAPACITY_OPTIMIZED',
     instancePoolsToUseCount: 2,
-    // Live-only finding (Task 8): the platform requires maintainCapacity = true
+    // Live-only finding: the platform requires maintainCapacity = true
     // when this is set ("source must specify maintainCapacity if Spot launch
     // replacement instance on rebalance is specified"), the mirror image of the
     // maintainCapacity/singleInstanceType conflict noted above -- both cannot be

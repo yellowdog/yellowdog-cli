@@ -30,7 +30,7 @@
 // (create.py) does 'namespace = resource[PROP_NAMESPACE]', a plain KeyError
 // if the property is absent, well before the model is ever built -- a stricter
 // requirement than the dataclass itself imposes. Worth knowing for the live
-// layer (Tasks 7-8), which cannot create these two specifications as
+// layer, which cannot create these two specifications as
 // standalone resources for that reason.
 
 local base = import 'lib/base.libsonnet';

@@ -75,3 +75,58 @@ def test_a_missing_resource_type_names_no_internal_key(monkeypatch):
     assert failures
     assert load_resources.RESOURCE_SOURCE_DIR not in failures[0]
     assert "'name': 'x'" in failures[0]
+
+
+# ---------------------------------------------------------------------------
+# The resource types, written out in several places, held together
+# ---------------------------------------------------------------------------
+
+
+def test_the_creation_order_names_every_resource_type_once():
+    from yellowdog_cli.utils.sdk_models import RESOURCE_TYPES
+
+    order = load_resources.RESOURCE_CREATION_ORDER
+    assert len(order) == len(set(order))
+    assert set(order) == set(RESOURCE_TYPES)
+
+
+@pytest.mark.parametrize(
+    "module_name, dispatch",
+    [("create", "_create_resource"), ("remove", "_remove_resource")],
+)
+def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
+    """
+    yd-create's and yd-remove's dispatch reaches a handler for every type in
+    sdk_models.RESOURCE_TYPES, and refuses one that is not.
+    """
+    import importlib
+    import sys
+
+    from yellowdog_cli.utils.sdk_models import RESOURCE_TYPES
+
+    monkeypatch.setattr(sys, "argv", [f"yd-{module_name}", "x.json"])
+    module = importlib.import_module(f"yellowdog_cli.{module_name}")
+    handled: list[str] = []
+    for name in dir(module):
+        if name.startswith(("create_", "remove_", "update_")) and name not in (
+            "create_resources",
+            "remove_resources",
+        ):
+            monkeypatch.setattr(
+                module, name, lambda *a, _name=name, **k: handled.append(_name)
+            )
+    monkeypatch.setattr(module, "print_warning", lambda *a, **k: handled.append("w"))
+    monkeypatch.setattr(module, "record_resource", lambda *a, **k: None)
+    run = getattr(module, dispatch)
+    for resource_type in RESOURCE_TYPES:
+        before = len(handled)
+        if module_name == "create":
+            run(resource_type, {}, None, False)
+        else:
+            run(resource_type, {})
+        assert len(handled) == before + 1, resource_type
+    with pytest.raises(ValueError, match="Unknown resource type"):
+        if module_name == "create":
+            run("NoSuchType", {}, None, False)
+        else:
+            run("NoSuchType", {})

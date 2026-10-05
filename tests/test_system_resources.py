@@ -175,7 +175,7 @@ READ_GATE_EXCLUSIONS.update(
             "actually launches, which this suite never does"
         ),
         # provider/instancePricing on SimulatorComputeSource specifically --
-        # confirmed live (Task 8, second pass): every other compute source
+        # confirmed live, on a second pass: every other compute source
         # class returns both with real values (AWS/Azure/GCE/OCI templates all
         # echo 'provider'; AwsInstancesComputeSource also echoes
         # 'instancePricing') -- SimulatorComputeSource, not being a real cloud
@@ -191,7 +191,7 @@ READ_GATE_EXCLUSIONS.update(
             "simulated source has no real pricing model to report"
         ),
         # supportingResourceCreated -- confirmed absent for exactly these seven
-        # classes, live, by direct re-probe (Task 8, second pass): re-created
+        # classes, live, by direct re-probe on a second pass: re-created
         # source-templates.jsonnet by hand and checked 'source.supportingResourceCreated'
         # in each yd-show response directly. OciInstancesComputeSource and
         # SimulatorComputeSource are deliberately NOT here: both return a real
@@ -312,7 +312,7 @@ def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
     'co.yellowdog.platform.model.' prefix, matching SERVER_ASSIGNED_COVERAGE's own
     bare class names). A ComputeRequirementTemplate/Allowance response instead
     carries its own 'type' at the top level. A MachineImageFamily response nests
-    imageGroups/images inline (checked directly, Task 8) rather than as separate
+    imageGroups/images inline (checked directly, live) rather than as separate
     top-level entities, so this descends into both.
     """
     if entity_type == "compute-source-templates":
@@ -458,7 +458,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
             # configured_worker_pool() (remove.py) shuts it down, and a
             # shut-down/terminated pool remains listed forever, the same
             # lifecycle shape as a finished Work Requirement -- a live-only
-            # finding (Task 8). current_keys() can therefore never return to
+            # finding. current_keys() can therefore never return to
             # 'before' for this entity type; the real invariant is that every
             # pool this test created has reached a finished status instead.
             for key in created[entity]:

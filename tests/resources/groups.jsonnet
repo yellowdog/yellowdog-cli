@@ -2,7 +2,7 @@
 // create_group() constructs AddGroupRequest/UpdateGroupRequest directly and
 // handles 'roles' separately via account_client role calls, never through
 // _get_model_object), so it contributes nothing to the coverage gate.
-// Written anyway for the live layer (Tasks 7-8), which needs a specification
+// Written anyway for the live layer, which needs a specification
 // to create/update against.
 //
 // The 'roles' shape mirrors the README's own example: a global role plus a

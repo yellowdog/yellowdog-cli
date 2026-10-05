@@ -341,6 +341,33 @@ class TestWording:
                 assert "must match pattern" not in message
 
 
+@pytest.mark.parametrize(
+    "scope, expected",
+    [
+        ({}, ["roles[0].scope: missing required property 'namespaces'"]),
+        ({"global": False}, ["roles[0].scope: missing required property 'namespaces'"]),
+        (
+            {"namespaces": []},
+            ["roles[0].scope.namespaces: must contain at least 1 items"],
+        ),
+        ({"global": True}, []),
+        ({"global": "{{everywhere}}"}, []),
+        ({"namespaces": [{"namespace": "n"}]}, []),
+    ],
+)
+def test_a_group_role_scope_is_global_or_names_a_namespace(scope, expected):
+    # As create.py demands: a scope without 'global' true names a namespace
+    group = {
+        "resource": "Group",
+        "name": "g",
+        "roles": [{"role": {"name": "r"}, "scope": scope}],
+    }
+    assert [
+        f"{v.path}: {v.message}"
+        for v in validate_specification(Family.RESOURCES, group, "x")
+    ] == expected
+
+
 # --- through the real commands ------------------------------------------------
 
 _DEFAULTS = {

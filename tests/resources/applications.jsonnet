@@ -1,7 +1,7 @@
 // Applications. Emit secrets when created (the Application Key ID/Secret are
 // printed at creation time, per create_application()/create.py) -- nothing
 // for this offline corpus to act on, but worth remembering for the live
-// layer (Tasks 7-8), which must not print or persist them carelessly.
+// layer, which must not print or persist them carelessly.
 //
 // 'groups' and 'keyrings' belong to no model: create_application() pops both
 // before building AddApplicationRequest, which has only 'name'/'description'
@@ -21,7 +21,7 @@
 // created by groups.jsonnet, and 'keyring-max' by keyrings.jsonnet -- both
 // named via the same base.name()/run_id construction, so the strings match
 // without either file importing the other. This file is not in
-// resource_corpus.OFFLINE_ONLY, so the live layer (Tasks 7-8) creates it
+// resource_corpus.OFFLINE_ONLY, so the live layer creates it
 // too: a real create needs the referenced Group and Keyring to already
 // exist, so groups.jsonnet and keyrings.jsonnet must run first -- within a
 // single yd-create invocation covering all three files,

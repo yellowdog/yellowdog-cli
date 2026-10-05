@@ -156,14 +156,14 @@ ALLOWANCE_CLASSES = frozenset(
 # ComputeRequirementStaticTemplate.id, ComputeRequirementDynamicTemplate.id,
 # MachineImage.id/createdTime, MachineImageGroup.id/createdTime -- that had
 # never actually been reasoned about, let alone probed. All seven are now
-# either probed directly or a recorded, verified-identical inference; see
-# task-4-report.md for the round of probe evidence that closed each one.
+# either probed directly (a live create-then-show round trip) or a recorded,
+# verified-identical inference, as the comments below say of each.
 SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # ComputeSourceTemplate's source (AwsInstancesComputeSource probed live):
     # addComputeSourceTemplate rejects a request with any of these set
     # ("must not contain a source with ... set" / "must be null"), and
     # 'provider'/'instancePricing'/'traits' were accepted but the value
-    # returned did not match what was sent -- see task-4-report.md.
+    # returned did not match what was sent, in a live create-then-show.
     #
     # 'credentials' was here too, on the evidence "sent a value, the raw model
     # came back None". That is the *same* evidence shape this registry rejects
@@ -181,7 +181,7 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     "instancePricing": COMPUTE_SOURCE_CLASSES,
     "traits": COMPUTE_SOURCE_CLASSES,
     "rootDeviceName": AWS_COMPUTE_SOURCE_CLASSES,
-    # 'fleetId' (AwsFleetComputeSource probed live, Task 8): addComputeSourceTemplate
+    # 'fleetId' (AwsFleetComputeSource probed live): addComputeSourceTemplate
     # rejects it ("...source.fleetId must be null"). Declared init=False only on
     # this one compute source class -- unlike every property above, it is not
     # part of COMPUTE_SOURCE_CLASSES's "identical declaration" (checked
@@ -192,7 +192,7 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # here, despite being declared init=False the same way every property
     # above is: addComputeSourceTemplate *accepts* a SimulatorComputeSource
     # specifying either, and yd-show simply never echoes them afterwards
-    # (probed live, Task 8). That is not evidence the platform assigns them --
+    # (probed live). That is not evidence the platform assigns them --
     # a genuinely server-assigned property comes back (see 'provider'/
     # 'traits'/'id' above, all confirmed live by this same task) -- it is
     # evidence the platform accepts and then silently drops them, a candidate

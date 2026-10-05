@@ -13,8 +13,11 @@ A file is named by its stem (the family, or the config family's subset of
 sections) and a digest of everything its code depends on: the built schema
 itself, fastjsonschema's version and the interpreter's. So a newer SDK,
 even one installed without a version change, builds a different schema and
-misses; and writing a file removes the stem's others, so at most one per
-stem is kept.
+misses; and writing a file removes all but the stem's most recently used
+others, so at most CACHE_KEEP per stem are kept. More than one, because the
+directory is the user's, not an environment's: two environments that build
+different schemas (tox's interpreters, a pipx install beside a development
+venv) would otherwise delete each other's file on every run.
 
 Marshalled code is executed when it is loaded, so the directory is used
 only if it can be trusted: on POSIX it is per user, created mode 0700, and
@@ -52,6 +55,7 @@ from fastjsonschema import RefResolver
 CACHE_FORMAT = 1  # raised whenever what a cache file holds changes
 CACHE_DIRECTORY_NAME = "yellowdog-cli-schemas"
 CACHE_SUFFIX = ".bin"
+CACHE_KEEP = 4  # files kept per stem, the most recently used
 _DIGEST_LENGTH = 32
 REPORT_PREFIX = "Schema cache: "
 _NOT_USED = "; compiling the schemas without it"
@@ -150,14 +154,19 @@ def _load(path: Path) -> types.CodeType | None:
     if not isinstance(code, types.CodeType):
         _report(f"'{path}' is not a compiled schema; recompiling")
         return None
+    try:
+        os.utime(path)  # Used: kept ahead of the stem's older files
+    except OSError:
+        pass  # Only the order of removal depends on it
     return code
 
 
 def _store(directory: Path, stem: str, path: Path, code: types.CodeType) -> None:
     """
     Write 'code' to 'path' atomically, so a concurrent reader sees the whole
-    file or none, then remove the stem's other files. Any failure leaves the
-    cache as it was: another process may hold a file open on Windows.
+    file or none, then remove the stem's other files beyond the CACHE_KEEP
+    most recently used. Any failure leaves the cache as it was: another
+    process may hold a file open on Windows.
     """
     try:
         descriptor, partial = tempfile.mkstemp(
@@ -177,15 +186,27 @@ def _store(directory: Path, stem: str, path: Path, code: types.CodeType) -> None
         except OSError:
             pass
         return
-    for other in directory.glob(f"{stem}-*{CACHE_SUFFIX}"):
-        # 'config-common' must not remove 'config-common-workerPool-...'
-        if other != path and other.stem.rsplit("-", 1)[0] == stem:
-            try:
-                other.unlink()
-            except FileNotFoundError:
-                pass  # another process removed it first
-            except OSError as e:
-                _report(f"cannot remove '{other}': {_reason(e)}")
+    # 'config-common' must not remove 'config-common-workerPool-...'
+    others = [
+        other
+        for other in directory.glob(f"{stem}-*{CACHE_SUFFIX}")
+        if other != path and other.stem.rsplit("-", 1)[0] == stem
+    ]
+    for other in sorted(others, key=_last_used, reverse=True)[CACHE_KEEP - 1 :]:
+        try:
+            other.unlink()
+        except FileNotFoundError:
+            pass  # another process removed it first
+        except OSError as e:
+            _report(f"cannot remove '{other}': {_reason(e)}")
+
+
+def _last_used(path: Path) -> float:
+    """When a cache file was last used (written, or loaded); 0 if gone."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def compile_validator(schema: dict[str, Any], stem: str) -> Callable[[Any], Any]:
@@ -206,9 +227,17 @@ def compile_validator(schema: dict[str, Any], stem: str) -> Callable[[Any], Any]
         path = directory / f"{stem}-{_digest(schema)}{CACHE_SUFFIX}"
         code = _load(path)
         if code is not None:
-            if (validate := _validator(code, name)) is not None:
+            try:
+                validate = _validator(code, name)
+            except Exception as e:
+                # Cached code is never trusted to work: compiled afresh instead
+                _report(f"'{path}' failed as it loaded ({e}); recompiling")
+                validate = None
+            else:
+                if validate is None:
+                    _report(f"'{path}' defines no validator; recompiling")
+            if validate is not None:
                 return validate
-            _report(f"'{path}' defines no validator; recompiling")
     source = fastjsonschema.compile_to_code(schema)
     code = compile(source, f"<{stem} schema>", "exec")
     if directory is not None and path is not None:

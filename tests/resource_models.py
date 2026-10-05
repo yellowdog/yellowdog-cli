@@ -43,7 +43,7 @@ _model_class = sdk_models.model_class
 _nested_model_class = sdk_models.nested_model_class
 
 # Prefix on a fully-qualified SDK class name -- e.g. 'co.yellowdog.platform.model.
-# AwsInstancesComputeSource'. Task 1's live probe found 'source.type' comes back
+# AwsInstancesComputeSource'. A live probe found 'source.type' comes back
 # from yd-show fully qualified even where a specification sent the short name
 # ('AwsInstancesComputeSource'); comparable() strips exactly this prefix, and only
 # this prefix, so an unrelated string that merely contains a dot (a hostname, a
@@ -221,10 +221,11 @@ def build_models(resource: dict) -> list[tuple[object, dict]]:
 # Coverage gate: which properties of which models the corpus must exercise.
 # ---------------------------------------------------------------------------
 
-# Every property name SERVER_ASSIGNED_COVERAGE has evidence for, for Task 8's
-# read gate (asserting every one of these appears in some 'yd-show' response
-# during a live run) to consume without re-deriving the set. This is the *write*
-# gate's exclusion only; the read gate is Task 8's, not this module's.
+# Every property name SERVER_ASSIGNED_COVERAGE has evidence for, for the live
+# read gate in test_system_resources.py (asserting every one of these appears
+# in some 'yd-show' response during a live run) to consume without re-deriving
+# the set. This is the *write* gate's exclusion only; the read gate is
+# test_system_resources.py's, not this module's.
 SERVER_ASSIGNED: set[str] = set(SERVER_ASSIGNED_COVERAGE)
 
 

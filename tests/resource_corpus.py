@@ -137,7 +137,7 @@ def corpus_files() -> list[Path]:
     return sorted(CORPUS_DIR.glob("*.jsonnet"))
 
 
-# Files the live layer (Tasks 7-8) must not create: credentials need real provider
+# Files the live layer must not create: credentials need real provider
 # secrets, which are out of scope for these tests, and the namespace file is handled
 # once per test account by the session fixture rather than as a per-test resource
 # specification.
