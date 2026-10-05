@@ -1856,12 +1856,22 @@ class TestFileContentsPasses:
         )
         assert result == "echo {{v}} hello"
 
-    def test_a_typed_expression_left_for_the_in_situ_pass_is_not_circular(self):
-        # Inside a longer string, a type-tagged expression is substituted as
-        # text by the in-situ pass, not here
+    def test_a_typed_expression_inside_a_longer_string_is_text(self):
+        # A text file (User Data, Task Data, a writeFile content file) has no
+        # in-situ pass after this one, so a typed expression not standing
+        # alone in quotes is written here, as text
         text = '{"name": "{{num:num_var}}-{{myvar}}"}'
         result = var_module.process_variable_substitutions_in_file_contents(text)
-        assert result == '{"name": "{{num:num_var}}-hello"}'
+        assert result == '{"name": "42-hello"}'
+
+    def test_an_unquoted_typed_expression_in_a_script_is_substituted(self):
+        # It used to be left as written, and not warned of
+        var_module.VARIABLE_SUBSTITUTIONS["count"] = "1.10"
+        var_module.VARIABLE_SUBSTITUTIONS["flag"] = "true"
+        text = 'N={{num:count}}\nM="{{num:count}}"\nF={{bool:flag}}\n'
+        result = var_module.process_variable_substitutions_in_file_contents(text)
+        # Quoted, the quotes go with it; a number keeps its written form
+        assert result == "N=1.10\nM=1.10\nF=true\n"
 
     def test_jsonnet_computes_with_a_chained_value(self, tmp_path, monkeypatch):
         _chain_env_vars(monkeypatch, 4)
@@ -1966,3 +1976,55 @@ class TestStringResolution:
             and "process_variable_substitutions(" in path.read_text()
         ]
         assert callers == []
+
+
+class TestReviewedSubstitutionErrors:
+    """
+    What the review of variable_substitution.py changed beyond text files:
+    a Jsonnet runtime error keeps its location, a typed variable is held as
+    text, and two malformed definitions say what is wanted.
+    """
+
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            (
+                "RUNTIME ERROR: boom\n\te.jsonnet:3:6-18\tobject <anonymous>\n",
+                "RUNTIME ERROR: boom (e.jsonnet:3:6-18)",
+            ),
+            (
+                'STATIC ERROR: s.jsonnet:2:9: unexpected: ","\n',
+                'STATIC ERROR: s.jsonnet:2:9: unexpected: ","',
+            ),
+        ],
+    )
+    def test_a_jsonnet_error_says_where(self, message, expected):
+        assert var_module._jsonnet_error(message) == expected
+
+    def test_a_typed_variable_is_held_as_text(self):
+        var_module.VARIABLE_SUBSTITUTIONS["count"] = "5"
+        var_module._update_and_resolve_substitutions(
+            {**var_module.VARIABLE_SUBSTITUTIONS, "m": "{{num:count}}"}
+        )
+        assert var_module.VARIABLE_SUBSTITUTIONS["m"] == "5"
+
+    def test_common_variables_that_is_not_a_table_is_named(self, tmp_path):
+        path = tmp_path / "config.toml"
+        path.write_text('[common]\nvariables = "x"\n', encoding="utf-8")
+        with pytest.raises(ValueError, match=r"must be a table of name = value"):
+            var_module.load_toml_file_with_variable_substitutions(str(path))
+
+    def test_a_variable_without_a_value_says_what_is_wanted(self, tmp_path):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "yellowdog_cli.variables", "--nc", "-v", "count"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 3
+        assert "'--variable count' needs a name and a value" in " ".join(
+            (result.stdout + result.stderr).split()
+        )

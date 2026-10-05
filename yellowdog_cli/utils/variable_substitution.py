@@ -328,7 +328,8 @@ if ARGS_PARSER.variables is not None:
             subs_list.append(f"'{key_value[0]}'")
         else:
             print_error(
-                f"Error in variable substitution '{variable}'",
+                f"'--variable {variable}' needs a name and a value:"
+                " '--variable name=value'"
             )
             exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
 
@@ -411,10 +412,12 @@ def _update_and_resolve_substitutions(merged: dict):
         for key_ in unset:
             del VARIABLE_SUBSTITUTIONS[key_]
 
-    # Populate variables that can now be substituted, stored as strings
+    # Populate variables that can now be substituted, stored as strings: a
+    # value that is a type-tagged expression ('{{num:count}}') resolves to
+    # its type, and is held as its text, as every other value is
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        VARIABLE_SUBSTITUTIONS[key_] = cast(
-            str, process_variable_substitutions(_stringify(value_))
+        VARIABLE_SUBSTITUTIONS[key_] = _stringify(
+            process_variable_substitutions(_stringify(value_))
         )
 
 
@@ -1271,8 +1274,7 @@ def load_jsonnet_file_with_variable_substitutions(
             evaluate_snippet(filename, file_contents, jpathdir=[os.getcwd()])
         )
     except RuntimeError as e:
-        # Include only the first line of the exception message
-        raise RuntimeError(str(e).partition("\n")[0])
+        raise RuntimeError(_jsonnet_error(str(e))) from e
 
     # Secondary processing after Jsonnet expansion
     resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
@@ -1293,6 +1295,24 @@ def load_jsonnet_file_with_variable_substitutions(
     return dict_data
 
 
+def _jsonnet_error(message: str) -> str:
+    """
+    A Jsonnet error as one line: its first, with the first location line
+    added when the first has none. A static error names its place on its
+    first line ('STATIC ERROR: f.jsonnet:2:9: ...'); a runtime error puts
+    its message there and its place on the next ('RUNTIME ERROR: boom',
+    then 'f.jsonnet:3:6-18 ...'), which alone would say what, not where.
+    """
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return message
+    first = lines[0]
+    if first.startswith("RUNTIME ERROR") and len(lines) > 1:
+        location = lines[1].split("\t")[0].strip()
+        return f"{first} ({location})"
+    return first
+
+
 def load_toml_file_with_variable_substitutions(
     filename: str, prefix: str = "", postfix: str = ""
 ) -> dict:
@@ -1305,17 +1325,21 @@ def load_toml_file_with_variable_substitutions(
 
     # Add any variable substitutions in the TOML file before processing the
     # file as a whole
-    try:
+    variables = config.get(COMMON_SECTION, {}).get(VARIABLES)
+    if variables is not None:
+        if not isinstance(variables, dict):
+            raise ValueError(
+                f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}' must be a table"
+                f" of name = value, not {variables!r}"
+            )
         # Convert all values to strings before adding
         add_substitutions_from_config_file(
             {
                 var_name: _stringify(var_value)
-                for var_name, var_value in config[COMMON_SECTION][VARIABLES].items()
+                for var_name, var_value in variables.items()
             },
             source=f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}'",
         )
-    except KeyError:
-        pass
 
     resolve_variables_insitu(config, prefix=prefix, postfix=postfix)
 
@@ -1408,14 +1432,31 @@ def _substitute_file_contents_pass(
         if isinstance(replacement_expression, str):
             file_contents = file_contents.replace(v_expression, replacement_expression)
         else:
-            # If the replacement is a number, a boolean, a table, or an array,
-            # we need to remove the enclosing quotes when we substitute.
-            # json.dumps() emits valid JSON/Jsonnet ('true'/'false', double
-            # quotes) and preserves the case of string values.
-            # Account for both double and single quotes (for Jsonnet support).
-            replacement = json_dumps(replacement_expression)
+            # A number, a boolean, a table or an array. Inside quotes, the
+            # quotes go with it, so that a JSON or Jsonnet string becomes the
+            # value itself (both quote styles, for Jsonnet); anywhere else --
+            # a shell script's 'N={{num:count}}' -- it is text, written as a
+            # typed expression within a longer string is, where it used to be
+            # left as it was, neither substituted nor warned of. Either way a
+            # number keeps the form it was written in ('1.10' stays '1.10'),
+            # and the rest are their JSON ('true', double quotes)
+            opening = prefix + VAR_OPENING_DELIMITER
+            type_tag = next(
+                tag for tag in TYPE_TAGS if v_expression[len(opening) :].startswith(tag)
+            )
+            as_written = process_variable_substitutions(
+                opening + v_expression[len(opening) + len(type_tag) :],
+                prefix=prefix,
+                postfix=postfix,
+            )
+            replacement = typed_value_as_text(
+                type_tag,
+                cast(int | bool | float | list | dict, replacement_expression),
+                cast(str, as_written),
+            )
             file_contents = file_contents.replace(f'"{v_expression}"', replacement)
             file_contents = file_contents.replace(f"'{v_expression}'", replacement)
+            file_contents = file_contents.replace(v_expression, replacement)
 
     return file_contents
 

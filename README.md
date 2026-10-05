@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 08:50:39 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 09:23:31 BST 2026 -->
 
 <!--te-->
 
@@ -783,7 +783,7 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 
 A `num:` value may be written in JSON's syntax or Python's, e.g. `5`, `-2.5`, `1e3`, `1E3` or `1_000`, but must be a finite number: `nan` and `inf` are refused, as they are inside an `array:` or `table:`, since JSON cannot carry them. A `bool:` value is `true` or `false` in any case, so `True` and `TRUE` are accepted too. A value that is not of its tag's type is an error naming the substitution, e.g. `Cannot substitute '{{num:count}}': 'abc' is not a number`.
 
-A type-tagged substitution that is only part of a string, e.g. `"--retries={{num:retries}}"` or `"--tags={{array:tags}}"`, is checked as its type and then written into the string as text: a number as it was written (`1.10` stays `1.10`), and a boolean, array or table as JSON (`true`, `["a", "b"]`).
+A type-tagged substitution that is only part of a string, e.g. `"--retries={{num:retries}}"` or `"--tags={{array:tags}}"`, is checked as its type and then written into the string as text: a number as it was written (`1.10` stays `1.10`), and a boolean, array or table as JSON (`true`, `["a", "b"]`). The same holds in the text files substituted as a whole — User Data scripts, Task Data files and `writeFile` content files — where `N={{num:count}}` in a shell script becomes `N=5`, and one standing alone in quotes, `"{{num:count}}"`, loses its quotes, so that in a JSON file it becomes the number itself.
 
 Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd-variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
 
