@@ -87,11 +87,14 @@ class TestWrappersCheckConfigValues:
     """Both wrappers check the configuration values once warnings are on."""
 
     @staticmethod
-    def _run(wrapped, module, monkeypatch) -> list[bool]:
+    def _run(wrapped, monkeypatch) -> list[bool]:
+        # The check both wrappers make, in the runner they share
+        import yellowdog_cli.utils.command_runner as runner_module
+
         seen: list[bool] = []
         monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
         monkeypatch.setattr(
-            module,
+            runner_module,
             "warn_of_undefined_config_variables",
             lambda: seen.append(var_module._UNDEFINED_VARIABLE_WARNINGS),
         )
@@ -104,13 +107,13 @@ class TestWrappersCheckConfigValues:
 
         monkeypatch.setattr(wrapper_module, "set_proxy", lambda: None)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
-        seen = self._run(wrapper_module.main_wrapper, wrapper_module, monkeypatch)
+        seen = self._run(wrapper_module.main_wrapper, monkeypatch)
         assert seen == [True]
 
     def test_dataclient_wrapper(self, monkeypatch):
         import yellowdog_cli.utils.dataclient_wrapper as dcw_module
 
-        seen = self._run(dcw_module.dataclient_wrapper, dcw_module, monkeypatch)
+        seen = self._run(dcw_module.dataclient_wrapper, monkeypatch)
         assert seen == [True]
 
 

@@ -205,8 +205,16 @@ def rows_as_objects(headers: list[str], rows: list[list[Any]]) -> list[dict]:
     """
     A table as an array of row objects, keyed by its column headings in
     lowerCamelCase. A column with no heading -- a row number -- is dropped.
+    Two headings with one key ('Node ID', 'Node Id') raise, rather than the
+    later column silently replacing the earlier in every row.
     """
     keys = [lower_camel_case(heading) for heading in headers]
+    named = [key for key in keys if key]
+    if len(named) != len(set(named)):
+        duplicated = sorted({key for key in named if named.count(key) > 1})
+        raise ValueError(
+            f"Table headings {headers} give the key(s) {duplicated} more than once"
+        )
     return [{key: value for key, value in zip(keys, row) if key} for row in rows]
 
 

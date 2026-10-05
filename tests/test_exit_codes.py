@@ -21,6 +21,7 @@ from yellowdog_client.model.exceptions.server_error_exception import (
     ServerErrorException,
 )
 
+import yellowdog_cli.utils.command_runner as runner_module
 import yellowdog_cli.utils.dataclient_wrapper as dcw_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
@@ -106,13 +107,13 @@ def wrapped(monkeypatch):
         args = _args(json_output, debug)
         for module in (wrapper_module, dcw_module, results_module, printing_module):
             monkeypatch.setattr(module, "ARGS_PARSER", args)
-        for module in (wrapper_module, dcw_module):
-            monkeypatch.setattr(
-                module, "warn_of_undefined_config_variables", lambda: None
-            )
-            monkeypatch.setattr(
-                module, "enable_undefined_variable_warnings", lambda: None
-            )
+        # The start-up checks both wrappers run, in the runner they share
+        monkeypatch.setattr(
+            runner_module, "warn_of_undefined_config_variables", lambda: None
+        )
+        monkeypatch.setattr(
+            runner_module, "enable_undefined_variable_warnings", lambda: None
+        )
         monkeypatch.setattr(wrapper_module, "set_proxy", lambda: None)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         return args
