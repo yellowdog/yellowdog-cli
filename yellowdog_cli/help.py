@@ -21,20 +21,19 @@ from yellowdog_cli.utils.settings import DEFAULT_THEME, JSON_INDENT
 from yellowdog_cli.version import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
-# table's content, and a note -- the extra a command needs, or what it is a
-# synonym for -- dimmed so the summaries proper stand out. printing.py itself
+# table's content, and a note -- the extra a command needs -- dimmed so the
+# summaries proper stand out. printing.py itself
 # is not imported: it parses the command line for a registered command at
 # import, and yd-help is not one.
 NAME_STYLE = "pyexamples.table_content"
 NOTE_STYLE = "dim"
 HEADING_STYLE = "bold"
-# The notes dimmed: a trailing '(needs the <extra> extra)', '(<extra> extra
-# installed)' or '(synonym: yd-x)' -- never a parenthesis inside the
-# summary's own prose ('Hold (pause) ...')
-NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|synonym: yd-[\w-]+)\)$")
+# The notes dimmed: a trailing '(needs the <extra> extra)' or '(<extra>
+# extra installed)' -- never a parenthesis inside the summary's own prose
+# ('Hold (pause) ...')
+NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed)\)$")
 # A summary's extra, as the registry and OTHER_COMMANDS write it
 EXTRA = re.compile(r" \(needs the (\w+) extra\)$")
-SYNONYM = "A synonym for "
 
 
 # The entry points that are not registry commands: they take none of the
@@ -50,13 +49,8 @@ OTHER_COMMANDS: dict[str, str] = {
 
 
 def _listing() -> list[tuple[str, str]]:
-    # An alias (yd-rm, which shares yd-delete's entry) gets a line of its own
-    # saying what it is a synonym for, rather than its target's summary twice
     return sorted(
-        [
-            (name, cmd.summary if cmd.name == name else f"A synonym for {cmd.name}")
-            for name, cmd in COMMANDS.items()
-        ]
+        [(name, cmd.summary) for name, cmd in COMMANDS.items()]
         + list(OTHER_COMMANDS.items())
     )
 
@@ -75,9 +69,8 @@ def extra_installed(extra: str) -> bool:
 def entries() -> list[dict]:
     """
     The listing as '--json' gives it: each command's name and summary, with
-    the extra it needs and whether that is installed, or the command it is
-    a synonym for, as fields of their own so that no script has to pick
-    them out of the summary.
+    the extra it needs and whether that is installed as fields of their own,
+    so that no script has to pick them out of the summary.
     """
     records = []
     for name, summary in _listing():
@@ -85,8 +78,6 @@ def entries() -> list[dict]:
         if (match := EXTRA.search(summary)) is not None:
             record["extra"] = match.group(1)
             record["installed"] = extra_installed(match.group(1))
-        elif summary.startswith(SYNONYM):
-            record["synonymOf"] = summary[len(SYNONYM) :]
         records.append(record)
     return records
 
@@ -159,7 +150,7 @@ def _heading() -> str:
 def styled_lines() -> list[Text]:
     """
     One Text per command: the padded name in NAME_STYLE, then the summary,
-    with a trailing extra or synonym note in NOTE_STYLE.
+    with a trailing extra note in NOTE_STYLE.
     """
     width = column_width()
     lines: list[Text] = []

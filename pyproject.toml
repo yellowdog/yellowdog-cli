@@ -83,7 +83,6 @@
     yd-compute-stop = "yellowdog_cli.compute_stop:main"
     yd-create = "yellowdog_cli.create:main"
     yd-delete = "yellowdog_cli.delete:main"
-    yd-rm = "yellowdog_cli.delete:main"
     yd-doctor = "yellowdog_cli.doctor:main"
     yd-download = "yellowdog_cli.download:main"
     yd-finish = "yellowdog_cli.finish:main"

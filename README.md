@@ -192,7 +192,7 @@
    * [Data Client Commands](#data-client-commands)
       * [yd-upload](#yd-upload)
       * [yd-download](#yd-download)
-      * [yd-delete / yd-rm](#yd-delete--yd-rm)
+      * [yd-delete](#yd-delete)
       * [yd-ls](#yd-ls)
       * [yd-copy](#yd-copy)
    * [Utility Commands](#utility-commands)
@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 13:20:50 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 15:29:30 BST 2026 -->
 
 <!--te-->
 
@@ -491,7 +491,7 @@ A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted
 
 ## Machine-readable Output and Exit Codes
 
-For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. This includes `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-delete`/`yd-rm` and `yd-download`, whose `--json` used to require `--dry-run`; it is now accepted on their real, acting path too, giving the same shape as the dry run but without the `would ` prefix. The contract is:
+For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. This includes `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-delete` and `yd-download`, whose `--json` used to require `--dry-run`; it is now accepted on their real, acting path too, giving the same shape as the dry run but without the `would ` prefix. The contract is:
 
 1. With `--json`, stdout carries one JSON document and nothing else: no status messages, no tables, no bare IDs. A command that acted on nothing emits an empty array (`[]`). In every family, any record whose `action` or `outcome` is `failed` makes the exit code 1, even where the command carried on and completed; this holds with or without `--json`.
 2. Warnings go to stderr under `--json`, as errors always do. A confirmation or selection prompt also writes to stderr under `--json`, so an interactive run still parses on stdout; a prompt that finds stdin at end of input (a script that omitted `--yes`, or a redirect from `/dev/null`) fails with an error saying so and exit code 1, with the document holding whatever was recorded before it. Items not chosen in an interactive selection (`--interactive`) are absent from the document rather than recorded as `skipped`.
@@ -519,11 +519,11 @@ The documents, by command:
 | Following | `yd-follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
 | Data client | `yd-ls` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches), with `"Listing"` added, the remote path it was listed under; several paths' entries are concatenated, and a path that does not exist adds none and exits 1 |
 | Data client | `yd-upload`, `yd-download`, `yd-copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd-upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd-upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd-upload --sync` or `yd-copy --sync` dry run would remove, or local file a `yd-download --sync` dry run would. `yd-download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd-upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd-download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd-download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
-| Data client | `yd-delete`/`yd-rm` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
+| Data client | `yd-delete` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd-compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase`; a Worker Pool that could not be compared has `workerPoolMatch` `FAILED`, its `"error"`, and no properties |
 | Node actions | `yd-nodeaction` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished) |
 | Utility | `yd-version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a component not installed or whose version could not be read; `--debug` adds `"executable"` and `"path"` |
-| Utility | `yd-help` | an array of `{"command", "summary"}`, with `"extra"` and `"installed"` for a command needing an optional extra, and `"synonymOf"` for a synonym |
+| Utility | `yd-help` | an array of `{"command", "summary"}`, with `"extra"` and `"installed"` for a command needing an optional extra |
 
 The exit codes, with or without `--json`:
 
@@ -1849,7 +1849,7 @@ Note that variable substitutions **can** be used in the raw JSON file, just as i
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-submit --which-rclone` or `yd-version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd-submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-submit`, i.e. by `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls`, and `yd-copy`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-submit --which-rclone` or `yd-version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd-submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-submit`, i.e. by `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy`.
 
 Currently, Data Client only supports **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
@@ -2607,7 +2607,7 @@ yd-nodeaction --status --node ydid:node:D9C548:abc123... --follow
 
 The `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
 
-This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-upload](#yd-upload), [yd-download](#yd-download), [yd-delete / yd-rm](#yd-delete--yd-rm), [yd-ls](#yd-ls), and [yd-copy](#yd-copy).
+This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-upload](#yd-upload), [yd-download](#yd-download), [yd-delete](#yd-delete), [yd-ls](#yd-ls), and [yd-copy](#yd-copy).
 
 The `rclone` binary will be automatically downloaded if not already present.
 
@@ -4429,9 +4429,9 @@ A remote path that does not exist, or a wildcard that matches nothing, is an err
 yd-download 'results_*'
 ```
 
-### yd-delete / yd-rm
+### yd-delete
 
-The `yd-delete` command deletes files or directories from a remote data store. `yd-rm` is a synonym.
+The `yd-delete` command deletes files or directories from a remote data store.
 
 ```shell
 yd-delete [options] [<remote-path> ...]
@@ -4555,7 +4555,7 @@ The `yd-help` command lists all available `yd-*` commands and their purposes, `y
 yd-help [--json] [--no-format]
 ```
 
-The listing is coloured on a terminal, with the command names and the notes on extras and synonyms picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"`, and a synonym `"synonymOf"` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+The listing is coloured on a terminal, with the command names and the notes on extras picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 ### yd-version
 

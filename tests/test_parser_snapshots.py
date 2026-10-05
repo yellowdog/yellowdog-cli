@@ -53,7 +53,7 @@ def _action_shape(action: Action) -> dict[str, Any]:
 
 
 def parser_shapes() -> dict[str, list[dict[str, Any]]]:
-    """Per command (yd-rm included), its actions in registration order."""
+    """Per command, its actions in registration order."""
     return {
         name: [
             _action_shape(a)

@@ -175,15 +175,16 @@ class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
         assert set(COMMANDS) == _entry_points() - {"yd-commander", "yd-mcp"}
 
-    def test_rm_is_an_alias_of_delete(self):
-        assert COMMANDS["yd-rm"] is COMMANDS["yd-delete"]
+    def test_every_command_is_registered_under_its_own_name(self):
+        # No aliases: one name per command
+        for name, cmd in COMMANDS.items():
+            assert cmd.name == name
 
     def test_kinds(self):
         data_client = {
             "yd-upload",
             "yd-download",
             "yd-delete",
-            "yd-rm",
             "yd-ls",
             "yd-copy",
         }
@@ -220,17 +221,10 @@ class TestHelpCommand:
     def test_lists_every_command_once_with_its_summary(self, capsys):
         help_module.main()
         out = capsys.readouterr().out
-        # COMMANDS.items() includes the "yd-rm" alias key, whose Command is
-        # yd-delete's own (same object, same .name); format on cmd.name, not
-        # the dict key, or the alias entry looks for a "yd-rm" line that was
-        # never printed.
-        for _, cmd in COMMANDS.items():
-            assert f"{cmd.name:<{help_module.column_width()}}  {cmd.summary}" in out
-        # yd-rm has a line of its own saying it is a synonym, and yd-delete's
-        # summary names it back; the yd-delete line itself appears once
         width = help_module.column_width()
-        assert f"{'yd-rm':<{width}}  A synonym for yd-delete" in out
-        assert out.count(f"{'yd-delete':<{width}}  ") == 1
+        for name, cmd in COMMANDS.items():
+            assert f"{name:<{width}}  {cmd.summary}" in out
+            assert out.count(f"{name:<{width}}  ") == 1
 
     def test_the_entry_points_outside_the_registry_are_listed(self, capsys):
         # yd-commander and yd-mcp take none of the CLI's options and so have
@@ -266,13 +260,10 @@ class TestHelpCommand:
             and "needs the mcp extra" in mcp.plain[s.start : s.end]
             for s in mcp.spans
         )
-        # yd-rm's own summary is prose, not a note, so it is not dimmed
-        rm = lines["yd-rm"]
-        assert not any(s.style == help_module.NOTE_STYLE for s in rm.spans)
 
     def test_a_parenthesis_inside_a_summary_is_not_a_note(self):
-        # 'Hold (pause) running Work Requirements': only a trailing extra or
-        # synonym note is dimmed, never a parenthesis in the summary's prose
+        # 'Hold (pause) running Work Requirements': only a trailing extra
+        # note is dimmed, never a parenthesis in the summary's prose
         lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
         for name in ("yd-hold", "yd-start"):
             line = lines[name]
@@ -307,7 +298,7 @@ class TestHelpCommand:
         listed = {row["command"] for row in json.loads(capsys.readouterr().out)}
         assert {"yd-commander", "yd-mcp"} <= listed
 
-    def test_the_json_states_extras_and_synonyms_as_fields(self, monkeypatch):
+    def test_the_json_states_extras_as_fields(self, monkeypatch):
         monkeypatch.setattr(
             help_module, "extra_installed", lambda extra: extra == "commander"
         )
@@ -315,7 +306,6 @@ class TestHelpCommand:
         assert records["yd-commander"]["extra"] == "commander"
         assert records["yd-commander"]["installed"] is True
         assert records["yd-mcp"]["installed"] is False
-        assert records["yd-rm"]["synonymOf"] == "yd-delete"
         # The summary itself is unchanged, and a plain command has neither
         assert records["yd-commander"]["summary"].endswith(
             "(needs the commander extra)"
@@ -384,11 +374,7 @@ class TestToolKinds:
         }
 
     def test_the_destructive_commands(self):
-        assert {
-            n
-            for n, c in COMMANDS.items()
-            if c.tool is ToolKind.DESTRUCTIVE and n != "yd-rm"
-        } == {
+        assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.DESTRUCTIVE} == {
             "yd-cancel",
             "yd-abort",
             "yd-shutdown",

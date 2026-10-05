@@ -193,9 +193,9 @@ def _console_script_modules() -> dict[str, str]:
 def command_module(command_name: str) -> str | None:
     """
     The module a 'yd-*' command runs, for 'python -m': its console script's
-    entry point ('yd-rm' runs yellowdog_cli.delete, which no rule on the
-    name gives), else, where the package is not installed, the module named
-    for the command if there is one; None for anything else. Commander and
+    entry point ('yd-commander' runs yellowdog_cli.commander.launcher, which
+    no rule on the name gives), else, where the package is not installed,
+    the module named for the command if there is one; None for anything else. Commander and
     the MCP server both run commands this way, under their own interpreter.
     """
     module = _console_script_modules().get(command_name)
@@ -1692,12 +1692,12 @@ COMMANDS["yd-remove"] = Command(
     tool=ToolKind.DESTRUCTIVE,
 )
 
-# --- yd-delete / yd-rm ---------------------------------------------------
+# --- yd-delete ----------------------------------------------------------
 
 COMMANDS["yd-delete"] = Command(
     name="yd-delete",
     purpose="deleting remote data client files and directories",
-    summary="Delete remote data client files and directories (synonym: yd-rm)",
+    summary="Delete remote data client files and directories",
     kind=CommandKind.DATA_CLIENT,
     options=(
         VARIABLE,
@@ -1724,8 +1724,6 @@ COMMANDS["yd-delete"] = Command(
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
-# The prog is set by the caller, so one object serves both names.
-COMMANDS["yd-rm"] = COMMANDS["yd-delete"]
 
 # --- yd-doctor -----------------------------------------------------------
 

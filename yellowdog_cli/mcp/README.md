@@ -118,8 +118,6 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_version` | read-only | `yd-version` | Report version information |
 | `yd_wait` | acting | `yd-wait` | Wait for entities to reach a terminal state |
 
-`yd-rm` shares `yd_delete`'s tool rather than getting one of its own, exactly as it shares `yd-delete`'s command.
-
 ## Results and Errors
 
 A successful call's `content` is one text block holding the command's `--json` document as compact JSON, and its `structuredContent` is `{"result": <document>, "exitCode": 0, "stopped": false}` — `result` is wrapped in an object because `structuredContent` must itself be an object and the document is often an array. The per-family document shapes are the CLI README's own, in [Machine-readable Output and Exit Codes](../../README.md#machine-readable-output-and-exit-codes).
@@ -172,7 +170,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `--work-requirement`, `--worker-pool`, `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)).
 
-Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help). `yd-rm` is not a separate tool either, since it is a synonym of `yd-delete` sharing its command.
+Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help).
 
 ## Namespace, Tag and Variables
 

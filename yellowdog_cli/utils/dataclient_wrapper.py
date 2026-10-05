@@ -1,6 +1,6 @@
 """
-Decorator for data client commands (yd-upload, yd-download, yd-delete/yd-rm,
-yd-ls and yd-copy). Runs as main_wrapper does (command_runner.py), but
+Decorator for data client commands (yd-upload, yd-download, yd-delete, yd-ls
+and yd-copy). Runs as main_wrapper does (command_runner.py), but
 builds no PlatformClient and sets no proxy, so the commands run without
 YellowDog API credentials, and checks only the configuration sections they
 read.

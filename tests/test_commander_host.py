@@ -19,7 +19,7 @@ from yellowdog_cli.commander.host import CHILD_ENVIRONMENT, cli_program
     "command, module",
     [
         ("yd-submit", "yellowdog_cli.submit"),
-        ("yd-rm", "yellowdog_cli.delete"),  # No rule on the name gives this
+        ("yd-commander", "yellowdog_cli.commander.launcher"),  # No rule gives this
         ("yd-variables", "yellowdog_cli.variables"),
     ],
 )

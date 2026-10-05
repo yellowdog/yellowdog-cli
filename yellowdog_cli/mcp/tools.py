@@ -317,8 +317,8 @@ def build_tools() -> tuple[ToolSpec, ...]:
     # the same ToolSpec objects every caller of build_tools() sees
     tools = [
         _build_tool(command)
-        for name, command in COMMANDS.items()
-        if command.tool is not ToolKind.NONE and name != "yd-rm"
+        for command in COMMANDS.values()
+        if command.tool is not ToolKind.NONE
     ]
     return tuple(sorted(tools, key=lambda t: t.name))
 

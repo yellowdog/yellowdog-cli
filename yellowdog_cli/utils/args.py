@@ -49,8 +49,7 @@ class CLIParser:
             command_from_argv0(sys.argv[0]) if command is None else command
         )
         self.command: Command | None = COMMANDS.get(self.command_name)
-        # prog is the name invoked, so 'yd-rm' says 'usage: yd-rm' although
-        # it shares yd-delete's Command
+        # prog is the name invoked
         self.parser = build_parser(
             self.command, prog=self.command_name if self.command else None
         )

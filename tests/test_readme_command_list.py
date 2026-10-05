@@ -43,10 +43,8 @@ def _command_list() -> str:
 
 
 def _heading(text: str, heading: str) -> re.Match[str] | None:
-    """The heading's line, which may name aliases after it: '### yd-delete / yd-rm'."""
-    return re.search(
-        rf"^{re.escape(heading)}(?: / [^\n]*)?$", _outside_fences(text), re.M
-    )
+    """The heading's line: '### yd-delete'."""
+    return re.search(rf"^{re.escape(heading)}$", _outside_fences(text), re.M)
 
 
 def _section(text: str, heading: str) -> str:
@@ -158,7 +156,7 @@ class TestSharedOptions:
             assert set(aliases) == set(registered.aliases), name
 
 
-DOCUMENTED = sorted(n for n in CLI_COMMANDS if n not in ("yd-cloudwizard", "yd-rm"))
+DOCUMENTED = sorted(n for n in CLI_COMMANDS if n != "yd-cloudwizard")
 
 
 STANDALONE_DOCUMENTED = sorted(

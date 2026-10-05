@@ -132,8 +132,9 @@ def test_yd_ls_json_on_the_local_backend(tmp_path):
 
 
 def test_command_argv_uses_the_entry_point_module():
-    # 'yd-rm' runs yellowdog_cli.delete, which no rule on the name gives
-    assert command_argv("yd-rm")[2] == "yellowdog_cli.delete"
+    # 'yd-commander' runs yellowdog_cli.commander.launcher, which no rule on
+    # the name gives
+    assert command_argv("yd-commander")[2] == "yellowdog_cli.commander.launcher"
     with pytest.raises(ValueError):
         command_argv("yd-no-such-command")
 

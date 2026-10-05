@@ -42,10 +42,10 @@ class TestCatalogue:
         expected = {
             n.replace("-", "_")
             for n, c in COMMANDS.items()
-            if c.tool is not ToolKind.NONE and n != "yd-rm"
+            if c.tool is not ToolKind.NONE
         }
         assert set(TOOLS) == expected
-        assert "yd_rm" not in TOOLS and "yd_help" not in TOOLS
+        assert "yd_help" not in TOOLS
 
     def test_names_follow_the_sdk_rule(self):
         import re
