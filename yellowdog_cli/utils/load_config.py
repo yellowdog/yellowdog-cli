@@ -1115,7 +1115,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             ),
             images_id=wp_section.get(IMAGES_ID),
             instance_tags=wp_section.get(INSTANCE_TAGS),
-            maintainInstanceCount=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
+            maintain_instance_count=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
             max_nodes=cast(
                 int,
                 _number(

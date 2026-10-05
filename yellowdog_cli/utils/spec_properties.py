@@ -599,7 +599,10 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property(
         "maintainInstanceCount",
         BOOL,
-        description="keep the instance count rather than allowing scale-to-zero",
+        description=(
+            "replace instances to keep the target number RUNNING (yd-instantiate"
+            " only; a Worker Pool's is always false)"
+        ),
     ),
 )
 

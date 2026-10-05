@@ -406,7 +406,7 @@ def create_worker_pool_from_toml() -> None:
     else:
         node_workers = NodeWorkerTarget.per_node(CONFIG_WP.workers_per_node)
 
-    if CONFIG_WP.maintainInstanceCount:
+    if CONFIG_WP.maintain_instance_count:
         print_warning(
             f"Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
             "'false' when creating a Worker Pool"

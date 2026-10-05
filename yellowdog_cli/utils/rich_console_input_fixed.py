@@ -51,12 +51,13 @@ class ConsoleWithInputBackspaceFixed(Console):
         if password:
             result = getpass(prompt_str, stream=stream)
         else:
+            self.file.write(prompt_str)
+            self.file.flush()
             if stream:
-                self.file.write(prompt_str)
+                # As Rich's own input(): the line as read, newline and all,
+                # and "" at the end of the stream
                 result = stream.readline()
             else:
-                self.file.write(prompt_str)
-                self.file.flush()
                 raw_line = sys.stdin.readline()
                 if raw_line == "":
                     # Match builtin input(): EOF must raise, not return "",

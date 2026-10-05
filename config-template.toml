@@ -504,6 +504,8 @@
     # Optional — default: 10000
     # computeRequirementBatchSize = 10000
 
-    # Keep pool at targetInstanceCount rather than allowing scale-to-zero.
-    # Optional — applies to yd-instantiate only; default: false
+    # Replace instances to keep the target number RUNNING: the Compute Service
+    # provisions new ones when fewer than targetInstanceCount are running.
+    # Optional — applies to yd-instantiate only (a Worker Pool's is always
+    # false); default: false
     # maintainInstanceCount = false

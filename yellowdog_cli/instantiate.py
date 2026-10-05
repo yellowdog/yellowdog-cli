@@ -179,7 +179,7 @@ def main():
                     if CONFIG_WP.cr_tag is None
                     else CONFIG_WP.cr_tag
                 ),
-                maintainInstanceCount=CONFIG_WP.maintainInstanceCount,
+                maintainInstanceCount=CONFIG_WP.maintain_instance_count,
                 instanceTags=CONFIG_WP.instance_tags,
                 imagesId=CONFIG_WP.images_id,
                 userData=user_data,
@@ -370,7 +370,7 @@ def _create_compute_requirement_from_json(
                 else None
             ),
         ),
-        ("maintainInstanceCount", CONFIG_WP.maintainInstanceCount),
+        ("maintainInstanceCount", CONFIG_WP.maintain_instance_count),
     ]:
         if cr_data.get(key) is None and value is not None:
             print_info(f"Setting '{key}' to '{shown_value(value)}'")
