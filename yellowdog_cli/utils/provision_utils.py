@@ -3,7 +3,7 @@ Utility functions for provisioning and instantiating.
 """
 
 from json import dumps as json_dumps
-from os import chdir, getcwd
+from os.path import join
 
 from yellowdog_client import PlatformClient
 
@@ -17,6 +17,7 @@ from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
 from yellowdog_cli.utils.settings import WP_VARIABLES_POSTFIX, WP_VARIABLES_PREFIX
+from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions_in_file_contents,
     warn_of_undefined_variables,
@@ -39,35 +40,44 @@ def _read_user_data(
     resolve_user_data_in_spec.  Reads and returns user-data content from one
     of three sources, applying variable substitutions.  Mutual exclusivity is
     assumed to have been validated by the caller.
-    """
-    original_directory = getcwd()
-    try:
-        if source_dir:
-            try:
-                chdir(source_dir)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Unable to switch to content directory '{source_dir}': {e}"
-                )
 
-        # Each part keeps its source, so that a file is substituted, and named
-        # in an error or a warning, by itself rather than with the others
-        if user_data is not None:
-            parts = [(USERDATA, user_data)]
-        elif user_data_file is not None:
-            with open(user_data_file, encoding="utf-8") as f:
-                parts = [(user_data_file, f.read())]
-        elif user_data_files is not None:
-            parts = []
-            for path in user_data_files:
-                with open(path, encoding="utf-8") as f:
-                    parts.append((path, f.read() + "\n"))
-        else:
-            return None
-    finally:
-        chdir(original_directory)
+    A relative file is opened from 'source_dir' (an absolute one as it is),
+    never by changing the working directory, which is the whole process's.
+    """
+    check_str(user_data, USERDATA)
+    check_str(user_data_file, USERDATAFILE)
+    check_list(user_data_files, USERDATAFILES)
+
+    # Each part keeps its source, so that a file is substituted, and named
+    # in an error or a warning, by itself rather than with the others
+    if user_data is not None:
+        parts = [(USERDATA, user_data)]
+    elif user_data_file is not None:
+        parts = [(user_data_file, _read(user_data_file, source_dir))]
+    elif user_data_files is not None:
+        parts = []
+        for path in user_data_files:
+            check_str(path, USERDATAFILES)
+            parts.append((path, _read(path, source_dir) + "\n"))
+    else:
+        return None
 
     return "".join(_substituted_user_data(source, text) for source, text in parts)
+
+
+def _read(path: str, source_dir: str) -> str:
+    """
+    A User Data file's text, found from 'source_dir'; a missing one is
+    reported by the path it was looked for at.
+    """
+    full_path = join(source_dir, path) if source_dir else path
+    try:
+        with open(full_path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"User Data file '{path}' not found (looked for at '{full_path}')"
+        ) from e
 
 
 def _substituted_user_data(source: str, text: str) -> str:
@@ -84,7 +94,9 @@ def _substituted_user_data(source: str, text: str) -> str:
             source=source,
         )
     except Exception as e:
-        raise RuntimeError(f"Error processing variable substitutions: {e}")
+        raise RuntimeError(
+            f"Error processing variable substitutions in '{source}': {e}"
+        ) from e
 
     warn_of_undefined_variables(
         {source: content},
@@ -183,15 +195,15 @@ def get_template_id(client: PlatformClient, template_id_or_name: str) -> str:
             f"Compute Requirement Template '{template_id_or_name}' not found"
         )
 
-    print_info(
-        f"Compute Requirement Template '{template_id_or_name}' --> {template_id}"
-    )
+    print_info(f"Compute Requirement Template '{template_id_or_name}' -> {template_id}")
     return template_id
 
 
 def get_image_id(client: PlatformClient, image_name_or_id: str) -> str | None:
     """
-    This function was simplified, hence the pass-through call for now.
+    An Images ID as yd-provision and yd-instantiate pass it on: an image
+    family, group or image name resolved to its YellowDog ID, anything else
+    (a provider's own image ID) unchanged.
     """
     return get_image_name_or_id(
         client=client, image_name_or_id=image_name_or_id, always_return_ydid=True

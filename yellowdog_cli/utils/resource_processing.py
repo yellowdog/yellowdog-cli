@@ -11,7 +11,10 @@ from collections.abc import Callable, Sequence
 from typing import TypeVar
 
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
-from yellowdog_cli.utils.load_resources import resource_display_name
+from yellowdog_cli.utils.load_resources import (
+    RESOURCE_SOURCE_DIR,
+    resource_display_name,
+)
 from yellowdog_cli.utils.printing import print_error
 from yellowdog_cli.utils.results import record_resource
 from yellowdog_cli.utils.settings import PROP_RESOURCE
@@ -80,9 +83,11 @@ def process_resources(
     def _act(specification: dict) -> None:
         resource_type = specification.get(PROP_RESOURCE)
         if resource_type is None:
+            # Without the source directory load_resources.py stamps on it
+            shown = {k: v for k, v in specification.items() if k != RESOURCE_SOURCE_DIR}
             raise ValueError(
                 f"Missing required '{PROP_RESOURCE}' property in the following"
-                f" resource specification: {specification}"
+                f" resource specification: {shown}"
             )
         process(
             resource_type,

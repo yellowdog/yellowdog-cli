@@ -13,7 +13,7 @@ from getpass import getuser
 from json import JSONDecodeError
 from json import dumps as json_dumps
 from json import loads as json_loads
-from typing import cast
+from typing import Any, cast
 
 from tomli import load as toml_load
 
@@ -1198,7 +1198,7 @@ def load_json_file_with_variable_substitutions(
     return result
 
 
-def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> dict:
+def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
     """
     A JSON specification parsed, with no substitution made yet: a parse
     error names the file (with a hint when an unquoted substitution caused
@@ -1226,6 +1226,7 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> dict:
         )
         raise ValueError(f"Invalid JSON in '{filename}': {e}{hint}") from e
 
+    _check_document(result, filename)
     names = _substituted_property_names(result, opening, closing)
     if names:
         raise ValueError(
@@ -1233,6 +1234,29 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> dict:
             f" names, in '{filename}': {_list_paths(names)}"
         )
     return result
+
+
+def _check_document(document: object, filename: str) -> None:
+    """
+    Refuse a specification document that is neither an object nor a list
+    (a bare number, say), naming the file, before anything walks it.
+    """
+    if not isinstance(document, (dict, list)):
+        kind = (
+            "null"
+            if document is None
+            else "a boolean"
+            if isinstance(document, bool)
+            else "a number"
+            if isinstance(document, (int, float))
+            else "a string"
+            if isinstance(document, str)
+            else type(document).__name__
+        )
+        raise ValueError(
+            f"'{filename}' holds {kind}, not a specification (an object, or a"
+            " list of them)"
+        )
 
 
 def _substituted_property_names(
@@ -1287,6 +1311,8 @@ def load_jsonnet_file_with_variable_substitutions(
         )
     except RuntimeError as e:
         raise RuntimeError(_jsonnet_error(str(e))) from e
+
+    _check_document(dict_data, filename)
 
     # Secondary processing after Jsonnet expansion
     resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)

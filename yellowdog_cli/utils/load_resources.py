@@ -14,6 +14,7 @@ from yellowdog_cli.utils.settings import (
     PROP_ID,
     PROP_NAME,
     PROP_NAMESPACE,
+    PROP_RESOURCE,
     PROP_SOURCE,
     PROP_USERNAME,
     RN_ALLOWANCE,
@@ -86,6 +87,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         document = resources_loaded
         if isinstance(resources_loaded, dict):
             resources_loaded = [resources_loaded]
+        _check_specifications(resources_loaded, resource_spec)
 
         spec_dir = dirname(abspath(resource_spec))
 
@@ -124,6 +126,36 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
     return _resequence_resources(resources, creation_or_update=creation_or_update)
 
 
+_JSON_TYPE_NAMES = {
+    str: "a string",
+    int: "a number",
+    float: "a number",
+    bool: "a boolean",
+    list: "a list",
+    type(None): "null",
+}
+
+
+def _check_specifications(resources: object, resource_spec: str) -> None:
+    """
+    Refuse a file that is not a resource specification object or a list of
+    them, naming the file and the item, before anything indexes into it.
+    """
+    if not isinstance(resources, list):
+        raise ValueError(
+            f"'{resource_spec}' holds"
+            f" {_JSON_TYPE_NAMES.get(type(resources), type(resources).__name__)},"
+            " not a resource specification or a list of them"
+        )
+    for position, resource in enumerate(resources, start=1):
+        if not isinstance(resource, dict):
+            raise ValueError(
+                f"Item {position} in '{resource_spec}' is"
+                f" {_JSON_TYPE_NAMES.get(type(resource), type(resource).__name__)},"
+                " not a resource specification"
+            )
+
+
 def _resequence_resources(
     resources: list[dict], creation_or_update: bool = True
 ) -> list[dict]:
@@ -158,16 +190,14 @@ def _resequence_resources(
         RN_EXTERNAL_USER,
     ]
 
-    for r in resources:
-        if "resource" not in r:
-            raise KeyError(
-                "Property 'resource' is not specified for one or more resource specifications"
-            )
-
-    # Don't fail the whole batch for unknown resource types here: they're
-    # reported (and counted as failures) during per-resource processing
+    # Don't fail the whole batch for a missing or unknown resource type here:
+    # each is reported (and counted as a failure) during per-resource
+    # processing, sequenced last (first on removal)
     unknown_types = {
-        r["resource"] for r in resources if r["resource"] not in resource_creation_order
+        str(r[PROP_RESOURCE])
+        for r in resources
+        if r.get(PROP_RESOURCE) is not None
+        and r[PROP_RESOURCE] not in resource_creation_order
     }
     if unknown_types:
         print_warning(
@@ -177,9 +207,10 @@ def _resequence_resources(
 
     def _sequence(resource: dict) -> int:
         try:
-            return resource_creation_order.index(resource["resource"])
+            return resource_creation_order.index(str(resource.get(PROP_RESOURCE)))
         except ValueError:
-            return len(resource_creation_order)  # Unknown types sequence last
+            # Unknown or missing types sequence last
+            return len(resource_creation_order)
 
     resources.sort(key=_sequence, reverse=not creation_or_update)
 

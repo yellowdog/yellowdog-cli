@@ -2,8 +2,6 @@
 Unit tests for yellowdog_cli.utils.load_resources._resequence_resources
 """
 
-import pytest
-
 from yellowdog_cli.utils.load_resources import _resequence_resources
 from yellowdog_cli.utils.settings import (
     RN_CREDENTIAL,
@@ -120,10 +118,17 @@ class TestResequenceResources:
     # Error cases
     # ------------------------------------------------------------------
 
-    def test_missing_resource_key_raises(self):
+    def test_a_missing_resource_type_sequences_last_for_creation(self):
+        # Left to per-resource processing, which fails that resource alone,
+        # as it does with one resource or '--no-resequence'
         resources = [{"name": "something"}, {"resource": RN_NAMESPACE}]
-        with pytest.raises(Exception, match="'resource' is not specified"):
-            _resequence_resources(resources)
+        result = _resequence_resources(resources, creation_or_update=True)
+        assert result == [{"resource": RN_NAMESPACE}, {"name": "something"}]
+
+    def test_a_missing_resource_type_sequences_first_for_removal(self):
+        resources = [{"resource": RN_NAMESPACE}, {"name": "something"}]
+        result = _resequence_resources(resources, creation_or_update=False)
+        assert result == [{"name": "something"}, {"resource": RN_NAMESPACE}]
 
     def test_unknown_resource_type_warns_and_sequences_last(self):
         # Unknown types must not abort the batch: they're warned about here
