@@ -12,9 +12,9 @@ from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_client import PlatformClient
 
 from yellowdog_cli.create import create_resources
-from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
+from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import RN_SOURCE_TEMPLATE
 
 RESOURCE_PREFIX = "yellowdog-cloudwizard"
@@ -102,7 +102,6 @@ class AzureConfig(CommonCloudConfig):
         self._all_regions = self._get_regions_list()
         self._create_azure_resources()
         self._create_yellowdog_resources()
-        self._print_keyring_details()
 
     def teardown(self):
         """
@@ -626,4 +625,4 @@ class AzureConfig(CommonCloudConfig):
                 if location.name is not None
             ]
         except Exception as e:
-            raise RuntimeError(f"Unable to obtain list of Azure regions: {e}")
+            raise RuntimeError(f"Unable to obtain list of Azure regions: {e}") from e

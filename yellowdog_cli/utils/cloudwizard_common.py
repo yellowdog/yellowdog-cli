@@ -11,6 +11,7 @@ from yellowdog_client import PlatformClient
 
 from yellowdog_cli.create import create_resources
 from yellowdog_cli.remove import remove_resource_by_id
+from yellowdog_cli.utils import printing
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.entity_utils import (
     clear_compute_requirement_template_cache,
@@ -19,11 +20,30 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_source_templates,
 )
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import RN_KEYRING, RN_REQUIREMENT_TEMPLATE
 from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 
 CLOUDWIZARD_NAMESPACE_PREFIX = "cloudwizard"
+
+# The errors the wizard has reported: it carries on past a failed step, so
+# that a teardown removes what it can, and exits 1 at the end if there were any
+_ERRORS_REPORTED = 0
+
+
+def print_error(error: Exception | str) -> None:
+    """
+    printing.print_error(), counted: every Cloud Wizard module reports its
+    errors through this one, so that a run that reported one does not exit 0.
+    """
+    global _ERRORS_REPORTED
+    _ERRORS_REPORTED += 1
+    printing.print_error(error)
+
+
+def errors_reported() -> int:
+    """How many errors the wizard has reported in this run."""
+    return _ERRORS_REPORTED
 
 
 class CommonCloudConfig(ABC):
@@ -348,15 +368,23 @@ class CommonCloudConfig(ABC):
             else:
                 print_error(f"Unable to create Keyring '{keyring_name}': {e}")
 
-    def _print_keyring_details(self):
+    def print_keyring_details(self):
         """
-        Print the details of the Keyring and Keyring password.
+        Print the details of the Keyring and Keyring password: whatever
+        '--quiet' says, since the password is shown only this once. Called
+        by yd-cloudwizard however setup ends, once a Keyring was created.
         """
         if self._keyring_password is not None:
             print_info(
                 "In the 'Keyrings' section of the YellowDog Portal, please claim your"
                 " Keyring using the name and password below. The password will not be"
-                " shown again."
+                " shown again.",
+                override_quiet=True,
             )
-            print_info(f"--> Keyring name     = '{self._keyring_name}'")
-            print_info(f"--> Keyring password = '{self._keyring_password}'")
+            print_info(
+                f"--> Keyring name     = '{self._keyring_name}'", override_quiet=True
+            )
+            print_info(
+                f"--> Keyring password = '{self._keyring_password}'",
+                override_quiet=True,
+            )

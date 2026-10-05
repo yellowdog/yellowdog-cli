@@ -16,9 +16,9 @@ from yellowdog_cli.utils.cloudwizard_aws_types import (
     AWSSecurityGroup,
     AWSUser,
 )
-from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
+from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import RN_SOURCE_TEMPLATE
 
 IAM_USER_NAME = "yellowdog-cloudwizard-user"
@@ -32,6 +32,11 @@ YD_RESOURCE_PREFIX = "cloudwizard-aws"
 YD_RESOURCES_FILE = f"{YD_RESOURCE_PREFIX}-yellowdog-resources.json"
 YD_INSTANCE_TAG = {"yd-cloudwizard": "yellowdog-cloudwizard-source"}
 YD_DEFAULT_INSTANCE_TYPE = "{{instance_type:=t3a.micro}}"
+
+
+def _error_code(error: ClientError) -> str:
+    """An AWS error's code ('NoSuchEntity'), as AWS reports it, not its text."""
+    return str(error.response.get("Error", {}).get("Code", ""))
 
 
 def _get_opted_in_regions() -> list[str]:
@@ -155,15 +160,27 @@ class AWSConfig(CommonCloudConfig):
                 "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
             }
         ]
-        for region in (
+        regions = (
             _get_opted_in_regions() if selected_region is None else [selected_region]
+        )
+        if operation == "add-ssh" and not confirmed(
+            "Allow SSH (port 22) from anywhere (0.0.0.0/0) in the default security"
+            " group of "
+            + (
+                f"region '{selected_region}'"
+                if selected_region is not None
+                else f"all {len(regions)} opted-in regions"
+            )
+            + "?"
         ):
+            return
+        for region in regions:
             ec2_client = boto3.client("ec2", region_name=region)
             # Collect the default security group for the region
             try:
                 response = ec2_client.describe_security_groups(Filters=[])
             except ClientError as e:
-                if "AuthFailure" in str(e):
+                if _error_code(e) == "AuthFailure":
                     pass
                 else:
                     print_error(
@@ -225,7 +242,7 @@ class AWSConfig(CommonCloudConfig):
                 if access_key["UserName"] == IAM_USER_NAME:
                     self._access_keys.append(AWSAccessKey(access_key["AccessKeyId"]))
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 pass
             else:
                 print_error(f"Unable to list access keys: {e}")
@@ -237,7 +254,7 @@ class AWSConfig(CommonCloudConfig):
                 arn=response["User"]["Arn"], user_id=response["User"]["UserId"]
             )
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 pass
             else:
                 print_error(f"Unable to get details of user '{IAM_USER_NAME}': {e}")
@@ -335,9 +352,6 @@ class AWSConfig(CommonCloudConfig):
             YD_RESOURCES_FILE,
         )
 
-        # Always show Keyring details
-        self._print_keyring_details()
-
     def _remove_yellowdog_resources(self):
         """
         Remove a set of resources identified by their prefix/name.
@@ -362,14 +376,14 @@ class AWSConfig(CommonCloudConfig):
             try:
                 response = ec2_client.describe_security_groups(Filters=[])
             except ClientError as e:
-                if "AuthFailure" in str(e):
+                if _error_code(e) == "AuthFailure":
                     print_info(
                         f"Region '{region}' is not enabled (AuthFailure when fetching"
                         " security groups)"
                     )
                     continue
                 else:
-                    raise RuntimeError(f"Unable to list security groups: {e}")
+                    raise RuntimeError(f"Unable to list security groups: {e}") from e
 
             aws_sec_grp = AWSSecurityGroup(name="", id="")
             for sec_grp in response["SecurityGroups"]:
@@ -410,7 +424,7 @@ class AWSConfig(CommonCloudConfig):
             print_info(f"Created IAM user '{IAM_USER_NAME}' ({arn})")
 
         except ClientError as e:
-            if "EntityAlreadyExists" in str(e):
+            if _error_code(e) == "EntityAlreadyExists":
                 print_warning(
                     f"User '{IAM_USER_NAME}' was not created because it already exists"
                 )
@@ -440,7 +454,7 @@ class AWSConfig(CommonCloudConfig):
             iam_client.delete_user(UserName=IAM_USER_NAME)
             print_info(f"Deleted IAM user '{IAM_USER_NAME}'")
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 print_warning(f"No user '{IAM_USER_NAME}' to delete")
             else:
                 print_error(f"Failed to delete IAM user '{IAM_USER_NAME}': {e}")
@@ -458,7 +472,7 @@ class AWSConfig(CommonCloudConfig):
                 f"Created IAM Policy '{IAM_POLICY_NAME}' ({self._iam_policy_arn})"
             )
         except ClientError as e:
-            if "EntityAlreadyExists" in str(e):
+            if _error_code(e) == "EntityAlreadyExists":
                 # If already exists, we need to store its ARN
                 response = iam_client.list_policies(
                     Scope="Local",
@@ -489,7 +503,7 @@ class AWSConfig(CommonCloudConfig):
             iam_client.delete_policy(PolicyArn=self._iam_policy_arn)
             print_info(f"Deleted IAM policy '{IAM_POLICY_NAME}'")
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 print_warning(
                     f"IAM policy '{IAM_POLICY_NAME}' was not deleted because it doesn't"
                     " exist"
@@ -540,7 +554,7 @@ class AWSConfig(CommonCloudConfig):
                 f"Detached IAM policy '{IAM_POLICY_NAME}' from user '{IAM_USER_NAME}'"
             )
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 print_warning(f"IAM policy '{IAM_POLICY_NAME}' not attached to user")
             else:
                 print_error(f"Failed to detach IAM policy '{IAM_POLICY_NAME}': {e}")
@@ -595,7 +609,7 @@ class AWSConfig(CommonCloudConfig):
                 )
                 print_info(f"Deleted access key '{access_key.access_key_id}'")
             except ClientError as e:
-                if "NoSuchEntity" in str(e):
+                if _error_code(e) == "NoSuchEntity":
                     print_warning(
                         f"Access key '{access_key.access_key_id}' does not exist"
                     )
@@ -652,7 +666,7 @@ class AWSConfig(CommonCloudConfig):
                 " from AWS account"
             )
         except ClientError as e:
-            if "NoSuchEntity" in str(e):
+            if _error_code(e) == "NoSuchEntity":
                 print_warning(
                     f"No service linked role '{EC2_SPOT_SERVICE_LINKED_ROLE_NAME}' to"
                     " delete"
@@ -681,7 +695,7 @@ class AWSConfig(CommonCloudConfig):
                 f" '{ec2_client.meta.region_name}'"
             )
         except ClientError as e:
-            if "Duplicate" in str(e):
+            if _error_code(e).endswith(".Duplicate"):
                 print_warning(
                     f"Inbound {rule_name} rule already exists for"
                     f" '{security_group.name}' ('{security_group.id}') in region"
@@ -793,16 +807,23 @@ class AWSConfig(CommonCloudConfig):
                     DryRun=True,
                 )
             except ClientError as e:
-                if "DryRunOperation" in str(e):
+                if _error_code(e) == "DryRunOperation":
                     print_info(f"Validated AWS access key '{access_key.access_key_id}'")
                     return True
-                elif "AuthFailure" in str(e):
+                elif _error_code(e) == "AuthFailure":
                     print_info(
                         f"Waiting {retry_interval_seconds}s for AWS access key to"
                         f" become valid for EC2 (attempt {index + 1} of"
                         f" {max_retries}) ..."
                     )
                     sleep(retry_interval_seconds)
+                else:
+                    # Not the key still propagating: no wait will mend it
+                    print_error(
+                        f"Unable to validate AWS access key"
+                        f" '{access_key.access_key_id}': {e}"
+                    )
+                    return False
 
         print_error(f"Unable to validate AWS access key '{access_key.access_key_id}'")
         return False

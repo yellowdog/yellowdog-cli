@@ -37,10 +37,10 @@ class GCPConfig(CommonCloudConfig):
                     service_account_file
                 )
             )
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise FileNotFoundError(
                 f"GCP credentials file '{service_account_file}' not found"
-            )
+            ) from e
 
         self._regions_with_default_subnets: list[str] = []
         self._selected_regions: list[str] = []
@@ -132,9 +132,6 @@ class GCPConfig(CommonCloudConfig):
             YD_RESOURCES_FILE,
         )
 
-        # Always show the Keyring details
-        self._print_keyring_details()
-
     def _remove_yellowdog_resources(self):
         """
         Remove YellowDog resources in the Platform account.
@@ -154,7 +151,7 @@ class GCPConfig(CommonCloudConfig):
             )
         except Exception as e:
             if "401" in str(e):
-                raise RuntimeError(f"Invalid GCP credentials: {e}")
+                raise RuntimeError(f"Invalid GCP credentials: {e}") from e
             else:
                 raise e
 

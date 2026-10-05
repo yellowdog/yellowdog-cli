@@ -1279,6 +1279,43 @@ INSTANCE_TYPE = option(
     ),
 )
 
+# The providers Cloud Wizard supports, by each spelling it accepts
+CLOUD_PROVIDERS: dict[str, str] = {
+    "aws": "AWS",
+    "amazon": "AWS",
+    "gcp": "GCP",
+    "gce": "GCP",
+    "google": "GCP",
+    "azure": "Azure",
+    "microsoft": "Azure",
+}
+
+
+def cloud_provider_of(name: str) -> str | None:
+    """The provider a '--cloud-provider' spelling names, or None."""
+    return CLOUD_PROVIDERS.get(name.strip().lower())
+
+
+def check_cloudwizard_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-cloudwizard's provider, and what each operation needs from it, refused
+    as the command line is parsed rather than reported and exited 0.
+    """
+    provider = cloud_provider_of(args.cloud_provider)
+    if provider is None:
+        parser.error(
+            f"unknown or unsupported cloud provider '{args.cloud_provider}'; one of"
+            f" {', '.join(CLOUD_PROVIDERS)}"
+        )
+    if provider == "GCP" and args.credentials_file is None:
+        parser.error("--credentials-file is required for GCP")
+    if args.operation in ("add-ssh", "remove-ssh"):
+        if provider == "GCP":
+            parser.error(f"'{args.operation}' is not supported for GCP")
+        if provider == "Azure" and args.region_name is None:
+            parser.error(f"'{args.operation}' needs --region-name for Azure")
+
+
 COMMANDS["yd-cloudwizard"] = Command(
     name="yd-cloudwizard",
     purpose="setting up cloud accounts and YellowDog resources",
@@ -1294,6 +1331,7 @@ COMMANDS["yd-cloudwizard"] = Command(
         INSTANCE_TYPE,
         SHOW_SECRETS,
     ),
+    validators=(check_cloudwizard_args,),
     tool=ToolKind.NONE,
 )
 

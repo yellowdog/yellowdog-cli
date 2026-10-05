@@ -123,7 +123,7 @@ yellowdog_cli/
     ├── check_imports.py         # Guards for optional imports (jsonnet, cloudwizard, commander) with install hints
     ├── user_agent.py            # set_user_agent(), called by wrapper._create_client() before the client is built: CLI_USER_AGENT on direct calls, SDK_USER_AGENT on calls made through the SDK (by wrapping its auth callable; an SDK without it keeps the baseline, said under '--debug', since a header never stops a command); set_default_user_agent(), the baseline alone, importing no SDK, which set_proxy() uses for the PAC file's fetch
     ├── rich_console_input_fixed.py  # ConsoleWithInputBackspaceFixed: workaround for Rich backspace-deletes-prompt bug
-    └── cloudwizard_*.py         # AWS/Azure/GCP provider integration (cloudwizard_common, _aws, _aws_types, _azure, _gcp); sets up compute source/requirement templates and credentials; no longer creates cloud storage buckets or namespace storage configurations
+    └── cloudwizard_*.py         # AWS/Azure/GCP provider integration (cloudwizard_common, _aws, _aws_types, _azure, _gcp); sets up compute source/requirement templates and credentials; no longer creates cloud storage buckets or namespace storage configurations. The provider and each operation's needs are checked as the command line is parsed (command_registry.check_cloudwizard_args(), cloud_provider_of()); every module reports errors through cloudwizard_common.print_error(), which counts them, so cloudwizard.run_operation() exits 1 after a run that reported any, and prints the Keyring password (override_quiet) in a finally after setup, however it ends
 ```
 
 ### Command Pattern
