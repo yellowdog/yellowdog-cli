@@ -2,12 +2,12 @@
 User interaction processing utilities.
 """
 
+from __future__ import annotations
+
 import sys
 from contextlib import redirect_stdout
 from os import getenv
-from typing import TypeVar
-
-from yellowdog_client import PlatformClient
+from typing import TYPE_CHECKING, TypeVar
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import (
@@ -20,6 +20,11 @@ from yellowdog_cli.utils.printing import (
     sorted_objects,
 )
 
+if TYPE_CHECKING:
+    # For the annotation only: every command that confirms an action imports
+    # this module, yd-delete among them, which must start without the SDK
+    from yellowdog_client import PlatformClient
+
 try:
     import readline  # noqa: F401
 except ImportError:
@@ -27,9 +32,10 @@ except ImportError:
 
 _T = TypeVar("_T")
 
-# Environment variable to use --yes by default
-# Set to any non-empty string
+# Environment variable to use --yes by default: set to any non-empty value
+# other than one of YD_YES_OFF (in any case), which means no, as written
 YD_YES = "YD_YES"
+YD_YES_OFF = frozenset({"0", "false", "no", "off"})
 
 
 def select(
@@ -103,7 +109,7 @@ def get_selected_list_items(
     def in_range(num: int) -> bool:
         if 1 <= num <= num_items:
             return True
-        print_error(f"'{num}' is out of range")
+        print_error(f"'{num}' is out of range (1-{num_items})")
         return False
 
     while True:
@@ -127,11 +133,15 @@ def get_selected_list_items(
                     high = int(high_s)
                     if low > high:
                         raise ValueError
-                    for i in range(int(low), int(high) + 1):
-                        if in_range(i):
-                            selector_set.add(i)
-                        else:
-                            error_flag = True
+                    # Checked by its ends, once: not number by number, which
+                    # printed an error for each of '1-200000''s out of range
+                    if 1 <= low and high <= num_items:
+                        selector_set.update(range(low, high + 1))
+                    else:
+                        print_error(
+                            f"'{selector.strip()}' is out of range (1-{num_items})"
+                        )
+                        error_flag = True
                 elif not (selector.isspace() or not selector):
                     i = int(selector)
                     if in_range(i):
@@ -145,6 +155,7 @@ def get_selected_list_items(
             continue
         if not selector_set:
             if result_required:
+                print_error("please select at least one item")
                 continue
             break
         if single_result and len(selector_set) != 1:
@@ -179,9 +190,9 @@ def confirmed(msg: str) -> bool:
         print_info(f"Action proceeding without user confirmation ({msg})")
         return True
 
-    # Confirmed using the environment variable?
+    # Confirmed using the environment variable? 'YD_YES=false' means no
     yd_yes = getenv(YD_YES, "")
-    if yd_yes != "":
+    if yd_yes.strip() != "" and yd_yes.strip().lower() not in YD_YES_OFF:
         print_info(
             f"'{YD_YES}={yd_yes}': Action proceeding without user confirmation ({msg})"
         )
@@ -189,7 +200,7 @@ def confirmed(msg: str) -> bool:
 
     # Seek user confirmation
     while True:
-        response = _get_user_input(print_string(f"{msg} (y/N):") + " ")
+        response = _get_user_input(print_string(f"{msg} (y/N):") + " ").strip()
         if response.lower() in ["y", "yes"]:
             print_info("Action confirmed by user")
             return True

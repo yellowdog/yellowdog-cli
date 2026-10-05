@@ -181,3 +181,72 @@ class TestGetSelectedListItems:
     def test_result_required_loops_on_empty_then_accepts(self):
         result = _select(["", "4"], result_required=True)
         assert result == [4]
+
+
+# ---------------------------------------------------------------------------
+# A range checked by its ends; YD_YES's 'no' spellings; answers stripped
+# ---------------------------------------------------------------------------
+
+
+def test_a_range_out_of_range_is_one_error(monkeypatch):
+    errors: list[str] = []
+    monkeypatch.setattr(interactive_module, "print_error", errors.append)
+    assert _select(["1-200000", "2"], num_items=3) == [2]
+    assert errors == ["'1-200000' is out of range (1-3)"]
+
+
+def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
+    errors: list[str] = []
+    monkeypatch.setattr(interactive_module, "print_error", errors.append)
+    assert _select(["", "4"], result_required=True) == [4]
+    assert errors == ["please select at least one item"]
+
+
+class TestYdYesOffSpellings:
+    @staticmethod
+    def _confirmed(value: str, answer: str) -> bool:
+        mock_args = SimpleNamespace(yes=False, no_format=True)
+        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+            with patch.dict(os.environ, {"YD_YES": value}):
+                with patch.object(
+                    interactive_module, "_get_user_input", return_value=answer
+                ) as asked:
+                    result = confirmed("delete everything?")
+        return result if asked.called else "not asked"  # type: ignore[return-value]
+
+    def test_no_spellings_ask_as_if_unset(self):
+        for value in ("0", "false", "False", "NO", "off", " off "):
+            assert self._confirmed(value, "n") is False, value
+
+    def test_other_values_confirm_without_asking(self):
+        for value in ("1", "yes", "true", "anything"):
+            assert self._confirmed(value, "n") == "not asked", value
+
+
+def test_an_answer_with_spaces_is_understood():
+    mock_args = SimpleNamespace(yes=False, no_format=True)
+    with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                interactive_module, "_get_user_input", return_value=" y "
+            ):
+                assert confirmed("proceed?") is True
+
+
+def test_interactive_imports_no_sdk():
+    """
+    yd-delete imports this module for confirmed(): the SDK it once imported
+    at module level, for an annotation, cost every yd-delete its ~140ms.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "import sys; sys.argv = ['yd-delete', 'x']\n"
+        "import yellowdog_cli.utils.interactive\n"
+        "print('yellowdog_client' in sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"

@@ -697,7 +697,7 @@ When setting the value of the above properties, a property set on the command li
 
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
 
-In addition, setting the `YD_YES` environment variable (to any non-empty value) suppresses user confirmation prompts for all commands, equivalent to supplying `--yes`/`-y` on every invocation.
+In addition, setting the `YD_YES` environment variable (to any non-empty value other than `0`, `false`, `no` or `off`, in any case, which leave the prompts in place) suppresses user confirmation prompts for all commands, equivalent to supplying `--yes`/`-y` on every invocation.
 
 ## Overriding Arbitrary TOML Properties on the Command Line
 
