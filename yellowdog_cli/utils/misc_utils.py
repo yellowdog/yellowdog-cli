@@ -230,6 +230,10 @@ def find_delimited_expression_spans(
     return _scan_delimited(s, opening_delimiter, closing_delimiter, lenient=True)
 
 
+# How much of a value an error about its delimiters quotes
+_SHOWN_VALUE_LENGTH = 200
+
+
 @cache
 def _inside_expression_pattern(
     opening_delimiter: str, closing_delimiter: str
@@ -269,9 +273,12 @@ def _scan_delimited(
     # delimiter is looked for, with str.find(); single braces are looked for
     # only while one is open, and a line break only then, between one match
     # and the next, rather than matched throughout the text
+    # The value quoted at most in part: it can be long (inline Task Data) or
+    # hold a substituted credential
+    shown = s if len(s) <= _SHOWN_VALUE_LENGTH else s[:_SHOWN_VALUE_LENGTH] + "..."
     mismatched = ValueError(
         f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
-        f" in '{s}'"
+        f" in '{shown}'"
     )
     inside = _inside_expression_pattern(opening_delimiter, closing_delimiter)
     opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
@@ -368,20 +375,6 @@ def split_delimited_string(
         s[boundary.start : boundary.end]
         for boundary in sorted(non_delimited_boundaries + delimited_boundaries)  # type: ignore[type-var]
     ]
-
-
-def remove_outer_delimiters(
-    input_string: str, opening_delimiter: str, closing_delimiter: str
-) -> str:
-    """
-    Remove the outermost delimiters from a string.
-    There is no checking for a well-formed string.
-    """
-    # The string and the closing delimiter must be reversed ([::-1]) for
-    # removal, then re-reversed
-    return input_string.replace(f"{opening_delimiter}", "", 1)[::-1].replace(
-        f"{closing_delimiter[::-1]}", "", 1
-    )[::-1]
 
 
 def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:

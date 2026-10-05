@@ -51,6 +51,23 @@ def _suppress_rclone_download_output():
         root.handlers = old_handlers
 
 
+def _keep_logging_off_stdout() -> None:
+    """
+    Move any root logging handler that writes to stdout onto stderr.
+
+    Importing rclone_api installs one (rclone_api/log.py's basicConfig, a
+    StreamHandler on sys.stdout at INFO), through which it logs its first-run
+    binary download and some of its errors; under '--json' stdout holds only
+    the result document, which those lines would corrupt.
+    """
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.StreamHandler) and handler.stream in (
+            sys.stdout,
+            sys.__stdout__,
+        ):
+            handler.setStream(sys.stderr)
+
+
 def _find_rclone_conf() -> Path:
     """
     Locate the system rclone configuration file.
@@ -65,7 +82,10 @@ def _find_rclone_conf() -> Path:
         p = Path(env_path)
         if p.exists():
             return p
-        raise FileNotFoundError(f"RCLONE_CONFIG points to missing file: '{env_path}'")
+        raise FileNotFoundError(
+            f"RCLONE_CONFIG names an rclone configuration file that does not"
+            f" exist: '{env_path}'"
+        )
 
     if platform.system() == "Windows":
         appdata = os.environ.get("APPDATA", "")
@@ -75,7 +95,10 @@ def _find_rclone_conf() -> Path:
 
     if p.exists():
         return p
-    raise FileNotFoundError("not configured (no rclone.conf found)")
+    raise FileNotFoundError(
+        f"No rclone configuration file found (looked for '{p}'); set"
+        " RCLONE_CONFIG, or use an inline connection string"
+    )
 
 
 def _unique_remote_name(name: str, suffix: str, taken: set[str]) -> str:
@@ -149,10 +172,62 @@ def make_rclone(config: Config | None) -> Rclone:
     """
     from rclone_api import Rclone
 
+    _keep_logging_off_stdout()
     rclone_conf: Config | Path = _find_rclone_conf() if config is None else config
     ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
     with ctx:
         return Rclone(rclone_conf)
+
+
+# A parameter's start, 'key=', spaces allowed around the '='; and a comma that
+# begins the next one, which ends an unquoted value
+_PARAMETER_START = re.compile(r"\s*([A-Za-z0-9_]+)\s*=\s*")
+_NEXT_PARAMETER = re.compile(r",(?=\s*[A-Za-z0-9_]+\s*=)")
+
+
+def _parameters(params: str) -> dict[str, str]:
+    """
+    An inline remote's 'key=value' parameters, read as rclone reads a
+    connection string's: a value in double or single quotes may hold commas
+    (a doubled quote is the quote itself), and an unquoted value runs to the
+    comma that begins the next parameter. Text that is no 'key=value' is
+    ignored.
+    """
+    result: dict[str, str] = {}
+    position = 0
+    while position < len(params):
+        match = _PARAMETER_START.match(params, position)
+        if match is None:
+            following = _NEXT_PARAMETER.search(params, position)
+            if following is None:
+                break
+            position = following.end()
+            continue
+        key, position = match.group(1), match.end()
+        if params[position : position + 1] in ('"', "'"):
+            quote = params[position]
+            position += 1
+            value: list[str] = []
+            while position < len(params):
+                character = params[position]
+                if character == quote:
+                    if params[position + 1 : position + 2] == quote:
+                        value.append(quote)  # A doubled quote is the quote
+                        position += 2
+                        continue
+                    position += 1
+                    break
+                value.append(character)
+                position += 1
+            result[key] = "".join(value)
+            comma = params.find(",", position)
+            position = len(params) if comma == -1 else comma + 1
+        else:
+            following = _NEXT_PARAMETER.search(params, position)
+            end = len(params) if following is None else following.start()
+            result[key] = params[position:end].strip()
+            position = len(params) if following is None else end + 1
+    return result
 
 
 @cache
@@ -160,9 +235,12 @@ def parse_rclone_config(config_str: str) -> tuple[str, str | None]:
     """
     Parses the config portion of an rclone remote string.
 
-    Accepts either a plain remote name (looked up in the system rclone.conf)
-    or an inline config string of the form 'NAME,type=...,key=val,...'.
-    An optional leading 'rclone:' prefix is stripped before parsing.
+    Accepts a plain remote name (looked up in the system rclone.conf), an
+    inline config string of the form 'NAME,type=...,key=val,...', or
+    rclone's own ':backend,key=val,...' form, read as a remote named for its
+    backend with that 'type'. An optional leading 'rclone:' prefix is
+    stripped before parsing. Values are read as rclone reads them (see
+    _parameters()).
 
     Returns:
         (remote_name, config_ini_section_str_or_None)
@@ -171,23 +249,19 @@ def parse_rclone_config(config_str: str) -> tuple[str, str | None]:
     if config_str.startswith(RCLONE_PREFIX):
         config_str = config_str[len(RCLONE_PREFIX) :]
 
-    if "," not in config_str:
+    remote_name, _, params_str = config_str.partition(",")
+    remote_name = remote_name.strip()
+    params = _parameters(params_str)
+
+    if remote_name.startswith(":"):
+        # rclone's ':backend' form: the backend is the remote's type
+        backend = remote_name[1:]
+        remote_name = backend or "remote"
+        params = {"type": backend, **params} if "type" not in params else params
+    elif not params_str:
         # No inline params: remote is defined in the system rclone.conf
-        remote_name = config_str.strip() or "remote"
-        return remote_name, None
-
-    remote_name, params_str = config_str.split(",", 1)
-    remote_name = remote_name.strip() or "remote"
-
-    # Parse params (simple comma split - assumes no commas inside values)
-    params = {}
-    # Split on comma only when followed by key=
-    param_list = re.split(r",(?=[a-zA-Z_0-9]+=)", params_str)
-    for param in param_list:
-        param = param.strip()
-        if "=" in param:
-            key, value = param.split("=", 1)
-            params[key.strip()] = value.strip().strip("'\"")
+        return remote_name or "remote", None
+    remote_name = remote_name or "remote"
 
     # Build valid rclone INI section
     lines = [f"[{remote_name}]"]
@@ -204,6 +278,7 @@ def upgrade_rclone():
     """
     from rclone_api import Rclone
 
+    _keep_logging_off_stdout()
     print_info("Downloading / upgrading the rclone binary")
     ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
     with ctx:
@@ -234,8 +309,9 @@ def which_rclone() -> None:
 SHOWN_REMOTE_PARAMETERS = ("type", "provider")
 
 
-# An inline connection string's parameters: 'key=value', each after a comma
-_INLINE_REMOTE_PARAMETER = re.compile(r",\s*([A-Za-z0-9_]+)=")
+# An inline connection string's parameters: 'key=value', each after a comma,
+# spaces allowed around the '=' as the parser allows them
+_INLINE_REMOTE_PARAMETER = re.compile(r",\s*([A-Za-z0-9_]+)\s*=")
 
 
 def is_inline_remote(value: str) -> bool:
@@ -251,7 +327,7 @@ def is_inline_remote(value: str) -> bool:
     if config.startswith(RCLONE_PREFIX):
         config = config[len(RCLONE_PREFIX) :]
     keys = _INLINE_REMOTE_PARAMETER.findall(config)
-    if not keys or not re.match(r":?[\w.-]+,", config):
+    if not keys or not re.match(r":?[\w.-]+\s*,", config):
         return False
     return config.startswith(":") or "type" in keys
 
@@ -267,13 +343,24 @@ def shown_remote(remote: str) -> str:
     it cannot be told apart from a ':port' in that parameter's URL.
     """
     prefix = RCLONE_PREFIX if remote.startswith(RCLONE_PREFIX) else ""
+    config = remote[len(prefix) :].strip()
     remote_name, section = parse_rclone_config(remote)
     if section is None:
         return remote
+    # rclone's ':backend' form is shown as written: its 'type' is the backend
+    # the parser added, unless the string also gave one
+    rclone_form = config.startswith(":")
+    implied_type = rclone_form and "type" not in _INLINE_REMOTE_PARAMETER.findall(
+        config
+    )
+    if rclone_form:
+        remote_name = ":" + remote_name
     kept: list[str] = []
     withheld = 0
     for line in section.splitlines()[1:]:
         key, _, value = line.partition(" = ")
+        if key == "type" and implied_type:
+            continue
         if key in SHOWN_REMOTE_PARAMETERS:
             kept.append(f"{key}={value.rstrip(':')}")
         else:

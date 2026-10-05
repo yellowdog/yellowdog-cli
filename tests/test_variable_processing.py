@@ -6,38 +6,11 @@ import pytest
 
 from yellowdog_cli.utils.misc_utils import (
     find_delimited_expressions,
-    remove_outer_delimiters,
     split_delimited_string,
 )
 
 
 class TestVariableProcessing:
-    @pytest.mark.parametrize(
-        "input_string, opening_delimiter, closing_delimiter, expected",
-        [
-            ("{{one}}", "{{", "}}", "one"),
-            ("{{{one}}}", "{{", "}}", "{one}"),
-            ("__{{{on}e}}}__", "__{{", "}}__", "{on}e}"),
-            (
-                "{{ one two}}",
-                "{{",
-                "}}",
-                " one two",
-            ),  # Spaces can be handled, although not documented
-        ],
-    )
-    def test_remove_outer_delimiters(
-        self, input_string, opening_delimiter, closing_delimiter, expected
-    ):
-        assert (
-            remove_outer_delimiters(
-                input_string=input_string,
-                opening_delimiter=opening_delimiter,
-                closing_delimiter=closing_delimiter,
-            )
-            == expected
-        )
-
     @pytest.mark.parametrize(
         "input_string, opening_delimiter, closing_delimiter, expected",
         [
