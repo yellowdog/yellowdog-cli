@@ -728,7 +728,6 @@ VALIDATE = option(
 COMPUTE_REQS_INSTANCES_OR_NODES = option(
     "compute_reqs_instances_or_nodes",
     nargs="*",
-    default="",
     metavar="<name-or-ID>",
     type=str,
     help=(
@@ -744,7 +743,6 @@ FOLLOW_COMPUTE_REQUIREMENT_EVENTS = FOLLOW.variant(
 WORK_REQUIREMENTS = option(
     "work_requirements",
     nargs="*",
-    default="",
     metavar="<work-requirement-name-or-ID>",
     type=str,
     help=(
@@ -1120,7 +1118,6 @@ def check_schema_mode_is_exclusive(args: Namespace, parser: ArgumentParser) -> N
 TASK_ID_LIST = option(
     "task_id_list",
     nargs="*",
-    default="",
     metavar="<target>",
     type=str,
     help=(
@@ -2466,7 +2463,6 @@ COMMANDS["yd-schema"] = Command(
 WORKER_POOL_NODES_LIST = option(
     "worker_pool_nodes_list",
     nargs="*",
-    default="",
     metavar="<worker-pool-name-or-ID/node-id>",
     type=str,
     help="the name(s) or YellowDog ID(s) of the worker pool(s) and/or ID(s) of"

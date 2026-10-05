@@ -32,7 +32,6 @@ DATA_CLIENT_UPLOAD_PATH = "uploadPath"  # String
 DEPENDENCIES = "dependencies"  # List of Strings
 DEPENDENT_ON = "dependentOn"  # String (Deprecated)
 DESTINATION_TASK_GROUP = "destinationTaskGroup"  # String (for ResubmissionDestination)
-DIRECTORY_NAME = "directoryName"  # String
 DISABLE_PREALLOCATION = "disablePreallocation"  # Boolean
 ENV = "environment"  # Dictionary
 ERROR_TYPES = "errorTypes"  # List of Strings
@@ -73,7 +72,6 @@ PROCESS_EXIT_CODES = "processExitCodes"  # List of Ints
 PROVIDERS = "providers"  # List of Strings
 RAM = "ram"  # List of two Floats
 REGIONS = "regions"  # List of Strings
-REQUIRED = "required"  # Boolean
 RESUBMISSION_DESTINATIONS = "resubmissionDestinations"  # List of Dicts
 RESUBMIT_ERRORS = "resubmitErrors"  # Dict (Selection<TaskErrorSelector>)
 RETRY_ERRORS = "retryErrors"  # Dict (Selection<TaskErrorSelector>)
@@ -94,7 +92,6 @@ TASKS_PER_WORKER = "tasksPerWorker"  # Integer
 TASK_BATCH_SIZE = "taskBatchSize"  # Integer
 TASK_COUNT = "taskCount"  # Integer
 TASK_DATA = "taskData"  # String
-TASK_DATA_DESTINATION = "destination"  # String
 TASK_DATA_FILE = "taskDataFile"  # String
 TASK_DATA_FILES = "taskDataFiles"  # List of Strings
 TASK_DATA_INPUTS = "taskDataInputs"  # List of dictionaries
@@ -165,7 +162,6 @@ ALL_KEYS = [
     DEPENDENCIES,
     DEPENDENT_ON,
     DESTINATION_TASK_GROUP,
-    DIRECTORY_NAME,
     ENV,
     ERROR_TYPES,
     FAILURE_POLICY,
@@ -202,7 +198,6 @@ ALL_KEYS = [
     PROVIDERS,
     RAM,
     REGIONS,
-    REQUIRED,
     RESUBMISSION_DESTINATIONS,
     RESUBMIT_ERRORS,
     RETRY_ERRORS,
@@ -221,7 +216,6 @@ ALL_KEYS = [
     TASK_BATCH_SIZE,
     TASK_COUNT,
     TASK_DATA,
-    TASK_DATA_DESTINATION,
     TASK_DATA_FILE,
     TASK_DATA_FILES,
     TASK_DATA_INPUTS,
@@ -285,7 +279,6 @@ STRING_PROPERTIES = frozenset(
         DATA_CLIENT_UPLOAD_PATH,
         DEPENDENT_ON,
         DESTINATION_TASK_GROUP,
-        DIRECTORY_NAME,
         IMAGES_ID,
         IMPORT_COMMON,
         INSTANCE_PRICING_PREFERENCE,
@@ -298,7 +291,6 @@ STRING_PROPERTIES = frozenset(
         SCHEMA_KEY,
         SECRET,
         TASK_DATA,
-        TASK_DATA_DESTINATION,
         TASK_DATA_FILE,
         TASK_DATA_SOURCE,
         TASK_GROUP_NAME,

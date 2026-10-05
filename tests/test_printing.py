@@ -812,3 +812,28 @@ def test_an_output_file_that_cannot_be_written_keeps_its_cause(tmp_path):
     with pytest.raises(RuntimeError) as raised:
         printing_module.print_to_file("{}", str(tmp_path / "missing" / "out.json"))
     assert isinstance(raised.value.__cause__, OSError)
+
+
+class TestStatesAreWholeWords:
+    """
+    A state is highlighted as a whole word only: not 'NEW' inside a quoted
+    name, 'READY' inside 'ALREADY' or 'TERMINATED' inside 'UNTERMINATED'.
+    """
+
+    @staticmethod
+    def _styled(text: str) -> list[str]:
+        from rich.text import Text
+
+        rendered = Text(text)
+        printing_module.PrintLogHighlighter().highlight(rendered)
+        return [text[span.start : span.end] for span in rendered.spans]
+
+    def test_states_inside_words_are_left_alone(self):
+        styled = self._styled("'MY_NEW_TASKS' ALREADY UNTERMINATED")
+        assert "NEW" not in styled
+        assert "READY" not in styled
+        assert "TERMINATED" not in styled
+
+    def test_states_as_words_are_highlighted(self):
+        styled = self._styled("Task is RUNNING, pool STOPPED, node NON-MATCHING")
+        assert {"RUNNING", "STOPPED", "NON-MATCHING"} <= set(styled)

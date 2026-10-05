@@ -280,7 +280,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "task_id_list",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -1075,7 +1075,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -1823,7 +1823,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "+",
@@ -2141,7 +2141,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -2459,7 +2459,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -4447,7 +4447,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -5011,7 +5011,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -8506,7 +8506,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "worker_pool_nodes_list",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -8866,7 +8866,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -9747,7 +9747,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",

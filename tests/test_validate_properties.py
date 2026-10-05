@@ -192,3 +192,10 @@ def test_every_free_form_map_is_excluded():
 def test_invalid_properties_are_named_sorted_in_a_value_error():
     with pytest.raises(ValueError, match=r"^Invalid properties in ctx: 'nope', 'zzz'$"):
         validate_properties({"zzz": 1, "nope": 2}, "ctx")
+
+
+@pytest.mark.parametrize("key", ["directoryName", "required", "destination"])
+def test_keys_of_removed_features_are_invalid(key):
+    # 'outputsOther' went with the Object Store; its keys are no properties
+    with pytest.raises(ValueError, match=key):
+        validate_properties({"taskGroups": [{key: "x", "tasks": [{}]}]}, "ctx")

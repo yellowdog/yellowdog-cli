@@ -7,10 +7,8 @@ from enum import IntEnum
 
 DEFAULT_URL = "https://api.yellowdog.ai"
 
-# Reported when a required configuration property is absent from every source.
-# Shared rather than written out at each site because Commander matches on it:
-# with no configuration file selected it recognises this one failure of
-# 'yd-show' as 'nothing is configured' rather than reporting it as an error.
+# Reported when a required configuration property is absent from every
+# source, by each of load_config.py's section loaders.
 MISSING_CONFIG_DATA = "Missing configuration data"
 
 
@@ -240,51 +238,52 @@ SCHEMA_FAMILIES: tuple[str, ...] = (
     "config",
 )
 JSON_INDENT = 2
+# A state as a whole word: '_' is a word character, so a name holding one
+# ('MY_NEW_TASKS') is left alone, as are 'ALREADY' and 'UNTERMINATED'
 HIGHLIGHTED_STATES = [
-    re.compile(r"(?P<active>ALLOCATED)"),
-    re.compile(r"(?P<active>DOING_TASK)"),
-    re.compile(r"(?P<active>BATCH_ALLOCATION)"),
-    re.compile(r"(?P<active>EXECUTING)"),
-    re.compile(r"(?P<active>EXPECTED)"),
-    re.compile(r"(?P<active>PENDING)"),
-    re.compile(r"(?P<active>READY)"),
-    re.compile(r"(?P<active>RUNNING)"),
-    re.compile(r"(?P<active>TARGET)"),
-    re.compile(r"(?P<active>ALIVE)"),
-    re.compile(r"(?P<active>MATCHING)"),
-    re.compile(r"(?P<active>MAYBE MATCHING)"),
-    re.compile(r"(?P<active>FINISHING)"),
-    re.compile(r"(?P<cancelled>ABORTED)"),
-    re.compile(r"(?P<cancelled>CANCELLED)"),
-    re.compile(r"(?P<cancelled>CANCELLING)"),
-    re.compile(r"(?P<cancelled>DEREGISTERED)"),
-    re.compile(r"(?P<cancelled>SHUTDOWN)"),
-    re.compile(r"(?P<cancelled>STOPPED)"),
-    re.compile(r"(?P<cancelled>TERMINATED)"),
-    re.compile(r"(?P<completed>COMPLETED)"),
-    re.compile(r"(?P<failed>FAILED)"),
-    re.compile(r"(?P<failed>FAILING)"),
-    re.compile(r"(?P<failed>LOST)"),
-    re.compile(r"(?P<failed>NON-MATCHING)"),
-    re.compile(r"(?P<idle>EMPTY)"),
-    re.compile(r"(?P<idle>FOUND)"),
-    re.compile(r"(?P<idle>IDLE)"),
-    re.compile(r"(?P<idle>SLEEPING)"),
-    re.compile(r"(?P<idle>STOPPED)"),
-    re.compile(r"(?P<idle>STARTING)"),
-    re.compile(r"(?P<idle>WAITING)"),
-    re.compile(r"(?P<idle>HELD)"),
-    re.compile(r"(?P<starved>STARVED)"),
-    re.compile(r"(?P<transitioning>CONFIGURING)"),
-    re.compile(r"(?P<transitioning>DOWNLOADING)"),
+    re.compile(r"\b(?P<active>ALLOCATED)\b"),
+    re.compile(r"\b(?P<active>DOING_TASK)\b"),
+    re.compile(r"\b(?P<active>BATCH_ALLOCATION)\b"),
+    re.compile(r"\b(?P<active>EXECUTING)\b"),
+    re.compile(r"\b(?P<active>EXPECTED)\b"),
+    re.compile(r"\b(?P<active>PENDING)\b"),
+    re.compile(r"\b(?P<active>READY)\b"),
+    re.compile(r"\b(?P<active>RUNNING)\b"),
+    re.compile(r"\b(?P<active>TARGET)\b"),
+    re.compile(r"\b(?P<active>ALIVE)\b"),
+    re.compile(r"\b(?P<active>MATCHING)\b"),
+    re.compile(r"\b(?P<active>MAYBE MATCHING)\b"),
+    re.compile(r"\b(?P<active>FINISHING)\b"),
+    re.compile(r"\b(?P<cancelled>ABORTED)\b"),
+    re.compile(r"\b(?P<cancelled>CANCELLED)\b"),
+    re.compile(r"\b(?P<cancelled>CANCELLING)\b"),
+    re.compile(r"\b(?P<cancelled>DEREGISTERED)\b"),
+    re.compile(r"\b(?P<cancelled>SHUTDOWN)\b"),
+    re.compile(r"\b(?P<cancelled>STOPPED)\b"),
+    re.compile(r"\b(?P<cancelled>TERMINATED)\b"),
+    re.compile(r"\b(?P<completed>COMPLETED)\b"),
+    re.compile(r"\b(?P<failed>FAILED)\b"),
+    re.compile(r"\b(?P<failed>FAILING)\b"),
+    re.compile(r"\b(?P<failed>LOST)\b"),
+    re.compile(r"\b(?P<failed>NON-MATCHING)\b"),
+    re.compile(r"\b(?P<idle>EMPTY)\b"),
+    re.compile(r"\b(?P<idle>FOUND)\b"),
+    re.compile(r"\b(?P<idle>IDLE)\b"),
+    re.compile(r"\b(?P<idle>SLEEPING)\b"),
+    re.compile(r"\b(?P<idle>STARTING)\b"),
+    re.compile(r"\b(?P<idle>WAITING)\b"),
+    re.compile(r"\b(?P<idle>HELD)\b"),
+    re.compile(r"\b(?P<starved>STARVED)\b"),
+    re.compile(r"\b(?P<transitioning>CONFIGURING)\b"),
+    re.compile(r"\b(?P<transitioning>DOWNLOADING)\b"),
     # re.compile(r"(?P<transitioning>LATE$)"),
-    re.compile(r"(?P<transitioning>NEW)"),
-    re.compile(r"(?P<transitioning>PROVISIONING)"),
-    re.compile(r"(?P<transitioning>STOPPING)"),
-    re.compile(r"(?P<transitioning>TERMINATING)"),
-    re.compile(r"(?P<transitioning>UNAVAILABLE)"),
-    re.compile(r"(?P<transitioning>UNKNOWN)"),
-    re.compile(r"(?P<transitioning>UPLOADING)"),
+    re.compile(r"\b(?P<transitioning>NEW)\b"),
+    re.compile(r"\b(?P<transitioning>PROVISIONING)\b"),
+    re.compile(r"\b(?P<transitioning>STOPPING)\b"),
+    re.compile(r"\b(?P<transitioning>TERMINATING)\b"),
+    re.compile(r"\b(?P<transitioning>UNAVAILABLE)\b"),
+    re.compile(r"\b(?P<transitioning>UNKNOWN)\b"),
+    re.compile(r"\b(?P<transitioning>UPLOADING)\b"),
 ]
 # For Rich colour options, see colour list & swatches at:
 # https://rich.readthedocs.io/en/stable/appendix/colors.html
@@ -308,7 +307,6 @@ DEFAULT_THEME = {
 # Resource type names for create/remove
 RESOURCE_PROPERTY_NAME = "resource"
 RN_ADD_APPLICATION_REQUEST = "AddApplicationRequest"
-RN_ADD_GROUP_REQUEST = "AddGroupRequest"
 RN_ALLOWANCE = "Allowance"
 RN_APPLICATION = "Application"
 RN_CONFIGURED_POOL = "ConfiguredWorkerPool"
@@ -328,7 +326,6 @@ RN_ROLE = "Role"
 RN_SOURCE_TEMPLATE = "ComputeSourceTemplate"
 RN_STRING_ATTRIBUTE_DEFINITION = "StringAttributeDefinition"
 RN_UPDATE_APPLICATION_REQUEST = "UpdateApplicationRequest"
-RN_UPDATE_GROUP_REQUEST = "UpdateGroupRequest"
 
 # Entity type names (used as CLI arguments and for dispatch)
 ET_ALLOWANCES = "allowances"
@@ -374,7 +371,6 @@ PROP_IMAGE = "image"
 PROP_IMAGES_ID = "imagesId"
 PROP_IMAGE_ID = "imageId"
 PROP_INSTANCE_PRICING = "instancePricing"
-PROP_KEYRING = "keyring"
 PROP_KEYRING_NAME = "keyringName"
 PROP_KEYRINGS = "keyrings"
 PROP_NAME = "name"
