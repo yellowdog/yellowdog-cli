@@ -39,7 +39,6 @@ from yellowdog_client.model import (
     MachineImageFamilySummary,
     MachineImageGroup,
     NamespaceSearch,
-    ProvisionedWorkerPool,
     RequirementsAllowance,
     RoleSearch,
     RoleSummary,
@@ -60,12 +59,12 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, NotFoundError, classify
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
+from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR, ExitCode
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
     TYPE_IMGGRP,
@@ -160,38 +159,6 @@ def get_worker_pool_id_by_name(
         if is_http_not_found(e):
             return None
         raise
-
-
-def get_compute_requirement_id_by_name(
-    client: PlatformClient,
-    compute_requirement_name: str,
-    namespace: str,
-    statuses: list[ComputeRequirementStatus] | None = None,
-) -> str | None:
-    """
-    Find a Compute Requirement ID by its name and namespace.
-    Restrict search by status. A 'namespace' prefix for the
-    name will override the 'namespace' argument.
-    """
-    namespace_, name = split_namespace_and_name(compute_requirement_name)
-    namespace_ = namespace if namespace_ is None else namespace_
-
-    crs_search = ComputeRequirementSummarySearch(
-        name=name,
-        statuses=statuses,
-        namespaces=None if namespace_ is None else [namespace_],
-    )
-    search_client: SearchClient = (
-        client.compute_client.get_compute_requirement_summaries(crs_search)
-    )
-    if (fq_name := f"{namespace_}/{name}") != compute_requirement_name:
-        print_info(f"Finding Compute Requirement ID for '{fq_name}'")
-    try:
-        # The CR must be unique for any given namespace/name
-        # Ensure exact name match
-        return next(cr for cr in search_client.list_all() if cr.name == name).id
-    except StopIteration:
-        return None
 
 
 class AmbiguousNameError(LookupError):
@@ -416,30 +383,6 @@ def get_compute_source_templates(
     return [cst for cst in csts if cst.name == name]
 
 
-@lru_cache
-def get_work_requirement_summaries(
-    client: PlatformClient,
-    namespace: str | None = None,
-    name: str | None = None,
-    partial_name_matches: bool = True,
-) -> list[WorkRequirementSummary]:
-    """
-    Get the list of Work Requirement summaries, optionally
-    scoped by namespace and name. Optionally allow partial
-    name matches.
-    """
-    wr_search = WorkRequirementSearch(
-        name=name, namespaces=None if namespace is None else [namespace]
-    )
-    wr_search_client: SearchClient = client.work_client.get_work_requirements(wr_search)
-    wr_summaries = wr_search_client.list_all()
-
-    if partial_name_matches or name is None:
-        return wr_summaries
-
-    return [wr for wr in wr_summaries if wr.name == name]
-
-
 def clear_compute_source_template_cache():
     """
     Clear the cache of Compute Source Templates.
@@ -455,7 +398,9 @@ def get_compute_requirement_template_id_by_name(
     """
     Find the Compute Requirement Template ID that matches the
     provided name and namespace. Namespace as a name prefix
-    overrides namespace arg.
+    overrides namespace arg. With neither, the name is looked for in
+    every namespace, and found in two or more raises AmbiguousNameError
+    rather than one of them being picked.
     """
     namespace_, name = split_namespace_and_name(name)  # type: ignore[assignment]
     namespace_ = namespace if namespace_ is None else namespace_
@@ -465,6 +410,12 @@ def get_compute_requirement_template_id_by_name(
     )
     if not crts:
         return None
+    if len(crts) > 1:
+        namespaces = ", ".join(sorted(str(crt.namespace) for crt in crts))
+        raise AmbiguousNameError(
+            f"Compute Requirement Templates named '{name}' are in namespaces"
+            f" {namespaces}; please supply 'namespace/{name}' or the ID"
+        )
 
     return crts[0].id
 
@@ -501,27 +452,6 @@ def clear_compute_requirement_template_cache():
     get_compute_requirement_templates.cache_clear()
 
 
-def get_compute_requirement_id_by_worker_pool_id(
-    client: PlatformClient, worker_pool_id: str
-) -> str | None:
-    """
-    Get a Compute Requirement ID from a Provisioned Worker Pool ID.
-    """
-    try:
-        worker_pool: WorkerPool = client.worker_pool_client.get_worker_pool_by_id(
-            worker_pool_id
-        )
-    except Exception as e:
-        if not is_http_not_found(e):
-            print_error(f"Unable to look up Worker Pool '{worker_pool_id}': {e}")
-        return None
-
-    if isinstance(worker_pool, ProvisionedWorkerPool):
-        return worker_pool.computeRequirementId
-
-    return None
-
-
 def get_worker_pool_summaries(
     client: PlatformClient,
     namespace: str | None = None,
@@ -550,7 +480,6 @@ def get_image_name_or_id(
     client: PlatformClient,
     image_name_or_id: str | None,
     always_return_ydid: bool = True,
-    report_substitutions: bool = True,
 ) -> str | None:
     """
     Attempts to resolve to a well-formed YD image name or ID, if it can.
@@ -605,7 +534,7 @@ def get_image_name_or_id(
         """
         Helper function to report the replacement.
         """
-        if report_substitutions and return_val != original_image_name_or_id:
+        if return_val != original_image_name_or_id:
             msg = f"{return_val}" if is_ydid else f"'{return_val}'"
             print_info(f"Images ID '{original_image_name_or_id}' -> {msg}")
         return return_val
@@ -717,23 +646,21 @@ def get_image_name_or_id(
     return original_image_name_or_id
 
 
-def remove_allowances_matching_description(
-    client: PlatformClient, description: str, keep: str | None = None
-) -> list[str]:
+def allowances_to_remove(client: PlatformClient, description: str) -> list:
     """
-    Remove Allowances that match on the description property, other than
-    the one whose ID is 'keep' (yd-create's replacement). Return the IDs of
-    the Allowances removed: those declined are not.
+    The Allowances whose description is exactly 'description' that the user
+    chooses to remove: selected from, when there are several, and each one
+    confirmed. All the asking and none of the removing, so that yd-create
+    asks before it creates the replacement, and an unanswerable prompt fails
+    the run before anything has changed.
     """
     allowances = client.allowances_client.get_allowances(
         AllowanceSearch(description=description)
-    ).list_all()  # Note: partial matches on 'name'
+    ).list_all()  # Note: partial matches on 'description'
 
     # Ensure exact match
     allowances = [
-        allowance
-        for allowance in allowances
-        if description == allowance.description and allowance.id != keep
+        allowance for allowance in allowances if description == allowance.description
     ]
 
     if not allowances:
@@ -751,14 +678,33 @@ def remove_allowances_matching_description(
             force_interactive=True,
         )
 
+    return [
+        allowance
+        for allowance in allowances
+        if confirmed(f"Remove Allowance with YellowDog ID {allowance.id}?")
+    ]
+
+
+def remove_allowances(client: PlatformClient, allowances: list) -> list[str]:
+    """
+    Remove the Allowances allowances_to_remove() chose, returning their IDs.
+    """
     removed = []
     for allowance in allowances:
-        if confirmed(f"Remove Allowance with YellowDog ID {allowance.id}?"):
-            client.allowances_client.delete_allowance_by_id(allowance.id)  # type: ignore[arg-type]
-            print_info(f"Removed Allowance with YellowDog ID {allowance.id}")
-            removed.append(cast(str, allowance.id))
-
+        client.allowances_client.delete_allowance_by_id(allowance.id)
+        print_info(f"Removed Allowance with YellowDog ID {allowance.id}")
+        removed.append(cast(str, allowance.id))
     return removed
+
+
+def remove_allowances_matching_description(
+    client: PlatformClient, description: str
+) -> list[str]:
+    """
+    Remove the Allowances matching on the description property that the
+    user chooses (see allowances_to_remove()), returning their IDs.
+    """
+    return remove_allowances(client, allowances_to_remove(client, description))
 
 
 @lru_cache
@@ -768,11 +714,9 @@ def get_all_tasks_in_task_group(
     """
     Return all the tasks in a task group, with caching.
     """
-    return client.work_client.find_tasks(
-        TaskSearch(
-            taskGroupId=task_group_id,
-        )
-    )
+    return client.work_client.get_tasks(
+        TaskSearch(taskGroupId=task_group_id)
+    ).list_all()
 
 
 def split_namespace_and_name(
@@ -784,7 +728,8 @@ def split_namespace_and_name(
     if namespace_and_name is None:
         return None, None
 
-    parts = namespace_and_name.strip().split(NAMESPACE_PREFIX_SEPARATOR)
+    namespace_and_name = namespace_and_name.strip()
+    parts = namespace_and_name.split(NAMESPACE_PREFIX_SEPARATOR)
     if len(parts) == 1:
         return None, namespace_and_name
     if len(parts) == 2:
@@ -956,6 +901,16 @@ def substitute_id_for_name_in_allowance(
     return allowance
 
 
+def _raise_session_failure(error: Exception) -> None:
+    """
+    Re-raise an authentication or connection failure, which a lookup that
+    otherwise tolerates failure (shows an ID it could not name) must not
+    hide: the command cannot go on as if nothing were wrong.
+    """
+    if classify(error) in SESSION_FAILURES:
+        raise error
+
+
 @lru_cache
 def _get_source_template_name_from_id(
     client: PlatformClient, cst_id: str | None
@@ -971,7 +926,8 @@ def _get_source_template_name_from_id(
             cst_id  # type: ignore[arg-type]
         )
         return f"{cst.namespace}/{cst.source.name}"
-    except Exception:
+    except Exception as e:
+        _raise_session_failure(e)
         return cst_id
 
 
@@ -990,7 +946,8 @@ def _get_requirement_template_name_from_id(
             client.compute_client.get_compute_requirement_template(crt_id)  # type: ignore[arg-type]
         )
         return f"{crt.namespace}/{crt.name}"
-    except Exception:
+    except Exception as e:
+        _raise_session_failure(e)
         return crt_id
 
 
@@ -1008,7 +965,8 @@ def _get_image_family_or_group_name_from_id(
                 client.images_client.get_image_family_by_id(image_family_or_group_id)  # type: ignore[arg-type]
             )
             return f"yd/{image_family.namespace}/{image_family.name}"
-        except Exception:
+        except Exception as e:
+            _raise_session_failure(e)
             return image_family_or_group_id
 
     elif ydid_type == YDIDType.IMAGE_GROUP:
@@ -1025,7 +983,8 @@ def _get_image_family_or_group_name_from_id(
                 )
             )
             return f"yd/{image_family.namespace}/{image_family.name}/{image_group.name}"
-        except Exception:
+        except Exception as e:
+            _raise_session_failure(e)
             return image_family_or_group_id
 
     return image_family_or_group_id
@@ -1094,11 +1053,13 @@ def get_group_id_by_name(client: PlatformClient, group_name: str) -> str | None:
 @lru_cache
 def get_group_name_by_id(client: PlatformClient, group_id: str) -> str | None:
     """
-    Get a group's name by its ID.
+    Get a group's name by its ID, or None when it cannot be fetched (an
+    authentication or connection failure is raised).
     """
     try:
         return client.account_client.get_group(group_id).name
-    except Exception:
+    except Exception as e:
+        _raise_session_failure(e)
         return None
 
 
@@ -1322,14 +1283,18 @@ def get_image_family_summaries(
         search_client: SearchClient = client.images_client.get_image_families(if_search)
         return search_client.list_all()
     except Exception as e:
-        if namespace is not None and "MissingPermissionException" in str(e):
+        # Only a missing permission means 'none to be seen here': a search
+        # of every namespace is followed by one of the name's own, and a
+        # namespaced one is warned of. Anything else is raised, never
+        # cached as an empty list and a name passed on unresolved.
+        if classify(e) != ExitCode.PERMISSION:
+            raise
+        if namespace is not None:
             # Caching will prevent this warning appearing multiple times
             print_warning(
                 "Possible 'IMAGE_READ' permission missing if "
                 f"'{namespace}' is meant as an Image namespace?"
             )
-        else:
-            print_error(f"Unable to list Image Families: {e}")
 
     return []
 

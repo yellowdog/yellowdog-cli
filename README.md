@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 09:23:31 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 09:35:40 BST 2026 -->
 
 <!--te-->
 
@@ -2163,7 +2163,7 @@ A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances ru
 The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd-provision` command. A subset of the properties is also used by the `yd-instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
 
 The only mandatory property is `templateId`. All other properties have defaults (or are not required).
-The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name.
+The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name, optionally prefixed with its namespace (`namespace/name`). A name without a namespace is looked for in every namespace, and is an error if templates of that name are found in more than one.
 
 ## Worker Pools vs. Compute Requirements
 
@@ -3130,7 +3130,7 @@ The `effectiveFrom` and `effectiveUntil` date-time string fields can use any for
 
 Compute Source Template and Compute Requirement Template IDs can use names instead of IDs, and the IDs will be substituted by `yd-create`. However, if a Source allowance is created (type `co.yellowdog.platform.model.SourceAllowance`), then the Compute Source ID (note: **not** the Compute Source Template ID) itself must be used in the `sourceId` property.
 
-Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd-create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, these can optionally be removed once the new Allowance has been created, so a creation that fails leaves the existing ones in place. If multiple existing, matching Allowances are found, the user will be asked to select which ones (if any) to remove.
+Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd-create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, the user is asked which ones to remove (selecting from them when there are several, a selection `--yes` does not skip) and to confirm each removal, all before the new Allowance is created; the chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place, and a run that cannot be asked (no terminal to answer from) fails before anything has changed.
 
 When using `yd-remove`, Allowances are again matched using their `description` property only if `--match-allowances-by-description`/`-M` is used; a specification without a `description` is skipped, with a warning. As with other resources, Allowances can also be removed by their IDs (`yd-remove --ids <allowance_id> [<allowance_id>]`).
 

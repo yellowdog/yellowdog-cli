@@ -37,6 +37,7 @@ from yellowdog_client.model import (
 from yellowdog_client.model.exceptions import InvalidRequestException
 
 from yellowdog_cli.utils.entity_utils import (
+    allowances_to_remove,
     clear_application_caches,
     clear_compute_requirement_template_cache,
     clear_compute_source_template_cache,
@@ -55,7 +56,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_role_name_by_id,
     get_user_by_name_or_id,
     get_user_groups,
-    remove_allowances_matching_description,
+    remove_allowances,
 )
 from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
@@ -265,7 +266,6 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         client=CLIENT,
         image_name_or_id=source.get(image_property_name),
         always_return_ydid=False,
-        report_substitutions=True,
     )
     if image_id is not None:
         source[image_property_name] = image_id
@@ -337,7 +337,6 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
             client=CLIENT,
             image_name_or_id=image_str,
             always_return_ydid=False,
-            report_substitutions=True,
         )
         if images_id_ is not None:
             context[key] = images_id_
@@ -781,6 +780,18 @@ def create_allowance(resource: dict):
         return
 
     description = resource.get(PROP_DESCRIPTION)
+
+    # Existing Allowances with the same description are chosen and confirmed
+    # now, before anything changes, so a prompt that cannot be answered
+    # fails the run before the replacement exists; they are removed only
+    # once it does, so a creation that fails loses nothing
+    to_replace = []
+    if ARGS_PARSER.match_allowances_by_description and description is not None:
+        print_info(
+            f"Checking for existing Allowance(s) matching description '{description}'"
+        )
+        to_replace = allowances_to_remove(CLIENT, description)
+
     allowance = CLIENT.allowances_client.add_allowance(
         _get_model_object(type, resource)
     )
@@ -792,17 +803,18 @@ def create_allowance(resource: dict):
     if allowance.id is not None:
         print_quiet_result(allowance.id)
 
-    # Replace existing Allowances with the same description: removed only
-    # once the new one exists, so a creation that fails loses nothing
-    if ARGS_PARSER.match_allowances_by_description and description is not None:
-        print_info(
-            "Checking for and removing existing Allowance(s) matching "
-            f"description '{description}'"
-        )
-        for removed_id in remove_allowances_matching_description(
-            CLIENT, description, keep=allowance.id
-        ):
-            record_resource(RN_ALLOWANCE, description, removed_id, "removed")
+    for removed_id in remove_allowances(CLIENT, to_replace):
+        record_resource(RN_ALLOWANCE, description, removed_id, "removed")
+
+
+def _group_shown(group_id: str | None) -> str:
+    """
+    A Group as a message names it once its membership has changed: by name
+    and ID, or by ID alone when the name cannot be fetched, the change
+    having been made either way.
+    """
+    name = get_group_name_by_id(CLIENT, cast(str, group_id))
+    return str(group_id) if name is None else f"'{name}' ({group_id})"
 
 
 def _resolve_allowance_template(
@@ -1235,19 +1247,13 @@ def create_application(resource: dict):
         for group_id in group_ids_to_remove:
             CLIENT.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
             clear_application_caches()
-            print_info(
-                f"Removed Group '{get_group_name_by_id(CLIENT, cast(str, group_id))}' "
-                f"from Application ({group_id})"
-            )
+            print_info(f"Removed Group {_group_shown(group_id)} from Application")
 
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
             CLIENT.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
             clear_application_caches()
-            print_info(
-                f"Added Group '{get_group_name_by_id(CLIENT, group_id)}' "
-                f"to Application ({group_id})"
-            )
+            print_info(f"Added Group {_group_shown(group_id)} to Application")
 
     def show_key_and_secret(api_key: ApiKey):
         """
@@ -1415,16 +1421,12 @@ def update_user(resource: dict, internal_user: bool):
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
             CLIENT.account_client.remove_user_from_group(group_id, user.id)  # type: ignore[arg-type]
-            print_info(
-                f"Removed Group '{get_group_name_by_id(CLIENT, group_id)}' ({group_id})"
-            )
+            print_info(f"Removed Group {_group_shown(group_id)}")
 
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
             CLIENT.account_client.add_user_to_group(group_id, user.id)  # type: ignore[arg-type]
-            print_info(
-                f"Added Group '{get_group_name_by_id(CLIENT, group_id)}' ({group_id})"
-            )
+            print_info(f"Added Group {_group_shown(group_id)}")
         return True
 
     updated = update_groups()

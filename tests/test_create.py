@@ -22,6 +22,7 @@ from requests import HTTPError, Response
 import yellowdog_cli.create as yd_create
 from yellowdog_cli.utils import entity_utils, resource_processing
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
+from yellowdog_cli.utils.interactive import NoAnswerToPrompt
 from yellowdog_cli.utils.settings import RAW_REQUEST_TIMEOUT, ExitCode
 
 
@@ -156,7 +157,7 @@ def _allowance(**values) -> dict:
     return {"type": "SourcesAllowance", "description": "d", **values}
 
 
-def test_matching_allowances_are_removed_only_after_the_new_one_exists(
+def test_matching_allowances_are_chosen_before_and_removed_after_the_new_one(
     allowance_env, monkeypatch
 ):
     allowance_env.args.match_allowances_by_description = True
@@ -164,14 +165,19 @@ def test_matching_allowances_are_removed_only_after_the_new_one_exists(
     allowance_env.client.allowances_client.add_allowance.side_effect = (
         lambda allowance: calls.append("add") or SimpleNamespace(id="new")
     )
-
-    def _remove(client, description, keep=None):
-        calls.append(("remove", description, keep))
-        return ["old"]
-
-    monkeypatch.setattr(yd_create, "remove_allowances_matching_description", _remove)
+    old = SimpleNamespace(id="old")
+    monkeypatch.setattr(
+        yd_create,
+        "allowances_to_remove",
+        lambda client, description: calls.append(("choose", description)) or [old],
+    )
+    monkeypatch.setattr(
+        yd_create,
+        "remove_allowances",
+        lambda client, allowances: calls.append(("remove", allowances)) or ["old"],
+    )
     yd_create.create_allowance(_allowance())
-    assert calls == ["add", ("remove", "d", "new")]
+    assert calls == [("choose", "d"), "add", ("remove", [old])]
     assert [(r["id"], r["action"]) for r in allowance_env.records] == [
         ("new", "created"),
         ("old", "removed"),
@@ -181,11 +187,28 @@ def test_matching_allowances_are_removed_only_after_the_new_one_exists(
 def test_a_failed_creation_removes_nothing(allowance_env, monkeypatch):
     allowance_env.args.match_allowances_by_description = True
     allowance_env.client.allowances_client.add_allowance.side_effect = ValueError("bad")
+    monkeypatch.setattr(
+        yd_create, "allowances_to_remove", lambda *a: [SimpleNamespace(id="old")]
+    )
     remove = MagicMock()
-    monkeypatch.setattr(yd_create, "remove_allowances_matching_description", remove)
+    monkeypatch.setattr(yd_create, "remove_allowances", remove)
     with pytest.raises(ValueError):
         yd_create.create_allowance(_allowance())
     remove.assert_not_called()
+
+
+def test_an_unanswerable_choice_fails_before_the_new_allowance_exists(
+    allowance_env, monkeypatch
+):
+    allowance_env.args.match_allowances_by_description = True
+
+    def _no_answer(*a):
+        raise NoAnswerToPrompt()
+
+    monkeypatch.setattr(yd_create, "allowances_to_remove", _no_answer)
+    with pytest.raises(NoAnswerToPrompt):
+        yd_create.create_allowance(_allowance())
+    allowance_env.client.allowances_client.add_allowance.assert_not_called()
 
 
 def test_a_template_name_not_found_fails_the_allowance(allowance_env, monkeypatch):
@@ -254,18 +277,26 @@ def test_a_dry_run_shows_allowance_dates_in_iso_8601(allowance_env, monkeypatch)
     assert shown[0]["effectiveFrom"] == "2026-01-02T03:04:00"
 
 
-def test_matching_allowances_keep_the_new_one_and_count_only_removals(monkeypatch):
+def test_only_exact_description_matches_are_removed(monkeypatch):
     client = MagicMock()
     client.allowances_client.get_allowances.return_value.list_all.return_value = [
-        SimpleNamespace(id="new", description="d"),
         SimpleNamespace(id="old", description="d"),
         SimpleNamespace(id="other", description="d2"),
     ]
     monkeypatch.setattr(entity_utils, "confirmed", lambda _: True)
-    assert entity_utils.remove_allowances_matching_description(
-        client, "d", keep="new"
-    ) == ["old"]
+    assert entity_utils.remove_allowances_matching_description(client, "d") == ["old"]
     client.allowances_client.delete_allowance_by_id.assert_called_once_with("old")
+
+
+def test_choosing_allowances_removes_none(monkeypatch):
+    client = MagicMock()
+    client.allowances_client.get_allowances.return_value.list_all.return_value = [
+        SimpleNamespace(id="old", description="d")
+    ]
+    monkeypatch.setattr(entity_utils, "confirmed", lambda _: True)
+    chosen = entity_utils.allowances_to_remove(client, "d")
+    assert [a.id for a in chosen] == ["old"]
+    client.allowances_client.delete_allowance_by_id.assert_not_called()
 
 
 def test_declined_allowance_removals_are_not_counted(monkeypatch):
