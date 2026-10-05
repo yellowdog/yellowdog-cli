@@ -25,10 +25,16 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.entity_utils import get_task_group_by_id, get_worker_pool_by_id
-from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     indent,
+    print_error,
     print_info,
     print_table_core,
     print_warning,
@@ -193,6 +199,24 @@ class MatchReport:
         )
 
 
+# The summary table's match column for a Worker Pool that could not be compared
+FAILED_STRING = "FAILED"
+
+
+@dataclass
+class FailedComparison:
+    """
+    A Worker Pool that could not be compared with a Task Group (its Compute
+    Requirement or Nodes could not be fetched): reported in its place, and
+    the comparison of the others carried on.
+    """
+
+    worker_pool_name: str
+    worker_pool_id: str
+    worker_pool_status: str
+    error: Exception
+
+
 class WorkerPools:
     """
     Class to contain the worker pools to be compared, and to check them for
@@ -205,14 +229,31 @@ class WorkerPools:
 
     def check_task_group_for_matching_worker_pools(
         self, task_group: TaskGroup
-    ) -> list[MatchReport]:
+    ) -> list[MatchReport | FailedComparison]:
         """
-        Check a task group for matches with the selected worker pools.
+        Check a task group for matches with the selected worker pools. A pool
+        that cannot be compared is a FailedComparison in its place; a
+        failure every later request would repeat (authentication, the
+        connection) is raised.
         """
-        return [
-            self._check_worker_pool_for_match(worker_pool, task_group)
-            for worker_pool in self._worker_pools
-        ]
+        results: list[MatchReport | FailedComparison] = []
+        for worker_pool in self._worker_pools:
+            try:
+                results.append(
+                    self._check_worker_pool_for_match(worker_pool, task_group)
+                )
+            except Exception as e:
+                if classify(e) in SESSION_FAILURES:
+                    raise
+                results.append(
+                    FailedComparison(
+                        worker_pool_name=worker_pool.name or "",
+                        worker_pool_id=worker_pool.id or "",
+                        worker_pool_status=str(worker_pool.status),
+                        error=e,
+                    )
+                )
+        return results
 
     def _check_worker_pool_for_match(
         self, worker_pool: ProvisionedWorkerPool, task_group: TaskGroup
@@ -594,6 +635,15 @@ def _get_work_requirement_by_id(work_requirement_id: str) -> WorkRequirement:
         ) from e
 
 
+def _get_task_group_by_id(task_group_id: str) -> TaskGroup:
+    try:
+        return get_task_group_by_id(CLIENT, task_group_id)
+    except Exception as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Task Group ID '{task_group_id}' not found") from e
+        raise
+
+
 def _get_provisioned_worker_pool_by_id(worker_pool_id: str) -> ProvisionedWorkerPool:
     try:
         worker_pool = get_worker_pool_by_id(CLIENT, worker_pool_id)
@@ -623,42 +673,62 @@ SUMMARY_HEADINGS = [
 ]
 
 
-def _summary_row(index: int, match_report: MatchReport) -> list:
+def _summary_row(index: int, match_report: MatchReport | FailedComparison) -> list:
     return [
         index + 1,
         match_report.worker_pool_name,
         match_report.worker_pool_status,
         match_report.worker_pool_id,
-        match_report.summary().value,
+        (
+            FAILED_STRING
+            if isinstance(match_report, FailedComparison)
+            else match_report.summary().value
+        ),
     ]
 
 
-def _record_comparison(task_group: TaskGroup, match_reports: list[MatchReport]):
+def _failure_message(failure: FailedComparison) -> str:
+    return (
+        f"Unable to compare Worker Pool '{failure.worker_pool_name}'"
+        f" ({failure.worker_pool_id}): {failure.error}"
+    )
+
+
+def _record_comparison(
+    task_group: TaskGroup, match_reports: list[MatchReport | FailedComparison]
+):
     """
     Record, for '--json', one object per Worker Pool compared with the Task
     Group: the Task Group, the summary table's row for the Worker Pool, and
     its detailed report's rows under "properties", each keyed by its table's
-    headings in lowerCamelCase.
+    headings in lowerCamelCase. A Worker Pool that could not be compared
+    has FAILED as its match, its "error", and no "properties".
     """
     for index, match_report in enumerate(match_reports):
         (summary,) = rows_as_objects(
             SUMMARY_HEADINGS, [_summary_row(index, match_report)]
         )
-        record(
-            {
-                "taskGroupName": task_group.name,
-                "taskGroupId": task_group.id,
-                **summary,
-                "properties": rows_as_objects(
-                    DETAIL_HEADINGS, match_report.detail_rows()
-                ),
-            }
-        )
+        item = {
+            "taskGroupName": task_group.name,
+            "taskGroupId": task_group.id,
+            **summary,
+        }
+        if isinstance(match_report, FailedComparison):
+            item["error"] = str(match_report.error)
+            item["properties"] = []
+        else:
+            item["properties"] = rows_as_objects(
+                DETAIL_HEADINGS, match_report.detail_rows()
+            )
+        record(item)
 
 
-def _compare_task_group(task_group: TaskGroup, worker_pools: WorkerPools):
+def _compare_task_group(
+    task_group: TaskGroup, worker_pools: WorkerPools
+) -> list[Exception]:
     """
-    Compare a Task Group.
+    Compare a Task Group; return the failures of the Worker Pools that could
+    not be compared with it, each reported.
     """
     print_info(
         f"Comparing Task Group '{task_group.name}' ({task_group.id})",
@@ -666,15 +736,21 @@ def _compare_task_group(task_group: TaskGroup, worker_pools: WorkerPools):
         override_quiet=not json_requested(),
     )
 
-    match_reports: list[MatchReport] = (
-        worker_pools.check_task_group_for_matching_worker_pools(task_group=task_group)
+    match_reports = worker_pools.check_task_group_for_matching_worker_pools(
+        task_group=task_group
     )
+    failures = [
+        report for report in match_reports if isinstance(report, FailedComparison)
+    ]
 
     if json_requested():
         # The tables, and the messages printed alongside them despite
-        # '--quiet', are the result, which '--json' prints instead
+        # '--quiet', are the result, which '--json' prints instead; a
+        # failure's message goes to stderr, with its record
         _record_comparison(task_group, match_reports)
-        return
+        for failure in failures:
+            print_error(_failure_message(failure))
+        return [failure.error for failure in failures]
 
     if len(match_reports) > 1:
         # Summary report
@@ -694,9 +770,13 @@ def _compare_task_group(task_group: TaskGroup, worker_pools: WorkerPools):
 
     # Detailed reports
     for match_report in match_reports:
-        match_report.print_detailed_report()
+        if isinstance(match_report, FailedComparison):
+            print_error(_failure_message(match_report))
+        else:
+            match_report.print_detailed_report()
 
     print_info("Task Group comparison complete")
+    return [failure.error for failure in failures]
 
 
 @main_wrapper
@@ -715,9 +795,13 @@ def main():
 
     wr_or_tg_id: str = ARGS_PARSER.wr_or_tg_id or ""
 
+    failures: list[Exception] = []
+
     # Task group
     if (ydid_type := get_ydid_type(wr_or_tg_id)) == YDIDType.TASK_GROUP:
-        _compare_task_group(get_task_group_by_id(CLIENT, wr_or_tg_id), worker_pools)
+        failures += _compare_task_group(
+            _get_task_group_by_id(wr_or_tg_id), worker_pools
+        )
 
     # Work requirement
     elif ydid_type == YDIDType.WORK_REQUIREMENT:
@@ -728,13 +812,25 @@ def main():
             # Printed despite '--quiet', but not into '--json' output
             override_quiet=not json_requested(),
         )
+        if not work_requirement.taskGroups:
+            print_warning(
+                f"Work Requirement '{work_requirement.name}' ({work_requirement.id})"
+                " has no Task Groups to compare"
+            )
         for task_group in work_requirement.taskGroups or []:
-            _compare_task_group(task_group, worker_pools)
+            failures += _compare_task_group(task_group, worker_pools)
 
     else:
         raise ValueError(
             f"Not a YellowDog Work Requirement or Task Group ID: '{wr_or_tg_id}'"
         )
+
+    if failures:
+        message = f"{len(failures)} comparison(s) could not be made"
+        print_error(message)
+        codes = {classify(e) for e in failures}
+        # The shared cause's exit code, or FAILURE for different causes
+        raise ReportedFailure(failures[0] if len(codes) == 1 else RuntimeError(message))
 
 
 # Entry point

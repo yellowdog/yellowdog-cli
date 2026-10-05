@@ -3133,7 +3133,7 @@ class TestCompare:
         monkeypatch.setattr(
             yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
         )
-        monkeypatch.setattr(yd_compare, "get_task_group_by_id", lambda c, i: task_group)
+        monkeypatch.setattr(yd_compare, "_get_task_group_by_id", lambda i: task_group)
         monkeypatch.setattr(
             yd_compare,
             "WorkerPools",
@@ -3163,6 +3163,55 @@ class TestCompare:
             "matchStatus": "NO",
         } in row["properties"]
         assert len(row["properties"]) == 8
+
+    def test_a_pool_that_cannot_be_compared_is_recorded_and_exits_by_its_cause(
+        self, run, monkeypatch
+    ):
+        from yellowdog_cli.compare import FailedComparison
+
+        failure = FailedComparison(
+            worker_pool_name="pool",
+            worker_pool_id=WP_ID,
+            worker_pool_status="RUNNING",
+            error=_http_error(404),
+        )
+        task_group = SimpleNamespace(
+            name="tg1", id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+        )
+        monkeypatch.setattr(
+            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+        )
+        monkeypatch.setattr(yd_compare, "_get_task_group_by_id", lambda i: task_group)
+        monkeypatch.setattr(
+            yd_compare,
+            "WorkerPools",
+            lambda wps: SimpleNamespace(
+                check_task_group_for_matching_worker_pools=lambda task_group: [failure]
+            ),
+        )
+        out, err, _ = run(
+            yd_compare,
+            worker_pool_ids=[WP_ID],
+            wr_or_tg_id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1",
+        )
+        assert out[0]["workerPoolMatch"] == "FAILED"
+        assert out[0]["properties"] == [] and out[0]["error"]
+        assert run.exit_code == ExitCode.NOT_FOUND
+        assert "Unable to compare Worker Pool 'pool'" in " ".join(err.split())
+
+    def test_a_work_requirement_with_no_task_groups_says_so(self, run, monkeypatch):
+        monkeypatch.setattr(
+            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+        )
+        monkeypatch.setattr(
+            yd_compare,
+            "_get_work_requirement_by_id",
+            lambda i: SimpleNamespace(name="wr", id=WR_ID_1, taskGroups=[]),
+        )
+        out, err, _ = run(yd_compare, worker_pool_ids=[WP_ID], wr_or_tg_id=WR_ID_1)
+        assert out == []
+        assert "has no Task Groups to compare" in " ".join(err.split())
+        assert run.exit_code == 0
 
 
 # ---------------------------------------------------------------------------

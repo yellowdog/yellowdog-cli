@@ -16,6 +16,7 @@ from yellowdog_client.model import CloudProvider, DoubleRange, NodeStatus
 import yellowdog_cli.compare as compare_module
 from yellowdog_cli.compare import (
     UNKNOWN_STRING,
+    FailedComparison,
     MatchReport,
     MatchType,
     PropertyMatch,
@@ -410,11 +411,27 @@ class TestMatching:
         platform.nodes = [_node(status=NodeStatus.TERMINATED, ram=2.0), _node()]
         assert _rows(_run_spec(ram=_dr(4.0, None)))["RAM (GB)"][2] == "YES"
 
-    def test_a_pool_without_a_compute_requirement_is_an_error(self, platform):
-        pool = _pool()
-        pool.computeRequirementId = None
-        with pytest.raises(RuntimeError, match="has no Compute Requirement"):
-            _rows(_run_spec(), pool)
+    def test_a_pool_that_cannot_be_compared_fails_in_its_place(self, platform):
+        # The other pools are still compared
+        broken = _pool()
+        broken.computeRequirementId = None
+        broken.id, broken.name = "ydid:wrkrpool:000000:broken", "broken"
+        reports = WorkerPools(
+            [broken, _pool()]
+        ).check_task_group_for_matching_worker_pools(_run_spec())
+        assert isinstance(reports[0], FailedComparison)
+        assert "has no Compute Requirement" in str(reports[0].error)
+        assert reports[1].summary() == MatchType.YES
+
+    def test_a_session_failure_stops_the_comparison(self, platform):
+        platform_client = compare_module.CLIENT
+        platform_client.compute_client.get_compute_requirement_by_id.side_effect = (
+            RequestsConnectionError("reset")
+        )
+        with pytest.raises(RequestsConnectionError):
+            WorkerPools([_pool()]).check_task_group_for_matching_worker_pools(
+                _run_spec()
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +459,16 @@ class TestLookupFailures:
         assert (
             str(raised.value) == "Work Requirement ID 'ydid:workreq:000000:x' not found"
         )
+        assert classify(raised.value) == ExitCode.NOT_FOUND
+
+    def test_a_missing_task_group_is_not_found(self, monkeypatch):
+        def missing(client, task_group_id):
+            raise _http_error(404)
+
+        monkeypatch.setattr(compare_module, "get_task_group_by_id", missing)
+        with pytest.raises(NotFoundError) as raised:
+            compare_module._get_task_group_by_id("ydid:taskgrp:000000:x:1")
+        assert str(raised.value) == "Task Group ID 'ydid:taskgrp:000000:x:1' not found"
         assert classify(raised.value) == ExitCode.NOT_FOUND
 
     def test_a_missing_worker_pool_is_not_found(self, monkeypatch):
