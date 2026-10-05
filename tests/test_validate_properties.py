@@ -128,3 +128,67 @@ class TestDeprecatedKeys:
     def test_deprecated_key_raises(self, key):
         with pytest.raises(Exception, match="update your property names"):
             validate_properties({key: True}, "ctx")
+
+
+# ---------------------------------------------------------------------------
+# Maps whose keys are the user's own, and the error's form
+# ---------------------------------------------------------------------------
+
+
+class TestUserKeyedMaps:
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"addEnvironment": {"MY_VAR": "x"}},
+            {"taskGroups": [{"addEnvironment": {"FOO": "1"}}]},
+            {"taskGroups": [{"tasks": [{"environment": {"BAR": "2"}}]}]},
+        ],
+    )
+    def test_environment_variable_names_are_not_properties(self, data):
+        validate_properties(data, "ctx")
+
+
+def _free_form_maps(name: str, schema: object) -> set[str]:
+    """
+    The names, at any depth, of the properties whose schema is an object
+    with no fixed properties: a map whose keys the user chooses.
+    """
+    found: set[str] = set()
+    if not isinstance(schema, dict):
+        return found
+    if (
+        schema.get("type") == "object"
+        and "properties" not in schema
+        and schema.get("additionalProperties") not in (None, False)
+    ):
+        found.add(name)
+    for key, value in (schema.get("properties") or {}).items():
+        found |= _free_form_maps(key, value)
+    for key in ("items", "additionalProperties"):
+        if isinstance(schema.get(key), dict):
+            found |= _free_form_maps(name, schema[key])
+    return found
+
+
+def test_every_free_form_map_is_excluded():
+    """
+    A property whose keys are the user's own -- environment variable names,
+    tags -- is excluded from the ALL_KEYS check, or every key in it would be
+    an 'invalid property' (as 'addEnvironment's were).
+    """
+    from yellowdog_cli.utils import spec_properties
+    from yellowdog_cli.utils.validate_properties import EXCLUDED_KEYS
+
+    properties = list(spec_properties.WORK_REQUIREMENT_PROPERTIES)
+    for section in spec_properties.CONFIG_SECTIONS.values():
+        properties += list(section)
+    maps: set[str] = set()
+    for property_ in properties:
+        maps |= _free_form_maps(property_.name, property_.schema)
+    assert maps, "the walk found no maps at all"
+    assert maps <= set(EXCLUDED_KEYS), sorted(maps - set(EXCLUDED_KEYS))
+
+
+def test_invalid_properties_are_named_sorted_in_a_value_error():
+    with pytest.raises(ValueError, match=r"^Invalid properties in ctx: 'nope', 'zzz'$"):
+        validate_properties({"zzz": 1, "nope": 2}, "ctx")

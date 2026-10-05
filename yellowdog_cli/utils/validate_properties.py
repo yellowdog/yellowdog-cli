@@ -11,11 +11,14 @@ from yellowdog_cli.utils.property_names import *
 def validate_properties(data: dict, context: str):
     """
     Check that all keys in the supplied dictionary are found in the
-    ALL_KEYS list. Raise an exception if not.
+    ALL_KEYS list. Raise a ValueError naming them, sorted, if not.
     """
     invalid_keys = set(_get_keys(data)) - set(ALL_KEYS)
     if invalid_keys:
-        raise KeyError(f"Invalid properties in {context}: {invalid_keys}")
+        raise ValueError(
+            f"Invalid properties in {context}:"
+            f" {', '.join(repr(key) for key in sorted(invalid_keys))}"
+        )
 
 
 @dataclass
@@ -35,7 +38,18 @@ DEPRECATED_KEYS = [
     DeprecatedKey("idlePoolShutdownTimeout", IDLE_POOL_TIMEOUT),
 ]
 
-EXCLUDED_KEYS = [ENV, VARIABLES, INSTANCE_TAGS, TASK_DATA_INPUTS, TASK_DATA_OUTPUTS]
+# The properties whose keys are the user's own (environment variable names,
+# variable names, tags), or are checked elsewhere (the task data entries):
+# their contents are not held to ALL_KEYS. tests/test_validate_properties.py
+# holds every free-form map in spec_properties.py to this list
+EXCLUDED_KEYS = [
+    ADD_ENVIRONMENT,
+    ENV,
+    VARIABLES,
+    INSTANCE_TAGS,
+    TASK_DATA_INPUTS,
+    TASK_DATA_OUTPUTS,
+]
 
 
 def _get_keys(data: dict | list) -> list[str]:
