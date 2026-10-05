@@ -33,12 +33,14 @@ case applies is not known until the variable is substituted.
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import Callable, Iterable
 from sys import exit
 from typing import Any, NamedTuple, NoReturn
 
 import fastjsonschema
 
+from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
@@ -108,10 +110,23 @@ def _required_branches(branches: Any) -> list[list[str]] | None:
 
 
 def _one_of(exc: fastjsonschema.JsonSchemaValueException) -> list[list[str]] | None:
-    """An 'anyOf' failure's alternatives, if it is a one-of-these-keys rule."""
-    if exc.rule != "anyOf" or not isinstance(exc.value, dict):
+    """
+    An 'anyOf' (at least one) or 'oneOf' (exactly one) failure's
+    alternatives, if it is a one-of-these-keys rule.
+    """
+    if exc.rule not in ("anyOf", "oneOf") or not isinstance(exc.value, dict):
         return None
     return _required_branches(exc.rule_definition)
+
+
+def _present(alternatives: list[list[str]], value: dict) -> list[list[str]]:
+    """The alternatives whose keys 'value' holds, all of them."""
+    return [keys for keys in alternatives if all(key in value for key in keys)]
+
+
+def _shown(value: Any) -> str:
+    """An enum member as a message names it: a string bare, else as JSON."""
+    return value if isinstance(value, str) else json.dumps(value)
 
 
 def _not_together(exc: fastjsonschema.JsonSchemaValueException) -> list[str] | None:
@@ -171,7 +186,8 @@ def _message(exc: fastjsonschema.JsonSchemaValueException) -> str:
     """'data.taskGroups[0].maxWorkers must be integer' -> 'must be integer'."""
     alternatives = _one_of(exc)
     if alternatives is not None:
-        return "must contain one of " + ", ".join(
+        exactly = "exactly " if exc.rule == "oneOf" else ""
+        return f"must contain {exactly}one of " + ", ".join(
             _and_list(keys, "and") for keys in alternatives
         )
     together = _not_together(exc)
@@ -186,6 +202,15 @@ def _message(exc: fastjsonschema.JsonSchemaValueException) -> str:
     missing = _missing(exc)
     if missing:
         return _named("missing required", missing)
+    # A pattern, or a choice between shapes, is worded by what the schema
+    # says it is, never by its regex or 'cannot be validated by any definition'
+    description = _definition(exc).get("description")
+    if exc.rule in ("pattern", "anyOf", "oneOf") and isinstance(description, str):
+        return f"must be {description}"
+    if exc.rule == "enum" and isinstance(exc.rule_definition, list):
+        return "must be one of " + ", ".join(
+            _shown(member) for member in exc.rule_definition
+        )
     text = exc.message
     prefix = f"{exc.name} "
     return text[len(prefix) :] if exc.name and text.startswith(prefix) else text
@@ -244,8 +269,16 @@ def _repair(document: Any, exc: fastjsonschema.JsonSchemaValueException) -> bool
     # object's other violations are still found
     alternatives = _one_of(exc)
     if alternatives is not None:
-        for key in alternatives[0]:
-            value.setdefault(key, _STAND_IN)
+        present = _present(alternatives, value)
+        if not present:
+            for key in alternatives[0]:
+                value.setdefault(key, _STAND_IN)
+        else:
+            # 'oneOf', more than one there: keep the first, drop the rest
+            for keys in present[1:]:
+                for key in keys:
+                    if key not in present[0]:
+                        value.pop(key, None)
         return True
     together = _not_together(exc)
     if together is not None:
@@ -420,6 +453,17 @@ def warn_of_violations(family: Family, document: Any, source: str) -> list[Viola
         print_warning(
             f"cannot check '{source}' against the {family.value} schema: {e};"
             f" run 'yd-schema {family.value}' to see why"
+        )
+        return []
+    except Exception as e:
+        # A fault in the check itself: the check is advisory, so it never
+        # stops a command that would otherwise run; '--debug' shows it, as
+        # warn_of_config_violations() does for the configuration file
+        if ARGS_PARSER.debug:
+            raise
+        print_warning(
+            f"cannot check '{source}' against the {family.value} schema:"
+            f" {type(e).__name__}: {e}"
         )
         return []
     for violation in violations:

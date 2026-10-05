@@ -714,7 +714,13 @@ def _wrap_node(schema: Any, *, admit: bool = True) -> Any:
             # variable, which matching every member of a 'oneOf' would fail
             wrapped[key] = [_wrap_node(m, admit=False) for m in schema[key]]
     if admit and not _admits_variable(schema):
+        # Hoisted beside the 'if' for an editor, and the description kept on
+        # the schema too, which is where a validation failure finds it to
+        # word the violation by (spec_validation._message()) -- except beside
+        # a '$ref', where draft-07 ignores it and the $def words its own
         meta = {k: wrapped.pop(k) for k in _HOISTED if k in wrapped}
+        if "description" in meta and "$ref" not in wrapped:
+            wrapped["description"] = meta["description"]
         return {"if": VARIABLE_REF, "else": wrapped, **meta}
     return wrapped
 

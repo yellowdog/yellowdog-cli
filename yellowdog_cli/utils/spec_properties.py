@@ -74,13 +74,14 @@ STR_MAP: dict[str, Any] = {"type": "object", "additionalProperties": STR}
 RANGE: dict[str, Any] = {
     "type": "array",
     "items": {
+        "description": 'a number, or null or "none" for no limit',
         "anyOf": [
             {"type": ["number", "null"]},
             {
                 "type": "string",
                 "pattern": "^\\s*([Nn][Oo][Nn][Ee]|[Nn][Uu][Ll][Ll])\\s*$",
             },
-        ]
+        ],
     },
     "minItems": 2,
     "maxItems": 2,

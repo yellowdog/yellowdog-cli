@@ -208,7 +208,9 @@ class TestWarnings:
             no_format=True,
             debug=False,
         )
-        for target in (printing_module, results_module):
+        import yellowdog_cli.utils.spec_validation as spec_validation_module
+
+        for target in (printing_module, results_module, spec_validation_module):
             monkeypatch.setattr(target, "ARGS_PARSER", args)
         return args
 
@@ -243,6 +245,100 @@ class TestWarnings:
             "cannot check 'wr.json' against the work-requirement schema:"
             " bad definition; run 'yd-schema work-requirement' to see why"
         ) in out
+
+    def test_a_fault_in_the_check_is_one_warning_not_a_refusal(
+        self, args, capsys, monkeypatch
+    ):
+        import yellowdog_cli.utils.spec_validation as spec_validation_module
+
+        def fault(family, document, source):
+            raise KeyError("a repair bug")
+
+        monkeypatch.setattr(spec_validation_module, "validate_specification", fault)
+        assert warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json") == []
+        out = " ".join(capsys.readouterr().out.split())
+        assert out.count("WARNING") == 1
+        assert "cannot check 'wr.json'" in out and "KeyError" in out
+
+    def test_under_debug_a_fault_in_the_check_is_raised(self, args, monkeypatch):
+        import yellowdog_cli.utils.spec_validation as spec_validation_module
+
+        def fault(family, document, source):
+            raise KeyError("a repair bug")
+
+        args.debug = True
+        monkeypatch.setattr(spec_validation_module, "validate_specification", fault)
+        with pytest.raises(KeyError):
+            warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json")
+
+
+class TestWording:
+    """
+    No violation reaches the user in fastjsonschema's own words: a pattern
+    or a choice between shapes is worded by the schema's description, an
+    exactly-one-of-these-keys rule as such, and an enum as a plain list.
+    """
+
+    @staticmethod
+    def _messages(family: Family, document) -> list[str]:
+        return [
+            f"{v.path}: {v.message}"
+            for v in validate_specification(family, document, "x")
+        ]
+
+    def test_a_duration_is_named_not_its_regex(self):
+        messages = self._messages(
+            Family.WORKER_POOL,
+            {
+                "requirementTemplateUsage": {"templateId": "t"},
+                "provisionedProperties": {"nodeBootTimeout": "5m"},
+            },
+        )
+        assert messages == [
+            "provisionedProperties.nodeBootTimeout: must be an ISO 8601"
+            " duration, e.g. PT10M"
+        ]
+
+    def test_a_range_bound_is_named(self):
+        messages = self._messages(
+            Family.WORK_REQUIREMENT,
+            {"ram": ["lots", 4], "taskGroups": [{"tasks": [{}]}]},
+        )
+        assert messages == ['ram[0]: must be a number, or null or "none" for no limit']
+
+    @pytest.mark.parametrize("document", [{}, {"actions": [], "actionGroups": []}])
+    def test_actions_or_action_groups_exactly(self, document):
+        assert self._messages(Family.NODE_ACTIONS, document) == [
+            f"{DOCUMENT_PATH}: must contain exactly one of actions, actionGroups"
+        ]
+
+    def test_both_actions_and_groups_are_repaired_so_the_rest_is_checked(self):
+        messages = self._messages(
+            Family.NODE_ACTIONS,
+            {"actions": [{"type": "runCommand"}], "actionGroups": []},
+        )
+        assert messages == [
+            f"{DOCUMENT_PATH}: must contain exactly one of actions, actionGroups",
+            "actions[0]: missing required property 'path'",
+        ]
+
+    def test_an_enum_is_a_plain_list(self):
+        assert self._messages(
+            Family.NODE_ACTIONS, {"actions": [{"type": "bogus"}]}
+        ) == ["actions[0].type: must be one of runCommand, writeFile, createWorkers"]
+
+    def test_no_message_is_fastjsonschemas_own(self):
+        for family, document in [
+            (
+                Family.WORK_REQUIREMENT,
+                {"ram": [[], 4], "taskGroups": [{"tasks": [{}]}]},
+            ),
+            (Family.NODE_ACTIONS, {"actions": [], "actionGroups": []}),
+        ]:
+            for message in self._messages(family, document):
+                assert "cannot be validated" not in message
+                assert "exactly by one definition" not in message
+                assert "must match pattern" not in message
 
 
 # --- through the real commands ------------------------------------------------
