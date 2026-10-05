@@ -27,6 +27,11 @@ from yellowdog_cli.utils.wrapper import (
     main_wrapper,
 )
 
+# What 'groupsAndRoles' says, under --json, when they are null for want of
+# the permission to look them up
+PERMISSION_DENIED = "permission denied"
+ROLES_LABEL = "With role(s) [in namespace(s)]"
+
 
 @main_wrapper
 def main():
@@ -49,7 +54,7 @@ def report_application():
     permission_denied = exit_code == ExitCode.PERMISSION
 
     if ARGS_PARSER.json_output:
-        _print_json(application_details, portal_url, groups, roles)
+        _print_json(application_details, portal_url, groups, roles, permission_denied)
     else:
         _print_report(application_details, portal_url, groups, roles, permission_denied)
 
@@ -97,11 +102,14 @@ def _print_json(
     portal_url: str | None,
     groups: list[str] | None,
     roles: dict | None,
+    permission_denied: bool,
 ):
     """
     Print the Application's details as JSON: the properties of the
     ApplicationDetails object, plus the derived and looked-up properties,
-    in alphabetical order.
+    in alphabetical order. When the groups and roles are null for want of
+    the permission to look them up, 'groupsAndRoles' says so, as the
+    report's line does; a lookup that failed otherwise exits non-zero.
     """
     # 'Json.dump' is typed as returning 'object'; it is a dict in practice
     application_data: Any = Json.dump(application_details)
@@ -112,6 +120,8 @@ def _print_json(
             "roles": roles,
         }
     )
+    if permission_denied:
+        application_data["groupsAndRoles"] = PERMISSION_DENIED
     print_json(dict(sorted(application_data.items())))
 
 
@@ -125,76 +135,60 @@ def _print_report(
     """
     Print the Application's details as a readable report. The groups and
     roles are left out when they can't be determined, with a line saying so
-    when that is for want of permission.
+    when that is for want of permission; an Application with none says so.
     """
-    print_simple(override_quiet=True)
-    print_simple(
-        f"  Application name:                  {application_details.name}",
-        override_quiet=True,
-    )
-    print_simple(
-        f"  Application ID:                    {application_details.id}",
-        override_quiet=True,
-    )
-    print_simple(
-        f"  Account name:                      {application_details.accountName}",
-        override_quiet=True,
-    )
-    if portal_url is not None:
-        print_simple(
-            f"  Portal URL:                        {portal_url}",
-            override_quiet=True,
-        )
-    print_simple(
-        f"  Account ID:                        {application_details.accountId}",
-        override_quiet=True,
-    )
     features = (
         ""
         if application_details.features is None
         else ", ".join([str(feature) for feature in application_details.features])
     )
-    print_simple(
-        f"  Account features:                  {features}",
-        override_quiet=True,
-    )
-    all_ns_readable = "Yes" if application_details.allNamespacesReadable else "No"
-    print_simple(
-        f"  All namespaces readable:           {all_ns_readable}",
-        override_quiet=True,
-    )
+    rows: list[tuple[str, object]] = [
+        ("Application name", application_details.name),
+        ("Application ID", application_details.id),
+        ("Account name", application_details.accountName),
+    ]
+    if portal_url is not None:
+        rows.append(("Portal URL", portal_url))
+    rows += [
+        ("Account ID", application_details.accountId),
+        ("Account features", features),
+        (
+            "All namespaces readable",
+            "Yes" if application_details.allNamespacesReadable else "No",
+        ),
+    ]
     if not application_details.allNamespacesReadable:
-        readable_namespaces = (
-            ""
-            if application_details.readableNamespaces is None
-            else ", ".join(application_details.readableNamespaces)
-        )
-        print_simple(
-            f"  Readable namespaces:               {readable_namespaces}",
-            override_quiet=True,
+        rows.append(
+            (
+                "Readable namespaces",
+                ", ".join(application_details.readableNamespaces or []),
+            )
         )
 
     if permission_denied:
-        print_simple(
-            "  Groups and roles:                  "
-            "Cannot be determined due to application permissions",
-            override_quiet=True,
+        rows.append(
+            ("Groups and roles", "Cannot be determined due to application permissions")
         )
     elif groups is not None:
-        print_simple(
-            f"  In group(s):                       {', '.join(groups)}",
-            override_quiet=True,
-        )
-        for i, (role, namespaces) in enumerate((roles or {}).items()):
-            msg = f"{role} [{', '.join(namespaces)}]" if namespaces else role
-            if i == 0:
-                print_simple(
-                    f"  With role(s) [in namespace(s)]:    {msg}",
-                    override_quiet=True,
-                )
-            else:
-                print_simple(
-                    f"                                     {msg}",
-                    override_quiet=True,
-                )
+        rows.append(("In group(s)", ", ".join(groups) or "none"))
+        role_lines = [
+            f"{role} [{', '.join(namespaces)}]" if namespaces else role
+            for role, namespaces in (roles or {}).items()
+        ] or ["none"]
+        rows.append((ROLES_LABEL, role_lines[0]))
+        rows += [("", line) for line in role_lines[1:]]
+
+    _print_rows(rows)
+
+
+def _print_rows(rows: list[tuple[str, object]]) -> None:
+    """
+    The report's rows, each value starting in one column, worked out from
+    the longest label; an empty label continues the row above it.
+    """
+    width = max(len(label) for label, _ in rows) + len(":    ")
+    print_simple(override_quiet=True)
+    for label, value in rows:
+        labelled = f"{label}:" if label else ""
+        print_simple(f"  {labelled:<{width}}{value}".rstrip(), override_quiet=True)
     print_simple(override_quiet=True)

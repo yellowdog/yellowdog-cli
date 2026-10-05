@@ -170,6 +170,11 @@ class TestJsonOutput:
         payload = json_loads(output)
         assert payload["groups"] is None
         assert payload["roles"] is None
+        # Why, as the report's line says it
+        assert payload["groupsAndRoles"] == "permission denied"
+
+    def test_groups_and_roles_says_nothing_when_they_are_there(self, capsys):
+        assert "groupsAndRoles" not in json_loads(_run(capsys, json_output=True))
 
     def test_any_other_failure_is_null_with_a_warning_and_its_exit_code(self, capsys):
         with pytest.raises(SystemExit) as raised:
@@ -245,10 +250,35 @@ class TestHumanReadableReport:
                 debug=True,
             )
 
-    def test_report_with_no_groups_or_roles(self, capsys):
+    def test_report_with_no_groups_or_roles_says_none(self, capsys):
         output = _run(capsys, json_output=False, groups=[], roles={})
-        assert "In group(s):" in output
-        assert "With role(s)" not in output
+        lines = output.splitlines()
+        assert any(
+            line.startswith("  In group(s):") and line.endswith("none")
+            for line in lines
+        )
+        assert any(
+            line.startswith("  With role(s) [in namespace(s)]:")
+            and line.endswith("none")
+            for line in lines
+        )
+
+    def test_every_value_starts_in_one_column(self, capsys):
+        # Worked out from the longest label, the roles' own: two spaces, the
+        # label and its colon, then four spaces
+        output = _run(
+            capsys, json_output=False, roles={"ADMIN": ["GLOBAL"], "VIEWER": ["ns"]}
+        )
+        column = len("  With role(s) [in namespace(s)]:    ")
+        values = [line for line in output.splitlines() if line.strip()]
+        assert (
+            values[0]
+            == "  Application name:"
+            + " " * (column - len("  Application name:"))
+            + "my-app"
+        )
+        # A second role continues under the first
+        assert values[-1] == " " * column + "VIEWER [ns]"
 
     def test_a_role_with_no_namespaces_has_no_empty_brackets(self, capsys):
         output = _run(capsys, json_output=False, roles={"VIEWER": []})

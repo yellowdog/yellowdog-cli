@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct  4 21:46:18 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 07:58:02 BST 2026 -->
 
 <!--te-->
 
@@ -4229,7 +4229,7 @@ Key options:
 yd-application --config prod.toml
 ```
 
-The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined. `portalUrl` is derived from the Platform API URL as every Portal link the commands print is: a hostname label that is exactly `api` becomes `portal` (so `https://api.yellowdog.ai` gives `https://portal.yellowdog.ai`), and any other URL, such as `https://host/api`, is used as it is; it is `null` only when the account's name is not known. `groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure; if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](#machine-readable-output-and-exit-codes) once the rest has been reported.
+The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined. `portalUrl` is derived from the Platform API URL as every Portal link the commands print is: a hostname label that is exactly `api` becomes `portal` (so `https://api.yellowdog.ai` gives `https://portal.yellowdog.ai`), and any other URL, such as `https://host/api`, is used as it is; it is `null` only when the account's name is not known. `groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure, and `groupsAndRoles` is then added, saying `"permission denied"`; an Application in no groups, or with no roles, has `[]` or `{}` (the readable report says `none`); if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](#machine-readable-output-and-exit-codes) once the rest has been reported.
 
 ```shell
 yd-application --json
