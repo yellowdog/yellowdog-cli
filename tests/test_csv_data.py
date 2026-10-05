@@ -6,6 +6,7 @@ Functions that require API calls or full Work Requirement pipelines are
 out of scope for unit tests.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,14 +25,6 @@ from yellowdog_cli.utils.csv_data import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def reset_used_file_indexes():
-    """get_csv_file_index uses a module-level list to track used numeric indexes."""
-    csv_module.USED_FILE_INDEXES.clear()
-    yield
-    csv_module.USED_FILE_INDEXES.clear()
 
 
 @pytest.fixture()
@@ -219,12 +212,6 @@ class TestGetCsvFileIndex:
         with pytest.raises(Exception, match="outside Task Group range"):
             csv_module.get_csv_file_index("myfile.csv:0", task_groups)
 
-    def test_numeric_suffix_used_twice_raises(self):
-        task_groups = [{}, {}]
-        csv_module.get_csv_file_index("file.csv:1", task_groups)
-        with pytest.raises(Exception, match="used more than once"):
-            csv_module.get_csv_file_index("other.csv:1", task_groups)
-
     def test_name_suffix_matches_task_group(self):
         task_groups = [{"name": "group-a"}, {"name": "group-b"}]
         filename, index = csv_module.get_csv_file_index(
@@ -235,8 +222,66 @@ class TestGetCsvFileIndex:
 
     def test_name_suffix_no_match_raises(self):
         task_groups = [{"name": "group-a"}]
-        with pytest.raises(Exception, match="No matches for Task Group name"):
+        with pytest.raises(ValueError, match=r"No matches.*named 'group-a'"):
             csv_module.get_csv_file_index("myfile.csv:no-such-group", task_groups)
+
+
+class TestOneCsvFilePerTaskGroup:
+    """
+    A Task Group is given at most one CSV file, whether by position, number
+    or name, and two for one are refused naming both.
+    """
+
+    @pytest.fixture
+    def files(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            csv_module, "ARGS_PARSER", SimpleNamespace(process_csv_only=False)
+        )
+        (tmp_path / "d.csv").write_text("a\n1\n", encoding="utf-8")
+        (tmp_path / "wr.json").write_text(
+            '{"taskGroups": [{"name": "one", "tasks": [{"arguments": ["<<a>>"]}]},'
+            ' {"name": "two", "tasks": [{"arguments": ["<<a>>"]}]}]}',
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "suffixes", [("", ":1"), (":one", ":1"), (":2", ":two"), (":1", ":1")]
+    )
+    def test_two_files_for_one_task_group_are_refused(self, files, suffixes):
+        csv_files = [str(files / "d.csv") + suffix for suffix in suffixes]
+        with pytest.raises(ValueError, match="is given more than one CSV file"):
+            csv_module.load_json_file_with_csv_task_expansion(
+                str(files / "wr.json"), csv_files
+            )
+
+    def test_one_file_may_serve_two_task_groups(self, files):
+        csv_file = str(files / "d.csv")
+        wr = csv_module.load_json_file_with_csv_task_expansion(
+            str(files / "wr.json"), [csv_file + ":1", csv_file + ":2"]
+        )
+        assert [len(tg["tasks"]) for tg in wr["taskGroups"]] == [1, 1]
+
+    def test_a_task_group_without_tasks_is_reported(self, files):
+        (files / "wr.json").write_text('{"taskGroups": [{}]}', encoding="utf-8")
+        with pytest.raises(ValueError, match="needs a 'tasks' list"):
+            csv_module.load_json_file_with_csv_task_expansion(
+                str(files / "wr.json"), [str(files / "d.csv")]
+            )
+
+    def test_no_task_groups_is_reported(self, files):
+        (files / "wr.json").write_text("{}", encoding="utf-8")
+        with pytest.raises(ValueError, match="needs a 'taskGroups' list"):
+            csv_module.load_json_file_with_csv_task_expansion(
+                str(files / "wr.json"), [str(files / "d.csv")]
+            )
+
+    def test_invalid_json_names_the_file(self, files):
+        (files / "wr.json").write_text("{nope", encoding="utf-8")
+        with pytest.raises(ValueError, match="Invalid JSON in"):
+            csv_module.load_json_file_with_csv_task_expansion(
+                str(files / "wr.json"), [str(files / "d.csv")]
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -294,12 +339,23 @@ class TestCSVTaskData:
         assert data.var_names == ["x", "y"]
         assert list(data) == [["1", "2"]]
 
-    def test_header_only_no_tasks(self, tmp_path):
+    def test_headings_without_rows_are_refused(self, tmp_path):
         csv_file = tmp_path / "header_only.csv"
-        csv_file.write_text("col1,col2\n")
-        data = CSVTaskData(str(csv_file))
-        assert data.total_tasks == 0
-        assert list(data) == []
+        csv_file.write_text("col1,col2\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="headings but no data rows"):
+            CSVTaskData(str(csv_file))
+
+    def test_a_repeated_heading_is_refused(self, tmp_path):
+        csv_file = tmp_path / "repeated.csv"
+        csv_file.write_text("a,b,a\n1,2,3\n", encoding="utf-8")
+        with pytest.raises(ValueError, match=r"repeats the heading.*'a'"):
+            CSVTaskData(str(csv_file))
+
+    def test_an_empty_heading_is_refused(self, tmp_path):
+        csv_file = tmp_path / "empty.csv"
+        csv_file.write_text("a,,c\n1,2,3\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="empty heading \\(column 2\\)"):
+            CSVTaskData(str(csv_file))
 
 
 # ---------------------------------------------------------------------------

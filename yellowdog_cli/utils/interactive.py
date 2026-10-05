@@ -214,6 +214,15 @@ class NoAnswerToPrompt(Exception):
         )
 
 
+def wait_for_enter(prompt: str) -> None:
+    """
+    Show 'prompt' and wait for the Enter key: whatever '--quiet' says, on
+    stderr under '--json', and NoAnswerToPrompt, with its remedy, rather
+    than an EOFError when there is no terminal to answer from.
+    """
+    _get_user_input(print_string(prompt) + " ")
+
+
 def _get_user_input(input_prompt: str) -> str:
     """
     Get user input, respecting the --no-format option. Under '--json' the

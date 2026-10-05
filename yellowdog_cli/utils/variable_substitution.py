@@ -1193,6 +1193,19 @@ def load_json_file_with_variable_substitutions(
     a quote ended the string). So a substitution goes inside a JSON string,
     and in a value, not a property name.
     """
+    result = parse_json_file(filename, prefix, postfix)
+    resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
+    return result
+
+
+def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> dict:
+    """
+    A JSON specification parsed, with no substitution made yet: a parse
+    error names the file (with a hint when an unquoted substitution caused
+    it), and a substitution in a property name is refused, since
+    substitutions are made in values only. Shared with the CSV loader,
+    which expands the Tasks before substituting.
+    """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
     with open(filename, encoding="utf-8") as f:
@@ -1219,7 +1232,6 @@ def load_json_file_with_variable_substitutions(
             "Variable substitutions are made in property values, not property"
             f" names, in '{filename}': {_list_paths(names)}"
         )
-    resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
     return result
 
 

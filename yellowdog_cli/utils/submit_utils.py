@@ -27,6 +27,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.interactive import wait_for_enter
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
@@ -60,6 +61,7 @@ from yellowdog_cli.utils.property_names import (
     TASKS,
 )
 from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
+from yellowdog_cli.utils.results import json_requested
 from yellowdog_cli.utils.settings import (
     L_TASK_COUNT,
     L_TASK_GROUP_COUNT,
@@ -147,19 +149,18 @@ def pause_between_batches(task_batch_size: int, batch_number: int, num_tasks: in
     )
 
     if ARGS_PARSER.pause_between_batches <= 0:  # Manual delay
-        print_info(
-            (
-                f"Submitting batch number {batch_number + 1} ({task_range_str})"
-                if first_batch
-                else (
-                    "Pausing before submitting batch number"
-                    f" {batch_number + 1} ({task_range_str}). Press enter to continue:"
-                )
-            ),
-            override_quiet=True,
-        )
-        if not first_batch:
-            input()
+        if first_batch:
+            print_info(
+                f"Submitting batch number {batch_number + 1} ({task_range_str})",
+                override_quiet=not json_requested(),
+            )
+        else:
+            # The prompt goes to stderr under '--json', and with no terminal
+            # to answer from NoAnswerToPrompt is raised, not an EOFError
+            wait_for_enter(
+                "Pausing before submitting batch number"
+                f" {batch_number + 1} ({task_range_str}). Press enter to continue:"
+            )
 
     elif ARGS_PARSER.pause_between_batches > 0:  # Automatic delay
         print_info(
@@ -200,7 +201,7 @@ def generate_taskdata_object(
     except TypeError as e:
         raise TypeError(
             f"Unable to generate 'taskDataInputs' or 'taskDataOutputs' list: {e!s}"
-        )
+        ) from e
 
 
 def generate_task_error_matchers_list(
@@ -308,7 +309,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
                 else [int(exit_code_str) for exit_code_str in exit_codes_str]
             )
         except Exception as e:
-            raise ValueError(f"Unable to process error exit codes: {e}")
+            raise ValueError(f"Unable to process error exit codes: {e}") from e
 
         statuses_str: list[str] | None = check_list(
             task_error_matcher_data.get(STATUSES_AT_FAILURE), STATUSES_AT_FAILURE
@@ -320,7 +321,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
                 else [TaskStatus(status) for status in statuses_str]
             )
         except Exception as e:
-            raise ValueError(f"Unable to process error status: {e}")
+            raise ValueError(f"Unable to process error status: {e}") from e
 
         error_types: list[str] | None = check_list(
             task_error_matcher_data.get(ERROR_TYPES), ERROR_TYPES
@@ -335,7 +336,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
     except Exception as e:
         raise RuntimeError(
             f"Unable to process task retry error matcher data '{task_error_matcher_data}': {e}"
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -622,14 +623,26 @@ class RcloneUploadedFiles:
             if rclone_uploaded_file in self._rcloned_files:
                 # Duplicate
                 return
+            for uploaded in self._rcloned_files:
+                # Another file bound for the same place would be skipped as
+                # already there, and its Tasks given the first file's data
+                if uploaded.upload_file_path == rclone_upload_path and abspath(
+                    uploaded.local_file_path
+                ) != abspath(local_file):
+                    raise ValueError(
+                        f"'{local_file}' and '{uploaded.local_file_path}' are both"
+                        " to be uploaded to"
+                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}'"
+                    )
 
             if not ARGS_PARSER.dry_run:
                 try:
                     self._upload_rclone_file_core(rclone_uploaded_file)
                 except Exception as e:
                     raise RuntimeError(
-                        f"Unable to upload '{local_file}' -> '{rclone_upload_path}': {e}"
-                    )
+                        f"Unable to upload '{local_file}' ->"
+                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}': {e}"
+                    ) from e
             else:
                 print_dry_run(
                     f"Would upload '{local_file}' -> "
@@ -759,18 +772,20 @@ class RcloneUploadedFiles:
 
         return remote_name, config_section, path_part
 
-    @staticmethod
-    def _bucket_and_prefix(rclone_uploaded_file: RcloneUploadedFile):
+    @classmethod
+    def _bucket_and_prefix(cls, rclone_uploaded_file: RcloneUploadedFile) -> str:
         """
-        Remove everything except the service, bucket name and object name.
+        Where a file is uploaded to, as a message shows it: the remote's name
+        and the path, never an inline remote's parameters, which hold its
+        credentials.
         """
         try:
-            _service, _rclone_details, bucket_name_and_object = (
-                rclone_uploaded_file.upload_file_path.split(":")
+            remote_name, _config, path = cls._parse_rclone_connection_string(
+                rclone_uploaded_file.upload_file_path
             )
-            return bucket_name_and_object
         except Exception:
-            return rclone_uploaded_file.upload_file_path
+            return "<an rclone remote that could not be read>"
+        return f"{remote_name}:{path}"
 
 
 def formatted_number_str(
@@ -873,9 +888,13 @@ def resolve_task_data(
     properties are present at this level. Raises ValueError if more than
     one of 'taskData', 'taskDataFile', 'taskDataFiles' is set.
     """
-    task_data = data.get(TASK_DATA, task_data_default)
-    task_data_file = data.get(TASK_DATA_FILE, task_data_file_default)
-    task_data_files = data.get(TASK_DATA_FILES, task_data_files_default)
+    task_data = check_str(data.get(TASK_DATA, task_data_default), TASK_DATA)
+    task_data_file = check_str(
+        data.get(TASK_DATA_FILE, task_data_file_default), TASK_DATA_FILE
+    )
+    task_data_files = check_list(
+        data.get(TASK_DATA_FILES, task_data_files_default), TASK_DATA_FILES
+    )
     if sum(bool(x) for x in [task_data, task_data_file, task_data_files]) > 1:
         raise ValueError(
             f"Only one of '{TASK_DATA}', '{TASK_DATA_FILE}' or "
@@ -917,33 +936,27 @@ def get_task_data_property(
     files_directory: str = "",
 ) -> str | None:
     """
-    Get the 'taskData' property for a Task, checking Task → Task Group → WR
-    level in order. 'taskDataFile' is resolved to its file contents at whichever
-    level it is found.
+    Get the 'taskData' property for a Task, checking the Task, Task Group,
+    Work Requirement and configuration levels in turn: the first level that
+    sets any of 'taskData', 'taskDataFile' or 'taskDataFiles' supplies it,
+    so a specification's overrides the configuration's, whichever of the
+    three each uses. 'taskDataFile' is resolved to its file contents.
     """
-    for data, task_data_default, task_data_file_default, task_data_files_default in [
-        (task, None, None, None),
-        (task_group_data, None, None, None),
-        (
-            wr_data,
-            config_wr.task_data,
-            config_wr.task_data_file,
-            config_wr.task_data_files,
-        ),
+    config_level = {
+        TASK_DATA: config_wr.task_data,
+        TASK_DATA_FILE: config_wr.task_data_file,
+        TASK_DATA_FILES: config_wr.task_data_files,
+    }
+    for data, level in [
+        (task, f"Task '{task_name}'"),
+        (task_group_data, "the Task Group"),
+        (wr_data, "the Work Requirement"),
+        (config_level, "the configuration file"),
     ]:
         try:
-            result = resolve_task_data(
-                data,
-                files_directory,
-                task_data_default,
-                task_data_file_default,
-                task_data_files_default,
-            )
-        except ValueError:
-            raise ValueError(
-                f"Task '{task_name}': Only one of '{TASK_DATA}', "
-                f"'{TASK_DATA_FILE}' or '{TASK_DATA_FILES}' should be set"
-            )
+            result = resolve_task_data(data, files_directory)
+        except ValueError as e:
+            raise ValueError(f"In {level}: {e}") from e
         if result is not None:
             return result
 

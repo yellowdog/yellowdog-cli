@@ -4,8 +4,8 @@ Module for handling Task data supplied in CSV files.
 
 import csv
 import re
+import sys
 from collections import OrderedDict
-from json import load as json_load
 from os.path import join
 from typing import cast
 
@@ -23,6 +23,7 @@ from yellowdog_cli.utils.settings import (
 from yellowdog_cli.utils.variable_substitution import (
     TYPE_TAGS,
     load_jsonnet_file_with_variable_substitutions,
+    parse_json_file,
     process_typed_variable_substitution,
     resolve_variables_insitu,
     typed_value_as_text,
@@ -75,6 +76,23 @@ class CSVTaskData:
         if not self._csv_data:
             raise ValueError(
                 f"CSV file '{csv_filename}' is empty: it needs a row of headings"
+            )
+        headings = self._csv_data[0]
+        if any(heading == "" for heading in headings):
+            raise ValueError(
+                f"CSV file '{csv_filename}' has an empty heading (column"
+                f" {headings.index('') + 1})"
+            )
+        repeated = sorted({h for h in headings if headings.count(h) > 1})
+        if repeated:
+            raise ValueError(
+                f"CSV file '{csv_filename}' repeats the heading(s)"
+                f" {', '.join(repr(h) for h in repeated)}: each column needs its"
+                " own name"
+            )
+        if len(self._csv_data) == 1:
+            raise ValueError(
+                f"CSV file '{csv_filename}' has headings but no data rows, so no Tasks"
             )
         self._index = 0
         self._total_tasks = len(self._csv_data) - 1
@@ -163,9 +181,7 @@ def load_json_file_with_csv_task_expansion(
     files. Return the expanded and variables-processed Work Requirement data.
     """
 
-    with open(json_file, encoding="utf-8") as f:
-        wr_data = json_load(f)
-
+    wr_data = parse_json_file(json_file)
     return perform_csv_task_expansion(wr_data, csv_files, files_directory)
 
 
@@ -200,22 +216,43 @@ def perform_csv_task_expansion(
     wr_data: dict, csv_files: list[str], files_directory: str = ""
 ) -> dict:
     """
-    Expand a Work Requirement using CSV data.
+    Expand a Work Requirement using CSV data. Each Task Group is given at
+    most one CSV file, however it was chosen: by position, number or name.
     """
-    if len(wr_data[TASK_GROUPS]) > len(csv_files):
+    task_groups = wr_data.get(TASK_GROUPS)
+    if not isinstance(task_groups, list) or not task_groups:
+        raise ValueError(
+            f"A Work Requirement given CSV data needs a '{TASK_GROUPS}' list"
+        )
+
+    if len(task_groups) > len(csv_files):
         print_info(
-            f"Note: Number of Task Groups ({len(wr_data[TASK_GROUPS])}) "
+            f"Note: Number of Task Groups ({len(task_groups)}) "
             "in Work Requirement is greater than number of CSV files "
             f"({len(csv_files)})"
         )
 
-    if len(csv_files) > len(wr_data[TASK_GROUPS]):
+    if len(csv_files) > len(task_groups):
         raise ValueError("Number of CSV files exceeds number of Task Groups")
 
-    for counter, csv_file in enumerate(csv_files):
-        csv_file, index = get_csv_file_index(csv_file, wr_data[TASK_GROUPS])
+    given: dict[int, str] = {}  # Task Group index -> the CSV file given it
+    for counter, csv_file_argument in enumerate(csv_files):
+        csv_file, index = get_csv_file_index(csv_file_argument, task_groups)
         if index is None:
             index = counter
+        if index in given:
+            name = task_groups[index].get(NAME)
+            raise ValueError(
+                f"Task Group {index + 1}{'' if name is None else f' ({name!r})'}"
+                f" is given more than one CSV file: '{given[index]}',"
+                f" '{csv_file_argument}'"
+            )
+        given[index] = csv_file_argument
+        if not isinstance(task_groups[index].get(TASKS), list):
+            raise ValueError(
+                f"Task Group {index + 1} needs a '{TASKS}' list holding one"
+                " prototype Task when using a CSV file for data"
+            )
 
         # Named from the files directory, as every file a specification
         # refers to is (the specification itself is named from the current one)
@@ -258,7 +295,7 @@ def perform_csv_task_expansion(
     if ARGS_PARSER.process_csv_only:
         print_info("Displaying CSV substitutions only:")
         print_json(wr_data)
-        exit(0)
+        sys.exit(0)
 
     # Process remaining substitutions
     resolve_variables_insitu(wr_data)
@@ -339,9 +376,6 @@ def _substituted_string(
     return "".join(parts)
 
 
-USED_FILE_INDEXES = []
-
-
 def get_csv_file_index(
     csv_filename: str, task_groups: list[dict]
 ) -> tuple[str, int | None]:
@@ -349,7 +383,8 @@ def get_csv_file_index(
     Check if the CSV filename ends in an integer index (':<integer>'),
     or in a Task Group name (':<task_group_name>').
     If so, return the filename with the index stripped, and the index
-    integer (zero-based).
+    integer (zero-based). That a Task Group is given only one file is
+    checked by the caller, which sees them all.
     """
 
     filename, suffix = split_csv_file_suffix(csv_filename)
@@ -363,16 +398,17 @@ def get_csv_file_index(
             raise ValueError(
                 f"CSV file Task Group index '{index}' is outside Task Group range"
             )
-        if index in USED_FILE_INDEXES:
-            raise ValueError(f"CSV file Task Group index '{index}' used more than once")
-        USED_FILE_INDEXES.append(index)
         return filename, index - 1
 
     # Task Group name matching
     for index, task_group in enumerate(task_groups):
         if task_group.get(NAME) == suffix:
             return filename, index
-    raise KeyError(f"No matches for Task Group name '{suffix}'")
+    names = ", ".join(repr(tg.get(NAME)) for tg in task_groups if tg.get(NAME))
+    raise ValueError(
+        f"No matches for Task Group name '{suffix}' in CSV file '{csv_filename}'"
+        + (f" (the Task Groups are named {names})" if names else "")
+    )
 
 
 # A Task Group suffix: a number, or something that could be a name

@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 09:35:40 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 10:11:52 BST 2026 -->
 
 <!--te-->
 
@@ -1108,7 +1108,7 @@ The following table outlines all the properties available for defining Work Requ
 | `taskBatchSize`             | Determines the batch size used to add Tasks to Task Groups, from 1 to 10,000. Default is 1,000.                                                                                                                                                     | Yes  |     |      |      |
 | `taskCount`                 | The number of times to execute the Task.                                                                                                                                                                                            | Yes  | Yes | Yes  |      |
 | `taskDataFile`              | Populate the Task's `taskData` with the contents of the specified file. E.g. `"my_task_data_file.txt"`.                                                                                                                             | Yes  | Yes | Yes  | Yes  |
-| `taskDataFiles`             | Populate the Task's `taskData` by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile`. E.g. `["header.txt", "body.txt"]`.                                                          | Yes  | Yes | Yes  | Yes  |
+| `taskDataFiles`             | Populate the Task's `taskData` by concatenating the contents of a list of files. Mutually exclusive with `taskData` and `taskDataFile` at any one level; the first level (Task, Task Group, Work Requirement, then the TOML file) setting any of the three supplies the Task's data. E.g. `["header.txt", "body.txt"]`.                                                          | Yes  | Yes | Yes  | Yes  |
 | `taskDataInputs`            | A list of data inputs to be downloaded by the task E.g. JSON: `{"source": "src", "destination": "dest"}`, TOML: `{source = "src", destination = "dest"}`.                                                                          | Yes  | Yes | Yes  | Yes  |
 | `taskDataOutputs`           | A list of data outputs to be uploaded at the conclusion of a task E.g. JSON: `{"source": "src", "destination": "dest", "alwaysUpload": true}`, TOML: `{source = "src", destination = "dest", alwaysUpload = true}`.                | Yes  | Yes | Yes  | Yes  |
 | `taskData`                  | The data to be passed to the Worker when the Task is started. E.g. `"mydata"`. Becomes file `taskdata.txt` in the Task's working directory when the task executes.                                                                 | Yes  | Yes | Yes  | Yes  |
@@ -2081,7 +2081,7 @@ All variable substitutions unrelated to the CSV file data are left unchanged, fo
 
 If the value to be inserted is a number, a Boolean, an array or a table, the `<<num:my_number_var>>`, `<<bool:my_boolean_var>>`, `<<array:my_array_var>>` and `<<table:my_table_var>>` forms can be used in the JSON file, and `<<format_name:my_var>>` for a name. The value is converted exactly as in a `{{...}}` [substitution](#variable-substitutions), so the same spellings are accepted: a substitution that is a whole string assumes the nominated type rather than being a string, and one inside a longer string is checked as its type and written as text. A value that is not of its type is an error naming the CSV file, the line in it and the column, e.g. `'tasks.csv' line 7, column 'count': 'abc' is not a number`.
 
-A CSV value is substituted as it is, whatever it contains: an apostrophe, a quotation mark, a backslash in a Windows path, or text that looks like a substitution. Substitutions are also made in property names, e.g. `"environment": {"<<var_name>>": "<<var_value>>"}`. The CSV file is read as UTF-8, a byte order mark (which Excel's *CSV UTF-8* format writes) is ignored, and blank lines are skipped.
+A CSV value is substituted as it is, whatever it contains: an apostrophe, a quotation mark, a backslash in a Windows path, or text that looks like a CSV substitution. A `{{...}}` [variable substitution](#variable-substitutions) in a CSV value is made afterwards like any other, so a cell can refer to a variable (e.g. `{{namespace}}`), and `{{::}}` in a cell removes its property. Substitutions are also made in property names, e.g. `"environment": {"<<var_name>>": "<<var_value>>"}`. The CSV file is read as UTF-8, a byte order mark (which Excel's *CSV UTF-8* format writes) is ignored, and blank lines are skipped. Every column needs a heading of its own, so an empty or repeated heading is an error, as is a file with headings but no data rows, which would make a Task Group with no Tasks.
 
 ### Property Inheritance
 
@@ -2136,7 +2136,7 @@ Alternatively, the **Task Group name** (if supplied in the JSON file) can be use
 yd-submit wr.json -V wr_data_task_group_2.csv:tg_two -V wr_data_task_group_4.csv:tg_four
 ```
 
-Note that only one CSV file can be applied to any given Task Group. A single CSV file can, however, be reused for multiple Task Groups.
+Note that only one CSV file can be applied to any given Task Group, however it is chosen (by position, number or name): two for the same Task Group are an error naming both. A single CSV file can, however, be reused for multiple Task Groups.
 
 ### Using CSV Data with Simple, TOML-Only Work Requirement Specifications
 

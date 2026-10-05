@@ -34,7 +34,7 @@
   "taskCount": "The number of times to execute the Task.",
   "taskData": "The data to be passed to the Worker when the Task is started. E.g. \"mydata\". Becomes file taskdata.txt in the Task's working directory when the task executes.",
   "taskDataFile": "Populate the Task's taskData with the contents of the specified file. E.g. \"my_task_data_file.txt\".",
-  "taskDataFiles": "Populate the Task's taskData by concatenating the contents of a list of files. Mutually exclusive with taskData and taskDataFile. E.g. [\"header.txt\", \"body.txt\"].",
+  "taskDataFiles": "Populate the Task's taskData by concatenating the contents of a list of files. Mutually exclusive with taskData and taskDataFile at any one level; the first level (Task, Task Group, Work Requirement, then the TOML file) setting any of the three supplies the Task's data. E.g. [\"header.txt\", \"body.txt\"].",
   "taskDataInputs": "A list of data inputs to be downloaded by the task E.g. JSON: {\"source\": \"src\", \"destination\": \"dest\"}, TOML: {source = \"src\", destination = \"dest\"}.",
   "taskDataOutputs": "A list of data outputs to be uploaded at the conclusion of a task E.g. JSON: {\"source\": \"src\", \"destination\": \"dest\", \"alwaysUpload\": true}, TOML: {source = \"src\", destination = \"dest\", alwaysUpload = true}.",
   "taskGroupCount": "Create taskGroupCount duplicates of a single Task Group.",
