@@ -538,3 +538,31 @@ def test_the_real_command_is_quiet():
 
     assert command == "yd-variables"
     assert "--quiet" in args
+
+
+# Bytes that are not UTF-8, as a child writing in the locale's encoding sends
+WRITES_UNDECODABLE = (
+    "import sys; sys.stderr.buffer.write(b'caf\\xe9 \\x96 bad\\n'); sys.exit(3)"
+)
+PRINTS_ITS_ENCODING = (
+    "import os, json; print(json.dumps({'namespace':"
+    " os.environ.get('PYTHONIOENCODING', ''), 'tag': 't'}))"
+)
+
+
+def test_output_that_is_not_utf8_is_reported_not_raised(win, monkeypatch):
+    # A strict decode raised inside a Qt slot, which PyQt6 turns into an abort
+    python_commands(win, monkeypatch, WRITES_UNDECODABLE)
+
+    win._discovery.reparse_placeholders()
+
+    log = win.log_output.toPlainText()
+    assert "Exit 3" in log and "bad" in log
+
+
+def test_the_child_is_told_to_write_utf8(win, monkeypatch):
+    python_commands(win, monkeypatch, PRINTS_ITS_ENCODING)
+
+    win._discovery.reparse_placeholders()
+
+    assert win._discovery.namespace == "utf-8"

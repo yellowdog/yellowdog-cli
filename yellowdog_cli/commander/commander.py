@@ -12,7 +12,14 @@ from datetime import datetime
 from functools import partial as functools_partial
 from typing import cast
 
-from yellowdog_cli.commander.host import LINUX, MACOS, WINDOWS, shell_command
+from yellowdog_cli.commander.host import (
+    CHILD_ENVIRONMENT,
+    LINUX,
+    MACOS,
+    WINDOWS,
+    cli_program,
+    shell_command,
+)
 from yellowdog_cli.utils.paths import relative_if_possible
 
 if WINDOWS:
@@ -1469,6 +1476,8 @@ class YellowDogApp(QMainWindow):
         event_loop = QEventLoop()
 
         env = QProcessEnvironment.systemEnvironment()
+        for name, value in CHILD_ENVIRONMENT.items():
+            env.insert(name, value)
         yd_process.setProcessEnvironment(env)
         yd_process.setWorkingDirectory(self._working_dir())
 
@@ -1482,7 +1491,7 @@ class YellowDogApp(QMainWindow):
             + self._namespace_tag_and_user_vars()
             + (extra_args or [])
         )
-        yd_process.start(command, args)
+        yd_process.start(*cli_program(command, args))
         self._run_nested(yd_process, event_loop)
         if self._shutting_down:
             return None  # the widgets are going away; don't touch them
@@ -1493,7 +1502,9 @@ class YellowDogApp(QMainWindow):
         if exit_code != 0 and not (failures_recorded and exit_code == 1):
             return None
 
-        output = yd_process.readAllStandardOutput().data().decode().strip()
+        output = (
+            yd_process.readAllStandardOutput().data().decode(errors="replace").strip()
+        )
         try:
             parsed = loads(output)
         except Exception:
@@ -2421,19 +2432,9 @@ class YellowDogApp(QMainWindow):
         )
 
         process = QProcess(self)
-        process_env: QProcessEnvironment = process.processEnvironment()
-
-        if WINDOWS:
-            # Windows non-console channels don't use utf-8 by default
-            sys_env: list[str] = process.systemEnvironment()
-            for env_var in sys_env:
-                try:
-                    name, value = env_var.split("=", 1)
-                    process_env.insert(name, value)
-                except ValueError:
-                    pass
-            process_env.insert("PYTHONIOENCODING", "utf-8")
-
+        process_env = QProcessEnvironment.systemEnvironment()
+        for name, value in CHILD_ENVIRONMENT.items():
+            process_env.insert(name, value)
         process.setProcessEnvironment(process_env)
         run = self._output.start_run(
             command,
@@ -2454,7 +2455,7 @@ class YellowDogApp(QMainWindow):
         )
 
         process.setWorkingDirectory(self._working_dir())
-        process.start(command, args)
+        process.start(*cli_program(command, args))
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
             run.outcome = "did not start"

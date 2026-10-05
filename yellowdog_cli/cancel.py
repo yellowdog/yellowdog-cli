@@ -409,3 +409,7 @@ def _cancel_task(task: Task):
     aborted = " and aborted" if ARGS_PARSER.abort else ""
     print_info(f"Cancelled{aborted} Task {_task_label(task)}")
     _record(task, _CANCELLED, entity_type=ET_TASKS)
+
+
+if __name__ == "__main__":
+    main()

@@ -192,3 +192,7 @@ def _print_rows(rows: list[tuple[str, object]]) -> None:
         labelled = f"{label}:" if label else ""
         print_simple(f"  {labelled:<{width}}{value}".rstrip(), override_quiet=True)
     print_simple(override_quiet=True)
+
+
+if __name__ == "__main__":
+    main()

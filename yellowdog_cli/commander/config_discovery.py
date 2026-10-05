@@ -20,6 +20,7 @@ from yellowdog_cli.commander.arguments import (
     property_is_complete,
     split_arguments,
 )
+from yellowdog_cli.commander.host import CHILD_ENVIRONMENT, cli_program
 from yellowdog_cli.commander.startup import variable_is_complete
 
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
@@ -292,6 +293,8 @@ class ConfigDiscovery:
         event_loop = QEventLoop()
 
         env = QProcessEnvironment.systemEnvironment()
+        for name, value in CHILD_ENVIRONMENT.items():
+            env.insert(name, value)
         yd_process.setProcessEnvironment(env)
         yd_process.setWorkingDirectory(self._working_dir())
 
@@ -309,7 +312,7 @@ class ConfigDiscovery:
 
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
-        yd_process.start(cmd, args)
+        yd_process.start(*cli_program(cmd, args))
         if not self._run_nested(yd_process, event_loop, timeout_ms):
             if self._shutting_down():
                 return False  # the widgets are going away; don't touch them
@@ -327,14 +330,21 @@ class ConfigDiscovery:
             return False
 
         if yd_process.exitCode() != 0:
-            error_output = yd_process.readAllStandardError().data().decode().strip()
+            error_output = (
+                yd_process.readAllStandardError()
+                .data()
+                .decode(errors="replace")
+                .strip()
+            )
             self._report_discovery_failure(
                 f"Error parsing config with 'yd-variables'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"
             )
             return False
 
-        output = yd_process.readAllStandardOutput().data().decode().strip()
+        output = (
+            yd_process.readAllStandardOutput().data().decode(errors="replace").strip()
+        )
         try:
             parsed_data = loads(output)
             self.namespace = parsed_data.get(NAMESPACE)
