@@ -7,7 +7,6 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Sequence
-from contextlib import redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
@@ -95,10 +94,21 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 
-try:
-    LOG_WIDTH = get_terminal_size().columns
-except OSError:
-    LOG_WIDTH = DEFAULT_LOG_WIDTH  # Default log line width
+
+def terminal_width() -> int:
+    """
+    The width messages are wrapped to: the terminal's, or DEFAULT_LOG_WIDTH
+    where there is no terminal or it reports no width (some pseudo-terminals,
+    containers started without a size), for which fill() would raise.
+    """
+    try:
+        columns = get_terminal_size().columns
+    except OSError:
+        return DEFAULT_LOG_WIDTH
+    return columns if columns > 0 else DEFAULT_LOG_WIDTH
+
+
+LOG_WIDTH = terminal_width()
 
 
 # Set up Rich formatting for coloured output
@@ -139,14 +149,19 @@ pyexamples_theme = Theme(DEFAULT_THEME)
 
 
 # Emoji codes are off: the CLI prints user text -- '{{num:x:=1}}' -- and never
-# means one, and Rich would print that as '{{num❌=1}}'
+# means one, and Rich would print that as '{{num❌=1}}'. Every print passes
+# soft_wrap=True: a message is wrapped by print_string() and a table not at
+# all, and Rich, whose width is 80 when stdout is not a terminal, would wrap
+# each line again, breaking tables and paths written to a pipe or a file
 CONSOLE = ConsoleWithInputBackspaceFixed(
     highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
 )
 CONSOLE_TABLE = Console(
     highlighter=PrintTableHighlighter(), theme=pyexamples_theme, emoji=False
 )
-CONSOLE_ERR = Console(stderr=True, highlighter=PrintLogHighlighter(), emoji=False)
+CONSOLE_ERR = Console(
+    stderr=True, highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
+)
 CONSOLE_JSON = Console(highlighter=JSONHighlighter(), emoji=False)
 
 PREFIX_LEN = 0
@@ -200,7 +215,7 @@ def print_simple(
     if ARGS_PARSER.no_format:
         print(log_message)
     else:
-        CONSOLE.print(escape(log_message))
+        CONSOLE.print(escape(log_message), soft_wrap=True)
 
 
 def print_info(
@@ -225,7 +240,9 @@ def print_info(
         print(print_string(log_message, no_fill=no_fill), flush=True)
         return
 
-    CONSOLE.print(escape(print_string(log_message, no_fill=no_fill)), style=style)
+    CONSOLE.print(
+        escape(print_string(log_message, no_fill=no_fill)), style=style, soft_wrap=True
+    )
 
 
 def print_quiet_result(result: object) -> None:
@@ -279,7 +296,9 @@ def print_error(error_obj: Exception | str):
         return
 
     CONSOLE_ERR.print(
-        escape(print_string(f"{ERROR_MARKER}{error_obj}")), style=ERROR_STYLE
+        escape(print_string(f"{ERROR_MARKER}{error_obj}")),
+        style=ERROR_STYLE,
+        soft_wrap=True,
     )
 
 
@@ -317,6 +336,7 @@ def print_warning(
     (CONSOLE_ERR if to_stderr else CONSOLE).print(
         escape(print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill)),
         style=WARNING_STYLE,
+        soft_wrap=True,
     )
 
 
@@ -326,7 +346,6 @@ def print_warning(
 # vary (e.g. AWSInstance, AccountAllowance).
 TYPE_MAP: dict[str, str] = {
     "AWSAvailabilityZone": "AWS Availability Zones",
-    "Allowance": "Allowance",
     "Application": "Application",
     "ComputeRequirement": "Compute Requirement",
     "ComputeRequirementSummary": "Compute Requirement",
@@ -358,7 +377,7 @@ def print_table_core(table: str):
     if ARGS_PARSER.no_format or table.count("\n") > MAX_LINES_COLOURED_FORMATTING:
         print(table, flush=True)
     else:
-        CONSOLE_TABLE.print(escape(table))
+        CONSOLE_TABLE.print(escape(table), soft_wrap=True)
 
 
 def get_type_name(obj: Item) -> str:
@@ -473,7 +492,7 @@ def task_table(task_list: list[Task]) -> tuple[list[str], list[list]]:
 
 
 def worker_pool_table(
-    _client: PlatformClient, worker_pool_summaries: list[WorkerPoolSummary]
+    worker_pool_summaries: list[WorkerPoolSummary],
 ) -> tuple[list[str], list[list]]:
     headers = [
         "#",
@@ -512,22 +531,14 @@ def compute_requirement_template_table(
     ]
     table = []
     for index, crt_summary in enumerate(crt_summaries):
-        try:
-            type_str = (
-                (crt_summary.type or "")
-                .split(".")[-1]
-                .replace("ComputeRequirement", "")
-            )
-        except Exception:
-            type_str = None
-        try:
-            strategy_type = (
-                (crt_summary.strategyType or "")
-                .split(".")[-1]
-                .replace("ProvisionStrategy", "")
-            )
-        except Exception:
-            strategy_type = None
+        type_str = (
+            (crt_summary.type or "").split(".")[-1].replace("ComputeRequirement", "")
+        )
+        strategy_type = (
+            (crt_summary.strategyType or "")
+            .split(".")[-1]
+            .replace("ProvisionStrategy", "")
+        )
         table.append(
             [
                 index + 1,
@@ -556,14 +567,8 @@ def compute_source_template_table(
     ]
     table = []
     for index, cst_summary in enumerate(cst_summaries):
-        try:
-            type_str = (cst_summary.sourceType or "").split(".")[-1]
-        except Exception:
-            type_str = None
-        try:
-            provider = cst_summary.provider
-        except Exception:
-            provider = None
+        type_str = (cst_summary.sourceType or "").split(".")[-1]
+        provider = cst_summary.provider
         table.append(
             [
                 index + 1,
@@ -680,18 +685,19 @@ def nodes_table(
     ]
     table = []
     for index, node in enumerate(nodes):
-        if node.details is None:
-            continue
+        # A Node without details is still listed, so that the numbers a
+        # selection is made by are the rows shown
+        details = node.details
         row = [index + 1]
         if show_pool_name:
             row.append(getattr(node, "workerPoolName", None))  # type: ignore[union-attr]
         row += [
-            node.details.provider,
-            node.details.region,
-            node.details.ram,
-            node.details.vcpus,
-            ", ".join(node.details.supportedTaskTypes or []),
-            node.details.workerTag,
+            None if details is None else details.provider,
+            None if details is None else details.region,
+            None if details is None else details.ram,
+            None if details is None else details.vcpus,
+            "" if details is None else ", ".join(details.supportedTaskTypes or []),
+            None if details is None else details.workerTag,
             len(node.workers or []),
             node.status,
             node.id,
@@ -1049,7 +1055,7 @@ def print_numbered_object_list(
     elif isinstance(objects[0], Task):
         headers, table = task_table(objects)  # type: ignore
     elif isinstance(objects[0], WorkerPoolSummary):
-        headers, table = worker_pool_table(client, objects)  # type: ignore
+        headers, table = worker_pool_table(objects)  # type: ignore
     elif isinstance(objects[0], ComputeRequirementTemplateSummary):
         headers, table = compute_requirement_template_table(objects)  # type: ignore
     elif isinstance(objects[0], ComputeSourceTemplateSummary):
@@ -1097,21 +1103,6 @@ def print_numbered_object_list(
                 indent_width=4,
             )
         )
-    print(flush=True)
-
-
-def print_numbered_strings(objects: list[str], override_quiet: bool = False):
-    """
-    Print a simple list of strings with numbering.
-    """
-    if ARGS_PARSER.quiet and override_quiet is False:
-        return
-
-    table = []
-    for index, obj in enumerate(objects):
-        table.append([index + 1, ":", obj])
-
-    print_table_core(indent(tabulate(table, tablefmt="plain"), indent_width=4))
     print(flush=True)
 
 
@@ -1179,21 +1170,28 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
         return sorted(objects, key=lambda x: str(x.workerPoolName), reverse=reverse)  # type: ignore[attr-defined]
 
     if isinstance(objects[0], AWSAvailabilityZone):
-        return sorted(objects)  # type: ignore[type-var]
+        return sorted(objects, reverse=reverse)  # type: ignore[type-var]
 
     if isinstance(objects[0], Allowance):
-        try:
-            return sorted(objects, key=lambda x: x.description, reverse=reverse)  # type: ignore[union-attr]
-        except TypeError:
-            return objects
+        return sorted(objects, key=lambda x: _text(x.description), reverse=reverse)  # type: ignore[union-attr]
 
     if isinstance(objects[0], Task):  # Sort tasks by their task number
         return sorted(objects, key=lambda x: int(x.id.split(":")[-1]), reverse=reverse)  # type: ignore[union-attr]
 
-    try:
-        return sorted(objects, key=lambda x: x.name, reverse=reverse)  # type: ignore[union-attr]
-    except Exception:
-        return sorted(objects, key=lambda x: x.namespace, reverse=reverse)  # type: ignore[union-attr]
+    if hasattr(objects[0], "name"):
+        return sorted(objects, key=lambda x: _text(x.name), reverse=reverse)  # type: ignore[union-attr]
+    return sorted(
+        objects,
+        key=lambda x: _text(getattr(x, "namespace", None)),
+        reverse=reverse,
+    )
+
+
+def _text(value: object) -> str:
+    """
+    A sort key for a value that may be None, which sorts first.
+    """
+    return "" if value is None else str(value)
 
 
 def indent(txt: str, indent_width: int = 4) -> str:
@@ -1297,7 +1295,6 @@ def print_json_text(json_text: str) -> None:
 def print_json(
     data: Any,
     initial_indent: int = 0,
-    drop_first_line: bool = False,
     with_final_comma: bool = False,
 ):
     """
@@ -1309,9 +1306,6 @@ def print_json(
     json_string = indent(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
-    if drop_first_line:
-        json_string = "\n".join(json_string.splitlines()[1:])
-
     # Coloured formatting of JSON console output is expensive
     if json_string.count("\n") > MAX_LINES_COLOURED_FORMATTING or ARGS_PARSER.no_format:
         if with_final_comma:
@@ -1336,7 +1330,6 @@ def print_json(
 def print_yd_object(
     yd_object: object,
     initial_indent: int = 0,
-    drop_first_line: bool = False,
     with_final_comma: bool = False,
     add_fields: dict | None = None,
 ):
@@ -1367,7 +1360,7 @@ def print_yd_object(
             object_data_new[key] = value
         object_data = object_data_new
 
-    print_json(object_data, initial_indent, drop_first_line, with_final_comma)
+    print_json(object_data, initial_indent, with_final_comma)
 
 
 def print_yd_object_list(
@@ -1631,9 +1624,41 @@ def status_counts_msg(
         return ""
 
 
+def _field(data: Any, *keys: str) -> Any:
+    """
+    A field of an event's JSON, or None where it, or any object on the way
+    to it, is absent or null: the Platform leaves a summary null until there
+    is something to summarise.
+    """
+    for key in keys:
+        if not isinstance(data, dict):
+            return None
+        data = data.get(key)
+    return data
+
+
+def _counts(data: Any, *keys: str) -> dict:
+    """
+    A status count table from an event, empty where there is none.
+    """
+    counts = _field(data, *keys)
+    return counts if isinstance(counts, dict) else {}
+
+
+def _count(value: Any) -> int:
+    """
+    A count from an event, 0 where there is none.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def print_event(event: str, id_type: YDIDType):
     """
-    Print a YellowDog event.
+    Print a YellowDog event. A field the event leaves null is shown as
+    nothing, or a zero count, rather than ending the stream being followed.
     """
     data_prefix = "data:"
 
@@ -1651,67 +1676,73 @@ def print_event(event: str, id_type: YDIDType):
     event_indent = "\n" + (" " * PREFIX_LEN) + "--> "
     event_indent_2 = "\n" + (" " * (PREFIX_LEN + 4))
 
+    if id_type not in (
+        YDIDType.WORK_REQUIREMENT,
+        YDIDType.WORKER_POOL,
+        YDIDType.COMPUTE_REQUIREMENT,
+    ):
+        return
+
+    msg = f"{id_type.value} '{event_data.get('name')}' is {event_data.get('status')}"
+
     if id_type == YDIDType.WORK_REQUIREMENT:
-        msg = f"{id_type.value} '{event_data['name']}' is {event_data['status']}"
-        for task_group in event_data["taskGroups"]:
-            status = task_group["status"]
-            if task_group["waitingOnDependency"] is True:
+        for task_group in event_data.get("taskGroups") or []:
+            status = str(task_group.get("status"))
+            if task_group.get("waitingOnDependency") is True:
                 status += "/WAITING"
-            elif task_group["starved"] is True:
+            elif task_group.get("starved") is True:
                 status += "/STARVED"
             msg += (
-                f"{event_indent}[{status}] Task Group '{task_group['name']}':"
-                f" {task_group['taskSummary']['taskCount']:,d} Task(s){event_indent_2}"
+                f"{event_indent}[{status}] Task Group '{task_group.get('name')}':"
+                f" {_count(_field(task_group, 'taskSummary', 'taskCount')):,d}"
+                f" Task(s){event_indent_2}"
             )
             msg += status_counts_msg(
-                status_counts_tasks(), task_group["taskSummary"]["statusCounts"]
+                status_counts_tasks(),
+                _counts(task_group, "taskSummary", "statusCounts"),
             )
 
     elif id_type == YDIDType.WORKER_POOL:
-        msg = f"{id_type.value} '{event_data['name']}' is {event_data['status']}"
         msg += f"{event_indent}Node(s):        " + status_counts_msg(
-            status_counts_nodes(), event_data["nodeSummary"]["statusCounts"]
+            status_counts_nodes(), _counts(event_data, "nodeSummary", "statusCounts")
         )
         node_actions_msg = status_counts_msg(
             status_counts_node_actions(),
-            event_data["nodeSummary"]["actionQueueStatuses"],
+            _counts(event_data, "nodeSummary", "actionQueueStatuses"),
             empty_msg_if_zero_total=True,
         )
         if node_actions_msg:
             msg += f"{event_indent}Node Action(s): " + node_actions_msg
         workers_msg = status_counts_msg(
             status_counts_workers(),
-            event_data["workerSummary"]["statusCounts"],
+            _counts(event_data, "workerSummary", "statusCounts"),
             empty_msg_if_zero_total=True,
         )
         if workers_msg:
             msg += f"{event_indent}Worker(s):      " + workers_msg
 
-    elif id_type == YDIDType.COMPUTE_REQUIREMENT:
-        msg = f"{id_type.value} '{event_data['name']}' is {event_data['status']}"
+    else:
+        sources = _field(event_data, "provisionStrategy", "sources") or []
         alive_count = sum(
-            [
-                int(source["instanceSummary"]["aliveCount"])
-                for source in event_data["provisionStrategy"]["sources"]
-            ]
+            _count(_field(source, "instanceSummary", "aliveCount"))
+            for source in sources
         )
         msg += (
             f"{event_indent}Instance(s): "
-            f"{event_data['targetInstanceCount']:,d} TARGET,"
-            f" {event_data['expectedInstanceCount']:,d} EXPECTED,"
+            f"{_count(event_data.get('targetInstanceCount')):,d} TARGET,"
+            f" {_count(event_data.get('expectedInstanceCount')):,d} EXPECTED,"
             f" {alive_count:,d} ALIVE"
         )
-        for source in event_data["provisionStrategy"]["sources"]:
+        for source in sources:
             source_msg = status_counts_msg(
                 status_counts_instances(),
-                source["instanceSummary"]["statusCounts"],
+                _counts(source, "instanceSummary", "statusCounts"),
                 empty_msg_if_zero_total=True,
             )
             if source_msg:
-                msg += f"{event_indent}Source: '{source['name']}': " + source_msg
-
-    else:
-        return
+                msg += (
+                    f"{event_indent}Source: '{_field(source, 'name')}': " + source_msg
+                )
 
     print_info(msg, no_fill=True)
 
@@ -1729,13 +1760,9 @@ def print_to_file(json_string: str, output_file: str, with_final_comma: bool = F
         with open(
             output_file, "w" if FIRST_OUTPUT_TO_FILE else "a", encoding="utf-8"
         ) as f:
-            with redirect_stdout(f):
-                if with_final_comma:
-                    print(json_string, end=",\n", flush=True)
-                else:
-                    print(json_string, flush=True)
-    except Exception as e:
-        raise RuntimeError(f"Cannot open output file for writing: {e}")
+            f.write(json_string + (",\n" if with_final_comma else "\n"))
+    except OSError as e:
+        raise RuntimeError(f"Cannot open output file for writing: {e}") from e
 
     FIRST_OUTPUT_TO_FILE = False
 

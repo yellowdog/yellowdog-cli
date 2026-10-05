@@ -599,3 +599,216 @@ class TestNoEmojiCodes:
         monkeypatch.setattr(printing_module.CONSOLE, "_file", written)
         printing_module.CONSOLE.input("{{a:x:}} ? ", stream=StringIO("y\n"))
         assert "{{a:x:}}" in written.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Output that is not to a terminal, and terminal widths
+# ---------------------------------------------------------------------------
+
+
+class TestNotATerminal:
+    """
+    Rich's width is 80 when the output is not a terminal; every print passes
+    soft_wrap=True, so lines are wrapped once, by print_string(), and a
+    table row not at all.
+    """
+
+    @staticmethod
+    def _args():
+        return SimpleNamespace(
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=False,
+            print_pid=False,
+        )
+
+    def test_a_table_row_stays_one_line(self, monkeypatch):
+        buffer = StringIO()
+        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        monkeypatch.setattr(
+            printing_module, "CONSOLE_TABLE", Console(file=buffer, emoji=False)
+        )
+        row = "│ " + "x" * 120 + " │"
+        printing_module.print_table_core(row)
+        assert buffer.getvalue() == row + "\n"
+
+    def test_a_message_is_wrapped_once(self, monkeypatch):
+        buffer = StringIO()
+        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        monkeypatch.setattr(printing_module, "LOG_WIDTH", 120)
+        monkeypatch.setattr(
+            printing_module, "CONSOLE", Console(file=buffer, emoji=False)
+        )
+        print_info("word " * 40)
+        lines = buffer.getvalue().splitlines()
+        # print_string()'s lines, at 120, and not broken again at 80
+        assert all(len(line) <= 120 for line in lines)
+        assert all(len(line) > 80 for line in lines[:-1])
+
+    def test_a_simple_line_stays_one_line(self, monkeypatch):
+        buffer = StringIO()
+        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        monkeypatch.setattr(
+            printing_module, "CONSOLE", Console(file=buffer, emoji=False)
+        )
+        path = "remote:bucket/" + "a/" * 60 + "file.txt"
+        printing_module.print_simple(path)
+        assert buffer.getvalue() == path + "\n"
+
+
+class TestTerminalWidth:
+    def test_a_terminal_reporting_no_width_gets_the_default(self, monkeypatch):
+        monkeypatch.setattr(
+            printing_module, "get_terminal_size", lambda: SimpleNamespace(columns=0)
+        )
+        assert printing_module.terminal_width() == printing_module.DEFAULT_LOG_WIDTH
+
+    def test_no_terminal_gets_the_default(self, monkeypatch):
+        def _no_terminal():
+            raise OSError("not a terminal")
+
+        monkeypatch.setattr(printing_module, "get_terminal_size", _no_terminal)
+        assert printing_module.terminal_width() == printing_module.DEFAULT_LOG_WIDTH
+
+    def test_a_terminal_width_is_used(self, monkeypatch):
+        monkeypatch.setattr(
+            printing_module, "get_terminal_size", lambda: SimpleNamespace(columns=97)
+        )
+        assert printing_module.terminal_width() == 97
+
+
+def test_errors_are_highlighted_as_messages_are():
+    # The stderr console resolves the highlighter's styles, as CONSOLE does
+    assert printing_module.CONSOLE_ERR.get_style("pyexamples.date_time") == (
+        printing_module.CONSOLE.get_style("pyexamples.date_time")
+    )
+
+
+# ---------------------------------------------------------------------------
+# print_event()
+# ---------------------------------------------------------------------------
+
+
+class TestPrintEventWithNullFields:
+    """
+    The Platform leaves a summary null until there is something to
+    summarise; an event holding one is printed, not raised on, which would
+    end the stream being followed.
+    """
+
+    @staticmethod
+    def _print(monkeypatch, event: dict, id_type) -> list[str]:
+        import json
+
+        printed: list[str] = []
+        monkeypatch.setattr(
+            printing_module, "ARGS_PARSER", SimpleNamespace(events_as_json=False)
+        )
+        monkeypatch.setattr(
+            printing_module, "print_info", lambda msg, **k: printed.append(msg)
+        )
+        printing_module.print_event("data:" + json.dumps(event), id_type)
+        return printed
+
+    def test_a_compute_requirement_source_with_no_instance_summary(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "cr",
+                "status": "PROVISIONING",
+                "targetInstanceCount": 2,
+                "expectedInstanceCount": 0,
+                "provisionStrategy": {
+                    "sources": [{"name": "s1", "instanceSummary": None}]
+                },
+            },
+            YDIDType.COMPUTE_REQUIREMENT,
+        )
+        assert "2 TARGET, 0 EXPECTED, 0 ALIVE" in printed[0]
+
+    def test_a_task_group_with_no_task_summary(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "wr",
+                "status": "RUNNING",
+                "taskGroups": [
+                    {"name": "tg", "status": "PENDING", "taskSummary": None}
+                ],
+            },
+            YDIDType.WORK_REQUIREMENT,
+        )
+        assert "Task Group 'tg': 0 Task(s)" in printed[0]
+
+    def test_a_worker_pool_with_no_summaries(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "wp",
+                "status": "PENDING",
+                "nodeSummary": None,
+                "workerSummary": None,
+            },
+            YDIDType.WORKER_POOL,
+        )
+        assert printed[0].startswith("Worker Pool 'wp' is PENDING")
+
+
+# ---------------------------------------------------------------------------
+# sorted_objects(), nodes_table(), print_to_file()
+# ---------------------------------------------------------------------------
+
+
+class TestSortedObjects:
+    @staticmethod
+    def _args(monkeypatch, reverse=None):
+        monkeypatch.setattr(
+            printing_module, "ARGS_PARSER", SimpleNamespace(sort=None, reverse=reverse)
+        )
+
+    def test_a_none_name_sorts_first(self, monkeypatch):
+        self._args(monkeypatch)
+        objects = [
+            SimpleNamespace(name="b"),
+            SimpleNamespace(name=None),
+            SimpleNamespace(name="a"),
+        ]
+        assert [o.name for o in printing_module.sorted_objects(objects)] == [
+            None,
+            "a",
+            "b",
+        ]
+
+    def test_reverse_applies(self, monkeypatch):
+        self._args(monkeypatch, reverse=True)
+        objects = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]
+        assert [o.name for o in printing_module.sorted_objects(objects)] == ["b", "a"]
+
+    def test_objects_without_names_sort_by_namespace(self, monkeypatch):
+        self._args(monkeypatch)
+        objects = [SimpleNamespace(namespace="y"), SimpleNamespace(namespace=None)]
+        assert [o.namespace for o in printing_module.sorted_objects(objects)] == [
+            None,
+            "y",
+        ]
+
+
+def test_a_node_without_details_is_still_listed():
+    node = SimpleNamespace(details=None, workers=[], status="RUNNING", id="ydid:node:x")
+    _, rows = printing_module.nodes_table([node])
+    assert rows == [[1, None, None, None, None, "", None, 0, "RUNNING", "ydid:node:x"]]
+
+
+def test_an_output_file_that_cannot_be_written_keeps_its_cause(tmp_path):
+    import pytest
+
+    with pytest.raises(RuntimeError) as raised:
+        printing_module.print_to_file("{}", str(tmp_path / "missing" / "out.json"))
+    assert isinstance(raised.value.__cause__, OSError)
