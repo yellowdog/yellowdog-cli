@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 15:29:30 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 16:33:47 BST 2026 -->
 
 <!--te-->
 
@@ -488,6 +488,8 @@ A specification file can instead name its own schema directly, with a `$schema` 
 Every run of `yd-submit`, `yd-provision`, `yd-instantiate`, `yd-create` and `yd-nodeaction` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd-schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one. To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
 
 A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd-jsonnet2json` on a Jsonnet file to see that JSON.
+
+**Applications that can read only some namespaces.** Wherever a command searches without a namespace — a name given without `namespace/`, or `yd-list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
 
 ## Machine-readable Output and Exit Codes
 
@@ -2163,7 +2165,7 @@ A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances ru
 The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd-provision` command. A subset of the properties is also used by the `yd-instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
 
 The only mandatory property is `templateId`. All other properties have defaults (or are not required).
-The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name, optionally prefixed with its namespace (`namespace/name`). A name without a namespace is looked for in every namespace, and is an error if templates of that name are found in more than one.
+The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name, optionally prefixed with its namespace (`namespace/name`). A name without a namespace is looked for in every namespace the Application can read, and is an error if templates of that name are found in more than one.
 
 ## Worker Pools vs. Compute Requirements
 

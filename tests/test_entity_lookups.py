@@ -147,3 +147,65 @@ def test_a_group_is_shown_by_name_and_id(monkeypatch):
 def test_split_namespace_and_name_strips_alike():
     assert entity_utils.split_namespace_and_name(" name ") == (None, "name")
     assert entity_utils.split_namespace_and_name(" ns/name ") == ("ns", "name")
+
+
+# ---------------------------------------------------------------------------
+# A search with no namespace, for an Application without global read access
+# ---------------------------------------------------------------------------
+
+
+def _application(all_readable: bool, readable: list[str] | None) -> MagicMock:
+    client = MagicMock()
+    client.application_client.get_application_details.return_value = SimpleNamespace(
+        allNamespacesReadable=all_readable, readableNamespaces=readable
+    )
+    return client
+
+
+@pytest.fixture
+def _fresh_application_details():
+    entity_utils.get_application_details.cache_clear()
+    yield
+    entity_utils.get_application_details.cache_clear()
+
+
+class TestSearchNamespaces:
+    """
+    The Platform refuses an unscoped search (403, 'Specify namespaces where
+    possible') from an Application that cannot read every namespace, even for
+    a name in one it can, so a search with no namespace is scoped to the
+    namespaces it can read.
+    """
+
+    def test_a_namespace_given_is_searched(self, _fresh_application_details):
+        assert entity_utils.search_namespaces(MagicMock(), "ns") == ["ns"]
+
+    def test_every_namespace_when_all_are_readable(self, _fresh_application_details):
+        assert entity_utils.search_namespaces(_application(True, None), None) is None
+
+    @pytest.mark.parametrize("namespace", [None, ""])
+    def test_the_readable_namespaces_otherwise(
+        self, namespace, _fresh_application_details
+    ):
+        client = _application(False, ["a", "b"])
+        assert entity_utils.search_namespaces(client, namespace) == ["a", "b"]
+
+    def test_none_readable_leaves_the_platform_to_say_why(
+        self, _fresh_application_details
+    ):
+        # Unscoped, the Platform's 403 names the permission that is missing
+        assert entity_utils.search_namespaces(_application(False, []), None) is None
+
+    def test_a_template_lookup_without_a_namespace_is_scoped(
+        self, _fresh_application_details
+    ):
+        client = _application(False, ["team-a"])
+        client.compute_client.get_compute_requirement_templates.return_value.list_all.return_value = [
+            SimpleNamespace(id="crt-1", namespace="team-a", name="gpu")
+        ]
+        assert (
+            entity_utils.get_compute_requirement_template_id_by_name(client, "gpu")
+            == "crt-1"
+        )
+        search = client.compute_client.get_compute_requirement_templates.call_args[0][0]
+        assert search.namespaces == ["team-a"]

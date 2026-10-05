@@ -63,6 +63,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_user_groups,
     get_worker_pool_summaries,
     resolve_name_glob,
+    search_namespaces,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -983,7 +984,7 @@ def list_image_families():
         )
         image_search = MachineImageFamilySearch(
             includePublic=True,
-            namespaces=None if namespace is None else [namespace],
+            namespaces=search_namespaces(CLIENT, namespace),
             familyName=glob_search_prefix(name) or None,
         )
         search_client: SearchClient = CLIENT.images_client.get_image_families(
@@ -1001,9 +1002,7 @@ def list_image_families():
     else:
         image_search = MachineImageFamilySearch(
             includePublic=True,
-            namespaces=(
-                None if CONFIG_COMMON.namespace == "" else [CONFIG_COMMON.namespace]
-            ),
+            namespaces=search_namespaces(CLIENT, CONFIG_COMMON.namespace),
             familyName=CONFIG_COMMON.name_tag,  # Supports partial match
         )
         search_client: SearchClient = CLIENT.images_client.get_image_families(
@@ -1196,7 +1195,7 @@ def list_namespace_policies():
     List namespace policies.
     """
 
-    np_search = NamespacePolicySearch()
+    np_search = NamespacePolicySearch(namespaces=search_namespaces(CLIENT, None))
     search_client: SearchClient = CLIENT.namespaces_client.get_namespace_policies(
         np_search
     )

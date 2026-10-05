@@ -74,6 +74,28 @@ from yellowdog_cli.utils.ydid_utils import (
 )
 
 
+def search_namespaces(
+    client: PlatformClient, namespace: str | None
+) -> list[str] | None:
+    """
+    The 'namespaces' a namespaced search is scoped to: the one given, else
+    every namespace the Application can read -- None (every namespace) when
+    it can read them all, or the list of those it can. The Platform refuses
+    an unscoped search, with a 403, from an Application without global read
+    access, even for a name in a namespace it can read ('Specify namespaces
+    where possible to prevent global access being required'), so a search
+    with no namespace is never left unscoped for one. With no readable
+    namespace at all, the search is left unscoped, and the Platform's 403
+    says which permission is missing. '' is no namespace, as yd-list takes it.
+    """
+    if namespace:
+        return [namespace]
+    details = get_application_details(client)
+    if details.allNamespacesReadable or not details.readableNamespaces:
+        return None
+    return list(details.readableNamespaces)
+
+
 @lru_cache
 def get_task_groups_from_wr_by_id(
     client: PlatformClient, wr_id: str
@@ -101,7 +123,7 @@ def get_filtered_work_requirement_summaries(
     """
     wr_search = WorkRequirementSearch(
         name=name,
-        namespaces=None if namespace is None else [namespace],
+        namespaces=search_namespaces(client, namespace),
         tag=tag,
         statuses=include_filter,
     )
@@ -370,7 +392,7 @@ def get_compute_source_templates(
     namespace_ = namespace if namespace_ is None else namespace_
 
     cst_search = ComputeSourceTemplateSearch(
-        name=name, namespaces=None if namespace_ is None else [namespace_]
+        name=name, namespaces=search_namespaces(client, namespace_)
     )
     cst_search_client: SearchClient = (
         client.compute_client.get_compute_source_templates(cst_search)
@@ -432,7 +454,7 @@ def get_compute_requirement_templates(
     and name.
     """
     crt_search = ComputeRequirementTemplateSearch(
-        name=name, namespaces=None if namespace is None else [namespace]
+        name=name, namespaces=search_namespaces(client, namespace)
     )
     crt_search_client: SearchClient = (
         client.compute_client.get_compute_requirement_templates(crt_search)
@@ -462,7 +484,7 @@ def get_worker_pool_summaries(
     Return all Worker Pool summaries for a namespace, name.
     """
     wp_search = WorkerPoolSearch(
-        name=name, namespaces=None if namespace is None else [namespace]
+        name=name, namespaces=search_namespaces(client, namespace)
     )
     wp_search_client: SearchClient = client.worker_pool_client.get_worker_pools(
         wp_search
@@ -1239,7 +1261,7 @@ def get_compute_requirement_summaries(
     Optionally filter on statuses and a partial name.
     """
     crs_search = ComputeRequirementSummarySearch(
-        namespaces=(None if namespace in [None, ""] else [namespace]),  # type: ignore[list-item]
+        namespaces=search_namespaces(client, namespace),
         tag=tag,
         statuses=statuses,
         name=name,
@@ -1259,20 +1281,8 @@ def get_image_family_summaries(
     """
     Obtain and cache the list of image families.
     """
-    # Determine namespace(s) to search
-    if namespace is None:
-        # Attempt to use the namespace(s) that are 'readable' by
-        # this application; does not guarantee IMAGE_READ
-        application_details = get_application_details(client)
-        if application_details.allNamespacesReadable:
-            namespaces = None  # Search all namespaces
-        elif application_details.readableNamespaces is not None:
-            namespaces = application_details.readableNamespaces
-        else:
-            namespaces = []
-    else:
-        # Use the supplied namespace
-        namespaces = [namespace]
+    # The readable namespaces, without one: does not guarantee IMAGE_READ
+    namespaces = search_namespaces(client, namespace)
 
     try:
         if_search = MachineImageFamilySearch(
