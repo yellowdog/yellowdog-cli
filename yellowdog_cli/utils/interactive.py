@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import sys
 from contextlib import redirect_stdout
-from os import getenv
 from typing import TYPE_CHECKING, TypeVar
 
 from yellowdog_cli.utils.args import ARGS_PARSER
@@ -31,11 +30,6 @@ except ImportError:
     pass
 
 _T = TypeVar("_T")
-
-# Environment variable to use --yes by default: set to any non-empty value
-# other than one of YD_YES_OFF (in any case), which means no, as written
-YD_YES = "YD_YES"
-YD_YES_OFF = frozenset({"0", "false", "no", "off"})
 
 
 def select(
@@ -188,14 +182,6 @@ def confirmed(msg: str) -> bool:
     # Confirmed on the command line?
     if ARGS_PARSER is not None and ARGS_PARSER.yes:
         print_info(f"Action proceeding without user confirmation ({msg})")
-        return True
-
-    # Confirmed using the environment variable? 'YD_YES=false' means no
-    yd_yes = getenv(YD_YES, "")
-    if yd_yes.strip() != "" and yd_yes.strip().lower() not in YD_YES_OFF:
-        print_info(
-            f"'{YD_YES}={yd_yes}': Action proceeding without user confirmation ({msg})"
-        )
         return True
 
     # Seek user confirmation

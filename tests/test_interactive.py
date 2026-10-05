@@ -2,7 +2,7 @@
 Unit tests for yellowdog_cli.utils.interactive
 
 Only the pure-logic / non-I/O paths are tested here:
-  - confirmed(): --yes flag and YD_YES env-var short-circuits
+  - confirmed(): the --yes short-circuit
   - get_selected_list_items(): range-parsing logic (with _get_user_input mocked)
 """
 
@@ -23,25 +23,6 @@ class TestConfirmedShortCircuits:
         mock_args = SimpleNamespace(yes=True)
         with patch.object(interactive_module, "ARGS_PARSER", mock_args):
             assert confirmed("delete everything?") is True
-
-    def test_yd_yes_env_var_returns_true_without_input(self):
-        mock_args = SimpleNamespace(yes=False)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
-            with patch.dict(os.environ, {"YD_YES": "1"}):
-                assert confirmed("delete everything?") is True
-
-    def test_yd_yes_empty_env_var_falls_through(self):
-        """
-        YD_YES set but empty → not treated as confirmed.
-        """
-        mock_args = SimpleNamespace(yes=False, no_format=True)
-        responses = iter(["y"])
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
-            with patch.dict(os.environ, {"YD_YES": ""}):
-                with patch.object(
-                    interactive_module, "_get_user_input", side_effect=responses
-                ):
-                    assert confirmed("proceed?") is True
 
     def test_user_confirms_with_y(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
@@ -184,7 +165,7 @@ class TestGetSelectedListItems:
 
 
 # ---------------------------------------------------------------------------
-# A range checked by its ends; YD_YES's 'no' spellings; answers stripped
+# A range checked by its ends; answers stripped
 # ---------------------------------------------------------------------------
 
 
@@ -200,27 +181,6 @@ def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
     monkeypatch.setattr(interactive_module, "print_error", errors.append)
     assert _select(["", "4"], result_required=True) == [4]
     assert errors == ["please select at least one item"]
-
-
-class TestYdYesOffSpellings:
-    @staticmethod
-    def _confirmed(value: str, answer: str) -> bool:
-        mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
-            with patch.dict(os.environ, {"YD_YES": value}):
-                with patch.object(
-                    interactive_module, "_get_user_input", return_value=answer
-                ) as asked:
-                    result = confirmed("delete everything?")
-        return result if asked.called else "not asked"  # type: ignore[return-value]
-
-    def test_no_spellings_ask_as_if_unset(self):
-        for value in ("0", "false", "False", "NO", "off", " off "):
-            assert self._confirmed(value, "n") is False, value
-
-    def test_other_values_confirm_without_asking(self):
-        for value in ("1", "yes", "true", "anything"):
-            assert self._confirmed(value, "n") == "not asked", value
 
 
 def test_an_answer_with_spaces_is_understood():
