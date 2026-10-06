@@ -4,6 +4,10 @@ library behind yd-create, which the Cloud Wizard uses too. It reads no
 command-line options: what yd-create's options decide arrives as a
 CreateOptions, so a caller that is not yd-create gets the defaults rather
 than whatever its own command line happens to hold.
+
+create.py is a thin command over it. That is the general rule: a utility
+never imports a command module, so shared work lives in a library like this
+one, which the command and any other caller both use.
 """
 
 import dataclasses
@@ -98,6 +102,7 @@ from yellowdog_cli.utils.printing import (
     print_json,
     print_quiet_result,
     print_warning,
+    user_data_as_shown,
 )
 from yellowdog_cli.utils.property_names import (
     PROP_AUTOSCALING_MAX_NODES,
@@ -141,6 +146,7 @@ from yellowdog_cli.utils.resource_processing import (
 )
 from yellowdog_cli.utils.results import record, record_resource
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
+from yellowdog_cli.utils.type_check import check_dict, check_list
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 
@@ -269,7 +275,7 @@ def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
     if _OPTIONS.json_output:
         record({PROP_RESOURCE: resource_type, **resource})
     else:
-        print_json(resource)
+        print_json(user_data_as_shown(resource))
 
 
 def create_compute_source_template(
@@ -1101,16 +1107,20 @@ def create_group(ctx: RunContext, resource: dict):
     print_quiet_result(group.id)
 
 
-def _role_specifications(
-    ctx: RunContext, roles_input: list[dict]
-) -> list[RoleSpecification]:
+def _role_specifications(ctx: RunContext, roles_input: list) -> list[RoleSpecification]:
     """
     The role specifications of a Group's 'roles', each role resolved by its
     name or ID; a role that does not exist is an error.
     """
     role_specifications = []
-    for role_item in roles_input:
-        role = role_item.get(PROP_ROLE)
+    for role_item in check_list(roles_input, PROP_ROLES):
+        if not isinstance(role_item, dict):
+            raise TypeError(
+                f"Group role '{role_item}' must be an object with 'role' and "
+                "'scope' properties, such as "
+                '{"role": {"name": "work-viewer"}, "scope": {"global": true}}'
+            )
+        role = check_dict(role_item.get(PROP_ROLE), PROP_ROLE)
         if role is None:
             raise ValueError("Role must have 'role' specified")
 
@@ -1129,7 +1139,7 @@ def _role_specifications(
                 raise NotFoundError(f"Role ID '{id_}' not found")
 
         # Get the scope of the role
-        scope = role_item.get(PROP_SCOPE)
+        scope = check_dict(role_item.get(PROP_SCOPE), PROP_SCOPE)
         if scope is None:
             raise ValueError(f"Group role '{name_}' must have 'scope' specified")
         if scope.get(PROP_GLOBAL):
@@ -1138,14 +1148,14 @@ def _role_specifications(
             )
             continue
 
-        namespaces_ = scope.get(PROP_NAMESPACES)
+        namespaces_ = check_list(scope.get(PROP_NAMESPACES), PROP_NAMESPACES)
         if namespaces_ is None:
             raise ValueError(
                 f"Non-global group role '{name_}' must have 'namespaces' specified"
             )
         namespace_names = []
         for namespace_ in namespaces_:
-            namespace_name = namespace_.get(PROP_NAMESPACE)
+            namespace_name = check_dict(namespace_, PROP_NAMESPACES).get(PROP_NAMESPACE)
             if namespace_name is None:
                 raise ValueError(
                     f"Namespace applied to role '{name_}' "

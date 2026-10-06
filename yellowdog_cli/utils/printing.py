@@ -35,7 +35,7 @@ from yellowdog_cli.utils.output_style import (
     ERROR_STYLE,
     HIGHLIGHTED_STATES,
     JSON_INDENT,
-    MAX_LINES_COLOURED_FORMATTING,
+    MAX_LINES_COLOURED_JSON,
     WARNING_MARKER,
     WARNING_STYLE,
 )
@@ -56,6 +56,7 @@ from yellowdog_cli.utils.property_names import (
     PROP_TRAITS,
     TASK_GROUPS,
     TASKS,
+    USERDATA,
 )
 from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
@@ -99,7 +100,7 @@ class PrintLogHighlighter(RegexHighlighter):
         ),
         re.compile(r"(?P<quoted>'[a-zA-Z0-9-._=;,:/\\\[\]{}+#@$£%^&*()~`<>?]*')"),
         YDID_HIGHLIGHT_RE,
-        re.compile(r"(?P<url>(https?):((//)|(\\\\))+[\w:#@%/;$~_?+=\\.&]*)"),
+        re.compile(r"(?P<url>(https?):((//)|(\\\\))+[\w:#@%/;$~_?+=\\.&-]*)"),
         *HIGHLIGHTED_STATES,
     ]
 
@@ -111,9 +112,10 @@ class PrintTableHighlighter(RegexHighlighter):
 
     base_style = "pyexamples."
     table_outline_chars = "┌─┬│┼┐┤└┴┘├"
+    # '+', not '*', which also matched the empty string at every position
     highlights = [  # type: ignore[assignment]  # noqa: RUF012
-        re.compile(rf"(?P<table_outline>[{table_outline_chars}]*)"),
-        re.compile(rf"(?P<table_content>[^{table_outline_chars}]*)"),
+        re.compile(rf"(?P<table_outline>[{table_outline_chars}]+)"),
+        re.compile(rf"(?P<table_content>[^{table_outline_chars}]+)"),
         YDID_HIGHLIGHT_RE,
         *HIGHLIGHTED_STATES,
     ]
@@ -126,7 +128,9 @@ pyexamples_theme = Theme(DEFAULT_THEME)
 # means one, and Rich would print that as '{{num❌=1}}'. Every print passes
 # soft_wrap=True: a message is wrapped by print_string() and a table not at
 # all, and Rich, whose width is 80 when stdout is not a terminal, would wrap
-# each line again, breaking tables and paths written to a pipe or a file
+# each line again, breaking tables and paths written to a pipe or a file.
+# CONSOLE_ERR is themed like CONSOLE, so that a message highlights the same
+# whichever stream it goes to
 CONSOLE = ConsoleWithInputBackspaceFixed(
     highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
 )
@@ -329,6 +333,49 @@ def indent(txt: str, indent_width: int = 4) -> str:
     return text_indent(txt, prefix=" " * indent_width)
 
 
+def user_data_hidden(data: Any) -> Any:
+    """
+    A copy of JSON-shaped data with every 'userData' string, at any depth,
+    replaced by a one-line summary of its size: '--hide-user-data', for
+    output a long boot script would otherwise swamp. A value that is not a
+    string (null, as the Platform returns it unset) is left as it is.
+    """
+    if isinstance(data, dict):
+        return {
+            key: (
+                _user_data_summary(value)
+                if key == USERDATA and isinstance(value, str)
+                else user_data_hidden(value)
+            )
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [user_data_hidden(item) for item in data]
+    return data
+
+
+def _user_data_summary(user_data: str) -> str:
+    """
+    What '--hide-user-data' shows in place of a User Data script.
+    """
+    lines = len(user_data.splitlines())
+    return (
+        f"<user data: {len(user_data):,d} characters,"
+        f" {lines:,d} line{'' if lines == 1 else 's'}>"
+    )
+
+
+def user_data_as_shown(data: Any) -> Any:
+    """
+    JSON-shaped data as it is to be shown: with its User Data summarised
+    under '--hide-user-data', else unchanged. Only ever applied to what is
+    printed or recorded, never to what is sent. flush_results() applies it
+    to a recorded document, so a command recording one (yd-provision,
+    yd-instantiate) does not apply it itself.
+    """
+    return user_data_hidden(data) if OUTPUT.hide_user_data else data
+
+
 def _strip_id_props(d):
     """
     Remove ID and read-only metadata fields from a deserialized dict, recursively.
@@ -385,7 +432,7 @@ def print_objects_as_json(objects: list) -> None:
                 pass
             stripped.append(item)
         data = stripped
-    print_json(data)
+    print_json(user_data_as_shown(data))
 
 
 # Set once a JSON document has been printed to stdout, so the '--json' result
@@ -411,12 +458,21 @@ def reset_json_document_printed() -> None:
 
 def print_json_text(json_text: str) -> None:
     """
-    Print a JSON document's text exactly as given: no colouring and no
-    wrapping, so that what is printed is byte for byte what a file holding
-    it would hold (yd-schema prints a schema as --write writes it).
+    Print a JSON document's text exactly as given, with no wrapping, so that
+    what is printed is byte for byte what a file holding it would hold
+    (yd-schema prints a schema as --write writes it). It is coloured only
+    for a terminal, where nobody is reading the bytes, and to print_json()'s
+    line limit.
     """
     global _JSON_DOCUMENT_PRINTED
     _JSON_DOCUMENT_PRINTED = True
+    if (
+        CONSOLE_JSON.is_terminal
+        and not OUTPUT.no_format
+        and json_text.count("\n") <= MAX_LINES_COLOURED_JSON
+    ):
+        CONSOLE_JSON.print(escape(json_text.removesuffix("\n")), soft_wrap=True)
+        return
     print(json_text, end="" if json_text.endswith("\n") else "\n", flush=True)
 
 
@@ -435,7 +491,7 @@ def print_json(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
     # Coloured formatting of JSON console output is expensive
-    if json_string.count("\n") > MAX_LINES_COLOURED_FORMATTING or OUTPUT.no_format:
+    if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
         if with_final_comma:
             print(json_string, end=",\n", flush=True)
         else:
@@ -488,7 +544,7 @@ def print_yd_object(
             object_data_new[key] = value
         object_data = object_data_new
 
-    print_json(object_data, initial_indent, with_final_comma)
+    print_json(user_data_as_shown(object_data), initial_indent, with_final_comma)
 
 
 def print_yd_object_list(
@@ -527,7 +583,7 @@ def print_worker_pool(
     Reconstruct and print the JSON-formatted Worker Pool specification.
     """
     print_dry_run("Printing JSON Worker Pool specification")
-    print_json(worker_pool_specification(crtu, pwpp))
+    print_json(user_data_as_shown(worker_pool_specification(crtu, pwpp)))
 
 
 def worker_pool_specification(

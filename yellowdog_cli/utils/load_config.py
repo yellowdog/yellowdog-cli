@@ -371,6 +371,13 @@ def ensure_config_loaded(args: Any = None) -> None:
 
 
 def __getattr__(name: str):
+    """
+    CONFIG_FILE, CONFIG_FILE_DIR and CONFIG_TOML, loaded on first access.
+    A module __getattr__ is consulted only for access from outside the
+    module ('load_config.CONFIG_FILE', or importing the name): a bare
+    reference inside this module reads the global directly, unbound until
+    the file is loaded, so code here calls ensure_config_loaded() first.
+    """
     if name in _LOADED_NAMES:
         ensure_config_loaded()
         return globals()[name]

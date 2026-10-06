@@ -1,6 +1,6 @@
 """
-Tests for create_task_group, submit_work_requirement and
-generate_batch_of_tasks_for_task_group in submit.py.
+Tests for create_task_group (utils/task_groups.py), submit_work_requirement
+(submit.py) and generate_batch_of_tasks (utils/task_generation.py).
 """
 
 from datetime import timedelta
@@ -18,6 +18,8 @@ from yellowdog_client.model import (
 from yellowdog_client.model.instance_pricing_preference import InstancePricingPreference
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_generation as task_generation_module
+import yellowdog_cli.utils.task_groups as task_groups_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
@@ -29,12 +31,16 @@ from yellowdog_cli.utils.property_names import (
     ARGS_POSTFIX,
     ARGS_PREFIX,
     COMPLETED_TASK_TTL,
+    ENV,
     INSTANCE_PRICING_PREFERENCE,
     MAX_WORKERS,
     MIN_WORKERS,
     NAME,
     PROVIDERS,
     RAM,
+    TASK_DATA,
+    TASK_DATA_FILE,
+    TASK_DATA_INPUTS,
     TASK_GROUP_COUNT,
     TASK_GROUP_TAG,
     TASK_GROUPS,
@@ -46,6 +52,7 @@ from yellowdog_cli.utils.property_names import (
     TASKS_PER_WORKER,
     VCPUS,
 )
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 
 
 def _ctx() -> RunContext:
@@ -107,20 +114,19 @@ def _call_create_task_group(
     if wr_data is None:
         wr_data = {TASK_GROUPS: [task_group_data]}
     with (
-        patch.object(submit_module, "CONFIG_WR", config_wr),
         patch.object(
-            submit_module,
+            task_groups_module,
             "update_config_work_requirement_object",
             side_effect=lambda x: x,
         ),
-        patch.object(submit_module, "generate_dependencies", return_value=[]),
+        patch.object(task_groups_module, "generate_dependencies", return_value=[]),
         patch.object(
-            submit_module, "generate_task_error_matchers_list", return_value=[]
+            task_groups_module, "generate_task_error_matchers_list", return_value=[]
         ),
     ):
-        return submit_module.create_task_group(
-            _submission(),
-            tg_number=tg_number,
+        return task_groups_module.create_task_group(
+            config_wr,
+            TaskGroupPosition(tg_number, tg_number, len(wr_data[TASK_GROUPS])),
             wr_data=wr_data,
             task_group_data=task_group_data,
         )
@@ -441,8 +447,8 @@ def _run_submit_wr(
     Call submit_work_requirement with all external calls mocked out.
 
     Returns:
-      create_tg_calls:   list of (tg_number, task_group_data) pairs
-      add_tasks_calls:   list of tg_number values
+      create_tg_calls:   list of (Task Group number, task_group_data) pairs
+      add_tasks_calls:   list of Task Group numbers
       add_wr_mock:       the mock for CLIENT.work_client.add_work_requirement
 
     Set 'real_task_groups' to let the genuine create_task_group() run, which
@@ -459,8 +465,8 @@ def _run_submit_wr(
     create_tg_calls: list[tuple] = []
     add_tasks_calls: list[int] = []
 
-    def fake_create_tg(_run, tg_number, wr_data, task_group_data, **kwargs):
-        create_tg_calls.append((tg_number, task_group_data))
+    def fake_create_tg(_config_wr, position, wr_data, task_group_data, **kwargs):
+        create_tg_calls.append((position.number, task_group_data))
         return mock_tg
 
     # Captured before the patch below replaces the module attribute
@@ -471,8 +477,8 @@ def _run_submit_wr(
             return real_create_tg(*args, **kwargs)
         return fake_create_tg(*args, **kwargs)
 
-    def fake_add_tasks(_run, tg_number, *args, **kwargs):
-        add_tasks_calls.append(tg_number)
+    def fake_add_tasks(_run, position, *args, **kwargs):
+        add_tasks_calls.append(position.number)
 
     mock_config_common = MagicMock()
     mock_config_common.namespace = "test-ns"
@@ -884,7 +890,7 @@ class TestSubmitWRTaskGroupCountAsFloat:
 
 
 # ---------------------------------------------------------------------------
-# generate_batch_of_tasks_for_task_group — Task Group over Work Requirement
+# generate_batch_of_tasks — Task Group over Work Requirement
 # ---------------------------------------------------------------------------
 
 
@@ -893,28 +899,26 @@ def _generate_one_task(wr_data: dict) -> Task:
     Generate the single Task of wr_data's single Task Group, as submission
     would, with nothing uploaded.
     """
-    config_common = MagicMock()
-    config_common.namespace = "test-ns"
-    with (
-        patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
-        patch.object(wrapper_module, "CONFIG_COMMON", config_common),
-    ):
-        task_group = MagicMock()
-        task_group.name = "tg"
-        task_group.runSpecification.taskTypes = ["bash"]
-        (task,) = submit_module.generate_batch_of_tasks_for_task_group(
-            _submission(name="test-wr", uploaded_files=MagicMock()),
-            start_task_number=0,
-            end_task_number=1,
+    task_group = MagicMock()
+    task_group.name = "tg"
+    task_group.runSpecification.taskTypes = ["bash"]
+    (task,) = task_generation_module.generate_batch_of_tasks(
+        task_generation_module.TaskSource(
+            config_wr=ConfigWorkRequirement(),
+            wr_name="test-wr",
+            namespace="test-ns",
             wr_data=wr_data,
             files_directory=".",
             task_group=task_group,
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             tasks=wr_data[TASK_GROUPS][0][TASKS],
             task_count=None,
             num_tasks=1,
-            num_task_groups=1,
-        )
+            uploaded_files=MagicMock(),
+        ),
+        0,
+        1,
+    )
     return task
 
 
@@ -956,6 +960,89 @@ class TestTaskPropertiesTaskGroupOverWorkRequirement:
     def test_work_requirement_add_environment_is_inherited(self):
         wr_data = {ADD_ENVIRONMENT: {"X": "wr"}, TASK_GROUPS: [{TASKS: [{}]}]}
         assert _generate_one_task(wr_data).environment == {"X": "wr"}
+
+
+def _generate_tasks(wr_data: dict, files_directory: str = ".") -> list[Task]:
+    """
+    Generate every Task of wr_data's single Task Group, as submission would,
+    with nothing uploaded.
+    """
+    task_group = MagicMock()
+    task_group.name = "tg"
+    task_group.runSpecification.taskTypes = ["bash"]
+    tasks = wr_data[TASK_GROUPS][0][TASKS]
+    return task_generation_module.generate_batch_of_tasks(
+        task_generation_module.TaskSource(
+            config_wr=ConfigWorkRequirement(),
+            wr_name="test-wr",
+            namespace="test-ns",
+            wr_data=wr_data,
+            files_directory=files_directory,
+            task_group=task_group,
+            position=TaskGroupPosition(0, 0, 1),
+            tasks=tasks,
+            task_count=None,
+            num_tasks=len(tasks),
+            uploaded_files=MagicMock(),
+        ),
+        0,
+        len(tasks),
+    )
+
+
+class TestInheritedPropertiesSubstitutedPerTask:
+    """
+    '{{task_name}}' and '{{task_number}}' in a property a Task inherits from
+    its Task Group or the Work Requirement are the Task's, as in its own
+    properties and the configuration's. Those levels are substituted as the
+    Task Groups are built, before any Task exists, and the inherited values
+    were passed on with the references left in them.
+    """
+
+    @staticmethod
+    def _named(**task_group) -> dict:
+        return {TASK_GROUPS: [{**task_group, TASKS: [{NAME: "a"}, {NAME: "b"}]}]}
+
+    def test_task_group_arguments(self):
+        wr_data = self._named(**{ARGS: ["{{task_name}}", "{{task_number}}"]})
+        assert [t.arguments for t in _generate_tasks(wr_data)] == [
+            ["a", "1"],
+            ["b", "2"],
+        ]
+
+    def test_work_requirement_environment(self):
+        wr_data = {ENV: {"N": "{{task_name}}"}, **self._named()}
+        assert [t.environment for t in _generate_tasks(wr_data)] == [
+            {"N": "a"},
+            {"N": "b"},
+        ]
+
+    def test_task_group_inline_task_data(self):
+        wr_data = self._named(**{TASK_DATA: "for {{task_name}}"})
+        assert [t.taskData for t in _generate_tasks(wr_data)] == ["for a", "for b"]
+
+    def test_task_group_task_data_file_path(self, tmp_path):
+        for name in ("a", "b"):
+            (tmp_path / f"data-{name}.txt").write_text(name, encoding="utf-8")
+        wr_data = self._named(**{TASK_DATA_FILE: "data-{{task_name}}.txt"})
+        assert [t.taskData for t in _generate_tasks(wr_data, str(tmp_path))] == [
+            "a",
+            "b",
+        ]
+
+    def test_task_group_data_inputs(self):
+        wr_data = self._named(
+            **{TASK_DATA_INPUTS: [{"source": "in/{{task_name}}", "destination": "x"}]}
+        )
+        assert [t.data.inputs[0].source for t in _generate_tasks(wr_data)] == [
+            "in/a",
+            "in/b",
+        ]
+
+    def test_the_inherited_value_stays_as_written(self):
+        wr_data = self._named(**{ARGS: ["{{task_name}}"]})
+        _generate_tasks(wr_data)
+        assert wr_data[TASK_GROUPS][0][ARGS] == ["{{task_name}}"]
 
 
 # ---------------------------------------------------------------------------

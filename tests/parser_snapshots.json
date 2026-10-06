@@ -3083,6 +3083,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "hide_user_data",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--hide-user-data"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "jsonnet_dry_run",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -5270,6 +5283,19 @@
     },
     {
       "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "hide_user_data",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--hide-user-data"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": null,
       "default": null,
       "dest": "compute_requirement",
@@ -5812,6 +5838,19 @@
       "nargs": 0,
       "option_strings": [
         "--strip-ids"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "hide_user_data",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--hide-user-data"
       ],
       "required": false,
       "type": null
@@ -6824,6 +6863,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "hide_user_data",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--hide-user-data"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "jsonnet_dry_run",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -7611,6 +7663,20 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_format",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-format",
+        "--nf"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-show": [
@@ -7852,6 +7918,19 @@
       "nargs": 0,
       "option_strings": [
         "--strip-ids"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "hide_user_data",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--hide-user-data"
       ],
       "required": false,
       "type": null

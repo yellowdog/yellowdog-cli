@@ -438,6 +438,30 @@ def test_an_unknown_role_fails_the_group_before_any_change(env, monkeypatch):
     env.client.account_client.add_group.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "roles, message",
+    [
+        (["work-viewer"], "Group role 'work-viewer' must be an object"),
+        ([{"role": "work-viewer"}], "Property 'role' .* 'Table/Object'"),
+        ([{"role": {"name": "r"}, "scope": "global"}], "Property 'scope'"),
+        (
+            [{"role": {"name": "r"}, "scope": {"namespaces": ["ns"]}}],
+            "Property 'namespaces' value 'ns'",
+        ),
+    ],
+)
+def test_a_misshapen_role_is_named_before_any_change(env, monkeypatch, roles, message):
+    """
+    Roles given in a shape the CLI does not read (names alone, as before
+    v8.3.0) are reported as such, not as "'str' object has no attribute 'get'".
+    """
+    monkeypatch.setattr(yd_create, "get_group_id_by_name", lambda *a: None)
+    monkeypatch.setattr(yd_create, "get_role_id_by_name", lambda *a: "rid")
+    with pytest.raises(TypeError, match=message):
+        yd_create.create_group(_ctx(), {"name": "g", "roles": roles})
+    env.client.account_client.add_group.assert_not_called()
+
+
 def test_a_user_without_groups_keeps_them(env, monkeypatch):
     monkeypatch.setattr(
         yd_create,

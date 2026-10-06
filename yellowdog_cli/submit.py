@@ -6,23 +6,16 @@ A script to submit a Work Requirement.
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import timedelta
 from math import ceil
 from os.path import dirname
 from sys import exit as sys_exit
 from typing import cast
 
 from yellowdog_client.model import (
-    CloudProvider,
-    RunSpecification,
     Task,
     TaskGroup,
-    TaskTemplate,
     WorkRequirement,
     WorkRequirementStatus,
-)
-from yellowdog_client.model.instance_pricing_preference import (
-    InstancePricingPreference,
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
@@ -70,51 +63,15 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
-    ADD_ENVIRONMENT,
-    ADD_YD_ENV_VARS,
-    ARGS,
-    ARGS_POSTFIX,
-    ARGS_PREFIX,
-    COMPLETED_TASK_TTL,
-    DISABLE_PREALLOCATION,
-    ENV,
     FAILURE_POLICY,
-    FINISH_IF_ALL_TASKS_FINISHED,
-    FINISH_IF_ANY_TASK_FAILED,
-    INSTANCE_PRICING_PREFERENCE,
-    INSTANCE_TYPES,
     MAX_RETRIES,
-    MAX_WORKERS,
-    MIN_WORKERS,
     NAME,
-    NAMESPACES,
     PRIORITY,
-    PROVIDERS,
-    RAM,
-    REGIONS,
     RETRY_POLICY,
     RETRYABLE_ERRORS,
-    SET_TASK_NAMES,
     TASK_COUNT,
-    TASK_DATA,
-    TASK_DATA_FILE,
-    TASK_DATA_FILES,
-    TASK_DATA_INPUTS,
-    TASK_DATA_OUTPUTS,
-    TASK_GROUP_COUNT,
-    TASK_GROUP_NAME,
-    TASK_GROUP_TAG,
     TASK_GROUPS,
-    TASK_LEVEL_TIMEOUT,
-    TASK_NAME,
-    TASK_TEMPLATE,
-    TASK_TIMEOUT,
-    TASK_TYPE,
-    TASK_TYPES,
     TASKS,
-    TASKS_PER_WORKER,
-    VCPUS,
-    WORKER_TAGS,
     WR_TAG,
 )
 from yellowdog_cli.utils.results import record_document, record_entity
@@ -126,49 +83,34 @@ from yellowdog_cli.utils.specs.loading import (
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
-    assemble_arguments,
-    create_task,
-    double_range_from_list,
     formatted_number_str,
-    generate_dependencies,
-    generate_failure_policy,
-    generate_retry_policy,
-    generate_task_error_matchers_list,
-    generate_taskdata_object,
-    get_task_data_property,
-    get_task_group_name,
-    get_task_name,
-    merge_environment,
-    resolve_task_data,
     update_config_work_requirement_object,
 )
 from yellowdog_cli.utils.task_batches import (
     run_batches,
     submit_with_retries,
 )
+from yellowdog_cli.utils.task_generation import TaskSource, generate_batch_of_tasks
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
+from yellowdog_cli.utils.task_groups import (
+    check_task_groups,
+    create_task_group,
+    expand_task_groups,
+    promote_task_type,
+)
 from yellowdog_cli.utils.type_check import (
-    check_bool,
     check_dict,
     check_float_or_int,
     check_int,
-    check_list,
     check_str,
 )
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variable_substitution import (
-    add_or_update_substitution,
     add_substitutions_without_overwriting,
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import (
-    L_TASK_COUNT,
-    L_TASK_GROUP_COUNT,
-    L_TASK_GROUP_NAME,
-    L_TASK_GROUP_NUMBER,
-    L_TASK_NAME,
-    L_TASK_NUMBER,
     L_WR_NAME,
-    VAR_NAME_OF_UNNAMED_TASK,
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -417,7 +359,9 @@ def submit_work_requirement(
         run,
         work_requirement,
         [
-            _Addition(tg_number, task_group)
+            _Addition(
+                TaskGroupPosition(tg_number, tg_number, len(task_groups)), task_group
+            )
             for tg_number, task_group in enumerate(task_groups)
         ],
         wr_data,
@@ -499,22 +443,17 @@ def _task_groups(
     run.config_wr = update_config_work_requirement_object(run.config_wr)
     resolve_variables_insitu(wr_data)
     run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
-    expand_task_groups(run, wr_data)
+    expand_task_groups(run.config_wr, wr_data)
     offset = existing_task_groups or 0
-    total = (
-        None
-        if existing_task_groups is None
-        else existing_task_groups + len(wr_data[TASK_GROUPS])
-    )
+    count = offset + len(wr_data[TASK_GROUPS])
     return [
         create_task_group(
-            run,
-            tg_number,
+            run.config_wr,
+            TaskGroupPosition(tg_number, offset + tg_number, count),
             wr_data,
             task_group_data,
-            tg_number_offset=offset,
-            total_num_task_groups=total,
             files_directory=files_directory,
+            on_legacy_retry=lambda: _warn_legacy_retry_mechanism_once(run),
         )
         for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS])
     ]
@@ -523,17 +462,12 @@ def _task_groups(
 @dataclass
 class _Addition:
     """
-    Tasks to add to one Task Group: the specification's Task Group
-    'tg_number', into 'task_group', which is at 'wr_tg_number' of
-    'total_num_task_groups' in the Work Requirement and already holds
-    'task_number_offset' Tasks. The defaults are a new Work Requirement's.
+    Tasks to add to one Task Group: those of the specification's Task Group
+    at 'position', into 'task_group'.
     """
 
-    tg_number: int
+    position: TaskGroupPosition
     task_group: TaskGroup
-    wr_tg_number: int | None = None
-    total_num_task_groups: int | None = None
-    task_number_offset: int = 0
 
 
 def _create_work_requirement(
@@ -584,17 +518,27 @@ def _create_work_requirement(
     return work_requirement
 
 
-def _extend_work_requirement(
-    run: _Submission,
-    work_requirement: WorkRequirement,
-    existing_tgs: list[TaskGroup],
-    spec_task_groups: list[TaskGroup],
-) -> tuple[WorkRequirement, list[_Addition]]:
+@dataclass
+class _Extension:
     """
-    Append to the Work Requirement being added to the specification's Task
-    Groups it does not have yet, or in a dry run start the snapshot with
-    them, and return it with the Tasks to add: those of the new Task Groups,
-    then those of the ones it had already.
+    How the specification's Task Groups extend a Work Requirement:
+    'task_groups', its Task Groups once the 'new' ones are appended, and the
+    'additions' of Tasks to make, the new Task Groups' first.
+    """
+
+    task_groups: list[TaskGroup]
+    new: list[TaskGroup]
+    additions: list[_Addition]
+
+
+def _plan_extension(
+    existing_tgs: list[TaskGroup], spec_task_groups: list[TaskGroup]
+) -> _Extension:
+    """
+    The specification's Task Groups matched by name to those the Work
+    Requirement already has, which take their Tasks, the rest appended as
+    new; a ValueError if a matched one's Tasks need a task type it does not
+    allow. Decides everything and does nothing, so it needs no client.
     """
     n_existing = len(existing_tgs)
 
@@ -638,7 +582,42 @@ def _extend_work_requirement(
                 " add them under a new Task Group name."
             )
 
-    all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
+    # New TGs take no task offset, numbered by where they were appended;
+    # matched (existing) TGs are numbered by their own position, their task
+    # numbers following those already there
+    additions = [
+        _Addition(TaskGroupPosition(spec_idx, n_existing + new_idx, total_tgs), spec_tg)
+        for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs)
+    ]
+    for spec_idx, _, existing_idx, existing_tg in matched:
+        task_summary = existing_tg.taskSummary
+        additions.append(
+            _Addition(
+                TaskGroupPosition(
+                    spec_idx,
+                    existing_idx,
+                    total_tgs,
+                    task_summary.taskCount if task_summary is not None else 0,
+                ),
+                existing_tg,
+            )
+        )
+    new = [tg for _, tg in new_tgs]
+    return _Extension(existing_tgs + new, new, additions)
+
+
+def _extend_work_requirement(
+    run: _Submission,
+    work_requirement: WorkRequirement,
+    existing_tgs: list[TaskGroup],
+    spec_task_groups: list[TaskGroup],
+) -> tuple[WorkRequirement, list[_Addition]]:
+    """
+    Append to the Work Requirement being added to the specification's Task
+    Groups it does not have yet, as _plan_extension() decides, or in a dry
+    run start the snapshot with them, and return it with the Tasks to add.
+    """
+    extension = _plan_extension(existing_tgs, spec_task_groups)
 
     if run.ctx.args.dry_run:
         # Seed the snapshot with every Task Group the Tasks below will attach
@@ -646,7 +625,7 @@ def _extend_work_requirement(
         # Groups' own Tasks can't be shown: the API's Task Group carries a
         # summary of them, not the Tasks themselves -- hence the line saying
         # which of the Task Groups below are already there.
-        work_requirement.taskGroups = all_task_groups
+        work_requirement.taskGroups = extension.task_groups
         run.snapshot.set_work_requirement(work_requirement)
         if existing_tgs:
             print_dry_run(
@@ -654,51 +633,33 @@ def _extend_work_requirement(
                 " Task Group(s), shown below without their existing Tasks: "
                 + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
             )
-        if new_tgs:
+        if extension.new:
             print_dry_run(
-                f"Would add {len(new_tgs)} new Task Group(s) to existing"
+                f"Would add {len(extension.new)} new Task Group(s) to existing"
                 f" Work Requirement '{run.name}'"
             )
+        return work_requirement, extension.additions
 
     # If there are new TGs, update the Work Requirement with the full TG list
-    elif new_tgs:
-        work_requirement.taskGroups = all_task_groups
+    if extension.new:
+        work_requirement.taskGroups = extension.task_groups
         work_requirement = run.ctx.client.work_client.update_work_requirement(
             work_requirement
         )
         print_info(
-            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{run.name}'"
+            f"Added {len(extension.new)} new Task Group(s) to existing Work"
+            f" Requirement '{run.name}'"
         )
 
-    if not run.ctx.args.dry_run:
-        # The Work Requirement added to, as a creator's document names the
-        # one it created
-        record_entity(
-            work_requirement.id,
-            work_requirement.name,
-            run.ctx.config.namespace,  # Where it was looked up
-            ET_WORK_REQUIREMENTS,
-        )
-
-    # New TGs take no task offset, numbered by where they were appended;
-    # matched (existing) TGs are numbered by their own position, their task
-    # numbers following those already there
-    additions = [
-        _Addition(spec_idx, spec_tg, n_existing + new_idx, total_tgs)
-        for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs)
-    ]
-    for spec_idx, _, existing_idx, existing_tg in matched:
-        task_summary = existing_tg.taskSummary
-        additions.append(
-            _Addition(
-                spec_idx,
-                existing_tg,
-                existing_idx,
-                total_tgs,
-                task_summary.taskCount if task_summary is not None else 0,
-            )
-        )
-    return work_requirement, additions
+    # The Work Requirement added to, as a creator's document names the one it
+    # created
+    record_entity(
+        work_requirement.id,
+        work_requirement.name,
+        run.ctx.config.namespace,  # Where it was looked up
+        ET_WORK_REQUIREMENTS,
+    )
+    return work_requirement, extension.additions
 
 
 def _add_tasks(
@@ -728,15 +689,12 @@ def _add_tasks(
         for addition in additions:
             add_tasks_to_task_group(
                 run,
-                tg_number=addition.tg_number,
+                addition.position,
                 task_group=addition.task_group,
                 wr_data=wr_data,
                 task_count=task_count,
                 work_requirement=work_requirement,
                 files_directory=files_directory,
-                wr_tg_number=addition.wr_tg_number,
-                total_num_task_groups=addition.total_num_task_groups,
-                task_number_offset=addition.task_number_offset,
             )
 
     # An interrupt too: Ctrl-C part-way through would otherwise leave a new
@@ -763,80 +721,6 @@ def _follow(run: _Submission, work_requirement: WorkRequirement) -> None:
         follow_progress(run, work_requirement)
 
 
-def check_task_groups(wr_data: dict) -> None:
-    """
-    A Work Requirement's 'taskGroups' is a list, each Task Group a table with
-    a 'tasks' list, as the schema requires. Checked before anything indexes
-    them, so that one missing is named rather than reported as a bare
-    KeyError ("ERROR : 'tasks'").
-    """
-    if TASK_GROUPS not in wr_data:
-        raise ValueError(
-            f"Property '{TASK_GROUPS}' is not defined (use '--empty' to submit a"
-            " Work Requirement with no Task Groups)"
-        )
-    for tg_number, task_group_data in enumerate(
-        check_list(wr_data[TASK_GROUPS], TASK_GROUPS)
-    ):
-        task_group = f"Task Group {tg_number + 1} of {len(wr_data[TASK_GROUPS])}"
-        if not isinstance(task_group_data, dict):
-            raise TypeError(f"{task_group} should be of type 'Dict'")
-        if TASKS not in task_group_data:
-            raise ValueError(f"Property '{TASKS}' is not defined in {task_group}")
-        for task_number, task in enumerate(check_list(task_group_data[TASKS], TASKS)):
-            if not isinstance(task, dict):
-                raise TypeError(
-                    f"Task {task_number + 1} in {task_group} should be of type 'Dict'"
-                )
-
-
-def promote_task_type(data: dict) -> None:
-    """
-    At the Work Requirement or Task Group level, a single 'taskType' stands
-    for 'taskTypes', as a convenience, where 'taskTypes' is not set.
-    """
-    if data.get(TASK_TYPE) is not None and data.get(TASK_TYPES) is None:
-        data[TASK_TYPES] = [data[TASK_TYPE]]
-
-
-def expand_task_groups(run: _Submission, wr_data: dict) -> None:
-    """
-    Expand a single Task Group into 'taskGroupCount' copies of itself, in
-    place. A count given as a whole-valued float ('2.0', which the schema
-    accepts as an integer) is taken as that integer; any other non-integer
-    is an error.
-    """
-    task_group_count = Cascade(wr_data).checked(
-        TASK_GROUP_COUNT, check_float_or_int, run.config_wr.task_group_count
-    )
-    if task_group_count is None:
-        return
-    if isinstance(task_group_count, float):
-        if not task_group_count.is_integer():
-            raise TypeError(
-                f"Property '{TASK_GROUP_COUNT}' value '{task_group_count}'"
-                " should be of type 'Integer'"
-            )
-        task_group_count = int(task_group_count)
-    if task_group_count <= 1:
-        return
-
-    if len(wr_data[TASK_GROUPS]) == 1:
-        print_info(
-            f"Expanding number of Task Groups to '{TASK_GROUP_COUNT}="
-            f"{task_group_count}'"
-        )
-        wr_data[TASK_GROUPS] = [
-            deepcopy(wr_data[TASK_GROUPS][0]) for _ in range(task_group_count)
-        ]
-    elif len(wr_data[TASK_GROUPS]) > 1:
-        print_warning(
-            f"Note: Work Requirement already contains"
-            f" {len(wr_data[TASK_GROUPS])} Task Groups: ignoring expansion "
-            f"using '{TASK_GROUP_COUNT} = {task_group_count}'"
-        )
-
-
 # Per-invocation flag so the deprecation warning fires once even when many
 # Task Groups use the legacy retry mechanism
 def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
@@ -850,270 +734,27 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
     )
 
 
-def create_task_group(
-    run: _Submission,
-    tg_number: int,
-    wr_data: dict,
-    task_group_data: dict,
-    tg_number_offset: int = 0,
-    total_num_task_groups: int | None = None,
-    files_directory: str = "",
-) -> TaskGroup:
-    """
-    Create a TaskGroup object.
-
-    tg_number_offset: added to tg_number for display/naming purposes when
-      adding to an existing Work Requirement.
-    total_num_task_groups: total TG count across the WR (existing + new) for
-      formatting; defaults to len(wr_data[TASK_GROUPS]).
-    """
-
-    promote_task_type(task_group_data)
-    # The Task Group's properties, from itself or the Work Requirement; the
-    # configuration's, from the copy below, are the defaults
-    levels = Cascade(wr_data, task_group_data)
-
-    # Gather task types, in order of first appearance
-    task_types_from_tasks = [
-        task[TASK_TYPE] for task in task_group_data[TASKS] if TASK_TYPE in task
-    ]
-
-    # Name the Task Group
-    num_task_groups = (
-        total_num_task_groups
-        if total_num_task_groups is not None
-        else len(wr_data[TASK_GROUPS])
-    )
-    effective_tg_number = tg_number + tg_number_offset
-    num_tasks = len(task_group_data[TASKS])
-    if num_tasks == 1:  # Account for Task expansion
-        _task_count = levels.checked(TASK_COUNT, check_int, run.config_wr.task_count)
-        if _task_count is not None:
-            num_tasks = _task_count
-
-    # The following handles possible CSV substitution at the config.toml level
-    try:
-        if task_group_data.get(NAME) is None:
-            task_group_data[NAME] = task_group_data[TASKS][0][TASK_GROUP_NAME]
-    except (KeyError, IndexError):
-        pass
-    task_group_name = format_yd_name(
-        get_task_group_name(
-            check_str(task_group_data.get(NAME, run.config_wr.task_group_name), NAME),
-            effective_tg_number,
-            num_task_groups,
-            num_tasks,
-        )
-    )
-
-    # Add lazy substitutions for use in any Task Group property
-    add_or_update_substitution(L_TASK_COUNT, str(num_tasks))
-    add_or_update_substitution(L_TASK_GROUP_NAME, task_group_name)
-    add_or_update_substitution(
-        L_TASK_GROUP_NUMBER, formatted_number_str(effective_tg_number, num_task_groups)
-    )
-    add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
-    resolve_variables_insitu(task_group_data)
-    # Copy the run's configuration and apply the lazy substitutions to it
-    config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
-
-    # Resolve taskTemplate early so it can satisfy the task-type validation below
-    task_template_data = levels.checked(
-        TASK_TEMPLATE, check_dict, config_wr.task_template
-    )
-
-    # Assemble the RunSpecification values for the Task Group;
-    # 'task_types' can automatically be added to by the task_types
-    # specified in the Tasks.
-    # De-duplicated in order, the declared types first, rather than through a
-    # set, whose order varies from run to run with string hashing
-    task_types: list = list(
-        dict.fromkeys(
-            levels.checked(TASK_TYPES, check_list, []) + task_types_from_tasks
-        )
-    )
-    # Use the task type from the config file if present and task_types is empty
-    if config_wr.task_type is not None and not task_types:
-        task_types.append(config_wr.task_type)
-    # Fall back to taskTemplate.taskType if task_types is still empty
-    template_provides_type = (
-        task_template_data is not None and task_template_data.get(TASK_TYPE) is not None
-    )
-    if template_provides_type and not task_types:
-        task_types.append(task_template_data.get(TASK_TYPE))  # type: ignore[union-attr]
-    if not task_types and not template_provides_type and num_tasks > 0:
-        raise ValueError(
-            f"No Task Type(s) specified in Task Group '{task_group_name}': "
-            "is a valid Work Requirement defined?"
-        )
-
-    vcpus = levels.checked(VCPUS, double_range_from_list, config_wr.vcpus)
-    ram = levels.checked(RAM, double_range_from_list, config_wr.ram)
-
-    providers_data: list[str] | None = levels.checked(
-        PROVIDERS, check_list, config_wr.providers
-    )
-    providers: list[CloudProvider] | None = (
-        None
-        if providers_data is None
-        else [CloudProvider(provider) for provider in providers_data]
-    )
-
-    ipp_data: str | None = levels.checked(
-        INSTANCE_PRICING_PREFERENCE, check_str, config_wr.instance_pricing_preference
-    )
-    instance_pricing_preference: InstancePricingPreference | None = (
-        None if ipp_data is None else InstancePricingPreference(ipp_data)
-    )
-
-    task_timeout_minutes: float | None = levels.checked(
-        TASK_TIMEOUT, check_float_or_int, config_wr.task_timeout
-    )
-    task_timeout: timedelta | None = (
-        None
-        if task_timeout_minutes is None
-        else timedelta(minutes=task_timeout_minutes)
-    )
-
-    # Resolve retry/failure policies (new mechanism) and detect any conflict
-    # with the deprecated maximumTaskRetries / retryableErrors fields. Only
-    # 'retryPolicy' overlaps with the legacy retry mechanism; 'failurePolicy'
-    # adds resubmission on top of either retry mechanism and may coexist.
-    retry_policy = generate_retry_policy(config_wr, wr_data, task_group_data)
-    failure_policy = generate_failure_policy(config_wr, wr_data, task_group_data)
-
-    legacy_retries_set = (
-        task_group_data.get(MAX_RETRIES) is not None
-        or wr_data.get(MAX_RETRIES) is not None
-        or config_wr.max_retries is not None
-    )
-    legacy_errors_set = (
-        task_group_data.get(RETRYABLE_ERRORS) is not None
-        or wr_data.get(RETRYABLE_ERRORS) is not None
-        or config_wr.retryable_errors is not None
-    )
-    legacy_in_use = legacy_retries_set or legacy_errors_set
-
-    if retry_policy is not None and legacy_in_use:
-        raise ValueError(
-            f"'{RETRY_POLICY}' cannot be combined with the deprecated "
-            f"'{MAX_RETRIES}' or '{RETRYABLE_ERRORS}'. Pick one mechanism per "
-            f"Task Group; '{RETRY_POLICY}' is the supported choice. "
-            f"'{FAILURE_POLICY}' may be used alongside either."
-        )
-
-    if legacy_in_use:
-        _warn_legacy_retry_mechanism_once(run)
-
-    run_specification = RunSpecification(
-        taskTypes=task_types,
-        maximumTaskRetries=(
-            None
-            if retry_policy is not None
-            else levels.checked(MAX_RETRIES, check_int, config_wr.max_retries or 0)
-        ),
-        retryPolicy=retry_policy,
-        failurePolicy=failure_policy,
-        workerTags=levels.checked(WORKER_TAGS, check_list, config_wr.worker_tags),
-        instanceTypes=levels.checked(
-            INSTANCE_TYPES, check_list, config_wr.instance_types
-        ),
-        instancePricingPreference=instance_pricing_preference,
-        vcpus=vcpus,
-        ram=ram,
-        minWorkers=levels.checked(MIN_WORKERS, check_int, config_wr.min_workers),
-        maxWorkers=levels.checked(MAX_WORKERS, check_int, config_wr.max_workers),
-        tasksPerWorker=levels.checked(
-            TASKS_PER_WORKER, check_int, config_wr.tasks_per_worker
-        ),
-        providers=providers,
-        regions=levels.checked(REGIONS, check_list, config_wr.regions),
-        taskTimeout=task_timeout,
-        namespaces=levels.checked(NAMESPACES, check_list, config_wr.namespaces),
-        retryableErrors=(
-            None
-            if retry_policy is not None
-            else generate_task_error_matchers_list(config_wr, wr_data, task_group_data)
-        ),
-        disablePreallocation=levels.checked(
-            DISABLE_PREALLOCATION, check_bool, config_wr.disable_preallocation
-        ),
-    )
-    ctttl_data = levels.checked(
-        COMPLETED_TASK_TTL, check_float_or_int, config_wr.completed_task_ttl
-    )
-    completed_task_ttl = None if ctttl_data is None else timedelta(minutes=ctttl_data)
-
-    # Build TaskTemplate object, resolving taskDataFile → taskData if present
-    if task_template_data is not None:
-        tt = dict(task_template_data)
-        try:
-            task_data = resolve_task_data(tt, files_directory)
-        except ValueError as e:
-            raise ValueError(f"taskTemplate: {e}") from e
-        tt.pop(TASK_DATA_FILE, None)
-        tt.pop(TASK_DATA_FILES, None)
-        if task_data is not None:
-            tt[TASK_DATA] = task_data
-        task_template = TaskTemplate(**tt)
-    else:
-        task_template = None
-
-    # Create the Task Group
-    _finish_all = levels.checked(
-        FINISH_IF_ALL_TASKS_FINISHED,
-        check_bool,
-        config_wr.finish_if_all_tasks_finished,
-    )
-    task_group = TaskGroup(
-        name=task_group_name,
-        runSpecification=run_specification,
-        dependencies=generate_dependencies(task_group_data),
-        finishIfAllTasksFinished=_finish_all if _finish_all is not None else True,
-        finishIfAnyTaskFailed=levels.checked(
-            FINISH_IF_ANY_TASK_FAILED, check_bool, config_wr.finish_if_any_task_failed
-        )
-        or False,
-        priority=levels.checked(PRIORITY, check_float_or_int, config_wr.priority or 0),
-        completedTaskTtl=completed_task_ttl,
-        tag=check_str(task_group_data.get(TASK_GROUP_TAG), TASK_GROUP_TAG),
-        taskTemplate=task_template,
-    )
-
-    print_info(f"Generated Task Group '{task_group_name}'")
-    return task_group
-
-
 def add_tasks_to_task_group(
     run: _Submission,
-    tg_number: int,
+    position: TaskGroupPosition,
     task_group: TaskGroup,
     wr_data: dict,
     task_count: int | None,
     work_requirement: WorkRequirement,
     files_directory: str = "",
-    wr_tg_number: int | None = None,
-    total_num_task_groups: int | None = None,
-    task_number_offset: int = 0,
 ) -> None:
     """
-    Add all the constituent Tasks to the Task Group.
-
-    tg_number: the Task Group's index in wr_data[TASK_GROUPS].
-    wr_tg_number: the Task Group's (zero-based) position in the Work
-      Requirement, for display and naming, when that differs from tg_number
-      because Tasks are being added to an existing Work Requirement.
-    total_num_task_groups: total TG count (existing + new) for formatting.
-    task_number_offset: starting task number within the TG (for adding to an
-      existing Task Group that already contains tasks).
+    Add the Tasks of the specification's Task Group at 'position' to
+    'task_group', numbered on from any it already holds.
     """
     batch_size = run.batch_size
+    task_group_data = wr_data[TASK_GROUPS][position.spec_index]
 
-    num_tasks = len(wr_data[TASK_GROUPS][tg_number][TASKS])
+    num_tasks = len(task_group_data[TASKS])
 
     # If the 'taskCount' property is set, and there is only one Task
     # in the Task Group, create 'taskCount' duplicates of the Task.
-    task_group_task_count = Cascade(wr_data, wr_data[TASK_GROUPS][tg_number]).checked(
+    task_group_task_count = Cascade(wr_data, task_group_data).checked(
         TASK_COUNT, check_int, run.config_wr.task_count
     )
     if task_group_task_count is not None:
@@ -1127,9 +768,7 @@ def add_tasks_to_task_group(
             # so the copies would only be built to go unread
             if task_count is None:
                 for _ in range(1, task_group_task_count):
-                    wr_data[TASK_GROUPS][tg_number][TASKS].append(
-                        deepcopy(wr_data[TASK_GROUPS][tg_number][TASKS][0])
-                    )
+                    task_group_data[TASKS].append(deepcopy(task_group_data[TASKS][0]))
         elif task_group_task_count > 1:
             print_warning(
                 f"Note: Task Group '{task_group.name}' already contains"
@@ -1137,15 +776,8 @@ def add_tasks_to_task_group(
                 f" {int(task_group_task_count)}'"
             )
 
-    num_task_groups = (
-        total_num_task_groups
-        if total_num_task_groups is not None
-        else len(wr_data[TASK_GROUPS])
-    )
-    effective_tg_number = tg_number if wr_tg_number is None else wr_tg_number
-
     # Determine Task batching
-    tasks = wr_data[TASK_GROUPS][tg_number][TASKS]
+    tasks = task_group_data[TASKS]
     num_tasks = len(tasks) if task_count is None else task_count
     num_task_batches: int = ceil(num_tasks / batch_size)
     if num_task_batches > 1 and not run.ctx.args.dry_run:
@@ -1155,33 +787,27 @@ def add_tasks_to_task_group(
         )
 
     # Add lazy substitutions for use in any Task property
-    add_or_update_substitution(L_TASK_COUNT, str(num_tasks))
-    add_or_update_substitution(L_TASK_GROUP_NAME, task_group.name)
-    add_or_update_substitution(
-        L_TASK_GROUP_NUMBER, formatted_number_str(effective_tg_number, num_task_groups)
-    )
-    add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
+    position.substitute(cast(str, task_group.name), num_tasks)
 
+    source = TaskSource(
+        config_wr=run.config_wr,
+        wr_name=run.name,
+        namespace=run.ctx.config.namespace,
+        wr_data=wr_data,
+        files_directory=files_directory,
+        task_group=task_group,
+        position=position,
+        tasks=tasks,
+        task_count=task_count,
+        num_tasks=num_tasks,
+        uploaded_files=run.uploaded_files,
+    )
     num_submitted_tasks = run_batches(
         run.ctx,
         num_tasks,
         batch_size,
         _parallel_batches(run),
-        make_batch=lambda start, end: generate_batch_of_tasks_for_task_group(
-            run,
-            start,
-            end,
-            wr_data,
-            files_directory,
-            task_group,
-            effective_tg_number,
-            tasks,
-            task_count,
-            num_tasks,
-            num_task_groups,
-            task_number_offset=task_number_offset,
-            wr_tg_index=tg_number,
-        ),
+        make_batch=lambda start, end: generate_batch_of_tasks(source, start, end),
         send_batch=lambda tasks_list, batch_number, num_batches: (
             submit_batch_of_tasks_to_task_group(
                 run,
@@ -1218,184 +844,6 @@ def _parallel_batches(run: _Submission) -> int:
         if parallel_batches is not None:
             return parallel_batches
     return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
-
-
-def generate_batch_of_tasks_for_task_group(
-    run: _Submission,
-    start_task_number: int,
-    end_task_number: int,
-    wr_data: dict,
-    files_directory: str,
-    task_group: TaskGroup,
-    tg_number: int,
-    tasks: list,
-    task_count: int | None,
-    num_tasks: int,
-    num_task_groups: int,
-    task_number_offset: int = 0,
-    wr_tg_index: int | None = None,
-) -> list[Task]:
-    """
-    Generate a batch of tasks for subsequent addition to a task group.
-
-    tg_number: WR-relative display number (already includes any offset).
-    task_number_offset: added to task_number for naming when adding to an
-      existing Task Group that already contains tasks.
-    wr_tg_index: spec-relative index for accessing wr_data[TASK_GROUPS];
-      defaults to tg_number when not provided.
-    """
-    spec_tg_index = wr_tg_index if wr_tg_index is not None else tg_number
-    tasks_list: list[Task] = []
-    for task_number in range(start_task_number, end_task_number):
-        task_group_data = wr_data[TASK_GROUPS][spec_tg_index]
-        task = tasks[task_number] if task_count is None else tasks[0]
-        # The Task's properties, from itself, its Task Group or the Work
-        # Requirement; the configuration's are the defaults
-        levels = Cascade(wr_data, task_group_data, task)
-
-        set_task_names = (
-            levels.checked(SET_TASK_NAMES, check_bool, run.config_wr.set_task_names)
-            or False
-        )
-
-        display_task_number = task_number + task_number_offset
-        display_num_tasks = task_number_offset + num_tasks
-
-        # The run's configuration, not a per-Task copy: get_task_name() makes the
-        # Task-level lazy substitutions in the name itself, and the per-Task
-        # copy can only be made once the name it substitutes is known
-        task_name = get_task_name(
-            check_str(
-                task.get(NAME, task.get(TASK_NAME, run.config_wr.task_name)), NAME
-            ),
-            set_task_names,
-            display_task_number,
-            display_num_tasks,
-            tg_number,
-            num_task_groups,
-            task_group.name,
-        )
-
-        task_name = None if task_name is None else format_yd_name(task_name)
-
-        add_or_update_substitution(
-            L_TASK_NAME,
-            VAR_NAME_OF_UNNAMED_TASK if task_name is None else task_name,
-        )
-        add_or_update_substitution(
-            L_TASK_NUMBER,
-            formatted_number_str(display_task_number, display_num_tasks),
-        )
-        resolve_variables_insitu(task)
-        config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
-
-        arguments_list = levels.checked(ARGS, check_list, config_wr.args)
-        arguments_list = assemble_arguments(
-            levels.checked(ARGS_PREFIX, check_list, config_wr.args_prefix),
-            arguments_list,
-            levels.checked(ARGS_POSTFIX, check_list, config_wr.args_postfix),
-        )
-        env = merge_environment(
-            levels.checked(ENV, check_dict, config_wr.env),
-            levels.checked(ADD_ENVIRONMENT, check_dict, config_wr.add_environment),
-        )
-
-        add_yd_env_vars = (
-            levels.checked(ADD_YD_ENV_VARS, check_bool, config_wr.add_yd_env_vars)
-            or False
-        )
-
-        # Task timeout is automatically inherited from the Task Group level
-        # unless overridden by the Task
-        task_timeout_minutes = levels.checked(
-            TASK_LEVEL_TIMEOUT, check_float_or_int, config_wr.task_level_timeout
-        )
-        task_timeout = (
-            None
-            if task_timeout_minutes is None
-            else timedelta(minutes=task_timeout_minutes)
-        )
-
-        # Data client inputs and outputs
-        task_data_inputs = levels.checked(
-            TASK_DATA_INPUTS, check_list, config_wr.task_data_inputs
-        )
-        task_data_outputs = levels.checked(
-            TASK_DATA_OUTPUTS, check_list, config_wr.task_data_outputs
-        )
-        # This will 'pop' any 'localFile' properties, required for the
-        # following 'generate' call
-        run.uploaded_files.upload_dataclient_input_files(task_data_inputs)  # type: ignore[union-attr]
-        task_data_inputs_and_outputs = generate_taskdata_object(
-            task_data_inputs, task_data_outputs
-        )
-
-        task_type = _task_type_of(
-            task, task_group, config_wr, task_name, display_task_number
-        )
-
-        tasks_list.append(
-            create_task(
-                wr_data=wr_data,
-                task_group_data=task_group_data,
-                task_data=task,
-                task_name=task_name,
-                task_number=display_task_number + 1,
-                tg_name=task_group.name,
-                tg_number=tg_number + 1,
-                task_type=cast(str, task_type),
-                args=cast(list, arguments_list),
-                task_data_property=get_task_data_property(
-                    config_wr,
-                    wr_data,
-                    task_group_data,
-                    task,
-                    task_name,
-                    files_directory,
-                ),
-                env=env,
-                task_timeout=task_timeout,
-                add_yd_env_vars=add_yd_env_vars,
-                task_data_inputs_and_outputs=task_data_inputs_and_outputs,
-                wr_name=run.name,
-                namespace=run.ctx.config.namespace,
-                total_num_task_groups=num_task_groups,
-                total_num_tasks=display_num_tasks,
-            )
-        )
-
-    return tasks_list
-
-
-def _task_type_of(
-    task: dict,
-    task_group: TaskGroup,
-    config_wr: ConfigWorkRequirement,
-    task_name: str | None,
-    task_number: int,
-) -> str | None:
-    """
-    The Task's type: its own, else its Task Group's sole type, else the
-    configuration's if the Task Group allows it. Else, None if the Task
-    Group's template supplies one; anything else is an error here, rather
-    than a Task the Platform refuses.
-    """
-    if TASK_TYPE in task:
-        return task[TASK_TYPE]
-    task_types = task_group.runSpecification.taskTypes
-    if len(task_types) == 1:
-        return task_types[0]
-    if config_wr.task_type is not None and config_wr.task_type in task_types:
-        return config_wr.task_type
-    template = task_group.taskTemplate
-    if template is not None and template.taskType is not None:
-        return None
-    raise ValueError(
-        f"Task {task_number + 1}"
-        + ("" if task_name is None else f" ('{task_name}')")
-        + f" in Task Group '{task_group.name}' has no '{TASK_TYPE}', and the"
-        f" Task Group allows several {task_types}: set the Task's '{TASK_TYPE}'"
-    )
 
 
 def submit_batch_of_tasks_to_task_group(

@@ -3452,7 +3452,7 @@ class TestVersion:
         assert yd_version.cli_licence() == declared
         monkeypatch.setattr(_sys, "argv", ["yd-version"])
         yd_version.main()
-        assert f"Licence:                 {declared}" in capsys.readouterr().out
+        assert f"Licence: {declared}" in capsys.readouterr().out
 
     def test_an_unknown_licence(self, monkeypatch):
         def not_found(_name):
@@ -3492,6 +3492,37 @@ class TestHelp:
         monkeypatch.setattr(_sys, "argv", ["yd-help"])
         yd_help.main()
         assert "available commands" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("argv, coloured", [((), True), (("--nf",), False)])
+    def test_json_is_coloured_on_a_terminal_unless_no_format(
+        self, monkeypatch, capsys, argv, coloured
+    ):
+        from io import StringIO
+
+        from rich.console import Console
+        from rich.highlighter import JSONHighlighter
+
+        from yellowdog_cli.utils import printing
+
+        terminal = StringIO()
+        monkeypatch.setattr(
+            printing,
+            "CONSOLE_JSON",
+            Console(
+                file=terminal,
+                force_terminal=True,
+                color_system="256",
+                highlighter=JSONHighlighter(),
+                emoji=False,
+            ),
+        )
+        monkeypatch.setattr(_sys, "argv", ["yd-help", "--json", *argv])
+        yd_help.main()
+        out = capsys.readouterr().out
+        if coloured:
+            assert out == "" and "\x1b[" in terminal.getvalue()
+        else:
+            assert terminal.getvalue() == "" and json_loads(out)
 
 
 class TestEntryToName:

@@ -62,6 +62,7 @@ class _FakeConfiguredWorkerPool(_Obj):
 def _args(**overrides) -> MagicMock:
     args = MagicMock()
     args.strip_ids = False
+    args.hide_user_data = False
     args.substitute_ids = False
     args.show_token = False
     args.output_file = None
@@ -380,3 +381,30 @@ class TestCommandLine:
 
         with pytest.raises(SystemExit):
             CLIParser(command="yd-show", argv=["-n", "ns", _ydid("task")])
+
+
+# ---------------------------------------------------------------------------
+# '--hide-user-data'
+# ---------------------------------------------------------------------------
+
+
+def test_hide_user_data_summarises_a_compute_source_template(tmp_path, capsys):
+    script = "#!/bin/sh\necho one\n"
+    summary = "<user data: 19 characters, 2 lines>"
+    client = MagicMock()
+    obj = _Obj("cst")
+    obj.payload["source"] = {"userData": script}
+    client.compute_client.get_compute_source_template.return_value = obj
+    output_file = tmp_path / "cst.json"
+
+    failures, output = _run(
+        [_ydid("cst")],
+        client,
+        _args(hide_user_data=True, output_file=str(output_file)),
+        capsys,
+    )
+
+    assert failures == 0
+    assert loads(output)["source"]["userData"] == summary
+    written = loads(output_file.read_text(encoding="utf-8"))
+    assert written["source"]["userData"] == summary

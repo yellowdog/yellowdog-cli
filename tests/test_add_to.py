@@ -321,24 +321,21 @@ class TestAddToPartitioning:
         get_wr_mock = MagicMock(return_value=existing_wr)
 
         def fake_add_tasks(
-            _ctx,
-            tg_number,
+            _run,
+            position,
             task_group,
             wr_data,
             task_count,
             work_requirement,
             files_directory,
-            wr_tg_number,
-            total_num_task_groups,
-            task_number_offset,
         ):
             add_tasks_calls.append(
                 {
                     "tg_name": task_group.name,
-                    "tg_number": tg_number,
-                    "wr_tg_number": wr_tg_number,
-                    "task_number_offset": task_number_offset,
-                    "total_num_task_groups": total_num_task_groups,
+                    "spec_index": position.spec_index,
+                    "number": position.number,
+                    "existing_tasks": position.existing_tasks,
+                    "count": position.count,
                 }
             )
             if add_tasks_error is not None:
@@ -349,13 +346,12 @@ class TestAddToPartitioning:
             return updated_wr
 
         def fake_create_tg(
-            _run,
-            tg_number,
+            _config_wr,
+            position,
             wr_data,
             task_group_data,
-            tg_number_offset,
-            total_num_task_groups,
             files_directory="",
+            on_legacy_retry=None,
         ):
             return _make_tg(
                 task_group_data[NAME],
@@ -428,7 +424,7 @@ class TestAddToPartitioning:
         assert len(result["update_wr_calls"]) == 0
 
     def test_matched_tg_gets_task_offset_from_existing_task_count(self):
-        # existing TG has 2 tasks → task_number_offset should be 2
+        # existing TG has 2 tasks → existing_tasks should be 2
         result = self._run(
             existing_tg_names=["my-group"],
             spec_tg_names=["my-group"],
@@ -437,7 +433,7 @@ class TestAddToPartitioning:
         calls = result["add_tasks_calls"]
         assert len(calls) == 1
         assert calls[0]["tg_name"] == "my-group"
-        assert calls[0]["task_number_offset"] == 2
+        assert calls[0]["existing_tasks"] == 2
 
     def test_matched_tg_offset_reflects_actual_task_count(self):
         result = self._run(
@@ -445,45 +441,45 @@ class TestAddToPartitioning:
             spec_tg_names=["grp"],
             existing_task_count=10,
         )
-        assert result["add_tasks_calls"][0]["task_number_offset"] == 10
+        assert result["add_tasks_calls"][0]["existing_tasks"] == 10
 
     def test_new_tg_gets_zero_task_offset(self):
         result = self._run(existing_tg_names=["existing"], spec_tg_names=["brand-new"])
-        assert result["add_tasks_calls"][0]["task_number_offset"] == 0
+        assert result["add_tasks_calls"][0]["existing_tasks"] == 0
 
     def test_new_tg_is_numbered_after_the_existing_tgs(self):
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["c"])
-        assert result["add_tasks_calls"][0]["wr_tg_number"] == 2
+        assert result["add_tasks_calls"][0]["number"] == 2
 
     def test_new_tg_is_numbered_first_when_no_existing_tgs(self):
         result = self._run(existing_tg_names=[], spec_tg_names=["new"])
-        assert result["add_tasks_calls"][0]["wr_tg_number"] == 0
+        assert result["add_tasks_calls"][0]["number"] == 0
 
     def test_matched_tg_keeps_its_own_position(self):
         # 'b' is the second of the existing Task Groups, whatever its place
         # in the specification
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["b"])
-        assert result["add_tasks_calls"][0]["wr_tg_number"] == 1
+        assert result["add_tasks_calls"][0]["number"] == 1
 
     def test_new_tgs_are_numbered_without_gaps_for_matched_ones(self):
         # existing: [a]; spec: [a (matched), x (new), y (new)] -> x and y are
         # appended as the Work Requirement's second and third Task Groups
         result = self._run(existing_tg_names=["a"], spec_tg_names=["a", "x", "y"])
         by_name = {c["tg_name"]: c for c in result["add_tasks_calls"]}
-        assert by_name["a"]["wr_tg_number"] == 0
-        assert by_name["x"]["wr_tg_number"] == 1
-        assert by_name["y"]["wr_tg_number"] == 2
+        assert by_name["a"]["number"] == 0
+        assert by_name["x"]["number"] == 1
+        assert by_name["y"]["number"] == 2
 
-    def test_total_num_task_groups_is_existing_plus_new(self):
+    def test_count_is_existing_plus_new(self):
         # 2 existing + 1 new = 3 total
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["c"])
-        assert result["add_tasks_calls"][0]["total_num_task_groups"] == 3
+        assert result["add_tasks_calls"][0]["count"] == 3
 
-    def test_total_num_task_groups_is_existing_only_when_all_matched(self):
+    def test_count_is_existing_only_when_all_matched(self):
         # 2 existing + 2 spec (all matched) → nothing is added: total = 2
         result = self._run(existing_tg_names=["a", "b"], spec_tg_names=["a", "b"])
         for c in result["add_tasks_calls"]:
-            assert c["total_num_task_groups"] == 2
+            assert c["count"] == 2
 
     def test_mixed_new_and_matched(self):
         # existing: ["grp-1"]; spec: ["grp-1" (matched), "grp-2" (new)]
@@ -494,8 +490,8 @@ class TestAddToPartitioning:
         )
         by_name = {c["tg_name"]: c for c in result["add_tasks_calls"]}
         assert set(by_name.keys()) == {"grp-1", "grp-2"}
-        assert by_name["grp-1"]["task_number_offset"] == 3  # existing had 3 tasks
-        assert by_name["grp-2"]["task_number_offset"] == 0  # new, no offset
+        assert by_name["grp-1"]["existing_tasks"] == 3  # existing had 3 tasks
+        assert by_name["grp-2"]["existing_tasks"] == 0  # new, no offset
         assert len(result["update_wr_calls"]) == 1
 
     def test_total_for_mixed_scenario(self):
@@ -504,7 +500,7 @@ class TestAddToPartitioning:
             existing_tg_names=["grp-1"], spec_tg_names=["grp-1", "grp-2"]
         )
         for c in result["add_tasks_calls"]:
-            assert c["total_num_task_groups"] == 2
+            assert c["count"] == 2
 
     def test_update_wr_called_with_existing_plus_new_tgs(self):
         result = self._run(existing_tg_names=["existing"], spec_tg_names=["new-one"])
@@ -551,6 +547,57 @@ class TestAddToPartitioning:
 # ---------------------------------------------------------------------------
 # --add-to failing part-way
 # ---------------------------------------------------------------------------
+
+
+class TestPlanExtension:
+    """
+    _plan_extension() alone: the plan of an '--add-to', decided without a
+    client, a Work Requirement or any patching.
+    """
+
+    @staticmethod
+    def _positions(extension) -> dict[str, tuple[int, int, int, int]]:
+        return {
+            addition.task_group.name: (
+                addition.position.spec_index,
+                addition.position.number,
+                addition.position.count,
+                addition.position.existing_tasks,
+            )
+            for addition in extension.additions
+        }
+
+    def test_new_task_groups_are_appended_and_their_tasks_added_first(self):
+        existing = [_make_tg("a", task_count=4), _make_tg("b", task_count=1)]
+        spec = [_make_tg("b"), _make_tg("x"), _make_tg("y")]
+        extension = submit_module._plan_extension(existing, spec)
+        assert [tg.name for tg in extension.new] == ["x", "y"]
+        assert [tg.name for tg in extension.task_groups] == ["a", "b", "x", "y"]
+        assert [a.task_group.name for a in extension.additions] == ["x", "y", "b"]
+        # (spec index, number in the Work Requirement, count, Tasks held)
+        assert self._positions(extension) == {
+            "x": (1, 2, 4, 0),
+            "y": (2, 3, 4, 0),
+            "b": (0, 1, 4, 1),
+        }
+
+    def test_a_matched_task_group_is_added_to_as_it_exists(self):
+        existing_b = _make_tg("b", task_count=2)
+        extension = submit_module._plan_extension([existing_b], [_make_tg("b")])
+        assert extension.new == []
+        assert extension.additions[0].task_group is existing_b
+
+    def test_a_matched_task_group_with_no_task_summary_holds_no_tasks(self):
+        existing = _make_tg("a")
+        existing.taskSummary = None
+        extension = submit_module._plan_extension([existing], [_make_tg("a")])
+        assert extension.additions[0].position.existing_tasks == 0
+
+    def test_a_task_type_the_existing_task_group_does_not_allow_is_refused(self):
+        existing = [_make_tg("a", task_types=["bash"])]
+        spec = [_make_tg("a", task_types=["bash", "docker"])]
+        with pytest.raises(ValueError, match="'docker'"):
+            submit_module._plan_extension(existing, spec)
 
 
 class TestAddToFailure:

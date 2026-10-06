@@ -886,6 +886,12 @@ STRIP_IDS = option(
         "(implies '--details')"
     ),
 )
+HIDE_USER_DATA = option(
+    "--hide-user-data",
+    action="store_true",
+    required=False,
+    help=("show each User Data script as a summary of its size rather than in full"),
+)
 OUTPUT_FILE = option(
     "--output-file",
     type=str,
@@ -1106,6 +1112,17 @@ def check_json_excludes_streaming(args: Namespace, parser: ArgumentParser) -> No
                 f"--json cannot be combined with {flag}: --progress and --report"
                 " write their own output"
             )
+
+
+def check_hide_user_data_requires_dry_run(
+    args: Namespace, parser: ArgumentParser
+) -> None:
+    """
+    On the creators, refuse '--hide-user-data' outside a dry run: the real
+    run prints no User Data, so the option would do nothing.
+    """
+    if getattr(args, "hide_user_data", False) and not getattr(args, "dry_run", False):
+        parser.error("--hide-user-data applies only to --dry-run")
 
 
 def check_follow_json_excludes_progress(
@@ -1629,6 +1646,7 @@ COMMANDS["yd-create"] = Command(
         NAMESPACE,
         TAG,
         DRY_RUN_ACTION,
+        HIDE_USER_DATA,
         JSONNET_DRY_RUN,
         VALIDATE,
         CREATE_JSON,
@@ -1640,6 +1658,7 @@ COMMANDS["yd-create"] = Command(
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
+    validators=(check_hide_user_data_requires_dry_run,),
     tool=ToolKind.ACTING,
     tool_description=(
         "Create or update resources from specifications (each a file path,"
@@ -2006,6 +2025,7 @@ COMMANDS["yd-show"] = Command(
         SHOW_TOKEN,
         SUBSTITUTE_IDS,
         STRIP_IDS,
+        HIDE_USER_DATA,
         OUTPUT_FILE,
     ),
     validators=(check_show_ids,),
@@ -2081,6 +2101,7 @@ COMMANDS["yd-instantiate"] = Command(
         TAG,
         WORKER_POOL,
         DRY_RUN_ACTION,
+        HIDE_USER_DATA,
         COMPUTE_REQUIREMENT,
         REPORT,
         JSONNET_DRY_RUN,
@@ -2092,7 +2113,10 @@ COMMANDS["yd-instantiate"] = Command(
         COMPUTE_REQUIREMENT_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
-    validators=(check_json_excludes_streaming,),
+    validators=(
+        check_json_excludes_streaming,
+        check_hide_user_data_requires_dry_run,
+    ),
     tool=ToolKind.ACTING,
 )
 
@@ -2119,6 +2143,7 @@ COMMANDS["yd-provision"] = Command(
         TAG,
         WORKER_POOL,
         DRY_RUN_ACTION,
+        HIDE_USER_DATA,
         JSONNET_DRY_RUN,
         VALIDATE,
         ENTITY_JSON,
@@ -2129,7 +2154,10 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL_FILE_POSITIONAL,
     ),
     requires_namespace_and_tag=True,
-    validators=(check_json_excludes_streaming,),
+    validators=(
+        check_json_excludes_streaming,
+        check_hide_user_data_requires_dry_run,
+    ),
     tool=ToolKind.ACTING,
     tool_description=(
         "Provision a Worker Pool from a specification (a file path, or the"
@@ -2273,6 +2301,7 @@ COMMANDS["yd-list"] = Command(
         AUTO_SELECT_ALL,
         SUBSTITUTE_IDS,
         STRIP_IDS,
+        HIDE_USER_DATA,
         OUTPUT_FILE,
     ),
     validators=(check_list_options,),
@@ -2520,6 +2549,7 @@ COMMANDS["yd-schema"] = Command(
         SCHEMA_WRITE,
         SCHEMA_CHECK,
         SCHEMA_LIST,
+        NO_FORMAT,
     ),
     validators=(check_schema_mode_is_exclusive,),
     tool=ToolKind.READ_ONLY,

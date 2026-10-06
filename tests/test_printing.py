@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from rich.console import Console
+from rich.text import Text
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 
 import yellowdog_cli.utils.event_printing as event_printing_module
@@ -20,8 +21,10 @@ import yellowdog_cli.utils.tables as tables_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.event_printing import StatusCount, status_counts_msg
 from yellowdog_cli.utils.output_style import (
+    _STATES_BY_STYLE,
     DEBUG_STYLE,
     DRY_RUN_MARKER,
+    MAX_LINES_COLOURED_JSON,
     MAX_TABLE_DESCRIPTION,
 )
 from yellowdog_cli.utils.printing import (
@@ -458,6 +461,68 @@ class TestStyledOutput:
         assert "\x1b[" not in output
 
 
+class TestPrintJsonText:
+    """
+    print_json_text() (yd-schema) colours a document for a terminal, long or
+    not, and anywhere else prints its text byte for byte.
+    """
+
+    TEXT = '{\n  "key": [\n    "[bold]not markup[/bold]",\n    1\n  ]\n}\n'
+
+    @staticmethod
+    def _args(no_format: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=no_format,
+            print_pid=False,
+        )
+
+    def _console_output(self, force_terminal: bool, no_format=False, text=TEXT):
+        buffer = StringIO()
+        console = Console(
+            file=buffer,
+            force_terminal=force_terminal,
+            color_system="256",
+            emoji=False,
+            highlighter=printing_module.JSONHighlighter(),
+        )
+        with (
+            output_settings.configured(self._args(no_format)),
+            patch.object(printing_module, "CONSOLE_JSON", console),
+        ):
+            printing_module.print_json_text(text)
+        return buffer.getvalue()
+
+    def test_a_terminal_gets_colour(self):
+        output = self._console_output(force_terminal=True)
+        assert "\x1b[" in output
+        assert re.sub(r"\x1b\[[0-9;]*m", "", output) == self.TEXT
+
+    @staticmethod
+    def _document(lines: int) -> str:
+        return "[\n" + "  1,\n" * (lines - 3) + "  1\n]\n"
+
+    def test_a_document_at_the_line_limit_is_coloured(self):
+        text = self._document(MAX_LINES_COLOURED_JSON)
+        assert text.count("\n") == MAX_LINES_COLOURED_JSON
+        assert "\x1b[" in self._console_output(force_terminal=True, text=text)
+
+    def test_a_document_past_the_line_limit_is_the_text_exactly(self, capsys):
+        text = self._document(MAX_LINES_COLOURED_JSON + 1)
+        assert self._console_output(force_terminal=True, text=text) == ""
+        assert capsys.readouterr().out == text
+
+    def test_not_a_terminal_is_the_text_exactly(self, capsys):
+        assert self._console_output(force_terminal=False) == ""
+        assert capsys.readouterr().out == self.TEXT
+
+    def test_no_format_is_the_text_exactly(self, capsys):
+        assert self._console_output(force_terminal=True, no_format=True) == ""
+        assert capsys.readouterr().out == self.TEXT
+
+
 # ---------------------------------------------------------------------------
 # Table-building helpers (smoke tests using SimpleNamespace stubs)
 # ---------------------------------------------------------------------------
@@ -831,6 +896,86 @@ class TestStatesAreWholeWords:
     def test_states_as_words_are_highlighted(self):
         styled = self._styled("Task is RUNNING, pool STOPPED, node NON-MATCHING")
         assert {"RUNNING", "STOPPED", "NON-MATCHING"} <= set(styled)
+
+    def test_a_url_with_a_hyphen_is_highlighted_whole(self):
+        url = "https://github.com/yellowdog/yellowdog-cli/blob/v13.0.0/README.md"
+        assert url in self._styled(f"Docs: {url}")
+
+
+class TestHighlightingAsBefore:
+    """
+    The highlighters' regexes were reworked for speed -- one per style rather
+    than one per state, and the table's outline and content as '+' rather
+    than '*' -- and must colour exactly as the originals did.
+    """
+
+    STATES = tuple(state for states in _STATES_BY_STYLE.values() for state in states)
+    TEXT = (
+        "┌──────┬──────────────────────────────────────────┐\n"
+        + "".join(
+            f"│ {i:>4} │ {state:<16} ydid:task:000000:abcd-{i} │\n"
+            for i, state in enumerate(STATES)
+        )
+        + "│ MAYBE MATCHING, NON-MATCHING, ALREADY, 'MY_NEW_TASKS', UNTERMINATED │\n"
+        + "└──────┴──────────────────────────────────────────┘"
+    )
+
+    @staticmethod
+    def _per_state() -> list[re.Pattern]:
+        return [
+            re.compile(rf"\b(?P<{style}>{re.escape(state)})\b")
+            for style, states in _STATES_BY_STYLE.items()
+            for state in states
+        ]
+
+    @staticmethod
+    def _render(highlighter) -> list[tuple[str, object]]:
+        """
+        Each character with the style it is printed in: a run of one style
+        may be split where the old regexes matched 'MAYBE MATCHING' as two
+        words, which changes the escape codes but not what is seen.
+        """
+        console = Console(
+            file=StringIO(),
+            force_terminal=True,
+            color_system="truecolor",
+            width=200,
+            theme=printing_module.pyexamples_theme,
+            emoji=False,
+        )
+        text = Text(TestHighlightingAsBefore.TEXT)
+        highlighter.highlight(text)
+        return [
+            (character, segment.style)
+            for segment in console.render(text)
+            for character in segment.text
+        ]
+
+    @staticmethod
+    def _highlighter(base, highlights: list[re.Pattern]):
+        return type("Original", (base,), {"highlights": highlights})()
+
+    def test_messages_are_coloured_as_before(self):
+        current = printing_module.PrintLogHighlighter()
+        others = current.highlights[: -len(printing_module.HIGHLIGHTED_STATES)]
+        original = self._highlighter(
+            printing_module.PrintLogHighlighter, [*others, *self._per_state()]
+        )
+        assert self._render(current) == self._render(original)
+
+    def test_tables_are_coloured_as_before(self):
+        chars = printing_module.PrintTableHighlighter.table_outline_chars
+        original = self._highlighter(
+            printing_module.PrintTableHighlighter,
+            [
+                re.compile(rf"(?P<table_outline>[{chars}]*)"),
+                re.compile(rf"(?P<table_content>[^{chars}]*)"),
+                printing_module.YDID_HIGHLIGHT_RE,
+                *self._per_state(),
+            ],
+        )
+        current = printing_module.PrintTableHighlighter()
+        assert self._render(current) == self._render(original)
 
 
 def test_the_consoles_came_up_without_colour():

@@ -17,14 +17,14 @@ from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.check_imports import EXTRA_PROBES
 from yellowdog_cli.utils.command_registry import COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import DEFAULT_THEME, JSON_INDENT
+from yellowdog_cli.utils.printing import print_json_text
 from yellowdog_cli.utils.version_info import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
 # table's content, and a note -- the extra a command needs -- dimmed so the
-# summaries proper stand out. printing.py itself
-# is not imported: it parses the command line for a registered command at
-# import, and yd-help is not one.
+# summaries proper stand out.
 NAME_STYLE = "pyexamples.table_content"
 NOTE_STYLE = "dim"
 HEADING_STYLE = "bold"
@@ -114,12 +114,16 @@ def main():
         "--no-format",
         "--nf",
         action="store_true",
-        help="print the listing without colouring",
+        help="print the listing, or the --json array, without colouring",
     )
     args = parser.parse_args()
 
     if args.json:
-        print(json.dumps(entries(), indent=JSON_INDENT, cls=CompactJSONEncoder))
+        # Coloured on a terminal, unless --no-format; otherwise the text alone
+        configure_output(args)
+        print_json_text(
+            json.dumps(entries(), indent=JSON_INDENT, cls=CompactJSONEncoder)
+        )
         return
 
     if args.no_format:

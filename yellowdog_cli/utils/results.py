@@ -23,6 +23,7 @@ from yellowdog_cli.utils.printing import (
     print_json,
     print_objects_as_json,
     reset_json_document_printed,
+    user_data_as_shown,
 )
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -253,15 +254,16 @@ def flush_results() -> None:
 
     if _HAS_DOCUMENT:
         if isinstance(_DOCUMENT, (dict, list)):
-            print_json(_DOCUMENT)
+            print_json(user_data_as_shown(_DOCUMENT))
         else:
             # An SDK object, so the SDK is loaded already
             from yellowdog_client.common.json import Json
 
-            print_json(Json.dump(_DOCUMENT))
+            print_json(user_data_as_shown(Json.dump(_DOCUMENT)))
         return
 
-    # Dicts pass through; SDK objects are serialised; '--strip-ids' applies
+    # Dicts pass through; SDK objects are serialised; '--strip-ids' and
+    # '--hide-user-data' apply
     print_objects_as_json(list(_ITEMS))
 
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 """
-Cloud Wizard: cloud provider and YellowDog account setup.
+Cloud Wizard: cloud provider and YellowDog account setup -- Compute Source
+and Compute Requirement Templates, and the credentials they use. It creates
+no cloud storage buckets and no namespace storage configurations.
 """
 
 # CommonCloudConfig is imported for type checking only, so annotations must

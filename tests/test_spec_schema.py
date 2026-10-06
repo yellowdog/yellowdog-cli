@@ -823,6 +823,21 @@ class TestCorpusAndExamples:
                 count += 1
         assert count
 
+    def test_the_retry_and_failure_policy_example_validates(self):
+        """
+        A Work Requirement exercising every retryPolicy and failurePolicy
+        form: includes and excludes, retry on any error, maxRetries 0, ordered
+        and catch-all resubmission destinations, an AND within one selector.
+        """
+        import resource_corpus
+
+        resource_corpus.require_jsonnet()
+        import _jsonnet
+
+        path = REPO / "tests" / "spec_examples" / "retry-failure-policy.jsonnet"
+        document = json.loads(_jsonnet.evaluate_file(str(path)))
+        compile_schema(Family.WORK_REQUIREMENT)(document)
+
 
 def test_the_generator_loads_no_command_machinery():
     """

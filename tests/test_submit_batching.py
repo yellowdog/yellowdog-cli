@@ -37,6 +37,7 @@ from yellowdog_cli.utils.limits import (
 )
 from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 
 
 def _ctx() -> RunContext:
@@ -107,7 +108,7 @@ def _run_add_tasks(
     generate_calls: list[tuple[int, int]] = []
     submit_calls: list[int] = []
 
-    def fake_generate(_ctx, start, end, *args, **kwargs):
+    def fake_generate(_source, start, end, *args, **kwargs):
         generate_calls.append((start, end))
         return [MagicMock()] * (end - start)
 
@@ -119,7 +120,7 @@ def _run_add_tasks(
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
-            "generate_batch_of_tasks_for_task_group",
+            "generate_batch_of_tasks",
             side_effect=fake_generate,
         ),
         patch.object(
@@ -149,7 +150,7 @@ def _run_add_tasks(
     ):
         submit_module.add_tasks_to_task_group(
             _submission(task_batch_size=batch_size),
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             task_group=_make_tg(),
             wr_data=wr_data,
             task_count=task_count,
@@ -185,7 +186,7 @@ def _run_add_tasks_tracking_tpe(
     config_wr_mock.task_count = None
     config_wr_mock.parallel_batches = None
 
-    def fake_generate(_ctx, start, end, *args, **kwargs):
+    def fake_generate(_source, start, end, *args, **kwargs):
         return [MagicMock()] * (end - start)
 
     def fake_submit(_ctx, tasks_list, *args, **kwargs):
@@ -195,7 +196,7 @@ def _run_add_tasks_tracking_tpe(
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
-            "generate_batch_of_tasks_for_task_group",
+            "generate_batch_of_tasks",
             side_effect=fake_generate,
         ),
         patch.object(
@@ -228,7 +229,7 @@ def _run_add_tasks_tracking_tpe(
     ):
         submit_module.add_tasks_to_task_group(
             _submission(task_batch_size=batch_size),
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             task_group=_make_tg(),
             wr_data=_make_wr_data(num_tasks),
             task_count=None,
@@ -311,7 +312,7 @@ class TestParallelBatching:
         assert len(result["submit_calls"]) == 3
 
     def test_generation_is_sequential_in_main_thread(self):
-        # generate_batch_of_tasks_for_task_group is called in the for loop
+        # generate_batch_of_tasks is called in the for loop
         # before executor.submit, so calls are always in ascending order
         result = _run_add_tasks(num_tasks=9, batch_size=3, parallel_batches=3)
         assert result["generate_calls"] == [(0, 3), (3, 6), (6, 9)]
@@ -406,8 +407,8 @@ class TestTaskCountExpansion:
             patch.object(submit_module, "CONFIG_WR", config_wr_mock),
             patch.object(
                 submit_module,
-                "generate_batch_of_tasks_for_task_group",
-                side_effect=lambda _ctx, start, end, *a, **k: (
+                "generate_batch_of_tasks",
+                side_effect=lambda _source, start, end, *a, **k: (
                     [MagicMock()] * (end - start)
                 ),
             ),
@@ -431,7 +432,7 @@ class TestTaskCountExpansion:
         ):
             submit_module.add_tasks_to_task_group(
                 _submission(),
-                tg_number=0,
+                position=TaskGroupPosition(0, 0, 1),
                 task_group=_make_tg(),
                 wr_data=wr_data,
                 task_count=None,

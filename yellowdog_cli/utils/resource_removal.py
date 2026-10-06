@@ -2,7 +2,8 @@
 Removing YellowDog resources, by specification or by YellowDog ID: the
 library behind yd-remove, which the Cloud Wizard uses too. It reads no
 command-line options: what yd-remove's options decide arrives as a
-RemoveOptions.
+RemoveOptions. remove.py is a thin command over it, since a utility never
+imports a command module (see resource_creation.py).
 """
 
 import functools

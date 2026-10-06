@@ -16,6 +16,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_groups as task_groups_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.submit_utils import (
     _generate_resubmission_destination,
@@ -321,28 +322,18 @@ class TestRetryConflictDetection:
 
     def _run_conflict_check(self, wr_data: dict, tg_data: dict, config_wr=None):
         """
-        Replicate the conflict-detection logic in submit.py's create_task_group
-        without invoking the full Task Group creation pipeline.
+        create_task_group()'s retry step alone (task_groups._retry_policies()):
+        the retry and failure policies, and whether the deprecated mechanism
+        was reported as in use.
         """
-        config_wr = config_wr or _config()
-        retry_policy = generate_retry_policy(config_wr, wr_data, tg_data)
-        failure_policy = generate_failure_policy(config_wr, wr_data, tg_data)
-
-        legacy_retries_set = (
-            tg_data.get("maximumTaskRetries") is not None
-            or wr_data.get("maximumTaskRetries") is not None
-            or config_wr.max_retries is not None
+        legacy_reported: list[bool] = []
+        retry_policy, failure_policy = task_groups_module._retry_policies(
+            config_wr or _config(),
+            wr_data,
+            tg_data,
+            on_legacy_retry=lambda: legacy_reported.append(True),
         )
-        legacy_errors_set = (
-            tg_data.get("retryableErrors") is not None
-            or wr_data.get("retryableErrors") is not None
-            or config_wr.retryable_errors is not None
-        )
-        legacy_in_use = legacy_retries_set or legacy_errors_set
-
-        if retry_policy is not None and legacy_in_use:
-            raise ValueError("conflict")
-        return retry_policy, failure_policy, legacy_in_use
+        return retry_policy, failure_policy, bool(legacy_reported)
 
     def test_new_alone_no_conflict(self):
         retry_policy, _, legacy = self._run_conflict_check(
@@ -359,21 +350,21 @@ class TestRetryConflictDetection:
         assert legacy is True
 
     def test_new_and_legacy_on_same_tg_conflicts(self):
-        with pytest.raises(ValueError, match="conflict"):
+        with pytest.raises(ValueError, match="cannot be combined"):
             self._run_conflict_check(
                 {},
                 {"maximumTaskRetries": 5, "retryPolicy": {"maxRetries": 3}},
             )
 
     def test_legacy_on_wr_with_new_on_tg_conflicts(self):
-        with pytest.raises(ValueError, match="conflict"):
+        with pytest.raises(ValueError, match="cannot be combined"):
             self._run_conflict_check(
                 {"maximumTaskRetries": 5},
                 {"retryPolicy": {"maxRetries": 3}},
             )
 
     def test_legacy_retryable_errors_with_new_retry_policy_conflicts(self):
-        with pytest.raises(ValueError, match="conflict"):
+        with pytest.raises(ValueError, match="cannot be combined"):
             self._run_conflict_check(
                 {},
                 {
@@ -415,7 +406,7 @@ class TestRetryConflictDetection:
         assert legacy is True
 
     def test_config_level_legacy_with_new_retry_policy_at_tg_conflicts(self):
-        with pytest.raises(ValueError, match="conflict"):
+        with pytest.raises(ValueError, match="cannot be combined"):
             self._run_conflict_check(
                 {},
                 {"retryPolicy": {"maxRetries": 1}},

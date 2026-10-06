@@ -57,7 +57,8 @@ def submit_json_raw(
     Requirement definition and the constituent Tasks, in batches of
     'batch_size' on up to 'parallel_batches' threads. 'follow' is given the
     new Work Requirement's ID, to follow it if '--follow' or '--progress'
-    asks.
+    asks; it is a callback so that this module imports nothing from
+    submit.py, the command module.
     """
     # Platform JSON, not a specification, so there is no schema to check
     wr_data = load_specification(

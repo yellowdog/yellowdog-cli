@@ -14,6 +14,9 @@ from os.path import abspath
 from sys import executable, path
 from sys import version as py_version
 
+from rich.markup import escape
+from tabulate import tabulate
+
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
@@ -25,11 +28,20 @@ from yellowdog_cli.utils.dataclient.rclone_version import (
 from yellowdog_cli.utils.dataclient.rclone_version import (
     rclone_version as _rclone_version,
 )
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import JSON_INDENT
+from yellowdog_cli.utils.printing import (
+    CONSOLE,
+    CONSOLE_TABLE,
+    indent,
+    print_json_text,
+)
 from yellowdog_cli.utils.version_info import docs_url, sdk_version
 
 CLI_DISTRIBUTION = "yellowdog-cli"
 UNKNOWN_LICENCE = "Unknown"
+# The report's indentation, as yd-list's tables have
+INDENT = 4
 
 
 def readable(version: str) -> str | None:
@@ -114,7 +126,15 @@ def main():
     parser.add_argument(
         "--debug", action="store_true", help="print Python path and executable details"
     )
+    parser.add_argument(
+        "--no-format",
+        "--nf",
+        action="store_true",
+        help="print the report without colouring",
+    )
     args = parser.parse_args()
+    # --no-format, for print_json_text()
+    configure_output(args)
 
     single: dict[str, Callable[[], str]] = {
         "cli": lambda: __version__,
@@ -141,29 +161,61 @@ def main():
         print(version)
         return
 
-    print(f"  YellowDog CLI Version:   {__version__} (Docs: {docs_url()})")
-    print(f"  YellowDog SDK Version:   {sdk_version()}")
-    print(f"  Python Version:          {py_version.split()[0]}")
-    print(f"  Jsonnet Version:         {_jsonnet_version()}")
-    print(f"  rclone Version:          {_rclone_version()}")
-    print(f"  MCP SDK Version:         {_mcp_version()}")
-    print(f"  Author:                  {__author__} ({__email__})")
-    print(f"  Licence:                 {cli_licence()}")
-    if args.debug:
-        print(f"  Command:                 {abspath(__file__)}")
+    _print_report(debug=args.debug, no_format=args.no_format)
+
+
+def _print_report(debug: bool, no_format: bool) -> None:
+    """
+    The versions as a table, then the author, licence and documentation
+    link beneath it, where the link's length cannot widen the table, and
+    with --debug a second table of where the CLI is running from. Coloured
+    as yd-list's tables and messages are; Rich drops the colour by itself
+    where stdout is not a terminal, or NO_COLOR is set.
+    """
+    versions = [
+        ["YellowDog CLI", __version__],
+        ["YellowDog SDK", sdk_version()],
+        ["Python", py_version.split()[0]],
+        ["Jsonnet", _jsonnet_version()],
+        ["rclone", _rclone_version()],
+        ["MCP SDK", _mcp_version()],
+    ]
+    _print_table(["Component", "Version"], versions, no_format)
+    _print_line("", no_format)
+    _print_line(f"Author:  {__author__} ({__email__})", no_format)
+    _print_line(f"Licence: {cli_licence()}", no_format)
+    _print_line(f"Docs:    {docs_url()}", no_format)
+    if debug:
         rclone = find_rclone()
-        rclone_str = f"{rclone[0]} ({rclone[1]})" if rclone else "Not found"
-        print(f"  rclone Binary:           {rclone_str}")
-        print(f"  Python Executable:       {executable}")
-        for i, p in enumerate(path, start=1):
-            print(f"    Path-{str(i).zfill(2)}:               {p}")
+        details = [
+            ["Command", abspath(__file__)],
+            ["rclone Binary", f"{rclone[0]} ({rclone[1]})" if rclone else "Not found"],
+            ["Python Executable", executable],
+        ] + [[f"Path-{i:02d}", entry] for i, entry in enumerate(path, start=1)]
+        _print_line("", no_format)
+        _print_table(["Detail", "Value"], details, no_format)
+
+
+def _print_table(headers: list[str], rows: list[list[str]], no_format: bool) -> None:
+    table = indent(tabulate(rows, headers=headers, tablefmt="simple_outline"), INDENT)
+    if no_format:
+        print(table)
+    else:
+        CONSOLE_TABLE.print(escape(table), soft_wrap=True)
+
+
+def _print_line(line: str, no_format: bool) -> None:
+    text = indent(line, INDENT) if line else ""
+    if no_format:
+        print(text)
+    else:
+        CONSOLE.print(escape(text), soft_wrap=True)
 
 
 def _print_json(debug: bool) -> None:
     """
-    Print the versions as one JSON object. Printed directly, like the rest
-    of this command: yd-version has no CLI configuration, so printing.py,
-    which needs it, is not used.
+    Print the versions as one JSON object: coloured on a terminal, and
+    otherwise, for a script, the text alone.
     """
 
     # null for a version not installed, or one that could not be read
@@ -180,7 +232,7 @@ def _print_json(debug: bool) -> None:
     if debug:
         document["executable"] = executable
         document["path"] = list(path)
-    print(json.dumps(document, indent=JSON_INDENT, cls=CompactJSONEncoder))
+    print_json_text(json.dumps(document, indent=JSON_INDENT, cls=CompactJSONEncoder))
 
 
 if __name__ == "__main__":
