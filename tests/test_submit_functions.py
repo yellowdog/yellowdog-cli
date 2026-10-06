@@ -471,7 +471,7 @@ def _run_submit_wr(
             return real_create_tg(*args, **kwargs)
         return fake_create_tg(*args, **kwargs)
 
-    def fake_add_tasks(tg_number, *args, **kwargs):
+    def fake_add_tasks(_run, tg_number, *args, **kwargs):
         add_tasks_calls.append(tg_number)
 
     mock_config_common = MagicMock()

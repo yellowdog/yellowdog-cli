@@ -434,15 +434,85 @@ def submit_work_requirement(
     task_count: int | None = None,
 ):
     """
-    Submit a Work Requirement defined in a tasks_data dictionary.
-    Supply either tasks_data or task_count.
+    Submit a new Work Requirement defined in a 'wr_data' dictionary, or
+    with Tasks from the configuration alone when there is none.
 
     The general principle with configuration properties is that a property set
     at a lower level will override its setting at higher levels, so:
 
     Task > Task Group > Top-Level JSON Property > TOML config file
     """
-    # Create a default tasks_data dictionary if required
+    wr_data = _specification(run, wr_data)
+    _name_the_run(
+        run,
+        format_yd_name(
+            check_str(
+                wr_data.get(
+                    NAME,
+                    run.name
+                    if run.config_wr.wr_name is None
+                    else run.config_wr.wr_name,
+                ),
+                NAME,
+            )
+        ),
+    )
+    # Announced before its Task Groups, which announce themselves as they're
+    # generated; this is the only report of the name in a dry run
+    print_info(f"Generated Work Requirement '{run.name}'")
+    task_groups = _task_groups(run, wr_data, files_directory)
+    work_requirement = _create_work_requirement(run, wr_data, task_groups)
+    _add_tasks(
+        run,
+        work_requirement,
+        [
+            _Addition(tg_number, task_group)
+            for tg_number, task_group in enumerate(task_groups)
+        ],
+        wr_data,
+        task_count,
+        files_directory,
+    )
+    _follow(run, work_requirement)
+
+
+def add_to_existing_work_requirement(
+    run: _Submission,
+    files_directory: str,
+    wr_data: dict | None = None,
+    task_count: int | None = None,
+) -> None:
+    """
+    Add Task Groups and/or Tasks to the existing Work Requirement that
+    '--add-to' names (by name or YellowDog ID): a Task Group of the
+    specification named as one already there takes its Tasks, numbered on
+    from those it has, and any other is appended to the Work Requirement.
+    """
+    work_requirement = _work_requirement_to_add_to(run, cast(str, run.ctx.args.add_to))
+    existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
+    wr_data = _specification(run, wr_data)
+    _name_the_run(run, cast(str, work_requirement.name))
+    # Numbered as if each were new: until each Task Group has its name,
+    # which the numbering can be part of, which of them are already in the
+    # Work Requirement is unknown
+    spec_task_groups = _task_groups(
+        run, wr_data, files_directory, existing_task_groups=len(existing_tgs)
+    )
+    work_requirement, additions = _extend_work_requirement(
+        run, work_requirement, existing_tgs, spec_task_groups
+    )
+    _add_tasks(run, work_requirement, additions, wr_data, task_count, files_directory)
+    _follow(run, work_requirement)
+
+
+# The steps the two share, in the order they run
+
+
+def _specification(run: _Submission, wr_data: dict | None) -> dict:
+    """
+    The specification to submit, checked: as given, or one Task Group of one
+    Task taking everything from the configuration (none with '--empty').
+    """
     if wr_data is None:
         wr_data = (
             {TASK_GROUPS: []} if run.ctx.args.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
@@ -450,48 +520,78 @@ def submit_work_requirement(
     check_dict(wr_data)
     check_task_groups(wr_data)
     promote_task_type(wr_data)
+    return wr_data
 
-    # Overwrite the WR name?
-    run.name = format_yd_name(
-        check_str(
-            wr_data.get(
-                NAME,
-                run.name if run.config_wr.wr_name is None else run.config_wr.wr_name,
-            ),
-            NAME,
-        )
-    )
-    # Lazy substitution of the Work Requirement name, now it's defined
+
+def _name_the_run(run: _Submission, name: str) -> None:
+    """
+    Name the Work Requirement being submitted or added to, and define the
+    lazy substitution of its name, now it is known.
+    """
+    run.name = name
     add_substitutions_without_overwriting(subs={L_WR_NAME: run.name})
-    # Announced before its Task Groups, which announce themselves as they're
-    # generated; this is the only report of the name in a dry run
-    print_info(f"Generated Work Requirement '{run.name}'")
-    # Re-process substitutions in the CONFIG_WR object
+
+
+def _task_groups(
+    run: _Submission,
+    wr_data: dict,
+    files_directory: str,
+    existing_task_groups: int | None = None,
+) -> list[TaskGroup]:
+    """
+    The specification's Task Groups, built once the configuration and the
+    specification have been re-substituted with the Work Requirement's name
+    and 'taskGroupCount' has expanded them. 'existing_task_groups' is how
+    many the Work Requirement being added to already has, which they are
+    numbered on from; None for a new one.
+    """
     run.config_wr = update_config_work_requirement_object(run.config_wr)
-    # Re-process substitutions in the wr_data dictionary
     resolve_variables_insitu(wr_data)
-
-    # Handle any files that need to be uploaded
     run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
-
     expand_task_groups(run, wr_data)
-
-    # Create the list of TaskGroup objects
-    task_groups: list[TaskGroup] = []
-    for tg_number, task_group_data in enumerate(
-        cast(dict, wr_data).get(TASK_GROUPS, [])
-    ):
-        task_groups.append(
-            create_task_group(
-                run,
-                tg_number,
-                cast(dict, wr_data),
-                task_group_data,
-                files_directory=files_directory,
-            )
+    offset = existing_task_groups or 0
+    total = (
+        None
+        if existing_task_groups is None
+        else existing_task_groups + len(wr_data[TASK_GROUPS])
+    )
+    return [
+        create_task_group(
+            run,
+            tg_number,
+            wr_data,
+            task_group_data,
+            tg_number_offset=offset,
+            total_num_task_groups=total,
+            files_directory=files_directory,
         )
+        for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS])
+    ]
 
-    # Create the Work Requirement
+
+@dataclass
+class _Addition:
+    """
+    Tasks to add to one Task Group: the specification's Task Group
+    'tg_number', into 'task_group', which is at 'wr_tg_number' of
+    'total_num_task_groups' in the Work Requirement and already holds
+    'task_number_offset' Tasks. The defaults are a new Work Requirement's.
+    """
+
+    tg_number: int
+    task_group: TaskGroup
+    wr_tg_number: int | None = None
+    total_num_task_groups: int | None = None
+    task_number_offset: int = 0
+
+
+def _create_work_requirement(
+    run: _Submission, wr_data: dict, task_groups: list[TaskGroup]
+) -> WorkRequirement:
+    """
+    Create the new Work Requirement with its Task Groups, or in a dry run
+    start the snapshot with it.
+    """
     priority = check_float_or_int(
         wr_data.get(PRIORITY, run.config_wr.priority), PRIORITY
     )
@@ -511,53 +611,201 @@ def submit_work_requirement(
         tag=wr_tag,
         priority=priority,
     )
-    if not run.ctx.args.dry_run:
-        work_requirement = run.ctx.client.work_client.add_work_requirement(
+    if run.ctx.args.dry_run:
+        run.snapshot.set_work_requirement(work_requirement)
+        return work_requirement
+
+    work_requirement = run.ctx.client.work_client.add_work_requirement(work_requirement)
+    # Recorded now, so a failure adding its Tasks still reports it
+    record_entity(
+        work_requirement.id,
+        work_requirement.name,
+        run.ctx.config.namespace,
+        ET_WORK_REQUIREMENTS,
+    )
+    print_quiet_result(work_requirement.id)
+    print_info(
+        "Created "
+        f"{link_entity(run.ctx.config.url, work_requirement)} "
+        f"('{run.ctx.config.namespace}/{work_requirement.name}')"
+    )
+    print_info(f"YellowDog ID is '{work_requirement.id}'")
+    return work_requirement
+
+
+def _extend_work_requirement(
+    run: _Submission,
+    work_requirement: WorkRequirement,
+    existing_tgs: list[TaskGroup],
+    spec_task_groups: list[TaskGroup],
+) -> tuple[WorkRequirement, list[_Addition]]:
+    """
+    Append to the Work Requirement being added to the specification's Task
+    Groups it does not have yet, or in a dry run start the snapshot with
+    them, and return it with the Tasks to add: those of the new Task Groups,
+    then those of the ones it had already.
+    """
+    n_existing = len(existing_tgs)
+
+    # Partition spec TGs: those whose name matches an existing TG (add tasks
+    # to existing TG) vs those that are new (add TG to WR first)
+    # (spec_idx, spec_tg, existing_idx, existing_tg)
+    matched: list[tuple[int, TaskGroup, int, TaskGroup]] = []
+    new_tgs: list[tuple[int, TaskGroup]] = []  # (spec_idx, spec_tg)
+    for spec_idx, spec_tg in enumerate(spec_task_groups):
+        existing_idx = next(
+            (i for i, tg in enumerate(existing_tgs) if tg.name == spec_tg.name),
+            None,
+        )
+        if existing_idx is not None:
+            matched.append(
+                (spec_idx, spec_tg, existing_idx, existing_tgs[existing_idx])
+            )
+        else:
+            new_tgs.append((spec_idx, spec_tg))
+
+    # The Work Requirement's Task Groups once the new ones are appended: what
+    # the Tasks' Task Group numbers and count are relative to
+    total_tgs = n_existing + len(new_tgs)
+
+    # For matched (existing) Task Groups, the platform does not allow
+    # mutating a Task Group's taskTypes after creation. Detect any spec
+    # Tasks whose taskType is not in the existing Task Group's allowlist
+    # and fail fast with a clear error, rather than letting the platform
+    # reject those Tasks downstream.
+    for _, spec_tg, _, existing_tg in matched:
+        existing_types = set(existing_tg.runSpecification.taskTypes)
+        spec_types = set(spec_tg.runSpecification.taskTypes)
+        missing_types = spec_types - existing_types
+        if missing_types:
+            raise ValueError(
+                f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
+                f" their task type(s) {sorted(missing_types)} are not in the"
+                f" Task Group's taskTypes allowlist {sorted(existing_types)}."
+                " A Task Group's taskTypes cannot be modified after creation;"
+                " either change the Tasks to use a supported task type, or"
+                " add them under a new Task Group name."
+            )
+
+    all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
+
+    if run.ctx.args.dry_run:
+        # Seed the snapshot with every Task Group the Tasks below will attach
+        # to, or the first batch has nothing to attach to. The existing Task
+        # Groups' own Tasks can't be shown: the API's Task Group carries a
+        # summary of them, not the Tasks themselves -- hence the line saying
+        # which of the Task Groups below are already there.
+        work_requirement.taskGroups = all_task_groups
+        run.snapshot.set_work_requirement(work_requirement)
+        if existing_tgs:
+            print_dry_run(
+                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
+                " Task Group(s), shown below without their existing Tasks: "
+                + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
+            )
+        if new_tgs:
+            print_dry_run(
+                f"Would add {len(new_tgs)} new Task Group(s) to existing"
+                f" Work Requirement '{run.name}'"
+            )
+
+    # If there are new TGs, update the Work Requirement with the full TG list
+    elif new_tgs:
+        work_requirement.taskGroups = all_task_groups
+        work_requirement = run.ctx.client.work_client.update_work_requirement(
             work_requirement
         )
-        # Recorded now, so a failure adding its Tasks still reports it
+        print_info(
+            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{run.name}'"
+        )
+
+    if not run.ctx.args.dry_run:
+        # The Work Requirement added to, as a creator's document names the
+        # one it created
         record_entity(
             work_requirement.id,
             work_requirement.name,
-            run.ctx.config.namespace,
+            run.ctx.config.namespace,  # Where it was looked up
             ET_WORK_REQUIREMENTS,
         )
-        print_quiet_result(work_requirement.id)
-        print_info(
-            "Created "
-            f"{link_entity(run.ctx.config.url, work_requirement)} "
-            f"('{run.ctx.config.namespace}/{work_requirement.name}')"
-        )
-        print_info(f"YellowDog ID is '{work_requirement.id}'")
-    else:
-        run.snapshot.set_work_requirement(work_requirement)
 
+    # New TGs take no task offset, numbered by where they were appended;
+    # matched (existing) TGs are numbered by their own position, their task
+    # numbers following those already there
+    additions = [
+        _Addition(spec_idx, spec_tg, n_existing + new_idx, total_tgs)
+        for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs)
+    ]
+    for spec_idx, _, existing_idx, existing_tg in matched:
+        task_summary = existing_tg.taskSummary
+        additions.append(
+            _Addition(
+                spec_idx,
+                existing_tg,
+                existing_idx,
+                total_tgs,
+                task_summary.taskCount if task_summary is not None else 0,
+            )
+        )
+    return work_requirement, additions
+
+
+def _add_tasks(
+    run: _Submission,
+    work_requirement: WorkRequirement,
+    additions: list[_Addition],
+    wr_data: dict,
+    task_count: int | None,
+    files_directory: str,
+) -> None:
+    """
+    Add the Tasks to their Task Groups, a new Work Requirement first held
+    if '--hold' asks. A failure, or an interrupt, part-way cancels a new
+    Work Requirement and deletes the files uploaded for it; one being added
+    to is left as it is, said so, since the Tasks already added to it stay
+    live and may read those files.
+    """
+    adding = run.ctx.args.add_to is not None
     try:
         # Held before any Task is added, so that none starts; inside the
         # clean-up, as a Work Requirement that cannot be held as asked is
         # one left live without its Tasks
-        if run.ctx.args.hold and not run.ctx.args.dry_run:
+        if not adding and run.ctx.args.hold and not run.ctx.args.dry_run:
             run.ctx.client.work_client.hold_work_requirement(work_requirement)
             print_info("Work Requirement status is set to 'HELD'")
 
-        # Add Tasks to their Task Groups
-        for tg_number, task_group in enumerate(task_groups):
+        for addition in additions:
             add_tasks_to_task_group(
                 run,
-                tg_number,
-                task_group,
-                cast(dict, wr_data),
-                task_count,
-                work_requirement,
+                tg_number=addition.tg_number,
+                task_group=addition.task_group,
+                wr_data=wr_data,
+                task_count=task_count,
+                work_requirement=work_requirement,
                 files_directory=files_directory,
+                wr_tg_number=addition.wr_tg_number,
+                total_num_task_groups=addition.total_num_task_groups,
+                task_number_offset=addition.task_number_offset,
             )
 
-    # An interrupt too: Ctrl-C part-way through would otherwise leave the
+    # An interrupt too: Ctrl-C part-way through would otherwise leave a new
     # Work Requirement live with only some of its Tasks
     except (Exception, KeyboardInterrupt):
-        cleanup_on_failure(run, work_requirement)
+        if not adding:
+            cleanup_on_failure(run, work_requirement)
+        elif not run.ctx.args.dry_run:
+            print_warning(
+                f"Adding to Work Requirement '{run.name}' failed part-way: any Tasks"
+                " already added remain in it, and any files uploaded for them"
+                " have been left in place"
+            )
         raise
 
+
+def _follow(run: _Submission, work_requirement: WorkRequirement) -> None:
+    """
+    Follow the Work Requirement, if '--progress' or '--follow' asks.
+    """
     if run.ctx.args.progress:
         follow_progress_bar(run, work_requirement)
     elif run.ctx.args.follow:
@@ -1443,195 +1691,6 @@ def cleanup_on_failure(run: _Submission, work_requirement: WorkRequirement) -> N
         run.uploaded_files.delete()  # type: ignore[union-attr]
     except Exception as e:
         print_error(f"Unable to delete the files uploaded for its Tasks: {e}")
-
-
-def add_to_existing_work_requirement(
-    run: _Submission,
-    files_directory: str,
-    wr_data: dict | None = None,
-    task_count: int | None = None,
-) -> None:
-    """
-    Add task groups and/or tasks to an existing Work Requirement identified
-    by the --add-to argument (name or YellowDog ID).
-    """
-    work_requirement = _work_requirement_to_add_to(run, cast(str, run.ctx.args.add_to))
-    existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
-
-    # Use the existing WR's name as the ID for substitutions
-    run.name = cast(str, work_requirement.name)
-    add_substitutions_without_overwriting(subs={L_WR_NAME: run.name})
-    run.config_wr = update_config_work_requirement_object(run.config_wr)
-
-    # Initialise rclone file uploads
-    run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
-
-    # Build spec data
-    wr_data = {TASK_GROUPS: [{TASKS: [{}]}]} if wr_data is None else wr_data
-    check_dict(wr_data)
-    check_task_groups(wr_data)
-    promote_task_type(wr_data)
-
-    resolve_variables_insitu(cast(dict, wr_data))
-
-    expand_task_groups(run, wr_data)
-
-    n_existing = len(existing_tgs)
-    n_spec = len(wr_data[TASK_GROUPS])
-
-    # Create TaskGroup objects for all spec TGs with WR-relative numbering.
-    # The numbering is provisional: until each Task Group has its name, which
-    # the numbering can be part of, which of them are already in the Work
-    # Requirement is unknown, so each is numbered as if it were new.
-    spec_task_groups: list[TaskGroup] = []
-    for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS]):
-        spec_task_groups.append(
-            create_task_group(
-                run,
-                tg_number,
-                cast(dict, wr_data),
-                task_group_data,
-                tg_number_offset=n_existing,
-                total_num_task_groups=n_existing + n_spec,
-                files_directory=files_directory,
-            )
-        )
-
-    # Partition spec TGs: those whose name matches an existing TG (add tasks
-    # to existing TG) vs those that are new (add TG to WR first)
-    # (spec_idx, spec_tg, existing_idx, existing_tg)
-    matched: list[tuple[int, TaskGroup, int, TaskGroup]] = []
-    new_tgs: list[tuple[int, TaskGroup]] = []  # (spec_idx, spec_tg)
-    for spec_idx, spec_tg in enumerate(spec_task_groups):
-        existing_idx = next(
-            (i for i, tg in enumerate(existing_tgs) if tg.name == spec_tg.name),
-            None,
-        )
-        if existing_idx is not None:
-            matched.append(
-                (spec_idx, spec_tg, existing_idx, existing_tgs[existing_idx])
-            )
-        else:
-            new_tgs.append((spec_idx, spec_tg))
-
-    # The Work Requirement's Task Groups once the new ones are appended: what
-    # the Tasks' Task Group numbers and count are relative to
-    total_tgs = n_existing + len(new_tgs)
-
-    # For matched (existing) Task Groups, the platform does not allow
-    # mutating a Task Group's taskTypes after creation. Detect any spec
-    # Tasks whose taskType is not in the existing Task Group's allowlist
-    # and fail fast with a clear error, rather than letting the platform
-    # reject those Tasks downstream.
-    for _, spec_tg, _, existing_tg in matched:
-        existing_types = set(existing_tg.runSpecification.taskTypes)
-        spec_types = set(spec_tg.runSpecification.taskTypes)
-        missing_types = spec_types - existing_types
-        if missing_types:
-            raise ValueError(
-                f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
-                f" their task type(s) {sorted(missing_types)} are not in the"
-                f" Task Group's taskTypes allowlist {sorted(existing_types)}."
-                " A Task Group's taskTypes cannot be modified after creation;"
-                " either change the Tasks to use a supported task type, or"
-                " add them under a new Task Group name."
-            )
-
-    all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
-
-    if run.ctx.args.dry_run:
-        # Seed the snapshot with every Task Group the Tasks below will attach
-        # to, or the first batch has nothing to attach to. The existing Task
-        # Groups' own Tasks can't be shown: the API's Task Group carries a
-        # summary of them, not the Tasks themselves -- hence the line saying
-        # which of the Task Groups below are already there.
-        work_requirement.taskGroups = all_task_groups
-        run.snapshot.set_work_requirement(work_requirement)
-        if existing_tgs:
-            print_dry_run(
-                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
-                " Task Group(s), shown below without their existing Tasks: "
-                + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
-            )
-        if new_tgs:
-            print_dry_run(
-                f"Would add {len(new_tgs)} new Task Group(s) to existing"
-                f" Work Requirement '{run.name}'"
-            )
-
-    # If there are new TGs, update the Work Requirement with the full TG list
-    elif new_tgs:
-        work_requirement.taskGroups = all_task_groups
-        work_requirement = run.ctx.client.work_client.update_work_requirement(
-            work_requirement
-        )
-        print_info(
-            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{run.name}'"
-        )
-
-    if not run.ctx.args.dry_run:
-        # The Work Requirement added to, as a creator's document names the
-        # one it created
-        record_entity(
-            work_requirement.id,
-            work_requirement.name,
-            run.ctx.config.namespace,  # Where it was looked up
-            ET_WORK_REQUIREMENTS,
-        )
-
-    try:
-        # Add tasks to new TGs (no task offset), numbered by where they were
-        # appended
-        for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs):
-            add_tasks_to_task_group(
-                run,
-                tg_number=spec_idx,
-                task_group=spec_tg,
-                wr_data=cast(dict, wr_data),
-                task_count=task_count,
-                work_requirement=work_requirement,
-                files_directory=files_directory,
-                wr_tg_number=n_existing + new_idx,
-                total_num_task_groups=total_tgs,
-                task_number_offset=0,
-            )
-
-        # Add tasks to matched (existing) TGs, numbered by their own position
-        # and offsetting task numbers
-        for spec_idx, _, existing_idx, existing_tg in matched:
-            task_summary = existing_tg.taskSummary
-            existing_task_count: int = (
-                task_summary.taskCount if task_summary is not None else 0
-            )
-            add_tasks_to_task_group(
-                run,
-                tg_number=spec_idx,
-                task_group=existing_tg,
-                wr_data=cast(dict, wr_data),
-                task_count=task_count,
-                work_requirement=work_requirement,
-                files_directory=files_directory,
-                wr_tg_number=existing_idx,
-                total_num_task_groups=total_tgs,
-                task_number_offset=existing_task_count,
-            )
-
-    except (Exception, KeyboardInterrupt):
-        # Unlike a new Work Requirement, this one is not cancelled, so the
-        # Tasks already added to it stay live -- and may read the files
-        # uploaded for them, which are therefore left in place too
-        if not run.ctx.args.dry_run:
-            print_warning(
-                f"Adding to Work Requirement '{run.name}' failed part-way: any Tasks"
-                " already added remain in it, and any files uploaded for them"
-                " have been left in place"
-            )
-        raise
-
-    if run.ctx.args.progress:
-        follow_progress_bar(run, work_requirement)
-    elif run.ctx.args.follow:
-        follow_progress(run, work_requirement)
 
 
 # The states of a Work Requirement that can still take Tasks: a FINISHING one
