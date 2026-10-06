@@ -25,11 +25,12 @@ from requests import HTTPError, Response
 from yellowdog_client.model import WorkRequirementStatus
 
 import yellowdog_cli.utils.start_hold_common as shc_module
-from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils import action_runner, entity_utils
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     check_glob_and_literal_names,
 )
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.start_hold_common import FINISH, HOLD, START
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
@@ -109,13 +110,8 @@ class FakePlatform:
 @pytest.fixture
 def platform(monkeypatch):
     fake = FakePlatform()
-    monkeypatch.setattr(shc_module, "CLIENT", fake.client)
-    monkeypatch.setattr(
-        shc_module,
-        "CONFIG_COMMON",
-        SimpleNamespace(namespace="ns", name_tag="wr", url="https://api.x"),
-    )
-    monkeypatch.setattr(shc_module, "confirmed", lambda message: True)
+    fake.config = SimpleNamespace(namespace="ns", name_tag="wr", url="https://api.x")
+    monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(shc_module, "select", lambda client, objects: objects)
     monkeypatch.setattr(shc_module, "follow_ids", MagicMock())
     monkeypatch.setattr(
@@ -142,13 +138,15 @@ def platform(monkeypatch):
     return fake
 
 
-def _run(monkeypatch, action, targets: list[str], follow: bool = False):
-    monkeypatch.setattr(
-        shc_module,
-        "ARGS_PARSER",
-        SimpleNamespace(work_requirement_names=targets, follow=follow),
+def _run(platform, action, targets: list[str], follow: bool = False):
+    shc_module.apply_work_requirement_action(
+        RunContext(
+            args=SimpleNamespace(work_requirement_names=targets, follow=follow),
+            config=platform.config,
+            client=platform.client,
+        ),
+        action,
     )
-    shc_module.apply_work_requirement_action(action)
 
 
 def _outcomes(platform) -> list[tuple]:
@@ -175,7 +173,7 @@ class TestListing:
             WR_A: _wr(WR_A, "wr-a", status),
             WR_B: _wr(WR_B, "wr-b", COMPLETED),
         }
-        _run(monkeypatch, action, [])
+        _run(platform, action, [])
         assert platform.calls == [(method, WR_A)]
         assert _outcomes(platform) == [(WR_A, action.past_tense.lower())]
 
@@ -187,19 +185,19 @@ class TestListing:
             WR_B: _wr(WR_B, "proj-2", RUNNING),
             WR_OLD: _wr(WR_OLD, "other"),
         }
-        _run(monkeypatch, START, ["proj-*"])
+        _run(platform, START, ["proj-*"])
         assert platform.calls == [("start_work_requirement_by_id", WR_A)]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(shc_module, "confirmed", lambda message: False)
-        _run(monkeypatch, START, [])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, START, [])
         assert platform.calls == []
         assert _outcomes(platform) == [(WR_A, "skipped")]
 
     def test_a_failure_carries_on(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["start_work_requirement_by_id"] = _http_error(500)
-        _run(monkeypatch, START, [])
+        _run(platform, START, [])
         assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
 
     @pytest.mark.parametrize(
@@ -209,7 +207,7 @@ class TestListing:
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["start_work_requirement_by_id"] = error
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, START, [])
+            _run(platform, START, [])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
@@ -224,7 +222,7 @@ class TestListing:
             platform.calls.append(("start_work_requirement_by_id", wr_id))
 
         work.start_work_requirement_by_id.side_effect = start
-        _run(monkeypatch, START, [], follow=True)
+        _run(platform, START, [], follow=True)
         shc_module.follow_ids.assert_called_once_with([WR_A])
 
 
@@ -236,22 +234,22 @@ class TestListing:
 class TestExplicit:
     def test_an_id_in_another_namespace_is_found(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", namespace="elsewhere")
-        _run(monkeypatch, START, [WR_B])
+        _run(platform, START, [WR_B])
         assert platform.calls == [("start_work_requirement_by_id", WR_B)]
         assert platform.searches == []  # fetched, not looked for
 
     def test_a_name_is_searched_for_not_listed(self, platform, monkeypatch):
-        _run(monkeypatch, START, ["wr-a"])
+        _run(platform, START, ["wr-a"])
         assert platform.searches == [{"name": "wr-a", "namespace": "ns", "tag": None}]
         assert platform.calls == [("start_work_requirement_by_id", WR_A)]
 
     def test_a_namespaced_name(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-a", namespace="other")
-        _run(monkeypatch, START, ["other/wr-a"])
+        _run(platform, START, ["other/wr-a"])
         assert platform.calls == [("start_work_requirement_by_id", WR_B)]
 
     def test_a_partial_name_is_not_a_match(self, platform, monkeypatch):
-        _run(monkeypatch, START, ["wr"])
+        _run(platform, START, ["wr"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
@@ -262,12 +260,12 @@ class TestExplicit:
             WR_OLD: _wr(WR_OLD, "wr-a", COMPLETED),
             WR_A: _wr(WR_A, "wr-a", HELD),
         }
-        _run(monkeypatch, START, ["wr-a"])
+        _run(platform, START, ["wr-a"])
         assert platform.calls == [("start_work_requirement_by_id", WR_A)]
 
     def test_two_in_the_required_state_are_ambiguous(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-a")
-        _run(monkeypatch, START, ["wr-a"])
+        _run(platform, START, ["wr-a"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
         assert "please supply the ID" in platform.records[0]["error"]
@@ -276,20 +274,20 @@ class TestExplicit:
     def test_the_wrong_state_is_skipped_saying_which(
         self, platform, monkeypatch, target
     ):
-        _run(monkeypatch, HOLD, [target])  # wr-a is HELD
+        _run(platform, HOLD, [target])  # wr-a is HELD
         assert platform.calls == []
         assert _outcomes(platform) == [(WR_A, "skipped")]
         assert "is HELD, not RUNNING" in platform.records[0]["error"]
 
     @pytest.mark.parametrize("target", [WR_B, "nope", TASK])
     def test_not_found_or_not_a_wr_fails(self, platform, monkeypatch, target):
-        _run(monkeypatch, START, [target])
+        _run(platform, START, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
     def test_in_the_order_given_without_duplicates(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
-        _run(monkeypatch, START, ["wr-b", WR_A, "wr-a", "wr-b"])
+        _run(platform, START, ["wr-b", WR_A, "wr-a", "wr-b"])
         assert platform.calls == [
             ("start_work_requirement_by_id", WR_B),
             ("start_work_requirement_by_id", WR_A),
@@ -298,15 +296,15 @@ class TestExplicit:
     def test_one_confirmation_names_them_all(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
-            shc_module, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
-        _run(monkeypatch, START, [WR_A, "wr-b"])
+        _run(platform, START, [WR_A, "wr-b"])
         assert prompts == ["Start 2 Work Requirement(s) ('ns/wr-a', 'ns/wr-b')?"]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(shc_module, "confirmed", lambda message: False)
-        _run(monkeypatch, START, [WR_A])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, START, [WR_A])
         assert platform.calls == []
         assert _outcomes(platform) == [(WR_A, "skipped")]
 
@@ -314,7 +312,7 @@ class TestExplicit:
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["search"] = _http_error(401)
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, START, [WR_A, "wr-b", WR_B])
+            _run(platform, START, [WR_A, "wr-b", WR_B])
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert _outcomes(platform) == [
@@ -327,7 +325,7 @@ class TestExplicit:
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["start_work_requirement_by_id"] = _http_error(401)
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, START, [WR_A, WR_B])
+            _run(platform, START, [WR_A, WR_B])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
 
@@ -346,7 +344,7 @@ class TestFinish:
             WR_B: _wr(WR_B, "wr-b", HELD),
             WR_OLD: _wr(WR_OLD, "wr-c", FINISHING),
         }
-        _run(monkeypatch, FINISH, [], follow=True)
+        _run(platform, FINISH, [], follow=True)
         assert platform.calls == [
             ("finish_work_requirement_by_id", WR_A),
             ("finish_work_requirement_by_id", WR_B),
@@ -360,14 +358,14 @@ class TestFinish:
             WR_A: _wr(WR_A, "proj-1", RUNNING),
             WR_B: _wr(WR_B, "proj-2", FINISHING),
         }
-        _run(monkeypatch, FINISH, ["proj-*"])
+        _run(platform, FINISH, ["proj-*"])
         assert platform.calls == [("finish_work_requirement_by_id", WR_A)]
 
     def test_a_finishing_one_named_is_skipped_and_not_followed(
         self, platform, monkeypatch
     ):
         platform.wrs[WR_A] = _wr(WR_A, "wr-a", FINISHING)
-        _run(monkeypatch, FINISH, ["wr-a"], follow=True)
+        _run(platform, FINISH, ["wr-a"], follow=True)
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
         assert "is FINISHING, not RUNNING or HELD" in platform.records[0]["error"]
@@ -380,14 +378,14 @@ class TestFinish:
             WR_OLD: _wr(WR_OLD, "wr-a", CANCELLING),
             WR_A: _wr(WR_A, "wr-a", RUNNING),
         }
-        _run(monkeypatch, FINISH, ["wr-a"])
+        _run(platform, FINISH, ["wr-a"])
         assert platform.calls == [("finish_work_requirement_by_id", WR_A)]
 
     def test_a_running_and_a_held_one_of_a_name_are_ambiguous(
         self, platform, monkeypatch
     ):
         platform.wrs = {WR_A: _wr(WR_A, "wr-a", RUNNING), WR_B: _wr(WR_B, "wr-a")}
-        _run(monkeypatch, FINISH, ["wr-a"])
+        _run(platform, FINISH, ["wr-a"])
         assert platform.calls == []
         assert "please supply the ID" in platform.records[0]["error"]
 
@@ -402,7 +400,8 @@ class TestFinish:
         )
         with pytest.raises(SystemExit):
             yd_finish.main()
-        apply.assert_called_once_with(FINISH)
+        (ctx, action), _ = apply.call_args
+        assert isinstance(ctx, RunContext) and action == FINISH
 
 
 # ---------------------------------------------------------------------------

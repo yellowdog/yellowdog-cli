@@ -9,9 +9,8 @@ the order given, to a Worker Pool or a Node, recording any that cannot be
 shut down as 'failed' (not found) or 'skipped' (already finished). What
 remains is confirmed once and shut down; with '--terminate', each
 Provisioned Worker Pool's Compute Requirement is terminated straight after
-its pool is shut down. A failure every later call would repeat
-(exit_codes.SESSION_FAILURES: authentication, connection) stops the run, and
-the targets not yet attempted are recorded as skipped.
+its pool is shut down. The rules for what cannot be shut down, confirming
+and stopping on a session failure are action_runner.py's.
 """
 
 from typing import TypeAlias, cast
@@ -24,6 +23,18 @@ from yellowdog_client.model import (
     WorkerPoolSummary,
 )
 
+from yellowdog_cli.utils.action_runner import (
+    SKIPPED,
+    Item,
+    SessionStop,
+    Unit,
+    Unresolved,
+    by_type,
+    carry_out,
+    confirm_items,
+    resolve_targets,
+)
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
@@ -37,10 +48,10 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
-from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import (
     print_dry_run,
@@ -49,7 +60,7 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # The '--json' records' actions and outcomes
@@ -91,39 +102,17 @@ def _record_termination(
     )
 
 
-class _SessionFailure(Exception):
-    """
-    A failure every later call would repeat (see SESSION_FAILURES), raised
-    once the failing target has been recorded, so that nothing further is
-    attempted.
-    """
-
-    def __init__(self, cause: Exception):
-        super().__init__(str(cause))
-        self.cause = cause
-
-
-class _Unresolved(Exception):
-    """
-    A target that cannot be shut down, for a reason the user should see:
-    'failed' unless it exists but has already finished ('skipped'), in which
-    case 'entity' is what was found, to be recorded by its ID and name.
-    """
-
-    def __init__(
-        self, message: str, outcome: str = "failed", entity: object | None = None
-    ):
-        super().__init__(message)
-        self.outcome = outcome
-        self.entity = entity
+def _recorder(entity: object, entity_type: str, outcome: str, error: str | None):
+    """_record, as action_runner calls it."""
+    _record(entity, outcome, error, entity_type)
 
 
 @main_wrapper
-def main():
-    shut_down(ARGS_PARSER.worker_pool_nodes_list or [])
+def main(ctx: RunContext):
+    shut_down(ctx, ctx.args.worker_pool_nodes_list or [])
 
 
-def shut_down(names: list[str]):
+def shut_down(ctx: RunContext, names: list[str]):
     """
     Shut down the Worker Pools and Nodes named, or those matching the glob
     patterns given, or, given nothing, the Worker Pools whose names include
@@ -132,38 +121,38 @@ def shut_down(names: list[str]):
     globs = [n for n in names if contains_glob_chars(n)]
 
     if names and not globs:
-        shutdown_by_names_or_ids(names)
+        shutdown_by_names_or_ids(ctx, names)
         return
 
     if globs:
         print_info(
             f"Shutting down Worker Pools "
-            f"{describe_glob_scope(globs, CONFIG_COMMON.namespace)}"
+            f"{describe_glob_scope(globs, ctx.config.namespace)}"
         )
         worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
             globs,
-            CONFIG_COMMON.namespace,
+            ctx.config.namespace,
             fetch=lambda namespace, prefix: get_worker_pool_summaries(
-                CLIENT, namespace, prefix or None, partial_name_matches=True
+                ctx.client, namespace, prefix or None, partial_name_matches=True
             ),
         )
     else:
         print_info(
             "Shutting down Worker Pools in "
-            f"namespace '{CONFIG_COMMON.namespace}' with "
-            f"names including '{CONFIG_COMMON.name_tag}'"
+            f"namespace '{ctx.config.namespace}' with "
+            f"names including '{ctx.config.name_tag}'"
         )
         worker_pool_summaries = [
             worker_pool_summary
             for worker_pool_summary in get_worker_pool_summaries(
-                CLIENT,
-                CONFIG_COMMON.namespace,
-                CONFIG_COMMON.name_tag,
+                ctx.client,
+                ctx.config.namespace,
+                ctx.config.name_tag,
                 partial_name_matches=True,
             )
             if worker_pool_summary.name is not None
-            and worker_pool_summary.namespace == CONFIG_COMMON.namespace
-            and CONFIG_COMMON.name_tag in worker_pool_summary.name
+            and worker_pool_summary.namespace == ctx.config.namespace
+            and ctx.config.name_tag in worker_pool_summary.name
         ]
 
     worker_pool_summaries = [
@@ -172,43 +161,46 @@ def shut_down(names: list[str]):
         if not _is_finished(worker_pool_summary)
     ]
 
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         report_dry_run(
-            CLIENT,
+            ctx.client,
             worker_pool_summaries,
             "Worker Pool",
             "shut down",
             ET_WORKER_POOLS,
             _SHUTDOWN,
-            bool(ARGS_PARSER.json_output),
+            bool(ctx.args.json_output),
         )
-        if ARGS_PARSER.terminate:
-            _report_terminations_dry_run(worker_pool_summaries)
+        if ctx.args.terminate:
+            _report_terminations_dry_run(ctx, worker_pool_summaries)
         return
 
     selected: list[WorkerPoolSummary] = (
-        select(CLIENT, worker_pool_summaries) if worker_pool_summaries else []
+        select(ctx.client, worker_pool_summaries) if worker_pool_summaries else []
     )
+    items = [_pool_item(summary) for summary in selected]
 
-    if selected and not confirmed(_confirmation(selected, [])):
-        for worker_pool_summary in selected:
-            _record(worker_pool_summary, "skipped")
-        selected = []
+    if items and not confirm_items(_confirmation(ctx, items), items, _recorder):
+        items = []
 
-    _carry_out(list(selected), [])
+    _carry_out(ctx, items)
 
 
 def _is_finished(worker_pool: _Pool) -> bool:
     return worker_pool.status is not None and worker_pool.status.finished
 
 
-def _report_terminations_dry_run(worker_pool_summaries: list[WorkerPoolSummary]):
+def _report_terminations_dry_run(
+    ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]
+):
     """
     Under '--dry-run --terminate', report the Compute Requirements that would
     be terminated with the Worker Pools: those of the Provisioned ones.
     """
     for worker_pool_summary in worker_pool_summaries:
-        worker_pool = get_worker_pool_by_id(CLIENT, cast(str, worker_pool_summary.id))
+        worker_pool = get_worker_pool_by_id(
+            ctx.client, cast(str, worker_pool_summary.id)
+        )
         if not isinstance(worker_pool, ProvisionedWorkerPool):
             continue
         cr_id = worker_pool.computeRequirementId
@@ -223,107 +215,88 @@ def _report_terminations_dry_run(worker_pool_summaries: list[WorkerPoolSummary])
         )
 
 
-def shutdown_by_names_or_ids(names_or_ids: list[str]):
+def _pool_item(pool: _Pool) -> Item:
+    return Item(pool, ET_WORKER_POOLS, ("pool", pool.id), pool)
+
+
+def _node_item(node: Node) -> Item:
+    return Item(node, ET_NODES, ("node", node.id), node)
+
+
+def _describe(target: str) -> tuple[object, str]:
+    return target, ET_NODES if _is_node(target) else ET_WORKER_POOLS
+
+
+def shutdown_by_names_or_ids(ctx: RunContext, names_or_ids: list[str]):
     """
     Shut down Worker Pools and/or Nodes by their names or IDs.
     """
-    targets = list(dict.fromkeys(names_or_ids))  # In order, without duplicates
-    pools: list[WorkerPool] = []
-    nodes: list[Node] = []
+    items = resolve_targets(
+        names_or_ids,
+        resolve=lambda target: _resolve(ctx, target),
+        describe=_describe,
+        record=_recorder,
+        verb="shut down",
+        order=by_type(ET_WORKER_POOLS, ET_NODES),
+    )
 
-    for index, target in enumerate(targets):
-        entity_type = ET_NODES if _is_node(target) else ET_WORKER_POOLS
-        try:
-            resolved = _resolve(target)
-        except _Unresolved as e:
-            (print_warning if e.outcome == "skipped" else print_error)(str(e))
-            _record(e.entity or target, e.outcome, str(e), entity_type)
-            continue
-        except Exception as e:
-            print_error(f"Unable to shut down '{target}': {e}")
-            _record(target, "failed", str(e), entity_type)
-            if classify(e) in SESSION_FAILURES:
-                not_attempted = targets[index + 1 :]
-                _warn_not_attempted(len(not_attempted) + len(pools) + len(nodes))
-                for pool in pools:
-                    _record(pool, "skipped", f"not attempted: {e}")
-                for node in nodes:
-                    _record(node, "skipped", f"not attempted: {e}", ET_NODES)
-                for remaining in not_attempted:
-                    _record(
-                        remaining,
-                        "skipped",
-                        f"not attempted: {e}",
-                        ET_NODES if _is_node(remaining) else ET_WORKER_POOLS,
-                    )
-                raise ReportedFailure(e)
-            continue
-
-        if entity_type == ET_NODES:
-            if all(node.id != resolved.id for node in nodes):
-                nodes.append(cast(Node, resolved))
-        elif all(pool.id != resolved.id for pool in pools):  # e.g. name and ID
-            pools.append(cast(WorkerPool, resolved))
-
-    if not pools and not nodes:
+    if not items:
         print_info("No Worker Pools or Nodes shut down")
         return
 
-    if not confirmed(_confirmation(pools, nodes)):
-        for pool in pools:
-            _record(pool, "skipped")
-        for node in nodes:
-            _record(node, "skipped", entity_type=ET_NODES)
+    if not confirm_items(_confirmation(ctx, items), items, _recorder):
         print_info("No Worker Pools or Nodes shut down")
         return
 
-    _carry_out(list(pools), nodes)
+    _carry_out(ctx, items)
 
 
 def _is_node(target: str) -> bool:
     return get_ydid_type(target) == YDIDType.NODE
 
 
-def _resolve(target: str) -> WorkerPool | Node:
+def _resolve(ctx: RunContext, target: str) -> Item:
     """
-    The Worker Pool or Node a target names, raising _Unresolved if it cannot
+    The Worker Pool or Node a target names, raising Unresolved if it cannot
     be shut down. Anything else raised is a failure of the lookup itself.
     """
     if _is_node(target):
         try:
-            node: Node = CLIENT.worker_pool_client.get_node_by_id(target)
+            node: Node = ctx.client.worker_pool_client.get_node_by_id(target)
         except Exception as e:
             if is_http_not_found(e):
-                raise _Unresolved(f"Cannot find Node {target}") from e
+                raise Unresolved(f"Cannot find Node {target}") from e
             raise
         if node.status == NodeStatus.TERMINATED:
-            raise _Unresolved(f"Node {target} is already TERMINATED", "skipped", node)
-        return node
+            raise Unresolved(f"Node {target} is already TERMINATED", SKIPPED, node)
+        return _node_item(node)
 
     if get_ydid_type(target) == YDIDType.WORKER_POOL:
         worker_pool_id: str | None = target
     else:
         worker_pool_id = get_worker_pool_id_by_name(
-            CLIENT, target, CONFIG_COMMON.namespace
+            ctx.client, target, ctx.config.namespace
         )
         if worker_pool_id is None:
-            raise _Unresolved(f"Cannot find Worker Pool '{target}'")
+            raise Unresolved(f"Cannot find Worker Pool '{target}'")
     try:
-        worker_pool = get_worker_pool_by_id(CLIENT, cast(str, worker_pool_id))
+        worker_pool = get_worker_pool_by_id(ctx.client, cast(str, worker_pool_id))
     except Exception as e:
         if is_http_not_found(e):
-            raise _Unresolved(f"Cannot find Worker Pool {worker_pool_id}") from e
+            raise Unresolved(f"Cannot find Worker Pool {worker_pool_id}") from e
         raise
     if _is_finished(worker_pool):
-        raise _Unresolved(
+        raise Unresolved(
             f"Worker Pool '{worker_pool.name}' is already {worker_pool.status}",
-            "skipped",
+            SKIPPED,
             worker_pool,
         )
-    return worker_pool
+    return _pool_item(worker_pool)
 
 
-def _confirmation(pools: list, nodes: list[Node]) -> str:
+def _confirmation(ctx: RunContext, items: list[Item]) -> str:
+    pools = [item.value for item in items if item.entity_type == ET_WORKER_POOLS]
+    nodes = [item.value for item in items if item.entity_type == ET_NODES]
     parts = []
     if pools:
         parts.append(
@@ -337,87 +310,91 @@ def _confirmation(pools: list, nodes: list[Node]) -> str:
         )
     terminating = (
         ", immediately terminating their Compute Requirements"
-        if ARGS_PARSER.terminate and pools
+        if ctx.args.terminate and pools
         else ""
     )
     return f"Shut down {' and '.join(parts)}{terminating}?"
 
 
-def _warn_not_attempted(count: int):
-    if count:
-        print_warning(
-            f"Not attempting the remaining {count} item(s),"
-            " which would fail in the same way"
-        )
-
-
-def _carry_out(pools: list[_Pool], nodes: list[Node]):
+def _carry_out(ctx: RunContext, items: list[Item]):
     """
     Shut down confirmed Worker Pools (terminating their Compute Requirements,
     with '--terminate'), then Nodes; report, and follow the pools shut down.
+    Each unit reports and records its own failures.
     """
-    work: list[tuple[str, object]] = []
-    work.extend((ET_WORKER_POOLS, pool) for pool in pools)
-    work.extend((ET_NODES, node) for node in nodes)
     shut_down_pool_ids: list[str] = []
-    nodes_shut_down = 0
+    shut_down_node_ids: list[str] = []
+    carry_out(
+        [
+            Unit(
+                [item],
+                act=(
+                    (
+                        lambda pool=item.value: _shut_down_pool(
+                            ctx, pool, shut_down_pool_ids
+                        )
+                    )
+                    if item.entity_type == ET_WORKER_POOLS
+                    else (
+                        lambda node=item.value: _shut_down_node(
+                            ctx, node, shut_down_node_ids
+                        )
+                    )
+                ),
+                failure=lambda e, item=item: (
+                    f"Failed to shut down '{_label(item.value)}': {e}"
+                ),
+            )
+            for item in items
+        ],
+        _recorder,
+    )
 
-    for index, (entity_type, target) in enumerate(work):
-        try:
-            if entity_type == ET_WORKER_POOLS:
-                _shut_down_pool(cast(_Pool, target), shut_down_pool_ids)
-            elif _shut_down_node(cast(Node, target)):
-                nodes_shut_down += 1
-        except _SessionFailure as e:
-            not_attempted = work[index + 1 :]
-            _warn_not_attempted(len(not_attempted))
-            for remaining_type, remaining in not_attempted:
-                _record(
-                    remaining, "skipped", f"not attempted: {e.cause}", remaining_type
-                )
-            raise ReportedFailure(e.cause)
-
-    if shut_down_pool_ids or nodes_shut_down:
+    if shut_down_pool_ids or shut_down_node_ids:
         if shut_down_pool_ids:
             print_info(f"Shut down {len(shut_down_pool_ids)} Worker Pool(s)")
-        if nodes_shut_down:
-            print_info(f"Shut down {nodes_shut_down} Node(s)")
-        if ARGS_PARSER.follow and shut_down_pool_ids:
-            follow_ids(shut_down_pool_ids, auto_cr=ARGS_PARSER.auto_cr)
+        if shut_down_node_ids:
+            print_info(f"Shut down {len(shut_down_node_ids)} Node(s)")
+        if ctx.args.follow and shut_down_pool_ids:
+            follow_ids(shut_down_pool_ids, auto_cr=ctx.args.auto_cr)
     else:
         print_info("No Worker Pools or Nodes shut down")
 
 
+def _label(target: object) -> str:
+    return str(getattr(target, "name", None) or getattr(target, "id", target))
+
+
 def _failed(target: object, entity_type: str, message: str, e: Exception):
     """
-    Report and record a failure, raising _SessionFailure if nothing further
-    can succeed.
+    Report and record a failure, raising SessionStop if nothing further can
+    succeed.
     """
     print_error(f"{message}: {e}")
     _record(target, "failed", str(e), entity_type)
     if classify(e) in SESSION_FAILURES:
-        raise _SessionFailure(e) from e
+        raise SessionStop(e) from e
 
 
-def _shut_down_node(node: Node) -> bool:
+def _shut_down_node(ctx: RunContext, node: Node, shut_down_node_ids: list[str]):
     try:
-        CLIENT.worker_pool_client.shutdown_node_by_id(cast(str, node.id))
+        ctx.client.worker_pool_client.shutdown_node_by_id(cast(str, node.id))
     except Exception as e:
         _failed(node, ET_NODES, f"Failed to shut down Node {node.id}", e)
-        return False
+        return
     print_info(f"Shut down Node {node.id}")
     _record(node, _SHUT_DOWN, entity_type=ET_NODES)
-    return True
+    shut_down_node_ids.append(cast(str, node.id))
 
 
-def _shut_down_pool(pool: _Pool, shut_down_pool_ids: list[str]):
+def _shut_down_pool(ctx: RunContext, pool: _Pool, shut_down_pool_ids: list[str]):
     """
     Shut down a Worker Pool and, with '--terminate', terminate its Compute
     Requirement, adding its ID to 'shut_down_pool_ids' if it was shut down.
     """
     pool_id = cast(str, pool.id)
     try:
-        CLIENT.worker_pool_client.shutdown_worker_pool_by_id(pool_id)
+        ctx.client.worker_pool_client.shutdown_worker_pool_by_id(pool_id)
     except Exception as e:
         _failed(pool, ET_WORKER_POOLS, f"Failed to shut down '{pool.name}'", e)
         return
@@ -430,26 +407,26 @@ def _shut_down_pool(pool: _Pool, shut_down_pool_ids: list[str]):
         worker_pool = (
             pool
             if isinstance(pool, WorkerPool)
-            else get_worker_pool_by_id(CLIENT, pool_id)
+            else get_worker_pool_by_id(ctx.client, pool_id)
         )
     except Exception as e:
         print_info(f"Shut down Worker Pool '{pool.name}'")
-        if ARGS_PARSER.terminate:
+        if ctx.args.terminate:
             print_error(
                 "Unable to find the Compute Requirement of Worker Pool"
                 f" '{pool.name}': {e}"
             )
             _record_termination({"id": None, "name": None}, pool_id, "failed", str(e))
             if classify(e) in SESSION_FAILURES:
-                raise _SessionFailure(e) from e
+                raise SessionStop(e) from e
         return
-    print_info(f"Shut down {link_entity(CONFIG_COMMON.url, worker_pool)}")  # type: ignore[arg-type]
+    print_info(f"Shut down {link_entity(ctx.config.url, worker_pool)}")  # type: ignore[arg-type]
 
-    if ARGS_PARSER.terminate:
-        _terminate_compute_requirement(worker_pool)
+    if ctx.args.terminate:
+        _terminate_compute_requirement(ctx, worker_pool)
 
 
-def _terminate_compute_requirement(worker_pool: WorkerPool):
+def _terminate_compute_requirement(ctx: RunContext, worker_pool: WorkerPool):
     """
     Terminate a Provisioned Worker Pool's Compute Requirement. A Configured
     Worker Pool has none, which is noted rather than recorded.
@@ -462,8 +439,10 @@ def _terminate_compute_requirement(worker_pool: WorkerPool):
         return
     cr_id = worker_pool.computeRequirementId
     try:
-        compute_requirement = CLIENT.compute_client.terminate_compute_requirement_by_id(
-            cast(str, cr_id)
+        compute_requirement = (
+            ctx.client.compute_client.terminate_compute_requirement_by_id(
+                cast(str, cr_id)
+            )
         )
     except Exception as e:
         print_error(
@@ -474,7 +453,7 @@ def _terminate_compute_requirement(worker_pool: WorkerPool):
             {"id": cr_id, "name": None}, worker_pool.id, "failed", str(e)
         )
         if classify(e) in SESSION_FAILURES:
-            raise _SessionFailure(e) from e
+            raise SessionStop(e) from e
         return
     name = getattr(compute_requirement, "name", None)
     print_info(

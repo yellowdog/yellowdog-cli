@@ -16,16 +16,18 @@ from typing import Any
 
 from yellowdog_client.model import Allowance
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_ALLOWANCES
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 
 def _record(
+    ctx: RunContext,
     allowance_id: str,
     outcome: str,
     error: str | None = None,
@@ -44,7 +46,7 @@ def _record(
         "boost",
         outcome,
         error,
-        hours=ARGS_PARSER.boost_hours,
+        hours=ctx.args.boost_hours,
         **extra,
     )
 
@@ -92,7 +94,9 @@ def _confirmation(hours: str, found: list[tuple[str, Allowance]]) -> str:
     )
 
 
-def _stop(e: Exception, not_attempted: list[tuple[str, Allowance | None]]) -> None:
+def _stop(
+    ctx: RunContext, e: Exception, not_attempted: list[tuple[str, Allowance | None]]
+) -> None:
     """
     Having recorded a failure: if it is the session's, record the Allowances
     not yet attempted as skipped and raise ReportedFailure, which exits with
@@ -106,14 +110,14 @@ def _stop(e: Exception, not_attempted: list[tuple[str, Allowance | None]]) -> No
             " Allowance(s), which would fail in the same way"
         )
     for allowance_id, allowance in not_attempted:
-        _record(allowance_id, "skipped", f"not attempted: {e}", allowance)
+        _record(ctx, allowance_id, "skipped", f"not attempted: {e}", allowance)
     raise ReportedFailure(e)
 
 
 @main_wrapper
-def main() -> None:
-    hours = _hours(ARGS_PARSER.boost_hours)
-    allowance_ids = _without_duplicates(ARGS_PARSER.allowance_list)
+def main(ctx: RunContext) -> None:
+    hours = _hours(ctx.args.boost_hours)
+    allowance_ids = _without_duplicates(ctx.args.allowance_list)
 
     # Fetch each, in the order given
     found: list[tuple[str, Allowance]] = []
@@ -122,14 +126,15 @@ def main() -> None:
             found.append(
                 (
                     allowance_id,
-                    CLIENT.allowances_client.get_allowance_by_id(allowance_id),
+                    ctx.client.allowances_client.get_allowance_by_id(allowance_id),
                 )
             )
         except Exception as e:
             error = "not found" if is_http_not_found(e) else str(e)
             print_error(f"Unable to boost Allowance {allowance_id}: {error}")
-            _record(allowance_id, "failed", error)
+            _record(ctx, allowance_id, "failed", error)
             _stop(
+                ctx,
                 e,
                 [*found, *((a, None) for a in allowance_ids[index + 1 :])],
             )
@@ -140,23 +145,23 @@ def main() -> None:
 
     if not confirmed(_confirmation(hours, found)):
         for allowance_id, allowance in found:
-            _record(allowance_id, "skipped", allowance=allowance)
+            _record(ctx, allowance_id, "skipped", allowance=allowance)
         print_info("No Allowances boosted")
         return
 
     boosted = failed = 0
     for index, (allowance_id, allowance) in enumerate(found):
         try:
-            result = CLIENT.allowances_client.boost_allowance_by_id(
-                allowance_id, ARGS_PARSER.boost_hours
+            result = ctx.client.allowances_client.boost_allowance_by_id(
+                allowance_id, ctx.args.boost_hours
             )
         except Exception as e:
             print_error(
                 f"Unable to boost Allowance {_label(allowance_id, allowance)}: {e}"
             )
-            _record(allowance_id, "failed", str(e), allowance)
+            _record(ctx, allowance_id, "failed", str(e), allowance)
             failed += 1
-            _stop(e, list(found[index + 1 :]))
+            _stop(ctx, e, list(found[index + 1 :]))
             continue
 
         remaining_hours = _remaining_hours(result)
@@ -169,7 +174,11 @@ def main() -> None:
             )
         )
         _record(
-            allowance_id, "boosted", allowance=allowance, remainingHours=remaining_hours
+            ctx,
+            allowance_id,
+            "boosted",
+            allowance=allowance,
+            remainingHours=remaining_hours,
         )
         boosted += 1
 

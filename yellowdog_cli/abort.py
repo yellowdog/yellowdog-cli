@@ -15,6 +15,8 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.action_runner import warn_not_attempted
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_TASK_GROUPS,
     ET_TASKS,
@@ -31,7 +33,7 @@ from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record_action
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
     get_ydid_type,
@@ -52,9 +54,13 @@ _RUNNING_TASK_STATUSES = [
 
 
 @dataclass
-class _Tally:
-    """The outcomes for Tasks across the whole run, and the Tasks handled."""
+class _Run:
+    """
+    The run: what it runs with, the outcomes for Tasks across it, and the
+    Tasks handled.
+    """
 
+    ctx: RunContext
     aborted: int = 0
     skipped: int = 0
     failed: int = 0
@@ -100,21 +106,19 @@ def _label(entity: object) -> str:
 
 
 @main_wrapper
-def main() -> None:
-    tally = _Tally()
-    if ARGS_PARSER.task_id_list:
-        _run_units(
-            _target_units(_without_duplicates(ARGS_PARSER.task_id_list), tally), tally
-        )
+def main(ctx: RunContext) -> None:
+    run = _Run(ctx)
+    if ctx.args.task_id_list:
+        _run_units(_target_units(_without_duplicates(ctx.args.task_id_list), run), run)
     else:
-        _run_units(_interactive_units(tally), tally)
+        _run_units(_interactive_units(run), run)
 
-    if tally.total > 1:
+    if run.total > 1:
         print_info(
-            f"Aborted {tally.aborted} of {tally.total} Tasks"
-            f" ({tally.skipped} skipped, {tally.failed} failed)"
+            f"Aborted {run.aborted} of {run.total} Tasks"
+            f" ({run.skipped} skipped, {run.failed} failed)"
         )
-    elif tally.aborted == 0:
+    elif run.aborted == 0:
         print_info("No Tasks aborted")
 
 
@@ -129,7 +133,7 @@ def _without_duplicates(targets: list[str]) -> list[str]:
     return unique
 
 
-def _run_units(units: list[_Unit], tally: _Tally) -> None:
+def _run_units(units: list[_Unit], run: _Run) -> None:
     """
     Do each unit of work in turn. A unit that fails as a whole (a lookup
     failing, say) is recorded as failed and the next one is done, unless
@@ -145,12 +149,12 @@ def _run_units(units: list[_Unit], tally: _Tally) -> None:
             failure = e
         except Exception as e:
             for entity, entity_type in entities:
-                if entity in tally.handled:  # a Task ID already recorded
+                if entity in run.handled:  # a Task ID already recorded
                     continue
                 print_error(f"Unable to abort Tasks for '{_label(entity)}': {e}")
                 _record(entity, "failed", str(e), entity_type)
                 if entity_type == ET_TASKS:
-                    tally.failed += 1
+                    run.failed += 1
             if classify(e) not in SESSION_FAILURES:
                 continue
             failure = _SessionFailure(e, 0)
@@ -162,17 +166,13 @@ def _run_units(units: list[_Unit], tally: _Tally) -> None:
                     entity, "skipped", f"not attempted: {failure.cause}", entity_type
                 )
                 if entity_type == ET_TASKS:
-                    tally.skipped += 1
+                    run.skipped += 1
                 not_attempted += 1
-        if not_attempted:
-            print_warning(
-                f"Not attempting the remaining {not_attempted} item(s),"
-                " which would fail in the same way"
-            )
+        warn_not_attempted(not_attempted)
         raise ReportedFailure(failure.cause)
 
 
-def _target_units(targets: list[str], tally: _Tally) -> list[_Unit]:
+def _target_units(targets: list[str], run: _Run) -> list[_Unit]:
     """
     One unit per target, in the order given, except that the Task IDs are
     one unit, at the place the first of them was given, so that they are
@@ -185,30 +185,28 @@ def _target_units(targets: list[str], tally: _Tally) -> list[_Unit]:
         ydid_type = get_ydid_type(target)
         if ydid_type == YDIDType.TASK:
             if not task_ids:
-                units.append(
-                    (task_entities, lambda: _abort_tasks_by_id(task_ids, tally))
-                )
+                units.append((task_entities, lambda: _abort_tasks_by_id(task_ids, run)))
             task_ids.append(target)
             task_entities.append((target, ET_TASKS))
         elif ydid_type == YDIDType.TASK_GROUP:
             units.append(
                 (
                     [(target, ET_TASK_GROUPS)],
-                    lambda t=target: _abort_task_group_by_id(t, tally),
+                    lambda t=target: _abort_task_group_by_id(t, run),
                 )
             )
         elif ydid_type == YDIDType.WORK_REQUIREMENT:
             units.append(
                 (
                     [(target, ET_WORK_REQUIREMENTS)],
-                    lambda t=target: _abort_work_requirement_by_id(t, tally),
+                    lambda t=target: _abort_work_requirement_by_id(t, run),
                 )
             )
         elif ydid_type is None:
             units.append(
                 (
                     [(target, _named_target_type(target))],
-                    lambda t=target: _abort_named_target(t, tally),
+                    lambda t=target: _abort_named_target(t, run),
                 )
             )
         else:
@@ -243,23 +241,23 @@ def _named_target_type(target: str) -> str:
     return ET_WORK_REQUIREMENTS if "/" not in target else ET_TASK_GROUPS
 
 
-def _interactive_units(tally: _Tally) -> list[_Unit]:
+def _interactive_units(run: _Run) -> list[_Unit]:
     """The Work Requirements in the namespace and tag the user selects."""
     print_info(
         "Finding active Work Requirements in "
-        f"namespace '{CONFIG_COMMON.namespace}' with tags "
-        f"including '{CONFIG_COMMON.name_tag}'"
+        f"namespace '{run.ctx.config.namespace}' with tags "
+        f"including '{run.ctx.config.name_tag}'"
     )
 
     # The Work Requirements, and then their Tasks, are chosen from lists,
     # unless --yes is given
-    ARGS_PARSER.interactive = True
+    run.ctx.args.interactive = True
 
     work_requirement_summaries: list[WorkRequirementSummary] = (
         get_filtered_work_requirement_summaries(
-            CLIENT,
-            namespace=CONFIG_COMMON.namespace,
-            tag=CONFIG_COMMON.name_tag,
+            run.ctx.client,
+            namespace=run.ctx.config.namespace,
+            tag=run.ctx.config.name_tag,
             exclude_filter=[
                 WorkRequirementStatus.COMPLETED,
                 WorkRequirementStatus.CANCELLED,
@@ -272,22 +270,22 @@ def _interactive_units(tally: _Tally) -> list[_Unit]:
         print_info("No matching Work Requirements found")
         return []
 
-    if not ARGS_PARSER.yes:
+    if not run.ctx.args.yes:
         work_requirement_summaries = select(
-            CLIENT, work_requirement_summaries, override_quiet=True
+            run.ctx.client, work_requirement_summaries, override_quiet=True
         )
 
     return [
         (
             [(summary, ET_WORK_REQUIREMENTS)],
-            lambda s=summary: _abort_in_work_requirement(s.id, s.name, tally),
+            lambda s=summary: _abort_in_work_requirement(s.id, s.name, run),
         )
         for summary in work_requirement_summaries
     ]
 
 
-def _running_tasks(search: TaskSearch) -> list[Task]:
-    return CLIENT.work_client.get_tasks(search).list_all()
+def _running_tasks(run: _Run, search: TaskSearch) -> list[Task]:
+    return run.ctx.client.work_client.get_tasks(search).list_all()
 
 
 def _nothing_running(entity: object, entity_type: str, where: str) -> None:
@@ -298,7 +296,7 @@ def _nothing_running(entity: object, entity_type: str, where: str) -> None:
     _record(entity, "skipped", NO_RUNNING_TASKS, entity_type)
 
 
-def _task_group_part(work_requirement_id: str | None, task: Task) -> str:
+def _task_group_part(run: _Run, work_requirement_id: str | None, task: Task) -> str:
     """
     " in Task Group '<name>'" for a message about a Task, or "" when its
     Work Requirement is not known or the name cannot be found: the Task has
@@ -307,7 +305,7 @@ def _task_group_part(work_requirement_id: str | None, task: Task) -> str:
     if work_requirement_id is None:
         return ""
     try:
-        task_groups = get_task_groups_from_wr_by_id(CLIENT, work_requirement_id)
+        task_groups = get_task_groups_from_wr_by_id(run.ctx.client, work_requirement_id)
     except Exception:
         return ""
     name = next((g.name for g in task_groups if g.id == task.taskGroupId), None)
@@ -315,13 +313,14 @@ def _task_group_part(work_requirement_id: str | None, task: Task) -> str:
 
 
 def _abort_in_work_requirement(
-    work_requirement_id: str | None, work_requirement_name: str | None, tally: _Tally
+    work_requirement_id: str | None, work_requirement_name: str | None, run: _Run
 ) -> None:
     print_info(f"Aborting Tasks in Work Requirement '{work_requirement_name}'")
     tasks = _running_tasks(
+        run,
         TaskSearch(
             workRequirementId=work_requirement_id, statuses=_RUNNING_TASK_STATUSES
-        )
+        ),
     )
     entity = {"id": work_requirement_id, "name": work_requirement_name}
     if not tasks:
@@ -329,18 +328,18 @@ def _abort_in_work_requirement(
         return
     _abort_tasks(
         tasks,
-        tally,
+        run,
         context=f"Work Requirement '{work_requirement_name}'",
         work_requirement_id=work_requirement_id,
     )
 
 
 def _abort_in_task_group(
-    task_group_id: str | None, task_group_name: str | None, context: str, tally: _Tally
+    task_group_id: str | None, task_group_name: str | None, context: str, run: _Run
 ) -> None:
     print_info(f"Aborting Tasks in {context}")
     tasks = _running_tasks(
-        TaskSearch(taskGroupId=task_group_id, statuses=_RUNNING_TASK_STATUSES)
+        run, TaskSearch(taskGroupId=task_group_id, statuses=_RUNNING_TASK_STATUSES)
     )
     if not tasks:
         _nothing_running(
@@ -349,16 +348,16 @@ def _abort_in_task_group(
             "Task Group",
         )
         return
-    _abort_tasks(tasks, tally, context=context)
+    _abort_tasks(tasks, run, context=context)
 
 
-def _abort_work_requirement_by_id(work_requirement_id: str, tally: _Tally) -> None:
+def _abort_work_requirement_by_id(work_requirement_id: str, run: _Run) -> None:
     """
     By ID, in whatever namespace: a YDID is unique, so it is fetched rather
     than looked for among the configured namespace's Work Requirements.
     """
     try:
-        work_requirement = CLIENT.work_client.get_work_requirement_by_id(
+        work_requirement = run.ctx.client.work_client.get_work_requirement_by_id(
             work_requirement_id
         )
     except Exception as e:
@@ -370,13 +369,13 @@ def _abort_work_requirement_by_id(work_requirement_id: str, tally: _Tally) -> No
             ET_WORK_REQUIREMENTS,
         )
         return
-    _abort_in_work_requirement(work_requirement.id, work_requirement.name, tally)
+    _abort_in_work_requirement(work_requirement.id, work_requirement.name, run)
 
 
-def _abort_task_group_by_id(task_group_id: str, tally: _Tally) -> None:
+def _abort_task_group_by_id(task_group_id: str, run: _Run) -> None:
     try:
         task_groups = get_task_groups_from_wr_by_id(
-            CLIENT, work_requirement_id_of_task_group(task_group_id)
+            run.ctx.client, work_requirement_id_of_task_group(task_group_id)
         )
     except Exception as e:
         if not is_http_not_found(e):
@@ -387,7 +386,7 @@ def _abort_task_group_by_id(task_group_id: str, tally: _Tally) -> None:
         _not_found(f"Task Group '{task_group_id}'", task_group_id, ET_TASK_GROUPS)
         return
     _abort_in_task_group(
-        task_group_id, task_group.name, f"Task Group '{task_group.name}'", tally
+        task_group_id, task_group.name, f"Task Group '{task_group.name}'", run
     )
 
 
@@ -397,20 +396,22 @@ def _not_found(what: str, entity: object, entity_type: str) -> None:
 
 
 def _work_requirement_named(
-    name: str, namespace: str | None
+    run: _Run, name: str, namespace: str | None
 ) -> WorkRequirementSummary | None:
     """A Work Requirement by its name, which holds no '/', in a namespace."""
-    return get_work_requirement_summary_by_name_or_id(CLIENT, name, namespace=namespace)
+    return get_work_requirement_summary_by_name_or_id(
+        run.ctx.client, name, namespace=namespace
+    )
 
 
 def _abort_in_named_task_group(
-    work_requirement: WorkRequirementSummary, task_group_name: str, tally: _Tally
+    work_requirement: WorkRequirementSummary, task_group_name: str, run: _Run
 ) -> bool:
     """
     Abort the executing Tasks in the Work Requirement's Task Group of that
     name, returning False, having done nothing, if it has none.
     """
-    task_groups = get_task_groups_from_wr_by_id(CLIENT, work_requirement.id)  # type: ignore[arg-type]
+    task_groups = get_task_groups_from_wr_by_id(run.ctx.client, work_requirement.id)  # type: ignore[arg-type]
     task_group = next((g for g in task_groups if g.name == task_group_name), None)
     if task_group is None:
         return False
@@ -418,28 +419,28 @@ def _abort_in_named_task_group(
         task_group.id,
         task_group.name,
         f"Task Group '{task_group.name}' in Work Requirement '{work_requirement.name}'",
-        tally,
+        run,
     )
     return True
 
 
-def _abort_named_target(target: str, tally: _Tally) -> None:
+def _abort_named_target(target: str, run: _Run) -> None:
     """
     A target by name: 'wr', 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'.
     Of the two readings of 'a/b', the Task Group is tried first, being the
     form documented for this command.
     """
-    namespace = CONFIG_COMMON.namespace
+    namespace = run.ctx.config.namespace
     parts = target.split("/")
     if parts[0] == "" and len(parts) > 1:  # a leading '/' names no namespace
         parts = parts[1:]
 
     if len(parts) == 1:
-        work_requirement = _work_requirement_named(parts[0], namespace)
+        work_requirement = _work_requirement_named(run, parts[0], namespace)
         if work_requirement is None:
             _not_found(f"Work Requirement '{target}'", target, ET_WORK_REQUIREMENTS)
             return
-        _abort_in_work_requirement(work_requirement.id, work_requirement.name, tally)
+        _abort_in_work_requirement(work_requirement.id, work_requirement.name, run)
         return
 
     if len(parts) == 2:
@@ -447,16 +448,16 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
         # An ambiguous Work Requirement name rules out only this reading
         ambiguous: AmbiguousNameError | None = None
         try:
-            work_requirement = _work_requirement_named(first, namespace)
+            work_requirement = _work_requirement_named(run, first, namespace)
         except AmbiguousNameError as e:
             work_requirement, ambiguous = None, e
         if work_requirement is not None and _abort_in_named_task_group(
-            work_requirement, second, tally
+            work_requirement, second, run
         ):
             return
-        namespaced = _work_requirement_named(second, first)
+        namespaced = _work_requirement_named(run, second, first)
         if namespaced is not None:
-            _abort_in_work_requirement(namespaced.id, namespaced.name, tally)
+            _abort_in_work_requirement(namespaced.id, namespaced.name, run)
             return
         if ambiguous is not None:
             raise ambiguous
@@ -477,7 +478,7 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
     if len(parts) == 3:
         target_namespace, work_requirement_name, task_group_name = parts
         work_requirement = _work_requirement_named(
-            work_requirement_name, target_namespace
+            run, work_requirement_name, target_namespace
         )
         if work_requirement is None:
             _not_found(
@@ -487,7 +488,7 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
                 ET_TASK_GROUPS,
             )
             return
-        if not _abort_in_named_task_group(work_requirement, task_group_name, tally):
+        if not _abort_in_named_task_group(work_requirement, task_group_name, run):
             _not_found(
                 f"Task Group '{task_group_name}' in Work Requirement"
                 f" '{work_requirement_name}'",
@@ -504,7 +505,7 @@ def _abort_named_target(target: str, tally: _Tally) -> None:
     _record(target, "failed", message, ET_TASK_GROUPS)
 
 
-def _abort_tasks_by_id(task_ids: list[str], tally: _Tally) -> None:
+def _abort_tasks_by_id(task_ids: list[str], run: _Run) -> None:
     """
     Abort Tasks by their YDIDs, whatever their state: a Task named by its
     ID is aborted as asked, and the Platform decides what that means for
@@ -513,23 +514,23 @@ def _abort_tasks_by_id(task_ids: list[str], tally: _Tally) -> None:
     tasks: list[Task] = []
     for index, task_id in enumerate(task_ids):
         try:
-            task = CLIENT.work_client.get_task_by_id(task_id)
+            task = run.ctx.client.work_client.get_task_by_id(task_id)
         except Exception as e:
             error = "not found" if is_http_not_found(e) else str(e)
             print_error(f"Unable to abort Task '{task_id}': {error}")
             _record(task_id, "failed", error)
-            tally.failed += 1
-            tally.handled.add(task_id)
-            _stop_if_session_failure(e, [*tasks, *task_ids[index + 1 :]], tally)
+            run.failed += 1
+            run.handled.add(task_id)
+            _stop_if_session_failure(e, [*tasks, *task_ids[index + 1 :]], run)
             continue
         tasks.append(task)
 
     if tasks:
-        _abort_tasks(tasks, tally)
+        _abort_tasks(tasks, run)
 
 
 def _stop_if_session_failure(
-    e: Exception, not_attempted: Sequence[Task | str], tally: _Tally
+    e: Exception, not_attempted: Sequence[Task | str], run: _Run
 ) -> None:
     """
     If the failure is the session's, record the Tasks not yet attempted as
@@ -539,14 +540,14 @@ def _stop_if_session_failure(
         return
     for task in not_attempted:
         _record(task, "skipped", f"not attempted: {e}")
-        tally.skipped += 1
-        tally.handled.add(task if isinstance(task, str) else task.id)
+        run.skipped += 1
+        run.handled.add(task if isinstance(task, str) else task.id)
     raise _SessionFailure(e, len(not_attempted))
 
 
 def _abort_tasks(
     tasks: list[Task],
-    tally: _Tally,
+    run: _Run,
     context: str | None = None,
     work_requirement_id: str | None = None,
 ) -> None:
@@ -554,48 +555,48 @@ def _abort_tasks(
     Select (unless --yes), confirm (unless --yes), then abort the given
     Tasks, each once in the run however many targets include it.
     """
-    already_handled = [task for task in tasks if task.id in tally.handled]
+    already_handled = [task for task in tasks if task.id in run.handled]
     if already_handled:
         print_info(f"Ignoring {len(already_handled)} Task(s) already handled")
-    tasks = [task for task in tasks if task.id not in tally.handled]
+    tasks = [task for task in tasks if task.id not in run.handled]
     if not tasks:
         return
 
-    if not ARGS_PARSER.yes:
-        selected = select(CLIENT, tasks, override_quiet=True)
+    if not run.ctx.args.yes:
+        selected = select(run.ctx.client, tasks, override_quiet=True)
         selected_ids = {task.id for task in selected}
         for task in tasks:
             if task.id not in selected_ids:
                 _record(task, "skipped", "not selected")
-                tally.skipped += 1
-                tally.handled.add(task.id)
+                run.skipped += 1
+                run.handled.add(task.id)
         if not selected:
             return
         if not confirmed(f"Abort {len(selected)} Task(s)?"):
             for task in selected:
                 _record(task, "skipped", "declined")
-                tally.skipped += 1
-                tally.handled.add(task.id)
+                run.skipped += 1
+                run.handled.add(task.id)
             return
         tasks = selected
 
     in_context = "" if context is None else f" in {context}"
     for index, task in enumerate(tasks):
-        tally.handled.add(task.id)
+        run.handled.add(task.id)
         try:
-            CLIENT.work_client.cancel_task(task, abort=True)
+            run.ctx.client.work_client.cancel_task(task, abort=True)
         except Exception as e:
             print_error(f"Unable to abort Task '{task.name}': {e}")
             _record(task, "failed", str(e))
-            tally.failed += 1
-            _stop_if_session_failure(e, tasks[index + 1 :], tally)
+            run.failed += 1
+            _stop_if_session_failure(e, tasks[index + 1 :], run)
             continue
         print_info(
             f"Aborted Task '{task.name}'"
-            f"{_task_group_part(work_requirement_id, task)}{in_context}"
+            f"{_task_group_part(run, work_requirement_id, task)}{in_context}"
         )
         _record(task, "aborted")
-        tally.aborted += 1
+        run.aborted += 1
 
 
 # Entry point

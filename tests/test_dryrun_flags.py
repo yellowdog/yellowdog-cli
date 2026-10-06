@@ -120,12 +120,12 @@ class TestRealPathRecordsThroughARealParse:
     def test_yd_cancel(self, monkeypatch, capsys):
         reset_results()
         args = CLIParser(command="yd-cancel", argv=["--json", "--yes", "nonesuch-wr"])
-        for target in (yd_cancel, results_module, printing_module, wrapper_module):
+        # yd-cancel takes a RunContext, built from the wrapper's own
+        for target in (results_module, printing_module, wrapper_module):
             monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(yd_cancel, "CLIENT", MagicMock())
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         monkeypatch.setattr(
-            yd_cancel,
+            wrapper_module,
             "CONFIG_COMMON",
             MagicMock(namespace="ns", name_tag="tag", url="https://u"),
         )

@@ -30,7 +30,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.utils.compute_action_common as cac_module
-from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils import action_runner, entity_utils
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_RESTART,
@@ -39,6 +39,7 @@ from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_TERMINATE,
     apply_compute_action,
 )
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -162,13 +163,8 @@ class FakePlatform:
 @pytest.fixture
 def platform(monkeypatch):
     fake = FakePlatform()
-    monkeypatch.setattr(cac_module, "CLIENT", fake.client)
-    monkeypatch.setattr(
-        cac_module,
-        "CONFIG_COMMON",
-        SimpleNamespace(namespace="ns", name_tag="tag", url="https://api.x"),
-    )
-    monkeypatch.setattr(cac_module, "confirmed", lambda message: True)
+    fake.config = SimpleNamespace(namespace="ns", name_tag="tag", url="https://api.x")
+    monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(cac_module, "select", lambda client, objects: objects)
     monkeypatch.setattr(cac_module, "follow_ids", MagicMock())
 
@@ -208,23 +204,25 @@ def platform(monkeypatch):
 
 
 def _run(
-    monkeypatch,
+    platform,
     action,
     targets: list[str],
     follow: bool = False,
     dry_run: bool | None = None,
 ):
-    monkeypatch.setattr(
-        cac_module,
-        "ARGS_PARSER",
-        SimpleNamespace(
-            compute_requirements_instances_or_nodes=targets,
-            follow=follow,
-            dry_run=dry_run,
-            json_output=False,
+    apply_compute_action(
+        RunContext(
+            args=SimpleNamespace(
+                compute_requirements_instances_or_nodes=targets,
+                follow=follow,
+                dry_run=dry_run,
+                json_output=False,
+            ),
+            config=platform.config,
+            client=platform.client,
         ),
+        action,
     )
-    apply_compute_action(action)
 
 
 # ---------------------------------------------------------------------------
@@ -235,29 +233,29 @@ def _run(
 class TestListing:
     def test_the_tag_path_acts_on_crs_in_a_valid_state(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)
-        _run(monkeypatch, COMPUTE_STOP, [])
+        _run(platform, COMPUTE_STOP, [])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
         assert platform.outcomes() == [(CR_ID, "compute-requirements", "stopped")]
 
     def test_a_glob_selects_matching_names_only(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
-        _run(monkeypatch, COMPUTE_STOP, ["cr-*"])
+        _run(platform, COMPUTE_STOP, ["cr-*"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
     def test_a_glob_respects_the_actions_states(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_START, ["cr-*"])  # cr-a is RUNNING
+        _run(platform, COMPUTE_START, ["cr-*"])  # cr-a is RUNNING
         assert platform.calls == []
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(cac_module, "confirmed", lambda message: False)
-        _run(monkeypatch, COMPUTE_STOP, [])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_STOP, [])
         assert platform.calls == []
         assert platform.outcomes() == [(CR_ID, "compute-requirements", "skipped")]
 
     def test_a_failure_carries_on(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         platform.failures["stop_compute_requirement_by_id"] = _http_error(500)
-        _run(monkeypatch, COMPUTE_STOP, [])
+        _run(platform, COMPUTE_STOP, [])
         assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
 
     @pytest.mark.parametrize(
@@ -267,13 +265,13 @@ class TestListing:
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         platform.failures["stop_compute_requirement_by_id"] = error
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, COMPUTE_STOP, [])
+            _run(platform, COMPUTE_STOP, [])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
 
     def test_follow_is_given_only_what_was_actioned(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [], follow=True)
+        _run(platform, COMPUTE_STOP, [], follow=True)
         cac_module.follow_ids.assert_called_once_with([CR_ID])
 
 
@@ -284,18 +282,18 @@ class TestListing:
 
 class TestComputeRequirements:
     def test_by_id_records_its_name(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [CR_ID])
+        _run(platform, COMPUTE_STOP, [CR_ID])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
         assert platform.records[0]["name"] == "cr-a"
 
     def test_by_name(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, ["cr-a"])
+        _run(platform, COMPUTE_STOP, ["cr-a"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
         assert platform.records[0]["name"] == "cr-a"
 
     def test_by_namespaced_name(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-a", namespace="other")
-        _run(monkeypatch, COMPUTE_STOP, ["other/cr-a"])
+        _run(platform, COMPUTE_STOP, ["other/cr-a"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID_2)]
 
     def test_a_name_prefers_the_live_cr_over_a_terminated_one(
@@ -305,17 +303,17 @@ class TestComputeRequirements:
             CR_ID_OLD: _cr(CR_ID_OLD, "cr-a", TERMINATED),
             CR_ID: _cr(CR_ID, "cr-a"),
         }
-        _run(monkeypatch, COMPUTE_STOP, ["cr-a"])
+        _run(platform, COMPUTE_STOP, ["cr-a"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
     def test_a_name_matched_by_two_live_crs_fails(self, platform, monkeypatch):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-a")
-        _run(monkeypatch, COMPUTE_STOP, ["cr-a"])
+        _run(platform, COMPUTE_STOP, ["cr-a"])
         assert platform.calls == []
         assert platform.outcomes() == [(None, "compute-requirements", "failed")]
 
     def test_a_partial_name_is_not_a_match(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, ["cr"])
+        _run(platform, COMPUTE_STOP, ["cr"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
@@ -323,23 +321,23 @@ class TestComputeRequirements:
     def test_the_wrong_state_is_skipped_by_id_or_name(
         self, platform, monkeypatch, target
     ):
-        _run(monkeypatch, COMPUTE_START, [target])
+        _run(platform, COMPUTE_START, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
         assert "RUNNING" in platform.records[0]["error"]
 
     def test_not_found(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [CR_ID_2])
+        _run(platform, COMPUTE_STOP, [CR_ID_2])
         assert platform.outcomes() == [(CR_ID_2, "compute-requirements", "failed")]
 
     def test_a_cr_name_containing_a_dot_is_a_name(self, platform, monkeypatch):
         platform.crs[CR_ID] = _cr(CR_ID, "my.cr")
-        _run(monkeypatch, COMPUTE_STOP, ["my.cr"])
+        _run(platform, COMPUTE_STOP, ["my.cr"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
     @pytest.mark.parametrize("target", [CR_ID, "cr-a"])
     def test_restart_refuses_compute_requirements(self, platform, monkeypatch, target):
-        _run(monkeypatch, COMPUTE_RESTART, [target])
+        _run(platform, COMPUTE_RESTART, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
@@ -358,7 +356,7 @@ class TestInstances:
         ],
     )
     def test_an_instance(self, platform, monkeypatch, action, method):
-        _run(monkeypatch, action, [f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, action, [f"{CR_ID}.{INSTANCE_ID}"])
         assert platform.calls == [(method, CR_ID, [INSTANCE_ID])]
         assert platform.outcomes() == [
             (f"{CR_ID}.{INSTANCE_ID}", "instances", action.past_tense.lower())
@@ -366,7 +364,7 @@ class TestInstances:
 
     def test_an_oci_instance_id_with_dots(self, platform, monkeypatch):
         platform.instances[(CR_ID, OCI_INSTANCE_ID)] = _instance(OCI_INSTANCE_ID)
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID}.{OCI_INSTANCE_ID}"])
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{OCI_INSTANCE_ID}"])
         assert platform.calls == [("stop_instances", CR_ID, [OCI_INSTANCE_ID])]
 
     def test_instances_in_one_cr_are_one_call_and_one_confirmation(
@@ -374,11 +372,11 @@ class TestInstances:
     ):
         prompts = []
         monkeypatch.setattr(
-            cac_module, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
         platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
         _run(
-            monkeypatch,
+            platform,
             COMPUTE_STOP,
             [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
         )
@@ -391,10 +389,10 @@ class TestInstances:
     def test_crs_and_instances_share_one_confirmation(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
-            cac_module, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID_2])
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID_2])
         assert prompts == [
             "Stop 1 Compute Requirement(s) ('cr-b') and"
             f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
@@ -405,7 +403,7 @@ class TestInstances:
     ):
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)
         targets = ["nope", CR_ID_2, "nope", f"{CR_ID}.missing"]
-        _run(monkeypatch, COMPUTE_STOP, targets)
+        _run(platform, COMPUTE_STOP, targets)
         assert [(r["name"], r["outcome"]) for r in platform.records] == [
             ("nope", "failed"),
             ("cr-b", "skipped"),
@@ -413,21 +411,21 @@ class TestInstances:
         ]
 
     def test_the_wrong_state_is_skipped(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_START, [f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_START, [f"{CR_ID}.{INSTANCE_ID}"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
 
     def test_an_unknown_instance_fails(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
         assert platform.outcomes() == [(f"{CR_ID}.i-unknown", "instances", "failed")]
 
     def test_an_unknown_cr_fails_as_not_found(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID_2}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_STOP, [f"{CR_ID_2}.{INSTANCE_ID}"])
         assert "Cannot find Compute Requirement" in platform.records[0]["error"]
 
     def test_a_cr_lookup_error_is_not_called_not_found(self, platform, monkeypatch):
         platform.lookup_failure = _http_error(500)
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}"])
         assert "Cannot find" not in platform.records[0]["error"]
         assert "500" in platform.records[0]["error"]
 
@@ -437,7 +435,7 @@ class TestInstances:
             "InvalidComputeRequirementStatusException: no"
         )
         _run(
-            monkeypatch,
+            platform,
             COMPUTE_STOP,
             [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
             follow=True,
@@ -448,7 +446,7 @@ class TestInstances:
     def test_follow_names_each_cr_once(self, platform, monkeypatch):
         platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
         _run(
-            monkeypatch,
+            platform,
             COMPUTE_STOP,
             [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
             follow=True,
@@ -456,8 +454,8 @@ class TestInstances:
         cac_module.follow_ids.assert_called_once_with([CR_ID])
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(cac_module, "confirmed", lambda message: False)
-        _run(monkeypatch, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID])
         assert platform.calls == []
         assert {r["outcome"] for r in platform.records} == {"skipped"}
 
@@ -473,12 +471,12 @@ class TestNodes:
 
     def test_a_node_stands_for_its_instance(self, platform, monkeypatch):
         self._node(platform)
-        _run(monkeypatch, COMPUTE_STOP, [NODE_ID])
+        _run(platform, COMPUTE_STOP, [NODE_ID])
         assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
 
     def test_a_node_and_its_instance_are_one_target(self, platform, monkeypatch):
         self._node(platform)
-        _run(monkeypatch, COMPUTE_STOP, [NODE_ID, f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_STOP, [NODE_ID, f"{CR_ID}.{INSTANCE_ID}"])
         assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
         assert len(platform.records) == 1
 
@@ -487,18 +485,19 @@ class TestNodes:
     ):
         self._node(platform, pool=ConfiguredWorkerPool())
         errors = []
-        monkeypatch.setattr(cac_module, "print_error", errors.append)
-        _run(monkeypatch, COMPUTE_STOP, [NODE_ID])
+        monkeypatch.setattr(cac_module, "print_error", errors.append, raising=False)
+        monkeypatch.setattr(action_runner, "print_error", errors.append)
+        _run(platform, COMPUTE_STOP, [NODE_ID])
         assert platform.outcomes() == [(NODE_ID, "nodes", "failed")]
         assert "Configured Worker Pool" in errors[0]
 
     def test_a_node_without_details_fails_and_says_why(self, platform, monkeypatch):
         self._node(platform, details=False)
-        _run(monkeypatch, COMPUTE_STOP, [NODE_ID])
+        _run(platform, COMPUTE_STOP, [NODE_ID])
         assert "has not yet reported its Instance" in platform.records[0]["error"]
 
     def test_an_unknown_node(self, platform, monkeypatch):
-        _run(monkeypatch, COMPUTE_STOP, [NODE_ID])
+        _run(platform, COMPUTE_STOP, [NODE_ID])
         assert platform.outcomes() == [(NODE_ID, "nodes", "failed")]
 
 
@@ -523,7 +522,7 @@ class TestSessionFailures:
             get_cr
         )
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, COMPUTE_STOP, [*targets, f"{CR_ID}.{INSTANCE_ID}"])
+            _run(platform, COMPUTE_STOP, [*targets, f"{CR_ID}.{INSTANCE_ID}"])
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []  # nothing is acted on
         assert [(r["id"], r["outcome"]) for r in platform.records] == [
@@ -536,7 +535,7 @@ class TestSessionFailures:
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         platform.failures["stop_compute_requirement_by_id"] = _http_error(401)
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, COMPUTE_STOP, [CR_ID, CR_ID_2, f"{CR_ID}.{INSTANCE_ID}"])
+            _run(platform, COMPUTE_STOP, [CR_ID, CR_ID_2, f"{CR_ID}.{INSTANCE_ID}"])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == [
             "failed",
@@ -558,44 +557,44 @@ class TestTerminate:
     )
     def test_any_live_cr_can_be_terminated(self, platform, monkeypatch, status):
         platform.crs[CR_ID] = _cr(CR_ID, "cr-a", status)
-        _run(monkeypatch, COMPUTE_TERMINATE, [CR_ID])
+        _run(platform, COMPUTE_TERMINATE, [CR_ID])
         assert platform.calls == [("terminate_compute_requirement_by_id", CR_ID)]
         assert platform.outcomes() == [(CR_ID, "compute-requirements", "terminated")]
 
     def test_a_terminated_cr_is_skipped(self, platform, monkeypatch):
         platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
-        _run(monkeypatch, COMPUTE_TERMINATE, ["cr-a"])
+        _run(platform, COMPUTE_TERMINATE, ["cr-a"])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
 
     @pytest.mark.parametrize("status", [InstanceStatus.STOPPED, InstanceStatus.PENDING])
     def test_an_instance_in_any_live_state(self, platform, monkeypatch, status):
         platform.instances[(CR_ID, INSTANCE_ID)] = _instance(INSTANCE_ID, status)
-        _run(monkeypatch, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
         assert platform.calls == [("terminate_instances", CR_ID, [INSTANCE_ID])]
 
     def test_an_instance_already_terminating_is_skipped(self, platform, monkeypatch):
         platform.instances[(CR_ID, INSTANCE_ID)] = _instance(
             INSTANCE_ID, InstanceStatus.TERMINATING
         )
-        _run(monkeypatch, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        _run(platform, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
         assert platform.records[0]["outcome"] == "skipped"
 
     def test_a_terminated_node_is_skipped(self, platform, monkeypatch):
         platform.nodes[NODE_ID] = SimpleNamespace(
             status=NodeStatus.TERMINATED, workerPoolId=WP_ID, details=None
         )
-        _run(monkeypatch, COMPUTE_TERMINATE, [NODE_ID])
+        _run(platform, COMPUTE_TERMINATE, [NODE_ID])
         assert platform.outcomes() == [(NODE_ID, "nodes", "skipped")]
 
     def test_the_confirmation_says_immediately(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
-            cac_module, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
-        _run(monkeypatch, COMPUTE_TERMINATE, [CR_ID])
+        _run(platform, COMPUTE_TERMINATE, [CR_ID])
         platform.crs[CR_ID] = _cr(CR_ID, "cr-a")  # the fake left it as it was
-        _run(monkeypatch, COMPUTE_TERMINATE, [])
+        _run(platform, COMPUTE_TERMINATE, [])
         assert len(prompts) == 2
         assert all(p.startswith("Immediately terminate ") for p in prompts)
 
@@ -603,7 +602,7 @@ class TestTerminate:
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
         report = MagicMock()
         monkeypatch.setattr(cac_module, "report_dry_run", report)
-        _run(monkeypatch, COMPUTE_TERMINATE, ["cr-*"], dry_run=True)
+        _run(platform, COMPUTE_TERMINATE, ["cr-*"], dry_run=True)
         assert platform.calls == []
         assert [s.id for s in report.call_args.args[1]] == [CR_ID]
         assert report.call_args.args[3:6] == (
@@ -623,7 +622,8 @@ class TestTerminate:
         )
         with pytest.raises(SystemExit):
             yd_terminate.main()
-        apply.assert_called_once_with(COMPUTE_TERMINATE)
+        (ctx, action), _ = apply.call_args
+        assert isinstance(ctx, RunContext) and action == COMPUTE_TERMINATE
 
 
 # ---------------------------------------------------------------------------

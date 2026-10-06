@@ -16,12 +16,16 @@ pypac and 'requests' are imported only when used.
 
 from __future__ import annotations
 
+import functools
+import inspect
 import os
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.command_runner import describe_error, prepare_run, run_command
 from yellowdog_cli.utils.config_types import ConfigCommon
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import (
     ExitCode,
     classify,
@@ -124,13 +128,23 @@ def _describe(error: Exception) -> str:
     return describe_error(error)
 
 
-def main_wrapper(func):
-    def wrapper():
-        # ARGS_PARSER and set_proxy are looked up as the command runs, so
-        # that a test's patch of either is the one used
+def main_wrapper(func: Callable[..., Any]) -> Callable[[], None]:
+    """
+    Run a command's main(), passing it a RunContext if it takes one
+    (main(ctx)); see context.py.
+    """
+    takes_context = len(inspect.signature(func).parameters) == 1
+
+    def wrapper() -> None:
+        # ARGS_PARSER, CONFIG_COMMON, CLIENT and set_proxy are looked up as
+        # the command runs, so that a test's patch of any is the one used
         prepare_run(func, ARGS_PARSER, CONFIG_COMMON)
         run_command(
-            func,
+            (
+                functools.partial(func, RunContext(ARGS_PARSER, CONFIG_COMMON, CLIENT))
+                if takes_context
+                else func
+            ),
             args=ARGS_PARSER,
             config_sections=ALL_CONFIG_SECTIONS,
             before=set_proxy,

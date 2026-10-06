@@ -30,6 +30,8 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.shutdown as yd_shutdown
+from yellowdog_cli.utils import action_runner
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import get_worker_pool_by_id
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
@@ -118,13 +120,8 @@ class FakePlatform:
 @pytest.fixture
 def platform(monkeypatch):
     fake = FakePlatform()
-    monkeypatch.setattr(yd_shutdown, "CLIENT", fake.client)
-    monkeypatch.setattr(
-        yd_shutdown,
-        "CONFIG_COMMON",
-        SimpleNamespace(namespace="ns", name_tag="tag", url="https://api.x"),
-    )
-    monkeypatch.setattr(yd_shutdown, "confirmed", lambda message: True)
+    fake.config = SimpleNamespace(namespace="ns", name_tag="tag", url="https://api.x")
+    monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(yd_shutdown, "select", lambda client, objects: objects)
     monkeypatch.setattr(yd_shutdown, "follow_ids", MagicMock())
     monkeypatch.setattr(
@@ -164,24 +161,26 @@ def platform(monkeypatch):
 
 
 def _run(
-    monkeypatch,
+    platform,
     targets: list[str],
     terminate: bool = False,
     follow: bool = False,
     dry_run: bool = False,
 ):
-    monkeypatch.setattr(
-        yd_shutdown,
-        "ARGS_PARSER",
-        SimpleNamespace(
-            terminate=terminate,
-            follow=follow,
-            auto_cr=False,
-            dry_run=dry_run,
-            json_output=False,
+    yd_shutdown.shut_down(
+        RunContext(
+            args=SimpleNamespace(
+                terminate=terminate,
+                follow=follow,
+                auto_cr=False,
+                dry_run=dry_run,
+                json_output=False,
+            ),
+            config=platform.config,
+            client=platform.client,
         ),
+        targets,
     )
-    yd_shutdown.shut_down(targets)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +194,7 @@ class TestListing:
     ):
         platform.pools[WP_B] = _provisioned(WP_B, "wp-tag-b", WorkerPoolStatus.SHUTDOWN)
         platform.pools[WP_C] = _provisioned(WP_C, "other")
-        _run(monkeypatch, [])
+        _run(platform, [])
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
 
     def test_a_glob_leaves_out_finished_and_unmatched_pools(
@@ -205,13 +204,13 @@ class TestListing:
             WP_B, "wp-tag-b", WorkerPoolStatus.TERMINATED
         )
         platform.pools[WP_C] = _provisioned(WP_C, "other")
-        _run(monkeypatch, ["wp-*"])
+        _run(platform, ["wp-*"])
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
 
     def test_a_dry_run_reports_and_does_nothing(self, platform, monkeypatch):
         report = MagicMock()
         monkeypatch.setattr(yd_shutdown, "report_dry_run", report)
-        _run(monkeypatch, ["wp-*"], dry_run=True)
+        _run(platform, ["wp-*"], dry_run=True)
         assert platform.calls == []
         assert [s.id for s in report.call_args.args[1]] == [WP_A]
         assert platform.records == []
@@ -221,7 +220,7 @@ class TestListing:
     ):
         monkeypatch.setattr(yd_shutdown, "report_dry_run", MagicMock())
         platform.pools[WP_B] = _configured(WP_B, "wp-tag-b")
-        _run(monkeypatch, [], dry_run=True, terminate=True)
+        _run(platform, [], dry_run=True, terminate=True)
         assert platform.calls == []
         assert platform.outcomes() == [
             (CR_A, "compute-requirements", "terminate", "would terminate")
@@ -239,7 +238,7 @@ class TestListing:
             platform.calls.append(("shutdown_worker_pool_by_id", pool_id))
 
         act.side_effect = shutdown
-        _run(monkeypatch, [], follow=True)
+        _run(platform, [], follow=True)
         yd_shutdown.follow_ids.assert_called_once_with([WP_A], auto_cr=False)
 
 
@@ -251,7 +250,7 @@ class TestListing:
 class TestExplicit:
     def test_by_id_and_name_in_the_order_given(self, platform, monkeypatch):
         platform.pools[WP_B] = _provisioned(WP_B, "wp-b")
-        _run(monkeypatch, ["wp-b", NODE, WP_A])
+        _run(platform, ["wp-b", NODE, WP_A])
         assert platform.calls == [
             ("shutdown_worker_pool_by_id", WP_B),
             ("shutdown_worker_pool_by_id", WP_A),
@@ -260,29 +259,29 @@ class TestExplicit:
         assert platform.records[0]["name"] == "wp-b"
 
     def test_a_pool_by_name_and_by_id_is_one_target(self, platform, monkeypatch):
-        _run(monkeypatch, ["wp-tag-a", WP_A, WP_A])
+        _run(platform, ["wp-tag-a", WP_A, WP_A])
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
 
     def test_one_confirmation_names_everything(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
-            yd_shutdown, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
-        _run(monkeypatch, [WP_A, NODE], terminate=True)
+        _run(platform, [WP_A, NODE], terminate=True)
         assert prompts == [
             f"Shut down 1 Worker Pool(s) ('wp-tag-a') and 1 Node(s) ({NODE}),"
             " immediately terminating their Compute Requirements?"
         ]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(yd_shutdown, "confirmed", lambda message: False)
-        _run(monkeypatch, [WP_A, NODE])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, [WP_A, NODE])
         assert platform.calls == []
         assert [r["outcome"] for r in platform.records] == ["skipped", "skipped"]
 
     @pytest.mark.parametrize("target", [WP_B, "nope", NODE.replace("dddd", "eeee")])
     def test_not_found_fails(self, platform, monkeypatch, target):
-        _run(monkeypatch, [target])
+        _run(platform, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
@@ -291,19 +290,19 @@ class TestExplicit:
     )
     def test_a_finished_pool_is_skipped(self, platform, monkeypatch, status):
         platform.pools[WP_A] = _provisioned(WP_A, "wp-tag-a", status)
-        _run(monkeypatch, [WP_A])
+        _run(platform, [WP_A])
         assert platform.calls == []
         assert platform.outcomes() == [(WP_A, "worker-pools", "shutdown", "skipped")]
         assert platform.records[0]["name"] == "wp-tag-a"
 
     def test_a_terminated_node_is_skipped(self, platform, monkeypatch):
         platform.nodes[NODE].status = NodeStatus.TERMINATED
-        _run(monkeypatch, [NODE])
+        _run(platform, [NODE])
         assert platform.outcomes() == [(NODE, "nodes", "shutdown", "skipped")]
 
     def test_a_failure_carries_on(self, platform, monkeypatch):
         platform.failures["shutdown_worker_pool_by_id"] = _http_error(500)
-        _run(monkeypatch, [WP_A, NODE])
+        _run(platform, [WP_A, NODE])
         assert platform.calls == [("shutdown_node_by_id", NODE)]
         assert [r["outcome"] for r in platform.records] == ["failed", "shut down"]
 
@@ -315,7 +314,7 @@ class TestExplicit:
 
 class TestTerminate:
     def test_a_provisioned_pools_compute_requirement(self, platform, monkeypatch):
-        _run(monkeypatch, [WP_A], terminate=True)
+        _run(platform, [WP_A], terminate=True)
         assert platform.calls == [
             ("shutdown_worker_pool_by_id", WP_A),
             ("terminate_compute_requirement_by_id", CR_A),
@@ -335,8 +334,9 @@ class TestTerminate:
         # reading it stopped the run, leaving the rest not shut down
         warnings = []
         monkeypatch.setattr(yd_shutdown, "print_warning", warnings.append)
+        monkeypatch.setattr(action_runner, "print_warning", warnings.append)
         platform.pools[WP_B] = _configured(WP_B, "wp-b")
-        _run(monkeypatch, [WP_B, WP_A, NODE], terminate=True)
+        _run(platform, [WP_B, WP_A, NODE], terminate=True)
         assert platform.calls == [
             ("shutdown_worker_pool_by_id", WP_B),
             ("shutdown_worker_pool_by_id", WP_A),
@@ -356,7 +356,7 @@ class TestTerminate:
         platform.client.worker_pool_client.shutdown_worker_pool_by_id.side_effect = (
             shutdown
         )
-        _run(monkeypatch, [], terminate=True)
+        _run(platform, [], terminate=True)
         cr_record = platform.records[1]
         assert cr_record["type"] == "compute-requirements"
         assert cr_record["id"] is None  # never the Worker Pool's ID
@@ -365,7 +365,7 @@ class TestTerminate:
 
     def test_a_failed_termination_is_recorded(self, platform, monkeypatch):
         platform.failures["terminate_compute_requirement_by_id"] = _http_error(500)
-        _run(monkeypatch, [WP_A], terminate=True)
+        _run(platform, [WP_A], terminate=True)
         assert platform.outcomes()[1] == (
             CR_A,
             "compute-requirements",
@@ -387,7 +387,7 @@ class TestSessionFailures:
         platform.pools[WP_B] = _provisioned(WP_B, "wp-b")
         platform.failures["shutdown_worker_pool_by_id"] = error
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [WP_A, WP_B, NODE])
+            _run(platform, [WP_A, WP_B, NODE])
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [r["outcome"] for r in platform.records] == [
@@ -401,7 +401,7 @@ class TestSessionFailures:
         platform.pools[WP_B] = _provisioned(WP_B, "wp-b")
         platform.failures["terminate_compute_requirement_by_id"] = _http_error(401)
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [WP_A, WP_B], terminate=True)
+            _run(platform, [WP_A, WP_B], terminate=True)
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
         assert [(r["type"], r["outcome"]) for r in platform.records] == [
@@ -424,7 +424,7 @@ class TestSessionFailures:
 
         get.side_effect = failing_second
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [WP_A, WP_B, NODE])
+            _run(platform, [WP_A, WP_B, NODE])
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [(r["id"], r["outcome"]) for r in platform.records] == [

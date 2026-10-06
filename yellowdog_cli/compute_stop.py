@@ -5,12 +5,13 @@ A script to stop Compute Requirements and Instances.
 """
 
 from yellowdog_cli.utils.compute_action_common import COMPUTE_STOP, apply_compute_action
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 
 @main_wrapper
-def main():
-    apply_compute_action(COMPUTE_STOP)
+def main(ctx: RunContext):
+    apply_compute_action(ctx, COMPUTE_STOP)
 
 
 # Entry point

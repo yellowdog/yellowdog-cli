@@ -24,7 +24,8 @@ from requests import HTTPError, Response
 from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 
 import yellowdog_cli.cancel as yd_cancel
-from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils import action_runner, entity_utils
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -106,13 +107,8 @@ class FakePlatform:
 @pytest.fixture
 def platform(monkeypatch):
     fake = FakePlatform()
-    monkeypatch.setattr(yd_cancel, "CLIENT", fake.client)
-    monkeypatch.setattr(
-        yd_cancel,
-        "CONFIG_COMMON",
-        SimpleNamespace(namespace="ns", name_tag="wr", url="https://api.x"),
-    )
-    monkeypatch.setattr(yd_cancel, "confirmed", lambda message: True)
+    fake.config = SimpleNamespace(namespace="ns", name_tag="wr", url="https://api.x")
+    monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(yd_cancel, "select", lambda client, objects: objects)
     monkeypatch.setattr(yd_cancel, "follow_ids", MagicMock())
     monkeypatch.setattr(
@@ -140,18 +136,22 @@ def platform(monkeypatch):
 
 
 def _run(
-    monkeypatch,
+    platform,
     targets: list[str],
     abort: bool = False,
     follow: bool = False,
     dry_run: bool = False,
 ):
-    monkeypatch.setattr(
-        yd_cancel,
-        "ARGS_PARSER",
-        SimpleNamespace(abort=abort, follow=follow, dry_run=dry_run, json_output=False),
+    yd_cancel.cancel(
+        RunContext(
+            args=SimpleNamespace(
+                abort=abort, follow=follow, dry_run=dry_run, json_output=False
+            ),
+            config=platform.config,
+            client=platform.client,
+        ),
+        targets,
     )
-    yd_cancel.cancel(targets)
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ def _run(
 class TestListing:
     def test_the_tag_path_cancels_what_can_be_cancelled(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", COMPLETED)
-        _run(monkeypatch, [])
+        _run(platform, [])
         assert platform.calls == [("cancel_work_requirement_by_id", WR_A, False)]
 
     @pytest.mark.parametrize("targets", [[], ["wr-*"]])
@@ -170,11 +170,11 @@ class TestListing:
         self, platform, monkeypatch, targets
     ):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", CANCELLING)
-        _run(monkeypatch, targets)
+        _run(platform, targets)
         assert [c[1] for c in platform.calls] == [WR_A]
         platform.calls.clear()
         platform.records.clear()
-        _run(monkeypatch, targets, abort=True)
+        _run(platform, targets, abort=True)
         assert [c[1] for c in platform.calls] == [WR_A, WR_B]
         assert platform.records[1]["abortedTasks"] is True
         assert "abortedTasks" not in platform.records[0]
@@ -185,13 +185,13 @@ class TestListing:
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", CANCELLING)
         report = MagicMock()
         monkeypatch.setattr(yd_cancel, "report_dry_run", report)
-        _run(monkeypatch, [], dry_run=True)
+        _run(platform, [], dry_run=True)
         assert platform.calls == []
         assert [s.id for s in report.call_args.args[1]] == [WR_A]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(yd_cancel, "confirmed", lambda message: False)
-        _run(monkeypatch, [])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, [])
         assert platform.calls == []
         assert platform.outcomes() == [(WR_A, "work-requirements", "skipped")]
 
@@ -202,7 +202,7 @@ class TestListing:
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         platform.failures["cancel_work_requirement_by_id"] = error
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [])
+            _run(platform, [])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
         assert platform.records[1]["error"].startswith("not attempted:")
@@ -217,7 +217,7 @@ class TestListing:
             platform.calls.append(("cancel_work_requirement_by_id", wr_id, abort))
 
         cancel.side_effect = failing_b
-        _run(monkeypatch, [], follow=True)
+        _run(platform, [], follow=True)
         yd_cancel.follow_ids.assert_called_once_with([WR_A])
 
 
@@ -229,7 +229,7 @@ class TestListing:
 class TestExplicit:
     def test_an_id_in_another_namespace_is_found(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", namespace="elsewhere")
-        _run(monkeypatch, [WR_B])
+        _run(platform, [WR_B])
         assert platform.calls == [("cancel_work_requirement_by_id", WR_B, False)]
 
     def test_a_reused_name_prefers_one_that_can_be_cancelled(
@@ -239,25 +239,25 @@ class TestExplicit:
             WR_OLD: _wr(WR_OLD, "wr-a", COMPLETED),
             WR_A: _wr(WR_A, "wr-a"),
         }
-        _run(monkeypatch, ["wr-a"])
+        _run(platform, ["wr-a"])
         assert platform.calls == [("cancel_work_requirement_by_id", WR_A, False)]
 
     def test_two_that_can_be_cancelled_are_ambiguous(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-a")
-        _run(monkeypatch, ["wr-a"])
+        _run(platform, ["wr-a"])
         assert platform.calls == []
         assert "please supply the ID" in platform.records[0]["error"]
 
     def test_a_finished_one_is_skipped(self, platform, monkeypatch):
         platform.wrs[WR_A].status = COMPLETED
-        _run(monkeypatch, ["wr-a"])
+        _run(platform, ["wr-a"])
         assert platform.outcomes() == [(WR_A, "work-requirements", "skipped")]
 
     def test_a_cancelling_one_is_skipped_without_abort_saying_why(
         self, platform, monkeypatch
     ):
         platform.wrs[WR_A].status = CANCELLING
-        _run(monkeypatch, [WR_A])
+        _run(platform, [WR_A])
         assert platform.outcomes() == [(WR_A, "work-requirements", "skipped")]
         assert "--abort" in platform.records[0]["error"]
 
@@ -265,12 +265,12 @@ class TestExplicit:
         self, platform, monkeypatch
     ):
         platform.wrs[WR_A].status = CANCELLING
-        _run(monkeypatch, [WR_A], abort=True)
+        _run(platform, [WR_A], abort=True)
         assert platform.calls == [("cancel_work_requirement_by_id", WR_A, True)]
         assert platform.records[0]["abortedTasks"] is True
 
     def test_a_task_is_cancelled_and_named(self, platform, monkeypatch):
-        _run(monkeypatch, [TASK], abort=True)
+        _run(platform, [TASK], abort=True)
         assert platform.calls == [("cancel_task_by_id", TASK, True)]
         assert (platform.records[0]["name"], platform.records[0]["type"]) == (
             "t1",
@@ -279,35 +279,35 @@ class TestExplicit:
 
     def test_a_finished_task_is_skipped(self, platform, monkeypatch):
         platform.tasks[TASK].status = TaskStatus.COMPLETED
-        _run(monkeypatch, [TASK])
+        _run(platform, [TASK])
         assert platform.calls == []
         assert platform.outcomes() == [(TASK, "tasks", "skipped")]
 
     @pytest.mark.parametrize("target", [WR_B, "nope", NODE])
     def test_not_found_or_not_a_wr_or_task_fails(self, platform, monkeypatch, target):
-        _run(monkeypatch, [target])
+        _run(platform, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
 
     def test_in_the_order_given_without_duplicates(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
-        _run(monkeypatch, ["wr-b", WR_A, "wr-a", TASK, TASK])
+        _run(platform, ["wr-b", WR_A, "wr-a", TASK, TASK])
         assert [c[1] for c in platform.calls] == [WR_B, WR_A, TASK]
 
     def test_one_confirmation_names_everything(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
-            yd_cancel, "confirmed", lambda message: prompts.append(message) or True
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
         )
-        _run(monkeypatch, [WR_A, TASK], abort=True)
+        _run(platform, [WR_A, TASK], abort=True)
         assert prompts == [
             f"Cancel 1 Work Requirement(s) ('ns/wr-a') and 1 Task(s) ('t1' ({TASK}))"
             " and abort their executing Tasks?"
         ]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
-        monkeypatch.setattr(yd_cancel, "confirmed", lambda message: False)
-        _run(monkeypatch, [WR_A, TASK])
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, [WR_A, TASK])
         assert platform.calls == []
         assert [r["outcome"] for r in platform.records] == ["skipped", "skipped"]
 
@@ -324,7 +324,7 @@ class TestExplicit:
 
         get.side_effect = failing_second
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [WR_A, WR_B, TASK])
+            _run(platform, [WR_A, WR_B, TASK])
         assert classify(raised.value) in SESSION_FAILURES
         assert platform.calls == []
         assert [(r["id"], r["outcome"]) for r in platform.records] == [
@@ -336,6 +336,6 @@ class TestExplicit:
     def test_a_session_failure_while_cancelling_stops(self, platform, monkeypatch):
         platform.failures["cancel_work_requirement_by_id"] = _http_error(401)
         with pytest.raises(ReportedFailure) as raised:
-            _run(monkeypatch, [WR_A, TASK])
+            _run(platform, [WR_A, TASK])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]

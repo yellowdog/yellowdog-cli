@@ -41,6 +41,7 @@ import yellowdog_cli.resize as yd_resize
 import yellowdog_cli.shutdown as yd_shutdown
 import yellowdog_cli.start as yd_start
 import yellowdog_cli.terminate as yd_terminate
+import yellowdog_cli.utils.action_runner as action_runner_module
 import yellowdog_cli.utils.compute_action_common as cac_module
 import yellowdog_cli.utils.entity_utils as entity_utils_module
 import yellowdog_cli.utils.event_printing as event_printing_module
@@ -98,7 +99,8 @@ def run(monkeypatch, capsys):
     """
     Return run(module, main_module=None, confirm=True, also=(), **args):
     patch every module's ARGS_PARSER (and that of each module in 'also'),
-    CLIENT and CONFIG_COMMON, run main_module.main()
+    CLIENT and CONFIG_COMMON (the wrapper's, which a command taking a
+    RunContext is given), run main_module.main()
     (default: module) through the wrapper, and return (parsed stdout,
     stderr, client). The exit code is left in run.exit_code.
     """
@@ -119,12 +121,19 @@ def run(monkeypatch, capsys):
             # A library module (utils/resource_creation.py) reads no ARGS_PARSER
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(module, "CLIENT", client)
-        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        # A command taking a RunContext gets these from the wrapper's own;
+        # one not yet migrated imports them by name
+        if hasattr(module, "CLIENT"):
+            monkeypatch.setattr(module, "CLIENT", client)
+            monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        else:
+            monkeypatch.setattr(wrapper_module, "CLIENT", client)
+        monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
         if hasattr(module, "CONFIG_COMMON"):
             monkeypatch.setattr(module, "CONFIG_COMMON", config)
-        if hasattr(module, "confirmed"):
-            monkeypatch.setattr(module, "confirmed", lambda msg: confirm)
+        for target in (module, action_runner_module):
+            if hasattr(target, "confirmed"):
+                monkeypatch.setattr(target, "confirmed", lambda msg: confirm)
         with pytest.raises(SystemExit) as exit_info:
             (main_module or module).main()
         _run.exit_code = exit_info.value.code  # type: ignore[attr-defined]
