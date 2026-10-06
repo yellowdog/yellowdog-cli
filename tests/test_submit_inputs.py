@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_groups as task_groups_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
@@ -107,33 +108,33 @@ class TestCheckTaskGroups:
 
     def test_missing_task_groups_is_named(self):
         with pytest.raises(ValueError, match=f"'{TASK_GROUPS}' is not defined"):
-            submit_module.check_task_groups({})
+            task_groups_module.check_task_groups({})
 
     def test_missing_task_groups_points_at_empty(self):
         with pytest.raises(ValueError, match="--empty"):
-            submit_module.check_task_groups({})
+            task_groups_module.check_task_groups({})
 
     def test_missing_tasks_is_named_with_its_task_group(self):
         with pytest.raises(
             ValueError, match=f"'{TASKS}' is not defined in Task Group 2 of 2"
         ):
-            submit_module.check_task_groups({TASK_GROUPS: [{TASKS: []}, {}]})
+            task_groups_module.check_task_groups({TASK_GROUPS: [{TASKS: []}, {}]})
 
     def test_task_groups_must_be_a_list(self):
         with pytest.raises(TypeError, match=f"'{TASK_GROUPS}'"):
-            submit_module.check_task_groups({TASK_GROUPS: {}})
+            task_groups_module.check_task_groups({TASK_GROUPS: {}})
 
     def test_a_task_group_must_be_a_table(self):
         with pytest.raises(TypeError, match="Task Group 1 of 1"):
-            submit_module.check_task_groups({TASK_GROUPS: ["tg"]})
+            task_groups_module.check_task_groups({TASK_GROUPS: ["tg"]})
 
     def test_a_task_must_be_a_table(self):
         with pytest.raises(TypeError, match="Task 2 in Task Group 1 of 1"):
-            submit_module.check_task_groups({TASK_GROUPS: [{TASKS: [{}, "t"]}]})
+            task_groups_module.check_task_groups({TASK_GROUPS: [{TASKS: [{}, "t"]}]})
 
     def test_empty_task_groups_and_tasks_are_allowed(self):
-        submit_module.check_task_groups({TASK_GROUPS: []})
-        submit_module.check_task_groups({TASK_GROUPS: [{TASKS: []}]})
+        task_groups_module.check_task_groups({TASK_GROUPS: []})
+        task_groups_module.check_task_groups({TASK_GROUPS: [{TASKS: []}]})
 
 
 # ---------------------------------------------------------------------------
@@ -173,17 +174,17 @@ class TestRelativeIfPossible:
 class TestPromoteTaskType:
     def test_task_type_stands_for_task_types(self):
         data = {TASK_TYPE: "bash"}
-        submit_module.promote_task_type(data)
+        task_groups_module.promote_task_type(data)
         assert data[TASK_TYPES] == ["bash"]
 
     def test_task_types_already_set_is_kept(self):
         data = {TASK_TYPE: "bash", TASK_TYPES: ["docker"]}
-        submit_module.promote_task_type(data)
+        task_groups_module.promote_task_type(data)
         assert data[TASK_TYPES] == ["docker"]
 
     def test_nothing_to_promote(self):
         data: dict = {}
-        submit_module.promote_task_type(data)
+        task_groups_module.promote_task_type(data)
         assert data == {}
 
 

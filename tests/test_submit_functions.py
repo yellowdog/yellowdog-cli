@@ -18,6 +18,7 @@ from yellowdog_client.model import (
 from yellowdog_client.model.instance_pricing_preference import InstancePricingPreference
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_groups as task_groups_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
@@ -108,19 +109,18 @@ def _call_create_task_group(
     if wr_data is None:
         wr_data = {TASK_GROUPS: [task_group_data]}
     with (
-        patch.object(submit_module, "CONFIG_WR", config_wr),
         patch.object(
-            submit_module,
+            task_groups_module,
             "update_config_work_requirement_object",
             side_effect=lambda x: x,
         ),
-        patch.object(submit_module, "generate_dependencies", return_value=[]),
+        patch.object(task_groups_module, "generate_dependencies", return_value=[]),
         patch.object(
-            submit_module, "generate_task_error_matchers_list", return_value=[]
+            task_groups_module, "generate_task_error_matchers_list", return_value=[]
         ),
     ):
-        return submit_module.create_task_group(
-            _submission(),
+        return task_groups_module.create_task_group(
+            config_wr,
             TaskGroupPosition(tg_number, tg_number, len(wr_data[TASK_GROUPS])),
             wr_data=wr_data,
             task_group_data=task_group_data,
@@ -460,7 +460,7 @@ def _run_submit_wr(
     create_tg_calls: list[tuple] = []
     add_tasks_calls: list[int] = []
 
-    def fake_create_tg(_run, position, wr_data, task_group_data, **kwargs):
+    def fake_create_tg(_config_wr, position, wr_data, task_group_data, **kwargs):
         create_tg_calls.append((position.number, task_group_data))
         return mock_tg
 

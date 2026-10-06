@@ -346,11 +346,12 @@ class TestAddToPartitioning:
             return updated_wr
 
         def fake_create_tg(
-            _run,
+            _config_wr,
             position,
             wr_data,
             task_group_data,
             files_directory="",
+            on_legacy_retry=None,
         ):
             return _make_tg(
                 task_group_data[NAME],
