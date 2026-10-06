@@ -273,41 +273,62 @@ VARIABLE_SUBSTITUTIONS = {
     "pid2": PROCESS_DISCRIMINATOR,
 }
 
-# Load .env file before scanning os.environ so YD_VAR_* variables defined
-# there are picked up regardless of import order.
-load_dotenv_file()
-
-# Substitutions from environment variables
-subs_list = []
-for key, value in os.environ.items():
-    if key.startswith(YD_ENV_VAR_PREFIX):
-        try:
-            check_user_variable_name(
-                key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
-            )
-        except ValueError as e:
-            print_error(e)
-            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
-        key = key[len(YD_ENV_VAR_PREFIX) :]
-        VARIABLE_SUBSTITUTIONS[key] = value
-        subs_list.append(f"'{key}'")
-
-if subs_list:
-    print_debug(
-        "Adding environment-defined variable substitution(s) for: "
-        f"{', '.join(subs_list)}"
-    )
-
-# Substitutions from the command line, which take precedence over
-# environment variables
 # Names of variables defined on the command line ('-v', or '--property'
 # overrides of 'common.variables'); these always take precedence, including
 # over the contents of an explicitly selected config file
 CLI_DEFINED_VARIABLES: set[str] = set()
 
-subs_list = []
-if ARGS_PARSER.variables is not None:
-    for variable in ARGS_PARSER.variables:
+# Each variable's definition as written, before any substitution, which is
+# what explain_unset_variable() works from: once the '::' syntax has removed
+# a variable from the table, nothing left there says why -- a variable that
+# referred to an unset one holds that one's '{{::}}' as text by then, and is
+# removed on the next pass for that. Kept in step with the table by
+# register_user_variables(), _update_and_resolve_substitutions() and
+# add_or_update_substitution().
+_DEFINITIONS: dict[str, str] = dict(VARIABLE_SUBSTITUTIONS)
+
+_USER_VARIABLES_REGISTERED = False
+
+
+def register_user_variables() -> None:
+    """
+    Add the variables defined by YD_VAR_* environment variables (the .env
+    file loaded first, so that its are included) and by '-v' on the command
+    line, which take precedence. Called once, by load_config before the
+    configuration file is read, which substitutes them; it was done at
+    import, which therefore parsed the command line and could exit. A name
+    no variable may have, or a '-v' without a value, is an error and exits.
+    """
+    global _USER_VARIABLES_REGISTERED
+    if _USER_VARIABLES_REGISTERED:
+        return
+    _USER_VARIABLES_REGISTERED = True
+
+    load_dotenv_file()
+
+    registered = []
+    for key, value in os.environ.items():
+        if key.startswith(YD_ENV_VAR_PREFIX):
+            try:
+                check_user_variable_name(
+                    key[len(YD_ENV_VAR_PREFIX) :], f"environment variable '{key}'"
+                )
+            except ValueError as e:
+                print_error(e)
+                exit(ExitCode.CONFIGURATION)
+            key = key[len(YD_ENV_VAR_PREFIX) :]
+            VARIABLE_SUBSTITUTIONS[key] = value
+            _DEFINITIONS[key] = value
+            registered.append(f"'{key}'")
+
+    if registered:
+        print_debug(
+            "Adding environment-defined variable substitution(s) for: "
+            f"{', '.join(registered)}"
+        )
+
+    registered = []
+    for variable in ARGS_PARSER.variables or []:
         # Split on the first '=' only: values may themselves contain '='
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
@@ -315,32 +336,23 @@ if ARGS_PARSER.variables is not None:
                 check_user_variable_name(key_value[0], f"'--variable {variable}'")
             except ValueError as e:
                 print_error(e)
-                exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
+                exit(ExitCode.CONFIGURATION)
             VARIABLE_SUBSTITUTIONS[key_value[0]] = key_value[1]
+            _DEFINITIONS[key_value[0]] = key_value[1]
             CLI_DEFINED_VARIABLES.add(key_value[0])
-            subs_list.append(f"'{key_value[0]}'")
+            registered.append(f"'{key_value[0]}'")
         else:
             print_error(
                 f"'--variable {variable}' needs a name and a value:"
                 " '--variable name=value'"
             )
-            exit(ExitCode.CONFIGURATION)  # Note: exception trap not yet in place
+            exit(ExitCode.CONFIGURATION)
 
-if subs_list:
-    print_debug(
-        "Adding command-line-defined variable substitution(s) for: "
-        f"{', '.join(subs_list)}"
-    )
-
-del subs_list
-
-# Each variable's definition as written, before any substitution, which is
-# what explain_unset_variable() works from: once the '::' syntax has removed
-# a variable from the table, nothing left there says why -- a variable that
-# referred to an unset one holds that one's '{{::}}' as text by then, and is
-# removed on the next pass for that. Kept in step with the table by
-# _update_and_resolve_substitutions() and add_or_update_substitution().
-_DEFINITIONS: dict[str, str] = dict(VARIABLE_SUBSTITUTIONS)
+    if registered:
+        print_debug(
+            "Adding command-line-defined variable substitution(s) for: "
+            f"{', '.join(registered)}"
+        )
 
 
 def _stringify(value) -> str:

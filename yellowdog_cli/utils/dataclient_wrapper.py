@@ -7,7 +7,7 @@ read.
 """
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.command_runner import run_command
+from yellowdog_cli.utils.command_runner import prepare_run, run_command
 from yellowdog_cli.utils.spec_properties import DATA_CLIENT_CONFIG_SECTIONS
 
 
@@ -15,6 +15,7 @@ def dataclient_wrapper(func):
     def wrapper():
         # ARGS_PARSER is looked up as the command runs, so that a test's
         # patch of it is the one used
+        prepare_run(func, ARGS_PARSER)
         run_command(func, args=ARGS_PARSER, config_sections=DATA_CLIENT_CONFIG_SECTIONS)
 
     return wrapper

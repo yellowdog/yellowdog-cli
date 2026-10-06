@@ -43,7 +43,7 @@ from yellowdog_cli.utils.file_substitution import (
 )
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import NODE_ACTION_QUEUE_POLL_INTERVAL
-from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
+from yellowdog_cli.utils.load_config import config_file_dir
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
@@ -593,7 +593,7 @@ def _submit_actions():
     source_dir = (
         ARGS_PARSER.content_path
         or dirname(abspath(spec_file))
-        or CONFIG_FILE_DIR
+        or config_file_dir()
         or "."
     )
 

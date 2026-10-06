@@ -24,6 +24,7 @@ from yellowdog_cli.utils.file_substitution import (
     load_jsonnet_file_with_variable_substitutions,
 )
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
+from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
@@ -71,7 +72,7 @@ class CRBatch:
     target_instances: int
 
 
-CONFIG_WP: ConfigWorkerPool = load_config_worker_pool()
+CONFIG_WP: ConfigWorkerPool = lazy(load_config_worker_pool)
 # Generated in main() rather than at import, so that a name tag too long for
 # it is reported as an error by main_wrapper rather than as a traceback
 GENERATED_ID: str = ""

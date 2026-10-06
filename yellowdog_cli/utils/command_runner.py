@@ -14,7 +14,9 @@ from collections.abc import Callable
 from typing import Any, NoReturn
 
 from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+from yellowdog_cli.utils.lazy import prepare
 from yellowdog_cli.utils.load_config import (
+    ensure_config_loaded,
     warn_of_config_violations,
     warn_of_undefined_config_variables,
 )
@@ -26,6 +28,23 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.schema_cache import report_problems_to
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
+
+
+def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
+    """
+    Build what a command will use, before it runs and outside run_command()'s
+    handling, in the order importing once did: the command line ('args'),
+    the configuration file, 'values' (the wrapper's own, such as
+    CONFIG_COMMON), then every lazy value the command's module holds that is
+    marked to be prepared (its configuration sections; not CLIENT). So an
+    argument error or a broken configuration is reported, and exits, before
+    the command starts, as it did when these were built at import. A test's
+    stand-in is left alone.
+    """
+    prepare(args)
+    ensure_config_loaded()
+    prepare(*values)
+    prepare(*func.__globals__.values())
 
 
 def describe_error(error: Exception) -> str:

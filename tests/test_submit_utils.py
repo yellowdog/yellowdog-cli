@@ -12,6 +12,7 @@ import pytest
 
 import yellowdog_cli.utils.submit_utils as su
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
     TASK_DATA,
     TASK_DATA_FILE,
@@ -572,7 +573,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                su.ARGS_PARSER.__class__,
+                type(lazy_value(su.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: overwrite),
             ),
@@ -629,7 +630,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                su.ARGS_PARSER.__class__,
+                type(lazy_value(su.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: False),
             ),
@@ -721,7 +722,7 @@ class TestUploadPathShownWithoutCredentials:
         (tmp_path / "x.txt").write_text("x", encoding="utf-8")
         instance = su.RcloneUploadedFiles(files_directory=str(tmp_path))
         monkeypatch.setattr(
-            su.ARGS_PARSER.__class__, "dry_run", property(lambda self: False)
+            type(lazy_value(su.ARGS_PARSER)), "dry_run", property(lambda self: False)
         )
 
         def _fail(*args):
@@ -738,7 +739,7 @@ def test_two_local_files_for_one_upload_path_are_refused(tmp_path, monkeypatch):
     for name in ("a.txt", "b.txt"):
         (tmp_path / name).write_text(name, encoding="utf-8")
     monkeypatch.setattr(
-        su.ARGS_PARSER.__class__, "dry_run", property(lambda self: True)
+        type(lazy_value(su.ARGS_PARSER)), "dry_run", property(lambda self: True)
     )
     instance = su.RcloneUploadedFiles(files_directory=str(tmp_path))
     instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")

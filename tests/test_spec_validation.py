@@ -23,6 +23,7 @@ import yellowdog_cli.utils.load_resources as load_resources_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import ALL_KEYS, SCHEMA_KEY
 from yellowdog_cli.utils.results import reset_results
 from yellowdog_cli.utils.spec_schema import Family, compile_schema
@@ -468,7 +469,7 @@ class TestSubmit:
             yd_submit,
             "CONFIG_WR",
             dataclasses.replace(
-                yd_submit.CONFIG_WR,
+                lazy_value(yd_submit.CONFIG_WR),
                 wr_data_file=None,
                 csv_files=None,
                 wr_name=None,
@@ -673,7 +674,7 @@ class TestProvision:
             yd_provision,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_provision.CONFIG_WP,
+                lazy_value(yd_provision.CONFIG_WP),
                 worker_pool_data_file=None,
                 template_id="crt-id",
                 name="wp-name",
@@ -754,7 +755,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 worker_pool_data_file=None,
                 compute_requirement_data_file=None,
                 template_id="crt-id",

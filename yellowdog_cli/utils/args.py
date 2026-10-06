@@ -12,6 +12,7 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
 )
+from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.version_info import DOCS_URL
 
 
@@ -877,4 +878,6 @@ class CLIParser:
         return self.args.list
 
 
-ARGS_PARSER = CLIParser()
+# The command line, parsed on first use rather than at import (see lazy.py),
+# so that importing a module that names it parses nothing
+ARGS_PARSER: CLIParser = lazy(CLIParser)

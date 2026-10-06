@@ -55,6 +55,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.results import record_action, reset_results
 
 WR_ID_1 = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
@@ -1683,7 +1684,10 @@ class TestSubmit:
             yd_submit,
             "CONFIG_WR",
             dataclasses.replace(
-                yd_submit.CONFIG_WR, wr_data_file=None, csv_files=None, wr_name=None
+                lazy_value(yd_submit.CONFIG_WR),
+                wr_data_file=None,
+                csv_files=None,
+                wr_name=None,
             ),
         )
         monkeypatch.setattr(yd_submit, "RcloneUploadedFiles", MagicMock())
@@ -1757,7 +1761,7 @@ class TestProvision:
             yd_provision,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_provision.CONFIG_WP,
+                lazy_value(yd_provision.CONFIG_WP),
                 worker_pool_data_file=None,
                 template_id="crt-id",
                 name="wp-name",
@@ -1816,7 +1820,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 worker_pool_data_file=None,
                 compute_requirement_data_file=None,
                 template_id="crt-id",
@@ -1875,7 +1879,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 compute_requirement_batch_size=1,
                 target_instance_count=2,
             ),

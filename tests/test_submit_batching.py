@@ -23,6 +23,7 @@ from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
     MAX_BATCH_SUBMIT_ATTEMPTS,
+    TASK_BATCH_SIZE_DEFAULT,
 )
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
 
@@ -364,7 +365,9 @@ class TestTaskCountExpansion:
     def test_copies_are_still_made_from_a_specification(self):
         # task_count None, but the specification's taskCount, read here
         # through the configuration, is 5
-        config_wr_mock = MagicMock(task_count=5, parallel_batches=None)
+        config_wr_mock = MagicMock(
+            task_count=5, parallel_batches=None, task_batch_size=TASK_BATCH_SIZE_DEFAULT
+        )
         wr_data = _make_wr_data(1)
         with (
             patch.object(submit_module, "CONFIG_WR", config_wr_mock),

@@ -65,6 +65,7 @@ from yellowdog_cli.utils.follow_utils import (
     follow_work_requirement_with_progress,
     work_requirement_failed,
 )
+from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
@@ -72,7 +73,7 @@ from yellowdog_cli.utils.limits import (
     RAW_REQUEST_TIMEOUT,
 )
 from yellowdog_cli.utils.load_config import (
-    CONFIG_FILE_DIR,
+    config_file_dir,
     load_config_work_requirement,
 )
 from yellowdog_cli.utils.misc_utils import (
@@ -189,19 +190,25 @@ from yellowdog_cli.utils.variable_syntax import (
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-# Import the Work Requirement configuration from the TOML file
-CONFIG_WR: ConfigWorkRequirement = load_config_work_requirement()
+# The Work Requirement configuration from the TOML file, read on first use
+CONFIG_WR: ConfigWorkRequirement = lazy(load_config_work_requirement)
 
 
 # Generated in main() rather than at import, so that a name tag too long for
 # it is reported as an error by main_wrapper rather than as a traceback
 ID: str = ""
-TASK_BATCH_SIZE = CONFIG_WR.task_batch_size
+# The Task batch size: the configuration's unless set here (as a test does)
+TASK_BATCH_SIZE: int | None = None
 
-if ARGS_PARSER.dry_run:
-    WR_SNAPSHOT = WorkRequirementSnapshot()
+# What a dry run reports, built up as the Work Requirement is
+WR_SNAPSHOT = WorkRequirementSnapshot()
 
 RCLONE_UPLOADED_FILES: RcloneUploadedFiles | None = None
+
+
+def _task_batch_size() -> int:
+    """The Task batch size: TASK_BATCH_SIZE if set, else the configuration's."""
+    return CONFIG_WR.task_batch_size if TASK_BATCH_SIZE is None else TASK_BATCH_SIZE
 
 
 @main_wrapper
@@ -246,7 +253,7 @@ def main():
     # Where do we find the data files?
     # content-path > wr_data_file location > config file location
     files_directory = (
-        (CONFIG_FILE_DIR if wr_data_file is None else dirname(wr_data_file))
+        (config_file_dir() if wr_data_file is None else dirname(wr_data_file))
         if ARGS_PARSER.content_path is None
         else ARGS_PARSER.content_path
     )
@@ -949,6 +956,7 @@ def add_tasks_to_task_group(
     task_number_offset: starting task number within the TG (for adding to an
       existing Task Group that already contains tasks).
     """
+    batch_size = _task_batch_size()
 
     num_tasks = len(wr_data[TASK_GROUPS][tg_number][TASKS])
 
@@ -991,11 +999,11 @@ def add_tasks_to_task_group(
     # Determine Task batching
     tasks = wr_data[TASK_GROUPS][tg_number][TASKS]
     num_tasks = len(tasks) if task_count is None else task_count
-    num_task_batches: int = ceil(num_tasks / TASK_BATCH_SIZE)
+    num_task_batches: int = ceil(num_tasks / batch_size)
     if num_task_batches > 1 and not ARGS_PARSER.dry_run:
         print_info(
             f"Adding Tasks to Task Group '{task_group.name}' in "
-            f"{num_task_batches} batches (batch size = {TASK_BATCH_SIZE})"
+            f"{num_task_batches} batches (batch size = {batch_size})"
         )
 
     # Add lazy substitutions for use in any Task property
@@ -1018,13 +1026,13 @@ def add_tasks_to_task_group(
         for batch_number in range(num_task_batches):
             if ARGS_PARSER.pause_between_batches is not None and num_task_batches > 1:
                 pause_between_batches(
-                    task_batch_size=TASK_BATCH_SIZE,
+                    task_batch_size=batch_size,
                     batch_number=batch_number,
                     num_tasks=num_tasks,
                 )
             tasks_list = generate_batch_of_tasks_for_task_group(
-                (TASK_BATCH_SIZE * batch_number),
-                min(TASK_BATCH_SIZE * (batch_number + 1), num_tasks),
+                (batch_size * batch_number),
+                min(batch_size * (batch_number + 1), num_tasks),
                 wr_data,
                 files_directory,
                 task_group,
@@ -1042,7 +1050,7 @@ def add_tasks_to_task_group(
                 task_group,
                 num_task_batches,
                 batch_number,
-                TASK_BATCH_SIZE,
+                batch_size,
                 num_tasks,
             )
 
@@ -1062,8 +1070,8 @@ def add_tasks_to_task_group(
                 batches.submit(
                     submit_batch_of_tasks_to_task_group,
                     generate_batch_of_tasks_for_task_group(
-                        (TASK_BATCH_SIZE * batch_number),
-                        min(TASK_BATCH_SIZE * (batch_number + 1), num_tasks),
+                        (batch_size * batch_number),
+                        min(batch_size * (batch_number + 1), num_tasks),
                         wr_data,
                         files_directory,
                         task_group,
@@ -1079,7 +1087,7 @@ def add_tasks_to_task_group(
                     task_group,
                     num_task_batches,
                     batch_number,
-                    TASK_BATCH_SIZE,
+                    batch_size,
                     num_tasks,
                 )
             num_submitted_tasks = batches.total()
@@ -1877,6 +1885,7 @@ def _submit_json_raw_tasks(
     Task Group's Tasks in batches. A batch that fails raises, once the
     batches already under way have finished; those not yet started are not.
     """
+    batch_size = _task_batch_size()
     if ARGS_PARSER.hold:
         CLIENT.work_client.hold_work_requirement_by_id(wr_id)
         print_info("Work Requirement status set to 'HELD'")
@@ -1886,7 +1895,7 @@ def _submit_json_raw_tasks(
         if not task_list:
             print_info(f"No Tasks to add to Task Group '{task_group_name}'")
             continue
-        num_batches = ceil(len(task_list) / TASK_BATCH_SIZE)
+        num_batches = ceil(len(task_list) / batch_size)
         max_workers = min(num_batches, _parallel_batches())
         print_info(
             f"Submitting task batches using {max_workers} parallel submission thread(s)"
@@ -1895,8 +1904,8 @@ def _submit_json_raw_tasks(
             batches = _Batches(executor)
             for batch_number in range(num_batches):
                 task_batch = task_list[
-                    batch_number * TASK_BATCH_SIZE : min(
-                        len(task_list), (batch_number + 1) * TASK_BATCH_SIZE
+                    batch_number * batch_size : min(
+                        len(task_list), (batch_number + 1) * batch_size
                     )
                 ]
                 batches.submit(

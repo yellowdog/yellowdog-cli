@@ -16,7 +16,7 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
-from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
+from yellowdog_cli.utils.load_config import config_file_dir
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
 from yellowdog_cli.utils.type_check import check_list, check_str
@@ -124,7 +124,9 @@ def get_user_data_property(
         raise ValueError(_MUTEX_ERROR)
 
     source_dir = (
-        CONFIG_FILE_DIR if content_path is None or content_path == "" else content_path
+        config_file_dir()
+        if content_path is None or content_path == ""
+        else content_path
     )
     return _read_user_data(
         config.user_data, config.user_data_file, config.user_data_files, source_dir
@@ -151,7 +153,7 @@ def resolve_user_data_in_spec(spec: dict, base_dir: str | None = None) -> None:
     if user_data_file is None and user_data_files is None:
         return
 
-    source_dir = base_dir if base_dir else CONFIG_FILE_DIR
+    source_dir = base_dir if base_dir else config_file_dir()
     content = _read_user_data(None, user_data_file, user_data_files, source_dir)
 
     spec.pop(USERDATAFILE, None)

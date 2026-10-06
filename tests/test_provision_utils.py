@@ -61,7 +61,7 @@ def dirs(tmp_path, monkeypatch):
         directory.mkdir()
         (directory / "a.sh").write_text(f"a in {directory.name}", encoding="utf-8")
         (directory / "b.sh").write_text(f"b in {directory.name}", encoding="utf-8")
-    monkeypatch.setattr(pu_module, "CONFIG_FILE_DIR", str(config_dir))
+    monkeypatch.setattr(pu_module, "config_file_dir", lambda: str(config_dir))
     monkeypatch.setattr(
         pu_module,
         "process_variable_substitutions_in_file_contents",

@@ -391,10 +391,10 @@ def validate_config(document: dict, sections: frozenset[str]) -> list[Violation]
     Every violation in the configuration file's 'sections'. Each section's
     own keys are checked here, so that a key another section reads is
     reported as misplaced rather than unknown -- validate_properties() has
-    already refused, at import, a key that no section reads, so an unknown
-    one here came from '--property' -- and deleted from a copy, which the
-    schema then checks for everything else. A [dataClient] section's table
-    values are profiles, checked with the section's keys.
+    already refused, as the file loaded, a key that no section reads, so an
+    unknown one here came from '--property' -- and deleted from a copy, which
+    the schema then checks for everything else. A [dataClient] section's
+    table values are profiles, checked with the section's keys.
     """
     working = _without_nulls(copy.deepcopy(document))
     violations: list[Violation] = []

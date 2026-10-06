@@ -1,10 +1,12 @@
 """
 yd-doctor's checks: the model, the runner, and one function per check.
-Nothing here prints; doctor.py renders. Modules that exit at import on a
-broken configuration (load_config and dataclient_utils) are imported inside
-the checks that need them, never at module level. wrapper is never imported
-at all, since importing it builds CLIENT from a strict load: the doctor
-builds its own PlatformClient (_build_client()). Nor is the SDK imported at
+Nothing here prints; doctor.py renders. The modules that load the
+configuration (load_config and dataclient_utils) are imported inside the
+checks that need them, never at module level: loading it exits on a broken
+configuration, which check_config_loads() catches as its diagnosis. wrapper
+is never imported at all, since its CONFIG_COMMON is a strict load and its
+CLIENT built from that: the doctor builds its own PlatformClient
+(_build_client()). Nor is the SDK imported at
 module level, directly or through entity_utils: an SDK that will not
 import is a diagnosis (the 'SDK imports' row), not a crash before the first
 row is printed.
