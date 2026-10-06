@@ -125,7 +125,7 @@ _run make pypi_check
 
 echo
 echo "--- Running tests ---"
-_run pytest -v
+_run pytest -v -n 4
 
 # ---------------------------------------------------------------------------
 # Commit version bump
