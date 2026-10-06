@@ -3035,6 +3035,28 @@ class TestDelete:
         assert (remote / "remote" / "late.txt").exists()
         assert code == 0
 
+    def test_an_unanswerable_prompt_stops_without_a_failed_record(
+        self, remote, run_dc, monkeypatch
+    ):
+        # Reported once, by the wrapper, rather than recorded as each path's
+        # failed deletion and asked again for the next
+        from yellowdog_cli.utils.interactive import NoAnswerToPrompt
+
+        asked: list[str] = []
+
+        def confirm(question):
+            asked.append(question)
+            raise NoAnswerToPrompt()
+
+        monkeypatch.setattr(yd_delete, "confirmed", confirm)
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/a.txt", "loc:remote/sub/b.txt"]
+        )
+        assert code == 1
+        assert len(asked) == 1
+        assert not any(r.get("action") == "failed" for r in out)
+        assert (remote / "remote" / "a.txt").exists()
+
     def test_a_path_already_gone_is_skipped(self, remote, run_dc):
         out, _, code = run_dc(
             yd_delete, remote_paths=["loc:remote/nope", "loc:remote/zz*"]

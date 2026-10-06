@@ -14,6 +14,7 @@ from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 import yellowdog_cli.utils.follow_utils as fu
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
 
@@ -231,6 +232,86 @@ class TestProgressCounts:
         progress, _ = self._follow(wr)
         assert progress.stopped
         assert progress.tasks[0].start_time == 1000.0 - 300
+
+
+class TestSessionFailuresAfterTheStream:
+    """
+    An authentication or connection failure once a stream has ended exits
+    with its own code: in yd-submit -E's final status check, and in the check
+    of whether a cleanly closed stream's entity has finished.
+    """
+
+    def _client(self, error: Exception) -> MagicMock:
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.side_effect = error
+        return client
+
+    def test_the_final_status_check_raises_a_session_failure(self):
+        error = requests.ConnectionError("gone")
+        with (
+            patch.object(wrapper_module, "CLIENT", self._client(error)),
+            patch.object(fu, "print_error"),
+            pytest.raises(ReportedFailure) as raised,
+        ):
+            fu.work_requirement_failed(_ctx(), "ydid:workreq:000000:aaa:bbb")
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+    def test_the_final_status_check_takes_another_failure_as_failed(self):
+        error = RuntimeError("odd")
+        with (
+            patch.object(wrapper_module, "CLIENT", self._client(error)),
+            patch.object(fu, "print_error"),
+        ):
+            assert fu.work_requirement_failed(_ctx(), "ydid:workreq:000000:aaa:bbb")
+
+    def test_a_session_failure_checking_a_closed_stream_is_recorded(self):
+        response = requests.Response()
+        response.status_code = 401
+        error = requests.HTTPError("401", response=response)
+        with (
+            patch.object(wrapper_module, "CLIENT", self._client(error)),
+            patch.object(fu, "print_error") as mock_error,
+            patch.object(fu, "print_warning") as mock_warning,
+        ):
+            finished = fu._entity_finished(
+                _ctx(), "ydid:workreq:000000:aaa:bbb", YDIDType.WORK_REQUIREMENT
+            )
+        assert finished is None
+        mock_error.assert_called_once()
+        mock_warning.assert_not_called()
+        assert fu.follow_exit_code() == ExitCode.AUTHENTICATION
+
+    def test_another_failure_checking_a_closed_stream_is_taken_as_finished(self):
+        with (
+            patch.object(wrapper_module, "CLIENT", self._client(RuntimeError("odd"))),
+            patch.object(fu, "print_warning") as mock_warning,
+        ):
+            finished = fu._entity_finished(
+                _ctx(), "ydid:workreq:000000:aaa:bbb", YDIDType.WORK_REQUIREMENT
+            )
+        assert finished is True
+        mock_warning.assert_called_once()
+        assert fu.follow_errors_occurred() is False
+
+    def test_the_stream_stops_without_concluding_on_a_session_failure(self):
+        response = MagicMock(status_code=200, encoding="utf-8")
+        response.__enter__.return_value = response
+        response.iter_lines.return_value = iter([])  # Closed cleanly
+        with (
+            patch.object(fu.requests, "get", return_value=response),
+            # Finished on a second check, so that a loop which carried on
+            # past the None would end, as a failure, rather than hang
+            patch.object(fu, "_entity_finished", side_effect=[None, True]) as finished,
+            patch.object(fu, "print_info") as mock_info,
+            patch.object(fu, "sleep"),
+        ):
+            fu.follow_events(
+                _ctx(), "ydid:workreq:000000:aaa:bbb", YDIDType.WORK_REQUIREMENT
+            )
+        finished.assert_called_once()
+        assert not any(
+            "concluded" in str(call.args[0]) for call in mock_info.call_args_list
+        )
 
 
 class TestFollowErrorFlag:

@@ -319,6 +319,55 @@ class TestStatus:
             self._status(monkeypatch, [NODE_1, NODE_2, NODE_1])
         assert [r["nodeId"] for r in platform.records] == [NODE_1]
 
+    def test_following_a_queue_that_cannot_be_fetched_fails_the_run(
+        self, platform, monkeypatch
+    ):
+        # As without --follow: reported, the others' queues recorded, and the
+        # run failed rather than said to have finished
+        get = platform.client.worker_pool_client.get_node_actions_by_id
+        snapshot = SimpleNamespace(
+            status=NodeActionQueueStatus.EMPTY, waiting=[], executing=None, failed=None
+        )
+        get.side_effect = lambda node_id: (
+            snapshot if node_id == NODE_1 else (_ for _ in ()).throw(_http_error(404))
+        )
+        messages: list[str] = []
+        monkeypatch.setattr(na_module, "print_info", messages.append)
+        monkeypatch.setattr(na_module, "print_error", messages.append)
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            SimpleNamespace(
+                node_ids=[NODE_1, NODE_2],
+                worker_pool_name=None,
+                all_nodes=False,
+                follow=True,
+                timeout=None,
+                details=False,
+                json_output=True,
+                status=True,
+            ),
+        )
+        monkeypatch.setattr(na_module, "json_requested", lambda: True)
+        with pytest.raises(ReportedFailure) as raised:
+            na_module._show_status(_ctx())
+        assert classify(raised.value) == ExitCode.FAILURE
+        assert [r["nodeId"] for r in platform.records] == [NODE_1]
+        assert f"Failed to get status for node '{NODE_2}': not found" in messages
+        assert "All node action queues have finished." not in messages
+
+    def test_following_submitted_actions_fails_on_an_unfetched_queue(
+        self, platform, monkeypatch
+    ):
+        get = platform.client.worker_pool_client.get_node_actions_by_id
+        get.side_effect = _http_error(500)
+        monkeypatch.setattr(na_module.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(na_module, "print_error", lambda message: None)
+        with pytest.raises(ReportedFailure) as raised:
+            _submit(monkeypatch, platform, nodes=[NODE_1], follow=True)
+        assert classify(raised.value) == ExitCode.FAILURE
+        assert platform.submissions == [(WP_A, NODE_1)]
+
 
 class TestCommandLine:
     @pytest.mark.parametrize(

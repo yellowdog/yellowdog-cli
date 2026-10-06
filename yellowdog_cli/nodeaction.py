@@ -813,6 +813,8 @@ def _follow_submitted(ctx: RunContext, wp_id: str, submitted: list[str] | None) 
             _follow_node_actions(ctx, follow_ids, initial_delay=True)
         except _FollowTimedOut as e:
             raise ReportedFailure(TimeoutError(str(e)))
+        except _QueuesNotFetched as e:
+            raise ReportedFailure(RuntimeError(str(e)))
 
 
 def _follow_node_actions(
@@ -823,11 +825,15 @@ def _follow_node_actions(
     status, printing the table at each poll (not under '--json'), and return
     the final rows. With --timeout, stop polling after that many seconds:
     the rows are then each node's latest, and the caller raises
-    _FollowTimedOut once it has recorded them.
+    _FollowTimedOut once it has recorded them. A node whose queue cannot be
+    fetched is reported and no longer polled, and once the rest have
+    finished _QueuesNotFetched is raised, carrying the final rows, as for a
+    timeout.
     """
     pending = set(node_ids)
     done: dict[str, NodeActionQueueSnapshot] = {}
     latest: dict[str, NodeActionQueueSnapshot] = {}
+    not_fetched: list[str] = []
     timeout = ctx.args.timeout
     deadline = None if timeout is None else time.monotonic() + timeout
     print_info(f"Following node action queue(s) for {len(pending)} node(s)...")
@@ -845,8 +851,10 @@ def _follow_node_actions(
             except Exception as e:
                 if classify(e) in SESSION_FAILURES:
                     raise
-                print_error(f"Failed to get status for node '{node_id}': {e}")
+                error = "not found" if is_http_not_found(e) else str(e)
+                print_error(f"Failed to get status for node '{node_id}': {error}")
                 completed.add(node_id)
+                not_fetched.append(node_id)
                 continue
 
             live_rows.append((node_id, snapshot))
@@ -876,8 +884,11 @@ def _follow_node_actions(
         if pending:
             time.sleep(NODE_ACTION_QUEUE_POLL_INTERVAL)
 
+    final_rows = sorted(done.items(), key=lambda row: row[0])
+    if not_fetched:
+        raise _QueuesNotFetched(final_rows, len(not_fetched))
     print_info("All node action queues have finished.")
-    return sorted(done.items(), key=lambda row: row[0])
+    return final_rows
 
 
 class _FollowTimedOut(Exception):
@@ -888,6 +899,20 @@ class _FollowTimedOut(Exception):
 
     def __init__(self, rows: list[tuple[str, NodeActionQueueSnapshot]]):
         super().__init__("Node action queue(s) had not finished when --timeout ran out")
+        self.rows = rows
+
+
+class _QueuesNotFetched(Exception):
+    """
+    The queues of some nodes could not be fetched while following, each
+    reported as it failed: 'rows' are the others' final queues, for the
+    caller to record before the failure is raised.
+    """
+
+    def __init__(self, rows: list[tuple[str, NodeActionQueueSnapshot]], count: int):
+        super().__init__(
+            f"The node action queue(s) of {count} node(s) could not be fetched"
+        )
         self.rows = rows
 
 
@@ -914,6 +939,10 @@ def _show_status(ctx: RunContext):
             if json_requested():
                 _record_queues(e.rows)
             raise ReportedFailure(TimeoutError(str(e)))
+        except _QueuesNotFetched as e:
+            if json_requested():
+                _record_queues(e.rows)
+            raise ReportedFailure(RuntimeError(str(e)))
         if json_requested():
             _record_queues(final_rows)
         return

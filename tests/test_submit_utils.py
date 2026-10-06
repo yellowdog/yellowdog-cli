@@ -823,3 +823,38 @@ def test_a_manual_pause_without_a_terminal_is_no_answer(monkeypatch):
         task_batches.pause_between_batches(
             _ctx(), task_batch_size=2, batch_number=1, num_tasks=4
         )
+
+
+class TestDeleteUploadedFiles:
+    """
+    RcloneUploadedFiles.delete(), cleaning up after a failed submission: a
+    file that cannot be deleted is reported, naming no credentials, and the
+    rest are still attempted.
+    """
+
+    def test_a_failure_does_not_stop_the_rest(self):
+        instance = su.RcloneUploadedFiles(_ctx())
+        instance._rcloned_files = [
+            su.RcloneUploadedFile(
+                local_file_path=name, upload_file_path=f"rclone:s3,key=SECRET:b/{name}"
+            )
+            for name in ("one.txt", "two.txt", "three.txt")
+        ]
+        attempted: list[str] = []
+
+        def delete_one(conn_str):
+            attempted.append(conn_str)
+            if "two.txt" in conn_str:
+                raise RuntimeError("rclone failed")
+
+        errors: list[str] = []
+        with (
+            patch.object(instance, "_delete_rcloned_file", side_effect=delete_one),
+            patch.object(su, "print_error", side_effect=errors.append),
+        ):
+            instance.delete()
+        assert len(attempted) == 3
+        assert instance._rcloned_files == []
+        assert len(errors) == 1
+        assert "two.txt" in errors[0] and "rclone failed" in errors[0]
+        assert "SECRET" not in errors[0]

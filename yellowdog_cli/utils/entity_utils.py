@@ -874,7 +874,7 @@ def substitute_ids_for_names_in_crt(
     # Image family
     try:
         crt.imagesId = _get_image_family_or_group_name_from_id(client, crt.imagesId)
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     # Source templates
@@ -886,7 +886,7 @@ def substitute_ids_for_names_in_crt(
             source.imageId = _get_image_family_or_group_name_from_id(
                 client, source.imageId
             )
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     return crt
@@ -907,7 +907,7 @@ def substitute_image_family_id_for_name_in_cst(
             client, cst.source.imageId
         )
         return cst
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     try:
@@ -917,7 +917,7 @@ def substitute_image_family_id_for_name_in_cst(
             cst.source.image,  # type: ignore[attr-defined]
         )
         return cst
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     return cst

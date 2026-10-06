@@ -224,3 +224,71 @@ class TestSearchNamespaces:
         )
         search = client.compute_client.get_compute_requirement_templates.call_args[0][0]
         assert search.namespaces == ["team-a"]
+
+
+def _session_failure() -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = 401
+    return requests.HTTPError("401 Unauthorized", response=response)
+
+
+IMAGE_FAMILY_ID = "ydid:imgfam:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+class TestSubstituteIdsForNames:
+    """
+    '--substitute-ids' on Compute Requirement and Source Templates: a name
+    that cannot be found leaves the ID as it is, and a template without the
+    property is left alone, but an authentication or connection failure is
+    raised rather than hidden behind the IDs.
+    """
+
+    def test_a_session_failure_naming_a_crts_image_family_is_raised(self):
+        client = MagicMock()
+        client.images_client.get_image_family_by_id.side_effect = _session_failure()
+        crt = SimpleNamespace(imagesId=IMAGE_FAMILY_ID, sources=[])
+        with pytest.raises(requests.HTTPError):
+            entity_utils.substitute_ids_for_names_in_crt(client, crt, substitute=True)
+
+    def test_a_session_failure_naming_a_crt_sources_image_is_raised(self):
+        client = MagicMock()
+        client.images_client.get_image_family_by_id.side_effect = _session_failure()
+        source = SimpleNamespace(sourceTemplateId=None, imageId=IMAGE_FAMILY_ID)
+        crt = SimpleNamespace(imagesId=None, sources=[source])
+        with pytest.raises(requests.HTTPError):
+            entity_utils.substitute_ids_for_names_in_crt(client, crt, substitute=True)
+
+    @pytest.mark.parametrize("image_property", ["imageId", "image"])
+    def test_a_session_failure_naming_a_csts_image_is_raised(self, image_property):
+        client = MagicMock()
+        client.images_client.get_image_family_by_id.side_effect = _session_failure()
+        cst = SimpleNamespace(
+            source=SimpleNamespace(**{image_property: IMAGE_FAMILY_ID})
+        )
+        with pytest.raises(requests.HTTPError):
+            entity_utils.substitute_image_family_id_for_name_in_cst(
+                client, cst, substitute=True
+            )
+
+    def test_a_name_not_found_leaves_the_id(self):
+        client = MagicMock()
+        response = requests.Response()
+        response.status_code = 404
+        client.images_client.get_image_family_by_id.side_effect = requests.HTTPError(
+            response=response
+        )
+        crt = SimpleNamespace(imagesId=IMAGE_FAMILY_ID, sources=None)
+        result = entity_utils.substitute_ids_for_names_in_crt(
+            client, crt, substitute=True
+        )
+        assert result.imagesId == IMAGE_FAMILY_ID
+
+    def test_a_template_without_the_properties_is_left_alone(self):
+        client = MagicMock()
+        crt = SimpleNamespace(imagesId=None)  # No 'sources' at all
+        assert entity_utils.substitute_ids_for_names_in_crt(client, crt, True) is crt
+        cst = SimpleNamespace(source=SimpleNamespace())  # Neither image property
+        assert (
+            entity_utils.substitute_image_family_id_for_name_in_cst(client, cst, True)
+            is cst
+        )

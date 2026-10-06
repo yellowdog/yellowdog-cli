@@ -191,3 +191,40 @@ def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
     config.set_ssh_ingress_rule("add-ssh")
     assert asked and "all 2 opted-in regions" in asked[0]
     assert "0.0.0.0/0" in asked[0]
+
+
+class TestAzureResourceGroupFailures:
+    """
+    Azure setup: a region whose resource group cannot be checked, and a
+    rollback that cannot delete the group just created, are each counted as
+    an error, so the run cannot exit 0 having made nothing or left one behind.
+    """
+
+    def _config(self, resource_groups):
+        from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+
+        config = object.__new__(cloudwizard_azure.AzureConfig)
+        config._resource_client = SimpleNamespace(resource_groups=resource_groups)
+        config._selected_regions = ["uksouth"]
+        config._created_regions = []
+        config._generate_resource_group_name = lambda region: f"yd-{region}"
+        return config
+
+    def test_a_failed_existence_check_is_counted(self, printed):
+        groups = SimpleNamespace(
+            check_existence=lambda name: (_ for _ in ()).throw(RuntimeError("denied"))
+        )
+        config = self._config(groups)
+        config._create_resource_groups_and_network_resources()
+        assert config._created_regions == []
+        assert cloudwizard_common.errors_reported() == 1
+        assert any("denied" in line for line in printed)
+
+    def test_a_failed_rollback_is_counted_with_its_reason(self, printed):
+        groups = SimpleNamespace(
+            begin_delete=lambda name: (_ for _ in ()).throw(RuntimeError("locked"))
+        )
+        config = self._config(groups)
+        config._remove_resource_group_by_name("yd-uksouth")
+        assert cloudwizard_common.errors_reported() == 1
+        assert any("yd-uksouth" in line and "locked" in line for line in printed)

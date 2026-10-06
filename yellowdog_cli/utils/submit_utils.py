@@ -649,8 +649,15 @@ class RcloneUploadedFiles:
         stored in different places. This can be optimised later by
         grouping into batches of files with the same connection info.
         """
+        # Each file is attempted, whatever happened to the ones before it
         for rcloned_file in self._rcloned_files:
-            self._delete_rcloned_file(rcloned_file.upload_file_path)
+            try:
+                self._delete_rcloned_file(rcloned_file.upload_file_path)
+            except Exception as e:
+                print_error(
+                    "Failed to delete rcloned file"
+                    f" '{self._bucket_and_prefix(rcloned_file)}' ({e})"
+                )
 
         self._rcloned_files = []
 

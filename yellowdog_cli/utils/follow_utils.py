@@ -31,7 +31,12 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.event_printing import print_event
-from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.limits import (
     EVENT_STREAM_CONNECT_TIMEOUT,
     EVENT_STREAM_MAX_OUTAGE,
@@ -94,14 +99,19 @@ def reset_follow_errors() -> None:
 def work_requirement_failed(ctx: RunContext, wr_id: str) -> bool:
     """
     Fetch a Work Requirement and report whether it ended in a failure state
-    (FAILED or CANCELLED). A fetch error is treated as failure. Prints a
-    warning (or error) describing the outcome; success is left to the caller.
+    (FAILED or CANCELLED). A fetch error is treated as failure, except that
+    an authentication or connection failure is raised as ReportedFailure, to
+    exit with its own code. Prints a warning (or error) describing the
+    outcome; success is left to the caller.
     """
     try:
         wr = ctx.client.work_client.get_work_requirement_by_id(wr_id)
         status = wr.status.value if wr.status else "UNKNOWN"
     except Exception as e:
         print_error(f"Could not fetch final status for '{wr_id}': {e}")
+        if classify(e) in SESSION_FAILURES:
+            # Exits with the failure's own code, not as a failed Work Requirement
+            raise ReportedFailure(e)
         return True
     if status in WR_FAILURE_STATUS_VALUES:
         print_warning(
@@ -532,13 +542,15 @@ def _compute_requirement_of_worker_pool(
     return None
 
 
-def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool:
+def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | None:
     """
     Whether the entity whose event stream has closed has finished, as the
     Platform closes a stream when it does. A stream closed for any other
     reason (a proxy dropping an idle connection, say) is reconnected. An
     entity whose status cannot be fetched is taken as finished, with a
-    warning, rather than reconnected for ever.
+    warning, rather than reconnected for ever; but an authentication or
+    connection failure is reported and recorded, and None returned, for the
+    following to stop without the stream counting as concluded.
     """
     try:
         if ydid_type == YDIDType.WORK_REQUIREMENT:
@@ -550,6 +562,13 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool:
         status = ctx.client.compute_client.get_compute_requirement_by_id(ydid).status
         return status is None or status == ComputeRequirementStatus.TERMINATED
     except Exception as e:
+        if classify(e) in SESSION_FAILURES:
+            print_error(
+                f"The event stream for '{ydid}' closed, and its status could not be"
+                f" checked: {e}"
+            )
+            _record_follow_failure(e)
+            return None
         print_warning(
             f"The event stream for '{ydid}' closed, and its status could not be"
             f" checked ({e}): taking it to have finished"
@@ -686,7 +705,10 @@ def follow_events(
         # something in between, in which case it is reconnected
         if _STOP_FOLLOWING.is_set():
             return
-        if _entity_finished(ctx, ydid, ydid_type):
+        finished = _entity_finished(ctx, ydid, ydid_type)
+        if finished is None:  # Reported and recorded
+            break
+        if finished:
             concluded = True
             break
         sleep(EVENT_STREAM_RECONNECT_DELAY)

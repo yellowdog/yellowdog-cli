@@ -456,6 +456,10 @@ def _load_config_file() -> None:
                 validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
                 _validate_data_client_profiles(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
             except Exception as e:
+                # A configuration error, as a rule; under '--debug', its
+                # traceback, in case it is a fault in the loader instead
+                if OUTPUT.debug:
+                    raise
                 print_error(e)
                 exit(ExitCode.CONFIGURATION)
             if _ARGS.property_overrides:
@@ -482,6 +486,8 @@ def _load_config_file() -> None:
             exit(ExitCode.CONFIGURATION)
 
         except Exception as e:
+            if OUTPUT.debug:
+                raise  # As above
             print_error(e)
             exit(ExitCode.CONFIGURATION)
 
