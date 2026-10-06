@@ -13,6 +13,8 @@ environment, and tests/system/config.toml must contain a [dataClient] section.
 import pytest
 from cli_test_helpers import shell
 
+from yellowdog_cli.utils.output_style import DRY_RUN_MARKER
+
 SYSTEM_DIR = "tests/system"
 
 
@@ -152,7 +154,9 @@ class TestSystemDataClient:
             f"cd {SYSTEM_DIR} && yd-upload -D {tmp_path / filename} --destination {remote}/{filename}"
         )
         assert result.exit_code == 0
-        assert "Dry-run" in result.stdout, f"expected dry-run message:\n{result.stdout}"
+        assert DRY_RUN_MARKER in result.stdout, (
+            f"expected dry-run message:\n{result.stdout}"
+        )
 
         result = shell(f"cd {SYSTEM_DIR} && yd-ls {remote}/")
         assert result.exit_code == 0
@@ -175,7 +179,9 @@ class TestSystemDataClient:
 
         result = shell(f"cd {SYSTEM_DIR} && yd-delete -D {remote}/{filename}")
         assert result.exit_code == 0
-        assert "Dry-run" in result.stdout, f"expected dry-run message:\n{result.stdout}"
+        assert DRY_RUN_MARKER in result.stdout, (
+            f"expected dry-run message:\n{result.stdout}"
+        )
 
         result = shell(f"cd {SYSTEM_DIR} && yd-ls {remote}/")
         assert result.exit_code == 0
@@ -201,5 +207,34 @@ class TestSystemDataClient:
             f"cd {SYSTEM_DIR} && yd-download -D {remote}/{filename} --destination {dl_dir}"
         )
         assert result.exit_code == 0
-        assert "Dry-run" in result.stdout, f"expected dry-run message:\n{result.stdout}"
+        assert DRY_RUN_MARKER in result.stdout, (
+            f"expected dry-run message:\n{result.stdout}"
+        )
         assert not (dl_dir / filename).exists(), "file was downloaded despite --dry-run"
+
+    # ------------------------------------------------------------------
+    # A path that does not exist: a bucket-based remote answers rclone's
+    # stat of any such path with an unnamed directory, which read as an
+    # empty directory to all three commands
+    # ------------------------------------------------------------------
+
+    def test_a_missing_path_is_not_downloaded(self, dc_base, tmp_path):
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-download {dc_base}/no-such-path"
+            f" --destination {tmp_path / 'dl'}"
+        )
+        assert result.exit_code == 1
+        assert "does not exist" in result.stdout + result.stderr
+
+    def test_a_missing_path_is_not_deleted(self, dc_base):
+        # Gone already is what a deletion wants: a warning, not 'is a directory'
+        result = shell(f"cd {SYSTEM_DIR} && yd-delete -y {dc_base}/no-such-path")
+        assert result.exit_code == 0
+        output = result.stdout + result.stderr
+        assert "does not exist" in output and "is a directory" not in output
+
+    def test_a_missing_path_lists_as_empty(self, dc_base):
+        # On a bucket-based remote an empty prefix and a missing one are the
+        # same thing, and a prefix nothing is uploaded to yet is no error
+        result = shell(f"cd {SYSTEM_DIR} && yd-ls {dc_base}/no-such-path")
+        assert result.exit_code == 0

@@ -648,3 +648,123 @@ def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch
     assert upload_file(config, source, resolve_remote_path(config, filename="a.txt"))
     assert (bucket / "p" / "a.txt").read_text(encoding="utf-8") == "a"
     assert not (elsewhere / str(bucket).lstrip("/")).exists()
+
+
+# What a bucket-based remote answers 'lsjson --stat' with for a path that is
+# not an object
+_UNNAMED_DIRECTORY = {"Path": "", "Name": "", "Size": -1, "IsDir": True}
+
+
+class TestRemoteStatOnBucketStorage:
+    """
+    rclone answers 'lsjson --stat' of a directory with an unnamed entry. A
+    bucket-based remote (S3, Google Cloud Storage, Azure Blob), which cannot
+    hold an empty directory, answers any path that is not an object with
+    the same entry, exit 0: a missing path, an empty prefix and a prefix
+    holding objects all look the same. remote_stat() lists such a path's
+    first level to tell them apart, so that yd-delete, yd-download and
+    yd-copy find a missing path missing; a listing (yd-ls) takes it as the
+    empty directory rclone says it is. A backend that can hold an empty
+    directory answers a missing path with exit 3, so there the entry is
+    taken as it is.
+    """
+
+    def _rclone(
+        self,
+        monkeypatch,
+        stat: dict,
+        listing: list | None,
+        empty_directories: bool = False,
+    ) -> list:
+        """
+        Answer 'lsjson --stat' with 'stat', 'backend features' with whether
+        the backend can hold an empty directory (by default not: a bucket),
+        and a listing with 'listing' (None: rclone's exit 3, directory not
+        found); returns the commands.
+        """
+        calls: list[list[str]] = []
+
+        def run(_rclone, args):
+            calls.append(args)
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(stat))
+            if args[:2] == ["backend", "features"]:
+                features = {"CanHaveEmptyDirectories": empty_directories}
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"Features": features})
+                )
+            if listing is None:
+                return MagicMock(returncode=3, stdout="")
+            return MagicMock(returncode=0, stdout=json.dumps(listing))
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        return calls
+
+    def test_a_missing_path_is_none(self, monkeypatch):
+        self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [])
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/nope") is None
+
+    def test_a_listing_rclone_cannot_find_is_none(self, monkeypatch):
+        self._rclone(monkeypatch, _UNNAMED_DIRECTORY, None)
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/nope") is None
+
+    def test_a_prefix_holding_objects_is_a_directory(self, monkeypatch):
+        calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [{"Name": "a.txt"}])
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/dir") == _UNNAMED_DIRECTORY
+        # One level only, so that a large tree is not walked to find one item
+        assert calls[-1][-3:] == ["--max-depth", "1", "s3:b/dir"]
+
+    def test_an_empty_directory_where_one_can_be_held_is_a_directory(self, monkeypatch):
+        # Local and SFTP: a missing path would have been rclone's exit 3
+        calls = self._rclone(
+            monkeypatch, _UNNAMED_DIRECTORY, [], empty_directories=True
+        )
+        assert dcu_module.remote_stat(MagicMock(), "/tmp/empty") == _UNNAMED_DIRECTORY
+        assert not any(call[0] == "lsjson" and "--stat" not in call for call in calls)
+
+    def test_a_listing_takes_it_as_an_empty_directory(self, monkeypatch):
+        calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [])
+        stat = dcu_module.remote_stat(MagicMock(), "s3:b/new", confirm_directory=False)
+        assert stat == _UNNAMED_DIRECTORY
+        assert len(calls) == 1  # no listing made
+
+    @pytest.mark.parametrize(
+        "stat",
+        [
+            {"Path": "a.txt", "Name": "a.txt", "Size": 6, "IsDir": False},
+            # A named directory, as a local or SFTP remote answers, even empty
+            {"Path": "dir", "Name": "dir", "Size": -1, "IsDir": True},
+        ],
+        ids=["file", "named-directory"],
+    )
+    def test_a_named_entry_is_taken_as_it_is(self, monkeypatch, stat):
+        calls = self._rclone(monkeypatch, stat, [])
+        assert dcu_module.remote_stat(MagicMock(), "r:x") == stat
+        assert len(calls) == 1
+
+    def test_a_listing_that_fails_raises(self, monkeypatch):
+        def run(_rclone, args):
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(_UNNAMED_DIRECTORY))
+            if args[:2] == ["backend", "features"]:
+                features = {"CanHaveEmptyDirectories": False}
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"Features": features})
+                )
+            return MagicMock(returncode=1, stdout="", stderr="AccessDenied")
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        monkeypatch.setattr(dcu_module, "_rclone_error_detail", lambda r: r.stderr)
+        with pytest.raises(RuntimeError, match="Cannot access 's3:b/x': AccessDenied"):
+            dcu_module.remote_stat(MagicMock(), "s3:b/x")
+
+    def test_storage_whose_kind_cannot_be_told_raises(self, monkeypatch):
+        def run(_rclone, args):
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(_UNNAMED_DIRECTORY))
+            return MagicMock(returncode=1, stdout="", stderr="unknown backend")
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        monkeypatch.setattr(dcu_module, "_rclone_error_detail", lambda r: r.stderr)
+        with pytest.raises(RuntimeError, match="Cannot tell what kind of storage"):
+            dcu_module.remote_stat(MagicMock(), "x:y")

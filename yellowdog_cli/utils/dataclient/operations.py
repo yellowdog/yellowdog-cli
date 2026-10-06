@@ -587,12 +587,26 @@ def _format_glob_matches(remote_path: str, matches: list[dict]) -> str:
     return f"Wildcard '{remote_path}' matches: {', '.join(names)}"
 
 
-def remote_stat(rclone: Rclone, remote_path: str) -> dict | None:
+def remote_stat(
+    rclone: Rclone, remote_path: str, confirm_directory: bool = True
+) -> dict | None:
     """
     The lsjson entry of a remote path itself -- a file, or a directory,
     empty or not -- or None if it does not exist (rclone's exit code 3,
     'directory not found'). Any other failure to reach it raises, with
     rclone's own message, rather than reading as 'not there'.
+
+    rclone answers a stat of a directory with an unnamed entry. A backend
+    that can hold an empty directory (local, SFTP) answers a missing path
+    with exit code 3, so there the entry is a directory; one that cannot (S3,
+    Google Cloud Storage, Azure Blob: bucket-based storage has no
+    directories) answers any path that is not an object with the same
+    unnamed entry, exit 0, whether anything is stored under it or not, so
+    there a directory exists only if a listing of it finds something, and an
+    empty one is None, as it is to the storage itself. A listing passes
+    'confirm_directory=False', for which such a path is the empty directory
+    rclone says it is, and lists as one: an empty prefix, a namespace's
+    before anything is uploaded to it among them, is no error to list.
     """
     result = _run_quietly(rclone, ["lsjson", "--stat", "--no-mimetype", remote_path])
     if result.returncode == 3:
@@ -601,7 +615,62 @@ def remote_stat(rclone: Rclone, remote_path: str) -> dict | None:
         raise RuntimeError(
             f"Cannot access '{remote_path}': {_rclone_error_detail(result)}"
         )
-    return json.loads(result.stdout or "null")
+    entry = json.loads(result.stdout or "null")
+    if (
+        confirm_directory
+        and _is_unnamed_directory(entry)
+        and not _can_hold_empty_directories(rclone, remote_path)
+        and not _holds_anything(rclone, remote_path)
+    ):
+        return None
+    return entry
+
+
+def _is_unnamed_directory(entry: dict | None) -> bool:
+    """
+    Whether a stat answered with a directory entry that names nothing, as
+    rclone answers for a directory, and a bucket-based remote for any path
+    that is not an object.
+    """
+    return (
+        entry is not None
+        and bool(entry.get("IsDir"))
+        and not entry.get("Name")
+        and not entry.get("Path")
+    )
+
+
+def _can_hold_empty_directories(rclone: Rclone, remote_path: str) -> bool:
+    """
+    Whether the path's backend can hold an empty directory, as rclone's
+    'backend features' reports it; one that cannot is bucket-based.
+    """
+    result = _run_quietly(rclone, ["backend", "features", remote_path])
+    try:
+        if result.returncode != 0:
+            raise ValueError
+        return bool(json.loads(result.stdout)["Features"]["CanHaveEmptyDirectories"])
+    except (ValueError, KeyError, TypeError) as e:
+        raise RuntimeError(
+            f"Cannot tell what kind of storage '{remote_path}' is:"
+            f" {_rclone_error_detail(result)}"
+        ) from e
+
+
+def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
+    """
+    Whether a listing of the directory's first level finds anything in it.
+    """
+    result = _run_quietly(
+        rclone, ["lsjson", "--no-mimetype", "--max-depth", "1", remote_path]
+    )
+    if result.returncode == 3:
+        return False
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Cannot access '{remote_path}': {_rclone_error_detail(result)}"
+        )
+    return bool(json.loads(result.stdout or "[]"))
 
 
 def glob_matches(
@@ -639,12 +708,14 @@ def config_glob_matches(
     return glob_matches(rclone, remote_path, allow_empty)
 
 
-def config_remote_stat(config: ConfigDataClient, remote_path: str) -> dict | None:
+def config_remote_stat(
+    config: ConfigDataClient, remote_path: str, confirm_directory: bool = True
+) -> dict | None:
     """
     remote_stat() for a data client configuration.
     """
     _, rclone = _rclone_for_config(config)
-    return remote_stat(rclone, remote_path)
+    return remote_stat(rclone, remote_path, confirm_directory)
 
 
 def _download_with_glob(
@@ -1147,7 +1218,7 @@ def lsjson_listing(
     """
     _, rclone = _rclone_for_config(config)
     if not is_glob(remote_path):
-        if remote_stat(rclone, remote_path) is None:
+        if remote_stat(rclone, remote_path, confirm_directory=False) is None:
             raise FileNotFoundError(f"'{remote_path}' does not exist")
         entries = _lsjson(rclone, remote_path, recursive=recursive)
     else:

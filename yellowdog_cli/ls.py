@@ -147,7 +147,9 @@ def _list(ctx: DataClientContext, remote_path: str, recursive: bool) -> None:
     elif is_glob(remote_path):
         _ls_glob(ctx, CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
     else:
-        stat = config_remote_stat(CONFIG_DATA_CLIENT, remote_path)
+        stat = config_remote_stat(
+            CONFIG_DATA_CLIENT, remote_path, confirm_directory=False
+        )
         if stat is None:
             raise FileNotFoundError(f"'{remote_path}' does not exist")
         if not stat["IsDir"]:
