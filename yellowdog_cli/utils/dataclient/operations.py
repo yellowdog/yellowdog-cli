@@ -19,6 +19,11 @@ from rclone_api.completed_process import CompletedProcess as RcloneCompletedProc
 from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.dataclient.rclone import (
+    make_rclone,
+    make_rclone_for_copy,
+    parse_rclone_config,
+)
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
 from yellowdog_cli.utils.limits import DATA_CLIENT_LISTING_WORKERS
 from yellowdog_cli.utils.printing import (
@@ -26,11 +31,6 @@ from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
     print_warning,
-)
-from yellowdog_cli.utils.rclone_utils import (
-    make_rclone,
-    make_rclone_for_copy,
-    parse_rclone_config,
 )
 from yellowdog_cli.utils.results import json_requested, record
 from yellowdog_cli.utils.variable_substitution import resolve_variables_in_string

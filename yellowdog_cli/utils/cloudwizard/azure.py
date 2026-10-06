@@ -10,7 +10,7 @@ from azure.mgmt.network.models import NetworkSecurityGroup
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.subscription import SubscriptionClient
 
-from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
+from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select

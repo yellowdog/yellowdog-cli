@@ -194,6 +194,9 @@ Like Commander, the server holds no API client and runs every tool call as a `yd
 ```
 yellowdog_cli/            # One module per yd-* command
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
+yellowdog_cli/utils/cloudwizard/  # The Cloud Wizard's provider support (the cloudwizard extra)
+yellowdog_cli/utils/dataclient/   # The data client commands' layer over rclone
+yellowdog_cli/utils/specs/        # Specification properties, schemas, validation and loading
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
 yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)

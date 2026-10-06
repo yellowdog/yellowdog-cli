@@ -11,7 +11,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.utils.rclone_version import NOT_INSTALLED
+from yellowdog_cli.utils.dataclient.rclone_version import NOT_INSTALLED
 
 SDK_DISTRIBUTION = "yellowdog-sdk"
 

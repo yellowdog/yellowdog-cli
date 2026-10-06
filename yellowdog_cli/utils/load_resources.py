@@ -40,8 +40,8 @@ from yellowdog_cli.utils.property_names import (
     PROP_USERNAME,
 )
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
-from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import (
+from yellowdog_cli.utils.specs.schema import Family
+from yellowdog_cli.utils.specs.validation import (
     strip_schema_key,
     validate_all_and_exit,
     warn_of_violations,

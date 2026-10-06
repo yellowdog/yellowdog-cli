@@ -17,9 +17,15 @@ from sys import version as py_version
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.dataclient.rclone_version import (
+    NOT_INSTALLED,
+    UNKNOWN,
+    find_rclone,
+)
+from yellowdog_cli.utils.dataclient.rclone_version import (
+    rclone_version as _rclone_version,
+)
 from yellowdog_cli.utils.output_style import JSON_INDENT
-from yellowdog_cli.utils.rclone_version import NOT_INSTALLED, UNKNOWN, find_rclone
-from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
 from yellowdog_cli.utils.version_info import docs_url, sdk_version
 
 CLI_DISTRIBUTION = "yellowdog-cli"

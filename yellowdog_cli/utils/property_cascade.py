@@ -7,7 +7,7 @@ the configuration file:
     Task > Task Group > Work Requirement > TOML configuration
 
 Which of those levels a property may be set at is the dictionary's
-(spec_properties.WORK_REQUIREMENT_PROPERTIES, held to README.md's table),
+(specs.properties.WORK_REQUIREMENT_PROPERTIES, held to README.md's table),
 so a level is consulted only for a property the dictionary allows there.
 The configuration's value is the caller's to give, as the default, since
 it comes from the run's ConfigWorkRequirement, re-substituted as the run
@@ -17,7 +17,7 @@ proceeds.
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs.properties import (
     WORK_REQUIREMENT_PROPERTIES,
     Level,
     Property,

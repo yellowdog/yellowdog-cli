@@ -12,7 +12,7 @@ from cli_test_helpers import shell
 
 import yellowdog_cli.cancel as yd_cancel
 import yellowdog_cli.delete as yd_delete
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module

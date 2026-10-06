@@ -30,7 +30,7 @@ to the reporter the command wrappers register (report_problems_to(), with
 print_debug()), once per reason per process. A cache file not being there
 yet is no problem, and is never reported.
 
-Imports nothing from the CLI: spec_schema.py is its only caller, and the
+Imports nothing from the CLI: specs/schema.py is its only caller, and the
 reporter is how a message reaches printing.py, which parses the command
 line at import.
 """

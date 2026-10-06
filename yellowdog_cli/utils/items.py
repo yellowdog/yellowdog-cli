@@ -38,7 +38,7 @@ if TYPE_CHECKING:
         WorkRequirementSummary,
     )
 
-    from yellowdog_cli.utils.cloudwizard_aws_types import AWSAvailabilityZone
+    from yellowdog_cli.utils.cloudwizard.aws_types import AWSAvailabilityZone
 
     Item: TypeAlias = (
         AWSAvailabilityZone

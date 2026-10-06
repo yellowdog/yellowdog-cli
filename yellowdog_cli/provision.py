@@ -68,8 +68,8 @@ from yellowdog_cli.utils.results import (
     record_document_part,
     record_entity,
 )
-from yellowdog_cli.utils.spec_loading import load_specification, refuse_file_options
-from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
+from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,

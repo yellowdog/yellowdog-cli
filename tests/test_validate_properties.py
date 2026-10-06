@@ -176,7 +176,7 @@ def test_every_free_form_map_is_excluded():
     tags -- is excluded from the ALL_KEYS check, or every key in it would be
     an 'invalid property' (as 'addEnvironment's were).
     """
-    from yellowdog_cli.utils import spec_properties
+    from yellowdog_cli.utils.specs import properties as spec_properties
     from yellowdog_cli.utils.validate_properties import EXCLUDED_KEYS
 
     properties = list(spec_properties.WORK_REQUIREMENT_PROPERTIES)

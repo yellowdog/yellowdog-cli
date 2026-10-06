@@ -79,7 +79,15 @@ _IMPORT_EVERYTHING = textwrap.dedent(
     for module in pkgutil.walk_packages(yellowdog_cli.__path__, "yellowdog_cli."):
         if module.name.startswith(skipped) or module.name.endswith("__main__"):
             continue
-        importlib.import_module(module.name)
+        try:
+            importlib.import_module(module.name)
+        except ModuleNotFoundError as e:
+            # The Cloud Wizard's modules import its extra's cloud SDKs at the
+            # top, and tox's environments install them only in part
+            if not module.name.startswith("yellowdog_cli.utils.cloudwizard.") or (
+                e.name or ""
+            ).startswith("yellowdog_cli"):
+                raise
     from yellowdog_cli.utils import args, load_config, wrapper
     from yellowdog_cli.utils.lazy import built
     print(

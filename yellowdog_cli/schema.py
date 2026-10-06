@@ -3,7 +3,7 @@
 """
 Print, write or check the specification schemas: what yd-submit, yd-provision,
 yd-instantiate, yd-create and yd-nodeaction accept, generated from the
-registry and the installed SDK (utils/spec_schema.py).
+registry and the installed SDK (utils/specs/schema.py).
 
 Built on neither wrapper: yd-schema needs no configuration and no
 credentials, so it is a registry command on ARGS_PARSER alone, like
@@ -24,7 +24,7 @@ from yellowdog_cli.utils.printing import (
     print_json_text,
     print_simple,
 )
-from yellowdog_cli.utils.spec_schema import Family, SchemaGenerationError, build_schema
+from yellowdog_cli.utils.specs.schema import Family, SchemaGenerationError, build_schema
 
 # From the package metadata: importing anything from yellowdog_client builds
 # the whole Platform client, which --list, --check and the config family

@@ -47,9 +47,9 @@ NAME_START_PREFIX = "yd_"
 NAMESPACE_PREFIX_SEPARATOR = "/"
 RCLONE_PREFIX = "rclone:"
 
-# The specification families yd-schema knows, in utils/spec_schema.py's
+# The specification families yd-schema knows, in utils/specs/schema.py's
 # Family order. Carried here, as a plain tuple, rather than imported from
-# spec_schema.py: that module reaches into the installed SDK and compiles
+# specs/schema.py: that module reaches into the installed SDK and compiles
 # fastjsonschema at class-definition time, and command_registry.py (which
 # needs these values for --list's choices) is imported by every command's
 # parse and by yellowdog_cli/mcp/tools.py, which must stay SDK-free.

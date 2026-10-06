@@ -12,7 +12,7 @@ import pytest
 import requests
 
 import yellowdog_cli.utils.json_raw as json_raw_module
-import yellowdog_cli.utils.spec_loading as spec_loading_module
+import yellowdog_cli.utils.specs.loading as spec_loading_module
 import yellowdog_cli.utils.task_batches as task_batches_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser

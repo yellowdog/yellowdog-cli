@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.upload as upload_module
-import yellowdog_cli.utils.dataclient_wrapper as dataclient_wrapper_module
+import yellowdog_cli.utils.dataclient.wrapper as dataclient_wrapper_module
 from yellowdog_cli.utils.config_types import ConfigDataClient
 
 CONFIG = ConfigDataClient(remote="myremote", bucket="b")

@@ -1,5 +1,5 @@
 """
-utils/spec_properties.py against README.md: the Work Requirement dictionary's
+utils/specs/properties.py against README.md: the Work Requirement dictionary's
 rows, levels and descriptions are the registry's, and the shipped
 descriptions.json is a fresh extraction. Needs no SDK call and no network.
 """
@@ -10,8 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from yellowdog_cli.utils import spec_properties
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs import properties as spec_properties
+from yellowdog_cli.utils.specs.properties import (
     WORK_REQUIREMENT_PROPERTIES,
     Level,
     load_descriptions,

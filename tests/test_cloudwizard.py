@@ -82,7 +82,8 @@ class TestTheCommandLine:
 pytest.importorskip("boto3")  # The cloudwizard extra, which the modules below need
 
 from yellowdog_cli import cloudwizard  # noqa: E402
-from yellowdog_cli.utils import cloudwizard_common, printing  # noqa: E402
+from yellowdog_cli.utils import printing  # noqa: E402
+from yellowdog_cli.utils.cloudwizard import common as cloudwizard_common  # noqa: E402
 
 
 class _Config(cloudwizard_common.CommonCloudConfig):
@@ -164,7 +165,7 @@ def test_a_clean_run_exits_normally(printed):
 def test_an_aws_error_is_told_by_its_code():
     from botocore.exceptions import ClientError
 
-    from yellowdog_cli.utils.cloudwizard_aws import _error_code
+    from yellowdog_cli.utils.cloudwizard.aws import _error_code
 
     error = ClientError(
         {"Error": {"Code": "NoSuchEntity", "Message": "EntityAlreadyExists in text"}},
@@ -174,7 +175,7 @@ def test_an_aws_error_is_told_by_its_code():
 
 
 def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
-    from yellowdog_cli.utils import cloudwizard_aws
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
 
     asked: list[str] = []
     monkeypatch.setattr(cloudwizard_aws, "_get_opted_in_regions", lambda: ["a", "b"])

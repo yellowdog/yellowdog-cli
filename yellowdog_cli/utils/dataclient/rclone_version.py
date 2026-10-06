@@ -3,7 +3,7 @@ Locate the rclone binary and report its version.
 
 Deliberately dependency-free (stdlib only, with a lazy/guarded rclone_api
 import) so it can be used both by yd-version — which is a standalone command
-that must not import the args/wrapper machinery — and by rclone_utils.
+that must not import the args/wrapper machinery — and by dataclient/rclone.py.
 """
 
 import shutil

@@ -1774,7 +1774,7 @@ class TestWrappersEnableUndefinedVariableWarnings:
         assert self._run(wrapper_module.main_wrapper) == [True]
 
     def test_dataclient_wrapper(self):
-        from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
+        from yellowdog_cli.utils.dataclient.wrapper import dataclient_wrapper
 
         assert self._run(dataclient_wrapper) == [True]
 

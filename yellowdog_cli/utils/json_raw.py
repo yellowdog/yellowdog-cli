@@ -29,7 +29,7 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASKS
 from yellowdog_cli.utils.results import record_document, record_entity
-from yellowdog_cli.utils.spec_loading import load_specification
+from yellowdog_cli.utils.specs.loading import load_specification
 from yellowdog_cli.utils.submit_utils import formatted_number_str
 from yellowdog_cli.utils.task_batches import (
     raise_for_response,

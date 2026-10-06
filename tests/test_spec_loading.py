@@ -1,5 +1,5 @@
 """
-utils/spec_loading.py: the loader yd-submit (with '--json-raw'),
+utils/specs/loading.py: the loader yd-submit (with '--json-raw'),
 yd-provision, yd-instantiate and yd-nodeaction share -- the loader chosen by
 extension, '--jsonnet-dry-run' refused for a file that is not Jsonnet before
 anything is read, an extension refused or read as JSON as the command
@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import yellowdog_cli.utils.spec_loading as spec_loading
-from yellowdog_cli.utils.spec_loading import CsvExpansion, load_specification
-from yellowdog_cli.utils.spec_schema import Family
+import yellowdog_cli.utils.specs.loading as spec_loading
+from yellowdog_cli.utils.specs.loading import CsvExpansion, load_specification
+from yellowdog_cli.utils.specs.schema import Family
 
 LOADERS = (
     "load_json_file_with_variable_substitutions",

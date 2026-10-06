@@ -1,5 +1,5 @@
 """
-utils/spec_schema.py: the five families' schemas, built from the registry and
+utils/specs/schema.py: the five families' schemas, built from the registry and
 the installed SDK, compile under fastjsonschema; the SDK type mapping follows
 the spec's table row by row on real SDK fields; anything unmapped raises; the
 corpus and the README's examples validate.
@@ -18,8 +18,8 @@ import fastjsonschema
 import pytest
 from resource_live import MISSING_NAMESPACE_FAILURE_NAMES
 
-from yellowdog_cli.utils import sdk_models
-from yellowdog_cli.utils.spec_schema import (
+from yellowdog_cli.utils.specs import sdk_models
+from yellowdog_cli.utils.specs.schema import (
     FAMILY_COMMANDS,
     FULLY_QUALIFIED_PREFIX,
     UNSET_TOKEN,
@@ -830,8 +830,8 @@ def test_the_generator_loads_no_command_machinery():
     """
     code = (
         "import sys\n"
-        "import yellowdog_cli.utils.spec_schema, yellowdog_cli.utils.spec_properties,"
-        " yellowdog_cli.utils.sdk_models\n"
+        "import yellowdog_cli.utils.specs.schema, yellowdog_cli.utils.specs.properties,"
+        " yellowdog_cli.utils.specs.sdk_models\n"
         "banned = ['yellowdog_cli.utils.wrapper', 'yellowdog_cli.utils.args',"
         " 'yellowdog_cli.utils.printing', 'yellowdog_cli.create']\n"
         "print([m for m in banned if m in sys.modules])\n"

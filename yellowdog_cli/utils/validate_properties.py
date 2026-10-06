@@ -41,7 +41,7 @@ DEPRECATED_KEYS = [
 # The properties whose keys are the user's own (environment variable names,
 # variable names, tags), or are checked elsewhere (the task data entries):
 # their contents are not held to ALL_KEYS. tests/test_validate_properties.py
-# holds every free-form map in spec_properties.py to this list
+# holds every free-form map in specs/properties.py to this list
 EXCLUDED_KEYS = [
     ADD_ENVIRONMENT,
     ENV,

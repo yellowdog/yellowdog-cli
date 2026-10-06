@@ -112,7 +112,16 @@
 
 [tool.setuptools]
     include-package-data = false
-    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander", "yellowdog_cli.mcp", "yellowdog_cli.spec_data"]
+    packages = [
+        "yellowdog_cli",
+        "yellowdog_cli.utils",
+        "yellowdog_cli.utils.cloudwizard",
+        "yellowdog_cli.utils.dataclient",
+        "yellowdog_cli.utils.specs",
+        "yellowdog_cli.commander",
+        "yellowdog_cli.mcp",
+        "yellowdog_cli.spec_data",
+    ]
 
 [tool.setuptools.package-data]
     "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]

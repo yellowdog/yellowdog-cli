@@ -45,13 +45,13 @@ from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs.properties import (
     ALL_CONFIG_SECTIONS,
     CONFIG_SECTIONS,
     FLOAT_CAST,
     INT_CAST,
 )
-from yellowdog_cli.utils.spec_schema import (
+from yellowdog_cli.utils.specs.schema import (
     Family,
     SchemaGenerationError,
     compile_config_schema,
@@ -361,7 +361,7 @@ def _violations(validate: Callable[[Any], Any], document: Any) -> list[Violation
 MISPLACED_MESSAGE = "'{key}' is not read in this section"
 
 
-# A property the loader casts with int() or float() (spec_properties'
+# A property the loader casts with int() or float() (specs.properties'
 # INT_CAST, FLOAT_CAST) fails as a type list or as a pattern; either way what
 # it must be is a number of that kind
 def _worded(violation: Violation) -> Violation:

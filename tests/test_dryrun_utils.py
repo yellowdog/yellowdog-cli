@@ -120,7 +120,7 @@ def test_json_empty(json_mode, capsys):
 
 
 def test_entries_to_names_marks_dirs():
-    from yellowdog_cli.utils.dataclient_utils import entries_to_names
+    from yellowdog_cli.utils.dataclient.operations import entries_to_names
 
     entries = [
         {"Name": "file.txt", "IsDir": False},

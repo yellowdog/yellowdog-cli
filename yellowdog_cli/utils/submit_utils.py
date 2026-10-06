@@ -27,6 +27,7 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.dataclient.rclone import make_rclone, parse_rclone_config
 from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
@@ -63,7 +64,6 @@ from yellowdog_cli.utils.property_names import (
     TASK_TAG,
     TASKS,
 )
-from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (

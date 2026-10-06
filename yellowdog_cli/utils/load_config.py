@@ -55,8 +55,8 @@ from yellowdog_cli.utils.settings import (
     YD_URL,
     YD_URL_ALT,
 )
-from yellowdog_cli.utils.spec_schema import SchemaGenerationError
-from yellowdog_cli.utils.spec_validation import validate_config
+from yellowdog_cli.utils.specs.schema import SchemaGenerationError
+from yellowdog_cli.utils.specs.validation import validate_config
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variable_substitution import (

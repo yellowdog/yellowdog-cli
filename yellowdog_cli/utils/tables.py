@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, TypeVar
 from rich.markup import escape
 from tabulate import tabulate
 
-from yellowdog_cli.utils.cloudwizard_aws_types import AWSAvailabilityZone
+from yellowdog_cli.utils.cloudwizard.aws_types import AWSAvailabilityZone
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     MAX_LINES_COLOURED_FORMATTING,

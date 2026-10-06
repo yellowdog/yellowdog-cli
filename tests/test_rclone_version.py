@@ -6,7 +6,7 @@ order, parsing of `rclone --version` output, and not-installed handling.
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import yellowdog_cli.utils.rclone_version as rv
+import yellowdog_cli.utils.dataclient.rclone_version as rv
 
 
 def _run(stdout: str):

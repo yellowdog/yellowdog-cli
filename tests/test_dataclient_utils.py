@@ -1,5 +1,5 @@
 """
-Unit tests for yellowdog_cli.utils.dataclient_utils
+Unit tests for yellowdog_cli.utils.dataclient.operations
 """
 
 import json
@@ -14,16 +14,19 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.download as yd_download
-import yellowdog_cli.utils.dataclient_utils as dcu_module
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+import yellowdog_cli.utils.dataclient.operations as dcu_module
+import yellowdog_cli.utils.dataclient.rclone as rclone_utils_module
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.rclone_utils as rclone_utils_module
 import yellowdog_cli.utils.results as results_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.config_types import ConfigDataClient
-from yellowdog_cli.utils.dataclient_utils import resolve_remote_path, upload_directory
-from yellowdog_cli.utils.rclone_version import find_rclone
+from yellowdog_cli.utils.dataclient.operations import (
+    resolve_remote_path,
+    upload_directory,
+)
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 from yellowdog_cli.utils.results import reset_results
 from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
@@ -122,7 +125,7 @@ class TestResolveRemotePath:
         )
 
     def test_the_bucket_path_keeps_the_same_rule(self):
-        from yellowdog_cli.utils.dataclient_utils import resolve_bucket_path
+        from yellowdog_cli.utils.dataclient.operations import resolve_bucket_path
 
         assert resolve_bucket_path(self._config(bucket="/data/", prefix="p")) == (
             "myremote:/data"
@@ -196,7 +199,7 @@ class TestResolveRemotePathVariableSubstitution:
 
 class TestSplitGlobRemotePath:
     def test_glob_in_final_component(self):
-        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
         assert split_glob_remote_path("S3:bucket/prefix/xxx*") == (
             "S3:bucket/prefix/",
@@ -204,7 +207,7 @@ class TestSplitGlobRemotePath:
         )
 
     def test_glob_at_top_level(self):
-        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
         assert split_glob_remote_path("S3:xxx*") == ("S3:", "xxx*")
 
@@ -213,7 +216,7 @@ class TestSplitGlobRemotePath:
         ["S3:bucket/dir*/file.txt", "S3:buck?t/prefix/file*", "S3:a[1]/b/c*"],
     )
     def test_mid_path_glob_rejected(self, path):
-        from yellowdog_cli.utils.dataclient_utils import split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
         with pytest.raises(ValueError, match="final path component"):
             split_glob_remote_path(path)
@@ -630,7 +633,7 @@ class TestFailedTransfer:
 def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch):
     # From a working directory elsewhere: with the leading '/' stripped, the
     # bucket was taken relative to it
-    from yellowdog_cli.utils.dataclient_utils import upload_file
+    from yellowdog_cli.utils.dataclient.operations import upload_file
 
     bucket = tmp_path / "bucket"
     bucket.mkdir()

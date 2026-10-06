@@ -82,7 +82,7 @@ def test_a_missing_resource_type_names_no_internal_key(monkeypatch):
 
 
 def test_the_creation_order_names_every_resource_type_once():
-    from yellowdog_cli.utils.sdk_models import RESOURCE_TYPES
+    from yellowdog_cli.utils.specs.sdk_models import RESOURCE_TYPES
 
     order = load_resources.RESOURCE_CREATION_ORDER
     assert len(order) == len(set(order))
@@ -104,7 +104,7 @@ def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
     import importlib
     import sys
 
-    from yellowdog_cli.utils.sdk_models import RESOURCE_TYPES
+    from yellowdog_cli.utils.specs.sdk_models import RESOURCE_TYPES
 
     monkeypatch.setattr(sys, "argv", ["yd-create", "x.json"])
     module = importlib.import_module(f"yellowdog_cli.utils.{module_name}")

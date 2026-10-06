@@ -18,7 +18,7 @@ without any test noticing, since there would be nothing to check them against.
 The SDK-model knowledge this gate shares with the specification schemas -- which
 model each resource type builds (MODEL_FOR_RESOURCE, DYNAMIC, DYNAMIC_MODELS), the
 evidenced exclusions (SERVER_ASSIGNED_COVERAGE, NOT_SETTABLE, NOT_TESTED) and
-settable_properties() -- now lives in yellowdog_cli/utils/sdk_models.py, with the
+settable_properties() -- now lives in yellowdog_cli/utils/specs/sdk_models.py, with the
 reasoning behind each registry. It is re-exported here under its old names, so
 the corpus tests keep reading it from this module; the registries are the same
 objects, so a test mutating one here mutates what settable_properties() reads.
@@ -29,8 +29,8 @@ the nested-model walk behind models_in_scope(), and record_covered_properties().
 import dataclasses
 import typing
 
-from yellowdog_cli.utils import sdk_models
 from yellowdog_cli.utils.load_resources import RESOURCE_SOURCE_DIR
+from yellowdog_cli.utils.specs import sdk_models
 
 DYNAMIC = sdk_models.DYNAMIC
 MODEL_FOR_RESOURCE = sdk_models.MODEL_FOR_RESOURCE

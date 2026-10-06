@@ -13,7 +13,7 @@ import pytest
 
 import yellowdog_cli.version as yd_version
 from yellowdog_cli.utils import version_info
-from yellowdog_cli.utils.rclone_version import NOT_INSTALLED, UNKNOWN
+from yellowdog_cli.utils.dataclient.rclone_version import NOT_INSTALLED, UNKNOWN
 
 
 def _run(monkeypatch, capsys, *argv: str) -> tuple[str, int]:

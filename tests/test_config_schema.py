@@ -16,7 +16,7 @@ import pytest
 
 from yellowdog_cli.utils import load_config, output_settings
 from yellowdog_cli.utils import property_names as pn
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs.properties import (
     ALL_CONFIG_SECTIONS,
     CONFIG_COMMON,
     CONFIG_SECTIONS,
@@ -31,7 +31,7 @@ try:
 except ImportError:  # Python 3.10
     import tomli as tomllib
 
-from yellowdog_cli.utils.spec_schema import (
+from yellowdog_cli.utils.specs.schema import (
     Family,
     SchemaGenerationError,
     build_config_schema,
@@ -39,7 +39,7 @@ from yellowdog_cli.utils.spec_schema import (
     compile_config_schema,
     compile_schema,
 )
-from yellowdog_cli.utils.spec_validation import Violation, validate_config
+from yellowdog_cli.utils.specs.validation import Violation, validate_config
 
 TEMPLATE = Path(__file__).parent.parent / "config-template.toml"
 
@@ -270,7 +270,7 @@ class TestValidateConfig:
         ]
 
     def test_only_the_sections_the_file_has_are_compiled(self, monkeypatch):
-        from yellowdog_cli.utils import spec_validation
+        from yellowdog_cli.utils.specs import validation as spec_validation
 
         compiled = []
 

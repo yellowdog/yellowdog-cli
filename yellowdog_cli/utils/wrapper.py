@@ -36,7 +36,7 @@ from yellowdog_cli.utils.load_config import (
     load_config_common,
 )
 from yellowdog_cli.utils.printing import print_debug
-from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
+from yellowdog_cli.utils.specs.properties import ALL_CONFIG_SECTIONS
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient

@@ -30,6 +30,7 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.csv_data import (
     csv_expand_toml_tasks,
 )
+from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
@@ -116,14 +117,13 @@ from yellowdog_cli.utils.property_names import (
     WORKER_TAGS,
     WR_TAG,
 )
-from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.results import record_document, record_entity
-from yellowdog_cli.utils.spec_loading import (
+from yellowdog_cli.utils.specs.loading import (
     CsvExpansion,
     load_specification,
     refuse_file_options,
 )
-from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
     assemble_arguments,

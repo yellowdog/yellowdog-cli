@@ -1,6 +1,6 @@
 """
 The specification schemas, built when asked: the CLI's own properties from
-spec_properties.py, the SDK's models from the installed SDK's dataclasses,
+specs/properties.py, the SDK's models from the installed SDK's dataclasses,
 so a newer SDK is described the moment it is installed. Every annotation is
 mapped by annotation_schema()'s table or raises SchemaGenerationError naming
 the model and field -- nothing falls through to an open schema.
@@ -29,9 +29,8 @@ from functools import cache
 from typing import Any
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.utils import sdk_models
-from yellowdog_cli.utils.schema_cache import compile_validator
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs import sdk_models
+from yellowdog_cli.utils.specs.properties import (
     ALL_CONFIG_SECTIONS,
     COMPUTE_REQUIREMENT_SHELL,
     COMPUTE_SOURCE_SHELL,
@@ -46,6 +45,7 @@ from yellowdog_cli.utils.spec_properties import (
     load_descriptions,
     properties_at,
 )
+from yellowdog_cli.utils.specs.schema_cache import compile_validator
 
 DRAFT = "http://json-schema.org/draft-07/schema#"
 ID_BASE = "https://yellowdog.ai/schemas/yellowdog-cli/"
@@ -738,7 +738,7 @@ def _wrap_node(schema: Any, *, admit: bool = True) -> Any:
     if admit and not _admits_variable(schema):
         # Hoisted beside the 'if' for an editor, and the description kept on
         # the schema too, which is where a validation failure finds it to
-        # word the violation by (spec_validation._message()) -- except beside
+        # word the violation by (specs.validation._message()) -- except beside
         # a '$ref', where draft-07 ignores it and the $def words its own
         meta = {k: wrapped.pop(k) for k in _HOISTED if k in wrapped}
         if "description" in meta and "$ref" not in wrapped:
@@ -912,7 +912,7 @@ def build_schema(family: Family) -> dict[str, Any]:
 def compile_schema(family: Family) -> Callable[[Any], Any]:
     """
     The family's schema compiled by fastjsonschema, once per process, and
-    kept between processes by schema_cache.py.
+    kept between processes by specs/schema_cache.py.
     """
     return compile_validator(build_schema(family), family.value)
 
@@ -940,7 +940,7 @@ def build_config_schema(sections: frozenset[str]) -> dict[str, Any]:
 def compile_config_schema(sections: frozenset[str]) -> Callable[[Any], Any]:
     """
     build_config_schema(sections) compiled, once per process per subset,
-    and kept between processes by schema_cache.py.
+    and kept between processes by specs/schema_cache.py.
     """
     stem = (
         Family.CONFIG.value

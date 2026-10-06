@@ -20,9 +20,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rclone_api import Config, Rclone
 
+from yellowdog_cli.utils.dataclient.rclone_version import (
+    find_rclone,
+    rclone_version_line,
+)
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import print_info, print_simple
-from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version_line
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
 
 

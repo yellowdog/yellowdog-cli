@@ -15,7 +15,7 @@ import sys
 
 import pytest
 
-from yellowdog_cli.utils.rclone_version import find_rclone
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
 PROBE = """
 import atexit, json, sys

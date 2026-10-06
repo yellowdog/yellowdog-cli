@@ -2,7 +2,7 @@
 The typed registry of the CLI's own specification properties -- the ones no
 SDK dataclass describes: the Work Requirement dictionary, and the shells the
 Worker Pool, Compute Requirement, resource and Node Action files put around
-their SDK models. utils/spec_schema.py builds the schemas from it; tests/
+their SDK models. utils/specs/schema.py builds the schemas from it; tests/
 test_spec_properties.py holds it to README.md's dictionary table. A new
 Work Requirement property is added here and given a dictionary row, or the
 tests fail; its description is the row's, extracted by `make
@@ -484,7 +484,7 @@ def properties_at(level: Level) -> tuple[Property, ...]:
 # digits with '_' separators, and for float() a fraction, an exponent, 'inf',
 # 'infinity' or 'nan' in any case ('pattern' constrains only a string). Not
 # an 'anyOf', which fastjsonschema reports as 'cannot be validated by any
-# definition'; spec_validation.validate_config() words these failures itself
+# definition'; specs.validation.validate_config() words these failures itself
 _DIGITS = r"\d+(_\d+)*"
 INTEGER_PATTERN = rf"^\s*[+-]?{_DIGITS}\s*$"
 NUMERIC_PATTERN = (

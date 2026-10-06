@@ -842,8 +842,9 @@ class TestConfiguration:
         assert rows["Config schema"]["status"] == "SKIP"
 
     def test_config_schema_unbuildable_warns(self, monkeypatch):
-        from yellowdog_cli.utils import load_config, spec_validation
-        from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+        from yellowdog_cli.utils import load_config
+        from yellowdog_cli.utils.specs import validation as spec_validation
+        from yellowdog_cli.utils.specs.schema import SchemaGenerationError
 
         def fail(document, sections):
             raise SchemaGenerationError("Thing.field: unknown annotation")
@@ -889,7 +890,7 @@ class TestConfiguration:
         assert not [name for name in rows if name.startswith("Data client profile")]
 
     def test_named_remote_absent_from_rclone_config_fails(self, tmp_path):
-        from yellowdog_cli.utils.rclone_version import find_rclone
+        from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
         if find_rclone() is None:
             pytest.skip("rclone not installed")
@@ -1211,7 +1212,7 @@ class TestLive:
         The Remote reachable row, remote_stat answering from 'stats' (a
         path to its entry, None, or an exception to raise).
         """
-        import yellowdog_cli.utils.dataclient_utils as dcu
+        import yellowdog_cli.utils.dataclient.operations as dcu
 
         def stat(rclone, path):
             answer = stats[path]
@@ -1348,7 +1349,7 @@ class TestDataClientUnderTest:
 
     @pytest.fixture(autouse=True)
     def _needs_rclone(self):
-        from yellowdog_cli.utils.rclone_version import find_rclone
+        from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
         if find_rclone() is None:
             pytest.skip("rclone not installed")

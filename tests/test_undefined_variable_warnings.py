@@ -21,7 +21,7 @@ import pytest
 import yellowdog_cli.utils.load_config as lc_module
 import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.config_types import ConfigDataClient, ConfigWorkerPool
-from yellowdog_cli.utils.dataclient_utils import resolve_remote_path
+from yellowdog_cli.utils.dataclient.operations import resolve_remote_path
 from yellowdog_cli.utils.property_names import TASK_DATA_FILE, TASK_DATA_FILES
 from yellowdog_cli.utils.provision_utils import get_user_data_property
 from yellowdog_cli.utils.submit_utils import resolve_task_data
@@ -113,7 +113,7 @@ class TestWrappersCheckConfigValues:
         assert seen == [True]
 
     def test_dataclient_wrapper(self, monkeypatch):
-        import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+        import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 
         seen = self._run(dcw_module.dataclient_wrapper, monkeypatch)
         assert seen == [True]

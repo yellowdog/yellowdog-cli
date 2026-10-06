@@ -1,6 +1,6 @@
 """
 The run every wrapped command shares: main_wrapper (wrapper.py) and
-dataclient_wrapper (dataclient_wrapper.py) differ only in what they set up
+dataclient_wrapper (dataclient/wrapper.py) differ only in what they set up
 and tear down around the command, and in how an error is described, which
 they pass in. Once in one place, a fix to how a command is run, flushed and
 exited is made once.
@@ -27,7 +27,7 @@ from yellowdog_cli.utils.results import (
     flush_results,
     flush_results_after_failure,
 )
-from yellowdog_cli.utils.schema_cache import report_problems_to
+from yellowdog_cli.utils.specs.schema_cache import report_problems_to
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
 
 

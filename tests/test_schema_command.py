@@ -14,7 +14,7 @@ import fastjsonschema
 import pytest
 
 from yellowdog_cli.mcp.tools import build_tools
-from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.specs.schema import Family
 
 
 def _clean_env() -> dict[str, str]:

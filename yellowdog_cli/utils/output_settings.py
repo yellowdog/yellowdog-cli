@@ -4,7 +4,7 @@ How the CLI prints, prompts and selects, as the command line asks: quiet,
 file, stripped IDs, events as JSON, '--yes', interactive selection and the
 listing's sort and detail. The code that prints and asks -- printing.py,
 tables.py, interactive.py, results.py, event_printing.py, rclone's logging,
-spec_validation.py -- reads OUTPUT, rather than the parsed command line, so
+specs/validation.py -- reads OUTPUT, rather than the parsed command line, so
 that it can be used and tested without one.
 
 OUTPUT is one object, configured in place as a command starts

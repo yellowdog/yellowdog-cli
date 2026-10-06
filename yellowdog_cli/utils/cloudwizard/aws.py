@@ -8,13 +8,13 @@ from time import sleep
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from yellowdog_cli.utils.cloudwizard_aws_types import (
+from yellowdog_cli.utils.cloudwizard.aws_types import (
     AWSAccessKey,
     AWSAvailabilityZone,
     AWSSecurityGroup,
     AWSUser,
 )
-from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
+from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select

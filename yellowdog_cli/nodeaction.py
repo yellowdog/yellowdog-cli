@@ -68,8 +68,8 @@ from yellowdog_cli.utils.property_names import (
     NODE_WORKERS,
 )
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
-from yellowdog_cli.utils.spec_loading import load_specification
-from yellowdog_cli.utils.spec_schema import Family
+from yellowdog_cli.utils.specs.loading import load_specification
+from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.tables import (
     NODE_ACTION_QUEUE_HEADINGS,
     node_action_queue_table,

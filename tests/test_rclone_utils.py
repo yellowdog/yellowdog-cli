@@ -1,12 +1,12 @@
 """
-Unit tests for yellowdog_cli.utils.rclone_utils
+Unit tests for yellowdog_cli.utils.dataclient.rclone
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from yellowdog_cli.utils.rclone_utils import (
+from yellowdog_cli.utils.dataclient.rclone import (
     is_inline_remote,
     parse_rclone_config,
     shown_remote,
@@ -133,7 +133,7 @@ class TestMakeRcloneForCopy:
         Run make_rclone_for_copy with make_rclone mocked out.
         Returns (src_name, dst_name, config_text_passed_to_make_rclone).
         """
-        import yellowdog_cli.utils.rclone_utils as rcu
+        import yellowdog_cli.utils.dataclient.rclone as rcu
 
         captured: dict = {}
 
@@ -299,7 +299,7 @@ class TestParametersReadAsRcloneReadsThem:
 
 class TestNoRcloneConfiguration:
     def test_a_missing_configuration_says_where_it_looked(self, monkeypatch, tmp_path):
-        from yellowdog_cli.utils import rclone_utils
+        from yellowdog_cli.utils.dataclient import rclone as rclone_utils
 
         monkeypatch.delenv("RCLONE_CONFIG", raising=False)
         monkeypatch.setattr(rclone_utils.Path, "home", lambda: tmp_path)
@@ -322,7 +322,7 @@ def test_rclone_api_logging_is_kept_off_stdout():
     script = (
         "import logging, sys; sys.argv = ['yd-ls']\n"
         "import rclone_api\n"
-        "from yellowdog_cli.utils.rclone_utils import _keep_logging_off_stdout\n"
+        "from yellowdog_cli.utils.dataclient.rclone import _keep_logging_off_stdout\n"
         "_keep_logging_off_stdout()\n"
         "logging.getLogger('rclone_api.install').warning('Downloading rclone')\n"
     )

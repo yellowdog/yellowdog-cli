@@ -19,7 +19,7 @@ from yellowdog_cli.utils.property_names import (
     TASK_LEVEL_TIMEOUT,
     TASK_TYPES,
 )
-from yellowdog_cli.utils.spec_properties import WORK_REQUIREMENT_PROPERTIES
+from yellowdog_cli.utils.specs.properties import WORK_REQUIREMENT_PROPERTIES
 from yellowdog_cli.utils.type_check import check_int, check_list
 
 PACKAGE = Path(__file__).resolve().parent.parent / "yellowdog_cli"

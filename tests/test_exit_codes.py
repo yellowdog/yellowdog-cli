@@ -22,7 +22,7 @@ from yellowdog_client.model.exceptions.server_error_exception import (
 )
 
 import yellowdog_cli.utils.command_runner as runner_module
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.exit_codes import ExitCode, classify

@@ -11,7 +11,7 @@ import sys
 import pytest
 
 from yellowdog_cli.mcp.runner import command_argv, parse_event_documents, run
-from yellowdog_cli.utils.rclone_version import find_rclone
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
 
 def _clean_env() -> dict[str, str]:

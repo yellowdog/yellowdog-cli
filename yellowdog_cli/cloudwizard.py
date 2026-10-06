@@ -4,6 +4,10 @@
 Cloud Wizard: cloud provider and YellowDog account setup.
 """
 
+# CommonCloudConfig is imported for type checking only, so annotations must
+# not be evaluated as the module loads (Python before 3.14 evaluates them)
+from __future__ import annotations
+
 import sys
 from typing import TYPE_CHECKING
 
@@ -15,7 +19,7 @@ from yellowdog_cli.utils.printing import print_error, print_info
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 if TYPE_CHECKING:
-    from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
+    from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig
 
 
 @main_wrapper
@@ -30,7 +34,7 @@ def main(ctx: RunContext):
     provider = cloud_provider_of(ctx.args.cloud_provider)  # type: ignore[arg-type]
     print_info(f"YellowDog automated cloud provider setup/teardown for '{provider}'")
     if provider == "AWS":
-        from yellowdog_cli.utils.cloudwizard_aws import AWSConfig
+        from yellowdog_cli.utils.cloudwizard.aws import AWSConfig
 
         cloud_provider_config = AWSConfig(
             ctx=ctx,
@@ -39,7 +43,7 @@ def main(ctx: RunContext):
             instance_type=ctx.args.instance_type,  # type: ignore[arg-type]
         )
     elif provider == "GCP":
-        from yellowdog_cli.utils.cloudwizard_gcp import GCPConfig
+        from yellowdog_cli.utils.cloudwizard.gcp import GCPConfig
 
         cloud_provider_config = GCPConfig(
             service_account_file=ctx.args.credentials_file,  # type: ignore[arg-type]
@@ -47,7 +51,7 @@ def main(ctx: RunContext):
             instance_type=ctx.args.instance_type,  # type: ignore[arg-type]
         )
     else:
-        from yellowdog_cli.utils.cloudwizard_azure import AzureConfig
+        from yellowdog_cli.utils.cloudwizard.azure import AzureConfig
 
         cloud_provider_config = AzureConfig(
             ctx=ctx,
@@ -68,7 +72,7 @@ def run_operation(
     Run one Cloud Wizard operation on a provider's configuration, and exit 1
     if it reported an error.
     """
-    from yellowdog_cli.utils.cloudwizard_common import errors_reported
+    from yellowdog_cli.utils.cloudwizard.common import errors_reported
 
     if operation == "setup":
         try:

@@ -5,7 +5,7 @@ Loading a specification file, for the commands that take one: yd-submit
 load_specification() chooses the loader by the file's extension (JSON or
 Jsonnet, and TOML where the command takes it), with variable substitution
 and, for yd-submit, CSV Task expansion, and then checks the document against
-its family's schema (spec_validation.check_specification()), so that every
+its family's schema (specs.validation.check_specification()), so that every
 command loads, substitutes and checks a file the same way. yd-create and
 yd-remove, which take several files of mixed resources, have their own
 loader (load_resources.py).
@@ -25,8 +25,8 @@ from yellowdog_cli.utils.file_substitution import (
     load_toml_file_with_variable_substitutions,
 )
 from yellowdog_cli.utils.printing import print_info
-from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
+from yellowdog_cli.utils.specs.schema import Family
+from yellowdog_cli.utils.specs.validation import check_specification
 
 JSON_EXTENSION = ".json"
 JSONNET_EXTENSION = ".jsonnet"

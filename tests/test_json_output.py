@@ -1988,12 +1988,12 @@ import yellowdog_cli.help as yd_help  # noqa: E402
 import yellowdog_cli.ls as yd_ls  # noqa: E402
 import yellowdog_cli.nodeaction as yd_nodeaction  # noqa: E402
 import yellowdog_cli.upload as yd_upload  # noqa: E402
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module  # noqa: E402
-import yellowdog_cli.utils.rclone_utils as rclone_utils_module  # noqa: E402
+import yellowdog_cli.utils.dataclient.rclone as rclone_utils_module  # noqa: E402
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module  # noqa: E402
 import yellowdog_cli.version as yd_version  # noqa: E402
 import yellowdog_cli.wait as yd_wait  # noqa: E402
 from yellowdog_cli.utils.config_types import ConfigDataClient  # noqa: E402
-from yellowdog_cli.utils.rclone_version import find_rclone  # noqa: E402
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone  # noqa: E402
 from yellowdog_cli.utils.results import rows_as_objects  # noqa: E402
 
 
@@ -2545,7 +2545,7 @@ class TestUpload:
         assert code == 1
 
     def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
-        import yellowdog_cli.utils.dataclient_utils as dcu
+        import yellowdog_cli.utils.dataclient.operations as dcu
 
         (remote / "one.txt").write_text("1")
         (remote / "two.txt").write_text("2")
@@ -3055,7 +3055,7 @@ class TestDelete:
         assert code == 0
 
     def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
-        import yellowdog_cli.utils.dataclient_utils as dcu
+        import yellowdog_cli.utils.dataclient.operations as dcu
 
         real = dcu.delete_item
 
@@ -3496,7 +3496,7 @@ class TestHelp:
 
 class TestEntryToName:
     def test_a_directory_is_marked(self):
-        from yellowdog_cli.utils.dataclient_utils import entry_to_name
+        from yellowdog_cli.utils.dataclient.operations import entry_to_name
 
         assert entry_to_name({"Name": "file.txt", "IsDir": False}) == "file.txt"
         assert entry_to_name({"Name": "subdir", "IsDir": True}) == "subdir/"
@@ -3504,7 +3504,7 @@ class TestEntryToName:
 
 class TestJoinRemote:
     def test_a_bare_remote_gets_no_slash(self):
-        from yellowdog_cli.utils.dataclient_utils import _join_remote
+        from yellowdog_cli.utils.dataclient.operations import _join_remote
 
         assert _join_remote("S3:", "x") == "S3:x"
         assert _join_remote("S3:b/", "x") == "S3:b/x"

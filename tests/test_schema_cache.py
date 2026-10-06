@@ -1,5 +1,5 @@
 """
-The compiled validator cache (yellowdog_cli/utils/schema_cache.py): a
+The compiled validator cache (yellowdog_cli/utils/specs/schema_cache.py): a
 validator is stored on a miss and loaded on a hit, the same validator either
 way; a changed schema misses, and the stem keeps its CACHE_KEEP most
 recently used files, so two environments sharing the cache do not delete
@@ -18,8 +18,9 @@ import sys
 import fastjsonschema
 import pytest
 
-from yellowdog_cli.utils import schema_cache
-from yellowdog_cli.utils.schema_cache import (
+from yellowdog_cli.utils.specs import schema_cache
+from yellowdog_cli.utils.specs.schema import Family, build_schema
+from yellowdog_cli.utils.specs.schema_cache import (
     CACHE_DIRECTORY_NAME,
     CACHE_KEEP,
     CACHE_SUFFIX,
@@ -28,7 +29,6 @@ from yellowdog_cli.utils.schema_cache import (
     compile_validator,
     report_problems_to,
 )
-from yellowdog_cli.utils.spec_schema import Family, build_schema
 
 SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema#",

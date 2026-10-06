@@ -7,6 +7,7 @@ Command to report the processed values of variable substitutions.
 from dataclasses import dataclass, field
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.dataclient.rclone import is_inline_remote, shown_remote
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import print_json, print_warning
 from yellowdog_cli.utils.property_names import (
@@ -15,7 +16,6 @@ from yellowdog_cli.utils.property_names import (
     KEY,
     SECRET,
 )
-from yellowdog_cli.utils.rclone_utils import is_inline_remote, shown_remote
 from yellowdog_cli.utils.variable_substitution import (
     explain_unset_variable,
     get_all_user_variables,

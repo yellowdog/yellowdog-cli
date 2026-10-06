@@ -1,5 +1,5 @@
 """
-utils/spec_validation.py: every violation in a document is reported with
+utils/specs/validation.py: every violation in a document is reported with
 its JSON path; the five commands warn and proceed on an ordinary run and stop
 under --validate; under --json the warnings go to stderr and --validate's
 document is the array of violations. A '$schema' key is accepted and removed
@@ -27,8 +27,8 @@ from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import ALL_KEYS, SCHEMA_KEY
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.spec_schema import Family, compile_schema
-from yellowdog_cli.utils.spec_validation import (
+from yellowdog_cli.utils.specs.schema import Family, compile_schema
+from yellowdog_cli.utils.specs.validation import (
     DOCUMENT_PATH,
     Violation,
     strip_schema_key,
@@ -154,7 +154,7 @@ class TestValidateSpecification:
         ]
 
     def test_the_limit_says_there_are_more(self, monkeypatch):
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         monkeypatch.setattr(spec_validation_module, "MAX_VIOLATIONS", 2)
         doc = {"taskGroups": [{"tasks": [{"taskType": i} for i in range(5)]}]}
@@ -232,7 +232,7 @@ class TestWarnings:
     ):
         import fastjsonschema
 
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         def refuse(family):
             raise fastjsonschema.JsonSchemaDefinitionException("bad definition")
@@ -249,7 +249,7 @@ class TestWarnings:
     def test_a_fault_in_the_check_is_one_warning_not_a_refusal(
         self, args, capsys, monkeypatch
     ):
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         def fault(family, document, source):
             raise KeyError("a repair bug")
@@ -261,7 +261,7 @@ class TestWarnings:
         assert "cannot check 'wr.json'" in out and "KeyError" in out
 
     def test_under_debug_a_fault_in_the_check_is_raised(self, args, monkeypatch):
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         def fault(family, document, source):
             raise KeyError("a repair bug")

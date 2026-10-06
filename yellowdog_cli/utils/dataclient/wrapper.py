@@ -14,7 +14,7 @@ from typing import Any
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.command_runner import prepare_run, run_command
 from yellowdog_cli.utils.context import DataClientContext
-from yellowdog_cli.utils.spec_properties import DATA_CLIENT_CONFIG_SECTIONS
+from yellowdog_cli.utils.specs.properties import DATA_CLIENT_CONFIG_SECTIONS
 
 
 def dataclient_wrapper(func: Callable[..., Any]) -> Callable[[], None]:

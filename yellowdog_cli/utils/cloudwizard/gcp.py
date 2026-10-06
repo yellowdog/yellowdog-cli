@@ -6,7 +6,7 @@ from google.cloud import compute_v1
 from google.oauth2 import service_account
 from google.oauth2.service_account import Credentials
 
-from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
+from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import select

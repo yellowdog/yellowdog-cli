@@ -30,7 +30,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.nodeaction as na_module
-import yellowdog_cli.utils.spec_loading as spec_loading_module
+import yellowdog_cli.utils.specs.loading as spec_loading_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.nodeaction import (
     _load_spec,

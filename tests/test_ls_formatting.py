@@ -6,7 +6,7 @@ functions in yd-ls.
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import yellowdog_cli.utils.dataclient_wrapper as dataclient_wrapper_module
+import yellowdog_cli.utils.dataclient.wrapper as dataclient_wrapper_module
 from yellowdog_cli.ls import _find_base_prefix, _print_listing
 from yellowdog_cli.utils.context import DataClientContext
 
@@ -43,7 +43,7 @@ def _printed_lines(listing, recursive: bool = False, long: bool = False) -> list
     """
     with (
         patch("yellowdog_cli.ls.print_simple") as mock,
-        patch("yellowdog_cli.utils.dataclient_wrapper.ARGS_PARSER") as mock_args,
+        patch("yellowdog_cli.utils.dataclient.wrapper.ARGS_PARSER") as mock_args,
     ):
         mock_args.long_listing = long
         _print_listing(_dc_ctx(), listing, recursive=recursive)

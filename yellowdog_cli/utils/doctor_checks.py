@@ -1,7 +1,7 @@
 """
 yd-doctor's checks: the model, the runner, and one function per check.
 Nothing here prints; doctor.py renders. The modules that load the
-configuration (load_config and dataclient_utils) are imported inside the
+configuration (load_config and dataclient.operations) are imported inside the
 checks that need them, never at module level: loading it exits on a broken
 configuration, which check_config_loads() catches as its diagnosis. wrapper
 is never imported at all, since its CONFIG_COMMON is a strict load and its
@@ -37,6 +37,8 @@ from yellowdog_cli.utils.check_imports import (
     check_jsonnet_import,
     check_mcp_imports,
 )
+from yellowdog_cli.utils.dataclient.rclone import shown_remote
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.property_names import (
@@ -49,8 +51,6 @@ from yellowdog_cli.utils.property_names import (
     SECRET,
     URL,
 )
-from yellowdog_cli.utils.rclone_utils import shown_remote
-from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.settings import (
     PYPI_PROJECT_URL,
     PYTHON_MAX_TESTED_VERSION,
@@ -506,9 +506,10 @@ def check_config_schema(ctx: Context) -> Result:
     """
     import fastjsonschema
 
-    from yellowdog_cli.utils import load_config, spec_validation
-    from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
-    from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+    from yellowdog_cli.utils import load_config
+    from yellowdog_cli.utils.specs import validation as spec_validation
+    from yellowdog_cli.utils.specs.properties import ALL_CONFIG_SECTIONS
+    from yellowdog_cli.utils.specs.schema import SchemaGenerationError
 
     document = load_config.config_as_written()
     if document is None:
@@ -660,7 +661,7 @@ def check_tag_is_a_legal_name(ctx: Context) -> Result:
     return Result(Status.OK, tag)
 
 
-# shown_remote() lives in rclone_utils.py: yd-variables renders an inline
+# shown_remote() lives in dataclient/rclone.py: yd-variables renders an inline
 # remote the same way
 
 
@@ -686,7 +687,10 @@ def _profile_remedy(name: str, message: str) -> str:
 
 def _profile_check(name: str) -> Callable[[Context], Result]:
     def run(ctx: Context) -> Result:
-        from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
+        from yellowdog_cli.utils.dataclient.rclone import (
+            make_rclone,
+            parse_rclone_config,
+        )
 
         profile = ctx.profiles.get(name)
         if profile is None:
@@ -877,7 +881,7 @@ def check_namespace_granted(ctx: Context) -> Result:
 
 
 def _rclone_for_config(config: Any) -> tuple[str, Any]:
-    from yellowdog_cli.utils.dataclient_utils import _rclone_for_config as real
+    from yellowdog_cli.utils.dataclient.operations import _rclone_for_config as real
 
     return real(config)
 
@@ -890,7 +894,7 @@ def check_data_client_remote(ctx: Context) -> Result:
     although every command would work. A prefix not created yet is OK:
     the first upload creates it.
     """
-    from yellowdog_cli.utils.dataclient_utils import (
+    from yellowdog_cli.utils.dataclient.operations import (
         remote_stat,
         resolve_bucket_path,
         resolve_remote_path,
