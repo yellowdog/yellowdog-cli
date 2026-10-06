@@ -238,10 +238,11 @@ class ConfigDiscovery:
 
         The viewport repaints are scheduled with update() rather than forced
         with repaint(): callers reach this immediately after _parse_yd_config
-        has run a nested event loop, and forcing a synchronous paint of a text
-        widget from there is what appears to make macOS log bursts of
-        'TSMSendMessageToUIServer ... FAILED(-1)'. Control returns to the event
-        loop directly afterwards, so the placeholders still appear at once.
+        has run a nested event loop, and control returns to the event loop
+        directly afterwards, so the placeholders still appear at once. (This
+        was once thought to cause macOS's 'TSMSendMessageToUIServer ...
+        FAILED(-1)' lines; it did not stop them, and stderr_filter.py drops
+        them instead.)
         It has to be the viewport, not the widget: QPlainTextEdit is a scroll
         area, and the placeholder text is painted by its viewport.
         """

@@ -82,6 +82,7 @@ Note that `_build_destructive_dialog` returns a dialog whose buttons are *not* w
 │   ├── output_pane.py           # OutputPane: the output window, its filter bar, right-click menu and process chooser
 │   ├── output_model.py          # OutputRun, OutputEntry, filter_description(), block_count(), LineBuffer, COMMANDER_RUN, message_prefix(); Qt-free
 │   ├── host.py                  # MACOS/LINUX/WINDOWS, decided once at import; any other platform exits; shell_command(), the command box's shell by full path; cli_program(), a 'yd-*' console script run as 'sys.executable -m <its entry point's module>' (so 'yd-commander' is yellowdog_cli.commander.launcher); CHILD_ENVIRONMENT (PYTHONIOENCODING=utf-8) for every child; Qt-free
+│   ├── stderr_filter.py         # install_stderr_filter(), run by run_app() on macOS: fd 2 through a pipe and a thread dropping the Text Services Manager's 'TSMSendMessageToUIServer ... FAILED(-1)' lines, which bypass Qt's logging; faulthandler on the real stderr, an atexit drain; Qt-free
 │   ├── check_indicator.py       # The macOS 26 check-indicator probe and CheckIndicatorPlacement correction
 │   ├── elision.py               # elide_path(), elide_middle(), elide_path_to_fit() (the config label's path, fitted to a width the caller measures); Qt-free
 │   ├── help_viewer.py           # HelpDialog: the Help button's modeless window, showing this package's README.md via build_help_document(), which corrects Qt's Markdown import (heading anchors, code and heading spacing, a tight table of contents, screenshot dropped)

@@ -75,6 +75,7 @@ from yellowdog_cli.commander.output_model import COMMANDER_RUN
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.stderr_filter import install_stderr_filter
 from yellowdog_cli.commander.window_base import (
     CWD,
     UNDECORATED_YD_COMMANDS,
@@ -991,6 +992,8 @@ def run_app(settings: StartupSettings | None = None):
         if MACOS:
             # Silence macOS / Qt platform plugin system warnings
             os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
+            # And the Text Services Manager's, which bypass Qt's logging
+            install_stderr_filter()
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)
