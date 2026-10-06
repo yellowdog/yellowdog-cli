@@ -1,5 +1,5 @@
 """
-yd-remove (remove.py, and the run it shares with yd-create in
+yd-remove (utils/resource_removal.py, and the run it shares with yd-create in
 utils/resource_processing.py): the behaviour its review changed. A run exits
 with its failures' shared code and stops at a session failure, each failure
 printed once naming the resource; '--ids' is checked as it is parsed, each
@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 from requests import HTTPError, Response
 
-import yellowdog_cli.remove as yd_remove
+import yellowdog_cli.utils.resource_removal as yd_remove
 from yellowdog_cli.utils import resource_processing
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
@@ -49,7 +49,7 @@ def env(monkeypatch):
     args = SimpleNamespace(
         ids=False, resource_specifications=[], match_allowances_by_description=False
     )
-    monkeypatch.setattr(yd_remove, "ARGS_PARSER", args)
+    monkeypatch.setattr(yd_remove, "_OPTIONS", args)
     monkeypatch.setattr(
         yd_remove,
         "CONFIG_COMMON",
@@ -142,10 +142,8 @@ def test_every_removable_type_has_a_removal(env):
 
 
 def test_a_repeated_id_is_removed_once(env):
-    env.args.ids = True
-    env.args.resource_specifications = [GROUP_ID, GROUP_ID]
     env.client.account_client.get_group.return_value = SimpleNamespace(name="g")
-    yd_remove.remove_resources()
+    yd_remove.remove_resources_by_id([GROUP_ID, GROUP_ID])
     env.client.account_client.delete_group.assert_called_once_with(GROUP_ID)
     assert env.records == [
         {"resource": "Group", "name": "g", "id": GROUP_ID, "action": "removed"}
@@ -153,11 +151,9 @@ def test_a_repeated_id_is_removed_once(env):
 
 
 def test_an_id_that_does_not_exist_is_not_found_before_anything_is_asked(env):
-    env.args.ids = True
-    env.args.resource_specifications = [GROUP_ID]
     env.client.account_client.get_group.side_effect = _http_error(404)
     with pytest.raises(ReportedFailure) as raised:
-        yd_remove.remove_resources()
+        yd_remove.remove_resources_by_id([GROUP_ID])
     assert classify(raised.value) == ExitCode.NOT_FOUND
     assert env.asked == []
     assert env.records[0]["error"] == f"Cannot find Group {GROUP_ID}"

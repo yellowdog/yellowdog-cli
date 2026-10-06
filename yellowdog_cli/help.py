@@ -18,7 +18,7 @@ from yellowdog_cli.utils.check_imports import EXTRA_PROBES
 from yellowdog_cli.utils.command_registry import COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.settings import DEFAULT_THEME, JSON_INDENT
-from yellowdog_cli.version import docs_url
+from yellowdog_cli.utils.version_info import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
 # table's content, and a note -- the extra a command needs -- dimmed so the

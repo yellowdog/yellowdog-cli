@@ -61,7 +61,7 @@ class TestLookupByName:
 
 @pytest.fixture
 def create_module():
-    import yellowdog_cli.create as create_module
+    import yellowdog_cli.utils.resource_creation as create_module
 
     return create_module
 
@@ -70,7 +70,7 @@ def _run_create(create_module, client, confirm: bool, resource: dict, capsys):
     args = MagicMock(quiet=False, show_keyring_passwords=False)
     with (
         patch.object(create_module, "CLIENT", client),
-        patch.object(create_module, "ARGS_PARSER", args),
+        patch.object(create_module, "_OPTIONS", args),
         patch.object(create_module, "confirmed", lambda _: confirm),
     ):
         create_module.create_keyring(resource)
@@ -148,7 +148,7 @@ class TestCreateUpdatesInPlace:
 
 @pytest.fixture
 def remove_module():
-    import yellowdog_cli.remove as remove_module
+    import yellowdog_cli.utils.resource_removal as remove_module
 
     return remove_module
 

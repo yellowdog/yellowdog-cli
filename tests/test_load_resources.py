@@ -92,7 +92,10 @@ def test_the_creation_order_names_every_resource_type_once():
 
 @pytest.mark.parametrize(
     "module_name, dispatch",
-    [("create", "_create_resource"), ("remove", "_remove_resource")],
+    [
+        ("resource_creation", "_create_resource"),
+        ("resource_removal", "_remove_resource"),
+    ],
 )
 def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
     """
@@ -104,8 +107,8 @@ def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
 
     from yellowdog_cli.utils.sdk_models import RESOURCE_TYPES
 
-    monkeypatch.setattr(sys, "argv", [f"yd-{module_name}", "x.json"])
-    module = importlib.import_module(f"yellowdog_cli.{module_name}")
+    monkeypatch.setattr(sys, "argv", ["yd-create", "x.json"])
+    module = importlib.import_module(f"yellowdog_cli.utils.{module_name}")
     handled: list[str] = []
     for name in dir(module):
         if name.startswith(("create_", "remove_", "update_")) and name not in (
@@ -120,13 +123,13 @@ def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
     run = getattr(module, dispatch)
     for resource_type in RESOURCE_TYPES:
         before = len(handled)
-        if module_name == "create":
+        if module_name == "resource_creation":
             run(resource_type, {}, None, False)
         else:
             run(resource_type, {})
         assert len(handled) == before + 1, resource_type
     with pytest.raises(ValueError, match="Unknown resource type"):
-        if module_name == "create":
+        if module_name == "resource_creation":
             run("NoSuchType", {}, None, False)
         else:
             run("NoSuchType", {})

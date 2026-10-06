@@ -57,7 +57,7 @@ from yellowdog_cli.utils.settings import (
     YD_DATA_CLIENT,
     ExitCode,
 )
-from yellowdog_cli.version import sdk_version
+from yellowdog_cli.utils.version_info import sdk_version
 
 
 class Status(Enum):

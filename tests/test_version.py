@@ -12,6 +12,7 @@ import sys
 import pytest
 
 import yellowdog_cli.version as yd_version
+from yellowdog_cli.utils import version_info
 from yellowdog_cli.utils.rclone_version import NOT_INSTALLED, UNKNOWN
 
 
@@ -70,6 +71,6 @@ def test_debug_with_a_single_version_flag_is_refused(monkeypatch, capsys):
     [("1.2.3", "v1.2.3"), ("1.2.3.dev4", "main"), ("1.2.3rc1", "main")],
 )
 def test_the_docs_link(version, ref):
-    assert yd_version.docs_url(version) == (
+    assert version_info.docs_url(version) == (
         f"https://github.com/yellowdog/yellowdog-cli/blob/{ref}/README.md"
     )

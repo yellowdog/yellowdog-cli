@@ -326,7 +326,7 @@ def test_allowance_natural_language_date_is_parsed_before_the_model_is_built():
 # lookups, orthogonal to the dispatch and the pops this test is about. Nothing
 # else is faked -- create_resources(), the dispatch, the pops, _get_model_object
 # and print_json are all the real ones -- and in-process needs no config file or
-# credentials beyond what importing yellowdog_cli.create already requires of
+# credentials beyond what importing utils/resource_creation.py already requires of
 # every test in this module.
 _DRY_RUN_FAKE_CST_ID = "ydid:cst:000000:00000000-0000-0000-0000-000000000000"
 _DRY_RUN_FAKE_CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
@@ -355,13 +355,11 @@ _DRY_RUN_EXPECTED_FAILURES: dict[str, frozenset[str]] = {
 @pytest.fixture
 def dry_run_create():
     """
-    create.create_resources, in dry-run mode, with only the three name->ID
+    resource_creation.create_resources, in dry-run mode, with only the three name->ID
     platform lookups stubbed (see this section's own comment for why those three
-    and nothing else). Every patch is undone afterwards, including the dry-run
-    flag, which does not exist on the argparse namespace under pytest at all.
+    and nothing else). Every patch is undone afterwards.
     """
-    from yellowdog_cli import create
-    from yellowdog_cli.utils.args import ARGS_PARSER
+    from yellowdog_cli.utils import resource_creation as create
 
     def _identity_image(client, image_name_or_id, **kwargs):
         return image_name_or_id
@@ -376,19 +374,13 @@ def dry_run_create():
         ),
     }
     originals = {name: getattr(create, name) for name in patches}
-    had_dry_run = hasattr(ARGS_PARSER.args, "dry_run")
-    original_dry_run = getattr(ARGS_PARSER.args, "dry_run", None)
-
     for name, replacement in patches.items():
         setattr(create, name, replacement)
-    ARGS_PARSER.args.dry_run = True
     try:
-        yield create.create_resources
+        yield lambda resources: create.create_resources(
+            resources, create.CreateOptions(dry_run=True)
+        )
     finally:
-        if had_dry_run:
-            ARGS_PARSER.args.dry_run = original_dry_run
-        else:
-            delattr(ARGS_PARSER.args, "dry_run")
         for name, original in originals.items():
             setattr(create, name, original)
 

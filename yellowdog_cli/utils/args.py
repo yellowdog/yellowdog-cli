@@ -12,7 +12,7 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
 )
-from yellowdog_cli.version import DOCS_URL
+from yellowdog_cli.utils.version_info import DOCS_URL
 
 
 def docs():

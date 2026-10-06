@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import yellowdog_cli.create as create_module
-import yellowdog_cli.remove as remove_module
+import yellowdog_cli.utils.resource_creation as create_module
+import yellowdog_cli.utils.resource_removal as remove_module
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_APP,
     TYPE_CRT,
@@ -58,8 +58,8 @@ def client() -> MagicMock:
 def _confirm_everything(monkeypatch):
     monkeypatch.setattr(create_module, "confirmed", lambda _: True)
     monkeypatch.setattr(remove_module, "confirmed", lambda _: True)
-    monkeypatch.setattr(create_module, "ARGS_PARSER", _args())
-    monkeypatch.setattr(remove_module, "ARGS_PARSER", _args())
+    monkeypatch.setattr(create_module, "_OPTIONS", _args())
+    monkeypatch.setattr(remove_module, "_OPTIONS", _args())
 
 
 # ---------------------------------------------------------------------------

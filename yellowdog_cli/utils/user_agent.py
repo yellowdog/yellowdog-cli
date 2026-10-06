@@ -26,7 +26,7 @@ client is built (the PAC file's fetch).
 import requests.utils
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.version import sdk_version
+from yellowdog_cli.utils.version_info import sdk_version
 
 # Captured once, at import: the original requests User-Agent (requests/urllib3
 # version), preserved as a suffix on both flavours below.

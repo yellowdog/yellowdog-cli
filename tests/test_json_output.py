@@ -117,7 +117,9 @@ def run(monkeypatch, capsys):
             wrapper_module,
             *also,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A library module (utils/resource_creation.py) reads no ARGS_PARSER
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(module, "CLIENT", client)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         if hasattr(module, "CONFIG_COMMON"):
@@ -1375,11 +1377,12 @@ def run_create(run, monkeypatch):
     run_create(resources, existing_keyring=None, client=None, **args): drive
     yd-create's main() over 'resources', with the Keyring lookup patched.
     """
-    import yellowdog_cli.create as yd_create
+    import yellowdog_cli.create as create_command
+    import yellowdog_cli.utils.resource_creation as yd_create
 
     def _run(resources, existing_keyring=None, client=None, **values):
         monkeypatch.setattr(
-            yd_create, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda **k: resources
         )
         monkeypatch.setattr(
             yd_create, "get_keyring_summary_by_name", lambda *a: existing_keyring
@@ -1394,7 +1397,13 @@ def run_create(run, monkeypatch):
             )
             # No existing Namespace Policy
             client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
-        return run(yd_create, client=client, **{**_CREATOR_DEFAULTS, **values})
+        return run(
+            yd_create,
+            main_module=create_command,
+            client=client,
+            also=(create_command,),
+            **{**_CREATOR_DEFAULTS, **values},
+        )
 
     return _run
 
@@ -1419,18 +1428,25 @@ class TestCreate:
         assert out == [_resource("NamespacePolicy", "ns1", None, "updated")]
 
     def test_declined_update_is_skipped(self, run, monkeypatch):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.resource_creation as yd_create
 
         resources = _keyring_and_policy()[:1]
         monkeypatch.setattr(
-            yd_create, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda **k: resources
         )
         monkeypatch.setattr(
             yd_create,
             "get_keyring_summary_by_name",
             lambda *a: SimpleNamespace(id=KEYRING_ID),
         )
-        out, _, client = run(yd_create, confirm=False, **_CREATOR_DEFAULTS)
+        out, _, client = run(
+            yd_create,
+            main_module=create_command,
+            confirm=False,
+            also=(create_command,),
+            **_CREATOR_DEFAULTS,
+        )
         assert out == [_resource("Keyring", "kr", KEYRING_ID, "skipped")]
         client.keyring_client.update_keyring.assert_not_called()
 
@@ -1524,8 +1540,9 @@ class TestCreate:
         client.compute_client.add_compute_requirement_template.assert_not_called()
 
     def test_jsonnet_dry_run_is_an_array_of_files(self, run, monkeypatch, tmp_path):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
         import yellowdog_cli.utils.load_resources as load_resources_module
+        import yellowdog_cli.utils.resource_creation as yd_create
         import yellowdog_cli.utils.variable_substitution as variables_module
         from yellowdog_cli.utils.check_imports import check_jsonnet_import
 
@@ -1540,7 +1557,8 @@ class TestCreate:
             files.append(str(path))
         out, _, _ = run(
             yd_create,
-            also=(load_resources_module, variables_module),
+            main_module=create_command,
+            also=(load_resources_module, variables_module, create_command),
             **{
                 **_CREATOR_DEFAULTS,
                 "jsonnet_dry_run": True,
@@ -1556,11 +1574,14 @@ class TestCreate:
 class TestRemove:
     @pytest.fixture()
     def run_remove(self, run, monkeypatch):
-        import yellowdog_cli.remove as yd_remove
+        import yellowdog_cli.remove as remove_command
+        import yellowdog_cli.utils.resource_removal as yd_remove
 
         def _run(resources=(), confirm=True, client=None, **values):
             monkeypatch.setattr(
-                yd_remove, "load_resource_specifications", lambda **k: list(resources)
+                remove_command,
+                "load_resource_specifications",
+                lambda **k: list(resources),
             )
             monkeypatch.setattr(
                 yd_remove,
@@ -1569,6 +1590,8 @@ class TestRemove:
             )
             return run(
                 yd_remove,
+                main_module=remove_command,
+                also=(remove_command,),
                 confirm=confirm,
                 client=client,
                 **{**_CREATOR_DEFAULTS, **values},
@@ -1881,7 +1904,7 @@ class TestConfiguredWorkerPoolToken:
                 ),
             )
         )
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.utils.resource_creation as yd_create
 
         # The request's construction is not what is under test
         with pytest.MonkeyPatch.context() as mp:

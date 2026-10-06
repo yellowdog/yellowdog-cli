@@ -139,7 +139,7 @@ def build_models(resource: dict) -> list[tuple[object, dict]]:
     Raises whatever _get_model_object raises, which is the point: a missing
     required property fails the test rather than reaching the platform.
     """
-    from yellowdog_cli.create import _get_model_object, date_parse
+    from yellowdog_cli.utils.resource_creation import _get_model_object, date_parse
 
     resource_type = resource["resource"]
     properties = {

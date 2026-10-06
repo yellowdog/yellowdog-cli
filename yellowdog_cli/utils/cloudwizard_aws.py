@@ -9,7 +9,6 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from yellowdog_client import PlatformClient
 
-from yellowdog_cli.create import create_resources
 from yellowdog_cli.utils.cloudwizard_aws_types import (
     AWSAccessKey,
     AWSAvailabilityZone,
@@ -19,6 +18,7 @@ from yellowdog_cli.utils.cloudwizard_aws_types import (
 from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.resource_creation import create_resources
 from yellowdog_cli.utils.settings import RN_SOURCE_TEMPLATE
 
 IAM_USER_NAME = "yellowdog-cloudwizard-user"

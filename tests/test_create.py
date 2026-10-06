@@ -1,15 +1,15 @@
 """
-yd-create (create.py): the behaviour its review changed. A run exits with
-its failures' shared code (1 for different causes) and stops at a session
-failure, recording the rest as not attempted; each failure is printed once,
-naming the resource. Allowances replaced by description are removed only
-once the new one exists; a Group, Role or User that does not exist fails the
-resource before anything changes; without 'groups' or 'roles' memberships
-are left alone, while '[]' removes them all; a dry run leaves a template name
-not found unresolved; Attribute Definitions carry a timeout and keep their
-exit codes; Keyring grants that fail fail the Application; and the smaller
-corrections: dates, model errors, the namespace policy lookup, the Image
-Family records.
+yd-create (utils/resource_creation.py): the behaviour its review changed. A
+run exits with its failures' shared code (1 for different causes) and stops at
+a session failure, recording the rest as not attempted; each failure is
+printed once, naming the resource. Allowances replaced by description are
+removed only once the new one exists; a Group, Role or User that does not
+exist fails the resource before anything changes; without 'groups' or 'roles'
+memberships are left alone, while '[]' removes them all; a dry run leaves a
+template name not found unresolved; Attribute Definitions carry a timeout and
+keep their exit codes; Keyring grants that fail fail the Application; and the
+smaller corrections: dates, model errors, the namespace policy lookup, the
+Image Family records.
 """
 
 from datetime import date, datetime
@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 from requests import HTTPError, Response
 
-import yellowdog_cli.create as yd_create
+import yellowdog_cli.utils.resource_creation as yd_create
 from yellowdog_cli.utils import entity_utils, resource_processing
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt
@@ -52,7 +52,7 @@ def env(monkeypatch):
         regenerate_app_keys=False,
         show_keyring_passwords=False,
     )
-    monkeypatch.setattr(yd_create, "ARGS_PARSER", args)
+    monkeypatch.setattr(yd_create, "_OPTIONS", args)
     monkeypatch.setattr(
         yd_create,
         "CONFIG_COMMON",

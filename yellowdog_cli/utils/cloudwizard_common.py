@@ -9,8 +9,6 @@ from os.path import exists
 
 from yellowdog_client import PlatformClient
 
-from yellowdog_cli.create import create_resources
-from yellowdog_cli.remove import remove_resource_by_id
 from yellowdog_cli.utils import printing
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.entity_utils import (
@@ -21,6 +19,8 @@ from yellowdog_cli.utils.entity_utils import (
 )
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.resource_creation import create_resources
+from yellowdog_cli.utils.resource_removal import remove_resource_by_id
 from yellowdog_cli.utils.settings import RN_KEYRING, RN_REQUIREMENT_TEMPLATE
 from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 

@@ -5,7 +5,6 @@ Report version numbers, etc.
 """
 
 import json
-import re
 import sys
 from argparse import ArgumentParser
 from collections.abc import Callable
@@ -21,23 +20,10 @@ from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.rclone_version import NOT_INSTALLED, UNKNOWN, find_rclone
 from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
 from yellowdog_cli.utils.settings import JSON_INDENT
+from yellowdog_cli.utils.version_info import docs_url, sdk_version
 
-SDK_DISTRIBUTION = "yellowdog-sdk"
 CLI_DISTRIBUTION = "yellowdog-cli"
 UNKNOWN_LICENCE = "Unknown"
-
-
-def docs_url(version: str = __version__) -> str:
-    """
-    The README for this version: its release tag's, or for a version that
-    is no release (a development build, '1.2.3.dev4'), main's, since no tag
-    exists to link to.
-    """
-    ref = f"v{version}" if re.fullmatch(r"\d+\.\d+\.\d+", version) else "main"
-    return f"https://github.com/yellowdog/yellowdog-cli/blob/{ref}/README.md"
-
-
-DOCS_URL = docs_url()
 
 
 def readable(version: str) -> str | None:
@@ -46,18 +32,6 @@ def readable(version: str) -> str | None:
     could not be read ('unknown', an rclone that would not run).
     """
     return None if version in (NOT_INSTALLED, UNKNOWN) else version
-
-
-def sdk_version() -> str:
-    """
-    The installed YellowDog SDK's version, from its package metadata: read
-    without importing the package, whose __init__ builds the whole Platform
-    client (~140ms), so that nothing needs the SDK just to name it.
-    """
-    try:
-        return package_version(SDK_DISTRIBUTION)
-    except PackageNotFoundError:
-        return NOT_INSTALLED
 
 
 def cli_licence() -> str:

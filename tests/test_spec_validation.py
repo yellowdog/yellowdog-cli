@@ -389,15 +389,16 @@ _DEFAULTS = {
 @pytest.fixture()
 def run(monkeypatch, capsys):
     """
-    run(module, client=None, also=(), **args): patch ARGS_PARSER in the
-    command module, the modules it prints and records through, and those in
-    'also'; run module.main() through the wrapper; return (stdout, stderr,
+    run(module, client=None, also=(), main_module=None, **args): patch
+    ARGS_PARSER in the command module, the modules it prints and records
+    through, and those in 'also'; run main_module.main() (default: module)
+    through the wrapper; return (stdout, stderr,
     client), stdout parsed as JSON under json_output. The exit code is left
     in run.exit_code.
     """
     reset_results()
 
-    def _run(module, client=None, also=(), **values):
+    def _run(module, client=None, also=(), main_module=None, **values):
         args = MagicMock(**{**_DEFAULTS, **values})
         client = client or MagicMock()
         for target in (
@@ -408,13 +409,15 @@ def run(monkeypatch, capsys):
             wrapper_module,
             *also,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A library module (utils/resource_creation.py) reads no ARGS_PARSER
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(module, "CLIENT", client)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
         monkeypatch.setattr(module, "CONFIG_COMMON", config)
         with pytest.raises(SystemExit) as exit_info:
-            module.main()
+            (main_module or module).main()
         _run.exit_code = exit_info.value.code  # type: ignore[attr-defined]
         out, err = capsys.readouterr()
         return (json_loads(out) if values.get("json_output") else out), err, client
@@ -807,12 +810,14 @@ class TestInstantiate:
 class TestCreate:
     @pytest.fixture()
     def create(self, run):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.resource_creation as resource_creation
 
         def _run(files: list[str], **values):
             return run(
-                yd_create,
-                also=(load_resources_module,),
+                resource_creation,
+                main_module=create_command,
+                also=(load_resources_module, create_command),
                 **{
                     "resource_specifications": files,
                     "no_resequence": False,

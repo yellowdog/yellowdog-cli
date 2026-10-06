@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-import yellowdog_cli.create as yd_create
+import yellowdog_cli.utils.resource_creation as yd_create
 from yellowdog_cli.utils import entity_utils
 from yellowdog_cli.utils.entity_utils import AmbiguousNameError
 
