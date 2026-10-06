@@ -92,6 +92,7 @@ _DEFAULTS = {
     "reverse": None,
     "sort": None,
     "validate": False,
+    "jsonnet_dry_run": False,
 }
 
 

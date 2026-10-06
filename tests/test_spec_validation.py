@@ -626,6 +626,22 @@ class TestSubmit:
         _, err, _ = submit(None, validate=True)
         assert submit.run.exit_code == 1 and "'--validate' needs" in err
 
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, submit):
+        # It was ignored, and the Work Requirement the configuration
+        # describes was submitted
+        _, err, client = submit(None, jsonnet_dry_run=True)
+        assert submit.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Work Requirement" in err
+        client.work_client.add_work_requirement.assert_not_called()
+
+    def test_jsonnet_dry_run_with_only_a_csv_file_is_refused(self, submit, tmp_path):
+        csv = tmp_path / "tasks.csv"
+        csv.write_text("a\n1\n", encoding="utf-8")
+        _, err, client = submit(None, csv_files=[str(csv)], jsonnet_dry_run=True)
+        assert submit.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs" in err
+        client.work_client.add_work_requirement.assert_not_called()
+
     def test_validate_with_json_raw_is_refused(self, capsys):
         # As the command line is parsed (exit 2): a raw Platform document has
         # no schema to check it against
@@ -745,6 +761,12 @@ class TestProvision:
         _, err, _ = provision(None, validate=True)
         assert provision.run.exit_code == 1 and "'--validate' needs" in err
 
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, provision):
+        _, err, client = provision(None, jsonnet_dry_run=True)
+        assert provision.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Worker Pool" in err
+        client.worker_pool_client.provision_worker_pool.assert_not_called()
+
 
 class TestInstantiate:
     @pytest.fixture()
@@ -781,6 +803,17 @@ class TestInstantiate:
 
         _run.run = run  # type: ignore[attr-defined]
         return _run
+
+    def test_validate_without_a_file_is_refused(self, instantiate):
+        _, err, client = instantiate(None, validate=True)
+        assert instantiate.run.exit_code == 1 and "'--validate' needs" in err
+        client.compute_client.provision_compute_requirement_template.assert_not_called()
+
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, instantiate):
+        _, err, client = instantiate(None, jsonnet_dry_run=True)
+        assert instantiate.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Compute Requirement" in err
+        client.compute_client.provision_compute_requirement_template.assert_not_called()
 
     def test_validate_the_flat_form(self, instantiate, tmp_path):
         out, _, client = instantiate(

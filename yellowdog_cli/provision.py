@@ -68,7 +68,7 @@ from yellowdog_cli.utils.results import (
     record_document_part,
     record_entity,
 )
-from yellowdog_cli.utils.spec_loading import load_specification
+from yellowdog_cli.utils.spec_loading import load_specification, refuse_file_options
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
@@ -115,12 +115,16 @@ def main(ctx: RunContext) -> None:
 
     if wp_json_file is not None:
         create_worker_pool_from_json(ctx, wp_json_file)
-    elif ctx.args.validate:
-        raise ValueError("Option '--validate' needs a Worker Pool specification file")
-    elif CONFIG_WP.template_id is None:
+        return
+
+    refuse_file_options(
+        "Worker Pool",
+        validate=bool(ctx.args.validate),
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+    )
+    if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")
-    else:
-        create_worker_pool_from_toml(ctx)
+    create_worker_pool_from_toml(ctx)
 
 
 def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str) -> None:

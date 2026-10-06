@@ -52,7 +52,7 @@ from yellowdog_cli.utils.results import (
     record_document_part,
     record_entity,
 )
-from yellowdog_cli.utils.spec_loading import load_specification
+from yellowdog_cli.utils.spec_loading import load_specification, refuse_file_options
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.variable_syntax import (
@@ -110,10 +110,11 @@ def main(ctx: RunContext):
         )
         return
 
-    if ctx.args.validate:
-        raise ValueError(
-            "Option '--validate' needs a Compute Requirement specification file"
-        )
+    refuse_file_options(
+        "Compute Requirement",
+        validate=bool(ctx.args.validate),
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+    )
 
     if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")

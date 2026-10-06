@@ -46,6 +46,21 @@ class CsvExpansion:
     csv_only: bool = False
 
 
+def refuse_file_options(what: str, *, validate: bool, jsonnet_dry_run: bool) -> None:
+    """
+    Refuse '--validate' and '--jsonnet-dry-run' where the command has no
+    '<what>' specification file to apply them to, and is building what it
+    submits from the configuration instead: ignored, either would let the
+    command go on to submit or provision what was only to be checked.
+    """
+    if validate:
+        raise ValueError(f"Option '--validate' needs a {what} specification file")
+    if jsonnet_dry_run:
+        raise ValueError(
+            f"Option '--jsonnet-dry-run' needs a Jsonnet {what} specification file"
+        )
+
+
 def load_specification(
     path: str,
     what: str,

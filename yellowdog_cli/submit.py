@@ -118,7 +118,11 @@ from yellowdog_cli.utils.property_names import (
 )
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.results import record_document, record_entity
-from yellowdog_cli.utils.spec_loading import CsvExpansion, load_specification
+from yellowdog_cli.utils.spec_loading import (
+    CsvExpansion,
+    load_specification,
+    refuse_file_options,
+)
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
@@ -266,10 +270,11 @@ def main(ctx: RunContext):
         # configuration and the CSV file, with task-level prototype
         # properties (taskName, taskGroupName, taskTimeout) no file may
         # carry, so there is nothing of the user's to check it against
-        if ctx.args.validate:
-            raise ValueError(
-                "Option '--validate' needs a Work Requirement specification file"
-            )
+        refuse_file_options(
+            "Work Requirement",
+            validate=bool(ctx.args.validate),
+            jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        )
         wr_data = _work_requirement_from_csv(run, csv_files, files_directory)
         _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
 
@@ -294,10 +299,11 @@ def main(ctx: RunContext):
         _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
 
     else:
-        if ctx.args.validate:
-            raise ValueError(
-                "Option '--validate' needs a Work Requirement specification file"
-            )
+        refuse_file_options(
+            "Work Requirement",
+            validate=bool(ctx.args.validate),
+            jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        )
         _submit_or_add_to(
             run, files_directory=files_directory, task_count=run.config_wr.task_count
         )
