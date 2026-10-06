@@ -98,6 +98,7 @@ from yellowdog_cli.utils.printing import (
     print_json,
     print_quiet_result,
     print_warning,
+    user_data_as_shown,
 )
 from yellowdog_cli.utils.property_names import (
     PROP_AUTOSCALING_MAX_NODES,
@@ -270,7 +271,7 @@ def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
     if _OPTIONS.json_output:
         record({PROP_RESOURCE: resource_type, **resource})
     else:
-        print_json(resource)
+        print_json(user_data_as_shown(resource))
 
 
 def create_compute_source_template(

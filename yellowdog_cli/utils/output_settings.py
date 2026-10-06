@@ -1,7 +1,7 @@
 """
 How the CLI prints, prompts and selects, as the command line asks: quiet,
 '--debug', '--json', '--no-format', the PID prefix, '--count', the output
-file, stripped IDs, events as JSON, '--yes', interactive selection and the
+file, stripped IDs, hidden User Data, events as JSON, '--yes', interactive selection and the
 listing's sort and detail. The code that prints and asks -- printing.py,
 tables.py, interactive.py, results.py, event_printing.py, rclone's logging,
 specs/validation.py -- reads OUTPUT, rather than the parsed command line, so
@@ -36,6 +36,7 @@ class OutputSettings:
     count_only: bool | None = False
     output_file: str | None = None
     strip_ids: bool | None = False
+    hide_user_data: bool | None = False
     events_as_json: bool | None = False
     yes: bool | None = False
     interactive: bool | None = False

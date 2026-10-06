@@ -711,6 +711,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def hide_user_data(self) -> bool | None:
+        return self.args.hide_user_data
+
+    @property
+    @allow_missing_attribute
     def output_file(self) -> str | None:
         return self.args.output_file
 

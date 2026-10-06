@@ -51,6 +51,7 @@ _DEFAULTS = {
     "compute_requirement": None,
     "compute_requirement_file_positional": None,
     "report": False,
+    "hide_user_data": False,
 }
 
 
@@ -493,6 +494,91 @@ class TestUserData:
         )
         assert user_data.calls == 1
         assert json_loads(out)["userData"] == "#!/bin/sh"
+
+
+SCRIPT = "#!/bin/sh\necho one\necho two\n"
+SUMMARY = "<user data: 28 characters, 3 lines>"
+
+
+class TestHideUserData:
+    """
+    '--hide-user-data' summarises the User Data in each dry run's output, as
+    text and as the '--json' document, on the specification and the
+    configuration paths alike.
+    """
+
+    def test_provision_specification_json(self, run, wp_file):
+        path = wp_file({"targetInstanceCount": 1, "userData": SCRIPT}, {})
+        document = _provision_dry_run(run, path, hide_user_data=True)
+        assert document["requirementTemplateUsage"]["userData"] == SUMMARY
+
+    def test_provision_specification_text(self, run, wp_file):
+        path = wp_file({"targetInstanceCount": 1, "userData": SCRIPT}, {})
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(),
+            dry_run=True,
+            hide_user_data=True,
+            worker_pool_file_positional=path,
+        )
+        assert SUMMARY in out
+        assert "echo one" not in out
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_provision_configuration(self, run, json_output):
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(template_id=CRT_ID, target_instance_count=1),
+            user_data=_UserData(SCRIPT),
+            dry_run=True,
+            json_output=json_output,
+            hide_user_data=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        if json_output:
+            document = json_loads(out)
+            assert document["requirementTemplateUsage"]["userData"] == SUMMARY
+        else:
+            assert SUMMARY in out
+            assert "echo one" not in out
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_instantiate_specification(self, run, cr_file, json_output):
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(),
+            dry_run=True,
+            json_output=json_output,
+            hide_user_data=True,
+            compute_requirement_file_positional=cr_file({"userData": SCRIPT}),
+        )
+        if json_output:
+            assert json_loads(out)["userData"] == SUMMARY
+        else:
+            assert SUMMARY in out
+            assert "echo one" not in out
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_instantiate_configuration(self, run, json_output):
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(template_id=CRT_ID, target_instance_count=1),
+            user_data=_UserData(SCRIPT),
+            dry_run=True,
+            json_output=json_output,
+            hide_user_data=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        if json_output:
+            assert json_loads(out)["userData"] == SUMMARY
+        else:
+            assert SUMMARY in out
+            assert "echo one" not in out
+
+    def test_without_it_the_script_is_shown(self, run, wp_file):
+        path = wp_file({"targetInstanceCount": 1, "userData": SCRIPT}, {})
+        document = _provision_dry_run(run, path)
+        assert document["requirementTemplateUsage"]["userData"] == SCRIPT
 
 
 # ---------------------------------------------------------------------------
