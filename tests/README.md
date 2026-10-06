@@ -15,6 +15,7 @@ Five categories of test exist, controlled by pytest flags:
 | `--run-demos` | `demos` | Full live demo runs on the platform |
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
 | `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
+| `--run-crash-tests` | `crashes` | Not a category: on macOS, runs the tests that crash a child interpreter on purpose, which are skipped there without it because each crash puts up the system's "quit unexpectedly" dialog (Homebrew's Python runs as `Python.app`). Elsewhere they always run |
 | `--update-parser-snapshots` | — | Not a category: regenerates `parser_snapshots.json` for `test_parser_snapshots.py`, which then passes, rather than running any extra tests. Regenerate on the oldest supported interpreter, or check the test on one, because a newer argparse can derive values differently |
 
 Around 350 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
@@ -192,7 +193,7 @@ Around 550 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | `test_commander_placeholders.py` | Namespace / tag / object-path placeholder text, and the repaint strategy that avoids a macOS log burst |
 | `test_commander_arguments.py` | Splitting the option fields into arguments with quoting and no backslash escapes, quoting a launch-time property back into the Properties field, and what counts as a complete `section.key=value` (pure Python, no Qt) |
 | `test_commander_shell.py` | The shell the command box runs a non-`yd-` command with, by full path: `%ComSpec%`, then System32's `cmd.exe`, on Windows; `/bin/sh` elsewhere (pure Python, no Qt) |
-| `test_commander_stderr_filter.py` | The macOS stderr filter, in a fresh interpreter: a `TSMSendMessageToUIServer` line dropped, every other line kept (one printed just before exit, one with no newline, one split across writes), and a crash dump reaching the real stderr (pure Python, no Qt) |
+| `test_commander_stderr_filter.py` | The macOS stderr filter, in a fresh interpreter: a `TSMSendMessageToUIServer` line dropped, every other line kept (one printed just before exit, one with no newline, one split across writes), and a crash dump reaching the real stderr (pure Python, no Qt; the crash is marked `crashes`, so on macOS it needs `--run-crash-tests`) |
 | `test_commander_history.py` | `CommandHistory` recall-pointer logic (pure Python, no Qt) |
 | `test_commander_line_buffer.py` | `LineBuffer` reassembly of subprocess output across read boundaries (pure Python, no Qt) |
 | `test_commander_elide_path.py` | Display-elision helpers for the config path and definition filenames (pure Python, no Qt) |

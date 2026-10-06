@@ -9,6 +9,8 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 TSM_LINE = (
     "2026-10-06 19:37:03.709 Python[35770:11101615] TSMSendMessageToUIServer: "
     "CFMessagePortSendRequest FAILED(-1) to send to port com.apple.tsm.uiserver"
@@ -68,6 +70,7 @@ def test_a_line_split_across_writes_is_judged_whole():
     assert stderr == "kept\n"
 
 
+@pytest.mark.crashes
 def test_a_faulthandler_dump_reaches_the_real_stderr():
     stderr = _stderr_of(
         """
