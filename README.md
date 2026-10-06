@@ -3505,7 +3505,7 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema` and `yd-version` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema`, `yd-version` and `yd-jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
 
 The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -4602,7 +4602,7 @@ yd-format-json my_file.json my_other_file.json
 
 ### yd-jsonnet2json
 
-The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
+The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout, coloured on a terminal unless `--no-format`/`--nf` is given; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
 
 ```shell
 yd-jsonnet2json <file.jsonnet> [<file.jsonnet> ...]

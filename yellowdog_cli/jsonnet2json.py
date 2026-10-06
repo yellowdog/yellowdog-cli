@@ -2,8 +2,9 @@
 
 """
 Simple utility to take Jsonnet file(s) and output their JSON representation.
-With a single file, output goes to stdout, and errors to stderr, so that a
-failed conversion piped to a file never leaves an error message in it.
+With a single file, output goes to stdout, coloured on a terminal unless
+--no-format is given, and errors to stderr, so that a failed conversion
+piped to a file never leaves an error message in it.
 With multiple files or a glob pattern, each file is written to <name>.json,
 replaced whole or not at all. General purpose, not YellowDog specific.
 """
@@ -16,7 +17,9 @@ from glob import glob
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import ERROR_MARKER
+from yellowdog_cli.utils.printing import print_json_text
 
 _GLOB_CHARS = frozenset("*?[")
 
@@ -49,7 +52,15 @@ def main():
         metavar="<file.jsonnet>",
         help="the Jsonnet file(s), or quoted glob pattern(s), to convert",
     )
+    parser.add_argument(
+        "--no-format",
+        "--nf",
+        action="store_true",
+        help="print a single file's JSON without colouring",
+    )
     args = parser.parse_args()
+    # --no-format, for print_json_text()
+    configure_output(args)
 
     # This command has no @main_wrapper to catch and print an exception, so the
     # guard's message is presented here; otherwise advice about how to install
@@ -68,7 +79,7 @@ def main():
 
     if single_file_mode:
         try:
-            print(_as_json(evaluate_file(args.files[0])))
+            print_json_text(_as_json(evaluate_file(args.files[0])))
         except Exception as e:
             _error(str(e))
             sys.exit(1)

@@ -1,6 +1,6 @@
 """
-yd-jsonnet2json (jsonnet2json.py): one file's JSON on stdout with an error
-on stderr, never in the output; several files each written whole to
+yd-jsonnet2json (jsonnet2json.py): one file's JSON on stdout, coloured on a
+terminal unless --no-format, with an error on stderr, never in the output; several files each written whole to
 <name>.json, non-ASCII kept; a wildcard matching nothing reported as such;
 each file converted once; and its command line parsed (--help without
 Jsonnet installed, a file required). Skipped without the jsonnet package,
@@ -45,6 +45,40 @@ def test_one_files_json_goes_to_stdout_non_ascii_kept(
     out, err, code = _run(monkeypatch, capsys, str(source))
     assert code == 0 and err == ""
     assert out == '{"n": 2, "name": "café"}\n'
+
+
+@pytest.mark.parametrize("argv, coloured", [((), True), (("--nf",), False)])
+def test_one_files_json_is_coloured_on_a_terminal_unless_no_format(
+    jsonnet, tmp_path, monkeypatch, capsys, argv, coloured
+):
+    from io import StringIO
+
+    from rich.console import Console
+    from rich.highlighter import JSONHighlighter
+
+    from yellowdog_cli.utils import printing
+
+    terminal = StringIO()
+    monkeypatch.setattr(
+        printing,
+        "CONSOLE_JSON",
+        Console(
+            file=terminal,
+            force_terminal=True,
+            color_system="256",
+            highlighter=JSONHighlighter(),
+            emoji=False,
+        ),
+    )
+    source = tmp_path / "a.jsonnet"
+    source.write_text('{ name: "café" }', encoding="utf-8")
+    out, _, code = _run(monkeypatch, capsys, *argv, str(source))
+    assert code == 0
+    if coloured:
+        assert out == "" and "\x1b[" in terminal.getvalue()
+        assert "café" in terminal.getvalue()
+    else:
+        assert terminal.getvalue() == "" and out == '{"name": "café"}\n'
 
 
 def test_an_error_goes_to_stderr_never_into_the_output(
