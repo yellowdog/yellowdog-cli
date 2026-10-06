@@ -457,12 +457,18 @@ def reset_json_document_printed() -> None:
 
 def print_json_text(json_text: str) -> None:
     """
-    Print a JSON document's text exactly as given: no colouring and no
-    wrapping, so that what is printed is byte for byte what a file holding
-    it would hold (yd-schema prints a schema as --write writes it).
+    Print a JSON document's text exactly as given, with no wrapping, so that
+    what is printed is byte for byte what a file holding it would hold
+    (yd-schema prints a schema as --write writes it). It is coloured only
+    for a terminal, where nobody is reading the bytes, and then with no line
+    limit: unlike print_json()'s documents, a schema is always long, and
+    the largest takes Rich well under a tenth of a second.
     """
     global _JSON_DOCUMENT_PRINTED
     _JSON_DOCUMENT_PRINTED = True
+    if CONSOLE_JSON.is_terminal and not OUTPUT.no_format:
+        CONSOLE_JSON.print(escape(json_text.removesuffix("\n")), soft_wrap=True)
+        return
     print(json_text, end="" if json_text.endswith("\n") else "\n", flush=True)
 
 

@@ -458,6 +458,58 @@ class TestStyledOutput:
         assert "\x1b[" not in output
 
 
+class TestPrintJsonText:
+    """
+    print_json_text() (yd-schema) colours a document for a terminal, long or
+    not, and anywhere else prints its text byte for byte.
+    """
+
+    TEXT = '{\n  "key": [\n    "[bold]not markup[/bold]",\n    1\n  ]\n}\n'
+
+    @staticmethod
+    def _args(no_format: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=no_format,
+            print_pid=False,
+        )
+
+    def _console_output(self, force_terminal: bool, no_format=False, text=TEXT):
+        buffer = StringIO()
+        console = Console(
+            file=buffer,
+            force_terminal=force_terminal,
+            color_system="256",
+            emoji=False,
+            highlighter=printing_module.JSONHighlighter(),
+        )
+        with (
+            output_settings.configured(self._args(no_format)),
+            patch.object(printing_module, "CONSOLE_JSON", console),
+        ):
+            printing_module.print_json_text(text)
+        return buffer.getvalue()
+
+    def test_a_terminal_gets_colour(self):
+        output = self._console_output(force_terminal=True)
+        assert "\x1b[" in output
+        assert re.sub(r"\x1b\[[0-9;]*m", "", output) == self.TEXT
+
+    def test_a_document_past_the_print_json_line_limit_is_still_coloured(self):
+        text = "[\n" + "  1,\n" * 2000 + "  1\n]\n"
+        assert "\x1b[" in self._console_output(force_terminal=True, text=text)
+
+    def test_not_a_terminal_is_the_text_exactly(self, capsys):
+        assert self._console_output(force_terminal=False) == ""
+        assert capsys.readouterr().out == self.TEXT
+
+    def test_no_format_is_the_text_exactly(self, capsys):
+        assert self._console_output(force_terminal=True, no_format=True) == ""
+        assert capsys.readouterr().out == self.TEXT
+
+
 # ---------------------------------------------------------------------------
 # Table-building helpers (smoke tests using SimpleNamespace stubs)
 # ---------------------------------------------------------------------------

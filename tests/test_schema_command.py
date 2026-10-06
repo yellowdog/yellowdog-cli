@@ -54,6 +54,13 @@ class TestPrintOneFamily:
         result = _run("resources")
         assert result.stdout == (target / "resources.schema.json").read_text()
 
+    def test_no_format_is_accepted_with_a_family(self):
+        # Not a mode of its own: --nf alone is still asked for a family
+        result = _run("--nf", "config")
+        assert result.returncode == 0, result.stdout + result.stderr
+        json.loads(result.stdout)
+        assert _run("--nf").returncode == 2
+
 
 class TestWrite:
     def test_writes_every_schema_and_an_index(self, tmp_path):

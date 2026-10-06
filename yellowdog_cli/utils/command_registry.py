@@ -2549,6 +2549,7 @@ COMMANDS["yd-schema"] = Command(
         SCHEMA_WRITE,
         SCHEMA_CHECK,
         SCHEMA_LIST,
+        NO_FORMAT,
     ),
     validators=(check_schema_mode_is_exclusive,),
     tool=ToolKind.READ_ONLY,
