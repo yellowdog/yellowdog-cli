@@ -106,11 +106,16 @@ class OutputPane:
         )
 
     def start_run(
-        self, command: str, command_line: str, user_command_line: str
+        self,
+        command: str,
+        command_line: str,
+        user_command_line: str,
+        arguments: list[str] | None = None,
     ) -> OutputRun:
         """
         Register a command about to be started as a run its output can be
         attributed to and filtered by, numbered from 1 in the order started.
+        'arguments' are those it is run with, which say what it follows.
         """
         run = OutputRun(
             len(self._output_runs),
@@ -118,9 +123,24 @@ class OutputPane:
             command_line,
             user_command_line=user_command_line,
             started_at=datetime.now(),
+            arguments=tuple(arguments or ()),
         )
         self._output_runs[run.run_id] = run
         return run
+
+    def run_following(self, work_requirement_id: str) -> OutputRun | None:
+        """
+        A command still running that is following the Work Requirement, if
+        there is one; see OutputRun.is_following().
+        """
+        return next(
+            (
+                run
+                for run in self._output_runs.values()
+                if run.is_following(work_requirement_id)
+            ),
+            None,
+        )
 
     def attach(self, process: QProcess, run: OutputRun):
         """
@@ -199,7 +219,9 @@ class OutputPane:
                 if match := PREFIXED_PID.match(line):
                     run.printed_pid = int(match.group(1))
                     break
-        self.log("\n".join(lines), prefix=False, run=run.run_id)
+        text = "\n".join(lines)
+        run.note_output(text)
+        self.log(text, prefix=False, run=run.run_id)
 
     def _on_stdout(self, process: QProcess, run: OutputRun, line_buffer: LineBuffer):
         self._log_lines(line_buffer.feed(process.readAllStandardOutput().data()), run)

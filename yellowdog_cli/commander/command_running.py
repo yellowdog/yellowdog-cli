@@ -218,6 +218,7 @@ class CommandRunning(WindowBase):
             command,
             command_line_text(command, display_args),
             command_line_text(command, raw_args if log_args is None else log_args),
+            arguments=args,
         )
         self._output.attach(process, run)
         self._processes.append(process)

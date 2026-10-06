@@ -58,18 +58,19 @@ class WorkPanel(WindowDialogs):
         self._output.log(f"Selected Work Requirement definition '{self._wr_file}'")
         self._show_wr_selection()
 
-    def _submit_args(self) -> list[str] | None:
+    def _submit_args(self, follow: bool = True) -> list[str] | None:
         """
         The 'yd-submit' arguments Panel 2 sets, shared by Submit and Add to: the
-        selected definition, Dry Run, Follow Progress and the Extra Options.
-        None, having said why, when the Extra Options cannot be split.
+        selected definition, Dry Run, Follow Progress (unless 'follow' is False)
+        and the Extra Options. None, having said why, when the Extra Options
+        cannot be split.
         """
         if self._wr_file is None:
             args = []
         else:
             args = ["-r", self._wr_file]
         dry_run = self.dry_run.isChecked()
-        follow_progress = self.follow_progress.isChecked()
+        follow_progress = follow and self.follow_progress.isChecked()
         if dry_run:
             args += ["-D"]
         if follow_progress and not dry_run:
@@ -169,6 +170,22 @@ class WorkPanel(WindowDialogs):
                 selected=newest,
             )
             if target is None:
+                return
+
+        # Followed already, by the Submit that created it or an earlier Add to,
+        # a second stream would show every event twice
+        following = self._output.run_following(target)
+        follow_asked = self.follow_progress.isChecked() and not self.dry_run.isChecked()
+        if following is not None and follow_asked:
+            name = next(
+                (entity.name for entity in entities if entity.id == target), target
+            )
+            self._output.log(
+                f"Not following Work Requirement '{name}' again:"
+                f" {following.bar_subject} is following it already"
+            )
+            submit_args = self._submit_args(follow=False)
+            if submit_args is None:
                 return
 
         self._run_command_in_subprocess("yd-submit", ["-A", target, *submit_args])

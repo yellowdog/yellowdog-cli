@@ -16,6 +16,7 @@ from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.output_model import OutputRun
 from yellowdog_cli.commander.selection import newest_entity_id
 from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.commander.window_base import NO_LISTING_TAG
@@ -253,6 +254,128 @@ def test_an_operation_in_flight_refuses(window, captured, monkeypatch):
     window._add_to_work_requirement_action()
     assert asked == [] and captured == []
     assert "ignoring Add to Work Requirement" in log(window)
+
+
+# --- A Work Requirement already followed ------------------------------------
+
+# As the Platform writes them, which is what a run's output is scanned for
+FOLLOWED = {
+    "id": "ydid:workreq:000000:00000000-0000-0000-0000-000000000001",
+    "name": "wr-followed",
+    "status": "RUNNING",
+    "createdTime": "2026-09-29T10:00:00.000000+00:00",
+}
+FOLLOWED_TASK = "ydid:task:000000:00000000-0000-0000-0000-000000000001:1:1"
+
+
+def started(window, command: str, arguments: list[str]) -> OutputRun:
+    """
+    Register a command as Commander does when it starts one; still running.
+    """
+    return window._output.start_run(
+        command, " ".join([command, *arguments]), "", arguments=arguments
+    )
+
+
+def test_a_submit_following_it_is_not_followed_again(window, captured, monkeypatch):
+    # The Submit that created it printed its YDID, and is following it
+    run = started(window, "yd-submit", ["-r", "/abs/wr.json", "-f"])
+    window._output._log_lines([f"YellowDog ID is '{FOLLOWED['id']}'"], run)
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+    assert "Not following Work Requirement 'wr-followed' again" in log(window)
+    assert f"{run.bar_subject} is following it already" in log(window)
+
+
+def test_an_add_to_following_it_is_not_followed_again(window, captured, monkeypatch):
+    started(window, "yd-submit", ["-A", FOLLOWED["id"], "-f"])
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+
+
+def test_a_yd_follow_of_it_counts(window, captured, monkeypatch):
+    started(window, "yd-follow", [FOLLOWED["id"]])
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+
+
+@pytest.mark.parametrize(
+    "arguments, finished",
+    [
+        (["-r", "/abs/wr.json", "-f"], True),  # its follow has ended
+        (["-r", "/abs/wr.json"], False),  # never followed it
+        (["-r", "/abs/wr.json", "-f", "-D"], False),  # a dry run follows nothing
+    ],
+    ids=["finished", "not-following", "dry-run"],
+)
+def test_otherwise_it_is_followed(window, captured, monkeypatch, arguments, finished):
+    run = started(window, "yd-submit", arguments)
+    window._output._log_lines([f"YellowDog ID is '{FOLLOWED['id']}'"], run)
+    if finished:
+        run.outcome = "exit 0"
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "-f"])]
+    assert "Not following" not in log(window)
+
+
+def test_another_work_requirement_followed_does_not_count(
+    window, captured, monkeypatch
+):
+    started(window, "yd-submit", ["-A", OLDER["id"], "-f"])
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "-f"])]
+
+
+def test_follow_in_the_extra_options_is_left_alone(window, captured, monkeypatch):
+    # Follow Progress unticked: the user's own '--follow' is theirs to give
+    started(window, "yd-submit", ["-A", FOLLOWED["id"], "-f"])
+    window.follow_progress.setChecked(False)
+    window.wr_submit_options.setPlainText("--follow")
+    listed(window, monkeypatch, [FOLLOWED])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "--follow"])]
+
+
+class TestFollowedWorkRequirements:
+    """
+    What a run is following: only a Work Requirement's YDID is noted from its
+    output, a Task's (which carries the same UUID) is not, and the follow
+    flags count only for a command that has them.
+    """
+
+    def test_only_work_requirement_ydids_are_noted(self):
+        run = OutputRun(1, "yd-submit", arguments=("-f",))
+        run.note_output(f"Added Task {FOLLOWED_TASK}")
+        assert run.work_requirements_printed == set()
+        run.note_output(f"... '{FOLLOWED['id']}' ...")
+        assert run.work_requirements_printed == {FOLLOWED["id"]}
+
+    @pytest.mark.parametrize(
+        "command, arguments, follows",
+        [
+            ("yd-submit", ("-f",), True),
+            ("yd-submit", ("--follow",), True),
+            ("yd-submit", ("--progress",), True),
+            ("yd-submit", ("-f", "--dry-run"), False),
+            ("yd-submit", ("-fD",), False),  # a cluster is not read
+            ("yd-follow", (), True),
+            ("yd-list", ("-f",), False),  # no '--follow' to give
+            ("ls", ("-f",), False),
+        ],
+    )
+    def test_follows_events(self, command, arguments, follows):
+        assert OutputRun(1, command, arguments=arguments).follows_events is follows
 
 
 # --- '--yes' -----------------------------------------------------------------
