@@ -31,12 +31,16 @@ from yellowdog_cli.utils.property_names import (
     ARGS_POSTFIX,
     ARGS_PREFIX,
     COMPLETED_TASK_TTL,
+    ENV,
     INSTANCE_PRICING_PREFERENCE,
     MAX_WORKERS,
     MIN_WORKERS,
     NAME,
     PROVIDERS,
     RAM,
+    TASK_DATA,
+    TASK_DATA_FILE,
+    TASK_DATA_INPUTS,
     TASK_GROUP_COUNT,
     TASK_GROUP_TAG,
     TASK_GROUPS,
@@ -956,6 +960,89 @@ class TestTaskPropertiesTaskGroupOverWorkRequirement:
     def test_work_requirement_add_environment_is_inherited(self):
         wr_data = {ADD_ENVIRONMENT: {"X": "wr"}, TASK_GROUPS: [{TASKS: [{}]}]}
         assert _generate_one_task(wr_data).environment == {"X": "wr"}
+
+
+def _generate_tasks(wr_data: dict, files_directory: str = ".") -> list[Task]:
+    """
+    Generate every Task of wr_data's single Task Group, as submission would,
+    with nothing uploaded.
+    """
+    task_group = MagicMock()
+    task_group.name = "tg"
+    task_group.runSpecification.taskTypes = ["bash"]
+    tasks = wr_data[TASK_GROUPS][0][TASKS]
+    return task_generation_module.generate_batch_of_tasks(
+        task_generation_module.TaskSource(
+            config_wr=ConfigWorkRequirement(),
+            wr_name="test-wr",
+            namespace="test-ns",
+            wr_data=wr_data,
+            files_directory=files_directory,
+            task_group=task_group,
+            position=TaskGroupPosition(0, 0, 1),
+            tasks=tasks,
+            task_count=None,
+            num_tasks=len(tasks),
+            uploaded_files=MagicMock(),
+        ),
+        0,
+        len(tasks),
+    )
+
+
+class TestInheritedPropertiesSubstitutedPerTask:
+    """
+    '{{task_name}}' and '{{task_number}}' in a property a Task inherits from
+    its Task Group or the Work Requirement are the Task's, as in its own
+    properties and the configuration's. Those levels are substituted as the
+    Task Groups are built, before any Task exists, and the inherited values
+    were passed on with the references left in them.
+    """
+
+    @staticmethod
+    def _named(**task_group) -> dict:
+        return {TASK_GROUPS: [{**task_group, TASKS: [{NAME: "a"}, {NAME: "b"}]}]}
+
+    def test_task_group_arguments(self):
+        wr_data = self._named(**{ARGS: ["{{task_name}}", "{{task_number}}"]})
+        assert [t.arguments for t in _generate_tasks(wr_data)] == [
+            ["a", "1"],
+            ["b", "2"],
+        ]
+
+    def test_work_requirement_environment(self):
+        wr_data = {ENV: {"N": "{{task_name}}"}, **self._named()}
+        assert [t.environment for t in _generate_tasks(wr_data)] == [
+            {"N": "a"},
+            {"N": "b"},
+        ]
+
+    def test_task_group_inline_task_data(self):
+        wr_data = self._named(**{TASK_DATA: "for {{task_name}}"})
+        assert [t.taskData for t in _generate_tasks(wr_data)] == ["for a", "for b"]
+
+    def test_task_group_task_data_file_path(self, tmp_path):
+        for name in ("a", "b"):
+            (tmp_path / f"data-{name}.txt").write_text(name, encoding="utf-8")
+        wr_data = self._named(**{TASK_DATA_FILE: "data-{{task_name}}.txt"})
+        assert [t.taskData for t in _generate_tasks(wr_data, str(tmp_path))] == [
+            "a",
+            "b",
+        ]
+
+    def test_task_group_data_inputs(self):
+        wr_data = self._named(
+            **{TASK_DATA_INPUTS: [{"source": "in/{{task_name}}", "destination": "x"}]}
+        )
+        assert [t.data.inputs[0].source for t in _generate_tasks(wr_data)] == [
+            "in/a",
+            "in/b",
+        ]
+
+    def test_the_inherited_value_stays_as_written(self):
+        wr_data = self._named(**{ARGS: ["{{task_name}}"]})
+        _generate_tasks(wr_data)
+        assert wr_data[TASK_GROUPS][0][ARGS] == ["{{task_name}}"]
 
 
 # ---------------------------------------------------------------------------

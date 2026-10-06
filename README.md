@@ -204,7 +204,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct  6 17:59:58 BST 2026 -->
+<!-- Added by: pwt, at: Tue Oct  6 18:40:52 BST 2026 -->
 
 <!--te-->
 
@@ -1700,6 +1700,8 @@ The following naming and numbering substitutions are available for use in TOML a
 | `{{task_count}}`        | The number of Tasks in the current Task Group     | Yes  | Yes        |
 | `{{task_group_number}}` | The current Task Group number                     | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
+
+The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
 
 As an example, the following JSON Work Requirement:
 

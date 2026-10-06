@@ -12,12 +12,18 @@ decided first, from the run's configuration rather than a copy of it, and
 with it the Task-level lazy substitutions; only then is the Task substituted
 in place and the configuration copied with them applied, and everything else
 of the Task read from those.
+
+A property a Task inherits from its Task Group or the Work Requirement is
+substituted for the Task too (_for_task()), as its own properties and the
+configuration's are: those levels were substituted once, as the Task Groups
+were built and before any Task existed, so '{{task_name}}' and
+'{{task_number}}' in them were still undefined there and passed through.
 """
 
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import cast
+from typing import Any, TypeVar, cast
 
 from yellowdog_client.model import Task, TaskGroup
 
@@ -33,6 +39,9 @@ from yellowdog_cli.utils.property_names import (
     ENV,
     NAME,
     SET_TASK_NAMES,
+    TASK_DATA,
+    TASK_DATA_FILE,
+    TASK_DATA_FILES,
     TASK_DATA_INPUTS,
     TASK_DATA_OUTPUTS,
     TASK_GROUPS,
@@ -67,7 +76,13 @@ from yellowdog_cli.utils.variable_syntax import (
     L_TASK_NAME,
     L_TASK_NUMBER,
     VAR_NAME_OF_UNNAMED_TASK,
+    VAR_OPENING_DELIMITER,
 )
+
+T = TypeVar("T")
+
+# The properties a Task may take its Task Data from, at any level
+_TASK_DATA_PROPERTIES = (TASK_DATA, TASK_DATA_FILE, TASK_DATA_FILES)
 
 
 @dataclass(frozen=True)
@@ -123,7 +138,7 @@ def _generate_task(source: TaskSource, task_number: int) -> Task:
     task = source.tasks[task_number] if source.task_count is None else source.tasks[0]
     # The Task's properties, from itself, its Task Group or the Work
     # Requirement; the configuration's are the defaults
-    levels = Cascade(source.wr_data, task_group_data, task)
+    levels = _TaskLevels(source.wr_data, task_group_data, task)
 
     display_task_number = task_number + source.position.existing_tasks
     display_num_tasks = source.position.existing_tasks + source.num_tasks
@@ -188,8 +203,8 @@ def _generate_task(source: TaskSource, task_number: int) -> Task:
         args=cast(list, arguments_list),
         task_data_property=get_task_data_property(
             config_wr,
-            source.wr_data,
-            task_group_data,
+            _task_data_for_task(source.wr_data),
+            _task_data_for_task(task_group_data),
             task,
             task_name,
             source.files_directory,
@@ -203,6 +218,63 @@ def _generate_task(source: TaskSource, task_number: int) -> Task:
         total_num_task_groups=source.position.count,
         total_num_tasks=display_num_tasks,
     )
+
+
+class _TaskLevels(Cascade):
+    """
+    A Task's levels, as Cascade reads them, but with a property it inherits
+    substituted for it (_for_task()): its own are substituted in place, and
+    the levels above it were substituted before any Task existed.
+    """
+
+    def __init__(self, work_requirement: dict, task_group: dict, task: dict):
+        super().__init__(work_requirement, task_group, task)
+        self._task = task
+
+    def get(self, name: str, default: Any = None) -> Any:
+        value = super().get(name, default)
+        return value if name in self._task else _for_task(value)
+
+
+def _for_task(value: T) -> T:
+    """
+    An inherited value with the Task's lazy substitutions made in a copy of
+    it, so that the level's own value stays as written for the Tasks after.
+    A value holding no variable reference is returned as it is, uncopied,
+    which keeps a large Task Group whose inherited properties hold none as
+    cheap as it was.
+    """
+    if not _holds_reference(value):
+        return value
+    holder = {"value": deepcopy(value)}
+    resolve_variables_insitu(holder)
+    # Absent if the value was unset with '{{name::}}'
+    return holder.get("value")  # type: ignore[return-value]
+
+
+def _holds_reference(value: Any) -> bool:
+    """
+    Whether a value, at any depth, holds text that may be a variable
+    reference.
+    """
+    if isinstance(value, str):
+        return VAR_OPENING_DELIMITER in value
+    if isinstance(value, dict):
+        return any(_holds_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_holds_reference(item) for item in value)
+    return False
+
+
+def _task_data_for_task(data: dict) -> dict:
+    """
+    A level's Task Data properties, substituted for the Task: an inline
+    'taskData', and a 'taskDataFile(s)' path naming a file per Task. (A
+    file's contents are substituted as it is read, for each Task.)
+    """
+    return {
+        name: _for_task(data[name]) for name in _TASK_DATA_PROPERTIES if name in data
+    }
 
 
 def _name_task(
