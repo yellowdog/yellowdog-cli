@@ -4605,7 +4605,7 @@ yd-format-json my_file.json my_other_file.json
 The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout, coloured on a terminal unless `--no-format`/`--nf` is given; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
 
 ```shell
-yd-jsonnet2json <file.jsonnet> [<file.jsonnet> ...]
+yd-jsonnet2json [--yes] [--no-format] <file.jsonnet> [<file.jsonnet> ...]
 ```
 
 ```shell
@@ -4614,7 +4614,7 @@ yd-jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.jso
 yd-jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
 ```
 
-Errors go to stderr, so a failed conversion piped to a file never leaves an error message in it, and the command exits 1. Each `.json` file is replaced whole or not at all, keeping an existing file's permissions, and an existing file of that name is overwritten. Non-ASCII text is kept as it is rather than escaped. A pattern that matches nothing is reported as such, and a file named twice, or matched by more than one pattern, is converted once.
+Errors go to stderr, so a failed conversion piped to a file never leaves an error message in it, and the command exits 1. Each `.json` file is replaced whole or not at all, keeping an existing file's permissions. Every file is converted before any is written: an existing `.json` file that already holds what the conversion produces is reported as unchanged and left alone, and the others that would be replaced are listed and confirmed with one prompt, since a `.json` file of that name may be a file of its own rather than an earlier conversion. Declining keeps them and still writes the new files; `--yes`/`-y` overwrites without asking, and without a terminal to answer from the command writes nothing and exits 1, naming `--yes`. Non-ASCII text is kept as it is rather than escaped. A pattern that matches nothing is reported as such, and a file named twice, or matched by more than one pattern, is converted once.
 
 This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
 
