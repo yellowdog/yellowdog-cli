@@ -1,4 +1,6 @@
 import atexit
+import contextlib
+import io
 import sys
 import time
 
@@ -532,15 +534,29 @@ def _build_what_import_built(config) -> None:
     configuration loaded part-way through a test that had patched it. A
     machine with no configuration gets dummy credentials first, as below.
     """
-    from yellowdog_cli.utils import wrapper
-    from yellowdog_cli.utils.args import ARGS_PARSER
-    from yellowdog_cli.utils.lazy import value
-    from yellowdog_cli.utils.output_settings import configure_output
+    # With stdout and stderr redirected to plain buffers. printing.py builds
+    # its consoles as it is imported, and Rich decides then, from whether
+    # stdout is a terminal, whether they colour their output; this runs before
+    # pytest captures anything, so in a terminal every console would colour,
+    # and every test reading what was printed would find escape codes in it
+    # (it passed through a pipe, which is how it went unseen). Whatever is
+    # printed meanwhile is passed on afterwards.
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            import yellowdog_cli.utils.printing  # noqa: F401
+            from yellowdog_cli.utils import wrapper
+            from yellowdog_cli.utils.args import ARGS_PARSER
+            from yellowdog_cli.utils.lazy import value
+            from yellowdog_cli.utils.output_settings import configure_output
 
-    value(ARGS_PARSER)
-    configure_output(ARGS_PARSER)
-    _supply_dummy_credentials_if_unconfigured(config)
-    value(wrapper.CONFIG_COMMON)
+            value(ARGS_PARSER)
+            configure_output(ARGS_PARSER)
+            _supply_dummy_credentials_if_unconfigured(config)
+            value(wrapper.CONFIG_COMMON)
+    finally:
+        sys.stdout.write(out.getvalue())
+        sys.stderr.write(err.getvalue())
 
 
 def _supply_dummy_credentials_if_unconfigured(config) -> None:

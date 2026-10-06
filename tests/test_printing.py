@@ -831,3 +831,20 @@ class TestStatesAreWholeWords:
     def test_states_as_words_are_highlighted(self):
         styled = self._styled("Task is RUNNING, pool STOPPED, node NON-MATCHING")
         assert {"RUNNING", "STOPPED", "NON-MATCHING"} <= set(styled)
+
+
+def test_the_consoles_came_up_without_colour():
+    """
+    The test session builds printing.py's consoles before pytest captures
+    output (conftest.py's pytest_configure()), with stdout redirected, so that
+    in a terminal they are created as for captured output: created on the
+    terminal, they coloured everything, and every test reading what was
+    printed found escape codes in it. Only a run in a terminal can fail this.
+    """
+    for console in (
+        printing_module.CONSOLE,
+        printing_module.CONSOLE_ERR,
+        printing_module.CONSOLE_TABLE,
+        printing_module.CONSOLE_JSON,
+    ):
+        assert console.color_system is None, console
