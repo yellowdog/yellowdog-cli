@@ -36,6 +36,7 @@ from yellowdog_cli.utils.printing import (
     print_info,
     print_warning,
 )
+from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_LOCAL_PATH,
     DATA_CLIENT_UPLOAD_PATH,
@@ -165,12 +166,8 @@ def generate_task_error_matchers_list(
     """
     Generate a list of TaskErrorMatcher objects.
     """
-    error_matchers: list[dict] | None = check_list(
-        tg_data.get(
-            RETRYABLE_ERRORS,
-            wr_data.get(RETRYABLE_ERRORS, config_wr.retryable_errors),
-        ),
-        RETRYABLE_ERRORS,
+    error_matchers: list[dict] | None = Cascade(wr_data, tg_data).checked(
+        RETRYABLE_ERRORS, check_list, config_wr.retryable_errors
     )
 
     return (
@@ -411,9 +408,8 @@ def generate_retry_policy(
     Build a RetryPolicy from TG > WR > config inheritance. Returns None when
     no retryPolicy is defined at any level.
     """
-    policy_data = check_dict(
-        tg_data.get(RETRY_POLICY, wr_data.get(RETRY_POLICY, config_wr.retry_policy)),
-        RETRY_POLICY,
+    policy_data = Cascade(wr_data, tg_data).checked(
+        RETRY_POLICY, check_dict, config_wr.retry_policy
     )
     if policy_data is None:
         return None
@@ -448,11 +444,8 @@ def generate_failure_policy(
     Build a FailurePolicy from TG > WR > config inheritance. Returns None
     when no failurePolicy is defined at any level.
     """
-    policy_data = check_dict(
-        tg_data.get(
-            FAILURE_POLICY, wr_data.get(FAILURE_POLICY, config_wr.failure_policy)
-        ),
-        FAILURE_POLICY,
+    policy_data = Cascade(wr_data, tg_data).checked(
+        FAILURE_POLICY, check_dict, config_wr.failure_policy
     )
     if policy_data is None:
         return None

@@ -80,6 +80,7 @@ from yellowdog_cli.utils.printing import (
     print_quiet_result,
     print_warning,
 )
+from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
     ADD_ENVIRONMENT,
     ADD_YD_ENV_VARS,
@@ -592,8 +593,8 @@ def _create_work_requirement(
     Create the new Work Requirement with its Task Groups, or in a dry run
     start the snapshot with it.
     """
-    priority = check_float_or_int(
-        wr_data.get(PRIORITY, run.config_wr.priority), PRIORITY
+    priority = Cascade(wr_data).checked(
+        PRIORITY, check_float_or_int, run.config_wr.priority
     )
     wr_tag = check_str(
         wr_data.get(
@@ -855,8 +856,8 @@ def expand_task_groups(run: _Submission, wr_data: dict) -> None:
     accepts as an integer) is taken as that integer; any other non-integer
     is an error.
     """
-    task_group_count = check_float_or_int(
-        wr_data.get(TASK_GROUP_COUNT, run.config_wr.task_group_count), TASK_GROUP_COUNT
+    task_group_count = Cascade(wr_data).checked(
+        TASK_GROUP_COUNT, check_float_or_int, run.config_wr.task_group_count
     )
     if task_group_count is None:
         return
@@ -918,6 +919,9 @@ def create_task_group(
     """
 
     promote_task_type(task_group_data)
+    # The Task Group's properties, from itself or the Work Requirement; the
+    # configuration's, from the copy below, are the defaults
+    levels = Cascade(wr_data, task_group_data)
 
     # Gather task types, in order of first appearance
     task_types_from_tasks = [
@@ -933,12 +937,7 @@ def create_task_group(
     effective_tg_number = tg_number + tg_number_offset
     num_tasks = len(task_group_data[TASKS])
     if num_tasks == 1:  # Account for Task expansion
-        _task_count = check_int(
-            task_group_data.get(
-                TASK_COUNT, wr_data.get(TASK_COUNT, run.config_wr.task_count)
-            ),
-            TASK_COUNT,
-        )
+        _task_count = levels.checked(TASK_COUNT, check_int, run.config_wr.task_count)
         if _task_count is not None:
             num_tasks = _task_count
 
@@ -969,11 +968,8 @@ def create_task_group(
     config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
 
     # Resolve taskTemplate early so it can satisfy the task-type validation below
-    task_template_data = check_dict(
-        task_group_data.get(
-            TASK_TEMPLATE, wr_data.get(TASK_TEMPLATE, config_wr.task_template)
-        ),
-        TASK_TEMPLATE,
+    task_template_data = levels.checked(
+        TASK_TEMPLATE, check_dict, config_wr.task_template
     )
 
     # Assemble the RunSpecification values for the Task Group;
@@ -983,10 +979,7 @@ def create_task_group(
     # set, whose order varies from run to run with string hashing
     task_types: list = list(
         dict.fromkeys(
-            check_list(
-                task_group_data.get(TASK_TYPES, wr_data.get(TASK_TYPES, [])), TASK_TYPES
-            )
-            + task_types_from_tasks
+            levels.checked(TASK_TYPES, check_list, []) + task_types_from_tasks
         )
     )
     # Use the task type from the config file if present and task_types is empty
@@ -1004,17 +997,11 @@ def create_task_group(
             "is a valid Work Requirement defined?"
         )
 
-    vcpus = double_range_from_list(
-        task_group_data.get(VCPUS, wr_data.get(VCPUS, config_wr.vcpus)), VCPUS
-    )
+    vcpus = levels.checked(VCPUS, double_range_from_list, config_wr.vcpus)
+    ram = levels.checked(RAM, double_range_from_list, config_wr.ram)
 
-    ram = double_range_from_list(
-        task_group_data.get(RAM, wr_data.get(RAM, config_wr.ram)), RAM
-    )
-
-    providers_data: list[str] | None = check_list(
-        task_group_data.get(PROVIDERS, wr_data.get(PROVIDERS, config_wr.providers)),
-        PROVIDERS,
+    providers_data: list[str] | None = levels.checked(
+        PROVIDERS, check_list, config_wr.providers
     )
     providers: list[CloudProvider] | None = (
         None
@@ -1022,24 +1009,15 @@ def create_task_group(
         else [CloudProvider(provider) for provider in providers_data]
     )
 
-    ipp_data: str | None = check_str(
-        task_group_data.get(
-            INSTANCE_PRICING_PREFERENCE,
-            wr_data.get(
-                INSTANCE_PRICING_PREFERENCE, config_wr.instance_pricing_preference
-            ),
-        ),
-        INSTANCE_PRICING_PREFERENCE,
+    ipp_data: str | None = levels.checked(
+        INSTANCE_PRICING_PREFERENCE, check_str, config_wr.instance_pricing_preference
     )
     instance_pricing_preference: InstancePricingPreference | None = (
         None if ipp_data is None else InstancePricingPreference(ipp_data)
     )
 
-    task_timeout_minutes: float | None = check_float_or_int(
-        task_group_data.get(
-            TASK_TIMEOUT, wr_data.get(TASK_TIMEOUT, config_wr.task_timeout)
-        ),
-        TASK_TIMEOUT,
+    task_timeout_minutes: float | None = levels.checked(
+        TASK_TIMEOUT, check_float_or_int, config_wr.task_timeout
     )
     task_timeout: timedelta | None = (
         None
@@ -1082,80 +1060,37 @@ def create_task_group(
         maximumTaskRetries=(
             None
             if retry_policy is not None
-            else check_int(
-                task_group_data.get(
-                    MAX_RETRIES, wr_data.get(MAX_RETRIES, config_wr.max_retries or 0)
-                ),
-                MAX_RETRIES,
-            )
+            else levels.checked(MAX_RETRIES, check_int, config_wr.max_retries or 0)
         ),
         retryPolicy=retry_policy,
         failurePolicy=failure_policy,
-        workerTags=check_list(
-            task_group_data.get(
-                WORKER_TAGS, wr_data.get(WORKER_TAGS, config_wr.worker_tags)
-            ),
-            WORKER_TAGS,
-        ),
-        instanceTypes=check_list(
-            task_group_data.get(
-                INSTANCE_TYPES, wr_data.get(INSTANCE_TYPES, config_wr.instance_types)
-            ),
-            INSTANCE_TYPES,
+        workerTags=levels.checked(WORKER_TAGS, check_list, config_wr.worker_tags),
+        instanceTypes=levels.checked(
+            INSTANCE_TYPES, check_list, config_wr.instance_types
         ),
         instancePricingPreference=instance_pricing_preference,
         vcpus=vcpus,
         ram=ram,
-        minWorkers=check_int(
-            task_group_data.get(
-                MIN_WORKERS, wr_data.get(MIN_WORKERS, config_wr.min_workers)
-            ),
-            MIN_WORKERS,
-        ),
-        maxWorkers=check_int(
-            task_group_data.get(
-                MAX_WORKERS, wr_data.get(MAX_WORKERS, config_wr.max_workers)
-            ),
-            MAX_WORKERS,
-        ),
-        tasksPerWorker=check_int(
-            task_group_data.get(
-                TASKS_PER_WORKER,
-                wr_data.get(TASKS_PER_WORKER, config_wr.tasks_per_worker),
-            ),
-            TASKS_PER_WORKER,
+        minWorkers=levels.checked(MIN_WORKERS, check_int, config_wr.min_workers),
+        maxWorkers=levels.checked(MAX_WORKERS, check_int, config_wr.max_workers),
+        tasksPerWorker=levels.checked(
+            TASKS_PER_WORKER, check_int, config_wr.tasks_per_worker
         ),
         providers=providers,
-        regions=check_list(
-            task_group_data.get(REGIONS, wr_data.get(REGIONS, config_wr.regions)),
-            REGIONS,
-        ),
+        regions=levels.checked(REGIONS, check_list, config_wr.regions),
         taskTimeout=task_timeout,
-        namespaces=check_list(
-            task_group_data.get(
-                NAMESPACES, wr_data.get(NAMESPACES, config_wr.namespaces)
-            ),
-            NAMESPACES,
-        ),
+        namespaces=levels.checked(NAMESPACES, check_list, config_wr.namespaces),
         retryableErrors=(
             None
             if retry_policy is not None
             else generate_task_error_matchers_list(config_wr, wr_data, task_group_data)
         ),
-        disablePreallocation=check_bool(
-            task_group_data.get(
-                DISABLE_PREALLOCATION,
-                wr_data.get(DISABLE_PREALLOCATION, config_wr.disable_preallocation),
-            ),
-            DISABLE_PREALLOCATION,
+        disablePreallocation=levels.checked(
+            DISABLE_PREALLOCATION, check_bool, config_wr.disable_preallocation
         ),
     )
-    ctttl_data = check_float_or_int(
-        task_group_data.get(
-            COMPLETED_TASK_TTL,
-            wr_data.get(COMPLETED_TASK_TTL, config_wr.completed_task_ttl),
-        ),
-        COMPLETED_TASK_TTL,
+    ctttl_data = levels.checked(
+        COMPLETED_TASK_TTL, check_float_or_int, config_wr.completed_task_ttl
     )
     completed_task_ttl = None if ctttl_data is None else timedelta(minutes=ctttl_data)
 
@@ -1175,36 +1110,21 @@ def create_task_group(
         task_template = None
 
     # Create the Task Group
-    _finish_all = check_bool(
-        task_group_data.get(
-            FINISH_IF_ALL_TASKS_FINISHED,
-            wr_data.get(
-                FINISH_IF_ALL_TASKS_FINISHED, config_wr.finish_if_all_tasks_finished
-            ),
-        ),
+    _finish_all = levels.checked(
         FINISH_IF_ALL_TASKS_FINISHED,
+        check_bool,
+        config_wr.finish_if_all_tasks_finished,
     )
     task_group = TaskGroup(
         name=task_group_name,
         runSpecification=run_specification,
         dependencies=generate_dependencies(task_group_data),
         finishIfAllTasksFinished=_finish_all if _finish_all is not None else True,
-        finishIfAnyTaskFailed=check_bool(
-            task_group_data.get(
-                FINISH_IF_ANY_TASK_FAILED,
-                wr_data.get(
-                    FINISH_IF_ANY_TASK_FAILED, config_wr.finish_if_any_task_failed
-                ),
-            ),
-            FINISH_IF_ANY_TASK_FAILED,
+        finishIfAnyTaskFailed=levels.checked(
+            FINISH_IF_ANY_TASK_FAILED, check_bool, config_wr.finish_if_any_task_failed
         )
         or False,
-        priority=check_float_or_int(
-            task_group_data.get(
-                PRIORITY, wr_data.get(PRIORITY, config_wr.priority or 0)
-            ),
-            PRIORITY,
-        ),
+        priority=levels.checked(PRIORITY, check_float_or_int, config_wr.priority or 0),
         completedTaskTtl=completed_task_ttl,
         tag=check_str(task_group_data.get(TASK_GROUP_TAG), TASK_GROUP_TAG),
         taskTemplate=task_template,
@@ -1243,11 +1163,8 @@ def add_tasks_to_task_group(
 
     # If the 'taskCount' property is set, and there is only one Task
     # in the Task Group, create 'taskCount' duplicates of the Task.
-    task_group_task_count = check_int(
-        wr_data[TASK_GROUPS][tg_number].get(
-            TASK_COUNT, wr_data.get(TASK_COUNT, run.config_wr.task_count)
-        ),
-        TASK_COUNT,
+    task_group_task_count = Cascade(wr_data, wr_data[TASK_GROUPS][tg_number]).checked(
+        TASK_COUNT, check_int, run.config_wr.task_count
     )
     if task_group_task_count is not None:
         if num_tasks == 1 and task_group_task_count > 1:
@@ -1382,18 +1299,12 @@ def generate_batch_of_tasks_for_task_group(
     for task_number in range(start_task_number, end_task_number):
         task_group_data = wr_data[TASK_GROUPS][spec_tg_index]
         task = tasks[task_number] if task_count is None else tasks[0]
+        # The Task's properties, from itself, its Task Group or the Work
+        # Requirement; the configuration's are the defaults
+        levels = Cascade(wr_data, task_group_data, task)
 
         set_task_names = (
-            check_bool(
-                task.get(
-                    SET_TASK_NAMES,
-                    task_group_data.get(
-                        SET_TASK_NAMES,
-                        wr_data.get(SET_TASK_NAMES, run.config_wr.set_task_names),
-                    ),
-                ),
-                SET_TASK_NAMES,
-            )
+            levels.checked(SET_TASK_NAMES, check_bool, run.config_wr.set_task_names)
             or False
         )
 
@@ -1428,58 +1339,26 @@ def generate_batch_of_tasks_for_task_group(
         resolve_variables_insitu(task)
         config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
 
-        arguments_list = check_list(
-            task.get(
-                ARGS,
-                task_group_data.get(ARGS, wr_data.get(ARGS, config_wr.args)),
-            ),
-            ARGS,
+        arguments_list = levels.checked(ARGS, check_list, config_wr.args)
+        arguments_list = assemble_arguments(
+            levels.checked(ARGS_PREFIX, check_list, config_wr.args_prefix),
+            arguments_list,
+            levels.checked(ARGS_POSTFIX, check_list, config_wr.args_postfix),
         )
-        args_prefix = check_list(
-            task_group_data.get(
-                ARGS_PREFIX, wr_data.get(ARGS_PREFIX, config_wr.args_prefix)
-            ),
-            ARGS_PREFIX,
+        env = merge_environment(
+            levels.checked(ENV, check_dict, config_wr.env),
+            levels.checked(ADD_ENVIRONMENT, check_dict, config_wr.add_environment),
         )
-        args_postfix = check_list(
-            task_group_data.get(
-                ARGS_POSTFIX, wr_data.get(ARGS_POSTFIX, config_wr.args_postfix)
-            ),
-            ARGS_POSTFIX,
-        )
-        arguments_list = assemble_arguments(args_prefix, arguments_list, args_postfix)
-        env = check_dict(
-            task.get(ENV, task_group_data.get(ENV, wr_data.get(ENV, config_wr.env))),
-            ENV,
-        )
-        add_env = check_dict(
-            task_group_data.get(
-                ADD_ENVIRONMENT,
-                wr_data.get(ADD_ENVIRONMENT, config_wr.add_environment),
-            ),
-            ADD_ENVIRONMENT,
-        )
-        env = merge_environment(env, add_env)
 
         add_yd_env_vars = (
-            check_bool(
-                task.get(
-                    ADD_YD_ENV_VARS,
-                    task_group_data.get(
-                        ADD_YD_ENV_VARS,
-                        wr_data.get(ADD_YD_ENV_VARS, config_wr.add_yd_env_vars),
-                    ),
-                ),
-                ADD_YD_ENV_VARS,
-            )
+            levels.checked(ADD_YD_ENV_VARS, check_bool, config_wr.add_yd_env_vars)
             or False
         )
 
         # Task timeout is automatically inherited from the Task Group level
         # unless overridden by the Task
-        task_timeout_minutes = check_float_or_int(
-            task.get(TASK_LEVEL_TIMEOUT, config_wr.task_level_timeout),
-            TASK_LEVEL_TIMEOUT,
+        task_timeout_minutes = levels.checked(
+            TASK_LEVEL_TIMEOUT, check_float_or_int, config_wr.task_level_timeout
         )
         task_timeout = (
             None
@@ -1488,25 +1367,11 @@ def generate_batch_of_tasks_for_task_group(
         )
 
         # Data client inputs and outputs
-        task_data_inputs = check_list(
-            task.get(
-                TASK_DATA_INPUTS,
-                task_group_data.get(
-                    TASK_DATA_INPUTS,
-                    wr_data.get(TASK_DATA_INPUTS, config_wr.task_data_inputs),
-                ),
-            ),
-            TASK_DATA_INPUTS,
+        task_data_inputs = levels.checked(
+            TASK_DATA_INPUTS, check_list, config_wr.task_data_inputs
         )
-        task_data_outputs = check_list(
-            task.get(
-                TASK_DATA_OUTPUTS,
-                task_group_data.get(
-                    TASK_DATA_OUTPUTS,
-                    wr_data.get(TASK_DATA_OUTPUTS, config_wr.task_data_outputs),
-                ),
-            ),
-            TASK_DATA_OUTPUTS,
+        task_data_outputs = levels.checked(
+            TASK_DATA_OUTPUTS, check_list, config_wr.task_data_outputs
         )
         # This will 'pop' any 'localFile' properties, required for the
         # following 'generate' call

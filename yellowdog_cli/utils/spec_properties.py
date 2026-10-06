@@ -53,6 +53,10 @@ class Property:
     description: str | None = None
     deprecated: bool = False
     required: bool = False
+    # Whether a level without the property takes it from the level above
+    # (Task from Task Group, from Work Requirement, from the configuration);
+    # a 'name' or 'tag' is each level's own (utils/property_cascade.py)
+    inherited: bool = True
 
 
 T, W, G, K = Level.TOML, Level.WORK_REQUIREMENT, Level.TASK_GROUP, Level.TASK
@@ -200,7 +204,7 @@ WORK_REQUIREMENT_PROPERTIES: tuple[Property, ...] = (
     Property("maxWorkers", INT, _levels(T, W, G)),
     Property("maximumTaskRetries", INT, _levels(T, W, G), deprecated=True),
     Property("minWorkers", INT, _levels(T, W, G)),
-    Property("name", STR, _levels(T, W, G, K)),
+    Property("name", STR, _levels(T, W, G, K), inherited=False),
     Property("namespaces", STRS, _levels(T, W, G)),
     Property("parallelBatches", INT, _levels(T)),
     Property("priority", NUM, _levels(T, W, G)),
@@ -219,7 +223,7 @@ WORK_REQUIREMENT_PROPERTIES: tuple[Property, ...] = (
         deprecated=True,
     ),
     Property("setTaskNames", BOOL, _levels(T, W, G, K)),
-    Property("tag", STR, _levels(T, W, G, K)),
+    Property("tag", STR, _levels(T, W, G, K), inherited=False),
     Property("taskBatchSize", INT, _levels(T)),
     Property("taskCount", INT, _levels(T, W, G)),
     Property("taskDataFile", STR, _levels(T, W, G, K)),

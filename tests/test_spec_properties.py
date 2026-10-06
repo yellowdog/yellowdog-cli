@@ -55,6 +55,18 @@ class TestDictionaryAgreesWithRegistry:
         for prop in WORK_REQUIREMENT_PROPERTIES:
             assert prop.levels == rows[prop.name][0], prop.name
 
+    def test_a_property_is_inherited_unless_its_row_says_not(self):
+        # The resolver (utils/property_cascade.py) refuses a property that is
+        # not inherited, and the dictionary is where that is documented
+        rows = _dictionary_rows()
+        for prop in WORK_REQUIREMENT_PROPERTIES:
+            description = rows[prop.name][1].lower()
+            says_not = (
+                "not inherited" in description
+                or "no property inheritance" in description
+            )
+            assert prop.inherited is not says_not, prop.name
+
     def test_no_row_is_duplicated(self):
         # Other README tables share names ('name', 'tag'): only the
         # dictionary's own rows are counted
