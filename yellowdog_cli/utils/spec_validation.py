@@ -40,8 +40,8 @@ from typing import Any, NamedTuple, NoReturn
 
 import fastjsonschema
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
@@ -87,7 +87,9 @@ def strip_schema_key(document: Any) -> Any:
 
 
 def _path(exc: fastjsonschema.JsonSchemaValueException) -> str:
-    """'data.taskGroups[0].maxWorkers' -> 'taskGroups[0].maxWorkers'."""
+    """
+    'data.taskGroups[0].maxWorkers' -> 'taskGroups[0].maxWorkers'.
+    """
     name = exc.name or "data"
     path = name[len("data") :] if name.startswith("data") else name
     return path.removeprefix(".") or DOCUMENT_PATH
@@ -120,17 +122,23 @@ def _one_of(exc: fastjsonschema.JsonSchemaValueException) -> list[list[str]] | N
 
 
 def _present(alternatives: list[list[str]], value: dict) -> list[list[str]]:
-    """The alternatives whose keys 'value' holds, all of them."""
+    """
+    The alternatives whose keys 'value' holds, all of them.
+    """
     return [keys for keys in alternatives if all(key in value for key in keys)]
 
 
 def _shown(value: Any) -> str:
-    """An enum member as a message names it: a string bare, else as JSON."""
+    """
+    An enum member as a message names it: a string bare, else as JSON.
+    """
     return value if isinstance(value, str) else json.dumps(value)
 
 
 def _not_together(exc: fastjsonschema.JsonSchemaValueException) -> list[str] | None:
-    """The keys present together that a 'not' rule forbids, if it is such a rule."""
+    """
+    The keys present together that a 'not' rule forbids, if it is such a rule.
+    """
     if exc.rule != "not" or not isinstance(exc.value, dict):
         return None
     rule = exc.rule_definition
@@ -154,7 +162,9 @@ def _definition(exc: fastjsonschema.JsonSchemaValueException) -> dict[str, Any]:
 
 
 def _unknown(exc: fastjsonschema.JsonSchemaValueException) -> list[str]:
-    """The properties an 'additionalProperties' failure's object must not contain."""
+    """
+    The properties an 'additionalProperties' failure's object must not contain.
+    """
     if exc.rule != "additionalProperties" or not isinstance(exc.value, dict):
         return []
     allowed = _definition(exc).get("properties", {})
@@ -162,14 +172,18 @@ def _unknown(exc: fastjsonschema.JsonSchemaValueException) -> list[str]:
 
 
 def _missing(exc: fastjsonschema.JsonSchemaValueException) -> list[str]:
-    """The properties a 'required' failure's object must contain and does not."""
+    """
+    The properties a 'required' failure's object must contain and does not.
+    """
     if exc.rule != "required" or not isinstance(exc.value, dict):
         return []
     return [k for k in _definition(exc).get("required", ()) if k not in exc.value]
 
 
 def _named(singular: str, keys: list[str]) -> str:
-    """The keys, sorted and quoted, after 'singular' and 'property(ies)'."""
+    """
+    The keys, sorted and quoted, after 'singular' and 'property(ies)'.
+    """
     quoted = ", ".join(f"'{key}'" for key in sorted(keys))
     return f"{singular} {'property' if len(keys) == 1 else 'properties'} {quoted}"
 
@@ -183,7 +197,9 @@ def _and_list(keys: list[str], conjunction: str) -> str:
 
 
 def _message(exc: fastjsonschema.JsonSchemaValueException) -> str:
-    """'data.taskGroups[0].maxWorkers must be integer' -> 'must be integer'."""
+    """
+    'data.taskGroups[0].maxWorkers must be integer' -> 'must be integer'.
+    """
     alternatives = _one_of(exc)
     if alternatives is not None:
         exactly = "exactly " if exc.rule == "oneOf" else ""
@@ -313,7 +329,9 @@ def validate_specification(
 
 
 def _violations(validate: Callable[[Any], Any], document: Any) -> list[Violation]:
-    """Every violation 'validate' finds in 'document', found by repair."""
+    """
+    Every violation 'validate' finds in 'document', found by repair.
+    """
     working = copy.deepcopy(document)
     violations: list[Violation] = []
     seen: set[Violation] = set()
@@ -347,7 +365,9 @@ MISPLACED_MESSAGE = "'{key}' is not read in this section"
 # INT_CAST, FLOAT_CAST) fails as a type list or as a pattern; either way what
 # it must be is a number of that kind
 def _worded(violation: Violation) -> Violation:
-    """A cast property's failure in words, else the violation as it is."""
+    """
+    A cast property's failure in words, else the violation as it is.
+    """
     section, _, key = violation.path.partition(".")
     for prop in CONFIG_SECTIONS.get(section, ()):
         if prop.name == key and prop.schema is INT_CAST:
@@ -380,7 +400,9 @@ def _misplaced_or_unknown(key: str) -> str:
 def _check_keys(
     table: dict, allowed: set[str], path: str, violations: list[Violation]
 ) -> None:
-    """Report, and delete from 'table', every key 'allowed' does not hold."""
+    """
+    Report, and delete from 'table', every key 'allowed' does not hold.
+    """
     for key in [k for k in table if k not in allowed]:
         violations.append(Violation(path, _misplaced_or_unknown(key)))
         del table[key]
@@ -459,7 +481,7 @@ def warn_of_violations(family: Family, document: Any, source: str) -> list[Viola
         # A fault in the check itself: the check is advisory, so it never
         # stops a command that would otherwise run; '--debug' shows it, as
         # warn_of_config_violations() does for the configuration file
-        if ARGS_PARSER.debug:
+        if OUTPUT.debug:
             raise
         print_warning(
             f"cannot check '{source}' against the {family.value} schema:"
@@ -495,7 +517,9 @@ def validate_all_and_exit(
 
 
 def validate_and_exit(family: Family, document: Any, source: str) -> NoReturn:
-    """'--validate' for a command that loads a single specification."""
+    """
+    '--validate' for a command that loads a single specification.
+    """
     validate_all_and_exit(family, [(document, source)])
 
 

@@ -146,14 +146,18 @@ FAMILY_COMMANDS: dict[Family, str] = {
 
 
 class SchemaGenerationError(Exception):
-    """An SDK annotation the mapping does not know, named with its owner."""
+    """
+    An SDK annotation the mapping does not know, named with its owner.
+    """
 
 
 # --- polymorphism, as the SDK's deserialiser sees it ------------------------
 
 
 def _leaf_subclasses(cls: type) -> list[type]:
-    """The leaf subclasses of 'cls', as the SDK's dispatch collects them."""
+    """
+    The leaf subclasses of 'cls', as the SDK's dispatch collects them.
+    """
     leaves: set[type] = set()
 
     def _recurse(parent: type) -> None:
@@ -168,7 +172,9 @@ def _leaf_subclasses(cls: type) -> list[type]:
 
 
 def _discriminator_field(cls: type) -> str | None:
-    """The discriminator 'cls' (a base or a member) declares, if any."""
+    """
+    The discriminator 'cls' (a base or a member) declares, if any.
+    """
     hints = typing.get_type_hints(cls)
     return next((d for d in DISCRIMINATORS if d in hints), None)
 
@@ -254,7 +260,9 @@ def discriminator_schema(cls: type) -> tuple[str, dict[str, Any]] | None:
 def annotation_schema(
     annotation: Any, defs: dict[str, Any], *, owner: str
 ) -> dict[str, Any]:
-    """One field's annotation as a JSON Schema fragment; nested models go into 'defs'."""
+    """
+    One field's annotation as a JSON Schema fragment; nested models go into 'defs'.
+    """
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)
     if origin in (types.UnionType, typing.Union):
@@ -373,7 +381,9 @@ def _ref(
 
 
 def _json_key(field_name: str) -> str:
-    """A field's JSON name: the SDK renames 'global_' and the like."""
+    """
+    A field's JSON name: the SDK renames 'global_' and the like.
+    """
     if field_name.endswith("_") and keyword.iskeyword(field_name[:-1]):
         return field_name[:-1]
     return field_name
@@ -475,7 +485,9 @@ def model_schema(
 
 
 def _resolve(fragment: Any, defs: dict[str, Any], *, owner: str) -> Any:
-    """A registry fragment with every SdkRef inside it resolved against the SDK."""
+    """
+    A registry fragment with every SdkRef inside it resolved against the SDK.
+    """
     if isinstance(fragment, SdkRef):
         return annotation_schema(
             sdk_models.model_class(fragment.model), defs, owner=owner
@@ -532,7 +544,9 @@ def _object_schema(
 
 
 def _with_resource(resource_type: str, schema: dict[str, Any]) -> dict[str, Any]:
-    """A resource branch: 'schema' with the 'resource' key and '$schema' added."""
+    """
+    A resource branch: 'schema' with the 'resource' key and '$schema' added.
+    """
     return {
         **schema,
         "properties": {
@@ -579,7 +593,9 @@ def _dispatch(
 
 
 def _resource_schema(resource_type: str, defs: dict[str, Any]) -> dict[str, Any]:
-    """The schema one resource type's specification takes."""
+    """
+    The schema one resource type's specification takes.
+    """
     shell = RESOURCE_SHELL.get(resource_type, ())
     if resource_type == "Credential":
         props = tuple(p for p in shell if p.name != "credential")
@@ -619,7 +635,9 @@ def _resource_schema(resource_type: str, defs: dict[str, Any]) -> dict[str, Any]
 
 
 def _action_schema(defs: dict[str, Any]) -> dict[str, Any]:
-    """One yd-nodeaction action: one of the three Node Action classes, by 'type'."""
+    """
+    One yd-nodeaction action: one of the three Node Action classes, by 'type'.
+    """
     shell_type = next(p for p in NODE_ACTION_SHELL if p.name == "type")
     cases = []
     for action_type, class_name in NODE_ACTION_TYPES.items():
@@ -652,7 +670,9 @@ def _action_schema(defs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _relax(defs: dict[str, Any], model_name: str) -> None:
-    """Drop from a $def the required properties the configuration can supply."""
+    """
+    Drop from a $def the required properties the configuration can supply.
+    """
     schema = defs[model_name]
     supplied = SUPPLIED_BY_CONFIGURATION[model_name]
     required = [r for r in schema.get("required", ()) if r not in supplied]
@@ -681,7 +701,9 @@ _HOISTED = ("description", "deprecated")
 
 
 def _admits_variable(schema: dict[str, Any]) -> bool:
-    """True where a {{variable}} string already passes: a plain string, or anything."""
+    """
+    True where a {{variable}} string already passes: a plain string, or anything.
+    """
     if not schema:
         return True
     if any(k in schema for k in ("pattern", "format", "enum", "const", "$ref")):
@@ -726,7 +748,9 @@ def _wrap_node(schema: Any, *, admit: bool = True) -> Any:
 
 
 def _wrap(document: dict[str, Any]) -> dict[str, Any]:
-    """Every value that is not a plain string also accepts a {{variable}} string."""
+    """
+    Every value that is not a plain string also accepts a {{variable}} string.
+    """
     defs = document.pop("$defs")
     wrapped = _wrap_node(document, admit=False)
     wrapped["$defs"] = {
@@ -761,7 +785,9 @@ def _config_root(sections: frozenset[str], defs: dict[str, Any]) -> dict[str, An
 
 
 def build_schema(family: Family) -> dict[str, Any]:
-    """One family's JSON Schema, wrapped, as a JSON-serialisable dict."""
+    """
+    One family's JSON Schema, wrapped, as a JSON-serialisable dict.
+    """
     defs: dict[str, Any] = {}
     root: dict[str, Any]
     if family is Family.WORK_REQUIREMENT:

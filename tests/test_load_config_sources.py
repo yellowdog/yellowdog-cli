@@ -40,9 +40,7 @@ def isolated(monkeypatch):
 class TestConfigSources:
     def test_command_line_wins(self, isolated, monkeypatch):
         monkeypatch.setenv(YD_KEY, "env-key")
-        monkeypatch.setattr(
-            load_config, "ARGS_PARSER", _args(key="cli-key", secret="s")
-        )
+        monkeypatch.setattr(load_config, "_ARGS", _args(key="cli-key", secret="s"))
         cfg = load_config.load_config_common()
         assert cfg.key == "cli-key"
         assert load_config.CONFIG_SOURCES["key"] == "command line"
@@ -51,7 +49,7 @@ class TestConfigSources:
     def test_environment_names_the_variable(self, isolated, monkeypatch):
         monkeypatch.setenv(YD_KEY, "env-key")
         monkeypatch.setenv(YD_SECRET, "env-secret")
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         load_config.load_config_common()
         assert load_config.CONFIG_SOURCES["key"] == f"environment ({YD_KEY})"
         assert load_config.CONFIG_SOURCES["namespace"] == "default"
@@ -65,7 +63,7 @@ class TestConfigSources:
             {"common": {"key": "k", "secret": "s", "namespace": "ns"}},
         )
         monkeypatch.setattr(load_config, "CONFIG_FILE", "my.toml")
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         load_config.load_config_common()
         assert load_config.CONFIG_SOURCES["namespace"] == "config file (my.toml)"
 
@@ -82,7 +80,7 @@ class TestConfigSources:
             "import_toml",
             lambda name: {"key": "k", "secret": "s", "namespace": "shared"},
         )
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         load_config.load_config_common()
         assert load_config.CONFIG_SOURCES["key"] == "config file (shared.toml)"
         # a local value supersedes the imported one, and is sourced locally
@@ -99,7 +97,7 @@ class TestConfigSources:
             load_config, "config_file_explicitly_selected", lambda: True
         )
         monkeypatch.setenv(YD_NAMESPACE, "env-ns")
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         cfg = load_config.load_config_common()
         assert cfg.namespace == "file-ns"
         assert load_config.CONFIG_SOURCES["namespace"] == "config file (my.toml)"
@@ -107,14 +105,14 @@ class TestConfigSources:
 
 class TestStrict:
     def test_strict_exits_on_missing_key(self, isolated, monkeypatch):
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         with pytest.raises(SystemExit):
             load_config.load_config_common()
 
     def test_lenient_returns_none_for_missing_key_and_secret(
         self, isolated, monkeypatch
     ):
-        monkeypatch.setattr(load_config, "ARGS_PARSER", _args())
+        monkeypatch.setattr(load_config, "_ARGS", _args())
         cfg = load_config.load_config_common(strict=False)
         assert cfg.key is None and cfg.secret is None
         assert cfg.namespace == "default"

@@ -23,9 +23,8 @@ from yellowdog_client.model.exceptions.server_error_exception import (
 
 import yellowdog_cli.utils.command_runner as runner_module
 import yellowdog_cli.utils.dataclient_wrapper as dcw_module
-import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.results import record, reset_results
 
@@ -100,12 +99,15 @@ def _args(json_output: bool = False, debug: bool = False) -> MagicMock:
 
 @pytest.fixture()
 def wrapped(monkeypatch):
-    """Both wrappers with their start-up checks and the client stubbed out."""
+    """
+    Both wrappers with their start-up checks and the client stubbed out.
+    """
 
     def set_up(json_output: bool = False, debug: bool = False) -> MagicMock:
         args = _args(json_output, debug)
-        for module in (wrapper_module, dcw_module, results_module, printing_module):
+        for module in (wrapper_module, dcw_module):
             monkeypatch.setattr(module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         # The start-up checks both wrappers run, in the runner they share
         monkeypatch.setattr(
             runner_module, "warn_of_undefined_config_variables", lambda: None

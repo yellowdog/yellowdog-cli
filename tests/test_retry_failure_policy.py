@@ -30,7 +30,9 @@ from yellowdog_cli.utils.submit_utils import (
 
 
 def _config(**kw) -> ConfigWorkRequirement:
-    """Return a ConfigWorkRequirement with sensible defaults overridable by kw."""
+    """
+    Return a ConfigWorkRequirement with sensible defaults overridable by kw.
+    """
     return ConfigWorkRequirement(**kw)
 
 

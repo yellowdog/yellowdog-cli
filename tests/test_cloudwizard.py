@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.command_registry import (
     check_cloudwizard_args,
     cloud_provider_of,
@@ -85,7 +86,9 @@ from yellowdog_cli.utils import cloudwizard_common, printing  # noqa: E402
 
 
 class _Config(cloudwizard_common.CommonCloudConfig):
-    """A provider whose setup creates a Keyring, then fails as told."""
+    """
+    A provider whose setup creates a Keyring, then fails as told.
+    """
 
     def __init__(self, fail_with: Exception | None = None, report_error: bool = False):
         super().__init__(ctx=SimpleNamespace(client=None), cloud_provider="Test")  # type: ignore[arg-type]
@@ -108,9 +111,7 @@ class _Config(cloudwizard_common.CommonCloudConfig):
 def printed(monkeypatch):
     lines: list[str] = []
     monkeypatch.setattr(cloudwizard_common, "_ERRORS_REPORTED", 0)
-    monkeypatch.setattr(
-        printing,
-        "ARGS_PARSER",
+    output_settings.configure_output(
         SimpleNamespace(
             quiet=True,
             json_output=False,

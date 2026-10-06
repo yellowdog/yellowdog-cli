@@ -34,7 +34,9 @@ from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals, as patched."""
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

@@ -17,7 +17,9 @@ QUOTES = "'\""
 
 
 class QuotingError(ValueError):
-    """A field whose quotes do not balance, so it cannot be split."""
+    """
+    A field whose quotes do not balance, so it cannot be split.
+    """
 
 
 def split_arguments(text: str) -> list[str]:

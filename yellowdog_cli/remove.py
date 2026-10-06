@@ -23,7 +23,7 @@ def main(ctx: RunContext):
         return
     remove_resources(
         ctx,
-        load_resource_specifications(creation_or_update=False),
+        load_resource_specifications(ctx.args, creation_or_update=False),
         RemoveOptions(
             match_allowances_by_description=bool(
                 ctx.args.match_allowances_by_description

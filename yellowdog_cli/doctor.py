@@ -16,6 +16,7 @@ from rich.markup import escape
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.doctor_checks import Check, Context, Result, Status, run_checks
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, print_json, print_simple
 
 Row = tuple[Check, Result]
@@ -156,10 +157,12 @@ def main() -> None:
     _keep_logging_off_stdout()
     timeout = ARGS_PARSER.timeout
     assert timeout is not None  # the option has a default; argparse refuses < 1
+    configure_output(ARGS_PARSER)
     ctx = Context(
         offline=bool(ARGS_PARSER.offline),
         timeout=timeout,
         debug=bool(ARGS_PARSER.debug),
+        args=ARGS_PARSER,
     )
     rows = run_checks(ctx)
     if ARGS_PARSER.json_output:

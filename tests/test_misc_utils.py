@@ -279,7 +279,9 @@ class TestGetDelimitedStringBoundaries:
 
 
 class TestSplitDelimitedStringEdgeCases:
-    """Additional cases not covered by test_variable_processing.py"""
+    """
+    Additional cases not covered by test_variable_processing.py
+    """
 
     def test_variable_at_end(self):
         result = split_delimited_string("text{{var}}", "{{", "}}")
@@ -406,14 +408,18 @@ class TestPathnameRelativeToConfigFile:
 
 
 class TestLoadDotenvFile:
-    """Tests for load_dotenv_file() — focusing on env-override behaviour."""
+    """
+    Tests for load_dotenv_file() — focusing on env-override behaviour.
+    """
 
     _FAKE_DOTENV = "/fake/.env"
 
     def _run(
         self, monkeypatch, tmp_path, env_override_set: bool, args_override: bool = False
     ):
-        """Patch dependencies and call load_dotenv_file(); return the load_dotenv mock."""
+        """
+        Patch dependencies and call load_dotenv_file(); return the load_dotenv mock.
+        """
         # Run from an empty directory: load_dotenv_file looks for a .env beside the
         # config file before it consults find_dotenv, so a real .env in or above the
         # repo would be picked up instead of the patched one.
@@ -422,9 +428,6 @@ class TestLoadDotenvFile:
             monkeypatch.setenv(YD_ENV_OVERRIDE, "1")
         else:
             monkeypatch.delenv(YD_ENV_OVERRIDE, raising=False)
-
-        mock_args = MagicMock()
-        mock_args.env_override = args_override
 
         load_dotenv_mock = MagicMock()
 
@@ -441,12 +444,8 @@ class TestLoadDotenvFile:
                 "yellowdog_cli.utils.misc_utils.load_dotenv",
                 load_dotenv_mock,
             ),
-            patch(
-                "yellowdog_cli.utils.misc_utils.ARGS_PARSER",
-                mock_args,
-            ),
         ):
-            load_dotenv_file()
+            load_dotenv_file(None, args_override)
 
         return load_dotenv_mock
 
@@ -478,5 +477,5 @@ class TestLoadDotenvFile:
             patch("yellowdog_cli.utils.misc_utils.find_dotenv", return_value=""),
             patch("yellowdog_cli.utils.misc_utils.load_dotenv", load_dotenv_mock),
         ):
-            load_dotenv_file()
+            load_dotenv_file(None)
         load_dotenv_mock.assert_not_called()

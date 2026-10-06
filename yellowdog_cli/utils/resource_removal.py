@@ -78,7 +78,9 @@ from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType, get_y
 
 @dataclass(frozen=True)
 class RemoveOptions:
-    """What yd-remove's options decide, for a run of remove_resources()."""
+    """
+    What yd-remove's options decide, for a run of remove_resources().
+    """
 
     match_allowances_by_description: bool = False
 

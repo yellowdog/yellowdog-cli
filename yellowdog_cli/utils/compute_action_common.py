@@ -102,7 +102,9 @@ class ComputeAction:
         )
 
     def recorder(self) -> Record:
-        """The action's record, as action_runner calls it."""
+        """
+        The action's record, as action_runner calls it.
+        """
         return lambda entity, entity_type, outcome, error: self.record(
             entity, outcome, error, entity_type
         )
@@ -180,7 +182,9 @@ def _instance_record(cr_id: str, instance_id: str) -> dict:
 
 @dataclass(frozen=True)
 class _Instance:
-    """An Instance to act on, and the Node ID it was named by, if any."""
+    """
+    An Instance to act on, and the Node ID it was named by, if any.
+    """
 
     cr_id: str
     compute_requirement: ComputeRequirement
@@ -227,7 +231,9 @@ def _plan(items: list[Item]) -> list[Item]:
 
 
 def _groups(items: list[Item]) -> list[list[_Instance]]:
-    """The Instances among the items, grouped by Compute Requirement."""
+    """
+    The Instances among the items, grouped by Compute Requirement.
+    """
     groups: dict[str, list[_Instance]] = {}
     for item in items:
         if item.entity_type == ET_INSTANCES:

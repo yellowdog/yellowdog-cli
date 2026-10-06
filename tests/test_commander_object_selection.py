@@ -186,7 +186,9 @@ def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
 
 @pytest.fixture
 def captured(window, monkeypatch):
-    """Capture (command, args, kwargs) an action would run, without spawning it."""
+    """
+    Capture (command, args, kwargs) an action would run, without spawning it.
+    """
     calls: list[tuple[str, list[str], dict]] = []
     monkeypatch.setattr(
         window,
@@ -197,7 +199,9 @@ def captured(window, monkeypatch):
 
 
 def stub_delete_flow(window, monkeypatch, enumerated, result):
-    """Stub the object enumeration and the confirmation for a delete."""
+    """
+    Stub the object enumeration and the confirmation for a delete.
+    """
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: enumerated
     )

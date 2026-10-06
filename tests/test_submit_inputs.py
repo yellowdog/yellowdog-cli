@@ -23,7 +23,9 @@ from yellowdog_cli.utils.property_names import (
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -67,13 +69,15 @@ class TestWorkRequirementFromCsv:
         # Without a specification there is one Task Group, so the files after
         # the first used to be ignored without a word
         with pytest.raises(ValueError, match=r"Number of CSV files \(2\) exceeds"):
-            submit_module._work_requirement_from_csv(["a.csv", "b.csv"], ".")
+            submit_module._work_requirement_from_csv(_ctx(), ["a.csv", "b.csv"], ".")
 
     def test_one_csv_file_is_expanded(self):
         with patch.object(
             submit_module, "csv_expand_toml_tasks", return_value={"x": 1}
         ) as expand:
-            assert submit_module._work_requirement_from_csv(["a.csv"], "d") == {"x": 1}
+            assert submit_module._work_requirement_from_csv(_ctx(), ["a.csv"], "d") == {
+                "x": 1
+            }
         assert expand.call_args.args[1:] == ("a.csv", "d")
 
 

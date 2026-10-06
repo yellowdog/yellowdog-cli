@@ -50,6 +50,7 @@ import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.entity_names import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_by_id,
@@ -121,6 +122,7 @@ def run(monkeypatch, capsys):
             # A library module (utils/resource_creation.py) reads no ARGS_PARSER
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         # A command taking a RunContext gets these from the wrapper's own;
         # one not yet migrated imports them by name
         if hasattr(module, "CLIENT"):
@@ -173,8 +175,8 @@ def _action(id_, name, type_, action, outcome, **extra) -> dict:
 class TestRecordAction:
     def test_an_entity_with_an_error(self, monkeypatch, capsys):
         args = MagicMock(**_DEFAULTS)
-        monkeypatch.setattr(results_module, "ARGS_PARSER", args)
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        output_settings.configure_output(args)
         reset_results()
         record_action(
             SimpleNamespace(id="i", name="n"), "tasks", "abort", "failed", "boom"
@@ -681,7 +683,9 @@ class TestAbort:
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
 
     def test_namespace_work_requirement_and_task_group(self, run, wrs):
-        """'ns/wr/tg' used to raise ValueError from the namespace split."""
+        """
+        'ns/wr/tg' used to raise ValueError from the namespace split.
+        """
         client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-a/tg-1"])
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
@@ -712,7 +716,9 @@ class TestAbort:
         ]
 
     def test_nothing_executing_keeps_stdout_a_document(self, run, wrs):
-        """The message printed despite --quiet used to land on stdout too."""
+        """
+        The message printed despite --quiet used to land on stdout too.
+        """
         out, _, _ = run(
             yd_abort, client=self._client(), quiet=True, task_id_list=["wr-a"]
         )
@@ -1390,7 +1396,7 @@ def run_create(run, monkeypatch):
 
     def _run(resources, existing_keyring=None, client=None, **values):
         monkeypatch.setattr(
-            create_command, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda *a, **k: resources
         )
         monkeypatch.setattr(
             yd_create, "get_keyring_summary_by_name", lambda *a: existing_keyring
@@ -1441,7 +1447,7 @@ class TestCreate:
 
         resources = _keyring_and_policy()[:1]
         monkeypatch.setattr(
-            create_command, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda *a, **k: resources
         )
         monkeypatch.setattr(
             yd_create,
@@ -1589,7 +1595,7 @@ class TestRemove:
             monkeypatch.setattr(
                 remove_command,
                 "load_resource_specifications",
-                lambda **k: list(resources),
+                lambda *a, **k: list(resources),
             )
             monkeypatch.setattr(
                 yd_remove,
@@ -2197,6 +2203,7 @@ class TestFollow:
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         event = {"name": "wr", "status": "RUNNING", "taskGroups": []}
 
@@ -2224,6 +2231,7 @@ class TestFollow:
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         monkeypatch.setattr(
             yd_follow, "follow_ids", lambda _ctx, ids, auto_cr=False: ids
@@ -2308,6 +2316,7 @@ def run_dc(monkeypatch, capsys):
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         for name in ("CONFIG_DATA_CLIENT", "CONFIG_SRC", "CONFIG_DST"):
             if hasattr(module, name):
                 monkeypatch.setattr(module, name, config)

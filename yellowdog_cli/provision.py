@@ -134,7 +134,10 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str) -> None:
     """
     if wp_json_file.lower().endswith(".jsonnet"):
         wp_data = load_jsonnet_file_with_variable_substitutions(
-            wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+            wp_json_file,
+            prefix=WP_VARIABLES_PREFIX,
+            postfix=WP_VARIABLES_POSTFIX,
+            dry_run=bool(ctx.args.jsonnet_dry_run),
         )
     else:
         if ctx.args.jsonnet_dry_run:

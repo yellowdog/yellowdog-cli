@@ -27,7 +27,9 @@ from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals, as patched."""
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

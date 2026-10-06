@@ -38,7 +38,9 @@ def settings(tmp_path, monkeypatch):
 
 
 def _through_client(server, action):
-    """Run 'action(session)' against 'server' over in-memory streams."""
+    """
+    Run 'action(session)' against 'server' over in-memory streams.
+    """
 
     async def main():
         async with create_client_server_memory_streams() as (

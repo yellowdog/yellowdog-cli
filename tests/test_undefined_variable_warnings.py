@@ -84,7 +84,9 @@ class TestConfigValues:
 
 
 class TestWrappersCheckConfigValues:
-    """Both wrappers check the configuration values once warnings are on."""
+    """
+    Both wrappers check the configuration values once warnings are on.
+    """
 
     @staticmethod
     def _run(wrapped, monkeypatch) -> list[bool]:

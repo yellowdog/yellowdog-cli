@@ -23,6 +23,7 @@ import yellowdog_cli.utils.load_resources as load_resources_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import ALL_KEYS, SCHEMA_KEY
 from yellowdog_cli.utils.results import reset_results
@@ -209,11 +210,9 @@ class TestWarnings:
             no_format=True,
             debug=False,
         )
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
-
-        for target in (printing_module, results_module, spec_validation_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
-        return args
+        # The output settings themselves, for a test to change
+        output_settings.configure_output(args)
+        return output_settings.OUTPUT
 
     def test_each_violation_is_one_warning_naming_the_file(self, args, capsys):
         warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json")
@@ -413,6 +412,7 @@ def run(monkeypatch, capsys):
             # A library module (utils/resource_creation.py) reads no ARGS_PARSER
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         # A command taking a RunContext gets these from the wrapper's own
         if hasattr(module, "CLIENT"):
             monkeypatch.setattr(module, "CLIENT", client)
@@ -905,10 +905,9 @@ class TestCreate:
             print_pid=False,
             no_format=True,
         )
-        for target in (load_resources_module, printing_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         resources = load_resources_module.load_resource_specifications(
-            creation_or_update=creation
+            args, creation_or_update=creation
         )
         assert resources[0]["name"] == "k"
         assert ("WARNING" in capsys.readouterr().out) is creation

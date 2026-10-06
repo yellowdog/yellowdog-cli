@@ -20,7 +20,9 @@ from yellowdog_cli.utils.entity_utils import AmbiguousNameError
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals, as patched."""
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

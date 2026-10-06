@@ -17,7 +17,6 @@ from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
@@ -416,36 +415,34 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     return new_yd_name
 
 
-def dotenv_file_path() -> str | None:
+def dotenv_file_path(config_file: str | None) -> str | None:
     """
-    The .env file a command would load: one beside the config file first,
-    else the nearest one found upwards from the current directory; None
-    when there is neither.
+    The .env file a command would load: one beside the config file
+    ('config_file', else config.toml) first, else the nearest one found
+    upwards from the current directory; None when there is neither.
     """
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
     # fall back to searching upward from CWD.
-    config_path = ARGS_PARSER.config_file or "config.toml"
+    config_path = config_file or "config.toml"
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
     if isfile(config_dir_dotenv):
         return config_dir_dotenv
     return find_dotenv(usecwd=True) or None
 
 
-def load_dotenv_file():
+def load_dotenv_file(config_file: str | None, env_override: bool = False):
     """
     Load extra environment variables from a .env file if it exists.
     Do not override existing variables (environment takes precedence)
     unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
     Report on YD vars that are taken from .env.
     """
-    dotenv_file = dotenv_file_path()
+    dotenv_file = dotenv_file_path(config_file)
     if dotenv_file is None:
         return
 
-    env_override = bool(ARGS_PARSER.env_override) or bool(
-        os.environ.get(YD_ENV_OVERRIDE)
-    )
+    env_override = env_override or bool(os.environ.get(YD_ENV_OVERRIDE))
 
     print_debug(
         f"Loading environment variables from '{dotenv_file}' ("
@@ -483,13 +480,11 @@ def is_http_not_found(e: Exception) -> bool:
     )
 
 
-def config_file_explicitly_selected(args_parser) -> bool:
+def config_file_explicitly_selected(args) -> bool:
     """
     True if the configuration file was explicitly selected using the
-    '--config'/'-c' option. An explicitly selected config file takes
-    precedence over environment variables (but not over the command line).
-
-    The caller's ARGS_PARSER is passed in (rather than using this module's
-    import) so that tests can patch it per-module.
+    '--config'/'-c' option, on the command line 'args'. An explicitly
+    selected config file takes precedence over environment variables (but
+    not over the command line).
     """
-    return args_parser.config_file is not None
+    return args.config_file is not None

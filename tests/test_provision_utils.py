@@ -45,7 +45,9 @@ def _make_config(
 
 
 def _identity_subs(text, **_kwargs):
-    """Variable substitution stub that returns the text unchanged."""
+    """
+    Variable substitution stub that returns the text unchanged.
+    """
     return text
 
 

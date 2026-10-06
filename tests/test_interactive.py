@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import yellowdog_cli.utils.interactive as interactive_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
 
 # ---------------------------------------------------------------------------
@@ -21,12 +22,12 @@ from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
 class TestConfirmedShortCircuits:
     def test_yes_flag_returns_true_without_input(self):
         mock_args = SimpleNamespace(yes=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             assert confirmed("delete everything?") is True
 
     def test_user_confirms_with_y(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="y"
@@ -35,7 +36,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_confirms_with_yes(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="yes"
@@ -44,7 +45,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_cancels_with_n(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="n"
@@ -53,7 +54,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_cancels_with_empty_string(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value=""
@@ -185,7 +186,7 @@ def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
 
 def test_an_answer_with_spaces_is_understood():
     mock_args = SimpleNamespace(yes=False, no_format=True)
-    with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+    with output_settings.configured(mock_args):
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(
                 interactive_module, "_get_user_input", return_value=" y "

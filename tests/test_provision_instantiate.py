@@ -23,6 +23,7 @@ import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
@@ -89,7 +90,9 @@ def run(monkeypatch, capsys):
             interactive_module,
             wrapper_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", client)
         monkeypatch.setattr(
             wrapper_module,
@@ -387,7 +390,9 @@ class TestProvisionTemplateLookup:
 
 
 class _UserData:
-    """A get_user_data_property() stand-in that counts its calls."""
+    """
+    A get_user_data_property() stand-in that counts its calls.
+    """
 
     def __init__(self, value: str | None = "#!/bin/sh"):
         self.value = value

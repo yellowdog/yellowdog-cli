@@ -31,6 +31,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record_action
 from yellowdog_cli.utils.wrapper import main_wrapper
@@ -99,7 +100,9 @@ def _record(
 
 
 def _label(entity: object) -> str:
-    """An entity's name for a message: its name, else its ID, else itself."""
+    """
+    An entity's name for a message: its name, else its ID, else itself.
+    """
     if isinstance(entity, dict):
         return str(entity.get("name") or entity.get("id"))
     return str(getattr(entity, "name", None) or getattr(entity, "id", entity))
@@ -237,12 +240,16 @@ def _ydid_entity_type(ydid_type: YDIDType) -> str:
 
 
 def _named_target_type(target: str) -> str:
-    """The type a named target is recorded as: a Task Group if it names one."""
+    """
+    The type a named target is recorded as: a Task Group if it names one.
+    """
     return ET_WORK_REQUIREMENTS if "/" not in target else ET_TASK_GROUPS
 
 
 def _interactive_units(run: _Run) -> list[_Unit]:
-    """The Work Requirements in the namespace and tag the user selects."""
+    """
+    The Work Requirements in the namespace and tag the user selects.
+    """
     print_info(
         "Finding active Work Requirements in "
         f"namespace '{run.ctx.config.namespace}' with tags "
@@ -252,6 +259,7 @@ def _interactive_units(run: _Run) -> list[_Unit]:
     # The Work Requirements, and then their Tasks, are chosen from lists,
     # unless --yes is given
     run.ctx.args.interactive = True
+    configure_output(run.ctx.args)
 
     work_requirement_summaries: list[WorkRequirementSummary] = (
         get_filtered_work_requirement_summaries(
@@ -398,7 +406,9 @@ def _not_found(what: str, entity: object, entity_type: str) -> None:
 def _work_requirement_named(
     run: _Run, name: str, namespace: str | None
 ) -> WorkRequirementSummary | None:
-    """A Work Requirement by its name, which holds no '/', in a namespace."""
+    """
+    A Work Requirement by its name, which holds no '/', in a namespace.
+    """
     return get_work_requirement_summary_by_name_or_id(
         run.ctx.client, name, namespace=namespace
     )

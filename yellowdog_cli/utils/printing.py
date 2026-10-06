@@ -21,8 +21,8 @@ from rich.highlighter import JSONHighlighter, RegexHighlighter
 from rich.markup import escape
 from rich.theme import Theme
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     DEBUG_MARKER,
     DEBUG_STYLE,
@@ -150,7 +150,7 @@ def print_string(msg: str = "", no_fill: bool = False) -> str:
     prefix = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Optionally add the PID to the prefix to disambiguate interleaved
     # log messages
-    if ARGS_PARSER.print_pid:
+    if OUTPUT.print_pid:
         prefix += f" ({getpid():06d}) : "
     else:
         prefix += " : "
@@ -159,7 +159,7 @@ def print_string(msg: str = "", no_fill: bool = False) -> str:
         PREFIX_LEN = len(prefix)
         SUBSEQUENT_INDENT = " " * PREFIX_LEN
 
-    if no_fill or msg == "" or msg.isspace() or ARGS_PARSER.no_format:
+    if no_fill or msg == "" or msg.isspace() or OUTPUT.no_format:
         return prefix + msg
 
     return fill(
@@ -189,10 +189,10 @@ def print_simple(
     Simple print function without timestamp.
     Set 'override_quiet' to print when '-q' is set.
     """
-    if ARGS_PARSER.quiet and override_quiet is False:
+    if OUTPUT.quiet and override_quiet is False:
         return
 
-    if ARGS_PARSER.no_format:
+    if OUTPUT.no_format:
         print(log_message)
     else:
         CONSOLE.print(escape(log_message), soft_wrap=True)
@@ -212,11 +212,11 @@ def print_info(
     other colouring.
     """
     if (
-        ARGS_PARSER.quiet or ARGS_PARSER.json_output or ARGS_PARSER.count_only
+        OUTPUT.quiet or OUTPUT.json_output or OUTPUT.count_only
     ) and override_quiet is False:
         return
 
-    if ARGS_PARSER.no_format:
+    if OUTPUT.no_format:
         print(print_string(log_message, no_fill=no_fill), flush=True)
         return
 
@@ -231,7 +231,7 @@ def print_quiet_result(result: object) -> None:
     '--quiet' is set, for a shell to capture. Not under '--json', whose
     document is then all that stdout holds.
     """
-    if ARGS_PARSER.quiet and not ARGS_PARSER.json_output:
+    if OUTPUT.quiet and not OUTPUT.json_output:
         print(result, flush=True)
 
 
@@ -247,7 +247,7 @@ def print_debug(
     suppressed by '--quiet' and the JSON output modes, exactly as
     print_info() is.
     """
-    if not ARGS_PARSER.debug:
+    if not OUTPUT.debug:
         return
 
     print_info(f"{DEBUG_MARKER}{log_message}", no_fill=no_fill, style=DEBUG_STYLE)
@@ -269,7 +269,7 @@ def print_error(error_obj: Exception | str):
     """
     Print an error message to stderr.
     """
-    if ARGS_PARSER.no_format:
+    if OUTPUT.no_format:
         # sys.stderr looked up at the call, so that a redirect (yd-doctor's
         # capture of a configuration error) reaches it
         print(print_string(f"{ERROR_MARKER}{error_obj}"), flush=True, file=sys.stderr)
@@ -287,7 +287,7 @@ def warnings_suppressed() -> bool:
     True if print_warning() prints nothing unless told to override: under
     '--quiet' or '--count-only'. A check that only warns can be skipped.
     """
-    return bool(ARGS_PARSER.quiet or ARGS_PARSER.count_only)
+    return bool(OUTPUT.quiet or OUTPUT.count_only)
 
 
 def print_warning(
@@ -303,9 +303,9 @@ def print_warning(
 
     # Under '--json' stdout is the result document alone, so a warning goes
     # to stderr rather than being dropped
-    to_stderr = bool(ARGS_PARSER.json_output)
+    to_stderr = bool(OUTPUT.json_output)
 
-    if ARGS_PARSER.no_format:
+    if OUTPUT.no_format:
         print(
             print_string(f"{WARNING_MARKER}{warning}", no_fill=no_fill),
             flush=True,
@@ -373,7 +373,7 @@ def print_objects_as_json(objects: list) -> None:
     and print to stdout with no Rich formatting.  Used by --json mode.
     """
     data = [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
-    if ARGS_PARSER.strip_ids:
+    if OUTPUT.strip_ids:
         stripped = []
         for item in data:
             item = _strip_id_props(item)
@@ -433,7 +433,7 @@ def print_json(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
     # Coloured formatting of JSON console output is expensive
-    if json_string.count("\n") > MAX_LINES_COLOURED_FORMATTING or ARGS_PARSER.no_format:
+    if json_string.count("\n") > MAX_LINES_COLOURED_FORMATTING or OUTPUT.no_format:
         if with_final_comma:
             print(json_string, end=",\n", flush=True)
         else:
@@ -445,10 +445,10 @@ def print_json(
         else:
             CONSOLE_JSON.print(escape(json_string), soft_wrap=True)
 
-    if ARGS_PARSER.output_file is not None:  # Also output to a nominated file
+    if OUTPUT.output_file is not None:  # Also output to a nominated file
         print_to_file(
             json_string=json_string,
-            output_file=ARGS_PARSER.output_file,
+            output_file=OUTPUT.output_file,
             with_final_comma=with_final_comma,
         )
 
@@ -467,7 +467,7 @@ def print_yd_object(
 
     object_data: Any = Json.dump(yd_object)
 
-    if ARGS_PARSER.strip_ids:
+    if OUTPUT.strip_ids:
         object_data = _strip_id_props(object_data)
         # Remove the 'provider' property from CST/source data only
         # 'object_data' is always a dict in practice
@@ -496,13 +496,13 @@ def print_yd_object_list(
     Print a JSON list of objects.
     """
 
-    if ARGS_PARSER.output_file is not None:
-        print_info(f"Copying detailed resource list to '{ARGS_PARSER.output_file}'")
+    if OUTPUT.output_file is not None:
+        print_info(f"Copying detailed resource list to '{OUTPUT.output_file}'")
 
     if len(objects) > 1:
         print("[")
-        if ARGS_PARSER.output_file is not None:
-            print_to_file("[", ARGS_PARSER.output_file)
+        if OUTPUT.output_file is not None:
+            print_to_file("[", OUTPUT.output_file)
 
     for index, (object_, add_fields) in enumerate(objects):
         print_yd_object(
@@ -514,8 +514,8 @@ def print_yd_object_list(
 
     if len(objects) > 1:
         print("]")
-        if ARGS_PARSER.output_file is not None:
-            print_to_file("]", ARGS_PARSER.output_file)
+        if OUTPUT.output_file is not None:
+            print_to_file("]", OUTPUT.output_file)
 
 
 def print_worker_pool(

@@ -65,7 +65,9 @@ _REPORTED: set[str] = set()
 
 
 def report_problems_to(reporter: Callable[[str], None] | None) -> None:
-    """Hand every later reason the cache cannot be used to 'reporter'."""
+    """
+    Hand every later reason the cache cannot be used to 'reporter'.
+    """
     global _reporter
     _reporter = reporter
 
@@ -81,7 +83,9 @@ def _reason(error: OSError) -> str:
 
 
 def _temp_root() -> Path:
-    """The system's temporary directory; a seam for the tests."""
+    """
+    The system's temporary directory; a seam for the tests.
+    """
     return Path(tempfile.gettempdir())
 
 
@@ -125,7 +129,9 @@ def cache_directory() -> Path | None:
 
 
 def _digest(schema: dict[str, Any]) -> str:
-    """What the compiled code depends on, as a file-name component."""
+    """
+    What the compiled code depends on, as a file-name component.
+    """
     digest = hashlib.sha256()
     for part in (
         str(CACHE_FORMAT),
@@ -139,7 +145,9 @@ def _digest(schema: dict[str, Any]) -> str:
 
 
 def _load(path: Path) -> types.CodeType | None:
-    """The code cached at 'path', or None: not cached yet, or unusable."""
+    """
+    The code cached at 'path', or None: not cached yet, or unusable.
+    """
     try:
         data = path.read_bytes()
     except FileNotFoundError:
@@ -202,7 +210,9 @@ def _store(directory: Path, stem: str, path: Path, code: types.CodeType) -> None
 
 
 def _last_used(path: Path) -> float:
-    """When a cache file was last used (written, or loaded); 0 if gone."""
+    """
+    When a cache file was last used (written, or loaded); 0 if gone.
+    """
     try:
         return path.stat().st_mtime
     except OSError:
@@ -251,7 +261,9 @@ def compile_validator(schema: dict[str, Any], stem: str) -> Callable[[Any], Any]
 
 
 def _validator(code: types.CodeType, name: str) -> Callable[[Any], Any] | None:
-    """The validator 'code' defines, or None if it defines none."""
+    """
+    The validator 'code' defines, or None if it defines none.
+    """
     namespace: dict[str, Any] = {}
     exec(code, namespace)
     validate = namespace.get(name)

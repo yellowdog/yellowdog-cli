@@ -20,13 +20,13 @@ from typing import Any, cast
 
 from tomli import load as toml_load
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
 from yellowdog_cli.utils.misc_utils import (
     find_delimited_expression_spans,
     find_delimited_expressions,
 )
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_json,
@@ -163,10 +163,13 @@ def load_jsonnet_file_with_variable_substitutions(
     prefix: str = "",
     postfix: str = "",
     exit_on_dry_run=True,
+    dry_run: bool = False,
 ) -> dict:
     """
     Takes a Jsonnet filename and returns a dictionary with its variable
-    substitutions processed.
+    substitutions processed. With 'dry_run' ('--jsonnet-dry-run'), the
+    result is printed (or recorded, under '--json', by a caller converting
+    several files), and the command exits if 'exit_on_dry_run'.
     """
     check_jsonnet_import()
     from _jsonnet import evaluate_snippet
@@ -192,9 +195,9 @@ def load_jsonnet_file_with_variable_substitutions(
     # Secondary processing after Jsonnet expansion
     resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
 
-    if ARGS_PARSER.jsonnet_dry_run:
+    if dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
-        if ARGS_PARSER.json_output and not exit_on_dry_run:
+        if OUTPUT.json_output and not exit_on_dry_run:
             # A caller converting several files (yd-create, yd-remove): each
             # is one element of the '--json' document, printed at exit; a
             # copy, as the caller goes on to change what it was handed

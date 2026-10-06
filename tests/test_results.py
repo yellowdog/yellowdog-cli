@@ -17,7 +17,7 @@ from yellowdog_client.model import KeyringSummary
 
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.results as results_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.results import (
     any_failed,
     flush_results,
@@ -43,12 +43,14 @@ def _args(json_output: bool | None, **overrides) -> MagicMock:
 
 @pytest.fixture()
 def json_mode(monkeypatch):
-    """Patch both modules' ARGS_PARSER; return a setter for the mode."""
+    """
+    Patch both modules' ARGS_PARSER; return a setter for the mode.
+    """
 
     def set_mode(json_output: bool | None, **overrides) -> MagicMock:
         args = _args(json_output, **overrides)
-        monkeypatch.setattr(results_module, "ARGS_PARSER", args)
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        output_settings.configure_output(args)
         return args
 
     reset_results()
@@ -231,7 +233,7 @@ class TestWarningsUnderJson:
 class TestPromptUnderJson:
     def test_the_prompt_goes_to_stderr(self, json_mode, monkeypatch, capsys):
         args = json_mode(True)
-        monkeypatch.setattr(interactive_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr("builtins.input", lambda prompt="": "y")
         assert interactive_module._get_user_input("Proceed? ") == "y"
         out, err = capsys.readouterr()
@@ -240,7 +242,7 @@ class TestPromptUnderJson:
 
     def test_without_json_the_prompt_is_unchanged(self, json_mode, monkeypatch, capsys):
         args = json_mode(False)
-        monkeypatch.setattr(interactive_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         prompts: list[str] = []
         monkeypatch.setattr(
             "builtins.input", lambda prompt="": prompts.append(prompt) or "n"
@@ -263,7 +265,7 @@ class TestPromptAtEndOfInput:
     @pytest.mark.parametrize("json_output", [True, False, None])
     def test_the_error_names_the_remedy(self, json_mode, monkeypatch, json_output):
         args = json_mode(json_output)
-        monkeypatch.setattr(interactive_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr("builtins.input", self._stdin_at_eof)
         monkeypatch.setattr("sys.stdin", io.StringIO(""))
         with pytest.raises(interactive_module.NoAnswerToPrompt) as excinfo:
@@ -274,7 +276,7 @@ class TestPromptAtEndOfInput:
 
     def test_under_json_stdout_stays_empty(self, json_mode, monkeypatch, capsys):
         args = json_mode(True)
-        monkeypatch.setattr(interactive_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr("builtins.input", self._stdin_at_eof)
         with pytest.raises(interactive_module.NoAnswerToPrompt):
             interactive_module._get_user_input("Proceed? ")

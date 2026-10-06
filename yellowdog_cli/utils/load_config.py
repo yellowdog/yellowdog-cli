@@ -8,12 +8,11 @@ import os
 from os.path import abspath, dirname, join
 from pathlib import Path
 from sys import exit
-from typing import cast
+from typing import Any, cast
 
 import fastjsonschema
 from tomli import TOMLDecodeError
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import (
     ConfigCommon,
     ConfigDataClient,
@@ -31,6 +30,7 @@ from yellowdog_cli.utils.misc_utils import (
 from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     print_debug,
@@ -93,7 +93,9 @@ def warn_of_undefined_worker_pool_variables() -> None:
 
 
 def config_as_written() -> dict | None:
-    """The configuration file as written (see _CONFIG_AS_WRITTEN), or None."""
+    """
+    The configuration file as written (see _CONFIG_AS_WRITTEN), or None.
+    """
     ensure_config_loaded()
     return _CONFIG_AS_WRITTEN
 
@@ -114,7 +116,7 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     raises a fault in the check rather than warning of it.
     """
     ensure_config_loaded()
-    if warnings_suppressed() and not ARGS_PARSER.debug:
+    if warnings_suppressed() and not OUTPUT.debug:
         return
     document = config_as_written()
     if document is None:
@@ -130,7 +132,7 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     except Exception as e:
         # A fault in the check itself: the check is advisory, so it never
         # stops a command that would otherwise run; '--debug' shows it
-        if ARGS_PARSER.debug:
+        if OUTPUT.debug:
             raise
         print_warning(
             f"cannot check '{CONFIG_FILE}' against the config schema:"
@@ -202,7 +204,7 @@ def config_file_explicitly_selected() -> bool:
     '--config'/'-c' option. An explicitly selected config file takes
     precedence over environment variables (but not over the command line).
     """
-    return _config_file_explicitly_selected(ARGS_PARSER)
+    return _config_file_explicitly_selected(_ARGS)
 
 
 def _parse_property_value(value_str: str, property_name: str | None = None):
@@ -326,10 +328,15 @@ CONFIG_TOML: dict
 _CONFIG_AS_WRITTEN: dict | None = None
 
 _CONFIG_LOADED = False
+
+# The command line the configuration is loaded under (see
+# ensure_config_loaded()): given, never imported, so that this module can be
+# used, and tested, without parsing one
+_ARGS: Any = None
 _LOADED_NAMES = ("CONFIG_FILE", "CONFIG_FILE_DIR", "CONFIG_TOML")
 
 
-def ensure_config_loaded() -> None:
+def ensure_config_loaded(args: Any = None) -> None:
     """
     Load the configuration, once: the user's variables first (YD_VAR_*,
     '-v'), which the file's substitutions use, then the file. Every public
@@ -337,11 +344,28 @@ def ensure_config_loaded() -> None:
     broken configuration is reported, and exits, before the command starts.
     It was done at import, which therefore parsed the command line and could
     exit; a load that exits is tried again on next use.
+
+    'args' is the command line the configuration is loaded under, given by
+    whoever runs the command (prepare_run(), yd-doctor) and kept for the
+    loaders that read it, which call this without one. The first given is
+    the one kept, as the configuration is loaded once.
     """
-    global _CONFIG_LOADED
+    global _ARGS, _CONFIG_LOADED
+    if args is not None and _ARGS is None:
+        _ARGS = args
     if _CONFIG_LOADED:
         return
-    register_user_variables()
+    if _ARGS is None:
+        raise RuntimeError(
+            "The configuration is loaded under a command line:"
+            " call ensure_config_loaded(args) first"
+        )
+    register_user_variables(
+        _ARGS.variables,
+        _ARGS.config_file,
+        _ARGS.env_override,
+        config_file_explicitly_selected(),
+    )
     _load_config_file()
     _CONFIG_LOADED = True
 
@@ -354,13 +378,17 @@ def __getattr__(name: str):
 
 
 def config_file() -> str:
-    """The configuration file's name, relative where it can be."""
+    """
+    The configuration file's name, relative where it can be.
+    """
     ensure_config_loaded()
     return CONFIG_FILE
 
 
 def config_file_dir() -> str:
-    """The configuration file's directory (the current one without a file)."""
+    """
+    The configuration file's directory (the current one without a file).
+    """
     ensure_config_loaded()
     return CONFIG_FILE_DIR
 
@@ -385,16 +413,16 @@ def _load_config_file() -> None:
     # CLI > 'config.toml'
     # Relative where it can be, absolute where it cannot (Windows, another drive)
     CONFIG_FILE = relative_if_possible(
-        "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
+        "config.toml" if _ARGS.config_file is None else _ARGS.config_file
     )
 
-    if ARGS_PARSER.no_config:
+    if _ARGS.no_config:
         # Suppress use of any TOML config file
         print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
         CONFIG_TOML = {COMMON_SECTION: {}}
         CONFIG_FILE_DIR = os.getcwd()
-        if ARGS_PARSER.property_overrides:
-            _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
+        if _ARGS.property_overrides:
+            _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
 
     else:
         # Attempt to load configuration data from TOML file
@@ -422,13 +450,13 @@ def _load_config_file() -> None:
             except Exception as e:
                 print_error(e)
                 exit(ExitCode.CONFIGURATION)
-            if ARGS_PARSER.property_overrides:
-                _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
+            if _ARGS.property_overrides:
+                _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
             _CONFIG_AS_WRITTEN = copy.deepcopy(CONFIG_TOML)
 
         except FileNotFoundError as e:
             # An explicitly selected config file ('--config'/'-c') must exist
-            if ARGS_PARSER.config_file is not None:
+            if _ARGS.config_file is not None:
                 print_error(e)
                 exit(ExitCode.CONFIGURATION)
             # No config file, so create a stub config dictionary
@@ -472,7 +500,9 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             common_section = common_section_imported
 
         def file_source(key_name: str) -> str:
-            """The file a [common] value was read from, for CONFIG_SOURCES."""
+            """
+            The file a [common] value was read from, for CONFIG_SOURCES.
+            """
             if common_section_import_file is not None and key_name in imported_keys:
                 return (
                     f"config file ({_imported_file_name(common_section_import_file)})"
@@ -487,11 +517,11 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         # over the environment:
         # command line > config file > environment variable
         for key_name, args_parser_value, env_var_name in [
-            (KEY, ARGS_PARSER.key, YD_KEY),
-            (SECRET, ARGS_PARSER.secret, YD_SECRET),
-            (NAMESPACE, ARGS_PARSER.namespace, YD_NAMESPACE),
-            (NAME_TAG, ARGS_PARSER.tag, YD_TAG),
-            (URL, ARGS_PARSER.url, YD_URL),
+            (KEY, _ARGS.key, YD_KEY),
+            (SECRET, _ARGS.secret, YD_SECRET),
+            (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
+            (NAME_TAG, _ARGS.tag, YD_TAG),
+            (URL, _ARGS.url, YD_URL),
         ]:
             if args_parser_value is not None:
                 common_section[key_name] = args_parser_value
@@ -518,7 +548,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         if common_section.get(NAMESPACE) is None:
             common_section[NAMESPACE] = "default"
             CONFIG_SOURCES[NAMESPACE] = "default"
-            if ARGS_PARSER.namespace_required:
+            if _ARGS.namespace_required:
                 print_debug(
                     "Using default value for 'namespace': "
                     f"'{common_section[NAMESPACE]}'"
@@ -526,7 +556,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         if common_section.get(NAME_TAG) is None:
             common_section[NAME_TAG] = "{{username}}"
             CONFIG_SOURCES[NAME_TAG] = "default"
-            if ARGS_PARSER.tag_required:
+            if _ARGS.tag_required:
                 print_debug(
                     "Using default value for 'tag/prefix/name' = "
                     f"'{VARIABLE_SUBSTITUTIONS['username']}'"
@@ -603,9 +633,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             name_tag=name_tag,
             # Optional
             url=url,
-            use_pac=(
-                True if ARGS_PARSER.use_pac else common_section.get(USE_PAC, False)
-            ),
+            use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
         )
 
     except KeyError as e:
@@ -614,7 +642,9 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
 
 
 def _imported_file_name(filename: str) -> str:
-    """The path an 'importCommon' file is read from, as import_toml() reads it."""
+    """
+    The path an 'importCommon' file is read from, as import_toml() reads it.
+    """
     return relative_if_possible(
         join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename)))
     )
@@ -651,8 +681,8 @@ def _load_namespace_and_tag() -> None:
 
     explicit_config = config_file_explicitly_selected()
 
-    if ARGS_PARSER.namespace is not None:
-        namespace = ARGS_PARSER.namespace
+    if _ARGS.namespace is not None:
+        namespace = _ARGS.namespace
     elif explicit_config and common_section.get(NAMESPACE) is not None:
         namespace = str(common_section[NAMESPACE])
     elif os.environ.get(YD_NAMESPACE) is not None:
@@ -663,8 +693,8 @@ def _load_namespace_and_tag() -> None:
         namespace = "default"
     namespace = _resolve_value(namespace, f"{COMMON_SECTION}.{NAMESPACE}")
 
-    if ARGS_PARSER.tag is not None:
-        name_tag = ARGS_PARSER.tag
+    if _ARGS.tag is not None:
+        name_tag = _ARGS.tag
     elif explicit_config and common_section.get(NAME_TAG) is not None:
         name_tag = str(common_section[NAME_TAG])
     elif os.environ.get(YD_TAG) is not None:
@@ -773,7 +803,7 @@ def load_config_data_client() -> ConfigDataClient:
     register_dc_substitutions()
     base_section = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
 
-    profile_name = getattr(ARGS_PARSER, "data_client_profile", None) or os.environ.get(
+    profile_name = getattr(_ARGS, "data_client_profile", None) or os.environ.get(
         YD_DATA_CLIENT
     )
     if profile_name is not None:
@@ -814,17 +844,17 @@ def load_config_data_client() -> ConfigDataClient:
         return None
 
     remote = _resolve(
-        getattr(ARGS_PARSER, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
+        getattr(_ARGS, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
     )
     bucket = _resolve(
-        getattr(ARGS_PARSER, "bucket", None), YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET
+        getattr(_ARGS, "bucket", None), YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET
     )
 
-    if getattr(ARGS_PARSER, "no_prefix", False):
+    if getattr(_ARGS, "no_prefix", False):
         prefix = None
     else:
         prefix = _resolve(
-            getattr(ARGS_PARSER, "prefix", None),
+            getattr(_ARGS, "prefix", None),
             YD_DATA_CLIENT_PREFIX,
             DATA_CLIENT_PREFIX,
         )
@@ -955,9 +985,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         # Check for properties set on the command line
         task_type = (
-            wr_section.get(TASK_TYPE)
-            if ARGS_PARSER.task_type is None
-            else ARGS_PARSER.task_type
+            wr_section.get(TASK_TYPE) if _ARGS.task_type is None else _ARGS.task_type
         )
         if task_type is not None:
             check_str(task_type, TASK_TYPE)
@@ -973,8 +1001,8 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         task_batch_size = (
             wr_section.get(TASK_BATCH_SIZE, TASK_BATCH_SIZE_DEFAULT)
-            if ARGS_PARSER.task_batch_size is None
-            else ARGS_PARSER.task_batch_size
+            if _ARGS.task_batch_size is None
+            else _ARGS.task_batch_size
         )
         # The Platform takes at most 10,000 Tasks in one request
         if (
@@ -989,14 +1017,14 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             exit(ExitCode.CONFIGURATION)
 
         task_count = (
-            ARGS_PARSER.task_count
-            if ARGS_PARSER.task_count is not None
+            _ARGS.task_count
+            if _ARGS.task_count is not None
             else wr_section.get(TASK_COUNT, 1)
         )
 
         task_group_count = (
-            ARGS_PARSER.task_group_count
-            if ARGS_PARSER.task_group_count is not None
+            _ARGS.task_group_count
+            if _ARGS.task_group_count is not None
             else wr_section.get(TASK_GROUP_COUNT, 1)
         )
 
@@ -1058,7 +1086,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
     except Exception as e:
         # A configuration error, as a rule; under '--debug', its traceback,
         # in case it is a fault in this loader instead
-        if ARGS_PARSER.debug:
+        if OUTPUT.debug:
             raise
         print_error(f"{e}")
         exit(ExitCode.CONFIGURATION)

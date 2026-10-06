@@ -14,7 +14,7 @@ from pathlib import Path
 import fastjsonschema
 import pytest
 
-from yellowdog_cli.utils import load_config
+from yellowdog_cli.utils import load_config, output_settings
 from yellowdog_cli.utils import property_names as pn
 from yellowdog_cli.utils.spec_properties import (
     ALL_CONFIG_SECTIONS,
@@ -45,7 +45,9 @@ TEMPLATE = Path(__file__).parent.parent / "config-template.toml"
 
 
 def _template_keys() -> dict[str, set[str]]:
-    """Each section's keys in the template, commented-out examples included."""
+    """
+    Each section's keys in the template, commented-out examples included.
+    """
     keys: dict[str, set[str]] = {}
     section = None
     for line in TEMPLATE.read_text().splitlines():
@@ -341,7 +343,6 @@ class TestWarnOfConfigViolations:
 
     @pytest.mark.parametrize("debug", [False, True])
     def test_quiet_skips_the_check_unless_debugging(self, monkeypatch, warnings, debug):
-        from types import SimpleNamespace
 
         checked = []
         monkeypatch.setattr(
@@ -351,7 +352,7 @@ class TestWarnOfConfigViolations:
         )
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
         monkeypatch.setattr(load_config, "warnings_suppressed", lambda: True)
-        monkeypatch.setattr(load_config, "ARGS_PARSER", SimpleNamespace(debug=debug))
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", debug)
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert bool(checked) is debug
         assert warnings == []
@@ -563,7 +564,7 @@ class TestDeferredMinors:
 
         monkeypatch.setattr(load_config, "validate_config", fail)
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
-        monkeypatch.setattr(load_config.ARGS_PARSER.args, "debug", False, raising=False)
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", False)
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert len(warnings) == 1
         assert "cannot check 'config.toml'" in warnings[0]
@@ -575,7 +576,7 @@ class TestDeferredMinors:
 
         monkeypatch.setattr(load_config, "validate_config", fail)
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
-        monkeypatch.setattr(load_config.ARGS_PARSER.args, "debug", True, raising=False)
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
         with pytest.raises(RuntimeError):
             load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
 

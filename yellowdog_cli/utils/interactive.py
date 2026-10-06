@@ -8,7 +8,7 @@ import sys
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING, TypeVar
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     CONSOLE,
     CONSOLE_ERR,
@@ -54,8 +54,8 @@ def select(
     if sort_objects:
         objects = sorted_objects(objects)  # type: ignore[arg-type, assignment]
 
-    selecting = bool(ARGS_PARSER.interactive or force_interactive)
-    if ARGS_PARSER.json_output:
+    selecting = bool(OUTPUT.interactive or force_interactive)
+    if OUTPUT.json_output:
         # Under '--json' stdout is the result document alone: the list is
         # shown only when a selection is to be made from it, and on stderr,
         # as the selection prompt is
@@ -68,7 +68,7 @@ def select(
                     showing_all=showing_all,
                     object_type_name=object_type_name,
                 )
-    elif not ARGS_PARSER.quiet or override_quiet or ARGS_PARSER.interactive:
+    elif not OUTPUT.quiet or override_quiet or OUTPUT.interactive:
         print_numbered_object_list(
             client,
             objects,  # type: ignore[arg-type]
@@ -80,7 +80,7 @@ def select(
     if not selecting:
         return objects
 
-    if ARGS_PARSER.auto_select_all:
+    if OUTPUT.auto_select_all:
         print_info("Automatically selecting all objects")
         return objects
 
@@ -179,7 +179,7 @@ def confirmed(msg: str) -> bool:
     Confirm an action.
     """
     # Confirmed on the command line?
-    if ARGS_PARSER is not None and ARGS_PARSER.yes:
+    if OUTPUT.yes:
         print_info(f"Action proceeding without user confirmation ({msg})")
         return True
 
@@ -225,10 +225,10 @@ def _get_user_input(input_prompt: str) -> str:
     prompt goes to stderr, so stdout holds only the result document.
     """
     try:
-        if ARGS_PARSER.json_output:
+        if OUTPUT.json_output:
             CONSOLE_ERR.print(input_prompt, end="")
             return input("")
-        if ARGS_PARSER.no_format:
+        if OUTPUT.no_format:
             return input(input_prompt)
         # Prevents broken wrapping
         CONSOLE.print(input_prompt, end="")

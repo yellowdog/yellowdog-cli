@@ -58,7 +58,6 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
     ExitCode,
@@ -841,13 +840,13 @@ def expand_name_globs(
 
 
 def substitute_ids_for_names_in_crt(
-    client: PlatformClient, crt: ComputeRequirementTemplate
+    client: PlatformClient, crt: ComputeRequirementTemplate, substitute: bool
 ) -> ComputeRequirementTemplate:
     """
-    Substitute CST and Image Family IDs for namespace/name,
-    if option is selected.
+    Substitute CST and Image Family IDs for namespace/name, if 'substitute'
+    ('--substitute-ids').
     """
-    if not ARGS_PARSER.substitute_ids:
+    if not substitute:
         return crt
 
     # Image family
@@ -872,13 +871,13 @@ def substitute_ids_for_names_in_crt(
 
 
 def substitute_image_family_id_for_name_in_cst(
-    client: PlatformClient, cst: ComputeSourceTemplate
+    client: PlatformClient, cst: ComputeSourceTemplate, substitute: bool
 ) -> ComputeSourceTemplate:
     """
-    Substitute Image Family IDs for namespace/name,
-    if option is selected.
+    Substitute Image Family IDs for namespace/name, if 'substitute'
+    ('--substitute-ids').
     """
-    if not ARGS_PARSER.substitute_ids:
+    if not substitute:
         return cst
 
     try:
@@ -907,11 +906,12 @@ def substitute_id_for_name_in_allowance(
     allowance: (
         AccountAllowance | RequirementsAllowance | SourcesAllowance | SourceAllowance
     ),
+    substitute: bool,
 ) -> AccountAllowance | RequirementsAllowance | SourcesAllowance | SourceAllowance:
     """
-    Substitute IDs in Allowance objects.
+    Substitute IDs in Allowance objects, if 'substitute' ('--substitute-ids').
     """
-    if not ARGS_PARSER.substitute_ids:
+    if not substitute:
         return allowance
 
     if isinstance(allowance, RequirementsAllowance):

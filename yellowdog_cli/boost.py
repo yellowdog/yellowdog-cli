@@ -74,7 +74,9 @@ def _without_duplicates(allowances: list[str]) -> list[str]:
 
 
 def _remaining_hours(allowance: object) -> float | None:
-    """The boosted Allowance's remaining hours, if the Platform gave them."""
+    """
+    The boosted Allowance's remaining hours, if the Platform gave them.
+    """
     remaining = getattr(allowance, "remainingHours", None)
     if isinstance(remaining, (int, float)) and not isinstance(remaining, bool):
         return remaining

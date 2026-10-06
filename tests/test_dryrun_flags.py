@@ -16,7 +16,7 @@ import yellowdog_cli.utils.dataclient_wrapper as dcw_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
-from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils import entity_utils, output_settings
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
@@ -125,6 +125,7 @@ class TestRealPathRecordsThroughARealParse:
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         monkeypatch.setattr(
             wrapper_module,
@@ -164,6 +165,7 @@ class TestRealPathRecordsThroughARealParse:
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(yd_delete, "CONFIG_DATA_CLIENT", MagicMock())
         monkeypatch.setattr(
             yd_delete, "resolve_remote_path", lambda *a, **k: "loc:some/path"

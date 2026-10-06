@@ -44,7 +44,9 @@ from yellowdog_cli.utils.tables import node_action_type_label as _action_type_la
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -322,7 +324,9 @@ class TestParseAction:
     # ------------------------------------------------------------------
 
     def test_write_file_content_file_relative_resolved_from_source_dir(self, tmp_path):
-        """contentFile given as a bare filename is resolved under source_dir."""
+        """
+        contentFile given as a bare filename is resolved under source_dir.
+        """
         (tmp_path / "script.sh").write_text("#!/bin/bash\necho hi\n")
         result = _parse_action(
             {
@@ -336,7 +340,9 @@ class TestParseAction:
         assert result.content == "#!/bin/bash\necho hi\n"
 
     def test_write_file_content_files_relative_resolved_from_source_dir(self, tmp_path):
-        """Each entry in contentFiles is resolved under source_dir."""
+        """
+        Each entry in contentFiles is resolved under source_dir.
+        """
         (tmp_path / "part1.txt").write_text("alpha\n")
         (tmp_path / "part2.txt").write_text("beta\n")
         result = _parse_action(
@@ -351,7 +357,9 @@ class TestParseAction:
         assert result.content == "alpha\nbeta\n"
 
     def test_write_file_content_file_relative_missing_returns_none(self, tmp_path):
-        """A relative contentFile not found under source_dir returns None."""
+        """
+        A relative contentFile not found under source_dir returns None.
+        """
         with patch.object(na_module, "print_error"):
             result = _parse_action(
                 {
@@ -364,7 +372,9 @@ class TestParseAction:
         assert result is None
 
     def test_write_file_content_file_absolute_ignores_source_dir(self, tmp_path):
-        """An absolute contentFile path is used as-is regardless of source_dir."""
+        """
+        An absolute contentFile path is used as-is regardless of source_dir.
+        """
         other_dir = tmp_path / "other"
         other_dir.mkdir()
         (other_dir / "data.txt").write_text("payload\n")
@@ -381,7 +391,9 @@ class TestParseAction:
         assert result.content == "payload\n"
 
     def test_write_file_content_file_subdir_relative(self, tmp_path):
-        """Relative paths with a subdirectory component are resolved correctly."""
+        """
+        Relative paths with a subdirectory component are resolved correctly.
+        """
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "cfg.txt").write_text("cfg-value\n")
@@ -562,7 +574,9 @@ class TestParseActions:
         assert isinstance(result[1], NodeRunCommandAction)
 
     def test_source_dir_threaded_to_parse_action(self, tmp_path):
-        """source_dir is passed through to each _parse_action call."""
+        """
+        source_dir is passed through to each _parse_action call.
+        """
         (tmp_path / "data.txt").write_text("content\n")
         specs = [
             {"type": "writeFile", "path": "/tmp/out.txt", "contentFile": "data.txt"}
@@ -628,13 +642,17 @@ class TestParseActionGroups:
         assert result is None
 
     def test_group_missing_actions_key_yields_empty_group(self):
-        """A group dict with no 'actions' key defaults to an empty action list."""
+        """
+        A group dict with no 'actions' key defaults to an empty action list.
+        """
         result = _parse_action_groups([{}], ".")
         assert len(result) == 1
         assert result[0].actions == []
 
     def test_action_group_error_propagates_none(self):
-        """If any group fails, the entire result is None."""
+        """
+        If any group fails, the entire result is None.
+        """
         specs = [
             {"actions": [{"type": "runCommand", "path": "/valid.sh"}]},
             {"actions": [{"type": "notAType"}]},
@@ -644,7 +662,9 @@ class TestParseActionGroups:
         assert result is None
 
     def test_source_dir_threaded_to_actions(self, tmp_path):
-        """source_dir is passed through all group/action layers."""
+        """
+        source_dir is passed through all group/action layers.
+        """
         (tmp_path / "init.sh").write_text("#!/bin/sh\n")
         specs = [
             {
@@ -690,7 +710,9 @@ class TestActionTypeLabel:
         assert _action_type_label(action) == "createWorkers"
 
     def test_unknown_action_returns_class_name(self):
-        """For an unrecognised action subclass, fall back to the class name."""
+        """
+        For an unrecognised action subclass, fall back to the class name.
+        """
 
         class SomeNewAction(NodeRunCommandAction):
             pass
@@ -766,7 +788,9 @@ class TestLoadSpec:
         assert result == {"actions": []}
 
     def test_uppercase_jsonnet_extension_uses_jsonnet_loader(self, tmp_path):
-        """Regression: .JSONNET must not fall through to the JSON loader."""
+        """
+        Regression: .JSONNET must not fall through to the JSON loader.
+        """
         f = tmp_path / "spec.JSONNET"
         with patch.object(
             na_module,
@@ -832,7 +856,9 @@ class TestSubmissionError:
         assert "nodeTypes" in msg
 
     def test_node_id_takes_priority_over_specific_nodes(self):
-        """node_id is checked before specific_nodes."""
+        """
+        node_id is checked before specific_nodes.
+        """
         msg = _submission_error(
             Exception("No available nodes"),
             node_id="ydid:node:ABC:123",
@@ -858,8 +884,10 @@ class TestWriteFileVariableSubstitution:
     """
 
     def test_content_file_substitution_function_called(self, tmp_path):
-        """process_variable_substitutions_in_file_contents is called with the
-        raw file content; its return value becomes the action content."""
+        """
+        process_variable_substitutions_in_file_contents is called with the
+        raw file content; its return value becomes the action content.
+        """
         f = tmp_path / "script.sh"
         f.write_text("raw content\n")
         with patch.object(
@@ -884,7 +912,9 @@ class TestWriteFileVariableSubstitution:
         assert result.content == "substituted content\n"
 
     def test_content_files_substitution_called_per_part(self, tmp_path):
-        """Substitution is applied to each file individually before joining."""
+        """
+        Substitution is applied to each file individually before joining.
+        """
         (tmp_path / "a.sh").write_text("part-a\n")
         (tmp_path / "b.sh").write_text("part-b\n")
         with patch.object(
@@ -904,7 +934,9 @@ class TestWriteFileVariableSubstitution:
         assert result.content == "sub-a\nsub-b\n"
 
     def test_content_file_env_var_substitution(self, tmp_path):
-        """__{{env:VAR}}__ is resolved via os.getenv() at substitution time."""
+        """
+        __{{env:VAR}}__ is resolved via os.getenv() at substitution time.
+        """
         f = tmp_path / "script.sh"
         f.write_text("echo __{{env:NODEACTION_TEST_VAR}}__\n")
         with patch.dict("os.environ", {"NODEACTION_TEST_VAR": "hello"}):

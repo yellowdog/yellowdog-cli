@@ -4,8 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.results as results_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.output_style import DRY_RUN_MARKER
 from yellowdog_cli.utils.results import flush_results, reset_results
@@ -13,10 +12,12 @@ from yellowdog_cli.utils.results import flush_results, reset_results
 
 @pytest.fixture()
 def json_mode(monkeypatch):
-    """Under '--json', with nothing recorded before or after."""
+    """
+    Under '--json', with nothing recorded before or after.
+    """
     args = MagicMock(json_output=True, strip_ids=False, no_format=True)
-    monkeypatch.setattr(results_module, "ARGS_PARSER", args)
-    monkeypatch.setattr(printing_module, "ARGS_PARSER", args)
+    output_settings.configure_output(args)
+    output_settings.configure_output(args)
     reset_results()
     yield
     reset_results()

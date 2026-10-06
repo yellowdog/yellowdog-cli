@@ -423,7 +423,9 @@ class WindowBase(QMainWindow):
         return self._split_text(field.toPlainText(), name)
 
     def _split_text(self, text: str, name: str) -> list[str] | None:
-        """_split_field() for text already read from the field called 'name'."""
+        """
+        _split_field() for text already read from the field called 'name'.
+        """
         try:
             return split_arguments(text)
         except QuotingError as error:

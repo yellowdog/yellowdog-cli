@@ -11,7 +11,6 @@ from typing import cast
 
 from tomli import load as toml_load
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.file_substitution import (
     load_jsonnet_file_with_variable_substitutions,
@@ -176,7 +175,10 @@ CSV_DATA_CACHE = CSVDataCache(max_entries=2)
 
 
 def load_json_file_with_csv_task_expansion(
-    json_file: str, csv_files: list[str], files_directory: str = ""
+    json_file: str,
+    csv_files: list[str],
+    files_directory: str = "",
+    csv_only: bool = False,
 ) -> dict:
     """
     Load a JSON file, expanding its Task lists using data from CSV
@@ -184,23 +186,32 @@ def load_json_file_with_csv_task_expansion(
     """
 
     wr_data = parse_json_file(json_file)
-    return perform_csv_task_expansion(wr_data, csv_files, files_directory)
+    return perform_csv_task_expansion(wr_data, csv_files, files_directory, csv_only)
 
 
 def load_jsonnet_file_with_csv_task_expansion(
-    jsonnet_file: str, csv_files: list[str], files_directory: str = ""
+    jsonnet_file: str,
+    csv_files: list[str],
+    files_directory: str = "",
+    csv_only: bool = False,
+    dry_run: bool = False,
 ) -> dict:
     """
     Load a Jsonnet file, expanding its Task lists using data from CSV
     files. Return the expanded and variables-processed Work Requirement data.
     """
 
-    wr_data = load_jsonnet_file_with_variable_substitutions(jsonnet_file)
-    return perform_csv_task_expansion(wr_data, csv_files, files_directory)
+    wr_data = load_jsonnet_file_with_variable_substitutions(
+        jsonnet_file, dry_run=dry_run
+    )
+    return perform_csv_task_expansion(wr_data, csv_files, files_directory, csv_only)
 
 
 def load_toml_file_with_csv_task_expansion(
-    toml_file: str, csv_files: list[str], files_directory: str = ""
+    toml_file: str,
+    csv_files: list[str],
+    files_directory: str = "",
+    csv_only: bool = False,
 ) -> dict:
     """
     Load a TOML file Work Requirement, expanding its Task lists using data
@@ -211,11 +222,14 @@ def load_toml_file_with_csv_task_expansion(
     with open(toml_file, "rb") as f:
         wr_data = toml_load(f)
 
-    return perform_csv_task_expansion(wr_data, csv_files, files_directory)
+    return perform_csv_task_expansion(wr_data, csv_files, files_directory, csv_only)
 
 
 def perform_csv_task_expansion(
-    wr_data: dict, csv_files: list[str], files_directory: str = ""
+    wr_data: dict,
+    csv_files: list[str],
+    files_directory: str = "",
+    csv_only: bool = False,
 ) -> dict:
     """
     Expand a Work Requirement using CSV data. Each Task Group is given at
@@ -294,7 +308,7 @@ def perform_csv_task_expansion(
         task_group[TASKS] = generated_task_list
         print_info(f"Generated {len(generated_task_list)} Task(s) from CSV data")
 
-    if ARGS_PARSER.process_csv_only:
+    if csv_only:  # '--process-csv-only'
         print_info("Displaying CSV substitutions only:")
         print_json(wr_data)
         sys.exit(0)
@@ -455,7 +469,10 @@ def substitutions_present(var_names: list[str], task_prototype: object) -> bool:
 
 
 def csv_expand_toml_tasks(
-    config_wr: ConfigWorkRequirement, csv_file: str, files_directory=""
+    config_wr: ConfigWorkRequirement,
+    csv_file: str,
+    files_directory="",
+    csv_only: bool = False,
 ) -> dict:
     """
     When there's a CSV file specified, but no JSON file, create the expanded
@@ -489,4 +506,4 @@ def csv_expand_toml_tasks(
         ):
             task_proto[config_name] = config_value
 
-    return perform_csv_task_expansion(wr_data, [csv_file], files_directory)
+    return perform_csv_task_expansion(wr_data, [csv_file], files_directory, csv_only)

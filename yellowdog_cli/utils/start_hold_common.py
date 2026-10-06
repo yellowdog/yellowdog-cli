@@ -84,7 +84,9 @@ class WorkRequirementAction:
         )
 
     def recorder(self) -> Record:
-        """The action's record, as action_runner calls it."""
+        """
+        The action's record, as action_runner calls it.
+        """
         return lambda entity, _entity_type, outcome, error: self.record(
             entity, outcome, error
         )

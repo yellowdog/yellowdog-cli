@@ -73,7 +73,9 @@ def main(ctx: RunContext):
 
 @dataclass
 class _Tally:
-    """The IDs not shown because their entity does not exist."""
+    """
+    The IDs not shown because their entity does not exist.
+    """
 
     not_found: int = 0
 
@@ -187,6 +189,7 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
                     substitute_image_family_id_for_name_in_cst(
                         ctx.client,
                         ctx.client.compute_client.get_compute_source_template(ydid),
+                        substitute=bool(ctx.args.substitute_ids),
                     ),
                     {RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE},
                 )
@@ -205,6 +208,7 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
                         ctx.client.compute_client.get_compute_requirement_template(
                             ydid
                         ),
+                        substitute=bool(ctx.args.substitute_ids),
                     ),
                     {RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE},
                 )
@@ -316,7 +320,11 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
             allowance = ctx.client.allowances_client.get_allowance_by_id(ydid)
             if ctx.args.substitute_ids:
                 print_info("Substituting ID with name")
-                allowance = substitute_id_for_name_in_allowance(ctx.client, allowance)  # type: ignore[arg-type]
+                allowance = substitute_id_for_name_in_allowance(
+                    ctx.client,
+                    allowance,  # type: ignore[arg-type]
+                    substitute=bool(ctx.args.substitute_ids),
+                )
             return [(allowance, {RESOURCE_PROPERTY_NAME: RN_ALLOWANCE})]
 
         elif ydid_type == YDIDType.APPLICATION:

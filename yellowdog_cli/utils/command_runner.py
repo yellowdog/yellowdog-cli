@@ -20,6 +20,7 @@ from yellowdog_cli.utils.load_config import (
     warn_of_config_violations,
     warn_of_undefined_config_variables,
 )
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import print_debug, print_error, print_info
 from yellowdog_cli.utils.results import (
     any_failed,
@@ -34,7 +35,8 @@ def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     """
     Build what a command will use, before it runs and outside run_command()'s
     handling, in the order importing once did: the command line ('args'),
-    the configuration file, 'values' (the wrapper's own, such as
+    which the output settings are then configured from and the configuration
+    loaded under, the configuration file, 'values' (the wrapper's own, such as
     CONFIG_COMMON), then every lazy value the command's module holds that is
     marked to be prepared (its configuration sections; not CLIENT). So an
     argument error or a broken configuration is reported, and exits, before
@@ -42,7 +44,8 @@ def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     stand-in is left alone.
     """
     prepare(args)
-    ensure_config_loaded()
+    configure_output(args)
+    ensure_config_loaded(args)
     prepare(*values)
     prepare(*func.__globals__.values())
 

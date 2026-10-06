@@ -14,7 +14,7 @@ from functools import cache
 from json import loads as json_loads
 from typing import Any
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import prefix_width, print_info, print_json
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
@@ -187,7 +187,7 @@ def print_event(event: str, id_type: YDIDType):
     # Strip only the leading prefix: the payload itself may contain 'data:'
     event_data: dict = json_loads(event[len(data_prefix) :])
 
-    if ARGS_PARSER.events_as_json:
+    if OUTPUT.events_as_json:
         print_json(event_data)
         return
 

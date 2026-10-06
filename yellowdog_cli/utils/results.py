@@ -16,7 +16,7 @@ import it.
 import re
 from typing import Any
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     json_document_printed,
     print_error,
@@ -161,7 +161,7 @@ def json_requested() -> bool:
     as listing a directory's files to record each one, which is not worth
     doing when nothing will print it.
     """
-    return bool(ARGS_PARSER.json_output)
+    return bool(OUTPUT.json_output)
 
 
 def any_failed() -> bool:
@@ -231,7 +231,7 @@ def flush_results() -> None:
     mistake in the command, and raises rather than printing a second one.
     """
     global _FLUSHED
-    if _FLUSHED or not ARGS_PARSER.json_output:
+    if _FLUSHED or not OUTPUT.json_output:
         return
     _FLUSHED = True
 

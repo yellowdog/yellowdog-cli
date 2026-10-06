@@ -26,7 +26,9 @@ class Run:
 
     @property
     def document(self) -> object | None:
-        """stdout as one JSON document, or None if it is not one."""
+        """
+        stdout as one JSON document, or None if it is not one.
+        """
         try:
             return json.loads(self.stdout)
         except JSONDecodeError:
@@ -112,7 +114,9 @@ def _own_process_group() -> dict:
 
 
 def _stop_group(process: subprocess.Popen) -> None:
-    """Kill the command and every process it started."""
+    """
+    Kill the command and every process it started.
+    """
     try:
         if sys.platform == "win32":
             subprocess.run(

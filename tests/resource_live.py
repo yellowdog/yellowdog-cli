@@ -250,12 +250,16 @@ def command_line(command: str, *args: str) -> str:
 
 
 def yd(command: str, *args: str):
-    """Run a yd-* command against the test config, with the run id substituted."""
+    """
+    Run a yd-* command against the test config, with the run id substituted.
+    """
     return shell(command_line(command, *args))
 
 
 def ydids(entity_type: str, namespace: str | None = None) -> set[str]:
-    """The YDIDs of every entity of this type. '-D' is --ids-only, not --dry-run."""
+    """
+    The YDIDs of every entity of this type. '-D' is --ids-only, not --dry-run.
+    """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
     result = yd("yd-list", entity_type, "-D", namespace_arg, "-t=''")
     return {
@@ -364,7 +368,8 @@ def mismatches(spec: dict, returned: dict, path: str = "") -> list[str]:
 
 
 def _compare_dict(expected: dict, actual: dict, path: str) -> list[str]:
-    """The 'both sides are a dict' case of _compare(), and the top level's too --
+    """
+    The 'both sides are a dict' case of _compare(), and the top level's too --
     mismatches() is a thin wrapper over this so a nested dict does not need a
     second copy of the same field-by-field, META_KEYS-skipping loop.
 

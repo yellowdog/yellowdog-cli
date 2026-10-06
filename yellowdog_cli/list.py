@@ -106,6 +106,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.glob_utils import glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_info,
     print_json,
@@ -209,7 +210,9 @@ def _print_empty(ctx: RunContext, message: str) -> None:
 
 
 def _apply_status_filter(ctx: RunContext, objects: list) -> list:
-    """Filter a list of objects to those whose status matches ctx.args.status_filter."""
+    """
+    Filter a list of objects to those whose status matches ctx.args.status_filter.
+    """
     sf = ctx.args.status_filter
     if not sf:
         return objects
@@ -235,6 +238,8 @@ def main(ctx: RunContext):
 
     if not (ctx.args.json_output or ctx.args.count_only):
         ctx.args.interactive = True
+    # Output follows the options as adjusted: '--count' is quiet
+    configure_output(ctx.args)
 
     if (
         (
@@ -251,6 +256,9 @@ def main(ctx: RunContext):
 
     if ctx.args.details and ctx.args.strip_ids:
         print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
+
+    # ... and '--details' as set here
+    configure_output(ctx.args)
 
     if ctx.args.output_file and ctx.args.details:
         if exists(ctx.args.output_file):
@@ -826,6 +834,7 @@ def list_compute_requirement_templates(ctx: RunContext):
                         ctx.client.compute_client.get_compute_requirement_template(
                             cast(str, crt.id)
                         ),
+                        substitute=bool(ctx.args.substitute_ids),
                     )
                     for crt in sorted_objects(cr_templates)
                 ]
@@ -856,6 +865,7 @@ def list_compute_requirement_templates(ctx: RunContext):
                 ctx.client.compute_client.get_compute_requirement_template(
                     cast(str, cr_template.id)
                 ),
+                substitute=bool(ctx.args.substitute_ids),
             ),
             {PROP_RESOURCE: RN_REQUIREMENT_TEMPLATE},
         )
@@ -905,6 +915,7 @@ def list_compute_source_templates(ctx: RunContext):
                     substitute_image_family_id_for_name_in_cst(
                         ctx.client,
                         ctx.client.compute_client.get_compute_source_template(cst.id),  # type: ignore[arg-type]
+                        substitute=bool(ctx.args.substitute_ids),
                     )
                     for cst in sorted_objects(cs_templates)
                 ]
@@ -929,6 +940,7 @@ def list_compute_source_templates(ctx: RunContext):
             substitute_image_family_id_for_name_in_cst(
                 ctx.client,
                 ctx.client.compute_client.get_compute_source_template(cs_template.id),  # type: ignore[arg-type]
+                substitute=bool(ctx.args.substitute_ids),
             ),
             {PROP_RESOURCE: RN_SOURCE_TEMPLATE},
         )
@@ -1083,7 +1095,11 @@ def list_allowances(ctx: RunContext):
         if ctx.args.details:
             print_objects_as_json(
                 [
-                    substitute_id_for_name_in_allowance(ctx.client, a)  # type: ignore[arg-type]
+                    substitute_id_for_name_in_allowance(
+                        ctx.client,
+                        a,  # type: ignore[arg-type]
+                        substitute=bool(ctx.args.substitute_ids),
+                    )
                     for a in allowances
                 ]
             )
@@ -1108,7 +1124,11 @@ def list_allowances(ctx: RunContext):
     print_yd_object_list(
         [
             (
-                substitute_id_for_name_in_allowance(ctx.client, allowance),  # type: ignore[arg-type]
+                substitute_id_for_name_in_allowance(
+                    ctx.client,
+                    allowance,  # type: ignore[arg-type]
+                    substitute=bool(ctx.args.substitute_ids),
+                ),
                 {PROP_RESOURCE: RN_ALLOWANCE},
             )
             for allowance in select(ctx.client, allowances)

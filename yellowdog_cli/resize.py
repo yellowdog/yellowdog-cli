@@ -70,19 +70,25 @@ def _count(count: int | None) -> str:
 
 
 def _not_found(ctx: RunContext, message: str, target: str, entity_type: str) -> None:
-    """Record the target as not found, and raise NotFoundError (exit 6)."""
+    """
+    Record the target as not found, and raise NotFoundError (exit 6).
+    """
     _record(ctx, target, entity_type, "failed", message)
     raise NotFoundError(message)
 
 
 def _cannot(ctx: RunContext, entity: object, entity_type: str, message: str) -> None:
-    """Report and record a target that cannot be resized as asked."""
+    """
+    Report and record a target that cannot be resized as asked.
+    """
     print_error(message)
     _record(ctx, entity, entity_type, "failed", message)
 
 
 def _skip(ctx: RunContext, entity: object, entity_type: str, message: str) -> None:
-    """Report and record a target that needs no resize."""
+    """
+    Report and record a target that needs no resize.
+    """
     print_warning(message)
     _record(ctx, entity, entity_type, "skipped", message)
 

@@ -24,7 +24,9 @@ _SCALARS = (bool, int, float, str, type(None))
 
 
 def _json_value(value: Any) -> Any:
-    """The value itself if JSON can hold it exactly, else its repr()."""
+    """
+    The value itself if JSON can hold it exactly, else its repr().
+    """
     if isinstance(value, _SCALARS):
         return value
     if isinstance(value, list) and all(isinstance(v, _SCALARS) for v in value):
@@ -53,7 +55,9 @@ def _action_shape(action: Action) -> dict[str, Any]:
 
 
 def parser_shapes() -> dict[str, list[dict[str, Any]]]:
-    """Per command, its actions in registration order."""
+    """
+    Per command, its actions in registration order.
+    """
     return {
         name: [
             _action_shape(a)

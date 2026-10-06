@@ -17,14 +17,12 @@ from json import dumps as json_dumps
 from json import loads as json_loads
 from typing import cast
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
 from yellowdog_cli.utils.misc_utils import (
     PID,
     PROCESS_DISCRIMINATOR,
     UTCNOW,
-    config_file_explicitly_selected,
     find_delimited_expressions,
     format_yd_name,
     load_dotenv_file,
@@ -288,23 +286,35 @@ CLI_DEFINED_VARIABLES: set[str] = set()
 _DEFINITIONS: dict[str, str] = dict(VARIABLE_SUBSTITUTIONS)
 
 _USER_VARIABLES_REGISTERED = False
+# Whether the configuration file was selected with '--config', whose
+# variables then override the environment's (register_user_variables())
+_CONFIG_FILE_SELECTED = False
 
 
-def register_user_variables() -> None:
+def register_user_variables(
+    variables: list[str] | None,
+    config_file: str | None,
+    env_override: bool | None,
+    config_file_selected: bool = False,
+) -> None:
     """
     Add the variables defined by YD_VAR_* environment variables (the .env
-    file loaded first, so that its are included) and by '-v' on the command
-    line, which take precedence. Called once, by load_config before the
-    configuration file is read, which substitutes them; it was done at
-    import, which therefore parsed the command line and could exit. A name
-    no variable may have, or a '-v' without a value, is an error and exits.
+    file loaded first, so that its are included: the one beside
+    'config_file', overriding the environment with 'env_override') and by
+    the command line's '-v' ('variables'), which take precedence. Called
+    once, by load_config before the configuration file is read, which
+    substitutes them; it was done at import, which therefore parsed the
+    command line and could exit. A name no variable may have, or a '-v'
+    without a value, is an error and exits. 'config_file_selected' (with
+    '--config') is kept for add_substitutions_from_config_file().
     """
-    global _USER_VARIABLES_REGISTERED
+    global _CONFIG_FILE_SELECTED, _USER_VARIABLES_REGISTERED
     if _USER_VARIABLES_REGISTERED:
         return
     _USER_VARIABLES_REGISTERED = True
+    _CONFIG_FILE_SELECTED = config_file_selected
 
-    load_dotenv_file()
+    load_dotenv_file(config_file, bool(env_override))
 
     registered = []
     for key, value in os.environ.items():
@@ -328,7 +338,7 @@ def register_user_variables() -> None:
         )
 
     registered = []
-    for variable in ARGS_PARSER.variables or []:
+    for variable in variables or []:
         # Split on the first '=' only: values may themselves contain '='
         key_value: list = variable.split("=", 1)
         if len(key_value) == 2 and key_value[0] != "":
@@ -455,7 +465,7 @@ def add_substitutions_from_config_file(
     """
     for name in subs:
         check_user_variable_name(name, source)
-    if not config_file_explicitly_selected(ARGS_PARSER):
+    if not _CONFIG_FILE_SELECTED:
         add_substitutions_without_overwriting(subs, source)
         return
 

@@ -38,7 +38,9 @@ class IntAsWritten(int):
 
 
 class CompactJSONEncoder(json.JSONEncoder):
-    """A JSON Encoder that puts small containers on single lines."""
+    """
+    A JSON Encoder that puts small containers on single lines.
+    """
 
     CONTAINER_TYPES = (list, tuple, dict)
     """Container datatypes include primitives or other containers."""
@@ -57,7 +59,9 @@ class CompactJSONEncoder(json.JSONEncoder):
         self.indentation_level = 0
 
     def encode(self, o):
-        """Encode JSON object *o* with respect to single line lists."""
+        """
+        Encode JSON object *o* with respect to single line lists.
+        """
         if isinstance(o, (list, tuple)):
             single_line = self._single_line(o)
             if single_line is not None:
@@ -85,7 +89,9 @@ class CompactJSONEncoder(json.JSONEncoder):
             return json.dumps(o, ensure_ascii=self.ensure_ascii)
 
     def iterencode(self, o, **kwargs):
-        """Required to also work with `json.dump`."""
+        """
+        Required to also work with `json.dump`.
+        """
         return self.encode(o)
 
     def _key(self, key) -> str:

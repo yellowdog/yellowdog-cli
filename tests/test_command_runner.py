@@ -16,6 +16,7 @@ from requests import HTTPError, Response
 
 import yellowdog_cli.utils.command_runner as runner_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import rows_as_objects
 
@@ -88,7 +89,7 @@ class TestPacUnderDryRun:
         )
         with (
             patch.object(wrapper_module, "ARGS_PARSER", args),
-            patch("yellowdog_cli.utils.printing.ARGS_PARSER", args),
+            output_settings.configured(args),
             patch.object(
                 wrapper_module,
                 "CONFIG_COMMON",

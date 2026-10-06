@@ -1,4 +1,6 @@
-"""Unit tests for the shared glob helpers in glob_utils."""
+"""
+Unit tests for the shared glob helpers in glob_utils.
+"""
 
 from types import SimpleNamespace
 

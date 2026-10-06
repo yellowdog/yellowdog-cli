@@ -31,7 +31,9 @@ from yellowdog_cli.utils.ydid_utils import (
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals, as patched."""
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -52,7 +54,9 @@ def _args() -> MagicMock:
 
 
 def _spy(monkeypatch, module, name: str) -> MagicMock:
-    """Replace module.<name> with a spy; the attribute must already exist."""
+    """
+    Replace module.<name> with a spy; the attribute must already exist.
+    """
     spy = MagicMock(name=name)
     monkeypatch.setattr(module, name, spy)
     return spy

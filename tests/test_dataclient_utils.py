@@ -20,6 +20,7 @@ import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.rclone_utils as rclone_utils_module
 import yellowdog_cli.utils.results as results_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient_utils import resolve_remote_path, upload_directory
 from yellowdog_cli.utils.rclone_version import find_rclone
@@ -227,9 +228,7 @@ class TestUploadDirectoryWalksOnlyForJson:
     def _upload(self, monkeypatch, tmp_path, json_output: bool) -> list:
         (tmp_path / "d").mkdir()
         (tmp_path / "d" / "x.txt").write_text("x")
-        monkeypatch.setattr(
-            results_module, "ARGS_PARSER", MagicMock(json_output=json_output)
-        )
+        output_settings.configure_output(MagicMock(json_output=json_output))
         stats: list = []
         real_stat = Path.stat
 
@@ -324,6 +323,7 @@ def run_download(monkeypatch, capsys):
             # A command taking a context has none of its own
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(yd_download, "CONFIG_DATA_CLIENT", config)
         with pytest.raises(SystemExit) as exit_info:
             yd_download.main()
@@ -639,7 +639,7 @@ def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch
     source = tmp_path / "a.txt"
     source.write_text("a", encoding="utf-8")
     monkeypatch.chdir(elsewhere)
-    monkeypatch.setattr(results_module, "ARGS_PARSER", MagicMock(json_output=False))
+    output_settings.configure_output(MagicMock(json_output=False))
     config = ConfigDataClient(remote="loc,type=local", bucket=str(bucket), prefix="p")
 
     assert upload_file(config, source, resolve_remote_path(config, filename="a.txt"))

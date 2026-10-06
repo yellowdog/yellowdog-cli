@@ -10,7 +10,8 @@ context, and passes it on to the code it calls, so that a test can run that
 code with a context of its own rather than by patching each module's
 globals. A command's own configuration sections (CONFIG_WR, CONFIG_WP,
 CONFIG_DATA_CLIENT) stay its module's, built lazily. Printing and the
-interactive prompts still read ARGS_PARSER themselves.
+interactive prompts read the output settings (output_settings.py), which
+the runner configures from the same command line.
 
 Imports nothing that does work: the types are for type checking only.
 """

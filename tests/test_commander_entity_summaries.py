@@ -109,13 +109,13 @@ def test_dry_run_records_carry_the_status_commander_shows(monkeypatch, capsys):
         WorkRequirementSummary,
     )
 
-    import yellowdog_cli.utils.printing as printing_module
     import yellowdog_cli.utils.results as results_module
+    from yellowdog_cli.utils import output_settings
     from yellowdog_cli.utils.dryrun_utils import report_dry_run
 
-    args = MagicMock(json_output=True, no_format=True, quiet=False, strip_ids=False)
-    for module in (results_module, printing_module):
-        monkeypatch.setattr(module, "ARGS_PARSER", args)
+    output_settings.configure_output(
+        MagicMock(json_output=True, no_format=True, quiet=False, strip_ids=False)
+    )
     results_module.reset_results()
     wr_id = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
     summary = WorkRequirementSummary(

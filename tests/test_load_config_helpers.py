@@ -118,7 +118,7 @@ class TestLoadNamespaceAndTag:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", {COMMON_SECTION: toml_common}),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
@@ -260,7 +260,7 @@ class TestLoadConfigCommonPrecedence:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", {COMMON_SECTION: toml_common}),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
@@ -374,7 +374,7 @@ class TestLoadConfigWorkRequirement:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,

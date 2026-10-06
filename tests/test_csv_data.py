@@ -6,7 +6,6 @@ Functions that require API calls or full Work Requirement pipelines are
 out of scope for unit tests.
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,7 +28,9 @@ from yellowdog_cli.utils.csv_data import (
 
 @pytest.fixture()
 def simple_csv(tmp_path):
-    """A CSV file with header row and two data rows."""
+    """
+    A CSV file with header row and two data rows.
+    """
     csv_file = tmp_path / "tasks.csv"
     csv_file.write_text("name,value\njob_a,10\njob_b,20\n")
     return str(csv_file)
@@ -37,7 +38,9 @@ def simple_csv(tmp_path):
 
 @pytest.fixture()
 def single_row_csv(tmp_path):
-    """A CSV file with header and one data row."""
+    """
+    A CSV file with header and one data row.
+    """
     csv_file = tmp_path / "single.csv"
     csv_file.write_text("x,y\n1,2\n")
     return str(csv_file)
@@ -234,9 +237,6 @@ class TestOneCsvFilePerTaskGroup:
 
     @pytest.fixture
     def files(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            csv_module, "ARGS_PARSER", SimpleNamespace(process_csv_only=False)
-        )
         (tmp_path / "d.csv").write_text("a\n1\n", encoding="utf-8")
         (tmp_path / "wr.json").write_text(
             '{"taskGroups": [{"name": "one", "tasks": [{"arguments": ["<<a>>"]}]},'
@@ -421,9 +421,6 @@ class TestWindowsPaths:
         self, tmp_path, monkeypatch
     ):
         # The suffix is parsed once; the file is the path before it
-        monkeypatch.setattr(
-            csv_module, "ARGS_PARSER", MagicMock(process_csv_only=False)
-        )
         monkeypatch.setattr(csv_module, "print_info", MagicMock())
         opened = []
         real = csv_module.CSV_DATA_CACHE.get_csv_task_data

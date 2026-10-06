@@ -146,7 +146,9 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 @dataclass(frozen=True)
 class CreateOptions:
-    """What yd-create's options decide, for a run of create_resources()."""
+    """
+    What yd-create's options decide, for a run of create_resources().
+    """
 
     dry_run: bool = False
     json_output: bool = False

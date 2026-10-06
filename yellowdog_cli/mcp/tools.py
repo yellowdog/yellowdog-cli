@@ -86,12 +86,16 @@ OUTPUT_SCHEMA: dict[str, Any] = {
 
 
 class ToolArgumentError(Exception):
-    """A tool call's arguments cannot be turned into a command line."""
+    """
+    A tool call's arguments cannot be turned into a command line.
+    """
 
 
 @dataclass(frozen=True)
 class ServerSettings:
-    """The server's launch options (launcher.py), read by every tool call."""
+    """
+    The server's launch options (launcher.py), read by every tool call.
+    """
 
     config_file: str | None  # absolute, or None for '--nc'
     namespace: str | None
@@ -167,7 +171,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
 
 
 def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
-    """The JSON Schema of one option, and whether it is required."""
+    """
+    The JSON Schema of one option, and whether it is required.
+    """
     kwargs = option.kwargs
     schema: dict[str, Any] = {}
     action = kwargs.get("action")

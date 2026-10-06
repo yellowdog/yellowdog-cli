@@ -34,7 +34,9 @@ from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -62,7 +64,9 @@ def _args(entity_type: str, **values) -> Any:
 
 @pytest.fixture
 def listing(monkeypatch):
-    """Patch list.py's collaborators; the test sets ARGS_PARSER itself."""
+    """
+    Patch list.py's collaborators; the test sets ARGS_PARSER itself.
+    """
     client = MagicMock()
     monkeypatch.setattr(wrapper_module, "CLIENT", client)
     monkeypatch.setattr(

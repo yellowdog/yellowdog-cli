@@ -34,7 +34,9 @@ KNOWN_SUBS = {"myvar": "hello", "num_var": "42", "bool_var": "true", "pi": "3.14
 
 @pytest.fixture()
 def patched_subs(monkeypatch):
-    """Replace VARIABLE_SUBSTITUTIONS with a known, predictable dict."""
+    """
+    Replace VARIABLE_SUBSTITUTIONS with a known, predictable dict.
+    """
     monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
 
 
@@ -44,7 +46,9 @@ def patched_subs(monkeypatch):
 
 
 class TestProcessTypedVariableSubstitution:
-    """This function is pure — no global state involved."""
+    """
+    This function is pure — no global state involved.
+    """
 
     @pytest.mark.parametrize(
         "s,expected",
@@ -907,8 +911,10 @@ class TestUnsetSuffix:
     # JSON file content path
 
     def test_unset_in_file_contents_leaves_token_intact(self):
-        """process_variable_substitutions_in_file_contents must not corrupt
-        unset tokens — they must survive for dict-level removal."""
+        """
+        process_variable_substitutions_in_file_contents must not corrupt
+        unset tokens — they must survive for dict-level removal.
+        """
         import json
 
         raw = '{"name": "job", "taskType": "{{::}}"}'
@@ -918,7 +924,9 @@ class TestUnsetSuffix:
         assert data["taskType"] == "{{::}}"
 
     def test_unset_removed_after_json_parse(self):
-        """Full pipeline: file content → json.loads → insitu gives clean dict."""
+        """
+        Full pipeline: file content → json.loads → insitu gives clean dict.
+        """
         import json
 
         raw = '{"name": "job", "taskType": "{{::}}"}'
@@ -929,7 +937,9 @@ class TestUnsetSuffix:
         assert data["name"] == "job"
 
     def test_missing_var_unset_in_file_contents_leaves_token_intact(self):
-        """Same pipeline with a named-but-missing variable."""
+        """
+        Same pipeline with a named-but-missing variable.
+        """
         import json
 
         raw = '{"name": "job", "tag": "{{missing_var::}}"}'
@@ -1012,7 +1022,9 @@ class TestAddSubstitutionsFromConfigFile:
         monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
 
     def _set_config_file(self, monkeypatch, value):
-        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(config_file=value))
+        # Whether '--config' selected the file, as register_user_variables()
+        # is told
+        monkeypatch.setattr(var_module, "_CONFIG_FILE_SELECTED", value is not None)
 
     def test_default_existing_value_wins(self, monkeypatch):
         self._set_config_file(monkeypatch, None)
@@ -1386,7 +1398,6 @@ class TestNestedVariablesInEveryFormat:
         var_module.VARIABLE_SUBSTITUTIONS.update(
             {"region": "phoenix", "template_phoenix": "TP", "count_phoenix": "7"}
         )
-        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
 
     @pytest.fixture(params=sorted(SPEC_FORMATS))
     def load_spec(self, request, tmp_path):
@@ -1473,7 +1484,9 @@ class TestNestedVariablesInEveryFormat:
 
 
 def _chain_env_vars(monkeypatch, links: int) -> None:
-    """YD_TEST_0 -> '{{env:YD_TEST_1}}' -> ... -> '{{region}}'."""
+    """
+    YD_TEST_0 -> '{{env:YD_TEST_1}}' -> ... -> '{{region}}'.
+    """
     for i in range(links):
         monkeypatch.setenv(
             f"YD_TEST_{i}",
@@ -1522,7 +1535,9 @@ class TestSubstitutionPasses:
 
     @staticmethod
     def _passes_that_change(monkeypatch, changing: int) -> None:
-        """Stand in for a pass: the first 'changing' passes change 'p'."""
+        """
+        Stand in for a pass: the first 'changing' passes change 'p'.
+        """
         calls = []
 
         def _pass(data, prefix="", postfix=""):
@@ -1576,8 +1591,10 @@ class TestCompactSpecifications:
     """
 
     @pytest.fixture(autouse=True)
-    def use_known_subs(self, patched_subs, monkeypatch):
-        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
+    def use_known_subs(self, patched_subs):
+        """
+        The known substitutions (patched_subs), for every test here.
+        """
 
     def test_compact_json(self, tmp_path):
         path = tmp_path / "spec.json"
@@ -1734,7 +1751,9 @@ class TestUndefinedVariableWarnings:
 
 
 class TestWrappersEnableUndefinedVariableWarnings:
-    """Both command wrappers turn the warnings on before the command runs."""
+    """
+    Both command wrappers turn the warnings on before the command runs.
+    """
 
     @pytest.fixture(autouse=True)
     def disabled(self, monkeypatch):
@@ -1805,8 +1824,10 @@ class TestFileContentsPasses:
     """
 
     @pytest.fixture(autouse=True)
-    def use_known_subs(self, patched_subs, monkeypatch):
-        monkeypatch.setattr(var_module, "ARGS_PARSER", MagicMock(jsonnet_dry_run=False))
+    def use_known_subs(self, patched_subs):
+        """
+        The known substitutions (patched_subs), for every test here.
+        """
 
     def test_a_chain_resolves(self, monkeypatch):
         _chain_env_vars(monkeypatch, 8)

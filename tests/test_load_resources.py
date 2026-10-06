@@ -24,17 +24,15 @@ def load(tmp_path, monkeypatch):
     def _load(text: str) -> list[dict]:
         spec = tmp_path / "r.json"
         spec.write_text(text, encoding="utf-8")
-        monkeypatch.setattr(
-            load_resources,
-            "ARGS_PARSER",
+        return load_resources.load_resource_specifications(
             SimpleNamespace(
                 resource_specifications=[str(spec)],
                 jsonnet_dry_run=False,
                 validate=False,
                 no_resequence=False,
             ),
+            creation_or_update=True,
         )
-        return load_resources.load_resource_specifications(creation_or_update=True)
 
     return _load
 

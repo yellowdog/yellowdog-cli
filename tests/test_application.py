@@ -18,6 +18,7 @@ from yellowdog_client.model import ApplicationDetails, Feature
 
 import yellowdog_cli.application as application_module
 from yellowdog_cli.application import _portal_url, report_application
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 
@@ -111,7 +112,7 @@ def _run(
             "get_all_roles_and_namespaces_for_application",
             mock_roles,
         ),
-        patch("yellowdog_cli.utils.printing.ARGS_PARSER", args),
+        output_settings.configured(args),
     ):
         report_application(ctx)
 

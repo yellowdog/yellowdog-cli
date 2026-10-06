@@ -323,7 +323,10 @@ def _create_compute_requirement_from_json(
 
     if cr_json_file.lower().endswith(".jsonnet"):
         cr_data = load_jsonnet_file_with_variable_substitutions(
-            cr_json_file, prefix=prefix, postfix=postfix
+            cr_json_file,
+            prefix=prefix,
+            postfix=postfix,
+            dry_run=bool(ctx.args.jsonnet_dry_run),
         )
     else:
         if ctx.args.jsonnet_dry_run:

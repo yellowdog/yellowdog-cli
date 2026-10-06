@@ -30,7 +30,9 @@ from yellowdog_cli.utils.variable_syntax import (
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals."""
+    """
+    The context a command is given: the wrapper globals.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -392,7 +394,9 @@ class TestGetTaskDataProperty:
 
 
 def _minimal_wr_data(num_task_groups: int = 1, num_tasks: int = 2) -> dict:
-    """Minimal wr_data / task_group_data structure for create_task."""
+    """
+    Minimal wr_data / task_group_data structure for create_task.
+    """
     tasks = [{} for _ in range(num_tasks)]
     tg = {TASKS: tasks}
     return {TASK_GROUPS: [tg for _ in range(num_task_groups)]}

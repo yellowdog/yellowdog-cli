@@ -138,6 +138,20 @@ def _session_schema_cache(monkeypatch, _schema_cache_root):
 
 
 @pytest.fixture(autouse=True)
+def _output_settings_restored():
+    """
+    Leave the output settings (utils/output_settings.py) as each test found
+    them: a command run through its wrapper configures them from the test's
+    arguments, and a test may configure them itself.
+    """
+    from yellowdog_cli.utils import output_settings
+
+    saved = output_settings.snapshot()
+    yield
+    output_settings.restore(saved)
+
+
+@pytest.fixture(autouse=True)
 def _no_config_snapshot(monkeypatch):
     """
     Start every test with no configuration file snapshot (load_config's
@@ -521,8 +535,10 @@ def _build_what_import_built(config) -> None:
     from yellowdog_cli.utils import wrapper
     from yellowdog_cli.utils.args import ARGS_PARSER
     from yellowdog_cli.utils.lazy import value
+    from yellowdog_cli.utils.output_settings import configure_output
 
     value(ARGS_PARSER)
+    configure_output(ARGS_PARSER)
     _supply_dummy_credentials_if_unconfigured(config)
     value(wrapper.CONFIG_COMMON)
 
@@ -580,12 +596,13 @@ def _configuration_loads_cleanly() -> bool:
     from io import StringIO
 
     from yellowdog_cli.utils import load_config, wrapper
+    from yellowdog_cli.utils.args import ARGS_PARSER
     from yellowdog_cli.utils.lazy import value
 
     discard = StringIO()
     try:
         with redirect_stdout(discard), redirect_stderr(discard):
-            load_config.ensure_config_loaded()
+            load_config.ensure_config_loaded(ARGS_PARSER)
             value(wrapper.CONFIG_COMMON)
     except SystemExit:
         return False

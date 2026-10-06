@@ -16,7 +16,9 @@ PACKAGE = Path(yellowdog_cli.__file__).parent
 
 
 def _mode(call: ast.Call) -> str:
-    """The mode an open() call gives, if it is a literal; 'r' otherwise."""
+    """
+    The mode an open() call gives, if it is a literal; 'r' otherwise.
+    """
     for keyword in call.keywords:
         if keyword.arg == "mode" and isinstance(keyword.value, ast.Constant):
             return str(keyword.value.value)
@@ -30,7 +32,9 @@ def _mode(call: ast.Call) -> str:
 
 
 def _unencoded_lines(source: str) -> list[int]:
-    """The lines of text-mode file calls in 'source' that name no encoding."""
+    """
+    The lines of text-mode file calls in 'source' that name no encoding.
+    """
     lines = []
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call):

@@ -123,11 +123,15 @@ class OutputEntry:
 
     @property
     def runs(self) -> list[int]:
-        """The runs this entry is shown under, its command's first."""
+        """
+        The runs this entry is shown under, its command's first.
+        """
         return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
 
     def shown_under(self, run_ids: frozenset[int] | None) -> bool:
-        """Whether a filter to 'run_ids' shows this entry; None shows everything."""
+        """
+        Whether a filter to 'run_ids' shows this entry; None shows everything.
+        """
         return run_ids is None or any(run_id in run_ids for run_id in self.runs)
 
 

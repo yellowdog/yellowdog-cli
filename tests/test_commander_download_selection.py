@@ -40,7 +40,9 @@ def window(qapp):
 
 @pytest.fixture
 def captured(window, monkeypatch):
-    """Capture (command, args, kwargs) an action would run, without spawning it."""
+    """
+    Capture (command, args, kwargs) an action would run, without spawning it.
+    """
     calls: list[tuple[str, list[str], dict]] = []
     monkeypatch.setattr(
         window,

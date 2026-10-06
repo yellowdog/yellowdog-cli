@@ -43,7 +43,9 @@ def print_error(error: Exception | str) -> None:
 
 
 def errors_reported() -> int:
-    """How many errors the wizard has reported in this run."""
+    """
+    How many errors the wizard has reported in this run.
+    """
     return _ERRORS_REPORTED
 
 

@@ -13,7 +13,9 @@ from yellowdog_cli.utils.context import RunContext
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper globals, as patched."""
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -134,7 +136,9 @@ WR = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 
 def _stream(lines=(), raises: Exception | None = None, status: int = 200):
-    """A response to requests.get(): 'lines', then 'raises' if given."""
+    """
+    A response to requests.get(): 'lines', then 'raises' if given.
+    """
     response = MagicMock()
     response.status_code = status
     response.encoding = "utf-8"
@@ -152,7 +156,9 @@ def _stream(lines=(), raises: Exception | None = None, status: int = 200):
 
 
 class _Clock:
-    """monotonic() and sleep() together: sleeping advances the clock."""
+    """
+    monotonic() and sleep() together: sleeping advances the clock.
+    """
 
     def __init__(self):
         self.now = 0.0

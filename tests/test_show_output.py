@@ -23,8 +23,8 @@ import pytest
 from requests import HTTPError, Response
 
 import yellowdog_cli.show as show_module
-import yellowdog_cli.utils.printing as printing_module
 from yellowdog_cli.show import show_ydids
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 
@@ -54,7 +54,9 @@ class _StubJson:
 
 
 class _FakeConfiguredWorkerPool(_Obj):
-    """Stands in for ConfiguredWorkerPool, which show.py isinstance()-checks."""
+    """
+    Stands in for ConfiguredWorkerPool, which show.py isinstance()-checks.
+    """
 
 
 def _args(**overrides) -> MagicMock:
@@ -194,7 +196,7 @@ def _run(
     ctx = RunContext(args=args, config=MagicMock(), client=client)
     with (
         patch.object(show_module, "ConfiguredWorkerPool", _FakeConfiguredWorkerPool),
-        patch.object(printing_module, "ARGS_PARSER", args),
+        output_settings.configured(args),
         # printing.py imports Json where it uses it, from the SDK's module
         patch("yellowdog_client.common.json.Json", _StubJson),
         patch.object(show_module, "print_error"),

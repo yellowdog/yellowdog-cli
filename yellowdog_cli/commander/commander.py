@@ -489,7 +489,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
     @staticmethod
     def _button_bevel_inset(button: QPushButton) -> int:
-        """How far inside its widget the current style paints a push button's frame."""
+        """
+        How far inside its widget the current style paints a push button's frame.
+        """
         option = QStyleOptionButton()
         button.initStyleOption(option)
         style = button.style()
@@ -501,7 +503,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
     @staticmethod
     def _indicator_inset(checkbox: QCheckBox) -> int:
-        """The same, for a checkbox's indicator."""
+        """
+        The same, for a checkbox's indicator.
+        """
         option = QStyleOptionButton()
         checkbox.initStyleOption(option)
         style = checkbox.style()

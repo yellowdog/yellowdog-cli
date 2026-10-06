@@ -102,15 +102,14 @@ class TestResequenceResources:
     # ------------------------------------------------------------------
 
     def test_no_resequence_preserves_original_order(self):
-        from unittest.mock import patch
 
         resources = [
             {"resource": RN_REQUIREMENT_TEMPLATE},
             {"resource": RN_NAMESPACE},
         ]
-        with patch("yellowdog_cli.utils.load_resources.ARGS_PARSER") as mock_args:
-            mock_args.no_resequence = True
-            result = _resequence_resources(resources, creation_or_update=True)
+        result = _resequence_resources(
+            resources, creation_or_update=True, resequence=False
+        )
         types = [r["resource"] for r in result]
         assert types == [RN_REQUIREMENT_TEMPLATE, RN_NAMESPACE]
 

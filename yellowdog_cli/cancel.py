@@ -89,7 +89,9 @@ def _record(
 
 
 def _recorder(entity: object, entity_type: str, outcome: str, error: str | None):
-    """_record, as action_runner calls it."""
+    """
+    _record, as action_runner calls it.
+    """
     _record(entity, outcome, error, entity_type)
 
 

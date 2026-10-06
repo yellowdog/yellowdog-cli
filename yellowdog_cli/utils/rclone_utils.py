@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rclone_api import Config, Rclone
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import print_info, print_simple
 from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version_line
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
@@ -174,7 +174,7 @@ def make_rclone(config: Config | None) -> Rclone:
 
     _keep_logging_off_stdout()
     rclone_conf: Config | Path = _find_rclone_conf() if config is None else config
-    ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
+    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
     with ctx:
         return Rclone(rclone_conf)
 
@@ -280,7 +280,7 @@ def upgrade_rclone():
 
     _keep_logging_off_stdout()
     print_info("Downloading / upgrading the rclone binary")
-    ctx = _suppress_rclone_download_output() if ARGS_PARSER.quiet else nullcontext()
+    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
     with ctx:
         Rclone.upgrade_rclone()
 
@@ -297,7 +297,7 @@ def which_rclone() -> None:
         return
 
     rclone_path, source = found
-    if ARGS_PARSER.quiet:
+    if OUTPUT.quiet:
         print_simple(rclone_path, override_quiet=True)
         return
 

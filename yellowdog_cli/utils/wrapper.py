@@ -32,6 +32,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.lazy import built, lazy
 from yellowdog_cli.utils.load_config import (
+    ensure_config_loaded,
     load_config_common,
 )
 from yellowdog_cli.utils.printing import print_debug
@@ -40,11 +41,19 @@ from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
 
+
 # Strict, so a missing key or secret exits, for every command that uses the
 # Platform; yd-variables, which never does, runs without them
-CONFIG_COMMON: ConfigCommon = lazy(
-    lambda: load_config_common(strict=ARGS_PARSER.credentials_required)
-)
+def _load_config_common() -> ConfigCommon:
+    """
+    The [common] configuration, loaded under this command line (the first
+    one given is kept: prepare_run() gives it first, as a command runs).
+    """
+    ensure_config_loaded(ARGS_PARSER)
+    return load_config_common(strict=ARGS_PARSER.credentials_required)
+
+
+CONFIG_COMMON: ConfigCommon = lazy(_load_config_common)
 
 
 def _create_client() -> PlatformClient:
@@ -75,7 +84,9 @@ CLIENT: PlatformClient = lazy(_create_client, prepare=False)
 
 
 def _close_client() -> None:
-    """Close CLIENT if it was ever built (or a test put one there)."""
+    """
+    Close CLIENT if it was ever built (or a test put one there).
+    """
     client = globals().get("CLIENT")
     if client is not None and built(client):
         client.close()

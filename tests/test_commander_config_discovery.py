@@ -398,7 +398,9 @@ def test_an_empty_variables_box_runs_discovery(win, monkeypatch):
 
 
 def type_properties(win, text: str) -> None:
-    """type_user_variables(), for the Properties box, which shares its timer."""
+    """
+    type_user_variables(), for the Properties box, which shares its timer.
+    """
     win._discovery._user_vars_reparse_timer.setInterval(0)
     win.properties.setPlainText(text)
     assert win._discovery._user_vars_reparse_timer.isActive(), (

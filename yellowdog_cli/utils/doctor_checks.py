@@ -30,7 +30,6 @@ import requests
 from pypac import pac_context_for_url
 
 from yellowdog_cli._version import __version__ as CLI_VERSION
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import (
     EXTRA_PROBES,
     check_cloudwizard_imports,
@@ -104,6 +103,9 @@ class Context:
     config_common: Any = None  # ConfigCommon, possibly partial, once loaded
     platform_reachable: bool | None = None  # set by Reachable; None if it did not run
     client: Any = None  # PlatformClient, built by the Authenticated check
+    # The command line the checks run under (doctor.py's ARGS_PARSER): the
+    # configuration file, '--no-config', the data client profile
+    args: Any = None
     application: Any = None  # ApplicationDetails, recorded by the same check
     # The data client a data client command would use: the profile
     # YD_DATA_CLIENT names, else the [dataClient] base, else the environment
@@ -151,7 +153,9 @@ _NETWORK_NEEDS = (
 
 
 def _need_unmet(check: Check, ctx: Context) -> str | None:
-    """The reason a check cannot run, or None if it can."""
+    """
+    The reason a check cannot run, or None if it can.
+    """
     if check.needs is Need.NOTHING:
         return None
     # '--offline' is the user's own choice, so it is the reason given for a
@@ -469,6 +473,8 @@ def check_config_loads(ctx: Context) -> Result:
         ):
             from yellowdog_cli.utils import load_config
 
+            load_config.ensure_config_loaded(ctx.args)
+
             ctx.config_common = load_config.load_config_common(strict=False)
     except SystemExit:
         ctx.config_error = _captured_message(captured.getvalue())
@@ -484,7 +490,7 @@ def check_config_loads(ctx: Context) -> Result:
 
     if not os.path.isfile(load_config.CONFIG_FILE):
         return Result(Status.OK, "no file, environment only")
-    if ARGS_PARSER.no_config:
+    if ctx.args.no_config:
         return Result(Status.OK, f"{load_config.CONFIG_FILE} ignored, environment only")
     return Result(Status.OK, load_config.CONFIG_FILE)
 
@@ -575,7 +581,7 @@ def _load_data_client_under_test(ctx: Context, load_config: Any) -> None:
     from the environment alone. One that fails to load leaves data_client
     None, and what it printed becomes the Remote reachable row's reason.
     """
-    name = getattr(ARGS_PARSER, "data_client_profile", None) or os.environ.get(
+    name = getattr(ctx.args, "data_client_profile", None) or os.environ.get(
         YD_DATA_CLIENT
     )
     ctx.data_client_name = name or "[dataClient]"
@@ -595,7 +601,9 @@ def _load_data_client_under_test(ctx: Context, load_config: Any) -> None:
 
 
 def check_config_value(prop: str) -> Callable[[Context], Result]:
-    """A check reporting one [common] value and where it came from."""
+    """
+    A check reporting one [common] value and where it came from.
+    """
     attribute = {NAME_TAG: "name_tag"}.get(prop, prop)
 
     def run(ctx: Context) -> Result:
@@ -634,7 +642,7 @@ def check_variable_references(ctx: Context) -> Result:
 def check_dotenv(ctx: Context) -> Result:
     from yellowdog_cli.utils.misc_utils import dotenv_file_path
 
-    path = dotenv_file_path()
+    path = dotenv_file_path(ctx.args.config_file)
     return Result(Status.OK, path if path else "none")
 
 
@@ -657,7 +665,9 @@ def check_tag_is_a_legal_name(ctx: Context) -> Result:
 
 
 def _profile_remedy(name: str, message: str) -> str:
-    """Name the profile, and the property to fix when the message names one."""
+    """
+    Name the profile, and the property to fix when the message names one.
+    """
     section = name if name == "[dataClient]" else f"[dataClient.{name}]"
     named = [
         prop

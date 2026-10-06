@@ -254,7 +254,9 @@ def _get_nodes_for_pool(
 
 
 def _choose_nodes(ctx: RunContext, pool: _Pool) -> list[str]:
-    """The IDs of the nodes chosen interactively from the pool's live ones."""
+    """
+    The IDs of the nodes chosen interactively from the pool's live ones.
+    """
     live = _get_nodes_for_pool(ctx, cast(str, pool.id))
     if not live:
         raise ValueError(f"No running nodes in Worker Pool {_pool_label(pool)}")
@@ -513,6 +515,7 @@ def _load_spec(ctx: RunContext, spec_file: str) -> dict | None:
             spec_file,
             prefix=WP_VARIABLES_PREFIX,
             postfix=WP_VARIABLES_POSTFIX,
+            dry_run=bool(ctx.args.jsonnet_dry_run),
         )
     else:
         spec = load_json_file_with_variable_substitutions(

@@ -17,6 +17,7 @@ from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 import yellowdog_cli.utils.event_printing as event_printing_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.tables as tables_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.event_printing import StatusCount, status_counts_msg
 from yellowdog_cli.utils.output_style import (
     DEBUG_STYLE,
@@ -234,40 +235,34 @@ class TestPrintString:
         printing_module.SUBSEQUENT_INDENT = ""
 
     def test_output_contains_message(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("hello world")
         assert "hello world" in result
 
     def test_timestamp_format(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("msg")
         assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", result)
 
     def test_no_pid_by_default(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(print_pid=False)
-        ):
+        with output_settings.configured(_mock_args(print_pid=False)):
             result = print_string("msg")
         # PID is 6 digits in parens; should not appear
         assert "(" not in result
 
     def test_with_pid_includes_pid(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(print_pid=True)
-        ):
+        with output_settings.configured(_mock_args(print_pid=True)):
             result = print_string("msg")
         assert re.search(r"\(\d{6}\)", result)
 
     def test_empty_message_no_fill(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("")
         # Empty message: prefix + "" with no wrapping
         assert result.endswith(" : ")
 
     def test_no_format_returns_prefix_plus_msg_directly(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(no_format=True)
-        ):
+        with output_settings.configured(_mock_args(no_format=True)):
             result = print_string("raw message")
         assert result.endswith("raw message")
 
@@ -301,7 +296,7 @@ class TestPrintDebug:
         return SimpleNamespace(**defaults)
 
     def _output(self, capsys, **kwargs) -> str:
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+        with output_settings.configured(self._args(**kwargs)):
             print_debug("Loading configuration data")
         return capsys.readouterr().out
 
@@ -365,7 +360,7 @@ class TestPrintDryRun:
         return SimpleNamespace(**defaults)
 
     def _output(self, capsys, **kwargs) -> str:
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+        with output_settings.configured(self._args(**kwargs)):
             print_dry_run("Would resize Worker Pool")
         return capsys.readouterr().out
 
@@ -434,7 +429,7 @@ class TestStyledOutput:
             file=buffer, force_terminal=True, color_system="256", width=200
         )
         with (
-            patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)),
+            output_settings.configured(self._args(**kwargs)),
             patch("yellowdog_cli.utils.printing.CONSOLE", console),
         ):
             call()
@@ -628,7 +623,7 @@ class TestNotATerminal:
 
     def test_a_table_row_stays_one_line(self, monkeypatch):
         buffer = StringIO()
-        monkeypatch.setattr(tables_module, "ARGS_PARSER", self._args())
+        output_settings.configure_output(self._args())
         monkeypatch.setattr(
             tables_module, "CONSOLE_TABLE", Console(file=buffer, emoji=False)
         )
@@ -638,7 +633,7 @@ class TestNotATerminal:
 
     def test_a_message_is_wrapped_once(self, monkeypatch):
         buffer = StringIO()
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        output_settings.configure_output(self._args())
         monkeypatch.setattr(printing_module, "LOG_WIDTH", 120)
         monkeypatch.setattr(
             printing_module, "CONSOLE", Console(file=buffer, emoji=False)
@@ -651,7 +646,7 @@ class TestNotATerminal:
 
     def test_a_simple_line_stays_one_line(self, monkeypatch):
         buffer = StringIO()
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        output_settings.configure_output(self._args())
         monkeypatch.setattr(
             printing_module, "CONSOLE", Console(file=buffer, emoji=False)
         )
@@ -705,9 +700,7 @@ class TestPrintEventWithNullFields:
         import json
 
         printed: list[str] = []
-        monkeypatch.setattr(
-            event_printing_module, "ARGS_PARSER", SimpleNamespace(events_as_json=False)
-        )
+        output_settings.configure_output(SimpleNamespace(events_as_json=False))
         monkeypatch.setattr(
             event_printing_module, "print_info", lambda msg, **k: printed.append(msg)
         )
@@ -772,9 +765,7 @@ class TestPrintEventWithNullFields:
 class TestSortedObjects:
     @staticmethod
     def _args(monkeypatch, reverse=None):
-        monkeypatch.setattr(
-            tables_module, "ARGS_PARSER", SimpleNamespace(sort=None, reverse=reverse)
-        )
+        output_settings.configure_output(SimpleNamespace(sort=None, reverse=reverse))
 
     def test_a_none_name_sorts_first(self, monkeypatch):
         self._args(monkeypatch)

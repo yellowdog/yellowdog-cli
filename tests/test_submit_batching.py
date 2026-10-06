@@ -31,7 +31,9 @@ from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

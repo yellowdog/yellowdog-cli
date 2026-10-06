@@ -133,7 +133,9 @@ def remove_variables(previous: dict[str, str | None]) -> None:
 
 
 def corpus_files() -> list[Path]:
-    """Every corpus file, in a stable order."""
+    """
+    Every corpus file, in a stable order.
+    """
     return sorted(CORPUS_DIR.glob("*.jsonnet"))
 
 
@@ -145,7 +147,9 @@ OFFLINE_ONLY = {"credentials.jsonnet", "namespace.jsonnet"}
 
 
 def live_corpus_files() -> list[Path]:
-    """Every corpus file the live layer may create, in the same stable order."""
+    """
+    Every corpus file the live layer may create, in the same stable order.
+    """
     return [path for path in corpus_files() if path.name not in OFFLINE_ONLY]
 
 
@@ -161,17 +165,22 @@ def load_corpus_file(path: Path) -> list[dict]:
     No chdir is needed: a Jsonnet file's imports ('lib/base.libsonnet') are
     resolved beside it, wherever the loader is run from.
     """
-    from yellowdog_cli.utils.args import ARGS_PARSER
+    from types import SimpleNamespace
+
     from yellowdog_cli.utils.load_resources import load_resource_specifications
 
-    original = ARGS_PARSER.resource_specifications
-    ARGS_PARSER.args.resource_specifications = [str(path.resolve())]
-    try:
-        return load_resource_specifications()
-    finally:
-        ARGS_PARSER.args.resource_specifications = original
+    return load_resource_specifications(
+        SimpleNamespace(
+            resource_specifications=[str(path.resolve())],
+            jsonnet_dry_run=False,
+            validate=False,
+            no_resequence=False,
+        )
+    )
 
 
 def spec_properties(resource: dict) -> dict:
-    """The resource's properties, without the loader's own bookkeeping keys."""
+    """
+    The resource's properties, without the loader's own bookkeeping keys.
+    """
     return {k: v for k, v in resource.items() if k not in META_KEYS}

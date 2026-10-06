@@ -48,7 +48,9 @@ from yellowdog_cli.utils.property_names import (
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )
@@ -118,7 +120,9 @@ def _call_create_task_group(
 
 
 class TestCreateTaskGroupTaskTypes:
-    """Task type resolution: remapping, unioning, fallback chain."""
+    """
+    Task type resolution: remapping, unioning, fallback chain.
+    """
 
     def test_task_type_remapped_to_task_types(self):
         tg_data = {TASK_TYPE: "bash", TASKS: [{}]}
@@ -178,7 +182,9 @@ class TestCreateTaskGroupTaskTypes:
 
 
 class TestCreateTaskGroupResourceConversions:
-    """vcpus, ram, providers, instance_pricing_preference conversions."""
+    """
+    vcpus, ram, providers, instance_pricing_preference conversions.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -230,7 +236,9 @@ class TestCreateTaskGroupResourceConversions:
 
 
 class TestCreateTaskGroupTimeouts:
-    """task_timeout and completed_task_ttl → timedelta conversions."""
+    """
+    task_timeout and completed_task_ttl → timedelta conversions.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -307,7 +315,9 @@ class TestCreateTaskGroupInheritsFromWorkRequirement:
 
 
 class TestCreateTaskGroupNaming:
-    """Auto-naming and explicit naming of task groups."""
+    """
+    Auto-naming and explicit naming of task groups.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -341,7 +351,9 @@ class TestCreateTaskGroupNaming:
 
 
 class TestCreateTaskGroupTaskTemplate:
-    """taskTemplate propagation to the TaskGroup object."""
+    """
+    taskTemplate propagation to the TaskGroup object.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}

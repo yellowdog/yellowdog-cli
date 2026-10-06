@@ -15,7 +15,7 @@ from yellowdog_cli.utils.wrapper import main_wrapper
 def main(ctx: RunContext):
     create_resources(
         ctx,
-        load_resource_specifications(creation_or_update=True),
+        load_resource_specifications(ctx.args, creation_or_update=True),
         CreateOptions(
             dry_run=bool(ctx.args.dry_run),
             json_output=bool(ctx.args.json_output),

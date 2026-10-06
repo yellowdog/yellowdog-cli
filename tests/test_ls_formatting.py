@@ -12,7 +12,9 @@ from yellowdog_cli.utils.context import DataClientContext
 
 
 def _dc_ctx() -> DataClientContext:
-    """The context a data client command is given: the wrapper ARGS_PARSER, as patched."""
+    """
+    The context a data client command is given: the wrapper ARGS_PARSER, as patched.
+    """
     return DataClientContext(dataclient_wrapper_module.ARGS_PARSER)
 
 
@@ -36,7 +38,9 @@ def _file(
 
 
 def _printed_lines(listing, recursive: bool = False, long: bool = False) -> list[str]:
-    """Return every string passed as the first positional arg to print_simple."""
+    """
+    Return every string passed as the first positional arg to print_simple.
+    """
     with (
         patch("yellowdog_cli.ls.print_simple") as mock,
         patch("yellowdog_cli.utils.dataclient_wrapper.ARGS_PARSER") as mock_args,

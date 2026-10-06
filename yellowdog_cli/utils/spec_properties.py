@@ -19,7 +19,9 @@ from typing import Any
 
 
 class Level(Enum):
-    """Where a Work Requirement property may be set: the dictionary's columns."""
+    """
+    Where a Work Requirement property may be set: the dictionary's columns.
+    """
 
     TOML = "TOML"
     WORK_REQUIREMENT = "WR"
@@ -29,7 +31,9 @@ class Level(Enum):
 
 @dataclass(frozen=True)
 class SdkRef:
-    """A fragment the generator resolves against the installed SDK."""
+    """
+    A fragment the generator resolves against the installed SDK.
+    """
 
     model: str  # a dataclass name ("RetryPolicy") or an Enum name
 
@@ -457,7 +461,9 @@ NODE_ACTION_SHELL: tuple[Property, ...] = (
 
 
 def properties_at(level: Level) -> tuple[Property, ...]:
-    """The Work Requirement properties that may be set at 'level'."""
+    """
+    The Work Requirement properties that may be set at 'level'.
+    """
     return tuple(p for p in WORK_REQUIREMENT_PROPERTIES if level in p.levels)
 
 
@@ -627,7 +633,9 @@ DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"}
 
 
 def load_descriptions() -> dict[str, str]:
-    """The dictionary properties' descriptions, extracted from the README at build time."""
+    """
+    The dictionary properties' descriptions, extracted from the README at build time.
+    """
     text = (
         files("yellowdog_cli.spec_data")
         .joinpath("descriptions.json")

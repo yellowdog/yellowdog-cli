@@ -59,7 +59,9 @@ def captured(window, monkeypatch):
 
 
 def listed(window, monkeypatch, rows) -> list:
-    """Stub the listing to return 'rows'; returns the listings asked for."""
+    """
+    Stub the listing to return 'rows'; returns the listings asked for.
+    """
     asked: list = []
 
     def capture(command, flags, extra_args=None):

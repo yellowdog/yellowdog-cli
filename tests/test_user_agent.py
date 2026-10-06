@@ -25,7 +25,9 @@ _SDK_TOKEN = f"yellowdog-sdk/{_sdk_version}"
 
 
 def _sdk_prepared_ua() -> str:
-    """User-Agent on a request prepared exactly as the SDK's Proxy does."""
+    """
+    User-Agent on a request prepared exactly as the SDK's Proxy does.
+    """
     provider = ApiKeyAuthenticationHeadersProvider(ApiKey("id", "secret"))
     session = requests.Session()
     prepared = session.prepare_request(

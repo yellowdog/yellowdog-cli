@@ -1,4 +1,6 @@
-"""Tests for yd-list --name glob filtering."""
+"""
+Tests for yd-list --name glob filtering.
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -24,7 +26,9 @@ from yellowdog_cli.utils.entity_names import (
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

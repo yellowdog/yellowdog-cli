@@ -208,7 +208,9 @@ RCLONE_UPLOADED_FILES: RcloneUploadedFiles | None = None
 
 
 def _task_batch_size() -> int:
-    """The Task batch size: TASK_BATCH_SIZE if set, else the configuration's."""
+    """
+    The Task batch size: TASK_BATCH_SIZE if set, else the configuration's.
+    """
     return CONFIG_WR.task_batch_size if TASK_BATCH_SIZE is None else TASK_BATCH_SIZE
 
 
@@ -268,7 +270,7 @@ def main(ctx: RunContext):
             raise ValueError(
                 "Option '--validate' needs a Work Requirement specification file"
             )
-        wr_data = _work_requirement_from_csv(csv_files, files_directory)
+        wr_data = _work_requirement_from_csv(ctx, csv_files, files_directory)
         _submit_or_add_to(ctx, files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
@@ -287,6 +289,7 @@ def main(ctx: RunContext):
                     json_file=wr_data_file,
                     csv_files=csv_files,
                     files_directory=files_directory,
+                    csv_only=bool(ctx.args.process_csv_only),
                 )
             else:
                 wr_data = load_json_file_with_variable_substitutions(
@@ -300,10 +303,15 @@ def main(ctx: RunContext):
                     jsonnet_file=wr_data_file,
                     csv_files=csv_files,
                     files_directory=files_directory,
+                    dry_run=bool(ctx.args.jsonnet_dry_run),
+                    csv_only=bool(ctx.args.process_csv_only),
                 )
             else:
                 wr_data = load_jsonnet_file_with_variable_substitutions(
-                    filename=wr_data_file, prefix="", postfix=""
+                    filename=wr_data_file,
+                    prefix="",
+                    postfix="",
+                    dry_run=bool(ctx.args.jsonnet_dry_run),
                 )
 
         # TOML file (undocumented)
@@ -313,6 +321,7 @@ def main(ctx: RunContext):
                     toml_file=wr_data_file,
                     csv_files=csv_files,
                     files_directory=files_directory,
+                    csv_only=bool(ctx.args.process_csv_only),
                 )
             else:
                 wr_data = load_toml_file_with_variable_substitutions(
@@ -361,7 +370,9 @@ def _csv_files(ctx: RunContext) -> list[str] | None:
     return csv_files or None
 
 
-def _work_requirement_from_csv(csv_files: list[str], files_directory: str) -> dict:
+def _work_requirement_from_csv(
+    ctx: RunContext, csv_files: list[str], files_directory: str
+) -> dict:
     """
     The Work Requirement built from the TOML configuration and a CSV file,
     when there is no specification file. The configuration describes a single
@@ -374,7 +385,12 @@ def _work_requirement_from_csv(csv_files: list[str], files_directory: str) -> di
             " Groups (1): without a Work Requirement specification file, only"
             " one CSV file can be used"
         )
-    return csv_expand_toml_tasks(CONFIG_WR, csv_files[0], files_directory)
+    return csv_expand_toml_tasks(
+        CONFIG_WR,
+        csv_files[0],
+        files_directory,
+        csv_only=bool(ctx.args.process_csv_only),
+    )
 
 
 def _submit_or_add_to(
@@ -1812,7 +1828,9 @@ def submit_json_raw(ctx: RunContext, wr_file: str):
 
     # Load file contents, with variable substitutions
     if wr_file.lower().endswith(".jsonnet"):
-        wr_data = load_jsonnet_file_with_variable_substitutions(wr_file)
+        wr_data = load_jsonnet_file_with_variable_substitutions(
+            wr_file, dry_run=bool(ctx.args.jsonnet_dry_run)
+        )
     elif wr_file.lower().endswith(".json"):
         wr_data = load_json_file_with_variable_substitutions(wr_file)
     else:

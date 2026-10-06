@@ -30,7 +30,9 @@ from yellowdog_cli.utils.ydid_utils import TYPE_KEYRING, YDID
 
 
 def _output(result) -> str:
-    """Combined stdout + stderr — the CLI writes error lines to stderr."""
+    """
+    Combined stdout + stderr — the CLI writes error lines to stderr.
+    """
     return result.stdout + result.stderr
 
 
@@ -45,7 +47,9 @@ def _has_error(result) -> bool:
 
 @pytest.mark.system
 class TestHardFailures:
-    """Commands that fail outright, exiting non-zero."""
+    """
+    Commands that fail outright, exiting non-zero.
+    """
 
     @pytest.mark.parametrize(
         "cmd",

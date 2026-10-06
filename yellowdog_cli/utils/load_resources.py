@@ -4,8 +4,8 @@ Load data for resource creation/update/removal requests.
 
 from os.path import abspath, dirname
 from sys import exit
+from typing import Any
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -76,19 +76,25 @@ RESOURCE_CREATION_ORDER: tuple[str, ...] = (
 )
 
 
-def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
+def load_resource_specifications(
+    args: Any, creation_or_update: bool = True
+) -> list[dict]:
     """
     Load and return a list of resource specifications assembled from the
-    resources described in a set of resource description files.
+    resources described in a set of resource description files: those the
+    command line 'args' names, with its '--jsonnet-dry-run', '--validate'
+    and '--no-resequence'.
     """
     resources = []
     to_validate: list[tuple[object, str]] = []  # Under '--validate'
-    for resource_spec in ARGS_PARSER.resource_specifications:
+    for resource_spec in args.resource_specifications:
         if resource_spec.lower().endswith(".jsonnet"):
             resources_loaded = load_jsonnet_file_with_variable_substitutions(
-                resource_spec, exit_on_dry_run=False
+                resource_spec,
+                exit_on_dry_run=False,
+                dry_run=bool(args.jsonnet_dry_run),
             )
-        elif ARGS_PARSER.jsonnet_dry_run:
+        elif args.jsonnet_dry_run:
             print_warning(
                 f"['{resource_spec}'] Option '--jsonnet-dry-run' can only be applied"
                 f" to files ending in '.jsonnet'"
@@ -124,7 +130,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         # yd-create accepts, and yd-remove reads no more than the names
         if creation_or_update:
             strip_schema_key(resources_loaded)
-            if ARGS_PARSER.validate:
+            if args.validate:
                 to_validate.append((document, resource_spec))
                 continue
             warn_of_violations(Family.RESOURCES, document, resource_spec)
@@ -138,16 +144,20 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         )
         resources += resources_loaded
 
-    if creation_or_update and ARGS_PARSER.validate:
+    if creation_or_update and args.validate:
         validate_all_and_exit(Family.RESOURCES, to_validate)
 
-    if ARGS_PARSER.jsonnet_dry_run:
+    if args.jsonnet_dry_run:
         exit(0)
 
-    if len(ARGS_PARSER.resource_specifications) > 1:
+    if len(args.resource_specifications) > 1:
         print_info(f"Including {len(resources)} resources in total")
 
-    return _resequence_resources(resources, creation_or_update=creation_or_update)
+    return _resequence_resources(
+        resources,
+        creation_or_update=creation_or_update,
+        resequence=not args.no_resequence,
+    )
 
 
 _JSON_TYPE_NAMES = {
@@ -181,15 +191,16 @@ def _check_specifications(resources: object, resource_spec: str) -> None:
 
 
 def _resequence_resources(
-    resources: list[dict], creation_or_update: bool = True
+    resources: list[dict], creation_or_update: bool = True, resequence: bool = True
 ) -> list[dict]:
     """
     Re-sequence resources so that possible dependencies are evaluated in the
     correct order. If 'creation_or_update' is True this is a creation/update
     action, otherwise it's a removal action -- the sequencing differs for each.
+    Without 'resequence' ('--no-resequence'), they are left as they are.
     """
 
-    if ARGS_PARSER.no_resequence:
+    if not resequence:
         print_info("Not re-sequencing the resource list")
         return resources
 

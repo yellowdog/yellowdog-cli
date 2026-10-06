@@ -51,7 +51,9 @@ ONCE = "give the configuration file once, either as an argument or with -c"
 
 
 class _Once(argparse.Action):
-    """Store the value, refusing a second one rather than keeping the last."""
+    """
+    Store the value, refusing a second one rather than keeping the last.
+    """
 
     def __call__(self, parser, namespace, values, option_string=None):
         if getattr(namespace, self.dest) is not None:

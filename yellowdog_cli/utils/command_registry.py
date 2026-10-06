@@ -95,7 +95,9 @@ class Option:
         return tuple(flag for flag in self.flags if flag != self.name)
 
     def variant(self, **overrides: Any) -> Option:
-        """The same option with some keyword arguments replaced."""
+        """
+        The same option with some keyword arguments replaced.
+        """
         return Option(self.flags, {**self.kwargs, **overrides}, self.tool_required)
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
@@ -108,7 +110,9 @@ def option(*flags: str, **kwargs: Any) -> Option:
 
 @dataclass(frozen=True, eq=False)
 class Exclusive:
-    """A mutually exclusive group."""
+    """
+    A mutually exclusive group.
+    """
 
     options: tuple[Option, ...]
 
@@ -183,7 +187,9 @@ _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
 
 @cache
 def _console_script_modules() -> dict[str, str]:
-    """This package's console scripts, each with the module it runs."""
+    """
+    This package's console scripts, each with the module it runs.
+    """
     return {
         point.name: point.value.split(":")[0]
         for point in entry_points(group="console_scripts")
@@ -1323,7 +1329,9 @@ CLOUD_PROVIDERS: dict[str, str] = {
 
 
 def cloud_provider_of(name: str) -> str | None:
-    """The provider a '--cloud-provider' spelling names, or None."""
+    """
+    The provider a '--cloud-provider' spelling names, or None.
+    """
     return CLOUD_PROVIDERS.get(name.strip().lower())
 
 

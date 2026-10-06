@@ -42,19 +42,25 @@ NOTHING = "nothing"
 
 
 def listing(dialog) -> QListWidget:
-    """The dialog's checkable listing; fails loudly when there is none."""
+    """
+    The dialog's checkable listing; fails loudly when there is none.
+    """
     found = dialog.findChild(QListWidget, "selection_list")
     assert found is not None, "the dialog has no selectable listing"
     return found
 
 
 def untick(dialog, indexes) -> None:
-    """Untick rows by index, as a user clicking their checkboxes would."""
+    """
+    Untick rows by index, as a user clicking their checkboxes would.
+    """
     set_check_states(dialog, indexes, Qt.CheckState.Unchecked)
 
 
 def tick(dialog, indexes) -> None:
-    """Tick rows by index, as a user clicking their checkboxes would."""
+    """
+    Tick rows by index, as a user clicking their checkboxes would.
+    """
     set_check_states(dialog, indexes, Qt.CheckState.Checked)
 
 
@@ -67,7 +73,9 @@ def set_check_states(dialog, indexes, state: Qt.CheckState) -> None:
 
 
 def ticked(dialog) -> list[int]:
-    """The indexes of the rows ticked."""
+    """
+    The indexes of the rows ticked.
+    """
     rows = listing(dialog)
     return [
         index
@@ -156,7 +164,9 @@ def drive_chooser(
 
 
 def choice_listing(dialog) -> QListWidget:
-    """The single-choice dialog's listing; fails loudly when there is none."""
+    """
+    The single-choice dialog's listing; fails loudly when there is none.
+    """
     found = dialog.findChild(QListWidget, "choice_list")
     assert found is not None, "the dialog has no single-choice listing"
     return found
@@ -199,7 +209,9 @@ def drive_single_choice(
 
 
 def target_nodes(dialog):
-    """The resize dialog's node-count spin box; fails loudly when there is none."""
+    """
+    The resize dialog's node-count spin box; fails loudly when there is none.
+    """
     from PyQt6.QtWidgets import QSpinBox
 
     found = dialog.findChild(QSpinBox, "target_nodes")

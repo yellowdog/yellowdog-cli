@@ -21,6 +21,7 @@ except ImportError:  # Python 3.10
 
 from yellowdog_cli import doctor
 from yellowdog_cli.utils import doctor_checks as dc
+from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.limits import DOCTOR_DEFAULT_TIMEOUT
 from yellowdog_cli.utils.settings import PYTHON_MIN_VERSION
 from yellowdog_cli.utils.variable_substitution import undefined_variable_references
@@ -36,13 +37,16 @@ def _ctx(**overrides) -> dc.Context:
         client=None,
         data_client=None,
         debug=False,
+        args=ARGS_PARSER,
     )
     base.update(overrides)
     return dc.Context(**base)
 
 
 def _clean_env(**extra: str) -> dict[str, str]:
-    """The current environment with every YD_* variable removed."""
+    """
+    The current environment with every YD_* variable removed.
+    """
     env = {k: v for k, v in os.environ.items() if not k.startswith("YD_")}
     env.update(extra)
     return env
@@ -271,7 +275,9 @@ class TestCommandRegistration:
 
 
 def _args(monkeypatch, **values) -> None:
-    """Set ARGS_PARSER's properties for one test (on the class: they have no setters)."""
+    """
+    Set ARGS_PARSER's properties for one test (on the class: they have no setters).
+    """
     from yellowdog_cli.utils.args import CLIParser
 
     defaults = dict(
@@ -459,7 +465,9 @@ class TestMain:
 
 
 def _cfg(**kw) -> SimpleNamespace:
-    """A ConfigCommon stand-in, with PAC off unless a test turns it on."""
+    """
+    A ConfigCommon stand-in, with PAC off unless a test turns it on.
+    """
     values = dict(
         key="k",
         secret="s",
@@ -473,7 +481,9 @@ def _cfg(**kw) -> SimpleNamespace:
 
 
 def _fake_pac(monkeypatch, proxy):
-    """A pac_context_for_url fake that sets HTTPS_PROXY while it is open."""
+    """
+    A pac_context_for_url fake that sets HTTPS_PROXY while it is open.
+    """
     entered = []
 
     @contextlib.contextmanager
@@ -1332,7 +1342,9 @@ def _run_doctor_without_offline(tmp_path, env, config):
 
 
 class TestDataClientUnderTest:
-    """The Remote reachable row tests the profile a data client command would use."""
+    """
+    The Remote reachable row tests the profile a data client command would use.
+    """
 
     @pytest.fixture(autouse=True)
     def _needs_rclone(self):

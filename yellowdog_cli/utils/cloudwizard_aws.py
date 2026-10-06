@@ -35,7 +35,9 @@ YD_DEFAULT_INSTANCE_TYPE = "{{instance_type:=t3a.micro}}"
 
 
 def _error_code(error: ClientError) -> str:
-    """An AWS error's code ('NoSuchEntity'), as AWS reports it, not its text."""
+    """
+    An AWS error's code ('NoSuchEntity'), as AWS reports it, not its text.
+    """
     return str(error.response.get("Error", {}).get("Code", ""))
 
 

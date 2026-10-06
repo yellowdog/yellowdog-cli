@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, TypeVar
 from rich.markup import escape
 from tabulate import tabulate
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.cloudwizard_aws_types import AWSAvailabilityZone
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     MAX_LINES_COLOURED_FORMATTING,
     MAX_TABLE_DESCRIPTION,
@@ -89,7 +89,7 @@ def print_table_core(table: str):
     """
     Core function for printing a table.
     """
-    if ARGS_PARSER.no_format or table.count("\n") > MAX_LINES_COLOURED_FORMATTING:
+    if OUTPUT.no_format or table.count("\n") > MAX_LINES_COLOURED_FORMATTING:
         print(table, flush=True)
     else:
         CONSOLE_TABLE.print(escape(table), soft_wrap=True)
@@ -746,7 +746,7 @@ def print_numbered_object_list(
     if not objects:
         return
 
-    if ARGS_PARSER.auto_select_all and ARGS_PARSER.details and ARGS_PARSER.quiet:
+    if OUTPUT.auto_select_all and OUTPUT.details and OUTPUT.quiet:
         return
 
     print_info(
@@ -831,15 +831,15 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
     if not objects:
         return objects
 
-    if ARGS_PARSER.reverse is not None:
-        reverse = ARGS_PARSER.reverse
+    if OUTPUT.reverse is not None:
+        reverse = OUTPUT.reverse
 
     # '--sort created' orders any entity exposing a 'createdTime' (e.g. Work
     # Requirement / Compute Requirement / Worker Pool summaries) by creation
     # time, earliest first (latest first with --reverse). Entities without a
     # 'createdTime', or a None value that breaks comparison, fall through to
     # the name-based sorting below.
-    if ARGS_PARSER.sort == "created" and hasattr(objects[0], "createdTime"):
+    if OUTPUT.sort == "created" and hasattr(objects[0], "createdTime"):
         try:
             return sorted(objects, key=lambda x: x.createdTime, reverse=reverse)  # type: ignore[union-attr]
         except TypeError:
@@ -848,7 +848,7 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
     # '--sort status' orders any entity exposing a 'status' by its status name
     # (statuses are enums, so sort on their string form), with the entity name
     # as a secondary key so same-status entities stay name-ordered.
-    if ARGS_PARSER.sort == "status" and hasattr(objects[0], "status"):
+    if OUTPUT.sort == "status" and hasattr(objects[0], "status"):
         try:
             return sorted(
                 objects,
@@ -860,7 +860,7 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
 
     # '--sort namespace' groups entities by namespace, with the entity name as
     # a secondary key so same-namespace entities stay name-ordered.
-    if ARGS_PARSER.sort == "namespace" and hasattr(objects[0], "namespace"):
+    if OUTPUT.sort == "namespace" and hasattr(objects[0], "namespace"):
         try:
             return sorted(
                 objects,

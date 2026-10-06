@@ -20,7 +20,9 @@ from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TI
 
 
 def _ctx() -> RunContext:
-    """The context a command is given: the wrapper's values, as patched."""
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
     )

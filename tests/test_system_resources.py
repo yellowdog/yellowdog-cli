@@ -261,8 +261,10 @@ def _identity(entity: dict) -> tuple[str, object] | None:
 
 
 def _spec_for(specs: list[dict], returned: dict) -> dict | None:
-    """Match a returned entity to the specification that created it (see
-    _identity() for what each is matched on)."""
+    """
+    Match a returned entity to the specification that created it (see
+    _identity() for what each is matched on).
+    """
     identity = _identity(returned)
     if identity is None:
         return None

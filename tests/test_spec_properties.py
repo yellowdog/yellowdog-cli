@@ -24,7 +24,9 @@ DESCRIPTIONS = REPO / "yellowdog_cli" / "spec_data" / "descriptions.json"
 
 
 def _dictionary_rows() -> dict[str, tuple[set[Level], str]]:
-    """{property: (levels marked, description)} from the README's dictionary table."""
+    """
+    {property: (levels marked, description)} from the README's dictionary table.
+    """
     lines = README.read_text().splitlines()
     start = next(
         i for i, line in enumerate(lines) if line.startswith("| Property Name")
@@ -167,7 +169,9 @@ class TestLevels:
 
 
 class TestDescriptionsStandAlone:
-    """The descriptions ship as editor hover text, away from the table."""
+    """
+    The descriptions ship as editor hover text, away from the table.
+    """
 
     def test_no_description_points_elsewhere_in_the_table(self):
         for name, text in load_descriptions().items():
