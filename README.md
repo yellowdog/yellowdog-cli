@@ -4562,7 +4562,7 @@ The `yd-help` command lists all available `yd-*` commands and their purposes, `y
 yd-help [--json] [--no-format]
 ```
 
-The listing is coloured on a terminal, with the command names and the notes on extras picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+The listing is coloured on a terminal, with the command names and the notes on extras picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"`, coloured on a terminal unless `--no-format` is given (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
 
 ### yd-version
 
