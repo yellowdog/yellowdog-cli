@@ -3505,7 +3505,7 @@ Help is available for all commands by invoking a command with the `--help` or `-
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help` and `yd-schema` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema` and `yd-version` accept `--no-format`. They are not repeated in the individual command sections below.
 
 The five [Data Client Commands](#data-client-commands) are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -4566,7 +4566,7 @@ The listing is coloured on a terminal, with the command names and the notes on e
 
 ### yd-version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp`, followed by the CLI's author and licence.
+The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp` as a table, followed by the CLI's author, licence and documentation link.
 
 ```shell
 yd-version [options]
@@ -4574,7 +4574,8 @@ yd-version [options]
 
 Key options:
 - `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
-- `--debug` — print the Python path and executable details (note that this differs from `--debug` on other commands, which prints a stack trace on error); with the full report or `--json` only, not with a single-version option
+- `--debug` — print the Python path and executable details, as a second table (note that this differs from `--debug` on other commands, which prints a stack trace on error); with the full report or `--json` only, not with a single-version option
+- `--no-format`, `--nf` — print the report, or the `--json` object, without colouring, as it is when piped or redirected
 - `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed or whose version could not be read; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell

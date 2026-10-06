@@ -897,6 +897,10 @@ class TestStatesAreWholeWords:
         styled = self._styled("Task is RUNNING, pool STOPPED, node NON-MATCHING")
         assert {"RUNNING", "STOPPED", "NON-MATCHING"} <= set(styled)
 
+    def test_a_url_with_a_hyphen_is_highlighted_whole(self):
+        url = "https://github.com/yellowdog/yellowdog-cli/blob/v13.0.0/README.md"
+        assert url in self._styled(f"Docs: {url}")
+
 
 class TestHighlightingAsBefore:
     """

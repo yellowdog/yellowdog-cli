@@ -100,7 +100,7 @@ class PrintLogHighlighter(RegexHighlighter):
         ),
         re.compile(r"(?P<quoted>'[a-zA-Z0-9-._=;,:/\\\[\]{}+#@$£%^&*()~`<>?]*')"),
         YDID_HIGHLIGHT_RE,
-        re.compile(r"(?P<url>(https?):((//)|(\\\\))+[\w:#@%/;$~_?+=\\.&]*)"),
+        re.compile(r"(?P<url>(https?):((//)|(\\\\))+[\w:#@%/;$~_?+=\\.&-]*)"),
         *HIGHLIGHTED_STATES,
     ]
 

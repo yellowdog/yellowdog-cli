@@ -3452,7 +3452,7 @@ class TestVersion:
         assert yd_version.cli_licence() == declared
         monkeypatch.setattr(_sys, "argv", ["yd-version"])
         yd_version.main()
-        assert f"Licence:                 {declared}" in capsys.readouterr().out
+        assert f"Licence: {declared}" in capsys.readouterr().out
 
     def test_an_unknown_licence(self, monkeypatch):
         def not_found(_name):

@@ -22,9 +22,7 @@ from yellowdog_cli.utils.version_info import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
 # table's content, and a note -- the extra a command needs -- dimmed so the
-# summaries proper stand out. printing.py itself
-# is not imported: it parses the command line for a registered command at
-# import, and yd-help is not one.
+# summaries proper stand out.
 NAME_STYLE = "pyexamples.table_content"
 NOTE_STYLE = "dim"
 HEADING_STYLE = "bold"
