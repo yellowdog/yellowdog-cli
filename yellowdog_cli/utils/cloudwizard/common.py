@@ -95,6 +95,8 @@ class CommonCloudConfig(ABC):
             return
 
         # Compute Requirement Templates
+        # Cleared before the lookup, deliberately, as well as by the mutations
+        # (entity_utils): what was created or removed outside this run must be seen
         clear_compute_requirement_template_cache()
         counter = 0
         for compute_requirement_template_summary in get_compute_requirement_templates(
@@ -116,6 +118,8 @@ class CommonCloudConfig(ABC):
             print_warning("No Compute Requirement Templates to remove")
 
         # Remove Compute Source Templates
+        # Cleared before the lookup, deliberately, as well as by the mutations
+        # (entity_utils): what was created or removed outside this run must be seen
         clear_compute_source_template_cache()
         counter = 0
         for compute_source_template_summary in get_compute_source_templates(
@@ -307,6 +311,8 @@ class CommonCloudConfig(ABC):
             "Creating example Compute Requirement Templates with instance type"
             f" '{self._instance_type}'"
         )
+        # Cleared before the lookup, deliberately, as well as by the mutations
+        # (entity_utils): what was created or removed outside this run must be seen
         clear_compute_source_template_cache()
         self._requirement_template_resources: list[dict] = [
             self._generate_static_compute_requirement_template(

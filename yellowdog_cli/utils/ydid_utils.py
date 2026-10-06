@@ -51,7 +51,9 @@ class YDIDType(Enum):
     WORK_REQUIREMENT = "Work Requirement"
 
 
-# The YellowDog IDs 'yd-remove --ids' removes (a Worker Pool's is shut down)
+# The YellowDog IDs 'yd-remove --ids' removes (a Worker Pool's is shut down);
+# tests/test_remove.py holds each one to a removal in resource_removal.py's
+# _removable_by_id()
 REMOVABLE_YDID_TYPES = frozenset(
     {
         YDIDType.ALLOWANCE,

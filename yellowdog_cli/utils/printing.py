@@ -127,7 +127,9 @@ pyexamples_theme = Theme(DEFAULT_THEME)
 # means one, and Rich would print that as '{{num❌=1}}'. Every print passes
 # soft_wrap=True: a message is wrapped by print_string() and a table not at
 # all, and Rich, whose width is 80 when stdout is not a terminal, would wrap
-# each line again, breaking tables and paths written to a pipe or a file
+# each line again, breaking tables and paths written to a pipe or a file.
+# CONSOLE_ERR is themed like CONSOLE, so that a message highlights the same
+# whichever stream it goes to
 CONSOLE = ConsoleWithInputBackspaceFixed(
     highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
 )
@@ -366,7 +368,9 @@ def user_data_as_shown(data: Any) -> Any:
     """
     JSON-shaped data as it is to be shown: with its User Data summarised
     under '--hide-user-data', else unchanged. Only ever applied to what is
-    printed or recorded, never to what is sent.
+    printed or recorded, never to what is sent. flush_results() applies it
+    to a recorded document, so a command recording one (yd-provision,
+    yd-instantiate) does not apply it itself.
     """
     return user_data_hidden(data) if OUTPUT.hide_user_data else data
 

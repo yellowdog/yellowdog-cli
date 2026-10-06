@@ -4,6 +4,10 @@ library behind yd-create, which the Cloud Wizard uses too. It reads no
 command-line options: what yd-create's options decide arrives as a
 CreateOptions, so a caller that is not yd-create gets the defaults rather
 than whatever its own command line happens to hold.
+
+create.py is a thin command over it. That is the general rule: a utility
+never imports a command module, so shared work lives in a library like this
+one, which the command and any other caller both use.
 """
 
 import dataclasses

@@ -606,7 +606,8 @@ def remote_stat(
     empty one is None, as it is to the storage itself. A listing passes
     'confirm_directory=False', for which such a path is the empty directory
     rclone says it is, and lists as one: an empty prefix, a namespace's
-    before anything is uploaded to it among them, is no error to list.
+    before anything is uploaded to it among them, is no error to list, as it
+    was not in v12.1.1.
     """
     result = _run_quietly(rclone, ["lsjson", "--stat", "--no-mimetype", remote_path])
     if result.returncode == 3:

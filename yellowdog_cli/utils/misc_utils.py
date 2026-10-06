@@ -378,7 +378,11 @@ def split_delimited_string(
 
 def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     """
-    Format a string to be consistent with YellowDog naming requirements.
+    Format a string to be consistent with YellowDog naming requirements:
+    prefixed with NAME_START_PREFIX, with a warning, where it would not
+    start with a letter. A caller formatting a name *component* rather than
+    a whole name -- the 'format_name:' type tag -- passes add_prefix=False
+    and gets neither the prefix nor the warning.
     """
     # A name that isn't a String -- 'name = 123' in a configuration or
     # specification file -- is a configuration error, and is reported as one

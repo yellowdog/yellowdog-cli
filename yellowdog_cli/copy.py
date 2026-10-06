@@ -54,6 +54,8 @@ def main(ctx: DataClientContext):
     sync = ctx.args.sync or False
     recursive = bool(ctx.args.recursive) or sync  # --sync implies --recursive
 
+    # The source is stat'ed, not looked up in its parent's listing, which took
+    # a top-level file for a directory and a failed listing for 'directory'
     stat = config_remote_stat(CONFIG_SRC, src_path)
     if stat is None:
         raise FileNotFoundError(f"'{src_path}' does not exist")
