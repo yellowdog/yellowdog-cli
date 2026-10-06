@@ -1,12 +1,12 @@
 """
-Unit tests for yellowdog_cli.utils.rclone_utils
+Unit tests for yellowdog_cli.utils.dataclient.rclone
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from yellowdog_cli.utils.rclone_utils import (
+from yellowdog_cli.utils.dataclient.rclone import (
     is_inline_remote,
     parse_rclone_config,
     shown_remote,
@@ -133,7 +133,7 @@ class TestMakeRcloneForCopy:
         Run make_rclone_for_copy with make_rclone mocked out.
         Returns (src_name, dst_name, config_text_passed_to_make_rclone).
         """
-        import yellowdog_cli.utils.rclone_utils as rcu
+        import yellowdog_cli.utils.dataclient.rclone as rcu
 
         captured: dict = {}
 
@@ -146,7 +146,7 @@ class TestMakeRcloneForCopy:
             patch.object(
                 rcu,
                 "_find_rclone_conf",
-                return_value=MagicMock(read_text=lambda: sys_conf or ""),
+                return_value=MagicMock(read_text=lambda **k: sys_conf or ""),
             ),
         ):
             src_name, dst_name, _ = rcu.make_rclone_for_copy(src, dst)
@@ -251,3 +251,83 @@ class TestShownRemote:
     )
     def test_the_prefix_is_kept(self, remote, shown):
         assert shown_remote(remote) == shown
+
+
+class TestParametersReadAsRcloneReadsThem:
+    """
+    An inline remote's values: quoted ones may hold commas (a doubled quote
+    is the quote), spaces are allowed around '=', and rclone's own
+    ':backend' form is a remote named for its backend, of that type.
+    """
+
+    def test_a_quoted_value_keeps_its_commas(self):
+        _, section = parse_rclone_config(
+            'S3,type=s3,secret_access_key="a,b=c",region=eu'
+        )
+        assert section == "[S3]\ntype = s3\nsecret_access_key = a,b=c\nregion = eu"
+
+    def test_a_single_quoted_value_and_a_doubled_quote(self):
+        _, section = parse_rclone_config("""S3,type=s3,a='x,y',b="say ""hi\"\"\"""")
+        assert section == '[S3]\ntype = s3\na = x,y\nb = say "hi"'
+
+    def test_spaces_around_the_equals_sign(self):
+        _, section = parse_rclone_config("S3, type = s3 , secret_access_key = X")
+        assert section == "[S3]\ntype = s3\nsecret_access_key = X"
+
+    def test_rclone_backend_form(self):
+        assert parse_rclone_config(":s3,provider=AWS,env_auth=true") == (
+            "s3",
+            "[s3]\ntype = s3\nprovider = AWS\nenv_auth = true",
+        )
+        assert parse_rclone_config(":local") == ("local", "[local]\ntype = local")
+
+    def test_spaced_credentials_are_still_recognised_and_withheld(self):
+        remote = "S3, type = s3 , secret_access_key = X"
+        assert is_inline_remote(remote)
+        assert "X" not in shown_remote(remote)
+
+    def test_a_quoted_credential_is_withheld_whole(self):
+        shown = shown_remote('rclone:S3,type=s3,secret_access_key="a,b=c"')
+        assert shown == "rclone:S3,type=s3,<1 parameter redacted>"
+
+    def test_the_backend_form_is_shown_as_written(self):
+        assert (
+            shown_remote(":s3,provider=AWS,env_auth=true")
+            == ":s3,provider=AWS,<1 parameter redacted>"
+        )
+
+
+class TestNoRcloneConfiguration:
+    def test_a_missing_configuration_says_where_it_looked(self, monkeypatch, tmp_path):
+        from yellowdog_cli.utils.dataclient import rclone as rclone_utils
+
+        monkeypatch.delenv("RCLONE_CONFIG", raising=False)
+        monkeypatch.setattr(rclone_utils.Path, "home", lambda: tmp_path)
+        monkeypatch.setattr(rclone_utils.platform, "system", lambda: "Linux")
+        with pytest.raises(FileNotFoundError, match="looked for") as raised:
+            rclone_utils._find_rclone_conf()
+        assert str(tmp_path) in str(raised.value)
+        assert "RCLONE_CONFIG" in str(raised.value)
+
+
+def test_rclone_api_logging_is_kept_off_stdout():
+    """
+    Importing rclone_api puts a logging handler on stdout, through which it
+    logs its first-run download; under '--json' that would come before the
+    document. Every use of rclone_api moves it to stderr first.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "import logging, sys; sys.argv = ['yd-ls']\n"
+        "import rclone_api\n"
+        "from yellowdog_cli.utils.dataclient.rclone import _keep_logging_off_stdout\n"
+        "_keep_logging_off_stdout()\n"
+        "logging.getLogger('rclone_api.install').warning('Downloading rclone')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout == ""
+    assert "Downloading rclone" in result.stderr

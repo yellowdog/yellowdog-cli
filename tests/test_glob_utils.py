@@ -1,10 +1,12 @@
-"""Unit tests for the shared glob helpers in glob_utils."""
+"""
+Unit tests for the shared glob helpers in glob_utils.
+"""
 
 from types import SimpleNamespace
 
 import pytest
 
-from yellowdog_cli.utils.dataclient_utils import is_glob
+from yellowdog_cli.utils.dataclient.operations import is_glob
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,

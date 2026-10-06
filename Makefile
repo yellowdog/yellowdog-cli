@@ -1,11 +1,11 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/spec_data/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/utils/*/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/spec_data/*.py
 SCRIPTS = scripts/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
-PYCACHE = __pycache__ yellowdog_cli/__pycache__ yellowdog_cli/utils/__pycache__
+PYCACHE = __pycache__ yellowdog_cli/__pycache__ yellowdog_cli/utils/__pycache__ yellowdog_cli/utils/*/__pycache__
 TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.* yellowdog_cli/commander/README.md.* yellowdog_cli/mcp/README.md.*
 
 build: $(SRC) $(MANIFEST)

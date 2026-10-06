@@ -21,13 +21,12 @@ from yellowdog_client.model.exceptions.server_error_exception import (
     ServerErrorException,
 )
 
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module
-import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.results as results_module
+import yellowdog_cli.utils.command_runner as runner_module
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 import yellowdog_cli.utils.wrapper as wrapper_module
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.results import record, reset_results
-from yellowdog_cli.utils.settings import ExitCode
 
 
 def _http_error(status: int) -> HTTPError:
@@ -100,19 +99,22 @@ def _args(json_output: bool = False, debug: bool = False) -> MagicMock:
 
 @pytest.fixture()
 def wrapped(monkeypatch):
-    """Both wrappers with their start-up checks and the client stubbed out."""
+    """
+    Both wrappers with their start-up checks and the client stubbed out.
+    """
 
     def set_up(json_output: bool = False, debug: bool = False) -> MagicMock:
         args = _args(json_output, debug)
-        for module in (wrapper_module, dcw_module, results_module, printing_module):
-            monkeypatch.setattr(module, "ARGS_PARSER", args)
         for module in (wrapper_module, dcw_module):
-            monkeypatch.setattr(
-                module, "warn_of_undefined_config_variables", lambda: None
-            )
-            monkeypatch.setattr(
-                module, "enable_undefined_variable_warnings", lambda: None
-            )
+            monkeypatch.setattr(module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        # The start-up checks both wrappers run, in the runner they share
+        monkeypatch.setattr(
+            runner_module, "warn_of_undefined_config_variables", lambda: None
+        )
+        monkeypatch.setattr(
+            runner_module, "enable_undefined_variable_warnings", lambda: None
+        )
         monkeypatch.setattr(wrapper_module, "set_proxy", lambda: None)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         return args
@@ -267,3 +269,68 @@ class TestWrappers:
         wrapped(json_output=True, debug=True)
         assert _exit_code(wrapper, lambda: record({"id": "a"})) == 0
         assert json_loads(capsys.readouterr().out) == [{"id": "a"}]
+
+
+class TestClassifyChained:
+    def test_not_found_error(self):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        assert classify(NotFoundError("Worker Pool ID 'x' not found")) == (
+            ExitCode.NOT_FOUND
+        )
+
+    def test_not_found_error_prints_without_quotes(self):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        assert str(NotFoundError("x not found")) == "x not found"
+
+    @pytest.mark.parametrize(
+        "cause, code",
+        [
+            (RequestsConnectionError("reset"), ExitCode.CONNECTION),
+            (_http_error(404), ExitCode.NOT_FOUND),
+            (_http_error(503), ExitCode.PLATFORM),
+        ],
+    )
+    def test_a_rewrapped_failure_keeps_its_cause_code(self, cause, code):
+        try:
+            try:
+                raise cause
+            except Exception as e:
+                raise RuntimeError(f"Unable to do the thing: {e}") from e
+        except RuntimeError as wrapped_error:
+            assert classify(wrapped_error) == code
+
+    def test_an_unchained_failure_is_still_failure(self):
+        assert classify(RuntimeError("odd")) == ExitCode.FAILURE
+
+
+class TestReportedFailure:
+    def test_it_is_classified_by_its_cause(self):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        assert classify(ReportedFailure(_http_error(401))) == ExitCode.AUTHENTICATION
+        assert (
+            classify(ReportedFailure(RequestsConnectionError("reset")))
+            == ExitCode.CONNECTION
+        )
+
+    @pytest.mark.parametrize("wrapper", WRAPPERS)
+    def test_the_wrapper_exits_with_its_code_without_reporting_it_again(
+        self, wrapped, wrapper, capsys
+    ):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        wrapped(json_output=True)
+
+        def func():
+            # What an action command does on a session failure: record the
+            # failure and what it did not attempt, then raise
+            record({"id": "a", "outcome": "failed", "error": "reset"})
+            record({"id": "b", "outcome": "skipped", "error": "not attempted: reset"})
+            raise ReportedFailure(RequestsConnectionError("reset"))
+
+        assert _exit_code(wrapper, func) == ExitCode.CONNECTION
+        out, err = capsys.readouterr()
+        assert [item["outcome"] for item in json_loads(out)] == ["failed", "skipped"]
+        assert "reset" not in err  # the command printed it; the wrapper did not

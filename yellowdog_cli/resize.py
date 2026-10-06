@@ -2,6 +2,15 @@
 
 """
 A script to resize Worker Pools and Compute Requirements.
+
+The target is resolved first: a YDID is fetched directly, whatever its
+namespace, and a name is looked up in the configured namespace unless it has
+a 'namespace/' prefix. What cannot be resized is reported before anything is
+asked: a target that does not exist fails (exit 6), as does a Worker Pool
+that is Configured, awaiting nodes, or would go outside its node limits; a
+target that has finished, or is already the size asked for, is skipped. A
+lookup that fails for any other reason reaches the wrapper, which reports
+and classifies it.
 """
 
 from typing import cast
@@ -10,28 +19,41 @@ from yellowdog_client.model import (
     ComputeRequirement,
     ComputeRequirementStatus,
     ComputeRequirementSummary,
+    ProvisionedWorkerPool,
     WorkerPool,
 )
 
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
-    get_compute_requirement_summaries,
+    AmbiguousNameError,
+    find_compute_requirement_by_name,
     get_worker_pool_id_by_name,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.printing import print_dry_run, print_info, print_warning
-from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import (
-    DRY_RUN_MARKER,
-    ET_COMPUTE_REQUIREMENTS,
-    ET_WORKER_POOLS,
+from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.printing import (
+    print_dry_run,
+    print_error,
+    print_info,
+    print_warning,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+# The only state a Compute Requirement is resized in
+_RESIZABLE_CR_STATUSES = [ComputeRequirementStatus.RUNNING]
 
 
 def _record(
-    entity: object, entity_type: str, outcome: str, error: str | None = None
+    ctx: RunContext,
+    entity: object,
+    entity_type: str,
+    outcome: str,
+    error: str | None = None,
 ) -> None:
     record_action(
         entity,
@@ -39,170 +61,249 @@ def _record(
         "resize",
         outcome,
         error,
-        targetInstanceCount=ARGS_PARSER.worker_pool_size,
+        targetInstanceCount=ctx.args.worker_pool_size,
     )
+
+
+def _count(count: int | None) -> str:
+    return "unknown" if count is None else f"{count:,d}"
+
+
+def _not_found(ctx: RunContext, message: str, target: str, entity_type: str) -> None:
+    """
+    Record the target as not found, and raise NotFoundError (exit 6).
+    """
+    _record(ctx, target, entity_type, "failed", message)
+    raise NotFoundError(message)
+
+
+def _cannot(ctx: RunContext, entity: object, entity_type: str, message: str) -> None:
+    """
+    Report and record a target that cannot be resized as asked.
+    """
+    print_error(message)
+    _record(ctx, entity, entity_type, "failed", message)
+
+
+def _skip(ctx: RunContext, entity: object, entity_type: str, message: str) -> None:
+    """
+    Report and record a target that needs no resize.
+    """
+    print_warning(message)
+    _record(ctx, entity, entity_type, "skipped", message)
 
 
 @main_wrapper
-def main():
-    if ARGS_PARSER.compute_req_resize:
-        _resize_compute_requirement()
+def main(ctx: RunContext):
+    if ctx.args.compute_req_resize:
+        _resize_compute_requirement(ctx, cast(str, ctx.args.worker_pool_name))
     else:
-        _resize_worker_pool()
+        _resize_worker_pool(ctx, cast(str, ctx.args.worker_pool_name))
 
 
-def _resize_worker_pool():
-    """
-    Resize a Worker Pool
-    """
-    action = f"{DRY_RUN_MARKER}Would resize" if ARGS_PARSER.dry_run else "Resizing"
-    print_info(
-        f"{action} Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
-        f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
-    )
-    if get_ydid_type(ARGS_PARSER.worker_pool_name) == YDIDType.WORKER_POOL:
-        worker_pool_id = ARGS_PARSER.worker_pool_name
-    else:
-        worker_pool_id = get_worker_pool_id_by_name(
-            CLIENT,
-            ARGS_PARSER.worker_pool_name,  # type: ignore[arg-type]
-            namespace=CONFIG_COMMON.namespace,
+def _resize_worker_pool(ctx: RunContext, target: str):
+    size: int = cast(int, ctx.args.worker_pool_size)
+    worker_pool = _find_worker_pool(ctx, target)
+    label = f"'{worker_pool.namespace}/{worker_pool.name}'"
+
+    if not isinstance(worker_pool, ProvisionedWorkerPool):
+        _cannot(
+            ctx,
+            worker_pool,
+            ET_WORKER_POOLS,
+            f"Worker Pool {label} is a Configured Worker Pool, which cannot be resized",
         )
-        if worker_pool_id is None:
-            _record(
-                ARGS_PARSER.worker_pool_name, ET_WORKER_POOLS, "failed", "not found"
-            )
-            raise KeyError(f"Worker Pool '{ARGS_PARSER.worker_pool_name}' not found")
-
-    worker_pool: WorkerPool = CLIENT.worker_pool_client.get_worker_pool_by_id(
-        worker_pool_id=worker_pool_id  # type: ignore[arg-type]
-    )
-
-    if ARGS_PARSER.dry_run:
-        print_dry_run(f"Found Worker Pool '{worker_pool.id}'")
-        print_dry_run("Complete")
-        _record(worker_pool, ET_WORKER_POOLS, "would resize")
+        return
+    if worker_pool.status is not None and worker_pool.status.finished:
+        _skip(
+            ctx,
+            worker_pool,
+            ET_WORKER_POOLS,
+            f"Worker Pool {label} is {worker_pool.status}",
+        )
+        return
+    if worker_pool.awaitingNodes:
+        _cannot(
+            ctx,
+            worker_pool,
+            ET_WORKER_POOLS,
+            f"Worker Pool {label} is awaiting nodes, and cannot be resized until"
+            " they have registered",
+        )
+        return
+    properties = worker_pool.properties
+    min_nodes = None if properties is None else properties.minNodes
+    max_nodes = None if properties is None else properties.maxNodes
+    if (min_nodes is not None and size < min_nodes) or (
+        max_nodes is not None and size > max_nodes
+    ):
+        _cannot(
+            ctx,
+            worker_pool,
+            ET_WORKER_POOLS,
+            f"{size:,d} node(s) is outside Worker Pool {label}'s limits"
+            f" ({_count(min_nodes)} to {_count(max_nodes)})",
+        )
+        return
+    current = worker_pool.expectedNodeCount
+    if current == size:
+        _skip(
+            ctx,
+            worker_pool,
+            ET_WORKER_POOLS,
+            f"Worker Pool {label} already expects {size:,d} node(s)",
+        )
         return
 
-    if not confirmed(
-        f"Confirm resize Worker Pool to {ARGS_PARSER.worker_pool_size} node(s)?"
-    ):
-        _record(worker_pool, ET_WORKER_POOLS, "skipped")
+    change = f"from {_count(current)} to {size:,d} node(s)"
+    if ctx.args.dry_run:
+        print_dry_run(f"Would resize Worker Pool {label} {change}")
+        _record(ctx, worker_pool, ET_WORKER_POOLS, "would resize")
+        return
+    if not confirmed(f"Resize Worker Pool {label} {change}?"):
+        _record(ctx, worker_pool, ET_WORKER_POOLS, "skipped")
         return
 
     try:
-        CLIENT.worker_pool_client.resize_worker_pool(
-            worker_pool=worker_pool,  # type: ignore[arg-type]
-            size=ARGS_PARSER.worker_pool_size,  # type: ignore[arg-type]
+        ctx.client.worker_pool_client.resize_worker_pool(
+            worker_pool=worker_pool, size=size
         )
     except Exception as e:
-        _record(worker_pool, ET_WORKER_POOLS, "failed", str(e))
+        _record(ctx, worker_pool, ET_WORKER_POOLS, "failed", str(e))
         raise
-    _record(worker_pool, ET_WORKER_POOLS, "resized")
-    print_info(
-        f"Resized Worker Pool '{ARGS_PARSER.worker_pool_name}' to"
-        f" {ARGS_PARSER.worker_pool_size:,d} node(s)"
-    )
+    _record(ctx, worker_pool, ET_WORKER_POOLS, "resized")
+    print_info(f"Resized Worker Pool {label} {change}")
 
-    if ARGS_PARSER.follow:
+    if ctx.args.follow:
         print_info("Following event stream(s)")
-        follow_ids([cast(str, worker_pool.id)], auto_cr=ARGS_PARSER.auto_cr)
+        follow_ids(ctx, [cast(str, worker_pool.id)], auto_cr=ctx.args.auto_cr)
 
 
-def _resize_compute_requirement():
+def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
     """
-    Resize a Compute Requirement
+    The Worker Pool a YDID or name names, recording and raising NotFoundError
+    if there is none.
     """
-    action = (
-        f"{DRY_RUN_MARKER}Would resize"
-        if ARGS_PARSER.dry_run
-        else "Attempting to resize"
-    )
-    print_info(
-        f"{action} Compute Requirement '{ARGS_PARSER.worker_pool_name}' "
-        f"to {ARGS_PARSER.worker_pool_size:,d} instance(s)"
-    )
-    print_info(
-        f"Finding Compute Requirement in Namespace '{CONFIG_COMMON.namespace}' "
-        f"with status '{ComputeRequirementStatus.RUNNING}'"
-    )
-
-    cr_summaries: list[ComputeRequirementSummary] = get_compute_requirement_summaries(
-        CLIENT,
-        namespace=CONFIG_COMMON.namespace,
-        tag=None,
-        statuses=[ComputeRequirementStatus.RUNNING],
-    )
-
-    for cr_summary in cr_summaries:
-        if ARGS_PARSER.worker_pool_name not in [cr_summary.name, cr_summary.id]:
-            continue
-
-        print_info(
-            "Current target/expected instance counts ="
-            f" {cr_summary.targetInstanceCount:,d}/"
-            f"{cr_summary.expectedInstanceCount:,d}"
+    if get_ydid_type(target) == YDIDType.WORKER_POOL:
+        worker_pool_id: str | None = target
+    else:
+        worker_pool_id = get_worker_pool_id_by_name(
+            ctx.client, target, namespace=ctx.config.namespace
         )
-
-        if cr_summary.targetInstanceCount == ARGS_PARSER.worker_pool_size:
-            print_info("No resize attempted: target instance count would be unchanged")
-            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "skipped")
-            return
-
-        if ARGS_PARSER.dry_run:
-            print_dry_run(f"Found Compute Requirement '{cr_summary.id}'")
-            print_dry_run("Complete")
-            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "would resize")
-            return
-
-        if not confirmed(
-            f"Confirm resize Compute Requirement '{cr_summary.name}'"
-            f" to {ARGS_PARSER.worker_pool_size:,d} instance(s)?"
-        ):
-            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "skipped")
-            return
-
-        try:
-            cr: ComputeRequirement = (
-                CLIENT.compute_client.get_compute_requirement_by_id(
-                    cr_summary.id  # type: ignore[arg-type]
-                )
+        if worker_pool_id is None:
+            _not_found(
+                ctx, f"Cannot find Worker Pool '{target}'", target, ET_WORKER_POOLS
             )
-            cr.targetInstanceCount = ARGS_PARSER.worker_pool_size  # type: ignore[misc]
-            CLIENT.compute_client.update_compute_requirement(cr, reprovision=False)
-        except Exception as e:
-            _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
-            raise
-        _record(cr_summary, ET_COMPUTE_REQUIREMENTS, "resized")
-
-        print_info(
-            f"Resizing complete: new target instance count = {cr.targetInstanceCount}"
+    try:
+        return ctx.client.worker_pool_client.get_worker_pool_by_id(
+            worker_pool_id=cast(str, worker_pool_id)
         )
+    except Exception as e:
+        if is_http_not_found(e):
+            _not_found(
+                ctx, f"Cannot find Worker Pool {target}", target, ET_WORKER_POOLS
+            )
+        raise
 
-        if ARGS_PARSER.follow:
-            if ARGS_PARSER.auto_cr:
-                print_warning(
-                    "Option '--auto-follow-compute-requirements/-a' is"
-                    " ignored when resizing Compute Requirements"
-                )
-            print_info("Following event stream")
-            follow_events(cast(str, cr.id), YDIDType.COMPUTE_REQUIREMENT)
 
+def _resize_compute_requirement(ctx: RunContext, target: str):
+    size: int = cast(int, ctx.args.worker_pool_size)
+    compute_requirement = _find_compute_requirement(ctx, target)
+    label = f"'{compute_requirement.namespace}/{compute_requirement.name}'"
+
+    if compute_requirement.status not in _RESIZABLE_CR_STATUSES:
+        _skip(
+            ctx,
+            compute_requirement,
+            ET_COMPUTE_REQUIREMENTS,
+            f"Compute Requirement {label} is {compute_requirement.status}, and only"
+            f" a {ComputeRequirementStatus.RUNNING} one can be resized",
+        )
+        return
+    current = compute_requirement.targetInstanceCount
+    print_info(
+        f"Current target/expected instance counts = {_count(current)}/"
+        f"{_count(compute_requirement.expectedInstanceCount)}"
+    )
+    if current == size:
+        _skip(
+            ctx,
+            compute_requirement,
+            ET_COMPUTE_REQUIREMENTS,
+            f"Compute Requirement {label} already has a target of"
+            f" {size:,d} instance(s)",
+        )
         return
 
-    else:
-        _record(
-            ARGS_PARSER.worker_pool_name,
-            ET_COMPUTE_REQUIREMENTS,
-            "failed",
-            f"not found or not in status '{ComputeRequirementStatus.RUNNING}'",
+    change = f"from {_count(current)} to {size:,d} instance(s)"
+    if ctx.args.dry_run:
+        print_dry_run(f"Would resize Compute Requirement {label} {change}")
+        _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "would resize")
+        return
+    if not confirmed(f"Resize Compute Requirement {label} {change}?"):
+        _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "skipped")
+        return
+
+    try:
+        # The full Compute Requirement, as it is now, is what is updated
+        cr: ComputeRequirement = (
+            ctx.client.compute_client.get_compute_requirement_by_id(
+                cast(str, compute_requirement.id)
+            )
         )
-        raise KeyError(
-            f"Compute Requirement '{ARGS_PARSER.worker_pool_name}' not found or not in "
-            f"status '{ComputeRequirementStatus.RUNNING}'"
+        cr.targetInstanceCount = size  # type: ignore[misc]
+        ctx.client.compute_client.update_compute_requirement(cr, reprovision=False)
+    except Exception as e:
+        _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
+        raise
+    _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "resized")
+    print_info(f"Resized Compute Requirement {label} {change}")
+
+    if ctx.args.follow:
+        if ctx.args.auto_cr:
+            print_warning(
+                "Option '--auto-follow-compute-requirements/-a' is"
+                " ignored when resizing Compute Requirements"
+            )
+        print_info("Following event stream")
+        follow_events(
+            ctx, cast(str, compute_requirement.id), YDIDType.COMPUTE_REQUIREMENT
         )
 
 
-# Standalone entry point
+def _find_compute_requirement(
+    ctx: RunContext,
+    target: str,
+) -> ComputeRequirement | ComputeRequirementSummary:
+    """
+    The Compute Requirement a YDID or name names, recording and raising
+    NotFoundError if there is none. Of two RUNNING ones of the same name,
+    neither is guessed at: the failure is recorded and raised.
+    """
+    if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
+        try:
+            return ctx.client.compute_client.get_compute_requirement_by_id(target)
+        except Exception as e:
+            if is_http_not_found(e):
+                _not_found(
+                    ctx,
+                    f"Cannot find Compute Requirement {target}",
+                    target,
+                    ET_COMPUTE_REQUIREMENTS,
+                )
+            raise
+    try:
+        return find_compute_requirement_by_name(
+            ctx.client, target, ctx.config.namespace, _RESIZABLE_CR_STATUSES
+        )
+    except NotFoundError as e:
+        _not_found(ctx, str(e), target, ET_COMPUTE_REQUIREMENTS)
+        raise  # Not reached: _not_found(ctx, ) raises
+    except AmbiguousNameError as e:
+        _record(ctx, target, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
+        raise
+
+
+# Entry point
 if __name__ == "__main__":
     main()

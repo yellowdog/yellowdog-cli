@@ -1,27 +1,23 @@
 """
 Check that configuration values are the types we expect.
 If not, raise an Exception naming the property, where the caller knows it.
+
+A boolean is never a number here, though Python's bool is a subclass of
+int: 'taskCount = true' is a mistake to report, not one Task.
 """
 
 from typing import TypeVar
 
 _T = TypeVar("_T")
 
-
-def _type(type_) -> str:
-    if "int" in f"{type_}":
-        return "Integer"
-    if "float" in f"{type_}":
-        return "Float"
-    if "bool" in f"{type_}":
-        return "Boolean"
-    if "str" in f"{type_}":
-        return "String"
-    if "list" in f"{type_}":
-        return "List"
-    if "dict" in f"{type_}":
-        return "Dict"
-    raise TypeError(f"Unhandled type '{type_}'")
+# A type as a reader of a TOML or JSON file knows it
+_TYPE_NAMES: dict[type, str] = {
+    int: "Integer",
+    bool: "Boolean",
+    str: "String",
+    list: "List",
+    dict: "Table/Object",
+}
 
 
 def _subject(property_name: str | None) -> str:
@@ -33,62 +29,52 @@ def _subject(property_name: str | None) -> str:
     return "Property" if property_name is None else f"Property '{property_name}'"
 
 
-def _check(thing: _T, type_, property_name: str | None = None) -> _T:
+def _is(thing: object, types: tuple[type, ...]) -> bool:
     """
-    If None is passed in, just return None.
+    Whether 'thing' is one of 'types', a bool counting only as a bool.
     """
-    if thing is None:
-        return thing
+    if isinstance(thing, bool):
+        return bool in types
+    return isinstance(thing, types)
 
-    # Bool is a subtype of int, so test for exact match in that case
-    is_required_type = (
-        type(thing) is type_ if type_ is bool else isinstance(thing, type_)
+
+def _check(
+    thing: _T, property_name: str | None, *types: type, wanted: str | None = None
+) -> _T:
+    """
+    'thing' if it is one of 'types'; None passes, as an unset value.
+    'wanted' names the types in the error, where their names do not.
+    """
+    if thing is None or _is(thing, types):
+        return thing
+    wanted = wanted or _TYPE_NAMES[types[0]]
+    raise TypeError(
+        f"{_subject(property_name)} value '{thing}' should be of type '{wanted}'"
     )
-    if not is_required_type:
-        raise TypeError(
-            f"{_subject(property_name)} value '{thing}'"
-            f" should be of type '{_type(type_)}'"
-        )
-    return thing
 
 
 def check_int(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, int, property_name)
-
-
-def check_float(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, float, property_name)
+    return _check(thing, property_name, int)
 
 
 def check_float_or_int(thing: _T, property_name: str | None = None) -> _T:
     """
     For values that should be Floats but for which an Integer is acceptable.
     """
-    if thing is None:
-        return thing
-    try:
-        return _check(thing, float, property_name)
-    except Exception:
-        try:
-            return _check(thing, int, property_name)
-        except Exception:
-            raise TypeError(
-                f"{_subject(property_name)} value '{thing}'"
-                f" should be of type 'Float' or 'Integer'"
-            )
+    return _check(thing, property_name, float, int, wanted="Number")
 
 
 def check_bool(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, bool, property_name)
+    return _check(thing, property_name, bool)
 
 
 def check_str(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, str, property_name)
+    return _check(thing, property_name, str)
 
 
 def check_list(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, list, property_name)
+    return _check(thing, property_name, list)
 
 
 def check_dict(thing: _T, property_name: str | None = None) -> _T:
-    return _check(thing, dict, property_name)
+    return _check(thing, property_name, dict)

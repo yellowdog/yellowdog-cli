@@ -7,8 +7,15 @@ is the view of it.
 
 import re
 from codecs import getincrementaldecoder
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+
+from yellowdog_cli.utils.command_registry import COMMANDS, DRY_RUN, FOLLOW, PROGRESS
+from yellowdog_cli.utils.ydid_utils import (
+    YDID_HIGHLIGHT_RE,
+    YDIDType,
+    get_ydid_type,
+)
 
 # The run Commander's own messages belong to in the output window; the commands it
 # launches are numbered from 1. See OutputRun.
@@ -18,6 +25,10 @@ COMMANDER_RUN = 0
 # paragraph separator, and Qt's two frame markers. The output window's blocks are
 # tagged with the entry they came from by counting them, so the count must be Qt's.
 BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
+
+
+# The command that does nothing but follow the YDIDs it is given
+FOLLOWING_COMMAND = "yd-follow"
 
 
 def block_count(text: str) -> int:
@@ -56,6 +67,59 @@ class OutputRun:
     # display because it is the one the user sees in the output; QProcess's can
     # differ where a console-script launcher stands between the two.
     printed_pid: int | None = None
+    # The arguments it was run with, as given to the process
+    arguments: tuple[str, ...] = ()
+    # The Work Requirement YDIDs it has printed: the one a 'yd-submit' created
+    work_requirements_printed: set[str] = field(default_factory=set)
+
+    def note_output(self, text: str) -> None:
+        """
+        Note the Work Requirement YDIDs in a piece of the run's output.
+        """
+        self.work_requirements_printed.update(
+            ydid
+            for ydid in YDID_HIGHLIGHT_RE.findall(text)
+            if get_ydid_type(ydid) == YDIDType.WORK_REQUIREMENT
+        )
+
+    @property
+    def follows_events(self) -> bool:
+        """
+        Whether the command follows the event streams of the entities it is
+        about: 'yd-follow', or a command given '--follow' or '--progress'
+        that is not a dry run. Only separate flags count, not a cluster such
+        as '-fD', whose letters could be another option's value.
+        """
+        if self.command == FOLLOWING_COMMAND:
+            return True
+        command = COMMANDS.get(self.command)
+        if command is None:
+            return False
+        # A variant() keeps its base's flags, so the base's are the command's
+        flags = {
+            flag
+            for option in (FOLLOW, PROGRESS)
+            if command.has(option)
+            for flag in option.flags
+        }
+        dry_run = set(DRY_RUN.flags) if command.has(DRY_RUN) else set()
+        given = set(self.arguments)
+        return bool(given & flags) and not given & dry_run
+
+    def is_following(self, work_requirement_id: str) -> bool:
+        """
+        Whether this run, still running, is following the Work Requirement:
+        one it follows events for, and named on its command line or printed
+        by it (the one a 'yd-submit' created).
+        """
+        return (
+            self.running
+            and self.follows_events
+            and (
+                work_requirement_id in self.arguments
+                or work_requirement_id in self.work_requirements_printed
+            )
+        )
 
     def _subject(self, process_word: str) -> str:
         pid = self.shown_pid
@@ -123,11 +187,15 @@ class OutputEntry:
 
     @property
     def runs(self) -> list[int]:
-        """The runs this entry is shown under, its command's first."""
+        """
+        The runs this entry is shown under, its command's first.
+        """
         return [self.run_id, COMMANDER_RUN] if self.announcement else [self.run_id]
 
     def shown_under(self, run_ids: frozenset[int] | None) -> bool:
-        """Whether a filter to 'run_ids' shows this entry; None shows everything."""
+        """
+        Whether a filter to 'run_ids' shows this entry; None shows everything.
+        """
         return run_ids is None or any(run_id in run_ids for run_id in self.runs)
 
 

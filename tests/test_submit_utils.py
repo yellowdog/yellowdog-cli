@@ -11,7 +11,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.utils.submit_utils as su
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
     TASK_DATA,
     TASK_DATA_FILE,
@@ -20,7 +23,20 @@ from yellowdog_cli.utils.property_names import (
     TASK_TAG,
     TASKS,
 )
-from yellowdog_cli.utils.settings import VAR_CLOSING_DELIMITER, VAR_OPENING_DELIMITER
+from yellowdog_cli.utils.variable_syntax import (
+    VAR_CLOSING_DELIMITER,
+    VAR_OPENING_DELIMITER,
+)
+
+
+def _ctx() -> RunContext:
+    """
+    The context a command is given: the wrapper globals.
+    """
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # Convenience aliases for lazy-substitution placeholder tokens
 _TN = f"{VAR_OPENING_DELIMITER}{su.L_TASK_NUMBER}{VAR_CLOSING_DELIMITER}"
@@ -378,7 +394,9 @@ class TestGetTaskDataProperty:
 
 
 def _minimal_wr_data(num_task_groups: int = 1, num_tasks: int = 2) -> dict:
-    """Minimal wr_data / task_group_data structure for create_task."""
+    """
+    Minimal wr_data / task_group_data structure for create_task.
+    """
     tasks = [{} for _ in range(num_tasks)]
     tg = {TASKS: tasks}
     return {TASK_GROUPS: [tg for _ in range(num_task_groups)]}
@@ -559,7 +577,7 @@ class TestUploadRcloneFileCore:
         mock_rclone.exists.return_value = remote_exists
         mock_rclone.copy_to.return_value = MagicMock(returncode=0, stderr="")
 
-        instance = su.RcloneUploadedFiles()
+        instance = su.RcloneUploadedFiles(_ctx())
 
         with (
             patch.object(
@@ -569,7 +587,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                su.ARGS_PARSER.__class__,
+                type(lazy_value(wrapper_module.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: overwrite),
             ),
@@ -616,7 +634,7 @@ class TestUploadRcloneFileCore:
             returncode=1, stderr="connection refused"
         )
 
-        instance = su.RcloneUploadedFiles()
+        instance = su.RcloneUploadedFiles(_ctx())
 
         with (
             patch.object(
@@ -626,7 +644,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                su.ARGS_PARSER.__class__,
+                type(lazy_value(wrapper_module.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: False),
             ),
@@ -674,8 +692,8 @@ class TestLateSubstitutionPasses:
             )
 
     def test_no_late_pass_is_a_single_pass(self):
-        # Every in-situ pass outside variables.py is a resolving one; a
-        # single pass reintroduced anywhere brings the short chains back
+        # Every in-situ pass outside variable_substitution.py is a resolving
+        # one; a single pass reintroduced anywhere brings the short chains back
         from pathlib import Path
 
         import yellowdog_cli
@@ -684,7 +702,124 @@ class TestLateSubstitutionPasses:
         callers = [
             str(path.relative_to(package))
             for path in package.rglob("*.py")
-            if path.name != "variables.py"
+            if path.name != "variable_substitution.py"
             and "process_variable_substitutions_insitu" in path.read_text()
         ]
         assert callers == []
+
+
+# ---------------------------------------------------------------------------
+# Upload messages, upload collisions, task data levels and types
+# ---------------------------------------------------------------------------
+
+
+class TestUploadPathShownWithoutCredentials:
+    INLINE = (
+        "rclone:S3,type=s3,secret_access_key=SECRET,"
+        "endpoint=https://h:9000:bucket/x.txt"
+    )
+
+    def test_an_inline_remote_is_shown_by_name_and_path(self):
+        shown = su.RcloneUploadedFiles._bucket_and_prefix(
+            su.RcloneUploadedFile("x.txt", self.INLINE)
+        )
+        assert "SECRET" not in shown
+        assert shown == "S3:bucket/x.txt"
+
+    def test_a_named_remote_is_shown_by_name_and_path(self):
+        shown = su.RcloneUploadedFiles._bucket_and_prefix(
+            su.RcloneUploadedFile("x.txt", "yds3:bucket/x.txt")
+        )
+        assert shown == "yds3:bucket/x.txt"
+
+    def test_a_failed_upload_names_no_credentials(self, tmp_path, monkeypatch):
+        (tmp_path / "x.txt").write_text("x", encoding="utf-8")
+        instance = su.RcloneUploadedFiles(_ctx(), files_directory=str(tmp_path))
+        monkeypatch.setattr(
+            type(lazy_value(wrapper_module.ARGS_PARSER)),
+            "dry_run",
+            property(lambda self: False),
+        )
+
+        def _fail(*args):
+            raise ConnectionError("refused")
+
+        monkeypatch.setattr(instance, "_upload_rclone_file_core", _fail)
+        with pytest.raises(RuntimeError) as raised:
+            instance._upload_rclone_file("x.txt", self.INLINE)
+        assert "SECRET" not in str(raised.value)
+        assert isinstance(raised.value.__cause__, ConnectionError)
+
+
+def test_two_local_files_for_one_upload_path_are_refused(tmp_path, monkeypatch):
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+    monkeypatch.setattr(
+        type(lazy_value(wrapper_module.ARGS_PARSER)),
+        "dry_run",
+        property(lambda self: True),
+    )
+    instance = su.RcloneUploadedFiles(_ctx(), files_directory=str(tmp_path))
+    instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")
+    instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")  # The same: fine
+    with pytest.raises(ValueError, match="are both to be uploaded to"):
+        instance._upload_rclone_file("b.txt", "yds3:bucket/in.txt")
+
+
+class TestTaskDataLevels:
+    @staticmethod
+    def _config(**values) -> Any:
+        return MagicMock(
+            task_data=values.get("task_data"),
+            task_data_file=values.get("task_data_file"),
+            task_data_files=values.get("task_data_files"),
+        )
+
+    def test_the_specification_overrides_the_configuration(self):
+        config = self._config(task_data_file="config.txt")
+        assert (
+            su.get_task_data_property(config, {TASK_DATA: "inline"}, {}, {}, "t1")
+            == "inline"
+        )
+
+    def test_the_configuration_applies_when_the_specification_sets_none(self, tmp_path):
+        (tmp_path / "c.txt").write_text("from config", encoding="utf-8")
+        config = self._config(task_data_file="c.txt")
+        assert (
+            su.get_task_data_property(config, {}, {}, {}, "t1", str(tmp_path))
+            == "from config"
+        )
+
+    def test_two_at_one_level_name_the_level(self):
+        with pytest.raises(ValueError, match="In the Task Group: Only one of"):
+            su.get_task_data_property(
+                self._config(),
+                {},
+                {TASK_DATA: "a", TASK_DATA_FILE: "b"},
+                {},
+                "t1",
+            )
+
+    def test_task_data_files_must_be_a_list(self):
+        with pytest.raises(Exception, match=TASK_DATA_FILES):
+            su.resolve_task_data({TASK_DATA_FILES: "a.txt"})
+
+
+def test_a_manual_pause_without_a_terminal_is_no_answer(monkeypatch):
+    from yellowdog_cli.utils import interactive, task_batches
+
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        MagicMock(pause_between_batches=0),
+    )
+    monkeypatch.setattr(task_batches, "json_requested", lambda: False)
+
+    def _no_answer(prompt):
+        raise interactive.NoAnswerToPrompt()
+
+    monkeypatch.setattr(interactive, "_get_user_input", _no_answer)
+    with pytest.raises(interactive.NoAnswerToPrompt):
+        task_batches.pause_between_batches(
+            _ctx(), task_batch_size=2, batch_number=1, num_tasks=4
+        )

@@ -1,11 +1,12 @@
 """
 The configuration/startup preamble is printed only when '--debug' is set.
 
-Most of these messages are emitted while 'wrapper.py' and the modules it
-imports are themselves being imported, before any command runs, so they are
-exercised here by importing that module in a subprocess with a configuration of
-the test's own. The proxy messages come later, from set_proxy() at command time,
-and are exercised directly at the foot of this file. Nothing here contacts the
+Most of these messages are emitted while the configuration is loaded, before
+any command runs: as the wrapper prepares the run, or on the first use of what
+it loads (see utils/lazy.py). They are exercised here in a subprocess with a
+configuration of the test's own, by importing 'wrapper.py' and calling
+set_proxy(), whose use of CONFIG_COMMON loads it. The proxy messages come from
+set_proxy() itself, and are also exercised directly at the foot of this file. Nothing here contacts the
 platform, and the PAC lookup itself is never performed.
 
 Each scenario provokes a different part of the preamble, and is checked in
@@ -25,7 +26,8 @@ from unittest.mock import patch
 import pytest
 
 import yellowdog_cli.utils.wrapper as wrapper
-from yellowdog_cli.utils.settings import DEBUG_MARKER
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.output_style import DEBUG_MARKER
 
 CONFIG_TOML = """
 [common]
@@ -88,10 +90,11 @@ def _import_wrapper(
     config_dir: Path, args: list, env: dict, no_format: bool = True
 ) -> str:
     """
-    Import wrapper.py in a subprocess, as a command with the given arguments
-    and environment would, and return everything it printed to stdout. The
-    data client configuration is loaded explicitly afterwards, since it is
-    loaded by the data client commands rather than by the wrapper.
+    Import wrapper.py in a subprocess, configure the output settings and call
+    set_proxy(), which loads the configuration, as a command with the given
+    arguments and environment would, and return everything it printed to stdout. The data client
+    configuration is loaded explicitly afterwards, since it is loaded by the
+    data client commands rather than by the wrapper.
     """
     # '--no-format' keeps each message on one line, so the assertions read the
     # message text rather than the terminal's wrapping of it. Passing it also
@@ -104,6 +107,10 @@ def _import_wrapper(
             "-c",
             f"import sys; sys.argv = {argv!r}; "
             "import yellowdog_cli.utils.wrapper as wrapper; "
+            # As a command run does (prepare_run()): output configured from
+            # the command line before the configuration loads
+            "from yellowdog_cli.utils.output_settings import configure_output; "
+            "configure_output(wrapper.ARGS_PARSER); "
             "wrapper.set_proxy(); "
             "from yellowdog_cli.utils.load_config import load_config_data_client; "
             "load_config_data_client()",
@@ -200,7 +207,7 @@ class TestProxyMessages:
         args = self._args(debug)
         with (
             patch.object(wrapper, "ARGS_PARSER", args),
-            patch("yellowdog_cli.utils.printing.ARGS_PARSER", args),
+            output_settings.configured(args),
             patch.object(
                 wrapper,
                 "CONFIG_COMMON",

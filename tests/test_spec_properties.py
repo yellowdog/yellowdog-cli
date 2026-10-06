@@ -1,5 +1,5 @@
 """
-utils/spec_properties.py against README.md: the Work Requirement dictionary's
+utils/specs/properties.py against README.md: the Work Requirement dictionary's
 rows, levels and descriptions are the registry's, and the shipped
 descriptions.json is a fresh extraction. Needs no SDK call and no network.
 """
@@ -10,8 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from yellowdog_cli.utils import spec_properties
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs import properties as spec_properties
+from yellowdog_cli.utils.specs.properties import (
     WORK_REQUIREMENT_PROPERTIES,
     Level,
     load_descriptions,
@@ -24,7 +24,9 @@ DESCRIPTIONS = REPO / "yellowdog_cli" / "spec_data" / "descriptions.json"
 
 
 def _dictionary_rows() -> dict[str, tuple[set[Level], str]]:
-    """{property: (levels marked, description)} from the README's dictionary table."""
+    """
+    {property: (levels marked, description)} from the README's dictionary table.
+    """
     lines = README.read_text().splitlines()
     start = next(
         i for i, line in enumerate(lines) if line.startswith("| Property Name")
@@ -52,6 +54,18 @@ class TestDictionaryAgreesWithRegistry:
         rows = _dictionary_rows()
         for prop in WORK_REQUIREMENT_PROPERTIES:
             assert prop.levels == rows[prop.name][0], prop.name
+
+    def test_a_property_is_inherited_unless_its_row_says_not(self):
+        # The resolver (utils/property_cascade.py) refuses a property that is
+        # not inherited, and the dictionary is where that is documented
+        rows = _dictionary_rows()
+        for prop in WORK_REQUIREMENT_PROPERTIES:
+            description = rows[prop.name][1].lower()
+            says_not = (
+                "not inherited" in description
+                or "no property inheritance" in description
+            )
+            assert prop.inherited is not says_not, prop.name
 
     def test_no_row_is_duplicated(self):
         # Other README tables share names ('name', 'tag'): only the
@@ -99,6 +113,10 @@ class TestDescriptions:
         def walk(fragment):
             if isinstance(fragment, dict):
                 for key, value in fragment.items():
+                    if key in ("if", "then", "else"):
+                        # A condition or a constraint on properties declared
+                        # beside it, where their descriptions are
+                        continue
                     if key == "properties":
                         for name, sub in value.items():
                             assert (
@@ -163,7 +181,9 @@ class TestLevels:
 
 
 class TestDescriptionsStandAlone:
-    """The descriptions ship as editor hover text, away from the table."""
+    """
+    The descriptions ship as editor hover text, away from the table.
+    """
 
     def test_no_description_points_elsewhere_in_the_table(self):
         for name, text in load_descriptions().items():

@@ -78,7 +78,7 @@ Unit tests require no credentials, no configuration file and no network access:
 pytest -v
 ```
 
-A yd-* command module loads its configuration when it is imported, so without a key and secret the test run used to stop during collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-system-compute` or `--run-demos`, which need genuine credentials.
+`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-system-compute` or `--run-demos`, which need genuine credentials.
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, compute, and demo test categories, credentials setup, and parallel execution options.
 
@@ -194,14 +194,16 @@ Like Commander, the server holds no API client and runs every tool call as a `yd
 ```
 yellowdog_cli/            # One module per yd-* command
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
+yellowdog_cli/utils/cloudwizard/  # The Cloud Wizard's provider support (the cloudwizard extra)
+yellowdog_cli/utils/dataclient/   # The data client commands' layer over rclone
+yellowdog_cli/utils/specs/        # Specification properties, schemas, validation and loading
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
 yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
-uv.lock                   # Locked dependency versions for reproducible installs
-Makefile                  # format, build, install, update, toc, schema_descriptions, pypi, pyright targets
+Makefile                  # format, test, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials

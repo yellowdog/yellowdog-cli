@@ -41,10 +41,8 @@ _RUN_ID = f"{int(time.time())}-{os.getpid()}"
 # output on its own -- callers that invoke yd-create on one of these must not
 # assert using result.stdout/stderr in a failure message (see the module
 # docstring); this set exists so a caller can check membership before deciding
-# whether it is safe to quote a command's output. Not consulted by anything in
-# this module yet -- Task 7 only exercises keyrings.jsonnet, whose test hard-codes
-# the "withhold output" rule inline. Task 8, which creates all three files, is
-# what will actually branch on membership; this is not wired-up behaviour today.
+# whether it is safe to quote a command's output: test_system_resources.py,
+# which creates every live corpus file, branches on membership.
 SECRET_EMITTING = {
     "keyrings.jsonnet",
     "configured-worker-pools.jsonnet",
@@ -53,24 +51,29 @@ SECRET_EMITTING = {
 
 # Corpus files with at least one specification that cannot be created standalone:
 # requirement-templates.jsonnet's staticMin/dynamicMin and configured-worker-pools.
-# jsonnet's poolMin (see each file's own header comment). create_compute_requirement
+# jsonnet's poolMin (see each file's own header comment), and applications.jsonnet's
+# application-max, whose Group and Keyring (made by groups.jsonnet and
+# keyrings.jsonnet) do not exist when the file is created alone: create_application()
+# refuses a Group that does not exist before changing anything, and fails on a
+# Keyring grant that cannot be made. create_compute_requirement
 # _template() and create_configured_worker_pool() (create.py) read 'namespace' out
 # of the resource dict with a plain subscript before any model is ever built, which
 # is stricter than the SDK model's own optional field -- a known finding from
 # Tasks 5/6, not a bug for the live layer to work around. create_resources()
 # (create.py) catches each resource's exception, continues to the next resource in
-# the same file, and only raises (a single RuntimeError, after the whole file) if
+# the same file, and only raises (a single ReportedFailure, after the whole file) if
 # at least one failed -- so running one of these files live still creates every
 # *other* resource in it, and 'yd-create' exits non-zero for the file as a whole
-# despite that partial success. Not consulted by anything in this module yet --
-# Task 7 never creates either file live. Task 8, which drives every live corpus
-# file, is what must expect exactly these two files to behave this way, checking
+# despite that partial success. test_system_resources.py, which drives every
+# live corpus file, expects exactly these files to behave this way, checking
 # how many resources were actually created rather than asserting a zero exit
-# code; this is not wired-up behaviour today.
+# code.
 KNOWN_PARTIAL_FAILURES = {
     "requirement-templates.jsonnet",
     "configured-worker-pools.jsonnet",
+    "applications.jsonnet",
 }
+
 
 # Which specification(s) in a KNOWN_PARTIAL_FAILURES file are expected to fail,
 # named by their own base.name() suffix (the part after 'yd-test-{run_id}-') so
@@ -78,12 +81,26 @@ KNOWN_PARTIAL_FAILURES = {
 # file's overall exit code is non-zero -- the "make it explicit rather than
 # tolerant of any failure" a partial failure demands. Every other specification
 # in each file is expected to succeed.
-KNOWN_PARTIAL_FAILURE_NAMES: dict[str, frozenset[str]] = {
+#
+# MISSING_NAMESPACE_FAILURE_NAMES are those that fail for want of a
+# 'namespace', which the specification schema requires too, so the schema
+# rejects exactly those; application-max is valid, and fails only live.
+MISSING_NAMESPACE_FAILURE_NAMES: dict[str, frozenset[str]] = {
     "requirement-templates.jsonnet": frozenset(
         {"static-template-min", "dynamic-template-min"}
     ),
     "configured-worker-pools.jsonnet": frozenset({"configured-pool-min"}),
 }
+KNOWN_PARTIAL_FAILURE_NAMES: dict[str, frozenset[str]] = {
+    **MISSING_NAMESPACE_FAILURE_NAMES,
+    "applications.jsonnet": frozenset({"application-max"}),
+}
+
+# The KNOWN_PARTIAL_FAILURES files whose removal fails too: the specifications
+# missing a 'namespace' read it with a plain subscript in remove.py as in
+# create.py. applications.jsonnet's removal succeeds, an Application never
+# created being skipped as not found.
+KNOWN_PARTIAL_REMOVAL_FAILURES = set(MISSING_NAMESPACE_FAILURE_NAMES)
 
 # Entity types yd-list has no YellowDog ID for at all ('--ids-only' warns "not
 # supported ... they have no YellowDog IDs" and lists nothing) -- so ydids()'s
@@ -135,7 +152,7 @@ NO_YDID_KEY_FIELD: dict[str, str] = {
 #     Compute Source Template by name in the specification, and
 #     create_compute_requirement_template()/create_allowance() (create.py)
 #     resolve that name to a YellowDog ID before the request is sent -- live
-#     evidence (Task 8) that the corpus's own header comments anticipated
+#     evidence that the corpus's own header comments anticipated
 #     ("the raw name round-trips as a plain string" offline, but not live).
 LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
     "tokenTtl": "AddConfiguredWorkerPoolRequest's own field, not a field of the "
@@ -165,7 +182,7 @@ LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
 #
 # SimulatorComputeSource.userData/subregion: addComputeSourceTemplate accepts
 # either being set, but yd-show never echoes them back afterwards (probed
-# live, Task 8) -- accepted-then-silently-dropped, not rejected outright. This
+# live) -- accepted-then-silently-dropped, not rejected outright. This
 # is NOT recorded in resource_models.SERVER_ASSIGNED_COVERAGE: that registry's
 # contract is "the platform assigns this" (a genuinely server-assigned
 # property comes back -- see 'provider'/'traits'/'id', confirmed by this same
@@ -209,15 +226,12 @@ def command_line(command: str, *args: str) -> str:
     by teardown time -- which is not reliably CORPUS_DIR, since a test that
     chdir's for the duration of a call (load_corpus_file(), the atexit sweep in
     conftest.py's own run_id fixture) always restores the original directory
-    afterwards. Nine of the ten live corpus files start with "local base =
-    import 'lib/base.libsonnet'" (all but namespace-policy.jsonnet, which
-    needs no shared fragment), which Jsonnet resolves relative to the
-    process's cwd, not to the file doing the importing (see
-    resource_corpus.load_corpus_file()'s own docstring) -- so a create/remove
-    invocation that runs from anywhere else fails outright with "couldn't open
-    import ... no match locally or in the Jsonnet library paths", a live-only
-    finding (Task 8) invisible to the in-process loader tests, which already
-    chdir themselves. CORPUS_DIR is absolute (built from Path(__file__).parent),
+    afterwards. (Nine of the ten live corpus files import
+    'lib/base.libsonnet', which once resolved against the process's cwd rather
+    than beside the importing file, so a create/remove run from anywhere else
+    failed with "couldn't open import"; imports now resolve beside the file,
+    so that reason is gone, and the prefix stays for the convention.)
+    CORPUS_DIR is absolute (built from Path(__file__).parent),
     so this is safe to prepend unconditionally, including for a command (like
     yd-list/yd-show) that never touches a corpus file at all.
     """
@@ -236,12 +250,16 @@ def command_line(command: str, *args: str) -> str:
 
 
 def yd(command: str, *args: str):
-    """Run a yd-* command against the test config, with the run id substituted."""
+    """
+    Run a yd-* command against the test config, with the run id substituted.
+    """
     return shell(command_line(command, *args))
 
 
 def ydids(entity_type: str, namespace: str | None = None) -> set[str]:
-    """The YDIDs of every entity of this type. '-D' is --ids-only, not --dry-run."""
+    """
+    The YDIDs of every entity of this type. '-D' is --ids-only, not --dry-run.
+    """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
     result = yd("yd-list", entity_type, "-D", namespace_arg, "-t=''")
     return {
@@ -261,7 +279,7 @@ def list_details(entity_type: str, namespace: str | None = None) -> list[dict]:
     """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
     result = yd("yd-list", entity_type, "--details", "-J", "-q", namespace_arg, "-t=''")
-    # Live evidence (Task 8): '--json' prints nothing at all -- not even '[]' --
+    # Live evidence: '--json' prints nothing at all -- not even '[]' --
     # when nothing matches, unlike a normal, non-empty result.
     return json.loads(result.stdout) if result.stdout.strip() else []
 
@@ -310,7 +328,7 @@ def load_corpus_file(path) -> list[dict]:
     where 'run_id' already had some other value, which is restored rather than
     deleted.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
@@ -339,7 +357,7 @@ def mismatches(spec: dict, returned: dict, path: str = "") -> list[str]:
     property is visible rather than assumed fine. Uses resource_models.comparable()
     for the actual leaf-level value comparison -- the same normalisation the
     offline model checks use, rather than a second one -- which is also where the
-    fully-qualified 'type' suffix match (a Task 1 finding: 'source.type' comes back
+    fully-qualified 'type' suffix match (a live-probe finding: 'source.type' comes back
     as 'co.yellowdog.platform.model.AwsInstancesComputeSource' where the
     specification sent the short name) lives, so both directions of comparison
     share one rule, including for a 'type' discriminator nested inside a list
@@ -350,7 +368,8 @@ def mismatches(spec: dict, returned: dict, path: str = "") -> list[str]:
 
 
 def _compare_dict(expected: dict, actual: dict, path: str) -> list[str]:
-    """The 'both sides are a dict' case of _compare(), and the top level's too --
+    """
+    The 'both sides are a dict' case of _compare(), and the top level's too --
     mismatches() is a thin wrapper over this so a nested dict does not need a
     second copy of the same field-by-field, META_KEYS-skipping loop.
 
@@ -399,7 +418,7 @@ def _compare_dict(expected: dict, actual: dict, path: str) -> list[str]:
 
 
 # Properties whose list order is not semantic, each because live evidence
-# (Task 8) showed the platform actually reordering it: an Allowance's
+# showed the platform actually reordering it: an Allowance's
 # monitoredStatuses came back ['RUNNING', 'PENDING'] where the specification
 # sent ['PENDING', 'RUNNING'], and a Group's roles came back with
 # 'work-manager' before 'work-viewer' where the specification sent the other
@@ -469,8 +488,8 @@ def _compare_natural_language_date(
     effectiveFrom/effectiveUntil are natural-language strings in the corpus
     ('Now', 'After six months'), not ISO datetimes -- create_allowance() feeds
     each through dateparser at the exact moment 'yd-create' sends the request,
-    so the instant it resolves to depends on wall-clock time. Live evidence
-    (Task 8): re-resolving the same string here, when this comparison runs
+    so the instant it resolves to depends on wall-clock time. Live evidence:
+    re-resolving the same string here, when this comparison runs
     (necessarily some seconds after creation), does not reproduce that exact
     instant even for a spec-side bug-free round trip, so exact string equality
     (what the general leaf-level comparison would do) fails every single

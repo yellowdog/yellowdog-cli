@@ -21,13 +21,12 @@ from argparse import (
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from functools import cache
+from importlib.metadata import entry_points
+from importlib.util import find_spec
 from typing import Any
 
-from yellowdog_cli.utils.glob_utils import contains_glob_chars
-from yellowdog_cli.utils.settings import (
-    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
-    DEFAULT_URL,
-    DOCTOR_DEFAULT_TIMEOUT,
+from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_APPLICATIONS,
     ET_ATTRIBUTE_DEFINITIONS,
@@ -49,9 +48,14 @@ from yellowdog_cli.utils.settings import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
-    SCHEMA_FAMILIES,
-    SECRET_VARIABLE_NAME_PATTERN,
 )
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
+from yellowdog_cli.utils.limits import (
+    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
+    DOCTOR_DEFAULT_TIMEOUT,
+)
+from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
+from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
 Validator = Callable[[Namespace, ArgumentParser], None]
 
@@ -68,6 +72,10 @@ class Option:
 
     flags: tuple[str, ...]
     kwargs: dict[str, Any]
+    # A positional argparse takes as optional only so that --which-rclone
+    # and --upgrade-rclone can run without it: required for every MCP tool,
+    # which offers neither, and by the command's own check otherwise
+    tool_required: bool = False
 
     @property
     def positional(self) -> bool:
@@ -87,8 +95,10 @@ class Option:
         return tuple(flag for flag in self.flags if flag != self.name)
 
     def variant(self, **overrides: Any) -> Option:
-        """The same option with some keyword arguments replaced."""
-        return Option(self.flags, {**self.kwargs, **overrides})
+        """
+        The same option with some keyword arguments replaced.
+        """
+        return Option(self.flags, {**self.kwargs, **overrides}, self.tool_required)
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
         return target.add_argument(*self.flags, **self.kwargs)
@@ -100,7 +110,9 @@ def option(*flags: str, **kwargs: Any) -> Option:
 
 @dataclass(frozen=True, eq=False)
 class Exclusive:
-    """A mutually exclusive group."""
+    """
+    A mutually exclusive group.
+    """
 
     options: tuple[Option, ...]
 
@@ -136,6 +148,10 @@ class Command:
     # True for the commands that default a missing namespace and tag with a
     # debug message (load_config.py); yd-list has --namespace but is not one.
     requires_namespace_and_tag: bool = False
+    # False for a command on main_wrapper that never uses the Platform
+    # (yd-variables): its configuration is loaded without requiring the
+    # application key and secret
+    requires_credentials: bool = True
     # The MCP tool kind (see ToolKind), stated by every command
     tool: ToolKind = field(kw_only=True)
     # A hand-written description for a tool whose workflow needs explaining;
@@ -167,6 +183,35 @@ COMMON_OPTIONS: dict[CommandKind, tuple[Option, ...]] = {
 COMMANDS: dict[str, Command] = {}
 
 _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
+
+
+@cache
+def _console_script_modules() -> dict[str, str]:
+    """
+    This package's console scripts, each with the module it runs.
+    """
+    return {
+        point.name: point.value.split(":")[0]
+        for point in entry_points(group="console_scripts")
+        if point.value.startswith("yellowdog_cli.")
+    }
+
+
+def command_module(command_name: str) -> str | None:
+    """
+    The module a 'yd-*' command runs, for 'python -m': its console script's
+    entry point ('yd-commander' runs yellowdog_cli.commander.launcher, which
+    no rule on the name gives), else, where the package is not installed,
+    the module named for the command if there is one; None for anything else. Commander and
+    the MCP server both run commands this way, under their own interpreter.
+    """
+    module = _console_script_modules().get(command_name)
+    if module is not None:
+        return module
+    if not command_name.startswith("yd-"):
+        return None
+    candidate = "yellowdog_cli." + command_name.removeprefix("yd-").replace("-", "_")
+    return candidate if find_spec(candidate) is not None else None
 
 
 def command_from_argv0(argv0: str) -> str:
@@ -229,6 +274,52 @@ ENTITY_TYPES = [
     ET_WORKERS,
 ]
 
+# The entity types each of yd-list's filtering options applies to; the option
+# is refused for any other (check_list_options), rather than ignored
+LIST_NAME_TYPES = frozenset(
+    {
+        ET_WORK_REQUIREMENTS,
+        ET_WORKER_POOLS,
+        ET_COMPUTE_REQUIREMENTS,
+        ET_COMPUTE_REQUIREMENT_TEMPLATES,
+        ET_COMPUTE_SOURCE_TEMPLATES,
+        ET_IMAGE_FAMILIES,
+        ET_USERS,
+        ET_APPLICATIONS,
+        ET_GROUPS,
+        ET_ROLES,
+        ET_KEYRINGS,
+        ET_PERMISSIONS,
+    }
+)
+# Those with a status to filter on
+LIST_STATUS_TYPES = frozenset(
+    {
+        ET_WORK_REQUIREMENTS,
+        ET_TASK_GROUPS,
+        ET_TASKS,
+        ET_WORKER_POOLS,
+        ET_NODES,
+        ET_WORKERS,
+        ET_COMPUTE_REQUIREMENTS,
+        ET_INSTANCES,
+    }
+)
+# Those listed from active Work Requirements, Worker Pools or Compute
+# Requirements, or themselves active or not
+LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Those with YellowDog IDs: attribute definitions, namespace policies and
+# permissions have none
+LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
+    ET_ATTRIBUTE_DEFINITIONS,
+    ET_NAMESPACE_POLICIES,
+    ET_PERMISSIONS,
+}
+# Those whose details carry IDs that --substitute-ids replaces with names
+LIST_SUBSTITUTE_TYPES = frozenset(
+    {ET_COMPUTE_REQUIREMENT_TEMPLATES, ET_COMPUTE_SOURCE_TEMPLATES, ET_ALLOWANCES}
+)
+
 # Single uppercase letter synonyms for each entity type.
 SYNONYMS: dict[str, str] = {
     "A": ET_ALLOWANCES,
@@ -270,6 +361,20 @@ def positive_int(value: str) -> int:
         raise ArgumentTypeError(f"invalid int value: '{value}'") from None
     if number < 1:
         raise ArgumentTypeError(f"must be a positive integer, not {number}")
+    return number
+
+
+def non_negative_int(value: str) -> int:
+    """
+    An argparse type for a size that may be zero, as a Worker Pool or
+    Compute Requirement can be scaled to nothing, but not less.
+    """
+    try:
+        number = int(value)
+    except ValueError:
+        raise ArgumentTypeError(f"invalid int value: '{value}'") from None
+    if number < 0:
+        raise ArgumentTypeError(f"must be zero or more, not {number}")
     return number
 
 
@@ -660,7 +765,6 @@ VALIDATE = option(
 COMPUTE_REQS_INSTANCES_OR_NODES = option(
     "compute_reqs_instances_or_nodes",
     nargs="*",
-    default="",
     metavar="<name-or-ID>",
     type=str,
     help=(
@@ -676,7 +780,6 @@ FOLLOW_COMPUTE_REQUIREMENT_EVENTS = FOLLOW.variant(
 WORK_REQUIREMENTS = option(
     "work_requirements",
     nargs="*",
-    default="",
     metavar="<work-requirement-name-or-ID>",
     type=str,
     help=(
@@ -865,6 +968,56 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
     DRY_RUN_TRANSFERS,
 )
 
+
+def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    The paths a data client command needs, unless it is only asked for
+    --which-rclone or --upgrade-rclone: argparse takes them as optional so
+    that those two can run alone.
+    """
+    if args.which_rclone or args.upgrade_rclone:
+        return
+    for name, metavar in (
+        ("local_paths", "<local-path>"),
+        ("remote_paths", "<remote-path>"),
+    ):
+        if getattr(args, name, None) == []:
+            parser.error(f"the following arguments are required: {metavar}")
+
+
+def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-upload and yd-download: their paths (see check_paths_given()); and
+    not --sync with --flatten, which would transfer without the deletion
+    --sync promises.
+    """
+    check_paths_given(args, parser)
+    if args.sync and args.flatten:
+        parser.error("--sync cannot be used with --flatten")
+
+
+def check_delete_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-delete: a path, unless --recursive asks for the entire default
+    prefix (or it is only asked for --which-rclone or --upgrade-rclone).
+    """
+    if args.remote_paths or args.recursive or args.which_rclone or args.upgrade_rclone:
+        return
+    parser.error(
+        "no remote path given: name one, or use --recursive to delete the entire"
+        " default prefix"
+    )
+
+
+def check_ls_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-ls: not --long with --json, whose entries carry sizes and times
+    whatever is asked for.
+    """
+    if args.long and args.json:
+        parser.error("--long cannot be used with --json")
+
+
 DESTINATION = option(
     "--destination",
     "-d",
@@ -1002,16 +1155,15 @@ def check_schema_mode_is_exclusive(args: Namespace, parser: ArgumentParser) -> N
 TASK_ID_LIST = option(
     "task_id_list",
     nargs="*",
-    default="",
     metavar="<target>",
     type=str,
     help=(
-        "items to target: task YDID(s) to abort directly; Work Requirement"
-        " name(s) or YDID(s) to abort all executing tasks within; Task Group"
-        " YDID(s) to abort executing tasks in a specific group; or"
-        " 'wr-name/tg-name' to target a named Task Group within a named"
-        " Work Requirement. Without arguments, selects interactively by"
-        " namespace and tag."
+        "items to target: executing task YDID(s) to abort directly; Work"
+        " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
+        " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
+        " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
+        " group. Without arguments, selects interactively by namespace and"
+        " tag."
     ),
 )
 
@@ -1034,11 +1186,8 @@ COMMANDS["yd-application"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        NAMESPACE,
-        TAG,
         JSON.variant(help="emit the Application's details as JSON"),
     ),
-    requires_namespace_and_tag=True,
     tool=ToolKind.READ_ONLY,
 )
 
@@ -1047,16 +1196,30 @@ COMMANDS["yd-application"] = Command(
 BOOST_HOURS = option(
     "boost_hours",
     metavar="<boost hours>",
-    type=int,
-    help="the number of hours to boost the allowance by",
+    type=positive_int,
+    help="the number of hours to boost the allowance by (at least 1)",
 )
 ALLOWANCES = option(
     "allowances",
-    metavar="<allowance-ID> [<allowance-ID>]",
+    metavar="<allowance-ID>",
     nargs="+",
     type=str,
     help="the YellowDog ID(s) of the allowance(s) to boost",
 )
+
+
+def check_allowance_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-boost's Allowance IDs, before anything is fetched or boosted. The
+    YDID parser is imported here, so this module still imports nothing at
+    load beyond the constants modules and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    for allowance_id in args.allowances:
+        if get_ydid_type(allowance_id) != YDIDType.ALLOWANCE:
+            parser.error(f"not a YellowDog Allowance ID: '{allowance_id}'")
+
 
 COMMANDS["yd-boost"] = Command(
     name="yd-boost",
@@ -1064,6 +1227,7 @@ COMMANDS["yd-boost"] = Command(
     summary="Boost Allowances",
     kind=CommandKind.API,
     options=(VARIABLE, YES, ACTIONS_JSON, BOOST_HOURS, ALLOWANCES),
+    validators=(check_allowance_ids,),
     tool=ToolKind.DESTRUCTIVE,
 )
 
@@ -1152,6 +1316,45 @@ INSTANCE_TYPE = option(
     ),
 )
 
+# The providers Cloud Wizard supports, by each spelling it accepts
+CLOUD_PROVIDERS: dict[str, str] = {
+    "aws": "AWS",
+    "amazon": "AWS",
+    "gcp": "GCP",
+    "gce": "GCP",
+    "google": "GCP",
+    "azure": "Azure",
+    "microsoft": "Azure",
+}
+
+
+def cloud_provider_of(name: str) -> str | None:
+    """
+    The provider a '--cloud-provider' spelling names, or None.
+    """
+    return CLOUD_PROVIDERS.get(name.strip().lower())
+
+
+def check_cloudwizard_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-cloudwizard's provider, and what each operation needs from it, refused
+    as the command line is parsed rather than reported and exited 0.
+    """
+    provider = cloud_provider_of(args.cloud_provider)
+    if provider is None:
+        parser.error(
+            f"unknown or unsupported cloud provider '{args.cloud_provider}'; one of"
+            f" {', '.join(CLOUD_PROVIDERS)}"
+        )
+    if provider == "GCP" and args.credentials_file is None:
+        parser.error("--credentials-file is required for GCP")
+    if args.operation in ("add-ssh", "remove-ssh"):
+        if provider == "GCP":
+            parser.error(f"'{args.operation}' is not supported for GCP")
+        if provider == "Azure" and args.region_name is None:
+            parser.error(f"'{args.operation}' needs --region-name for Azure")
+
+
 COMMANDS["yd-cloudwizard"] = Command(
     name="yd-cloudwizard",
     purpose="setting up cloud accounts and YellowDog resources",
@@ -1167,6 +1370,7 @@ COMMANDS["yd-cloudwizard"] = Command(
         INSTANCE_TYPE,
         SHOW_SECRETS,
     ),
+    validators=(check_cloudwizard_args,),
     tool=ToolKind.NONE,
 )
 
@@ -1192,6 +1396,28 @@ RUNNING_NODES_ONLY = option(
     help="only compare against nodes in the RUNNING state",
 )
 
+
+def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-compare's positional IDs, by type, before anything is fetched: a Work
+    Requirement or Task Group ID, then Worker Pool IDs. The YDID parser is
+    imported here, so this module still imports nothing at load beyond
+    the constants modules and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if get_ydid_type(args.wr_or_tg_id) not in (
+        YDIDType.WORK_REQUIREMENT,
+        YDIDType.TASK_GROUP,
+    ):
+        parser.error(
+            f"not a YellowDog Work Requirement or Task Group ID: '{args.wr_or_tg_id}'"
+        )
+    for worker_pool_id in args.worker_pool_ids:
+        if get_ydid_type(worker_pool_id) != YDIDType.WORKER_POOL:
+            parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool_id}'")
+
+
 COMMANDS["yd-compare"] = Command(
     name="yd-compare",
     purpose=(
@@ -1211,6 +1437,7 @@ COMMANDS["yd-compare"] = Command(
             )
         ),
     ),
+    validators=(check_compare_ids,),
     tool=ToolKind.READ_ONLY,
 )
 
@@ -1239,13 +1466,19 @@ COMMANDS["yd-compute-restart"] = Command(
     purpose="restarting Instances",
     summary="Restart Instances",
     kind=CommandKind.API,
-    options=_compute_action_options(
-        # Restart is instance-level only: no CR names/IDs
+    # Restart is instance-level only: no Compute Requirement names, IDs or
+    # listing, so none of the options that select or sort them
+    options=(
+        VARIABLE,
+        YES,
+        ACTIONS_JSON,
         COMPUTE_REQS_INSTANCES_OR_NODES.variant(
-            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format"
-        )
+            nargs="+",
+            metavar="<instance-or-node-ID>",
+            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+        ),
+        FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
-    requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-start"] = Command(
@@ -1254,6 +1487,7 @@ COMMANDS["yd-compute-start"] = Command(
     summary="Start stopped Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -1263,26 +1497,54 @@ COMMANDS["yd-compute-stop"] = Command(
     summary="Stop Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-copy -------------------------------------------------------------
 
-SRC_PATH = option(
-    "src_path",
-    metavar="<src-path>",
-    type=str,
-    nargs="?",
-    help="source path relative to the configured source remote/bucket/prefix",
+SRC_PATH = Option(
+    ("src_path",),
+    {
+        "metavar": "<src-path>",
+        "type": str,
+        "nargs": "?",
+        "help": "source path relative to the configured source remote/bucket/prefix",
+    },
+    tool_required=True,
 )
-DST_PATH = option(
-    "dst_path",
-    metavar="<dst-path>",
-    type=str,
-    nargs="?",
-    help="destination path relative to the configured destination remote/bucket/prefix",
+DST_PATH = Option(
+    ("dst_path",),
+    {
+        "metavar": "<dst-path>",
+        "type": str,
+        "nargs": "?",
+        "help": (
+            "destination path relative to the configured destination"
+            " remote/bucket/prefix"
+        ),
+    },
+    tool_required=True,
 )
+
+
+def check_copy_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-copy: both paths, unless it is only asked for --which-rclone or
+    --upgrade-rclone, which is why argparse takes them as optional.
+    """
+    if args.which_rclone or args.upgrade_rclone:
+        return
+    missing = [
+        metavar
+        for name, metavar in (("src_path", "<src-path>"), ("dst_path", "<dst-path>"))
+        if getattr(args, name) is None
+    ]
+    if missing:
+        parser.error(f"the following arguments are required: {', '.join(missing)}")
+
+
 DST_PROFILE = option(
     "--dst-profile",
     type=str,
@@ -1319,9 +1581,7 @@ COMMANDS["yd-copy"] = Command(
         DST_PATH,
         DST_PROFILE,
         DST_PREFIX,
-        RECURSIVE.variant(
-            help="copy directories recursively (rclone copies recursively by default)"
-        ),
+        RECURSIVE.variant(help="copy a directory, recursively (--sync implies it)"),
         SYNC.variant(
             help=(
                 "make the destination a mirror of the source, "
@@ -1330,6 +1590,7 @@ COMMANDS["yd-copy"] = Command(
         ),
         TRANSFERS_JSON.variant(help="emit the files copied as a JSON array"),
     ),
+    validators=(check_copy_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
 )
@@ -1395,6 +1656,30 @@ IDS = option(
     help="remove resources using their YellowDog IDs (YDIDs)",
 )
 
+
+def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-remove --ids: each argument the ID of a resource it can remove,
+    checked before anything is removed; and none of the options that act
+    only on specification files.
+    """
+    from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
+
+    if not args.ids:
+        return
+    for option, given in (
+        ("--match-allowances-by-description", args.match_allowances_by_description),
+        ("--jsonnet-dry-run", args.jsonnet_dry_run),
+    ):
+        if given:
+            parser.error(f"{option} applies to specification files, not to --ids")
+    for resource_id in args.resource_specifications:
+        if get_ydid_type(resource_id) not in REMOVABLE_YDID_TYPES:
+            parser.error(
+                f"not the ID of a resource yd-remove can remove: '{resource_id}'"
+            )
+
+
 COMMANDS["yd-remove"] = Command(
     name="yd-remove",
     purpose="removing resources",
@@ -1411,16 +1696,17 @@ COMMANDS["yd-remove"] = Command(
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
+    validators=(check_remove_ids,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 
-# --- yd-delete / yd-rm ---------------------------------------------------
+# --- yd-delete ----------------------------------------------------------
 
 COMMANDS["yd-delete"] = Command(
     name="yd-delete",
     purpose="deleting remote data client files and directories",
-    summary="Delete remote data client files and directories (synonym: yd-rm)",
+    summary="Delete remote data client files and directories",
     kind=CommandKind.DATA_CLIENT,
     options=(
         VARIABLE,
@@ -1443,11 +1729,10 @@ COMMANDS["yd-delete"] = Command(
             )
         ),
     ),
+    validators=(check_delete_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
-# The prog is set by the caller, so one object serves both names.
-COMMANDS["yd-rm"] = COMMANDS["yd-delete"]
 
 # --- yd-doctor -----------------------------------------------------------
 
@@ -1493,7 +1778,11 @@ COMMANDS["yd-download"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
-        REMOTE_PATHS,
+        Option(
+            REMOTE_PATHS.flags,
+            {**REMOTE_PATHS.kwargs, "nargs": "*"},
+            tool_required=True,
+        ),
         # '--destination' names the local path corresponding to one remote
         # item; '--into' names a container directory that several items keep
         # their own names inside. Honouring both is meaningless, so let
@@ -1524,6 +1813,7 @@ COMMANDS["yd-download"] = Command(
             )
         ),
     ),
+    validators=(check_transfer_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
     tool_description=(
@@ -1565,10 +1855,11 @@ COMMANDS["yd-finish"] = Command(
         WORK_REQUIREMENTS.variant(
             help=(
                 "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-                " finished"
+                " finished; a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -1581,10 +1872,11 @@ COMMANDS["yd-hold"] = Command(
         WORK_REQUIREMENTS.variant(
             help=(
                 "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-                " held (paused)"
+                " held (paused); a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -1596,16 +1888,40 @@ COMMANDS["yd-start"] = Command(
     options=_work_requirement_action_options(
         WORK_REQUIREMENTS.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the held (paused) work requirement(s) to be"
-                " started"
+                "the name(s) or YellowDog ID(s) of the held (paused) work"
+                " requirement(s) to be started; a name may be a glob pattern"
+                " (e.g. 'proj-*')"
             )
         )
     ),
+    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 
 # --- yd-follow / yd-show / yd-wait ---------------------------------------
+
+
+def check_follow_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-follow's IDs: each a Work Requirement's, Worker Pool's or Compute
+    Requirement's, the entities with event streams, checked before anything
+    is followed.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    followable = (
+        YDIDType.WORK_REQUIREMENT,
+        YDIDType.WORKER_POOL,
+        YDIDType.COMPUTE_REQUIREMENT,
+    )
+    for ydid in args.yellowdog_ids:
+        if get_ydid_type(ydid) not in followable:
+            parser.error(
+                f"not a Work Requirement, Worker Pool or Compute Requirement ID:"
+                f" '{ydid}'"
+            )
+
 
 COMMANDS["yd-follow"] = Command(
     name="yd-follow",
@@ -1614,7 +1930,7 @@ COMMANDS["yd-follow"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        YELLOWDOG_IDS,
+        YELLOWDOG_IDS.variant(nargs="+"),
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         ACTIONS_JSON.variant(
@@ -1624,7 +1940,7 @@ COMMANDS["yd-follow"] = Command(
             )
         ),
     ),
-    validators=(check_follow_json_excludes_progress,),
+    validators=(check_follow_json_excludes_progress, check_follow_ids),
     tool=ToolKind.ACTING,
     tool_description=(
         "Collect the events of Work Requirements, Worker Pools or Compute"
@@ -1645,28 +1961,54 @@ SHOW_TOKEN = option(
     ),
 )
 
+
+def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-show's '--substitute-ids', refused when none of the IDs is of a kind
+    whose details it substitutes names into (Compute Source and Requirement
+    Templates, Allowances), rather than ignored. '--show-token' is left
+    alone: whether a Worker Pool is a Configured one is known only once it
+    has been fetched.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    substitutable = (
+        YDIDType.COMPUTE_SOURCE_TEMPLATE,
+        YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+        YDIDType.ALLOWANCE,
+    )
+    if args.substitute_ids and not any(
+        get_ydid_type(ydid) in substitutable for ydid in args.yellowdog_ids
+    ):
+        parser.error(
+            "--substitute-ids applies only to Compute Source Template, Compute"
+            " Requirement Template and Allowance IDs, and none was given"
+        )
+
+
 COMMANDS["yd-show"] = Command(
     name="yd-show",
     purpose="showing the JSON details of entities referenced by their YDIDs",
     summary="Show the JSON details of entities referenced by their YDIDs",
     kind=CommandKind.API,
+    # A YDID names its entity in whatever namespace it is in: no namespace
+    # or tag is used
     options=(
         VARIABLE,
-        NAMESPACE,
-        TAG,
         YELLOWDOG_IDS.variant(
+            nargs="+",
             help=(
                 "the YellowDog ID(s) of the item(s) to show"
                 "; Instances have no ID of their own and are specified "
                 "in 'cr_id.instance_id' format"
-            )
+            ),
         ),
         SHOW_TOKEN,
         SUBSTITUTE_IDS,
         STRIP_IDS,
         OUTPUT_FILE,
     ),
-    requires_namespace_and_tag=True,
+    validators=(check_show_ids,),
     tool=ToolKind.READ_ONLY,
 )
 
@@ -1680,9 +2022,19 @@ COMMANDS["yd-wait"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
-        YELLOWDOG_IDS.variant(help="the YellowDog ID(s) of the item(s) to wait"),
+        YELLOWDOG_IDS.variant(
+            nargs="+", help="the YellowDog ID(s) of the item(s) to wait for"
+        ),
+        TIMEOUT.variant(
+            default=None,
+            help=(
+                "stop waiting after this many seconds, and fail if anything has"
+                " not finished (default: no limit)"
+            ),
+        ),
         ACTIONS_JSON.variant(help="emit each item's final status as a JSON array"),
     ),
+    validators=(check_follow_ids,),
     tool=ToolKind.ACTING,
 )
 
@@ -1781,9 +2133,8 @@ COMMANDS["yd-provision"] = Command(
     tool=ToolKind.ACTING,
     tool_description=(
         "Provision a Worker Pool from a specification (a file path, or the"
-        " specification itself). Returns {id, name, namespace, type}; a"
-        " Configured Worker Pool's record also carries its token and"
-        " expiryTime. With dry_run, the processed specification. Shut it"
+        " specification itself). Returns {id, name, namespace, type}. With"
+        " dry_run, the processed specification. Shut it"
         " down afterwards with yd_shutdown; yd_schema worker-pool gives the"
         " schema to compose against."
     ),
@@ -1868,6 +2219,37 @@ AUTO_SELECT_ALL = option(
     help="automatically select all listed objects (implies '--details')",
 )
 
+
+def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-list's filtering options, refused for an entity type they do not
+    apply to rather than ignored: a script would otherwise take an
+    unfiltered listing for a filtered one.
+    """
+    entity_type = args.entity_type
+    for dest, flag, types in (
+        ("name_glob", "--name", LIST_NAME_TYPES),
+        ("status_filter", "--status", LIST_STATUS_TYPES),
+        ("active_only", "--active-only", LIST_ACTIVE_TYPES),
+        ("ids_only", "--ids-only", LIST_ID_TYPES),
+        ("substitute_ids", "--substitute-ids", LIST_SUBSTITUTE_TYPES),
+        ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
+    ):
+        if getattr(args, dest, None) and entity_type not in types:
+            parser.error(
+                f"{flag} does not apply to {entity_type}; it applies to "
+                + ", ".join(sorted(types))
+            )
+    if args.public_ips_only:
+        for dest, flag in (
+            ("json", "--json"),
+            ("ids_only", "--ids-only"),
+            ("details", "--details"),
+        ):
+            if getattr(args, dest, False):
+                parser.error(f"--public-ips-only cannot be used with {flag}")
+
+
 COMMANDS["yd-list"] = Command(
     name="yd-list",
     purpose="listing all kinds of YellowDog items",
@@ -1893,6 +2275,7 @@ COMMANDS["yd-list"] = Command(
         STRIP_IDS,
         OUTPUT_FILE,
     ),
+    validators=(check_list_options,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "List entities of one type in the namespace, optionally filtered by"
@@ -1933,6 +2316,7 @@ COMMANDS["yd-ls"] = Command(
             help="emit the listing as a JSON array of rclone 'lsjson' entries"
         ),
     ),
+    validators=(check_ls_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.READ_ONLY,
 )
@@ -1973,6 +2357,38 @@ NODE_ACTION_STATUS = option(
     help="show the node action queue for the selected node(s)",
 )
 
+
+def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-nodeaction's options, as they combine: --actions unless --status,
+    which takes neither it nor --validate; node and Worker Pool IDs of the
+    right kind; and --timeout only with --follow. The YDID parser is
+    imported here, so this module still imports nothing at load beyond
+    the constants modules and glob_utils.py.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if args.status:
+        if getattr(args, "validate", False):
+            parser.error("--validate cannot be used with --status")
+        if args.actions is not None:
+            parser.error("--actions cannot be used with --status")
+    elif args.actions is None:
+        parser.error("--actions is required, unless --status is given")
+    for node_id in args.node or []:
+        if get_ydid_type(node_id) != YDIDType.NODE:
+            parser.error(f"not a YellowDog Node ID: '{node_id}'")
+    worker_pool = args.worker_pool
+    if (
+        worker_pool is not None
+        and worker_pool.startswith("ydid:")
+        and get_ydid_type(worker_pool) != YDIDType.WORKER_POOL
+    ):
+        parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool}'")
+    if args.timeout is not None and not args.follow:
+        parser.error("--timeout needs --follow")
+
+
 COMMANDS["yd-nodeaction"] = Command(
     name="yd-nodeaction",
     purpose="submitting Node Actions to Worker Pool nodes",
@@ -1997,9 +2413,15 @@ COMMANDS["yd-nodeaction"] = Command(
         WORKER_POOL.variant(
             help="name of the target worker pool", metavar="<worker-pool-name>"
         ),
-        NODE,
-        ALL_NODES,
+        Exclusive((NODE, ALL_NODES)),
         NODE_ACTION_STATUS,
+        TIMEOUT.variant(
+            default=None,
+            help=(
+                "with --follow, stop following after this many seconds, and fail"
+                " if any node action queue has not finished (default: no limit)"
+            ),
+        ),
         DETAILS.variant(help="show the full JSON details for --status output"),
         ACTIONS_JSON.variant(
             help=(
@@ -2008,6 +2430,7 @@ COMMANDS["yd-nodeaction"] = Command(
             )
         ),
     ),
+    validators=(check_node_action_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2025,7 +2448,7 @@ WORKER_POOL_POSITIONAL = option(
 WORKER_POOL_SIZE = option(
     "worker_pool_size",
     metavar="<new-node/instance-count>",
-    type=int,
+    type=non_negative_int,
     help="the desired number of (total) nodes in the worker pool",
 )
 # Not a variant of COMPUTE_REQUIREMENT: this one is a flag, with no type.
@@ -2067,10 +2490,7 @@ SCHEMA_FAMILY = option(
     choices=list(SCHEMA_FAMILIES),
     metavar="<family>",
     type=str,
-    help=(
-        "the specification family to print: work-requirement, worker-pool,"
-        " compute-requirement, resources or node-actions"
-    ),
+    help=f"the specification family to print: {', '.join(SCHEMA_FAMILIES)}",
 )
 SCHEMA_WRITE = option(
     "--write",
@@ -2107,8 +2527,9 @@ COMMANDS["yd-schema"] = Command(
         "Print the JSON Schema a specification family must follow —"
         " work-requirement (yd_submit), worker-pool (yd_provision),"
         " compute-requirement (yd_instantiate), resources (yd_create),"
-        " node-actions (yd_nodeaction) — generated from the installed CLI"
-        " and SDK. Ask for it before composing an inline specification."
+        " node-actions (yd_nodeaction), or config, the TOML configuration"
+        " file — generated from the installed CLI and SDK. Ask for it before"
+        " composing an inline specification."
     ),
 )
 
@@ -2117,7 +2538,6 @@ COMMANDS["yd-schema"] = Command(
 WORKER_POOL_NODES_LIST = option(
     "worker_pool_nodes_list",
     nargs="*",
-    default="",
     metavar="<worker-pool-name-or-ID/node-id>",
     type=str,
     help="the name(s) or YellowDog ID(s) of the worker pool(s) and/or ID(s) of"
@@ -2316,6 +2736,37 @@ WORK_REQUIREMENT_FILE_POSITIONAL = option(
     ),
 )
 
+
+def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-submit's options that cannot apply together, refused rather than
+    ignored: '--json-raw' is a complete Platform document, so the options
+    that build or extend a specification do not apply to it; '--add-to'
+    adds to a Work Requirement that already has its own state and Task
+    Groups; and '--exit-on-failure' needs something to wait on.
+    """
+    if args.json_raw is not None:
+        for dest, flag in (
+            ("work_requirement", "--work-requirement"),
+            ("work_requirement_file_positional", "a Work Requirement file"),
+            ("add_to", "--add-to"),
+            ("csv_file", "--csv-file"),
+            ("process_csv_only", "--process-csv-only"),
+            ("task_count", "--task-count"),
+            ("task_group_count", "--task-group-count"),
+            ("empty", "--empty"),
+            ("validate", "--validate"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--json-raw cannot be used with {flag}")
+    if args.add_to is not None:
+        for dest, flag in (("hold", "--hold"), ("empty", "--empty")):
+            if getattr(args, dest, False):
+                parser.error(f"--add-to cannot be used with {flag}")
+    if args.exit_on_failure and not (args.follow or args.progress):
+        parser.error("--exit-on-failure needs --follow or --progress")
+
+
 COMMANDS["yd-submit"] = Command(
     name="yd-submit",
     purpose="submitting a Work Requirement",
@@ -2357,7 +2808,7 @@ COMMANDS["yd-submit"] = Command(
         ),
     ),
     requires_namespace_and_tag=True,
-    validators=(check_json_excludes_streaming,),
+    validators=(check_json_excludes_streaming, check_submit_combinations),
     tool=ToolKind.ACTING,
     tool_description=(
         "Submit a Work Requirement from a specification (a file path, or the"
@@ -2397,13 +2848,17 @@ COMMANDS["yd-terminate"] = Command(
 
 # --- yd-upload -----------------------------------------------------------
 
-LOCAL_PATHS = option(
-    "local_paths",
-    metavar="<local-path>",
-    type=str,
-    nargs="+",
-    help="local file(s) or directory(ies) to upload",
+LOCAL_PATHS = Option(
+    ("local_paths",),
+    {
+        "metavar": "<local-path>",
+        "type": str,
+        "nargs": "*",
+        "help": "local file(s) or directory(ies) to upload",
+    },
+    tool_required=True,
 )
+
 
 COMMANDS["yd-upload"] = Command(
     name="yd-upload",
@@ -2422,6 +2877,7 @@ COMMANDS["yd-upload"] = Command(
         SYNC,
         TRANSFERS_JSON,
     ),
+    validators=(check_transfer_args,),
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
 )
@@ -2440,6 +2896,24 @@ VARIABLE_NAMES = option(
     ),
 )
 
+
+def check_variable_names(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-variables' names: each one a variable could have, since any other
+    could only ever report 'null' ('{{x}}', 'env:HOME').
+    """
+    import re
+
+    from yellowdog_cli.utils.variable_syntax import VARIABLE_NAME_PATTERN
+
+    for name in args.variable_names:
+        if not re.fullmatch(VARIABLE_NAME_PATTERN, name):
+            parser.error(
+                f"not a variable name: '{name}' (a name is a letter, digit or '_',"
+                " then letters, digits, '_', '.' and '-')"
+            )
+
+
 COMMANDS["yd-variables"] = Command(
     name="yd-variables",
     purpose="reporting the processed values of variable substitutions",
@@ -2455,14 +2929,16 @@ COMMANDS["yd-variables"] = Command(
                 "include the values of the 'key' and 'secret' variables, of"
                 " variables whose names match"
                 f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}'"
-                " (case-insensitive), and the parameters of any value that is an inline"
-                " rclone connection string, when reporting all variables; they are always reported"
-                " when named explicitly. Any other variable is reported in full,"
-                " even one holding a credential"
+                " (case-insensitive), and the parameters of any value that is an"
+                " inline rclone connection string, whether named or not; any"
+                " other variable is reported in full, even one holding a"
+                " credential"
             )
         ),
     ),
+    validators=(check_variable_names,),
     requires_namespace_and_tag=True,
+    requires_credentials=False,
     tool=ToolKind.READ_ONLY,
 )
 

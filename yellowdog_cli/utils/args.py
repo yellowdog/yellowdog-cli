@@ -12,7 +12,8 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
 )
-from yellowdog_cli.version import DOCS_URL
+from yellowdog_cli.utils.lazy import lazy
+from yellowdog_cli.utils.version_info import DOCS_URL
 
 
 def docs():
@@ -49,20 +50,26 @@ class CLIParser:
             command_from_argv0(sys.argv[0]) if command is None else command
         )
         self.command: Command | None = COMMANDS.get(self.command_name)
-        # prog is the name invoked, so 'yd-rm' says 'usage: yd-rm' although
-        # it shares yd-delete's Command
+        # prog is the name invoked
         self.parser = build_parser(
             self.command, prog=self.command_name if self.command else None
         )
-        self.args = self.parser.parse_args(sys.argv[1:] if argv is None else argv)
+        argv = sys.argv[1:] if argv is None else argv
+
+        # '--docs', like '--help', is answered before anything else is
+        # checked: a required argument missing, or a validator's refusal,
+        # would otherwise stand in the way of asking where the docs are
+        if "--docs" in argv and any(
+            "--docs" in action.option_strings for action in self.parser._actions
+        ):
+            docs()
+            sys.exit(0)
+
+        self.args = self.parser.parse_args(argv)
 
         if self.command is not None:
             for validator in self.command.validators:
                 validator(self.args, self.parser)
-
-        if getattr(self.args, "docs", False):
-            docs()
-            exit(0)
 
     @property
     def namespace_required(self) -> bool:
@@ -71,6 +78,14 @@ class CLIParser:
     @property
     def tag_required(self) -> bool:
         return self.namespace_required
+
+    @property
+    def credentials_required(self) -> bool:
+        """
+        Whether the configuration must hold the application key and secret:
+        true for every command but those that never use the Platform.
+        """
+        return self.command is None or self.command.requires_credentials
 
     # -----------------------------------------------------------------------
     # Common args
@@ -863,4 +878,6 @@ class CLIParser:
         return self.args.list
 
 
-ARGS_PARSER = CLIParser()
+# The command line, parsed on first use rather than at import (see lazy.py),
+# so that importing a module that names it parses nothing
+ARGS_PARSER: CLIParser = lazy(CLIParser)

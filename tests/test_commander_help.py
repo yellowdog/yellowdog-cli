@@ -46,7 +46,9 @@ def _anchors(document: QTextDocument) -> list[str]:
 
 
 def _headings(markdown: str) -> list[str]:
-    """ATX headings outside fenced code blocks."""
+    """
+    ATX headings outside fenced code blocks.
+    """
     headings, fenced = [], False
     for line in markdown.splitlines():
         if line.startswith("```"):

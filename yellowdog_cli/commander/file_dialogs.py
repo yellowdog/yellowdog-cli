@@ -196,7 +196,9 @@ class FilePreview(QWidget):
         self.clear()
 
     def clear(self):
-        """Show the placeholder, as before anything has been highlighted."""
+        """
+        Show the placeholder, as before anything has been highlighted.
+        """
         self._describe(PREVIEW_NO_SELECTION, "")
 
     def show_path(self, path: str):

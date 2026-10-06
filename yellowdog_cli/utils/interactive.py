@@ -2,23 +2,26 @@
 User interaction processing utilities.
 """
 
+from __future__ import annotations
+
 import sys
 from contextlib import redirect_stdout
-from os import getenv
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from yellowdog_client import PlatformClient
-
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     CONSOLE,
     CONSOLE_ERR,
     print_error,
     print_info,
-    print_numbered_object_list,
     print_string,
-    sorted_objects,
 )
+from yellowdog_cli.utils.tables import print_numbered_object_list, sorted_objects
+
+if TYPE_CHECKING:
+    # For the annotation only: every command that confirms an action imports
+    # this module, yd-delete among them, which must start without the SDK
+    from yellowdog_client import PlatformClient
 
 try:
     import readline  # noqa: F401
@@ -26,10 +29,6 @@ except ImportError:
     pass
 
 _T = TypeVar("_T")
-
-# Environment variable to use --yes by default
-# Set to any non-empty string
-YD_YES = "YD_YES"
 
 
 def select(
@@ -55,8 +54,8 @@ def select(
     if sort_objects:
         objects = sorted_objects(objects)  # type: ignore[arg-type, assignment]
 
-    selecting = bool(ARGS_PARSER.interactive or force_interactive)
-    if ARGS_PARSER.json_output:
+    selecting = bool(OUTPUT.interactive or force_interactive)
+    if OUTPUT.json_output:
         # Under '--json' stdout is the result document alone: the list is
         # shown only when a selection is to be made from it, and on stderr,
         # as the selection prompt is
@@ -69,7 +68,7 @@ def select(
                     showing_all=showing_all,
                     object_type_name=object_type_name,
                 )
-    elif not ARGS_PARSER.quiet or override_quiet or ARGS_PARSER.interactive:
+    elif not OUTPUT.quiet or override_quiet or OUTPUT.interactive:
         print_numbered_object_list(
             client,
             objects,  # type: ignore[arg-type]
@@ -81,7 +80,7 @@ def select(
     if not selecting:
         return objects
 
-    if ARGS_PARSER.auto_select_all:
+    if OUTPUT.auto_select_all:
         print_info("Automatically selecting all objects")
         return objects
 
@@ -103,7 +102,7 @@ def get_selected_list_items(
     def in_range(num: int) -> bool:
         if 1 <= num <= num_items:
             return True
-        print_error(f"'{num}' is out of range")
+        print_error(f"'{num}' is out of range (1-{num_items})")
         return False
 
     while True:
@@ -127,11 +126,15 @@ def get_selected_list_items(
                     high = int(high_s)
                     if low > high:
                         raise ValueError
-                    for i in range(int(low), int(high) + 1):
-                        if in_range(i):
-                            selector_set.add(i)
-                        else:
-                            error_flag = True
+                    # Checked by its ends, once: not number by number, which
+                    # printed an error for each of '1-200000''s out of range
+                    if 1 <= low and high <= num_items:
+                        selector_set.update(range(low, high + 1))
+                    else:
+                        print_error(
+                            f"'{selector.strip()}' is out of range (1-{num_items})"
+                        )
+                        error_flag = True
                 elif not (selector.isspace() or not selector):
                     i = int(selector)
                     if in_range(i):
@@ -145,6 +148,7 @@ def get_selected_list_items(
             continue
         if not selector_set:
             if result_required:
+                print_error("please select at least one item")
                 continue
             break
         if single_result and len(selector_set) != 1:
@@ -175,21 +179,13 @@ def confirmed(msg: str) -> bool:
     Confirm an action.
     """
     # Confirmed on the command line?
-    if ARGS_PARSER is not None and ARGS_PARSER.yes:
+    if OUTPUT.yes:
         print_info(f"Action proceeding without user confirmation ({msg})")
-        return True
-
-    # Confirmed using the environment variable?
-    yd_yes = getenv(YD_YES, "")
-    if yd_yes != "":
-        print_info(
-            f"'{YD_YES}={yd_yes}': Action proceeding without user confirmation ({msg})"
-        )
         return True
 
     # Seek user confirmation
     while True:
-        response = _get_user_input(print_string(f"{msg} (y/N):") + " ")
+        response = _get_user_input(print_string(f"{msg} (y/N):") + " ").strip()
         if response.lower() in ["y", "yes"]:
             print_info("Action confirmed by user")
             return True
@@ -214,16 +210,25 @@ class NoAnswerToPrompt(Exception):
         )
 
 
+def wait_for_enter(prompt: str) -> None:
+    """
+    Show 'prompt' and wait for the Enter key: whatever '--quiet' says, on
+    stderr under '--json', and NoAnswerToPrompt, with its remedy, rather
+    than an EOFError when there is no terminal to answer from.
+    """
+    _get_user_input(print_string(prompt) + " ")
+
+
 def _get_user_input(input_prompt: str) -> str:
     """
     Get user input, respecting the --no-format option. Under '--json' the
     prompt goes to stderr, so stdout holds only the result document.
     """
     try:
-        if ARGS_PARSER.json_output:
+        if OUTPUT.json_output:
             CONSOLE_ERR.print(input_prompt, end="")
             return input("")
-        if ARGS_PARSER.no_format:
+        if OUTPUT.no_format:
             return input(input_prompt)
         # Prevents broken wrapping
         CONSOLE.print(input_prompt, end="")

@@ -14,7 +14,9 @@ from yellowdog_cli.commander.startup import StartupSettings
 
 @pytest.fixture
 def files(tmp_path, monkeypatch):
-    """A launch directory holding a config file and both definition files."""
+    """
+    A launch directory holding a config file and both definition files.
+    """
     monkeypatch.chdir(tmp_path)
     for name in ("config.toml", "wr.json", "wp.jsonnet"):
         (tmp_path / name).write_text("")
@@ -22,7 +24,9 @@ def files(tmp_path, monkeypatch):
 
 
 def refused(argv: list[str], capsys) -> str:
-    """Parse, expecting argparse to refuse; return what it said."""
+    """
+    Parse, expecting argparse to refuse; return what it said.
+    """
     with pytest.raises(SystemExit) as exc:
         parse_args(argv)
     assert exc.value.code == 2

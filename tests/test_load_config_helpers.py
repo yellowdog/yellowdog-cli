@@ -11,7 +11,8 @@ Covers here:
   - load_config_common: CLI > env var > TOML precedence
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
-  - load_config_worker_pool: name type checking
+  - load_config_worker_pool: name type checking; maxNodes and
+    computeRequirementBatchSize cast with int(), the batch size at least 1
   - _resolve_section_variables: a circular variable reference in a section
     is reported and exits
 """
@@ -22,8 +23,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.utils.load_config as lc_module
-import yellowdog_cli.utils.variables as var_module
+import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.limits import TASK_BATCH_SIZE_DEFAULT
 from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,
     load_config_common,
@@ -51,14 +54,7 @@ from yellowdog_cli.utils.property_names import (
     WP_NAME,
     WR_NAME,
 )
-from yellowdog_cli.utils.settings import (
-    TASK_BATCH_SIZE_DEFAULT,
-    YD_KEY,
-    YD_NAMESPACE,
-    YD_SECRET,
-    YD_TAG,
-    ExitCode,
-)
+from yellowdog_cli.utils.settings import YD_KEY, YD_NAMESPACE, YD_SECRET, YD_TAG
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,6 +71,8 @@ def _mock_args(
     config_file=None,
 ):
     args = MagicMock()
+    # A MagicMock's unset attribute is truthy: '--debug' would re-raise
+    args.debug = False
     args.namespace = namespace
     args.tag = tag
     args.task_type = task_type
@@ -120,7 +118,7 @@ class TestLoadNamespaceAndTag:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", {COMMON_SECTION: toml_common}),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
@@ -262,7 +260,7 @@ class TestLoadConfigCommonPrecedence:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", {COMMON_SECTION: toml_common}),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.dict(os.environ, env, clear=True),
             patch.object(
                 lc_module,
@@ -376,7 +374,7 @@ class TestLoadConfigWorkRequirement:
 
         with (
             patch.object(lc_module, "CONFIG_TOML", config_toml),
-            patch.object(lc_module, "ARGS_PARSER", args),
+            patch.object(lc_module, "_ARGS", args),
             patch.object(lc_module, "resolve_variables_insitu"),
             patch.object(
                 lc_module,
@@ -439,6 +437,21 @@ class TestLoadConfigWorkRequirement:
             args=_mock_args(task_batch_size=200),
         )
         assert result.task_batch_size == 200
+
+    @pytest.mark.parametrize("value", [0, 10_001, -1, "100", 2.5, True])
+    def test_a_task_batch_size_out_of_range_is_a_configuration_error(self, value):
+        # Checked as the configuration is loaded (exit 3), not when yd-submit
+        # runs (which exited 1)
+        with pytest.raises(SystemExit) as raised:
+            self._call(toml_wr_section={TASK_BATCH_SIZE: value})
+        assert raised.value.code == 3
+
+    @pytest.mark.parametrize("value", [1, 10_000])
+    def test_a_task_batch_size_at_either_end_is_accepted(self, value):
+        assert (
+            self._call(toml_wr_section={TASK_BATCH_SIZE: value}).task_batch_size
+            == value
+        )
 
     def test_cli_task_count_overrides_toml(self):
         result = self._call(
@@ -564,6 +577,31 @@ class TestLoadConfigWorkerPool:
         message = str(print_error.call_args.args[0])
         assert f"'{WP_NAME}'" in message and "String" in message
 
+    @pytest.mark.parametrize("value, expected", [(5, 5), ("5", 5), (2.5, 2)])
+    def test_max_nodes_is_cast_as_min_nodes_is(self, value, expected):
+        # Left uncast, 2.5 crashed yd-provision formatting it with ':,d'
+        result = self._call(toml_wp_section={"maxNodes": value})
+        assert result.max_nodes == expected
+        assert isinstance(result.max_nodes, int)
+
+    def test_batch_size_is_cast(self):
+        result = self._call(toml_wp_section={"computeRequirementBatchSize": "50"})
+        assert result.compute_requirement_batch_size == 50
+
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_batch_size_below_one_is_a_configuration_error(self, value):
+        # 0 was a bare 'division by zero'; a negative size made no batches,
+        # so nothing was provisioned and the command still reported Done
+        with (
+            patch.object(lc_module, "print_error") as print_error,
+            pytest.raises(SystemExit) as exc,
+        ):
+            self._call(toml_wp_section={"computeRequirementBatchSize": value})
+        assert exc.value.code == ExitCode.CONFIGURATION
+        assert "'computeRequirementBatchSize' must be at least 1" in str(
+            print_error.call_args.args[0]
+        )
+
 
 class TestResolveSectionVariables:
     """
@@ -675,3 +713,42 @@ class TestResolveValue:
             lc_module._resolve_value("{{env:YD_TEST_A}}", "common.tag")
         assert exc.value.code == ExitCode.CONFIGURATION
         assert "'common.tag'" in str(print_error.call_args.args[0])
+
+
+class TestReviewedLoaderErrors:
+    """
+    What the review of load_config.py changed: a profile's misspelt key is
+    an error, a number that will not convert names its property, the
+    duplicate-keys error names the keys plainly, and '--debug' shows a
+    loader's own fault rather than a configuration error.
+    """
+
+    def test_a_misspelt_profile_key_is_an_error(self):
+        with pytest.raises(ValueError, match=r"'bukcet' in '\[dataClient\.prod\]'"):
+            lc_module._validate_data_client_profiles(
+                {"remote": "r", "prod": {"bukcet": "typo"}}
+            )
+
+    def test_a_profiles_known_keys_pass(self):
+        lc_module._validate_data_client_profiles(
+            {"remote": "r", "prod": {"remote": "x", "bucket": "b", "prefix": "p"}}
+        )
+
+    @pytest.mark.parametrize(
+        "kind, value, words",
+        [(int, "ten", "a whole number"), (float, "soon", "a number")],
+    )
+    def test_a_number_that_will_not_convert_names_its_property(
+        self, kind, value, words, capsys
+    ):
+        with pytest.raises(SystemExit) as raised:
+            lc_module._number({"maxNodes": value}, "maxNodes", kind)
+        assert raised.value.code == ExitCode.CONFIGURATION
+        assert f"'maxNodes' must be {words} (it is '{value}')" in " ".join(
+            capsys.readouterr().err.split()
+        )
+
+    def test_a_number_converts_as_it_always_has(self):
+        assert lc_module._number({"maxNodes": "7"}, "maxNodes", int) == 7
+        assert lc_module._number({}, "maxNodes", int, 3) == 3
+        assert lc_module._number({}, "maxNodes", int) is None

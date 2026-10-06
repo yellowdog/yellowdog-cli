@@ -43,14 +43,16 @@ def _command_list() -> str:
 
 
 def _heading(text: str, heading: str) -> re.Match[str] | None:
-    """The heading's line, which may name aliases after it: '### yd-delete / yd-rm'."""
-    return re.search(
-        rf"^{re.escape(heading)}(?: / [^\n]*)?$", _outside_fences(text), re.M
-    )
+    """
+    The heading's line: '### yd-delete'.
+    """
+    return re.search(rf"^{re.escape(heading)}$", _outside_fences(text), re.M)
 
 
 def _section(text: str, heading: str) -> str:
-    """The text under a heading, up to the next heading of the same or higher level."""
+    """
+    The text under a heading, up to the next heading of the same or higher level.
+    """
     level = heading.split(" ")[0]
     found = _heading(text, heading)
     assert found is not None, f"no heading {heading!r}"
@@ -61,7 +63,9 @@ def _section(text: str, heading: str) -> str:
 
 
 def _table_options(section: str) -> list[tuple[str, tuple[str, ...]]]:
-    """(long flag, aliases) for each row of the section's table."""
+    """
+    (long flag, aliases) for each row of the section's table.
+    """
     rows = []
     for line in _outside_fences(section).splitlines():
         m = TABLE_ROW.match(line)
@@ -72,7 +76,9 @@ def _table_options(section: str) -> list[tuple[str, tuple[str, ...]]]:
 
 
 def _bullet_flags(section: str) -> list[str]:
-    """The flags each option bullet, or option-table row, names before its description."""
+    """
+    The flags each option bullet, or option-table row, names before its description.
+    """
     flags = []
     for line in _outside_fences(section).splitlines():
         if line.startswith("- `--"):
@@ -158,7 +164,7 @@ class TestSharedOptions:
             assert set(aliases) == set(registered.aliases), name
 
 
-DOCUMENTED = sorted(n for n in CLI_COMMANDS if n not in ("yd-cloudwizard", "yd-rm"))
+DOCUMENTED = sorted(n for n in CLI_COMMANDS if n != "yd-cloudwizard")
 
 
 STANDALONE_DOCUMENTED = sorted(

@@ -17,7 +17,7 @@ The commands support:
 - **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
 - **Copying** files between remote data stores with the **`yd-copy`** command
 - **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands
-- **Deleting** files from a remote data store with the **`yd-delete`** command (also available as **`yd-rm`**)
+- **Deleting** files from a remote data store with the **`yd-delete`** command
 - **Downloading** files from a remote data store with the **`yd-download`** command
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
@@ -40,7 +40,7 @@ The commands support:
 
 Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, **`yd-schema`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
 
-The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`/`yd-rm`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
+The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 
 ## Installation
 

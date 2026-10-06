@@ -14,26 +14,30 @@ from unittest.mock import patch
 from rich.console import Console
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 
+import yellowdog_cli.utils.event_printing as event_printing_module
 import yellowdog_cli.utils.printing as printing_module
+import yellowdog_cli.utils.tables as tables_module
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.event_printing import StatusCount, status_counts_msg
+from yellowdog_cli.utils.output_style import (
+    DEBUG_STYLE,
+    DRY_RUN_MARKER,
+    MAX_TABLE_DESCRIPTION,
+)
 from yellowdog_cli.utils.printing import (
-    StatusCount,
-    _truncate_text,
-    _yes_or_no,
-    get_type_name,
     indent,
-    keyring_table,
     print_debug,
     print_dry_run,
     print_info,
     print_string,
-    status_counts_msg,
+)
+from yellowdog_cli.utils.tables import (
+    _truncate_text,
+    _yes_or_no,
+    get_type_name,
+    keyring_table,
     task_table,
     work_requirement_table,
-)
-from yellowdog_cli.utils.settings import (
-    DEBUG_STYLE,
-    DRY_RUN_MARKER,
-    MAX_TABLE_DESCRIPTION,
 )
 
 # ---------------------------------------------------------------------------
@@ -231,40 +235,34 @@ class TestPrintString:
         printing_module.SUBSEQUENT_INDENT = ""
 
     def test_output_contains_message(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("hello world")
         assert "hello world" in result
 
     def test_timestamp_format(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("msg")
         assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", result)
 
     def test_no_pid_by_default(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(print_pid=False)
-        ):
+        with output_settings.configured(_mock_args(print_pid=False)):
             result = print_string("msg")
         # PID is 6 digits in parens; should not appear
         assert "(" not in result
 
     def test_with_pid_includes_pid(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(print_pid=True)
-        ):
+        with output_settings.configured(_mock_args(print_pid=True)):
             result = print_string("msg")
         assert re.search(r"\(\d{6}\)", result)
 
     def test_empty_message_no_fill(self):
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args()):
+        with output_settings.configured(_mock_args()):
             result = print_string("")
         # Empty message: prefix + "" with no wrapping
         assert result.endswith(" : ")
 
     def test_no_format_returns_prefix_plus_msg_directly(self):
-        with patch(
-            "yellowdog_cli.utils.printing.ARGS_PARSER", _mock_args(no_format=True)
-        ):
+        with output_settings.configured(_mock_args(no_format=True)):
             result = print_string("raw message")
         assert result.endswith("raw message")
 
@@ -298,7 +296,7 @@ class TestPrintDebug:
         return SimpleNamespace(**defaults)
 
     def _output(self, capsys, **kwargs) -> str:
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+        with output_settings.configured(self._args(**kwargs)):
             print_debug("Loading configuration data")
         return capsys.readouterr().out
 
@@ -362,7 +360,7 @@ class TestPrintDryRun:
         return SimpleNamespace(**defaults)
 
     def _output(self, capsys, **kwargs) -> str:
-        with patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)):
+        with output_settings.configured(self._args(**kwargs)):
             print_dry_run("Would resize Worker Pool")
         return capsys.readouterr().out
 
@@ -431,7 +429,7 @@ class TestStyledOutput:
             file=buffer, force_terminal=True, color_system="256", width=200
         )
         with (
-            patch("yellowdog_cli.utils.printing.ARGS_PARSER", self._args(**kwargs)),
+            output_settings.configured(self._args(**kwargs)),
             patch("yellowdog_cli.utils.printing.CONSOLE", console),
         ):
             call()
@@ -569,3 +567,284 @@ class TestWorkRequirementTable:
         _, rows_no = work_requirement_table([self._wr(healthy=False)])
         assert rows_yes[0][6] == "Yes"
         assert rows_no[0][6] == "No"
+
+
+class TestNoEmojiCodes:
+    """
+    Text such as '{{num:x:=1}}' or '{{env:smile:}}' is printed as written:
+    Rich's ':name:' emoji codes are off on every console, since the CLI
+    prints user text and never means one.
+    """
+
+    TEXT = "'{{num:x:=1}}' and '{{env:smile:}}' and --no-binary :all:"
+
+    def test_every_console(self):
+        consoles = [
+            printing_module.CONSOLE,
+            printing_module.CONSOLE_TABLE,
+            printing_module.CONSOLE_ERR,
+            printing_module.CONSOLE_JSON,
+        ]
+        for console in consoles:
+            with console.capture() as capture:
+                console.print(self.TEXT)
+            assert capture.get().strip() == self.TEXT, console
+
+    def test_input_prompt(self, monkeypatch):
+        written = StringIO()
+        # '_file', not 'file': its getter answers sys.stdout when none is set,
+        # so restoring 'file' would pin the console to this test's capture
+        monkeypatch.setattr(printing_module.CONSOLE, "_file", written)
+        printing_module.CONSOLE.input("{{a:x:}} ? ", stream=StringIO("y\n"))
+        assert "{{a:x:}}" in written.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Output that is not to a terminal, and terminal widths
+# ---------------------------------------------------------------------------
+
+
+class TestNotATerminal:
+    """
+    Rich's width is 80 when the output is not a terminal; every print passes
+    soft_wrap=True, so lines are wrapped once, by print_string(), and a
+    table row not at all.
+    """
+
+    @staticmethod
+    def _args():
+        return SimpleNamespace(
+            quiet=False,
+            json_output=False,
+            count_only=False,
+            no_format=False,
+            print_pid=False,
+        )
+
+    def test_a_table_row_stays_one_line(self, monkeypatch):
+        buffer = StringIO()
+        output_settings.configure_output(self._args())
+        monkeypatch.setattr(
+            tables_module, "CONSOLE_TABLE", Console(file=buffer, emoji=False)
+        )
+        row = "│ " + "x" * 120 + " │"
+        tables_module.print_table_core(row)
+        assert buffer.getvalue() == row + "\n"
+
+    def test_a_message_is_wrapped_once(self, monkeypatch):
+        buffer = StringIO()
+        output_settings.configure_output(self._args())
+        monkeypatch.setattr(printing_module, "LOG_WIDTH", 120)
+        monkeypatch.setattr(
+            printing_module, "CONSOLE", Console(file=buffer, emoji=False)
+        )
+        print_info("word " * 40)
+        lines = buffer.getvalue().splitlines()
+        # print_string()'s lines, at 120, and not broken again at 80
+        assert all(len(line) <= 120 for line in lines)
+        assert all(len(line) > 80 for line in lines[:-1])
+
+    def test_a_simple_line_stays_one_line(self, monkeypatch):
+        buffer = StringIO()
+        output_settings.configure_output(self._args())
+        monkeypatch.setattr(
+            printing_module, "CONSOLE", Console(file=buffer, emoji=False)
+        )
+        path = "remote:bucket/" + "a/" * 60 + "file.txt"
+        printing_module.print_simple(path)
+        assert buffer.getvalue() == path + "\n"
+
+
+class TestTerminalWidth:
+    def test_a_terminal_reporting_no_width_gets_the_default(self, monkeypatch):
+        monkeypatch.setattr(
+            printing_module, "get_terminal_size", lambda: SimpleNamespace(columns=0)
+        )
+        assert printing_module.terminal_width() == printing_module.DEFAULT_LOG_WIDTH
+
+    def test_no_terminal_gets_the_default(self, monkeypatch):
+        def _no_terminal():
+            raise OSError("not a terminal")
+
+        monkeypatch.setattr(printing_module, "get_terminal_size", _no_terminal)
+        assert printing_module.terminal_width() == printing_module.DEFAULT_LOG_WIDTH
+
+    def test_a_terminal_width_is_used(self, monkeypatch):
+        monkeypatch.setattr(
+            printing_module, "get_terminal_size", lambda: SimpleNamespace(columns=97)
+        )
+        assert printing_module.terminal_width() == 97
+
+
+def test_errors_are_highlighted_as_messages_are():
+    # The stderr console resolves the highlighter's styles, as CONSOLE does
+    assert printing_module.CONSOLE_ERR.get_style("pyexamples.date_time") == (
+        printing_module.CONSOLE.get_style("pyexamples.date_time")
+    )
+
+
+# ---------------------------------------------------------------------------
+# print_event()
+# ---------------------------------------------------------------------------
+
+
+class TestPrintEventWithNullFields:
+    """
+    The Platform leaves a summary null until there is something to
+    summarise; an event holding one is printed, not raised on, which would
+    end the stream being followed.
+    """
+
+    @staticmethod
+    def _print(monkeypatch, event: dict, id_type) -> list[str]:
+        import json
+
+        printed: list[str] = []
+        output_settings.configure_output(SimpleNamespace(events_as_json=False))
+        monkeypatch.setattr(
+            event_printing_module, "print_info", lambda msg, **k: printed.append(msg)
+        )
+        event_printing_module.print_event("data:" + json.dumps(event), id_type)
+        return printed
+
+    def test_a_compute_requirement_source_with_no_instance_summary(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "cr",
+                "status": "PROVISIONING",
+                "targetInstanceCount": 2,
+                "expectedInstanceCount": 0,
+                "provisionStrategy": {
+                    "sources": [{"name": "s1", "instanceSummary": None}]
+                },
+            },
+            YDIDType.COMPUTE_REQUIREMENT,
+        )
+        assert "2 TARGET, 0 EXPECTED, 0 ALIVE" in printed[0]
+
+    def test_a_task_group_with_no_task_summary(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "wr",
+                "status": "RUNNING",
+                "taskGroups": [
+                    {"name": "tg", "status": "PENDING", "taskSummary": None}
+                ],
+            },
+            YDIDType.WORK_REQUIREMENT,
+        )
+        assert "Task Group 'tg': 0 Task(s)" in printed[0]
+
+    def test_a_worker_pool_with_no_summaries(self, monkeypatch):
+        from yellowdog_cli.utils.ydid_utils import YDIDType
+
+        printed = self._print(
+            monkeypatch,
+            {
+                "name": "wp",
+                "status": "PENDING",
+                "nodeSummary": None,
+                "workerSummary": None,
+            },
+            YDIDType.WORKER_POOL,
+        )
+        assert printed[0].startswith("Worker Pool 'wp' is PENDING")
+
+
+# ---------------------------------------------------------------------------
+# sorted_objects(), nodes_table(), print_to_file()
+# ---------------------------------------------------------------------------
+
+
+class TestSortedObjects:
+    @staticmethod
+    def _args(monkeypatch, reverse=None):
+        output_settings.configure_output(SimpleNamespace(sort=None, reverse=reverse))
+
+    def test_a_none_name_sorts_first(self, monkeypatch):
+        self._args(monkeypatch)
+        objects = [
+            SimpleNamespace(name="b"),
+            SimpleNamespace(name=None),
+            SimpleNamespace(name="a"),
+        ]
+        assert [o.name for o in tables_module.sorted_objects(objects)] == [
+            None,
+            "a",
+            "b",
+        ]
+
+    def test_reverse_applies(self, monkeypatch):
+        self._args(monkeypatch, reverse=True)
+        objects = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]
+        assert [o.name for o in tables_module.sorted_objects(objects)] == ["b", "a"]
+
+    def test_objects_without_names_sort_by_namespace(self, monkeypatch):
+        self._args(monkeypatch)
+        objects = [SimpleNamespace(namespace="y"), SimpleNamespace(namespace=None)]
+        assert [o.namespace for o in tables_module.sorted_objects(objects)] == [
+            None,
+            "y",
+        ]
+
+
+def test_a_node_without_details_is_still_listed():
+    node = SimpleNamespace(details=None, workers=[], status="RUNNING", id="ydid:node:x")
+    _, rows = tables_module.nodes_table([node])
+    assert rows == [[1, None, None, None, None, "", None, 0, "RUNNING", "ydid:node:x"]]
+
+
+def test_an_output_file_that_cannot_be_written_keeps_its_cause(tmp_path):
+    import pytest
+
+    with pytest.raises(RuntimeError) as raised:
+        printing_module.print_to_file("{}", str(tmp_path / "missing" / "out.json"))
+    assert isinstance(raised.value.__cause__, OSError)
+
+
+class TestStatesAreWholeWords:
+    """
+    A state is highlighted as a whole word only: not 'NEW' inside a quoted
+    name, 'READY' inside 'ALREADY' or 'TERMINATED' inside 'UNTERMINATED'.
+    """
+
+    @staticmethod
+    def _styled(text: str) -> list[str]:
+        from rich.text import Text
+
+        rendered = Text(text)
+        printing_module.PrintLogHighlighter().highlight(rendered)
+        return [text[span.start : span.end] for span in rendered.spans]
+
+    def test_states_inside_words_are_left_alone(self):
+        styled = self._styled("'MY_NEW_TASKS' ALREADY UNTERMINATED")
+        assert "NEW" not in styled
+        assert "READY" not in styled
+        assert "TERMINATED" not in styled
+
+    def test_states_as_words_are_highlighted(self):
+        styled = self._styled("Task is RUNNING, pool STOPPED, node NON-MATCHING")
+        assert {"RUNNING", "STOPPED", "NON-MATCHING"} <= set(styled)
+
+
+def test_the_consoles_came_up_without_colour():
+    """
+    The test session builds printing.py's consoles before pytest captures
+    output (conftest.py's pytest_configure()), with stdout redirected, so that
+    in a terminal they are created as for captured output: created on the
+    terminal, they coloured everything, and every test reading what was
+    printed found escape codes in it. Only a run in a terminal can fail this.
+    """
+    for console in (
+        printing_module.CONSOLE,
+        printing_module.CONSOLE_ERR,
+        printing_module.CONSOLE_TABLE,
+        printing_module.CONSOLE_JSON,
+    ):
+        assert console.color_system is None, console

@@ -3,14 +3,16 @@ Shared reporting for the '--dry-run' mode of yd-cancel / yd-shutdown /
 yd-terminate: list the entities an action would affect, without acting.
 """
 
-from yellowdog_client import PlatformClient
+from __future__ import annotations
 
-from yellowdog_cli.utils.printing import (
-    print_dry_run,
-    print_info,
-    print_numbered_object_list,
-)
+from typing import TYPE_CHECKING
+
+from yellowdog_cli.utils.printing import print_dry_run, print_info
 from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.tables import print_numbered_object_list
+
+if TYPE_CHECKING:
+    from yellowdog_client import PlatformClient
 
 
 def report_dry_run(

@@ -42,7 +42,9 @@ MODAL_WATCHDOG_MS = 5000
 
 
 class DialogHung(AssertionError):
-    """A dialog's exec() had to be broken open by the watchdog."""
+    """
+    A dialog's exec() had to be broken open by the watchdog.
+    """
 
 
 # Dialogs armed with arm_modal() are recorded here, because the code under test —
@@ -54,7 +56,9 @@ _armed: list[dict] = []
 
 
 def reset() -> None:
-    """Forget any armed dialogs. Called before each test by conftest."""
+    """
+    Forget any armed dialogs. Called before each test by conftest.
+    """
     _armed.clear()
 
 
@@ -233,7 +237,9 @@ def default_button(dialog: QDialog) -> QPushButton | None:
 
 
 def button_labelled(dialog: QDialog, text: str) -> QPushButton:
-    """The dialog's button with this exact label; fails loudly if absent."""
+    """
+    The dialog's button with this exact label; fails loudly if absent.
+    """
     for button in dialog.findChildren(QPushButton):
         if button.text() == text:
             return button

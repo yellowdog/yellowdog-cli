@@ -4,18 +4,9 @@ Load data for resource creation/update/removal requests.
 
 from os.path import abspath, dirname
 from sys import exit
+from typing import Any
 
-from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.printing import print_info, print_warning
-from yellowdog_cli.utils.settings import (
-    NAMESPACE_PREFIX_SEPARATOR,
-    PROP_CREDENTIAL,
-    PROP_DESCRIPTION,
-    PROP_ID,
-    PROP_NAME,
-    PROP_NAMESPACE,
-    PROP_SOURCE,
-    PROP_USERNAME,
+from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -32,18 +23,30 @@ from yellowdog_cli.utils.settings import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
-from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import (
+from yellowdog_cli.utils.file_substitution import (
+    load_json_file_with_variable_substitutions,
+    load_jsonnet_file_with_variable_substitutions,
+    load_toml_file_with_variable_substitutions,
+)
+from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.property_names import (
+    PROP_CREDENTIAL,
+    PROP_DESCRIPTION,
+    PROP_ID,
+    PROP_NAME,
+    PROP_NAMESPACE,
+    PROP_RESOURCE,
+    PROP_SOURCE,
+    PROP_USERNAME,
+)
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
+from yellowdog_cli.utils.specs.schema import Family
+from yellowdog_cli.utils.specs.validation import (
     strip_schema_key,
     validate_all_and_exit,
     warn_of_violations,
 )
-from yellowdog_cli.utils.variables import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-    load_toml_file_with_variable_substitutions,
-    resolve_variables_insitu,
-)
+from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 # Internal key stamped onto each resource dict to record the directory of the
@@ -51,19 +54,47 @@ from yellowdog_cli.utils.ydid_utils import get_ydid_type
 RESOURCE_SOURCE_DIR = "_sourceDir"
 
 
-def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
+# The order resources are created in, so that what one refers to exists
+# first (removal is the reverse): every type yd-create accepts, which
+# tests/test_load_resources.py holds to sdk_models.RESOURCE_TYPES
+RESOURCE_CREATION_ORDER: tuple[str, ...] = (
+    RN_NAMESPACE,
+    RN_KEYRING,
+    RN_CREDENTIAL,
+    RN_IMAGE_FAMILY,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_SOURCE_TEMPLATE,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_ALLOWANCE,
+    RN_NAMESPACE_POLICY,
+    RN_CONFIGURED_POOL,
+    RN_GROUP,
+    RN_APPLICATION,
+    RN_INTERNAL_USER,
+    RN_EXTERNAL_USER,
+)
+
+
+def load_resource_specifications(
+    args: Any, creation_or_update: bool = True
+) -> list[dict]:
     """
     Load and return a list of resource specifications assembled from the
-    resources described in a set of resource description files.
+    resources described in a set of resource description files: those the
+    command line 'args' names, with its '--jsonnet-dry-run', '--validate'
+    and '--no-resequence'.
     """
     resources = []
     to_validate: list[tuple[object, str]] = []  # Under '--validate'
-    for resource_spec in ARGS_PARSER.resource_specifications:
+    for resource_spec in args.resource_specifications:
         if resource_spec.lower().endswith(".jsonnet"):
             resources_loaded = load_jsonnet_file_with_variable_substitutions(
-                resource_spec, exit_on_dry_run=False
+                resource_spec,
+                exit_on_dry_run=False,
+                dry_run=bool(args.jsonnet_dry_run),
             )
-        elif ARGS_PARSER.jsonnet_dry_run:
+        elif args.jsonnet_dry_run:
             print_warning(
                 f"['{resource_spec}'] Option '--jsonnet-dry-run' can only be applied"
                 f" to files ending in '.jsonnet'"
@@ -86,6 +117,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         document = resources_loaded
         if isinstance(resources_loaded, dict):
             resources_loaded = [resources_loaded]
+        _check_specifications(resources_loaded, resource_spec)
 
         spec_dir = dirname(abspath(resource_spec))
 
@@ -98,7 +130,7 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         # yd-create accepts, and yd-remove reads no more than the names
         if creation_or_update:
             strip_schema_key(resources_loaded)
-            if ARGS_PARSER.validate:
+            if args.validate:
                 to_validate.append((document, resource_spec))
                 continue
             warn_of_violations(Family.RESOURCES, document, resource_spec)
@@ -112,62 +144,77 @@ def load_resource_specifications(creation_or_update: bool = True) -> list[dict]:
         )
         resources += resources_loaded
 
-    if creation_or_update and ARGS_PARSER.validate:
+    if creation_or_update and args.validate:
         validate_all_and_exit(Family.RESOURCES, to_validate)
 
-    if ARGS_PARSER.jsonnet_dry_run:
+    if args.jsonnet_dry_run:
         exit(0)
 
-    if len(ARGS_PARSER.resource_specifications) > 1:
+    if len(args.resource_specifications) > 1:
         print_info(f"Including {len(resources)} resources in total")
 
-    return _resequence_resources(resources, creation_or_update=creation_or_update)
+    return _resequence_resources(
+        resources,
+        creation_or_update=creation_or_update,
+        resequence=not args.no_resequence,
+    )
+
+
+_JSON_TYPE_NAMES = {
+    str: "a string",
+    int: "a number",
+    float: "a number",
+    bool: "a boolean",
+    list: "a list",
+    type(None): "null",
+}
+
+
+def _check_specifications(resources: object, resource_spec: str) -> None:
+    """
+    Refuse a file that is not a resource specification object or a list of
+    them, naming the file and the item, before anything indexes into it.
+    """
+    if not isinstance(resources, list):
+        raise ValueError(
+            f"'{resource_spec}' holds"
+            f" {_JSON_TYPE_NAMES.get(type(resources), type(resources).__name__)},"
+            " not a resource specification or a list of them"
+        )
+    for position, resource in enumerate(resources, start=1):
+        if not isinstance(resource, dict):
+            raise ValueError(
+                f"Item {position} in '{resource_spec}' is"
+                f" {_JSON_TYPE_NAMES.get(type(resource), type(resource).__name__)},"
+                " not a resource specification"
+            )
 
 
 def _resequence_resources(
-    resources: list[dict], creation_or_update: bool = True
+    resources: list[dict], creation_or_update: bool = True, resequence: bool = True
 ) -> list[dict]:
     """
     Re-sequence resources so that possible dependencies are evaluated in the
     correct order. If 'creation_or_update' is True this is a creation/update
     action, otherwise it's a removal action -- the sequencing differs for each.
+    Without 'resequence' ('--no-resequence'), they are left as they are.
     """
 
-    if ARGS_PARSER.no_resequence:
+    if not resequence:
         print_info("Not re-sequencing the resource list")
         return resources
 
     if len(resources) == 1:
         return resources
 
-    resource_creation_order = [
-        RN_NAMESPACE,
-        RN_KEYRING,
-        RN_CREDENTIAL,
-        RN_IMAGE_FAMILY,
-        RN_STRING_ATTRIBUTE_DEFINITION,
-        RN_NUMERIC_ATTRIBUTE_DEFINITION,
-        RN_SOURCE_TEMPLATE,
-        RN_REQUIREMENT_TEMPLATE,
-        RN_ALLOWANCE,
-        RN_NAMESPACE_POLICY,
-        RN_CONFIGURED_POOL,
-        RN_GROUP,
-        RN_APPLICATION,
-        RN_INTERNAL_USER,
-        RN_EXTERNAL_USER,
-    ]
-
-    for r in resources:
-        if "resource" not in r:
-            raise KeyError(
-                "Property 'resource' is not specified for one or more resource specifications"
-            )
-
-    # Don't fail the whole batch for unknown resource types here: they're
-    # reported (and counted as failures) during per-resource processing
+    # Don't fail the whole batch for a missing or unknown resource type here:
+    # each is reported (and counted as a failure) during per-resource
+    # processing, sequenced last (first on removal)
     unknown_types = {
-        r["resource"] for r in resources if r["resource"] not in resource_creation_order
+        str(r[PROP_RESOURCE])
+        for r in resources
+        if r.get(PROP_RESOURCE) is not None
+        and r[PROP_RESOURCE] not in RESOURCE_CREATION_ORDER
     }
     if unknown_types:
         print_warning(
@@ -177,9 +224,10 @@ def _resequence_resources(
 
     def _sequence(resource: dict) -> int:
         try:
-            return resource_creation_order.index(resource["resource"])
+            return RESOURCE_CREATION_ORDER.index(str(resource.get(PROP_RESOURCE)))
         except ValueError:
-            return len(resource_creation_order)  # Unknown types sequence last
+            # Unknown or missing types sequence last
+            return len(RESOURCE_CREATION_ORDER)
 
     resources.sort(key=_sequence, reverse=not creation_or_update)
 

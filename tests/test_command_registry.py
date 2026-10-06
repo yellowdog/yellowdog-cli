@@ -175,15 +175,16 @@ class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
         assert set(COMMANDS) == _entry_points() - {"yd-commander", "yd-mcp"}
 
-    def test_rm_is_an_alias_of_delete(self):
-        assert COMMANDS["yd-rm"] is COMMANDS["yd-delete"]
+    def test_every_command_is_registered_under_its_own_name(self):
+        # No aliases: one name per command
+        for name, cmd in COMMANDS.items():
+            assert cmd.name == name
 
     def test_kinds(self):
         data_client = {
             "yd-upload",
             "yd-download",
             "yd-delete",
-            "yd-rm",
             "yd-ls",
             "yd-copy",
         }
@@ -211,20 +212,19 @@ class TestRegistryMatchesEntryPoints:
 
 
 class TestHelpCommand:
+    @pytest.fixture(autouse=True)
+    def _no_extras_installed(self, monkeypatch):
+        # Whatever this machine has installed: each test that needs an
+        # extra installed says so
+        monkeypatch.setattr(help_module, "extra_installed", lambda extra: False)
+
     def test_lists_every_command_once_with_its_summary(self, capsys):
         help_module.main()
         out = capsys.readouterr().out
-        # COMMANDS.items() includes the "yd-rm" alias key, whose Command is
-        # yd-delete's own (same object, same .name); format on cmd.name, not
-        # the dict key, or the alias entry looks for a "yd-rm" line that was
-        # never printed.
-        for _, cmd in COMMANDS.items():
-            assert f"{cmd.name:<{help_module.column_width()}}  {cmd.summary}" in out
-        # yd-rm has a line of its own saying it is a synonym, and yd-delete's
-        # summary names it back; the yd-delete line itself appears once
         width = help_module.column_width()
-        assert f"{'yd-rm':<{width}}  A synonym for yd-delete" in out
-        assert out.count(f"{'yd-delete':<{width}}  ") == 1
+        for name, cmd in COMMANDS.items():
+            assert f"{name:<{width}}  {cmd.summary}" in out
+            assert out.count(f"{name:<{width}}  ") == 1
 
     def test_the_entry_points_outside_the_registry_are_listed(self, capsys):
         # yd-commander and yd-mcp take none of the CLI's options and so have
@@ -260,13 +260,10 @@ class TestHelpCommand:
             and "needs the mcp extra" in mcp.plain[s.start : s.end]
             for s in mcp.spans
         )
-        # yd-rm's own summary is prose, not a note, so it is not dimmed
-        rm = lines["yd-rm"]
-        assert not any(s.style == help_module.NOTE_STYLE for s in rm.spans)
 
     def test_a_parenthesis_inside_a_summary_is_not_a_note(self):
-        # 'Hold (pause) running Work Requirements': only a trailing extra or
-        # synonym note is dimmed, never a parenthesis in the summary's prose
+        # 'Hold (pause) running Work Requirements': only a trailing extra
+        # note is dimmed, never a parenthesis in the summary's prose
         lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
         for name in ("yd-hold", "yd-start"):
             line = lines[name]
@@ -301,6 +298,53 @@ class TestHelpCommand:
         listed = {row["command"] for row in json.loads(capsys.readouterr().out)}
         assert {"yd-commander", "yd-mcp"} <= listed
 
+    def test_the_json_states_extras_as_fields(self, monkeypatch):
+        monkeypatch.setattr(
+            help_module, "extra_installed", lambda extra: extra == "commander"
+        )
+        records = {r["command"]: r for r in help_module.entries()}
+        assert records["yd-commander"]["extra"] == "commander"
+        assert records["yd-commander"]["installed"] is True
+        assert records["yd-mcp"]["installed"] is False
+        # The summary itself is unchanged, and a plain command has neither
+        assert records["yd-commander"]["summary"].endswith(
+            "(needs the commander extra)"
+        )
+        assert set(records["yd-cancel"]) == {"command", "summary"}
+
+    def test_an_installed_extra_says_so(self, monkeypatch):
+        monkeypatch.setattr(
+            help_module, "extra_installed", lambda extra: extra == "mcp"
+        )
+        lines = {t.plain.split()[0]: t for t in help_module.styled_lines()}
+        assert lines["yd-mcp"].plain.endswith("(mcp extra installed)")
+        assert lines["yd-commander"].plain.endswith("(needs the commander extra)")
+        dimmed = [
+            lines["yd-mcp"].plain[s.start : s.end]
+            for s in lines["yd-mcp"].spans
+            if s.style == help_module.NOTE_STYLE
+        ]
+        assert dimmed == [" (mcp extra installed)"]
+
+    def test_every_extra_named_has_a_probe(self):
+        named = {r["extra"] for r in help_module.entries() if "extra" in r}
+        # jsonnet is an extra no command needs, so its probe is the doctor's
+        assert named <= set(help_module.EXTRA_PROBES)
+
+    def test_every_probed_extra_is_one_pyproject_offers(self):
+        with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+            extras = set(tomllib.load(f)["project"]["optional-dependencies"])
+        assert set(help_module.EXTRA_PROBES) <= extras
+
+    def test_the_listing_ends_with_where_to_go_next(self, capsys, monkeypatch):
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["yd-help", "--no-format"])
+        help_module.main()
+        out = capsys.readouterr().out.strip()
+        assert out.splitlines()[-1].startswith("Run 'yd-<command> --help'")
+        assert "README.md" in out.splitlines()[-1]
+
 
 class TestToolKinds:
     def test_every_command_states_its_kind(self):
@@ -330,11 +374,7 @@ class TestToolKinds:
         }
 
     def test_the_destructive_commands(self):
-        assert {
-            n
-            for n, c in COMMANDS.items()
-            if c.tool is ToolKind.DESTRUCTIVE and n != "yd-rm"
-        } == {
+        assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.DESTRUCTIVE} == {
             "yd-cancel",
             "yd-abort",
             "yd-shutdown",
@@ -391,3 +431,62 @@ class TestExcludedOptions:
             "--show-keyring-passwords",
             "--show-secrets",
         } <= MCP_EXCLUDED_OPTIONS
+
+
+class TestCompareIds:
+    WR = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
+    TG = "ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+    WP = "ydid:wrkrpool:000000:11111111-1111-1111-1111-111111111111"
+
+    def _check(self, wr_or_tg_id: str, *worker_pool_ids: str) -> None:
+        from argparse import Namespace
+
+        from yellowdog_cli.utils.command_registry import check_compare_ids
+
+        check_compare_ids(
+            Namespace(wr_or_tg_id=wr_or_tg_id, worker_pool_ids=list(worker_pool_ids)),
+            build_parser(COMMANDS["yd-compare"], prog="yd-compare"),
+        )
+
+    def test_a_work_requirement_or_task_group_and_pools_pass(self):
+        self._check(self.WR, self.WP)
+        self._check(self.TG, self.WP, self.WP)
+
+    @pytest.mark.parametrize(
+        "ids",
+        [("nonsense", WP), (WP, WP), (WR, WR), (TG, WP, "ydid:wrkrpool:bad")],
+    )
+    def test_anything_else_is_a_usage_error(self, ids, capsys):
+        with pytest.raises(SystemExit) as raised:
+            self._check(*ids)
+        assert raised.value.code == 2
+        assert "not a YellowDog" in capsys.readouterr().err
+
+
+class TestArgsProperties:
+    def test_every_property_reads_an_option_some_command_registers(self):
+        # A property reading a destination no option has would return None
+        # under @allow_missing_attribute, silently disabling its option
+        import inspect
+        import re
+
+        from yellowdog_cli.utils import args as args_module
+
+        destinations = {
+            action.dest
+            for name, command in [*COMMANDS.items(), ("x", None)]
+            for action in build_parser(command, prog=name)._actions
+        }
+        read = set(re.findall(r"self\.args\.(\w+)", inspect.getsource(args_module)))
+        assert read and read <= destinations, sorted(read - destinations)
+
+    @pytest.mark.parametrize("command", ["yd-delete", "yd-wait", "yd-copy"])
+    def test_docs_is_answered_before_anything_is_checked(self, command, capsys):
+        # A required argument missing, or a validator's refusal, used to stand
+        # in the way of '--docs'
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command=command, argv=["--docs"])
+        assert raised.value.code == 0
+        assert "Online documentation" in capsys.readouterr().out

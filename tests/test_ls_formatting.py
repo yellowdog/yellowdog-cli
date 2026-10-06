@@ -6,7 +6,16 @@ functions in yd-ls.
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import yellowdog_cli.utils.dataclient.wrapper as dataclient_wrapper_module
 from yellowdog_cli.ls import _find_base_prefix, _print_listing
+from yellowdog_cli.utils.context import DataClientContext
+
+
+def _dc_ctx() -> DataClientContext:
+    """
+    The context a data client command is given: the wrapper ARGS_PARSER, as patched.
+    """
+    return DataClientContext(dataclient_wrapper_module.ARGS_PARSER)
 
 
 def _listing(dirs=(), files=()):
@@ -29,13 +38,15 @@ def _file(
 
 
 def _printed_lines(listing, recursive: bool = False, long: bool = False) -> list[str]:
-    """Return every string passed as the first positional arg to print_simple."""
+    """
+    Return every string passed as the first positional arg to print_simple.
+    """
     with (
         patch("yellowdog_cli.ls.print_simple") as mock,
-        patch("yellowdog_cli.ls.ARGS_PARSER") as mock_args,
+        patch("yellowdog_cli.utils.dataclient.wrapper.ARGS_PARSER") as mock_args,
     ):
         mock_args.long_listing = long
-        _print_listing(listing, recursive=recursive)
+        _print_listing(_dc_ctx(), listing, recursive=recursive)
     return [c.args[0] for c in mock.call_args_list]
 
 
@@ -78,7 +89,7 @@ class TestFindBasePrefix:
 class TestPrintListingEmpty:
     def test_empty_listing_prints_empty_marker(self):
         with patch("yellowdog_cli.ls.print_simple") as mock:
-            _print_listing(_listing())
+            _print_listing(_dc_ctx(), _listing())
         mock.assert_called_once_with("  (empty)")
 
 
@@ -167,7 +178,7 @@ class TestPrintListingFlatMixed:
     def test_override_quiet_set_on_all_lines(self):
         listing = _listing(files=[_file("f.txt", size=1)])
         with patch("yellowdog_cli.ls.print_simple") as mock:
-            _print_listing(listing)
+            _print_listing(_dc_ctx(), listing)
         for c in mock.call_args_list:
             assert c.kwargs.get("override_quiet") is True
 

@@ -14,10 +14,9 @@ from pathlib import Path
 import fastjsonschema
 import pytest
 
-from yellowdog_cli.utils import load_config
+from yellowdog_cli.utils import load_config, output_settings
 from yellowdog_cli.utils import property_names as pn
-from yellowdog_cli.utils.settings import VARIABLE_NAME_PATTERN
-from yellowdog_cli.utils.spec_properties import (
+from yellowdog_cli.utils.specs.properties import (
     ALL_CONFIG_SECTIONS,
     CONFIG_COMMON,
     CONFIG_SECTIONS,
@@ -25,13 +24,14 @@ from yellowdog_cli.utils.spec_properties import (
     Level,
     properties_at,
 )
+from yellowdog_cli.utils.variable_syntax import VARIABLE_NAME_PATTERN
 
 try:
     import tomllib
 except ImportError:  # Python 3.10
     import tomli as tomllib
 
-from yellowdog_cli.utils.spec_schema import (
+from yellowdog_cli.utils.specs.schema import (
     Family,
     SchemaGenerationError,
     build_config_schema,
@@ -39,13 +39,15 @@ from yellowdog_cli.utils.spec_schema import (
     compile_config_schema,
     compile_schema,
 )
-from yellowdog_cli.utils.spec_validation import Violation, validate_config
+from yellowdog_cli.utils.specs.validation import Violation, validate_config
 
 TEMPLATE = Path(__file__).parent.parent / "config-template.toml"
 
 
 def _template_keys() -> dict[str, set[str]]:
-    """Each section's keys in the template, commented-out examples included."""
+    """
+    Each section's keys in the template, commented-out examples included.
+    """
     keys: dict[str, set[str]] = {}
     section = None
     for line in TEMPLATE.read_text().splitlines():
@@ -212,7 +214,7 @@ class TestValidateConfig:
 
     def test_a_wrong_type_is_named_with_its_path(self):
         assert _check({"workerPool": {"maxNodes": "ten"}}) == [
-            Violation("workerPool.maxNodes", "must be integer")
+            Violation("workerPool.maxNodes", "must be an integer")
         ]
 
     def test_a_misplaced_key_says_so(self):
@@ -243,7 +245,7 @@ class TestValidateConfig:
         assert set(violations) == {
             Violation("common", "'minNodes' is not read in this section"),
             Violation("common.usePAC", "must be boolean"),
-            Violation("workerPool.maxNodes", "must be integer"),
+            Violation("workerPool.maxNodes", "must be an integer"),
         }
 
     def test_unresolved_variables_pass(self):
@@ -268,7 +270,7 @@ class TestValidateConfig:
         ]
 
     def test_only_the_sections_the_file_has_are_compiled(self, monkeypatch):
-        from yellowdog_cli.utils import spec_validation
+        from yellowdog_cli.utils.specs import validation as spec_validation
 
         compiled = []
 
@@ -330,7 +332,7 @@ class TestWarnOfConfigViolations:
         assert warnings == [
             "'config.toml': workRequirement: 'minNodes' is not read in this"
             " section (see yd-schema config)",
-            "'config.toml': workerPool.maxNodes: must be integer"
+            "'config.toml': workerPool.maxNodes: must be an integer"
             " (see yd-schema config)",
         ]
 
@@ -341,7 +343,6 @@ class TestWarnOfConfigViolations:
 
     @pytest.mark.parametrize("debug", [False, True])
     def test_quiet_skips_the_check_unless_debugging(self, monkeypatch, warnings, debug):
-        from types import SimpleNamespace
 
         checked = []
         monkeypatch.setattr(
@@ -351,7 +352,7 @@ class TestWarnOfConfigViolations:
         )
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
         monkeypatch.setattr(load_config, "warnings_suppressed", lambda: True)
-        monkeypatch.setattr(load_config, "ARGS_PARSER", SimpleNamespace(debug=debug))
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", debug)
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert bool(checked) is debug
         assert warnings == []
@@ -393,7 +394,7 @@ class TestAtCommandStart:
             ["yd-variables", "--nf", "namespace"], GOOD_COMMON + BAD_POOL, tmp_path
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "workerPool.maxNodes: must be integer" in result.stdout
+        assert "workerPool.maxNodes: must be an integer" in result.stdout
 
     def test_quiet_suppresses_the_warnings_and_the_json_parses(self, tmp_path):
         result = _run(
@@ -563,7 +564,7 @@ class TestDeferredMinors:
 
         monkeypatch.setattr(load_config, "validate_config", fail)
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
-        monkeypatch.setattr(load_config.ARGS_PARSER.args, "debug", False, raising=False)
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", False)
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert len(warnings) == 1
         assert "cannot check 'config.toml'" in warnings[0]
@@ -575,7 +576,7 @@ class TestDeferredMinors:
 
         monkeypatch.setattr(load_config, "validate_config", fail)
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
-        monkeypatch.setattr(load_config.ARGS_PARSER.args, "debug", True, raising=False)
+        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
         with pytest.raises(RuntimeError):
             load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
 

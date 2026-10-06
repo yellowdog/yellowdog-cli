@@ -51,5 +51,11 @@ R = "tests/resource-examples"
 def test_create_remove(create_args, remove_args):
     suffix = uuid.uuid4().hex[:8]
     env = f"YD_VAR_SUFFIX={suffix}"
-    assert shell(f"{env} yd-create {create_args}").exit_code == 0
-    assert shell(f"{env} yd-remove {remove_args}").exit_code == 0
+    created = shell(f"{env} yd-create {create_args}")
+    # Removed whether or not creation succeeded: yd-create carries on past a
+    # failed specification, so a creation that failed in part has still left
+    # the rest in the account (left there by every such run while this asserted
+    # first)
+    removed = shell(f"{env} yd-remove {remove_args}")
+    assert created.exit_code == 0, created.stdout + created.stderr
+    assert removed.exit_code == 0, removed.stdout + removed.stderr

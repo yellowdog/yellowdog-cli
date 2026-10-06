@@ -1,9 +1,15 @@
-"""Tests for yd-list --name glob filtering."""
+"""
+Tests for yd-list --name glob filtering.
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from yellowdog_cli.utils.settings import (
+import pytest
+
+import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.entity_names import (
     ET_APPLICATIONS,
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
@@ -11,13 +17,21 @@ from yellowdog_cli.utils.settings import (
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_KEYRINGS,
-    ET_NODES,
     ET_PERMISSIONS,
     ET_ROLES,
     ET_USERS,
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
 )
+
+
+def _ctx() -> RunContext:
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
 
 
 def _summary(name, id_, *, namespace=None, status=None):
@@ -59,22 +73,24 @@ def test_name_glob_filters_work_requirements():
         return fetched
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
-        patch.object(yd_list, "ARGS_PARSER", _args()),
+        patch.object(wrapper_module, "ARGS_PARSER", _args()),
         patch.object(
             yd_list, "get_filtered_work_requirement_summaries", side_effect=fake_fetch
         ),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o) as mock_sorted,
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_work_requirements()
+        yd_list.list_work_requirements(_ctx())
 
     # fetched by name prefix, not tag
     assert captured.get("name") == "proj-"
@@ -103,19 +119,19 @@ def test_empty_name_glob_keeps_namespace_filter_for_worker_pools():
     fetched = [_wp_summary("myns", "a"), _wp_summary("othernamespace", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="myns", name_tag="tag")
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="myns", name_tag="tag")
         ),
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="")),
+        patch.object(wrapper_module, "ARGS_PARSER", _args(name_glob="")),
         patch.object(yd_list, "get_worker_pool_summaries", return_value=fetched),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o) as mock_sorted,
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_worker_pools()
+        yd_list.list_worker_pools(_ctx())
 
     # Only the summary in the exact/matching namespace survives.
     assert [s.id for s in mock_sorted.call_args.args[0]] == ["a"]
@@ -130,12 +146,14 @@ def test_name_glob_filters_worker_pools():
     ]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_WORKER_POOLS, name_glob="wp-*"),
         ),
@@ -143,13 +161,13 @@ def test_name_glob_filters_worker_pools():
             yd_list, "get_worker_pool_summaries", return_value=fetched
         ) as mock_fetch,
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o) as mock_sorted,
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_worker_pools()
+        yd_list.list_worker_pools(_ctx())
 
     # fetched by name prefix (positional), not by CONFIG_COMMON.name_tag
     assert mock_fetch.call_args.args[2] == "wp-"
@@ -173,22 +191,22 @@ def test_name_glob_reports_pattern_not_tag_for_work_requirements():
     fetched = [_summary("proj-1", "a"), _summary("other", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
         ),
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="proj-*")),
+        patch.object(wrapper_module, "ARGS_PARSER", _args(name_glob="proj-*")),
         patch.object(
             yd_list, "get_filtered_work_requirement_summaries", return_value=fetched
         ),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info") as mock_print_info,
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_work_requirements()
+        yd_list.list_work_requirements(_ctx())
 
     texts = _info_texts(mock_print_info)
     assert any("matching name pattern 'proj-*'" in t for t in texts)
@@ -205,24 +223,24 @@ def test_name_glob_reports_pattern_not_tag_for_worker_pools():
     fetched = [_wp_summary("default", "a")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_WORKER_POOLS, name_glob="wp-*"),
         ),
         patch.object(yd_list, "get_worker_pool_summaries", return_value=fetched),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info") as mock_print_info,
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_worker_pools()
+        yd_list.list_worker_pools(_ctx())
 
     texts = _info_texts(mock_print_info)
     assert any("matching name pattern 'wp-*'" in t for t in texts)
@@ -241,12 +259,12 @@ def test_name_glob_reports_pattern_not_tag_for_compute_requirements():
     fetched = [_summary("cr-1", "a")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="")
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_COMPUTE_REQUIREMENTS, name_glob="cr-*"),
         ),
@@ -254,13 +272,13 @@ def test_name_glob_reports_pattern_not_tag_for_compute_requirements():
             yd_list, "get_compute_requirement_summaries", return_value=fetched
         ),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info") as mock_print_info,
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_compute_requirements()
+        yd_list.list_compute_requirements(_ctx())
 
     texts = _info_texts(mock_print_info)
     assert any("matching name pattern 'cr-*'" in t for t in texts)
@@ -273,12 +291,14 @@ def test_name_glob_filters_compute_requirements():
     fetched = [_summary("cr-1", "a"), _summary("other", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_COMPUTE_REQUIREMENTS, name_glob="cr-*"),
         ),
@@ -286,13 +306,13 @@ def test_name_glob_filters_compute_requirements():
             yd_list, "get_compute_requirement_summaries", return_value=fetched
         ) as mock_fetch,
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o) as mock_sorted,
-        patch.object(yd_list, "_apply_status_filter", side_effect=lambda o: o),
+        patch.object(yd_list, "_apply_status_filter", side_effect=lambda _ctx, o: o),
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
         patch.object(yd_list, "select", side_effect=lambda client, o: o),
         patch.object(yd_list, "print_numbered_object_list"),
     ):
-        yd_list.list_compute_requirements()
+        yd_list.list_compute_requirements(_ctx())
 
     # fetched by tag=None (positional) and name prefix (kwarg), not by tag
     assert mock_fetch.call_args.args[2] is None
@@ -319,12 +339,14 @@ def test_name_glob_filters_compute_requirement_templates(capsys):
         return fetched
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(
                 entity_type=ET_COMPUTE_REQUIREMENT_TEMPLATES,
@@ -338,7 +360,7 @@ def test_name_glob_filters_compute_requirement_templates(capsys):
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
     ):
-        yd_list.list_compute_requirement_templates()
+        yd_list.list_compute_requirement_templates(_ctx())
 
     # fetched by name prefix (positional), not by CONFIG_COMMON.name_tag
     assert captured.get("name") == "crt-"
@@ -359,12 +381,14 @@ def test_name_glob_filters_compute_source_templates(capsys):
         return fetched
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(
                 entity_type=ET_COMPUTE_SOURCE_TEMPLATES,
@@ -376,7 +400,7 @@ def test_name_glob_filters_compute_source_templates(capsys):
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
     ):
-        yd_list.list_compute_source_templates()
+        yd_list.list_compute_source_templates(_ctx())
 
     # fetched by name prefix (kwarg), not by CONFIG_COMMON.name_tag
     assert captured.get("name") == "cst-"
@@ -393,19 +417,21 @@ def test_name_glob_filters_image_families(capsys):
     client.images_client.get_image_families.return_value.list_all.return_value = fetched
 
     with (
-        patch.object(yd_list, "CLIENT", client),
+        patch.object(wrapper_module, "CLIENT", client),
         patch.object(
-            yd_list, "CONFIG_COMMON", MagicMock(namespace="default", name_tag="tag")
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="tag"),
         ),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_IMAGE_FAMILIES, name_glob="img-*", ids_only=True),
         ),
         patch.object(yd_list, "print_info"),
         patch.object(yd_list, "_print_empty"),
     ):
-        yd_list.list_image_families()
+        yd_list.list_image_families(_ctx())
 
     # fetched by a familyName prefix, not by CONFIG_COMMON.name_tag
     search_arg = client.images_client.get_image_families.call_args.args[0]
@@ -421,16 +447,16 @@ def test_name_glob_filters_users(capsys):
     fetched = [_summary("alice", "a"), _summary("bob", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_USERS, name_glob="al*", count_only=True),
         ),
         patch.object(yd_list, "get_all_users", return_value=fetched),
     ):
-        yd_list.list_users()
+        yd_list.list_users(_ctx())
 
     # only the matching user survives the glob filter
     assert capsys.readouterr().out.strip() == "1"
@@ -442,16 +468,16 @@ def test_name_glob_filters_applications(capsys):
     fetched = [_summary("app-alpha", "a"), _summary("app-beta", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_APPLICATIONS, name_glob="app-alpha", count_only=True),
         ),
         patch.object(yd_list, "get_all_applications", return_value=fetched),
     ):
-        yd_list.list_applications()
+        yd_list.list_applications(_ctx())
 
     # only the exactly-matching application survives the glob filter
     assert capsys.readouterr().out.strip() == "1"
@@ -463,16 +489,16 @@ def test_name_glob_filters_groups(capsys):
     fetched = [_summary("group-1", "a"), _summary("other", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_GROUPS, name_glob="group-*", count_only=True),
         ),
         patch.object(yd_list, "get_all_groups", return_value=fetched),
     ):
-        yd_list.list_groups()
+        yd_list.list_groups(_ctx())
 
     # only the matching group survives the glob filter (count path skips the
     # per-group detail fetch, so CLIENT.account_client.get_group is not hit)
@@ -485,60 +511,42 @@ def test_name_glob_filters_roles(capsys):
     fetched = [_summary("role-1", "a"), _summary("other", "b")]
 
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_ROLES, name_glob="role-*", count_only=True),
         ),
         patch.object(yd_list, "get_all_roles", return_value=fetched),
     ):
-        yd_list.list_roles()
+        yd_list.list_roles(_ctx())
 
     # only the matching role survives the glob filter (count path skips the
     # per-role permission fetch, so CLIENT.account_client.get_role is not hit)
     assert capsys.readouterr().out.strip() == "1"
 
 
-def test_name_glob_rejected_for_unsupported_entity_type():
+def test_name_glob_rejected_for_unsupported_entity_type(capsys):
     """
-    '--name' must be rejected for entity types outside
-    NAME_GLOB_SUPPORTED_ENTITY_TYPES, e.g. 'nodes' (which would otherwise route
-    through the Worker-Pool-supporting list_worker_pools()). The helper returns
-    False and logs the error; main() then stops before dispatching.
+    '--name' is refused, as the command line is parsed, for an entity type
+    that does not support it, e.g. 'nodes' (which would otherwise route
+    through the Worker-Pool-supporting list_worker_pools()).
     """
-    import yellowdog_cli.list as yd_list
+    from yellowdog_cli.utils.args import CLIParser
 
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="x*")),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_NODES) is False
-
-    mock_print_error.assert_called_once()
-    assert "not supported" in mock_print_error.call_args.args[0]
-    assert "nodes" in mock_print_error.call_args.args[0]
+    with pytest.raises(SystemExit) as raised:
+        CLIParser(command="yd-list", argv=["nodes", "--name", "x*"])
+    assert raised.value.code == 2
+    assert "--name does not apply to nodes" in capsys.readouterr().err
 
 
-def test_name_glob_supported_for_supported_type_and_when_unset():
-    import yellowdog_cli.list as yd_list
+def test_name_glob_accepted_for_a_supported_type():
+    from yellowdog_cli.utils.args import CLIParser
 
-    # A supported entity type with a glob is allowed, with no error logged.
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob="x*")),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_USERS) is True
-    mock_print_error.assert_not_called()
-
-    # With no glob, any entity type is allowed.
-    with (
-        patch.object(yd_list, "ARGS_PARSER", _args(name_glob=None)),
-        patch.object(yd_list, "print_error") as mock_print_error,
-    ):
-        assert yd_list._name_glob_supported(ET_NODES) is True
-    mock_print_error.assert_not_called()
+    assert (
+        CLIParser(command="yd-list", argv=["users", "--name", "x*"]).name_glob == "x*"
+    )
 
 
 def test_name_glob_filters_keyrings_and_warns_on_unnamed():
@@ -546,9 +554,11 @@ def test_name_glob_filters_keyrings_and_warns_on_unnamed():
 
     keyrings = [_summary("proj-1", "a"), _summary("other", "b"), _summary(None, "c")]
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()) as mock_client,
+        patch.object(wrapper_module, "CLIENT", MagicMock()) as mock_client,
         patch.object(
-            yd_list, "ARGS_PARSER", _args(entity_type=ET_KEYRINGS, name_glob="proj-*")
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_KEYRINGS, name_glob="proj-*"),
         ),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
         patch.object(yd_list, "print_numbered_object_list") as mock_print,
@@ -557,7 +567,7 @@ def test_name_glob_filters_keyrings_and_warns_on_unnamed():
         mock_client.keyring_client.get_keyrings.return_value.list_all.return_value = (
             keyrings
         )
-        yd_list.list_keyrings()
+        yd_list.list_keyrings(_ctx())
 
     assert [k.id for k in mock_print.call_args.args[1]] == ["a"]
     mock_warning.assert_called_once()
@@ -569,9 +579,9 @@ def test_name_glob_filters_permissions_and_warns_on_unnamed():
 
     perms = [_summary("read-x", "a"), _summary("write-y", "b"), _summary(None, "c")]
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()) as mock_client,
+        patch.object(wrapper_module, "CLIENT", MagicMock()) as mock_client,
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_PERMISSIONS, name_glob="read-*"),
         ),
@@ -579,7 +589,7 @@ def test_name_glob_filters_permissions_and_warns_on_unnamed():
         patch.object(yd_list, "print_warning") as mock_warning,
     ):
         mock_client.account_client.list_permissions.return_value = perms
-        yd_list.list_permissions()
+        yd_list.list_permissions(_ctx())
 
     assert [p.id for p in mock_print.call_args.args[1]] == ["a"]
     mock_warning.assert_called_once()
@@ -590,9 +600,11 @@ def test_name_glob_keyrings_no_warning_when_all_named():
 
     keyrings = [_summary("proj-1", "a"), _summary("proj-2", "b")]
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()) as mock_client,
+        patch.object(wrapper_module, "CLIENT", MagicMock()) as mock_client,
         patch.object(
-            yd_list, "ARGS_PARSER", _args(entity_type=ET_KEYRINGS, name_glob="proj-*")
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_KEYRINGS, name_glob="proj-*"),
         ),
         patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
         patch.object(yd_list, "print_numbered_object_list") as mock_print,
@@ -601,7 +613,7 @@ def test_name_glob_keyrings_no_warning_when_all_named():
         mock_client.keyring_client.get_keyrings.return_value.list_all.return_value = (
             keyrings
         )
-        yd_list.list_keyrings()
+        yd_list.list_keyrings(_ctx())
 
     assert [k.id for k in mock_print.call_args.args[1]] == ["a", "b"]
     mock_warning.assert_not_called()
@@ -612,17 +624,17 @@ def test_name_glob_groups_warns_on_unnamed(capsys):
 
     fetched = [_summary("group-1", "a"), _summary("other", "b"), _summary(None, "c")]
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_GROUPS, name_glob="group-*", count_only=True),
         ),
         patch.object(yd_list, "get_all_groups", return_value=fetched),
         patch.object(yd_list, "print_warning") as mock_warning,
     ):
-        yd_list.list_groups()
+        yd_list.list_groups(_ctx())
 
     assert capsys.readouterr().out.strip() == "1"
     mock_warning.assert_called_once()
@@ -634,17 +646,17 @@ def test_name_glob_roles_warns_on_unnamed(capsys):
 
     fetched = [_summary("role-1", "a"), _summary("other", "b"), _summary(None, "c")]
     with (
-        patch.object(yd_list, "CLIENT", MagicMock()),
-        patch.object(yd_list, "CONFIG_COMMON", MagicMock()),
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(wrapper_module, "CONFIG_COMMON", MagicMock()),
         patch.object(
-            yd_list,
+            wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_ROLES, name_glob="role-*", count_only=True),
         ),
         patch.object(yd_list, "get_all_roles", return_value=fetched),
         patch.object(yd_list, "print_warning") as mock_warning,
     ):
-        yd_list.list_roles()
+        yd_list.list_roles(_ctx())
 
     assert capsys.readouterr().out.strip() == "1"
     mock_warning.assert_called_once()

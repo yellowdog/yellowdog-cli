@@ -22,7 +22,9 @@ from PyQt6.QtWidgets import (
 
 
 def _wired_dialog(connected: bool = True) -> tuple[QDialog, QPushButton]:
-    """A minimal dialog, optionally with the button box left unconnected."""
+    """
+    A minimal dialog, optionally with the button box left unconnected.
+    """
     dialog = QDialog()
     dialog.setWindowTitle("Probe")
     layout = QVBoxLayout(dialog)

@@ -2,57 +2,63 @@
 Decorator to handle standard setup, shutdown and exception handling
 for all commands.
 
-CLIENT is built the first time it is asked for, by the module __getattr__:
-importing the SDK at all builds the whole Platform client (~140ms), and a
-command that never uses it -- yd-variables -- need not pay for it. Every
-other command imports CLIENT by name, so for them it is built at import,
-exactly as before. The User-Agent is applied as it is built, before any
-request can be made, and pypac and 'requests' are imported only when used.
+CONFIG_COMMON and CLIENT are each built on first use (see lazy.py), so
+importing this module, or a command module naming them, reads no
+configuration and builds no client. The wrapper builds CONFIG_COMMON, and
+whatever else the command's module holds lazily, before the command runs
+(command_runner.prepare_run()), so a broken configuration still exits
+before it starts; CLIENT is left to the command's first use of it, since
+importing the SDK at all builds the whole Platform client (~140ms) and a
+command that never uses it -- yd-variables -- need not pay for it. The
+User-Agent is applied as it is built, before any request can be made, and
+pypac and 'requests' are imported only when used.
 """
 
 from __future__ import annotations
 
+import functools
+import inspect
 import os
-from sys import exit
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.command_runner import describe_error, prepare_run, run_command
 from yellowdog_cli.utils.config_types import ConfigCommon
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import (
-    MISSING_PERMISSION_TEXT,
-    UNAUTHORIZED_TEXT,
+    ExitCode,
     classify,
 )
+from yellowdog_cli.utils.lazy import built, lazy
 from yellowdog_cli.utils.load_config import (
+    ensure_config_loaded,
     load_config_common,
-    warn_of_config_violations,
-    warn_of_undefined_config_variables,
 )
-from yellowdog_cli.utils.printing import print_debug, print_error, print_info
-from yellowdog_cli.utils.results import (
-    any_failed,
-    flush_results,
-    flush_results_after_failure,
-)
-from yellowdog_cli.utils.schema_cache import report_problems_to
-from yellowdog_cli.utils.settings import ExitCode
-from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
-from yellowdog_cli.utils.variables import enable_undefined_variable_warnings
+from yellowdog_cli.utils.printing import print_debug
+from yellowdog_cli.utils.specs.properties import ALL_CONFIG_SECTIONS
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
 
-    CLIENT: PlatformClient
 
-CONFIG_COMMON: ConfigCommon = load_config_common()
-# A strict load never returns None for either; the assert narrows the types
-assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
+# Strict, so a missing key or secret exits, for every command that uses the
+# Platform; yd-variables, which never does, runs without them
+def _load_config_common() -> ConfigCommon:
+    """
+    The [common] configuration, loaded under this command line (the first
+    one given is kept: prepare_run() gives it first, as a command runs).
+    """
+    ensure_config_loaded(ARGS_PARSER)
+    return load_config_common(strict=ARGS_PARSER.credentials_required)
+
+
+CONFIG_COMMON: ConfigCommon = lazy(_load_config_common)
 
 
 def _create_client() -> PlatformClient:
     """
-    Build the Platform client, and keep it as this module's CLIENT, so that
-    it is built once and the wrapper closes it.
+    Build the Platform client, as CLIENT's first use does.
     """
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
@@ -63,53 +69,44 @@ def _create_client() -> PlatformClient:
     # direct) before the client is created or any request is made: every
     # command that makes a request imports CLIENT
     set_user_agent()
+    # A strict load, which every command using the client has, never
+    # returns None for either
     assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
     client = PlatformClient.create(
         ServicesSchema(defaultUrl=CONFIG_COMMON.url),
         ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),
     )
-    globals()["CLIENT"] = client
     return client
 
 
-def __getattr__(name: str) -> PlatformClient:
-    if name == "CLIENT":
-        return _create_client()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# Built on the command's first use of it, never by prepare_run()
+CLIENT: PlatformClient = lazy(_create_client, prepare=False)
 
 
 def _close_client() -> None:
-    """Close CLIENT if it was ever built (or a test put one there)."""
+    """
+    Close CLIENT if it was ever built (or a test put one there).
+    """
     client = globals().get("CLIENT")
-    if client is not None:
+    if client is not None and built(client):
         client.close()
-
-
-def dry_run() -> bool:
-    """
-    Is this a dry-run?
-    """
-    dry_run_ = ARGS_PARSER.dry_run or ARGS_PARSER.process_csv_only
-    if dry_run_ is None:
-        return False
-    return dry_run_
 
 
 def set_proxy():
     """
-    Set the HTTPS proxy using autoconfiguration (PAC) if enabled.
+    Set the HTTPS proxy using autoconfiguration (PAC) if enabled: under
+    --dry-run too, since most dry runs call the platform (to list what they
+    would act on, or to resolve a template's name).
     """
-    if dry_run():
-        return
-
     proxy_var = "HTTPS_PROXY"
     if CONFIG_COMMON.use_pac:
         from pypac import pac_context_for_url
 
-        from yellowdog_cli.utils.user_agent import set_user_agent
+        from yellowdog_cli.utils.user_agent import set_default_user_agent
 
-        # The PAC file is fetched with 'requests', as the CLI's own request
-        set_user_agent()
+        # The PAC file is fetched with 'requests', as the CLI's own request;
+        # the baseline only, which imports no SDK (yd-variables uses none)
+        set_default_user_agent()
         print_debug("Using Proxy Auto-Configuration (PAC)")
         with pac_context_for_url(CONFIG_COMMON.url):
             https_proxy = os.getenv(proxy_var, None)
@@ -123,74 +120,47 @@ def set_proxy():
         print_debug(f"Using {proxy_var}={https_proxy}")
 
 
-def main_wrapper(func):
-    def wrapper():
-        # The configuration is loaded, so every variable it defines exists:
-        # one still unsubstituted from here on is one nothing defines
-        enable_undefined_variable_warnings()
-        # Before the first schema is compiled, by the config check below
-        report_problems_to(print_debug)
-        warn_of_undefined_config_variables()
-        warn_of_config_violations(ALL_CONFIG_SECTIONS)
-        if not ARGS_PARSER.debug:
-            exit_code: int = ExitCode.SUCCESS
-            try:
-                set_proxy()
-                func()
-                flush_results()
-                if any_failed():
-                    # The command handled the error itself and recorded it;
-                    # main() raised nothing, but a failed record still fails
-                    # the run
-                    exit_code = ExitCode.FAILURE
-            except Exception as e:
-                if MISSING_PERMISSION_TEXT in str(e):
-                    print_error(
-                        "Your Application does not have the required permissions to"
-                        " perform the requested operation. Please check that the"
-                        " Application belongs to the required group(s), e.g.,"
-                        f" 'administrators', with roles in the required namespace(s): {e}"
-                    )
-                elif UNAUTHORIZED_TEXT in str(e):
-                    print_error(
-                        f"Your Application Key ID and SECRET are not recognised: {e}"
-                    )
-                else:
-                    # Include the exception type when there's no message,
-                    # to avoid printing a blank error
-                    print_error(str(e) or f"{type(e).__name__} (no error message)")
-                # Set before the flush, so a flush that fails cannot turn the
-                # failure into a success; what was done is still reported
-                exit_code = classify(e)
-                flush_results_after_failure()
-            except SystemExit as e:
-                exit_code = e.code if isinstance(e.code, int) else ExitCode.FAILURE
-                flush_results_after_failure()
-            except KeyboardInterrupt:
-                print("\r", end="")  # Overwrite the display of ^C
-                print_info("Keyboard interruption ... exiting")
-                exit_code = ExitCode.INTERRUPTED
-                flush_results_after_failure()
-            finally:
-                _close_client()
-                if exit_code == 0 and not ARGS_PARSER.print_pid:
-                    print_info("Done")
-                exit(exit_code)
-        else:
-            # Exceptions are re-raised unclassified, for their tracebacks;
-            # what was recorded is still printed, however the command ends
-            try:
-                set_proxy()
-                try:
-                    func()
-                finally:
-                    flush_results()
-                if any_failed():
-                    exit(ExitCode.FAILURE)
-                if not ARGS_PARSER.print_pid:
-                    print_info("Done")
-                exit(ExitCode.SUCCESS)
-            finally:
-                _close_client()
+def _describe(error: Exception) -> str:
+    """
+    An error as an API command reports it: a permission or credential
+    failure in words saying what to check, chosen by classify(), which
+    decides the exit code too, so the message and the code agree.
+    """
+    code = classify(error)
+    if code == ExitCode.PERMISSION:
+        return (
+            "Your Application does not have the required permissions to"
+            " perform the requested operation. Please check that the"
+            " Application belongs to the required group(s), e.g.,"
+            f" 'administrators', with roles in the required namespace(s): {error}"
+        )
+    if code == ExitCode.AUTHENTICATION:
+        return f"Your Application Key ID and SECRET are not recognised: {error}"
+    return describe_error(error)
+
+
+def main_wrapper(func: Callable[..., Any]) -> Callable[[], None]:
+    """
+    Run a command's main(), passing it a RunContext if it takes one
+    (main(ctx)); see context.py.
+    """
+    takes_context = len(inspect.signature(func).parameters) == 1
+
+    def wrapper() -> None:
+        # ARGS_PARSER, CONFIG_COMMON, CLIENT and set_proxy are looked up as
+        # the command runs, so that a test's patch of any is the one used
+        prepare_run(func, ARGS_PARSER, CONFIG_COMMON)
+        run_command(
+            (
+                functools.partial(func, RunContext(ARGS_PARSER, CONFIG_COMMON, CLIENT))
+                if takes_context
+                else func
+            ),
+            args=ARGS_PARSER,
+            config_sections=ALL_CONFIG_SECTIONS,
+            before=set_proxy,
+            after=_close_client,
+            describe=_describe,
+        )
 
     return wrapper

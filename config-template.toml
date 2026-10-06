@@ -268,7 +268,7 @@
     # Batch submission
     # --------------------------------------------------------------------------
 
-    # Number of tasks submitted per API call.
+    # Number of tasks submitted per API call, from 1 to 10,000.
     # Optional — default: 1000
     # taskBatchSize = 1000
 
@@ -336,7 +336,8 @@
 # connection string: 'NAME,type=s3,provider=AWS,env_auth=true,...'
 #
 # For non-S3 targets the 'bucket' property serves as the top-level container
-# (Azure Blob container, GCS bucket, local root path, etc.).
+# (Azure Blob container, GCS bucket, local root path, etc.). A local or
+# SFTP root path beginning with '/' is absolute, and kept so.
 #
 # Can be set via YD_DATA_CLIENT_REMOTE / YD_DATA_CLIENT_BUCKET /
 # YD_DATA_CLIENT_PREFIX or with --remote / --bucket / --prefix flags.
@@ -499,10 +500,12 @@
     # multiple Compute Requirements. 'computeRequirementBatchSize' sets the
     # maximum number of instances per batch and defaults to the platform
     # maximum (10,000). Reduce it to submit smaller batches. Values above
-    # 10,000 are clamped to 10,000.
+    # 10,000 are clamped to 10,000; a value below 1 is an error.
     # Optional — default: 10000
     # computeRequirementBatchSize = 10000
 
-    # Keep pool at targetInstanceCount rather than allowing scale-to-zero.
-    # Optional — applies to yd-instantiate only; default: false
+    # Replace instances to keep the target number RUNNING: the Compute Service
+    # provisions new ones when fewer than targetInstanceCount are running.
+    # Optional — applies to yd-instantiate only (a Worker Pool's is always
+    # false); default: false
     # maintainInstanceCount = false

@@ -1,5 +1,5 @@
 """
-utils/spec_validation.py: every violation in a document is reported with
+utils/specs/validation.py: every violation in a document is reported with
 its JSON path; the five commands warn and proceed on an ordinary run and stop
 under --validate; under --json the warnings go to stderr and --validate's
 document is the array of violations. A '$schema' key is accepted and removed
@@ -23,10 +23,12 @@ import yellowdog_cli.utils.load_resources as load_resources_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import ALL_KEYS, SCHEMA_KEY
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.spec_schema import Family, compile_schema
-from yellowdog_cli.utils.spec_validation import (
+from yellowdog_cli.utils.specs.schema import Family, compile_schema
+from yellowdog_cli.utils.specs.validation import (
     DOCUMENT_PATH,
     Violation,
     strip_schema_key,
@@ -152,7 +154,7 @@ class TestValidateSpecification:
         ]
 
     def test_the_limit_says_there_are_more(self, monkeypatch):
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         monkeypatch.setattr(spec_validation_module, "MAX_VIOLATIONS", 2)
         doc = {"taskGroups": [{"tasks": [{"taskType": i} for i in range(5)]}]}
@@ -208,9 +210,9 @@ class TestWarnings:
             no_format=True,
             debug=False,
         )
-        for target in (printing_module, results_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
-        return args
+        # The output settings themselves, for a test to change
+        output_settings.configure_output(args)
+        return output_settings.OUTPUT
 
     def test_each_violation_is_one_warning_naming_the_file(self, args, capsys):
         warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json")
@@ -230,7 +232,7 @@ class TestWarnings:
     ):
         import fastjsonschema
 
-        import yellowdog_cli.utils.spec_validation as spec_validation_module
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         def refuse(family):
             raise fastjsonschema.JsonSchemaDefinitionException("bad definition")
@@ -243,6 +245,127 @@ class TestWarnings:
             "cannot check 'wr.json' against the work-requirement schema:"
             " bad definition; run 'yd-schema work-requirement' to see why"
         ) in out
+
+    def test_a_fault_in_the_check_is_one_warning_not_a_refusal(
+        self, args, capsys, monkeypatch
+    ):
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
+
+        def fault(family, document, source):
+            raise KeyError("a repair bug")
+
+        monkeypatch.setattr(spec_validation_module, "validate_specification", fault)
+        assert warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json") == []
+        out = " ".join(capsys.readouterr().out.split())
+        assert out.count("WARNING") == 1
+        assert "cannot check 'wr.json'" in out and "KeyError" in out
+
+    def test_under_debug_a_fault_in_the_check_is_raised(self, args, monkeypatch):
+        import yellowdog_cli.utils.specs.validation as spec_validation_module
+
+        def fault(family, document, source):
+            raise KeyError("a repair bug")
+
+        args.debug = True
+        monkeypatch.setattr(spec_validation_module, "validate_specification", fault)
+        with pytest.raises(KeyError):
+            warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json")
+
+
+class TestWording:
+    """
+    No violation reaches the user in fastjsonschema's own words: a pattern
+    or a choice between shapes is worded by the schema's description, an
+    exactly-one-of-these-keys rule as such, and an enum as a plain list.
+    """
+
+    @staticmethod
+    def _messages(family: Family, document) -> list[str]:
+        return [
+            f"{v.path}: {v.message}"
+            for v in validate_specification(family, document, "x")
+        ]
+
+    def test_a_duration_is_named_not_its_regex(self):
+        messages = self._messages(
+            Family.WORKER_POOL,
+            {
+                "requirementTemplateUsage": {"templateId": "t"},
+                "provisionedProperties": {"nodeBootTimeout": "5m"},
+            },
+        )
+        assert messages == [
+            "provisionedProperties.nodeBootTimeout: must be an ISO 8601"
+            " duration, e.g. PT10M"
+        ]
+
+    def test_a_range_bound_is_named(self):
+        messages = self._messages(
+            Family.WORK_REQUIREMENT,
+            {"ram": ["lots", 4], "taskGroups": [{"tasks": [{}]}]},
+        )
+        assert messages == ['ram[0]: must be a number, or null or "none" for no limit']
+
+    @pytest.mark.parametrize("document", [{}, {"actions": [], "actionGroups": []}])
+    def test_actions_or_action_groups_exactly(self, document):
+        assert self._messages(Family.NODE_ACTIONS, document) == [
+            f"{DOCUMENT_PATH}: must contain exactly one of actions, actionGroups"
+        ]
+
+    def test_both_actions_and_groups_are_repaired_so_the_rest_is_checked(self):
+        messages = self._messages(
+            Family.NODE_ACTIONS,
+            {"actions": [{"type": "runCommand"}], "actionGroups": []},
+        )
+        assert messages == [
+            f"{DOCUMENT_PATH}: must contain exactly one of actions, actionGroups",
+            "actions[0]: missing required property 'path'",
+        ]
+
+    def test_an_enum_is_a_plain_list(self):
+        assert self._messages(
+            Family.NODE_ACTIONS, {"actions": [{"type": "bogus"}]}
+        ) == ["actions[0].type: must be one of runCommand, writeFile, createWorkers"]
+
+    def test_no_message_is_fastjsonschemas_own(self):
+        for family, document in [
+            (
+                Family.WORK_REQUIREMENT,
+                {"ram": [[], 4], "taskGroups": [{"tasks": [{}]}]},
+            ),
+            (Family.NODE_ACTIONS, {"actions": [], "actionGroups": []}),
+        ]:
+            for message in self._messages(family, document):
+                assert "cannot be validated" not in message
+                assert "exactly by one definition" not in message
+                assert "must match pattern" not in message
+
+
+@pytest.mark.parametrize(
+    "scope, expected",
+    [
+        ({}, ["roles[0].scope: missing required property 'namespaces'"]),
+        ({"global": False}, ["roles[0].scope: missing required property 'namespaces'"]),
+        (
+            {"namespaces": []},
+            ["roles[0].scope.namespaces: must contain at least 1 items"],
+        ),
+        ({"global": True}, []),
+        ({"global": "{{everywhere}}"}, []),
+        ({"namespaces": [{"namespace": "n"}]}, []),
+    ],
+)
+def test_a_group_role_scope_is_global_or_names_a_namespace(scope, expected):
+    # As create.py demands: a scope without 'global' true names a namespace
+    group = {
+        "resource": "Group",
+        "name": "g",
+        "roles": [{"role": {"name": "r"}, "scope": scope}],
+    }
+    assert [
+        f"{v.path}: {v.message}"
+        for v in validate_specification(Family.RESOURCES, group, "x")
+    ] == expected
 
 
 # --- through the real commands ------------------------------------------------
@@ -266,15 +389,16 @@ _DEFAULTS = {
 @pytest.fixture()
 def run(monkeypatch, capsys):
     """
-    run(module, client=None, also=(), **args): patch ARGS_PARSER in the
-    command module, the modules it prints and records through, and those in
-    'also'; run module.main() through the wrapper; return (stdout, stderr,
+    run(module, client=None, also=(), main_module=None, **args): patch
+    ARGS_PARSER in the command module, the modules it prints and records
+    through, and those in 'also'; run main_module.main() (default: module)
+    through the wrapper; return (stdout, stderr,
     client), stdout parsed as JSON under json_output. The exit code is left
     in run.exit_code.
     """
     reset_results()
 
-    def _run(module, client=None, also=(), **values):
+    def _run(module, client=None, also=(), main_module=None, **values):
         args = MagicMock(**{**_DEFAULTS, **values})
         client = client or MagicMock()
         for target in (
@@ -285,13 +409,22 @@ def run(monkeypatch, capsys):
             wrapper_module,
             *also,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(module, "CLIENT", client)
-        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+            # A library module (utils/resource_creation.py) reads no ARGS_PARSER
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        # A command taking a RunContext gets these from the wrapper's own
+        if hasattr(module, "CLIENT"):
+            monkeypatch.setattr(module, "CLIENT", client)
+            monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        else:
+            monkeypatch.setattr(wrapper_module, "CLIENT", client)
         config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
-        monkeypatch.setattr(module, "CONFIG_COMMON", config)
+        monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
+        if hasattr(module, "CONFIG_COMMON"):
+            monkeypatch.setattr(module, "CONFIG_COMMON", config)
         with pytest.raises(SystemExit) as exit_info:
-            module.main()
+            (main_module or module).main()
         _run.exit_code = exit_info.value.code  # type: ignore[attr-defined]
         out, err = capsys.readouterr()
         return (json_loads(out) if values.get("json_output") else out), err, client
@@ -342,7 +475,7 @@ class TestSubmit:
             yd_submit,
             "CONFIG_WR",
             dataclasses.replace(
-                yd_submit.CONFIG_WR,
+                lazy_value(yd_submit.CONFIG_WR),
                 wr_data_file=None,
                 csv_files=None,
                 wr_name=None,
@@ -355,12 +488,6 @@ class TestSubmit:
             yd_submit, "update_config_work_requirement_object", lambda c: c
         )
         monkeypatch.setattr(yd_submit, "link_entity", lambda *a: "[link]")
-        monkeypatch.setattr(
-            yd_submit,
-            "WR_SNAPSHOT",
-            printing_module.WorkRequirementSnapshot(),
-            raising=False,
-        )
 
         def _run(wr_file: str | None, **values):
             client = MagicMock()
@@ -406,6 +533,49 @@ class TestSubmit:
         assert all(v["source"].endswith("wr.json") and v["message"] for v in out)
         assert "must be integer" in err  # The errors, on stderr
         client.work_client.add_work_requirement.assert_not_called()
+
+    @pytest.mark.parametrize("absolute", [False, True])
+    def test_content_path_holds_the_files_not_the_specification(
+        self, submit, tmp_path, monkeypatch, absolute
+    ):
+        # The specification is named from the current directory and its
+        # taskDataFile found in --content-path, wherever each of them is
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "input.txt").write_text("hello")
+        spec = {
+            "taskGroups": [
+                {"tasks": [{"taskType": "bash", "taskDataFile": "input.txt"}]}
+            ]
+        }
+        wr_file = _write(tmp_path / "specs", "wr.json", spec)
+        _, err, client = submit(
+            wr_file if absolute else "specs/wr.json", content_path="data"
+        )
+        assert submit.run.exit_code == 0, err
+        [call] = client.work_client.add_tasks_to_task_group_by_name.call_args_list
+        assert [task.taskData for task in call.args[3]] == ["hello"]
+
+    def test_task_data_file_is_found_beside_the_specification(
+        self, submit, tmp_path, monkeypatch
+    ):
+        # In a directory named as the specification's: the file it names
+        # there, not the one the same name finds from the current directory
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs" / "specs").mkdir(parents=True)
+        (tmp_path / "specs" / "input.json").write_text("from the current directory")
+        (tmp_path / "specs" / "specs" / "input.json").write_text("beside the spec")
+        spec = {
+            "taskGroups": [
+                {"tasks": [{"taskType": "bash", "taskDataFile": "specs/input.json"}]}
+            ]
+        }
+        _write(tmp_path / "specs", "wr.json", spec)
+        _, err, client = submit("specs/wr.json")
+        assert submit.run.exit_code == 0, err
+        [call] = client.work_client.add_tasks_to_task_group_by_name.call_args_list
+        assert [task.taskData for task in call.args[3]] == ["beside the spec"]
 
     def test_validate_ok(self, submit, tmp_path):
         out, _, client = submit(_write(tmp_path, "wr.json", GOOD), validate=True)
@@ -456,17 +626,33 @@ class TestSubmit:
         _, err, _ = submit(None, validate=True)
         assert submit.run.exit_code == 1 and "'--validate' needs" in err
 
-    def test_validate_with_json_raw_is_refused(self, submit, tmp_path, monkeypatch):
-        import yellowdog_cli.submit as yd_submit
-
-        submit_json_raw = MagicMock()
-        monkeypatch.setattr(yd_submit, "submit_json_raw", submit_json_raw)
-        _, err, client = submit(
-            None, json_raw=_write(tmp_path, "raw.json", {"x": 1}), validate=True
-        )
-        assert submit.run.exit_code == 1 and "'--json-raw'" in err
-        submit_json_raw.assert_not_called()
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, submit):
+        # It was ignored, and the Work Requirement the configuration
+        # describes was submitted
+        _, err, client = submit(None, jsonnet_dry_run=True)
+        assert submit.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Work Requirement" in err
         client.work_client.add_work_requirement.assert_not_called()
+
+    def test_jsonnet_dry_run_with_only_a_csv_file_is_refused(self, submit, tmp_path):
+        csv = tmp_path / "tasks.csv"
+        csv.write_text("a\n1\n", encoding="utf-8")
+        _, err, client = submit(None, csv_files=[str(csv)], jsonnet_dry_run=True)
+        assert submit.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs" in err
+        client.work_client.add_work_requirement.assert_not_called()
+
+    def test_validate_with_json_raw_is_refused(self, capsys):
+        # As the command line is parsed (exit 2): a raw Platform document has
+        # no schema to check it against
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(
+                command="yd-submit", argv=["--json-raw", "raw.json", "--validate"]
+            )
+        assert raised.value.code == 2
+        assert "--json-raw cannot be used with --validate" in capsys.readouterr().err
 
     def test_an_unbuildable_schema_warns_once_and_proceeds(
         self, submit, tmp_path, unbuildable
@@ -504,7 +690,7 @@ class TestProvision:
             yd_provision,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_provision.CONFIG_WP,
+                lazy_value(yd_provision.CONFIG_WP),
                 worker_pool_data_file=None,
                 template_id="crt-id",
                 name="wp-name",
@@ -530,6 +716,21 @@ class TestProvision:
 
         _run.run = run  # type: ignore[attr-defined]
         return _run
+
+    def test_content_path_does_not_hold_the_specification(
+        self, provision, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "data").mkdir()
+        spec = {
+            "requirementTemplateUsage": {"templateId": "t", "targetInstanceCount": 1},
+            "provisionedProperties": {},
+        }
+        _write(tmp_path / "specs", "wp.json", spec)
+        out, err, _ = provision("specs/wp.json", content_path="data", validate=True)
+        assert provision.run.exit_code == 0, err
+        assert "valid against the worker-pool schema" in out
 
     def test_validate_stops_with_the_violations(self, provision, tmp_path):
         spec = {
@@ -560,6 +761,12 @@ class TestProvision:
         _, err, _ = provision(None, validate=True)
         assert provision.run.exit_code == 1 and "'--validate' needs" in err
 
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, provision):
+        _, err, client = provision(None, jsonnet_dry_run=True)
+        assert provision.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Worker Pool" in err
+        client.worker_pool_client.provision_worker_pool.assert_not_called()
+
 
 class TestInstantiate:
     @pytest.fixture()
@@ -570,7 +777,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 worker_pool_data_file=None,
                 compute_requirement_data_file=None,
                 template_id="crt-id",
@@ -596,6 +803,17 @@ class TestInstantiate:
 
         _run.run = run  # type: ignore[attr-defined]
         return _run
+
+    def test_validate_without_a_file_is_refused(self, instantiate):
+        _, err, client = instantiate(None, validate=True)
+        assert instantiate.run.exit_code == 1 and "'--validate' needs" in err
+        client.compute_client.provision_compute_requirement_template.assert_not_called()
+
+    def test_jsonnet_dry_run_without_a_file_is_refused(self, instantiate):
+        _, err, client = instantiate(None, jsonnet_dry_run=True)
+        assert instantiate.run.exit_code == 1
+        assert "'--jsonnet-dry-run' needs a Jsonnet Compute Requirement" in err
+        client.compute_client.provision_compute_requirement_template.assert_not_called()
 
     def test_validate_the_flat_form(self, instantiate, tmp_path):
         out, _, client = instantiate(
@@ -626,12 +844,14 @@ class TestInstantiate:
 class TestCreate:
     @pytest.fixture()
     def create(self, run):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.resource_creation as resource_creation
 
         def _run(files: list[str], **values):
             return run(
-                yd_create,
-                also=(load_resources_module,),
+                resource_creation,
+                main_module=create_command,
+                also=(load_resources_module, create_command),
                 **{
                     "resource_specifications": files,
                     "no_resequence": False,
@@ -712,10 +932,9 @@ class TestCreate:
             print_pid=False,
             no_format=True,
         )
-        for target in (load_resources_module, printing_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         resources = load_resources_module.load_resource_specifications(
-            creation_or_update=creation
+            args, creation_or_update=creation
         )
         assert resources[0]["name"] == "k"
         assert ("WARNING" in capsys.readouterr().out) is creation
@@ -735,16 +954,21 @@ class TestNodeAction:
         _run.run = run  # type: ignore[attr-defined]
         return _run
 
-    def test_validate_without_actions_is_refused(self, nodeaction):
-        _, err, client = nodeaction(None, validate=True, json_output=True)
-        assert nodeaction.run.exit_code == 1 and "'--validate' needs" in err
-        client.worker_pool_client.get_worker_pool_by_id.assert_not_called()
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            (["--validate"], "--actions is required"),
+            (["--status", "--validate"], "--validate cannot be used with --status"),
+        ],
+    )
+    def test_validate_is_refused_where_it_checks_nothing(self, argv, message, capsys):
+        # As the command line is parsed (exit 2), before anything is looked up
+        from yellowdog_cli.utils.args import CLIParser
 
-    def test_validate_with_status_is_refused(self, nodeaction, tmp_path):
-        spec = _write(tmp_path, "a.json", {"actions": [{"type": "runCommand"}]})
-        _, err, client = nodeaction(spec, status=True, validate=True, json_output=True)
-        assert nodeaction.run.exit_code == 1 and "'--status'" in err
-        client.worker_pool_client.get_worker_pool_by_id.assert_not_called()
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-nodeaction", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
 
     def test_validate_stops_with_the_violations(self, nodeaction, tmp_path):
         out, _, client = nodeaction(

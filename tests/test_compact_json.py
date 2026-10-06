@@ -178,3 +178,38 @@ class TestRoundTrip:
     )
     def test_round_trip(self, data):
         assert json.loads(_enc(data)) == data
+
+
+class TestFaithfulness:
+    def test_a_non_string_key_is_quoted(self):
+        # Bare, '{1: "a"}' was not JSON
+        # (1 and True are one key in Python, so they are tested apart)
+        assert json.loads(_enc({1: "a", None: "c", 2.5: "d"})) == {
+            "1": "a",
+            "null": "c",
+            "2.5": "d",
+        }
+        assert json.loads(_enc({False: "b"})) == {"false": "b"}
+
+    def test_ensure_ascii_is_honoured(self):
+        assert _enc({"k": "é"}) == '{"k": "\\u00e9"}'
+        assert (
+            json.dumps({"k": "é"}, cls=CompactJSONEncoder, ensure_ascii=False)
+            == '{"k": "é"}'
+        )
+
+    def test_numbers_as_written_are_written_back_as_written(self):
+        from yellowdog_cli.utils.compact_json import FloatAsWritten, IntAsWritten
+
+        text = '{"v": 1.10, "e": 1e3, "big": 0.1000000000000000055, "z": -0}'
+        data = json.loads(text, parse_float=FloatAsWritten, parse_int=IntAsWritten)
+        assert _enc(data) == text
+
+    def test_the_line_width_is_the_jsons(self):
+        # Escaped, each 'é' is six characters of JSON against one of repr:
+        # measured on the repr, this list fitted, though its JSON is 190 wide
+        values = ["é" * 10] * 3
+        assert len(str(values)) - 2 <= CompactJSONEncoder.MAX_WIDTH
+        assert "\n" in _enc(values)
+        # Unescaped, the JSON is as narrow as the repr, and fits
+        assert "\n" not in _enc(values, ensure_ascii=False)

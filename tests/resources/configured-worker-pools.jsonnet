@@ -1,7 +1,7 @@
 // Configured Worker Pools. Emit secrets when created (the Worker Pool Token
 // is printed at creation time, per create_configured_worker_pool()/
 // create.py) -- nothing for this offline corpus to act on, but worth
-// remembering for the live layer (Tasks 7-8).
+// remembering for the live layer.
 //
 // 'tokenTtl' is a datetime.timedelta; an ISO-8601 duration string ('PT1H')
 // round-trips through the SDK's own Json.load/Json.dump cleanly (checked
@@ -16,7 +16,7 @@
 // poolMin alone would fail: create_configured_worker_pool() (create.py) does
 // 'namespace = resource[PROP_NAMESPACE]', a plain KeyError if the property is
 // absent, well before the model is ever built -- a stricter requirement than
-// the dataclass itself imposes. Worth knowing for the live layer (Tasks 7-8),
+// the dataclass itself imposes. Worth knowing for the live layer,
 // which cannot create poolMin as a standalone resource for that reason.
 
 local base = import 'lib/base.libsonnet';
@@ -38,7 +38,7 @@ local poolMax = {
     nodeConfiguration: {
       // Two entries, not one: the platform rejects a NodeType that specifies
       // both 'count' and 'min' together ("must not specify both count and
-      // min") -- a live-only finding (Task 8), invisible to the offline
+      // min") -- a live-only finding, invisible to the offline
       // model-building path this corpus is otherwise checked against. Splitting
       // across two entries still exercises both fields.
       nodeTypes: [

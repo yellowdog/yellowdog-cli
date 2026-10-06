@@ -175,7 +175,7 @@ READ_GATE_EXCLUSIONS.update(
             "actually launches, which this suite never does"
         ),
         # provider/instancePricing on SimulatorComputeSource specifically --
-        # confirmed live (Task 8, second pass): every other compute source
+        # confirmed live, on a second pass: every other compute source
         # class returns both with real values (AWS/Azure/GCE/OCI templates all
         # echo 'provider'; AwsInstancesComputeSource also echoes
         # 'instancePricing') -- SimulatorComputeSource, not being a real cloud
@@ -191,7 +191,7 @@ READ_GATE_EXCLUSIONS.update(
             "simulated source has no real pricing model to report"
         ),
         # supportingResourceCreated -- confirmed absent for exactly these seven
-        # classes, live, by direct re-probe (Task 8, second pass): re-created
+        # classes, live, by direct re-probe on a second pass: re-created
         # source-templates.jsonnet by hand and checked 'source.supportingResourceCreated'
         # in each yd-show response directly. OciInstancesComputeSource and
         # SimulatorComputeSource are deliberately NOT here: both return a real
@@ -261,8 +261,10 @@ def _identity(entity: dict) -> tuple[str, object] | None:
 
 
 def _spec_for(specs: list[dict], returned: dict) -> dict | None:
-    """Match a returned entity to the specification that created it (see
-    _identity() for what each is matched on)."""
+    """
+    Match a returned entity to the specification that created it (see
+    _identity() for what each is matched on).
+    """
     identity = _identity(returned)
     if identity is None:
         return None
@@ -312,7 +314,7 @@ def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
     'co.yellowdog.platform.model.' prefix, matching SERVER_ASSIGNED_COVERAGE's own
     bare class names). A ComputeRequirementTemplate/Allowance response instead
     carries its own 'type' at the top level. A MachineImageFamily response nests
-    imageGroups/images inline (checked directly, Task 8) rather than as separate
+    imageGroups/images inline (checked directly, live) rather than as separate
     top-level entities, so this descends into both.
     """
     if entity_type == "compute-source-templates":
@@ -344,24 +346,26 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     through yd-show/yd-list with no property silently dropped or mangled, then remove
     everything and confirm removal.
 
-    requirement-templates.jsonnet and configured-worker-pools.jsonnet are exactly the
-    two files resource_live.KNOWN_PARTIAL_FAILURES documents as unable to create every
-    one of their specifications standalone (create_compute_requirement_template()/
-    create_configured_worker_pool() read 'namespace' with a bare KeyError check before
-    any model is built). For those two, both 'yd-create' and 'yd-remove' are expected
-    to exit non-zero -- create_resources()/remove_resources() (create.py/remove.py)
-    each continue past one resource's failure and only raise (a single RuntimeError)
-    once the whole file is done -- and this test demands the *specific* specifications
+    requirement-templates.jsonnet, configured-worker-pools.jsonnet and
+    applications.jsonnet are exactly the three files resource_live.KNOWN_PARTIAL_FAILURES
+    documents as unable to create every one of their specifications standalone
+    (create_compute_requirement_template()/create_configured_worker_pool() read
+    'namespace' with a bare KeyError check before any model is built; application-max
+    names a Group and a Keyring that only groups.jsonnet and keyrings.jsonnet create).
+    For those, 'yd-create' is expected to exit non-zero, and so is 'yd-remove' for the
+    first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) -- create_resources()/
+    remove_resources() (create.py/remove.py) each continue past one resource's failure
+    and only raise once the whole file is done -- and this test demands the *specific* specifications
     named in resource_live.KNOWN_PARTIAL_FAILURE_NAMES are the ones missing, not merely
     that the exit code is non-zero: an unrelated regression elsewhere in the same file
     would otherwise hide behind the already-expected failure.
 
     applications.jsonnet's Application specifications name a Group and a Keyring by
     name (created by groups.jsonnet/keyrings.jsonnet respectively) to grant. Run here
-    alone, neither exists: create_application() (create.py) warns and continues for
-    the missing Group, and prints an error and continues for the missing Keyring --
-    so this proves the CLI degrades gracefully when a named grant target is absent,
-    but does *not* prove the grant itself succeeds when the target exists. 'groups'/
+    alone, neither exists, and create_application() (create.py) refuses the missing
+    Group before creating anything -- so this proves the CLI refuses an absent grant
+    target rather than reconciling memberships against it, but does *not* prove the
+    grant itself succeeds when the target exists. 'groups'/
     'keyrings' are excluded from the round-trip comparison entirely (see
     resource_live.LIVE_ONLY_EXCLUSIONS) for exactly this reason: yd-show's own
     'groups' key is a live membership listing (empty here), not an echo of what was
@@ -441,9 +445,9 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     result = resource_live.yd(
         "yd-remove", "-y", *_remove_args(corpus_file), str(corpus_file)
     )
-    if known_partial_failure:
+    if corpus_file.name in resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES:
         assert result.exit_code != 0, (
-            f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_FAILURES) "
+            f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) "
             "to partially fail removal too (the same specifications that could never "
             "be created cannot be removed either), but yd-remove exited 0"
         )
@@ -456,7 +460,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
             # configured_worker_pool() (remove.py) shuts it down, and a
             # shut-down/terminated pool remains listed forever, the same
             # lifecycle shape as a finished Work Requirement -- a live-only
-            # finding (Task 8). current_keys() can therefore never return to
+            # finding. current_keys() can therefore never return to
             # 'before' for this entity type; the real invariant is that every
             # pool this test created has reached a finished status instead.
             for key in created[entity]:

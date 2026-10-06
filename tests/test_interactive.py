@@ -2,7 +2,7 @@
 Unit tests for yellowdog_cli.utils.interactive
 
 Only the pure-logic / non-I/O paths are tested here:
-  - confirmed(): --yes flag and YD_YES env-var short-circuits
+  - confirmed(): the --yes short-circuit
   - get_selected_list_items(): range-parsing logic (with _get_user_input mocked)
 """
 
@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import yellowdog_cli.utils.interactive as interactive_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
 
 # ---------------------------------------------------------------------------
@@ -21,31 +22,12 @@ from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
 class TestConfirmedShortCircuits:
     def test_yes_flag_returns_true_without_input(self):
         mock_args = SimpleNamespace(yes=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             assert confirmed("delete everything?") is True
-
-    def test_yd_yes_env_var_returns_true_without_input(self):
-        mock_args = SimpleNamespace(yes=False)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
-            with patch.dict(os.environ, {"YD_YES": "1"}):
-                assert confirmed("delete everything?") is True
-
-    def test_yd_yes_empty_env_var_falls_through(self):
-        """
-        YD_YES set but empty → not treated as confirmed.
-        """
-        mock_args = SimpleNamespace(yes=False, no_format=True)
-        responses = iter(["y"])
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
-            with patch.dict(os.environ, {"YD_YES": ""}):
-                with patch.object(
-                    interactive_module, "_get_user_input", side_effect=responses
-                ):
-                    assert confirmed("proceed?") is True
 
     def test_user_confirms_with_y(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="y"
@@ -54,7 +36,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_confirms_with_yes(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="yes"
@@ -63,7 +45,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_cancels_with_n(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value="n"
@@ -72,7 +54,7 @@ class TestConfirmedShortCircuits:
 
     def test_user_cancels_with_empty_string(self):
         mock_args = SimpleNamespace(yes=False, no_format=True)
-        with patch.object(interactive_module, "ARGS_PARSER", mock_args):
+        with output_settings.configured(mock_args):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.object(
                     interactive_module, "_get_user_input", return_value=""
@@ -181,3 +163,51 @@ class TestGetSelectedListItems:
     def test_result_required_loops_on_empty_then_accepts(self):
         result = _select(["", "4"], result_required=True)
         assert result == [4]
+
+
+# ---------------------------------------------------------------------------
+# A range checked by its ends; answers stripped
+# ---------------------------------------------------------------------------
+
+
+def test_a_range_out_of_range_is_one_error(monkeypatch):
+    errors: list[str] = []
+    monkeypatch.setattr(interactive_module, "print_error", errors.append)
+    assert _select(["1-200000", "2"], num_items=3) == [2]
+    assert errors == ["'1-200000' is out of range (1-3)"]
+
+
+def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
+    errors: list[str] = []
+    monkeypatch.setattr(interactive_module, "print_error", errors.append)
+    assert _select(["", "4"], result_required=True) == [4]
+    assert errors == ["please select at least one item"]
+
+
+def test_an_answer_with_spaces_is_understood():
+    mock_args = SimpleNamespace(yes=False, no_format=True)
+    with output_settings.configured(mock_args):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                interactive_module, "_get_user_input", return_value=" y "
+            ):
+                assert confirmed("proceed?") is True
+
+
+def test_interactive_imports_no_sdk():
+    """
+    yd-delete imports this module for confirmed(): the SDK it once imported
+    at module level, for an annotation, cost every yd-delete its ~140ms.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "import sys; sys.argv = ['yd-delete', 'x']\n"
+        "import yellowdog_cli.utils.interactive\n"
+        "print('yellowdog_client' in sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"

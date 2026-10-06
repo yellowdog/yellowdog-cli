@@ -11,7 +11,7 @@ import sys
 import pytest
 
 from yellowdog_cli.mcp.runner import command_argv, parse_event_documents, run
-from yellowdog_cli.utils.rclone_version import find_rclone
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
 
 def _clean_env() -> dict[str, str]:
@@ -129,3 +129,50 @@ def test_yd_ls_json_on_the_local_backend(tmp_path):
     assert result.exit_code == 0, result.stderr
     names = [entry["Name"] for entry in result.document]
     assert names == ["a.txt"]
+
+
+def test_command_argv_uses_the_entry_point_module():
+    # 'yd-commander' runs yellowdog_cli.commander.launcher, which no rule on
+    # the name gives
+    assert command_argv("yd-commander")[2] == "yellowdog_cli.commander.launcher"
+    with pytest.raises(ValueError):
+        command_argv("yd-no-such-command")
+
+
+def test_the_child_writes_utf8(tmp_path):
+    result = run(
+        [sys.executable, "-c", "import os; print(os.environ['PYTHONIOENCODING'])"],
+        str(tmp_path),
+        _clean_env(),
+        30,
+    )
+    assert result.stdout.strip() == "utf-8"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_a_stop_kills_what_the_command_started(tmp_path):
+    """
+    A data client command's rclone went on transferring after the call was
+    reported stopped: the stop killed the command alone. Its whole process
+    group is killed now, and the result comes back although the grandchild
+    held the output pipe open.
+    """
+    marker = tmp_path / "written-after-the-stop"
+    grandchild = (
+        "import time, pathlib; time.sleep(3);"
+        f" pathlib.Path({str(marker)!r}).write_text('x')"
+    )
+    script = (
+        "import subprocess, sys, time;"
+        f" subprocess.Popen([sys.executable, '-c', {grandchild!r}]);"
+        " print('started', flush=True); time.sleep(60)"
+    )
+    from time import monotonic, sleep
+
+    started = monotonic()
+    result = run([sys.executable, "-c", script], str(tmp_path), _clean_env(), 1)
+    assert result.stopped
+    assert "started" in result.stdout
+    assert monotonic() - started < 10, "the stop waited on the grandchild"
+    sleep(4)
+    assert not marker.exists(), "the grandchild survived the stop"

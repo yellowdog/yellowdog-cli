@@ -76,4 +76,4 @@ class TestExplicitConstruction:
         )
 
     def test_rm_keeps_its_own_prog(self):
-        assert CLIParser(command="yd-rm", argv=["p"]).parser.prog == "yd-rm"
+        assert CLIParser(command="yd-delete", argv=["p"]).parser.prog == "yd-delete"

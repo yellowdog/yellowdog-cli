@@ -2,6 +2,17 @@
 Handle optional imports.
 """
 
+# One package each optional extra installs, by the extra's name in
+# pyproject.toml: looked for (importlib.util.find_spec(), never imported) by
+# yd-help, to say whether an extra is installed, and by yd-doctor, before
+# its guard below says whether it loads. The guards import these same ones.
+EXTRA_PROBES: dict[str, str] = {
+    "cloudwizard": "boto3",
+    "commander": "PyQt6",
+    "jsonnet": "_jsonnet",
+    "mcp": "mcp",
+}
+
 
 def check_jsonnet_import():
     # Jsonnet is not installed by default, due to a binary build requirement

@@ -20,7 +20,8 @@ import gui_harness
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton
 
-from yellowdog_cli.commander.commander import RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.results_panel import RESULTS_DIR
 
 
 @pytest.fixture

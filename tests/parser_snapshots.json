@@ -280,7 +280,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "task_id_list",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -477,34 +477,6 @@
       "option_strings": [
         "--variable",
         "-v"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
       ],
       "required": false,
       "type": "str"
@@ -752,7 +724,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,
@@ -1103,7 +1075,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -1808,37 +1780,6 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
-      "const": null,
-      "default": "name",
-      "dest": "sort",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--sort"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "reverse",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--reverse"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
       "choices": null,
       "const": null,
       "default": null,
@@ -1851,48 +1792,6 @@
       ],
       "required": false,
       "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "interactive",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--interactive",
-        "-i"
-      ],
-      "required": false,
-      "type": null
     },
     {
       "choices": null,
@@ -1924,10 +1823,10 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -2242,7 +2141,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -2560,7 +2459,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -4167,7 +4066,7 @@
       "default": null,
       "dest": "remote_paths",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -4548,7 +4447,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -4755,7 +4654,7 @@
       "default": [],
       "dest": "yellowdog_ids",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -5112,7 +5011,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -6634,6 +6533,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "details",
@@ -7597,7 +7509,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": "int"
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -7637,333 +7549,6 @@
       "option_strings": [
         "--auto-follow-compute-requirements",
         "-a"
-      ],
-      "required": false,
-      "type": null
-    }
-  ],
-  "yd-rm": [
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "docs",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--docs"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "config",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--config",
-        "-c"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "debug",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--debug"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "no_format",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--no-format",
-        "--nf"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "quiet",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--quiet",
-        "-q"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "env_override",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--env-override"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "print_pid",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--print-pid",
-        "--pp"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "no_config",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--no-config",
-        "--nc"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "property",
-      "kind": "_AppendAction",
-      "nargs": null,
-      "option_strings": [
-        "--property"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "variable",
-      "kind": "_AppendAction",
-      "nargs": null,
-      "option_strings": [
-        "--variable",
-        "-v"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "yes",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--yes",
-        "-y"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "remote",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--remote",
-        "-r"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "bucket",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--bucket",
-        "-b"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "prefix",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--prefix",
-        "-p"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "no_prefix",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--no-prefix"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "upgrade_rclone",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--upgrade-rclone"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "which_rclone",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--which-rclone"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "data_client_profile",
-      "kind": "_StoreAction",
-      "nargs": null,
-      "option_strings": [
-        "--data-client-profile",
-        "--profile"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "dry_run",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--dry-run",
-        "-D"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": null,
-      "default": null,
-      "dest": "remote_paths",
-      "kind": "_StoreAction",
-      "nargs": "*",
-      "option_strings": [],
-      "required": null,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "recursive",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--recursive",
-        "-R"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "json",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--json"
       ],
       "required": false,
       "type": null
@@ -8222,39 +7807,11 @@
     },
     {
       "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "namespace",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--namespace",
-        "-n"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
-      "const": "",
-      "default": null,
-      "dest": "tag",
-      "kind": "_StoreAction",
-      "nargs": "?",
-      "option_strings": [
-        "--tag",
-        "-t"
-      ],
-      "required": false,
-      "type": "str"
-    },
-    {
-      "choices": null,
       "const": null,
       "default": [],
       "dest": "yellowdog_ids",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -8622,7 +8179,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "worker_pool_nodes_list",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -8982,7 +8539,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "work_requirements",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -9863,7 +9420,7 @@
     {
       "choices": null,
       "const": null,
-      "default": "",
+      "default": null,
       "dest": "compute_reqs_instances_or_nodes",
       "kind": "_StoreAction",
       "nargs": "*",
@@ -10166,7 +9723,7 @@
       "default": null,
       "dest": "local_paths",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -10683,10 +10240,23 @@
       "default": [],
       "dest": "yellowdog_ids",
       "kind": "_StoreAction",
-      "nargs": "*",
+      "nargs": "+",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
     },
     {
       "choices": null,

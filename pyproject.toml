@@ -83,7 +83,6 @@
     yd-compute-stop = "yellowdog_cli.compute_stop:main"
     yd-create = "yellowdog_cli.create:main"
     yd-delete = "yellowdog_cli.delete:main"
-    yd-rm = "yellowdog_cli.delete:main"
     yd-doctor = "yellowdog_cli.doctor:main"
     yd-download = "yellowdog_cli.download:main"
     yd-finish = "yellowdog_cli.finish:main"
@@ -113,7 +112,16 @@
 
 [tool.setuptools]
     include-package-data = false
-    packages = ["yellowdog_cli", "yellowdog_cli.utils", "yellowdog_cli.commander", "yellowdog_cli.mcp", "yellowdog_cli.spec_data"]
+    packages = [
+        "yellowdog_cli",
+        "yellowdog_cli.utils",
+        "yellowdog_cli.utils.cloudwizard",
+        "yellowdog_cli.utils.dataclient",
+        "yellowdog_cli.utils.specs",
+        "yellowdog_cli.commander",
+        "yellowdog_cli.mcp",
+        "yellowdog_cli.spec_data",
+    ]
 
 [tool.setuptools.package-data]
     "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]
@@ -132,12 +140,6 @@
     ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-    # commander.py is lifted from the standalone yellow-gui demo (a separate
-    # repo); these are pre-existing findings in the original, not introduced
-    # by the relocation. Suppressed here rather than reformatted, to keep the
-    # diff against the source limited to the documented path decoupling.
-    "yellowdog_cli/commander/commander.py" = ["E402", "RUF005"]
-
     # Commander's tests call tests/qt_guard.py's require_qt() before importing
     # anything that pulls in Qt, so that a node without Qt's runtime libraries
     # skips them rather than failing to collect. That is necessarily a statement

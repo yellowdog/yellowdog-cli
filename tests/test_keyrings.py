@@ -23,7 +23,19 @@ from yellowdog_client.model import (
     UpdateKeyringRequest,
 )
 
+import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import get_keyring_summary_by_name
+
+
+def _ctx() -> RunContext:
+    """
+    The context a command is given: the wrapper globals, as patched.
+    """
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 YDID = "ydid:keyring:000000:00000000-0000-0000-0000-000000000000"
 
@@ -61,7 +73,7 @@ class TestLookupByName:
 
 @pytest.fixture
 def create_module():
-    import yellowdog_cli.create as create_module
+    import yellowdog_cli.utils.resource_creation as create_module
 
     return create_module
 
@@ -69,11 +81,11 @@ def create_module():
 def _run_create(create_module, client, confirm: bool, resource: dict, capsys):
     args = MagicMock(quiet=False, show_keyring_passwords=False)
     with (
-        patch.object(create_module, "CLIENT", client),
-        patch.object(create_module, "ARGS_PARSER", args),
+        patch.object(wrapper_module, "CLIENT", client),
+        patch.object(create_module, "_OPTIONS", args),
         patch.object(create_module, "confirmed", lambda _: confirm),
     ):
-        create_module.create_keyring(resource)
+        create_module.create_keyring(_ctx(), resource)
     return capsys.readouterr().out
 
 
@@ -148,18 +160,19 @@ class TestCreateUpdatesInPlace:
 
 @pytest.fixture
 def remove_module():
-    import yellowdog_cli.remove as remove_module
+    import yellowdog_cli.utils.resource_removal as remove_module
 
     return remove_module
 
 
 def _run_remove(remove_module, client, ydid: str, capsys) -> tuple[bool, str]:
     with (
-        patch.object(remove_module, "CLIENT", client),
+        patch.object(wrapper_module, "CLIENT", client),
         patch.object(remove_module, "confirmed", lambda _: True),
     ):
-        result = remove_module.remove_resource_by_id(ydid)
-    return result, capsys.readouterr().out
+        result = remove_module.remove_resource_by_id(_ctx(), ydid)
+    captured = capsys.readouterr()
+    return result, " ".join((captured.out + captured.err).split())
 
 
 class TestRemoveById:
@@ -190,7 +203,7 @@ class TestRemoveById:
 
         assert get_keyring_summary_by_name(client, "proj") is None
 
-    def test_an_unknown_id_is_a_warning_not_an_error(self, remove_module, capsys):
+    def test_an_unknown_id_is_not_found(self, remove_module, capsys):
         client = _client([])
         client.keyring_client.get_keyring.side_effect = HTTPError(
             response=MagicMock(status_code=404)

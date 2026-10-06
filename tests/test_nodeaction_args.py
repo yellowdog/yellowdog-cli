@@ -35,15 +35,22 @@ class TestNodeActionActionsArg:
         p = _make_parser("-S", "my_actions.json")
         assert p.node_action_spec == "my_actions.json"
 
-    def test_actions_absent_returns_none(self):
-        p = _make_parser()
+    def test_actions_absent_with_status_returns_none(self):
+        p = _make_parser("--status")
         assert p.node_action_spec is None
+
+    def test_actions_absent_without_status_is_a_usage_error(self):
+        with pytest.raises(SystemExit) as raised:
+            _make_parser()
+        assert raised.value.code == 2
 
     def test_actions_accepts_jsonnet_extension(self):
         p = _make_parser("--actions", "actions.jsonnet")
         assert p.node_action_spec == "actions.jsonnet"
 
     def test_spec_flag_not_recognised(self):
-        """--spec must no longer be a valid flag."""
+        """
+        --spec must no longer be a valid flag.
+        """
         with pytest.raises(SystemExit):
             _make_parser("--spec", "actions.json")

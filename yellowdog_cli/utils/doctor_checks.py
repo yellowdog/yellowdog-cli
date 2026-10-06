@@ -1,10 +1,15 @@
 """
 yd-doctor's checks: the model, the runner, and one function per check.
-Nothing here prints; doctor.py renders. Modules that exit at import on a
-broken configuration (load_config and dataclient_utils) are imported inside
-the checks that need them, never at module level. wrapper is never imported
-at all, since importing it builds CLIENT from a strict load: the doctor
-builds its own PlatformClient (_build_client()).
+Nothing here prints; doctor.py renders. The modules that load the
+configuration (load_config and dataclient.operations) are imported inside the
+checks that need them, never at module level: loading it exits on a broken
+configuration, which check_config_loads() catches as its diagnosis. wrapper
+is never imported at all, since its CONFIG_COMMON is a strict load and its
+CLIENT built from that: the doctor builds its own PlatformClient
+(_build_client()). Nor is the SDK imported at
+module level, directly or through entity_utils: an SDK that will not
+import is a diagnosis (the 'SDK imports' row), not a crash before the first
+row is printed.
 """
 
 from __future__ import annotations
@@ -14,7 +19,6 @@ import importlib.util
 import io
 import os
 import re
-import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -24,20 +28,19 @@ from typing import Any
 
 import requests
 from pypac import pac_context_for_url
-from yellowdog_client._version import __version__ as SDK_VERSION
 
 from yellowdog_cli._version import __version__ as CLI_VERSION
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import (
+    EXTRA_PROBES,
     check_cloudwizard_imports,
     check_commander_imports,
     check_jsonnet_import,
     check_mcp_imports,
 )
-from yellowdog_cli.utils.entity_utils import (
-    get_all_roles_and_namespaces_for_application,
-    get_application_group_summaries,
-)
+from yellowdog_cli.utils.dataclient.rclone import shown_remote
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_BUCKET,
     DATA_CLIENT_PREFIX,
@@ -48,15 +51,13 @@ from yellowdog_cli.utils.property_names import (
     SECRET,
     URL,
 )
-from yellowdog_cli.utils.rclone_utils import shown_remote
-from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.settings import (
-    ERROR_MARKER,
     PYPI_PROJECT_URL,
     PYTHON_MAX_TESTED_VERSION,
     PYTHON_MIN_VERSION,
     YD_DATA_CLIENT,
 )
+from yellowdog_cli.utils.version_info import sdk_version
 
 
 class Status(Enum):
@@ -96,11 +97,15 @@ class Context:
     offline: bool
     timeout: int
     debug: bool = False
+    sdk_error: str | None = None  # why the SDK did not import, once checked
     config_loaded: bool = False
     config_error: str | None = None  # the captured text when loading failed
     config_common: Any = None  # ConfigCommon, possibly partial, once loaded
     platform_reachable: bool | None = None  # set by Reachable; None if it did not run
     client: Any = None  # PlatformClient, built by the Authenticated check
+    # The command line the checks run under (doctor.py's ARGS_PARSER): the
+    # configuration file, '--no-config', the data client profile
+    args: Any = None
     application: Any = None  # ApplicationDetails, recorded by the same check
     # The data client a data client command would use: the profile
     # YD_DATA_CLIENT names, else the [dataClient] base, else the environment
@@ -148,7 +153,9 @@ _NETWORK_NEEDS = (
 
 
 def _need_unmet(check: Check, ctx: Context) -> str | None:
-    """The reason a check cannot run, or None if it can."""
+    """
+    The reason a check cannot run, or None if it can.
+    """
     if check.needs is Need.NOTHING:
         return None
     # '--offline' is the user's own choice, so it is the reason given for a
@@ -277,7 +284,28 @@ def check_install_kind(ctx: Context) -> Result:
 
 
 def check_cli_and_sdk_versions(ctx: Context) -> Result:
-    return Result(Status.OK, f"CLI {CLI_VERSION}, SDK {SDK_VERSION}")
+    # From the package metadata, so that the row is there even when the SDK
+    # will not import, which the next row reports
+    return Result(Status.OK, f"CLI {CLI_VERSION}, SDK {sdk_version()}")
+
+
+def check_sdk_imports(ctx: Context) -> Result:
+    """
+    Whether the YellowDog SDK imports, which every Platform command needs:
+    one missing, half-upgraded or broken is reported here, and the checks
+    that use it skip, rather than the doctor itself failing to start.
+    """
+    try:
+        from yellowdog_client import PlatformClient  # noqa: F401
+    except Exception as e:
+        ctx.sdk_error = " ".join(str(e).split()) or type(e).__name__
+        return Result(
+            Status.FAIL,
+            ctx.sdk_error,
+            "Reinstall the CLI with the command you installed it with (e.g."
+            " pipx reinstall yellowdog-cli), which reinstalls the SDK it needs",
+        )
+    return Result(Status.OK, "imports")
 
 
 def _pypi_latest_version(timeout: float) -> str:
@@ -319,19 +347,19 @@ def _check_extra(module: str, guard: Callable[[], None]) -> Result:
 
 
 def check_extra_jsonnet(ctx: Context) -> Result:
-    return _check_extra("_jsonnet", check_jsonnet_import)
+    return _check_extra(EXTRA_PROBES["jsonnet"], check_jsonnet_import)
 
 
 def check_extra_cloudwizard(ctx: Context) -> Result:
-    return _check_extra("boto3", check_cloudwizard_imports)
+    return _check_extra(EXTRA_PROBES["cloudwizard"], check_cloudwizard_imports)
 
 
 def check_extra_commander(ctx: Context) -> Result:
-    return _check_extra("PyQt6", check_commander_imports)
+    return _check_extra(EXTRA_PROBES["commander"], check_commander_imports)
 
 
 def check_extra_mcp(ctx: Context) -> Result:
-    return _check_extra("mcp", check_mcp_imports)
+    return _check_extra(EXTRA_PROBES["mcp"], check_mcp_imports)
 
 
 def check_rclone(ctx: Context) -> Result:
@@ -445,6 +473,8 @@ def check_config_loads(ctx: Context) -> Result:
         ):
             from yellowdog_cli.utils import load_config
 
+            load_config.ensure_config_loaded(ctx.args)
+
             ctx.config_common = load_config.load_config_common(strict=False)
     except SystemExit:
         ctx.config_error = _captured_message(captured.getvalue())
@@ -460,7 +490,7 @@ def check_config_loads(ctx: Context) -> Result:
 
     if not os.path.isfile(load_config.CONFIG_FILE):
         return Result(Status.OK, "no file, environment only")
-    if ARGS_PARSER.no_config:
+    if ctx.args.no_config:
         return Result(Status.OK, f"{load_config.CONFIG_FILE} ignored, environment only")
     return Result(Status.OK, load_config.CONFIG_FILE)
 
@@ -476,9 +506,10 @@ def check_config_schema(ctx: Context) -> Result:
     """
     import fastjsonschema
 
-    from yellowdog_cli.utils import load_config, spec_validation
-    from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
-    from yellowdog_cli.utils.spec_schema import SchemaGenerationError
+    from yellowdog_cli.utils import load_config
+    from yellowdog_cli.utils.specs import validation as spec_validation
+    from yellowdog_cli.utils.specs.properties import ALL_CONFIG_SECTIONS
+    from yellowdog_cli.utils.specs.schema import SchemaGenerationError
 
     document = load_config.config_as_written()
     if document is None:
@@ -551,7 +582,7 @@ def _load_data_client_under_test(ctx: Context, load_config: Any) -> None:
     from the environment alone. One that fails to load leaves data_client
     None, and what it printed becomes the Remote reachable row's reason.
     """
-    name = getattr(ARGS_PARSER, "data_client_profile", None) or os.environ.get(
+    name = getattr(ctx.args, "data_client_profile", None) or os.environ.get(
         YD_DATA_CLIENT
     )
     ctx.data_client_name = name or "[dataClient]"
@@ -571,12 +602,14 @@ def _load_data_client_under_test(ctx: Context, load_config: Any) -> None:
 
 
 def check_config_value(prop: str) -> Callable[[Context], Result]:
-    """A check reporting one [common] value and where it came from."""
+    """
+    A check reporting one [common] value and where it came from.
+    """
     attribute = {NAME_TAG: "name_tag"}.get(prop, prop)
 
     def run(ctx: Context) -> Result:
         from yellowdog_cli.utils import load_config
-        from yellowdog_cli.utils.settings import REDACTED_VALUE
+        from yellowdog_cli.utils.output_style import REDACTED_VALUE
 
         value = getattr(ctx.config_common, attribute)
         if value is None:
@@ -595,7 +628,7 @@ def check_config_value(prop: str) -> Callable[[Context], Result]:
 
 def check_variable_references(ctx: Context) -> Result:
     from yellowdog_cli.utils import load_config
-    from yellowdog_cli.utils.variables import undefined_variable_references
+    from yellowdog_cli.utils.variable_substitution import undefined_variable_references
 
     undefined = undefined_variable_references(load_config.CONFIG_TOML)
     if undefined:
@@ -610,7 +643,7 @@ def check_variable_references(ctx: Context) -> Result:
 def check_dotenv(ctx: Context) -> Result:
     from yellowdog_cli.utils.misc_utils import dotenv_file_path
 
-    path = dotenv_file_path()
+    path = dotenv_file_path(ctx.args.config_file)
     return Result(Status.OK, path if path else "none")
 
 
@@ -628,12 +661,14 @@ def check_tag_is_a_legal_name(ctx: Context) -> Result:
     return Result(Status.OK, tag)
 
 
-# shown_remote() lives in rclone_utils.py: yd-variables renders an inline
+# shown_remote() lives in dataclient/rclone.py: yd-variables renders an inline
 # remote the same way
 
 
 def _profile_remedy(name: str, message: str) -> str:
-    """Name the profile, and the property to fix when the message names one."""
+    """
+    Name the profile, and the property to fix when the message names one.
+    """
     section = name if name == "[dataClient]" else f"[dataClient.{name}]"
     named = [
         prop
@@ -652,7 +687,10 @@ def _profile_remedy(name: str, message: str) -> str:
 
 def _profile_check(name: str) -> Callable[[Context], Result]:
     def run(ctx: Context) -> Result:
-        from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
+        from yellowdog_cli.utils.dataclient.rclone import (
+            make_rclone,
+            parse_rclone_config,
+        )
 
         profile = ctx.profiles.get(name)
         if profile is None:
@@ -725,6 +763,14 @@ def _platform_reachable(ctx: Context) -> Result:
     proxy = _environment_proxy()
     if ctx.config_common.use_pac and proxy:
         answered += f" via HTTPS_PROXY={proxy}"
+    if outcome.status_code >= 500:
+        # It answered, but is in trouble: the commands may fail until it is not
+        return Result(
+            Status.WARN,
+            answered,
+            "The platform reported a server error; try again later, and if it"
+            " persists, contact YellowDog support",
+        )
     return Result(Status.OK, answered)
 
 
@@ -742,20 +788,20 @@ def check_authenticated(ctx: Context) -> Result:
     # would cost a second timeout to report what Reachable already has
     if ctx.platform_reachable is False:
         return Result(Status.SKIP, "platform not reachable")
+    if ctx.sdk_error is not None:
+        return Result(Status.SKIP, "SDK did not import")
     client = _build_client(ctx.config_common)
     try:
         outcome = with_timeout(
             client.application_client.get_application_details, ctx.timeout
         )
-    except Exception as e:  # the SDK raises plain exceptions carrying the status
-        if "Unauthorized" in str(e) or "401" in str(e):
-            return Result(
-                Status.FAIL,
-                "key or secret not recognised",
-                "Check the Application key and secret, and that the Application"
-                " still exists",
-            )
-        return Result(Status.FAIL, str(e) or type(e).__name__)
+    except Exception as e:
+        # Classified as every command classifies a failure, by its type and
+        # status rather than its text
+        detail, remedy = _AUTHENTICATION_FAILURES.get(
+            classify(e), (" ".join(str(e).split()) or type(e).__name__, None)
+        )
+        return Result(Status.FAIL, detail, remedy)
     if isinstance(outcome, Result):  # the timeout
         return outcome
     ctx.client, ctx.application = client, outcome
@@ -764,7 +810,32 @@ def check_authenticated(ctx: Context) -> Result:
     )
 
 
+_AUTHENTICATION_FAILURES: dict[ExitCode, tuple[str, str]] = {
+    ExitCode.AUTHENTICATION: (
+        "key or secret not recognised",
+        "Check the Application key and secret, and that the Application still exists",
+    ),
+    ExitCode.PERMISSION: (
+        "the Application is not permitted to read its own details",
+        "Add the Application to a group that carries a role, in the YellowDog Portal",
+    ),
+    ExitCode.CONNECTION: (
+        "the connection failed",
+        "Check the URL, DNS, proxy (HTTPS_PROXY / --pac) and certificates",
+    ),
+    ExitCode.PLATFORM: (
+        "the platform reported a server error",
+        "Try again later, and if it persists, contact YellowDog support",
+    ),
+}
+
+
 def check_groups_and_roles(ctx: Context) -> Result:
+    from yellowdog_cli.utils.entity_utils import (
+        get_all_roles_and_namespaces_for_application,
+        get_application_group_summaries,
+    )
+
     if ctx.application is None:
         return Result(Status.SKIP, "not authenticated")
     app_id = ctx.application.id
@@ -810,44 +881,68 @@ def check_namespace_granted(ctx: Context) -> Result:
 
 
 def _rclone_for_config(config: Any) -> tuple[str, Any]:
-    from yellowdog_cli.utils.dataclient_utils import _rclone_for_config as real
+    from yellowdog_cli.utils.dataclient.operations import _rclone_for_config as real
 
     return real(config)
 
 
-def _rclone_failure(e: Exception) -> str:
-    """
-    rclone's own diagnosis, as one line: the last line of its stderr, which
-    is the summary beneath the log lines leading to it.
-    """
-    if isinstance(e, subprocess.CalledProcessError):
-        from yellowdog_cli.utils.dataclient_utils import _rclone_error_detail
-
-        lines = [line for line in str(_rclone_error_detail(e)).splitlines() if line]
-        return lines[-1].strip() if lines else f"rclone exit code {e.returncode}"
-    return " ".join(str(e).split()) or type(e).__name__
-
-
 def check_data_client_remote(ctx: Context) -> Result:
-    import warnings
+    """
+    Whether the data client commands can reach where they work: the
+    configured prefix, as resolve_remote_path() gives it to them, rather
+    than the bucket's root, which a policy scoped to the prefix may refuse
+    although every command would work. A prefix not created yet is OK:
+    the first upload creates it.
+    """
+    from yellowdog_cli.utils.dataclient.operations import (
+        remote_stat,
+        resolve_bucket_path,
+        resolve_remote_path,
+    )
 
     profile = f"profile {ctx.data_client_name}"
-    remote_name, rclone = _rclone_for_config(ctx.data_client)
-    target = f"{remote_name}:{ctx.data_client.bucket or ''}"
-    # rclone_api warns with the whole command line, inline remote included
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        try:
-            outcome = with_timeout(lambda: rclone.ls(target, max_depth=1), ctx.timeout)
-        except Exception as e:
-            return Result(
-                Status.FAIL,
-                f"{target} ({profile}): {_rclone_failure(e)}",
-                "Check the remote's credentials, the bucket's name, and access to it",
-            )
+    _, rclone = _rclone_for_config(ctx.data_client)
+    target = resolve_remote_path(ctx.data_client)
+    try:
+        outcome = with_timeout(lambda: remote_stat(rclone, target), ctx.timeout)
+    except Exception as e:
+        lines = [line for line in str(e).splitlines() if line.strip()]
+        return Result(
+            Status.FAIL,
+            f"{target} ({profile}): {lines[-1].strip() if lines else type(e).__name__}",
+            "Check the remote's credentials, the bucket's name, and access to it",
+        )
     if isinstance(outcome, Result):
         return outcome
-    return Result(Status.OK, f"{target} listed ({profile})")
+    if outcome is None:
+        # The prefix is not there: fine if the bucket is, which the first
+        # upload then writes into, but a bucket that is not there (a typo
+        # in its name) is no 'not created yet'
+        if (ctx.data_client.bucket or "").strip("/"):
+            bucket_path = resolve_bucket_path(ctx.data_client)
+            try:
+                found = with_timeout(
+                    lambda: remote_stat(rclone, bucket_path), ctx.timeout
+                )
+            except Exception as e:
+                lines = [line for line in str(e).splitlines() if line.strip()]
+                return Result(
+                    Status.FAIL,
+                    f"{bucket_path} ({profile}): "
+                    f"{lines[-1].strip() if lines else type(e).__name__}",
+                    "Check the remote's credentials, the bucket's name, and"
+                    " access to it",
+                )
+            if isinstance(found, Result):
+                return found
+            if found is None:
+                return Result(
+                    Status.FAIL,
+                    f"{bucket_path} ({profile}): bucket not found",
+                    "Check the bucket's name in [dataClient], or YD_DATA_CLIENT_BUCKET",
+                )
+        return Result(Status.OK, f"{target} reachable, not created yet ({profile})")
+    return Result(Status.OK, f"{target} reachable ({profile})")
 
 
 CHECKS: tuple[Check, ...] = (
@@ -856,14 +951,17 @@ CHECKS: tuple[Check, ...] = (
     Check(
         "CLI and SDK versions", "Installation", Need.NOTHING, check_cli_and_sdk_versions
     ),
-    Check("Newer CLI on PyPI", "Installation", Need.NETWORK, check_newer_cli_on_pypi),
+    Check("SDK imports", "Installation", Need.NOTHING, check_sdk_imports),
     Check("Jsonnet", "Installation", Need.NOTHING, check_extra_jsonnet),
     Check("Cloud Wizard", "Installation", Need.NOTHING, check_extra_cloudwizard),
     Check("Commander", "Installation", Need.NOTHING, check_extra_commander),
     Check("MCP Server", "Installation", Need.NOTHING, check_extra_mcp),
     Check("rclone", "Installation", Need.NOTHING, check_rclone),
+    # Ahead of the PyPI check, so that the proxy PAC resolves, kept in
+    # HTTPS_PROXY, is the one it goes through
     Check("Proxy", "Installation", Need.NOTHING, check_proxy),
     Check("Certificates", "Installation", Need.CONFIG, check_certificates),
+    Check("Newer CLI on PyPI", "Installation", Need.NETWORK, check_newer_cli_on_pypi),
     Check(CONFIG_LOADS, "Configuration", Need.NOTHING, check_config_loads),
     Check("Config schema", "Configuration", Need.CONFIG, check_config_schema),
     Check("Key", "Configuration", Need.CONFIG, check_config_value(KEY)),

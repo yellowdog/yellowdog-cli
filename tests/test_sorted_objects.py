@@ -9,23 +9,26 @@ from types import SimpleNamespace
 
 import pytest
 
-import yellowdog_cli.utils.printing as printing
-from yellowdog_cli.utils.printing import sorted_objects
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.tables import sorted_objects
 
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.fixture()
-def args(monkeypatch):
-    """A stand-in ARGS_PARSER with controllable sort/reverse, applied to the
-    module-level singleton sorted_objects() reads."""
-    ns = SimpleNamespace(sort="name", reverse=None)
-    monkeypatch.setattr(printing, "ARGS_PARSER", ns)
-    return ns
+def args():
+    """
+    The output settings sorted_objects() reads, sorting by name, for a test
+    to set its sort and reverse on (restored after it by conftest).
+    """
+    output_settings.configure_output(SimpleNamespace(sort="name", reverse=None))
+    return output_settings.OUTPUT
 
 
 def _summary(name: str, minutes: int):
-    """An object shaped like a summary: has 'name' and 'createdTime'."""
+    """
+    An object shaped like a summary: has 'name' and 'createdTime'.
+    """
     return SimpleNamespace(name=name, createdTime=_T0 + timedelta(minutes=minutes))
 
 
@@ -66,7 +69,9 @@ def test_sort_created_falls_back_on_none_created_time(args):
 
 
 def _status_summary(name: str, status):
-    """An object shaped like a summary: has 'name' and 'status'."""
+    """
+    An object shaped like a summary: has 'name' and 'status'.
+    """
     return SimpleNamespace(name=name, status=status)
 
 
@@ -126,7 +131,9 @@ def test_sort_status_falls_back_when_no_status(args):
 
 
 def _ns_summary(name: str, namespace: str):
-    """An object shaped like a summary: has 'name' and 'namespace'."""
+    """
+    An object shaped like a summary: has 'name' and 'namespace'.
+    """
     return SimpleNamespace(name=name, namespace=namespace)
 
 

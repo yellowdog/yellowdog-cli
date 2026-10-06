@@ -1,12 +1,12 @@
 """
-utils/sdk_models.py: the SDK-model knowledge the specification corpus and the
+utils/specs/sdk_models.py: the SDK-model knowledge the specification corpus and the
 schema generator share -- the resource-type map, the polymorphic families,
 which properties a specification can set and which it must.
 """
 
 import dataclasses
 
-from yellowdog_cli.utils import sdk_models
+from yellowdog_cli.utils.specs import sdk_models
 
 
 def test_every_resource_type_has_a_model_entry():

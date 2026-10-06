@@ -1,14 +1,16 @@
 """
-Tests for create_task_group and submit_work_requirement in submit.py.
+Tests for create_task_group, submit_work_requirement and
+generate_batch_of_tasks_for_task_group in submit.py.
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import ANY, MagicMock, PropertyMock, patch
 
 import pytest
 from yellowdog_client.model import (
     CloudProvider,
     DoubleRange,
+    Task,
     TaskGroup,
     TaskTemplate,
     WorkRequirement,
@@ -16,9 +18,16 @@ from yellowdog_client.model import (
 from yellowdog_client.model.instance_pricing_preference import InstancePricingPreference
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
+    ADD_ENVIRONMENT,
+    ARGS,
+    ARGS_POSTFIX,
+    ARGS_PREFIX,
     COMPLETED_TASK_TTL,
     INSTANCE_PRICING_PREFERENCE,
     MAX_WORKERS,
@@ -27,6 +36,7 @@ from yellowdog_cli.utils.property_names import (
     PROVIDERS,
     RAM,
     TASK_GROUP_COUNT,
+    TASK_GROUP_TAG,
     TASK_GROUPS,
     TASK_TEMPLATE,
     TASK_TIMEOUT,
@@ -36,6 +46,26 @@ from yellowdog_cli.utils.property_names import (
     TASKS_PER_WORKER,
     VCPUS,
 )
+
+
+def _ctx() -> RunContext:
+    """
+    The context a command is given: the wrapper's values, as patched.
+    """
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
+    )
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -89,6 +119,7 @@ def _call_create_task_group(
         ),
     ):
         return submit_module.create_task_group(
+            _submission(),
             tg_number=tg_number,
             wr_data=wr_data,
             task_group_data=task_group_data,
@@ -101,7 +132,9 @@ def _call_create_task_group(
 
 
 class TestCreateTaskGroupTaskTypes:
-    """Task type resolution: remapping, unioning, fallback chain."""
+    """
+    Task type resolution: remapping, unioning, fallback chain.
+    """
 
     def test_task_type_remapped_to_task_types(self):
         tg_data = {TASK_TYPE: "bash", TASKS: [{}]}
@@ -161,7 +194,9 @@ class TestCreateTaskGroupTaskTypes:
 
 
 class TestCreateTaskGroupResourceConversions:
-    """vcpus, ram, providers, instance_pricing_preference conversions."""
+    """
+    vcpus, ram, providers, instance_pricing_preference conversions.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -213,7 +248,9 @@ class TestCreateTaskGroupResourceConversions:
 
 
 class TestCreateTaskGroupTimeouts:
-    """task_timeout and completed_task_ttl → timedelta conversions."""
+    """
+    task_timeout and completed_task_ttl → timedelta conversions.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -290,7 +327,9 @@ class TestCreateTaskGroupInheritsFromWorkRequirement:
 
 
 class TestCreateTaskGroupNaming:
-    """Auto-naming and explicit naming of task groups."""
+    """
+    Auto-naming and explicit naming of task groups.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -324,7 +363,9 @@ class TestCreateTaskGroupNaming:
 
 
 class TestCreateTaskGroupTaskTemplate:
-    """taskTemplate propagation to the TaskGroup object."""
+    """
+    taskTemplate propagation to the TaskGroup object.
+    """
 
     def _tg(self, **extra) -> dict:
         return {TASKS: [{}], TASK_TYPES: ["bash"], **extra}
@@ -418,7 +459,7 @@ def _run_submit_wr(
     create_tg_calls: list[tuple] = []
     add_tasks_calls: list[int] = []
 
-    def fake_create_tg(tg_number, wr_data, task_group_data, **kwargs):
+    def fake_create_tg(_run, tg_number, wr_data, task_group_data, **kwargs):
         create_tg_calls.append((tg_number, task_group_data))
         return mock_tg
 
@@ -430,7 +471,7 @@ def _run_submit_wr(
             return real_create_tg(*args, **kwargs)
         return fake_create_tg(*args, **kwargs)
 
-    def fake_add_tasks(tg_number, *args, **kwargs):
+    def fake_add_tasks(_run, tg_number, *args, **kwargs):
         add_tasks_calls.append(tg_number)
 
     mock_config_common = MagicMock()
@@ -440,8 +481,7 @@ def _run_submit_wr(
 
     with (
         patch.object(submit_module, "CONFIG_WR", config_wr),
-        patch.object(submit_module, "CONFIG_COMMON", mock_config_common),
-        patch.object(submit_module, "ID", wr_id),
+        patch.object(wrapper_module, "CONFIG_COMMON", mock_config_common),
         patch.object(submit_module, "RcloneUploadedFiles"),
         patch.object(
             submit_module,
@@ -456,7 +496,7 @@ def _run_submit_wr(
             submit_module, "add_tasks_to_task_group", side_effect=fake_add_tasks
         ),
         patch.object(
-            submit_module.CLIENT.work_client,
+            wrapper_module.CLIENT.work_client,
             "add_work_requirement",
             add_wr_mock,
         ),
@@ -475,6 +515,7 @@ def _run_submit_wr(
         patch.object(CLIParser, "empty", new_callable=PropertyMock, return_value=False),
     ):
         submit_module.submit_work_requirement(
+            _submission(name=wr_id),
             files_directory=".",
             wr_data=wr_data,
         )
@@ -594,7 +635,14 @@ class TestSubmitWRTaskGroupCountExpansion:
 
 
 class TestSubmitWRCleanupOnFailure:
-    def test_cleanup_called_when_add_tasks_raises(self):
+    @pytest.mark.parametrize(
+        "error",
+        [RuntimeError("upload failed"), KeyboardInterrupt()],
+        ids=["failure", "interrupt"],
+    )
+    def test_cleanup_called_when_add_tasks_raises(self, error):
+        # An interrupt too: Ctrl-C part-way used to leave the Work
+        # Requirement live with only some of its Tasks
         wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
         mock_wr = _make_mock_wr()
         cleanup_mock = MagicMock()
@@ -602,11 +650,10 @@ class TestSubmitWRCleanupOnFailure:
         with (
             patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
             patch.object(
-                submit_module,
+                wrapper_module,
                 "CONFIG_COMMON",
                 MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
             ),
-            patch.object(submit_module, "ID", "test-wr"),
             patch.object(submit_module, "RcloneUploadedFiles"),
             patch.object(
                 submit_module,
@@ -620,10 +667,10 @@ class TestSubmitWRCleanupOnFailure:
             patch.object(
                 submit_module,
                 "add_tasks_to_task_group",
-                side_effect=RuntimeError("upload failed"),
+                side_effect=error,
             ),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "add_work_requirement",
                 return_value=mock_wr,
             ),
@@ -647,11 +694,121 @@ class TestSubmitWRCleanupOnFailure:
             patch.object(
                 CLIParser, "empty", new_callable=PropertyMock, return_value=False
             ),
-            pytest.raises(RuntimeError, match="upload failed"),
+            pytest.raises(type(error)) as raised,
         ):
-            submit_module.submit_work_requirement(files_directory=".", wr_data=wr_data)
+            submit_module.submit_work_requirement(
+                _submission(name="test-wr"), files_directory=".", wr_data=wr_data
+            )
 
-        cleanup_mock.assert_called_once_with(mock_wr)
+        assert raised.value is error
+        cleanup_mock.assert_called_once_with(ANY, mock_wr)
+
+
+class TestSubmitWRHoldFailure:
+    def test_a_failed_hold_cancels_the_work_requirement(self):
+        # The Work Requirement is created, then held: a hold that fails used
+        # to leave it live without its Tasks, outside the clean-up
+        wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
+        mock_wr = _make_mock_wr()
+        cleanup_mock = MagicMock()
+        add_tasks_mock = MagicMock()
+        error = RuntimeError("hold refused")
+
+        with (
+            patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
+            patch.object(
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
+            ),
+            patch.object(submit_module, "RcloneUploadedFiles"),
+            patch.object(
+                submit_module,
+                "update_config_work_requirement_object",
+                side_effect=lambda x: x,
+            ),
+            patch.object(submit_module, "add_substitutions_without_overwriting"),
+            patch.object(
+                submit_module, "create_task_group", return_value=_make_mock_tg()
+            ),
+            patch.object(submit_module, "add_tasks_to_task_group", add_tasks_mock),
+            patch.object(
+                wrapper_module.CLIENT.work_client,
+                "add_work_requirement",
+                return_value=mock_wr,
+            ),
+            patch.object(
+                wrapper_module.CLIENT.work_client,
+                "hold_work_requirement",
+                side_effect=error,
+            ),
+            patch.object(submit_module, "link_entity", return_value="[link]"),
+            patch.object(submit_module, "cleanup_on_failure", cleanup_mock),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "hold", new_callable=PropertyMock, return_value=True
+            ),
+            patch.object(
+                CLIParser, "quiet", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "progress", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "follow", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "empty", new_callable=PropertyMock, return_value=False
+            ),
+            pytest.raises(RuntimeError) as raised,
+        ):
+            submit_module.submit_work_requirement(
+                _submission(name="test-wr"), files_directory=".", wr_data=wr_data
+            )
+
+        assert raised.value is error
+        cleanup_mock.assert_called_once_with(ANY, mock_wr)
+        add_tasks_mock.assert_not_called()
+
+
+class TestCleanupOnFailure:
+    """
+    A step of the cleanup that fails is reported, and the rest still made,
+    without the cleanup raising: the failure the caller re-raises, the one
+    being cleaned up after, is what the command must report.
+    """
+
+    def _cleanup(self, cancel_error=None, delete_error=None) -> dict:
+        client = MagicMock()
+        client.work_client.cancel_work_requirement.side_effect = cancel_error
+        uploaded = MagicMock()
+        uploaded.delete.side_effect = delete_error
+        with (
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+        ):
+            submit_module.cleanup_on_failure(
+                _submission(uploaded_files=uploaded), _make_mock_wr()
+            )
+        return {"client": client, "uploaded": uploaded}
+
+    def test_a_failed_cancel_still_deletes_the_uploaded_files(self, capsys):
+        result = self._cleanup(cancel_error=RuntimeError("cancel refused"))
+        result["uploaded"].delete.assert_called_once()
+        assert "cancel refused" in capsys.readouterr().err
+
+    def test_a_failed_delete_does_not_raise(self, capsys):
+        self._cleanup(delete_error=RuntimeError("rclone failed"))
+        assert "rclone failed" in capsys.readouterr().err
+
+    def test_both_steps_are_made_when_neither_fails(self):
+        result = self._cleanup()
+        result["client"].work_client.cancel_work_requirement.assert_called_once()
+        result["uploaded"].delete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -696,3 +853,147 @@ class TestSubmitWRGeneratedMessage:
         assert output.index("Generated Work Requirement") < output.index(
             "Generated Task Group"
         ), output
+
+
+# ---------------------------------------------------------------------------
+# submit_work_requirement — a whole-valued float taskGroupCount
+# ---------------------------------------------------------------------------
+
+
+class TestSubmitWRTaskGroupCountAsFloat:
+    """
+    The schema accepts 2.0 as an integer, as JSON Schema does; range() does
+    not, so it used to raise "'float' object cannot be interpreted as an
+    integer".
+    """
+
+    def test_a_whole_valued_float_expands(self):
+        wr_data = {
+            TASK_GROUP_COUNT: 2.0,
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        assert len(_run_submit_wr(wr_data=wr_data)["create_tg_calls"]) == 2
+
+    def test_a_fractional_count_is_a_type_error_naming_the_property(self):
+        wr_data = {
+            TASK_GROUP_COUNT: 2.5,
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        with pytest.raises(TypeError, match=f"'{TASK_GROUP_COUNT}' value '2.5'"):
+            _run_submit_wr(wr_data=wr_data)
+
+
+# ---------------------------------------------------------------------------
+# generate_batch_of_tasks_for_task_group — Task Group over Work Requirement
+# ---------------------------------------------------------------------------
+
+
+def _generate_one_task(wr_data: dict) -> Task:
+    """
+    Generate the single Task of wr_data's single Task Group, as submission
+    would, with nothing uploaded.
+    """
+    config_common = MagicMock()
+    config_common.namespace = "test-ns"
+    with (
+        patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
+        patch.object(wrapper_module, "CONFIG_COMMON", config_common),
+    ):
+        task_group = MagicMock()
+        task_group.name = "tg"
+        task_group.runSpecification.taskTypes = ["bash"]
+        (task,) = submit_module.generate_batch_of_tasks_for_task_group(
+            _submission(name="test-wr", uploaded_files=MagicMock()),
+            start_task_number=0,
+            end_task_number=1,
+            wr_data=wr_data,
+            files_directory=".",
+            task_group=task_group,
+            tg_number=0,
+            tasks=wr_data[TASK_GROUPS][0][TASKS],
+            task_count=None,
+            num_tasks=1,
+            num_task_groups=1,
+        )
+    return task
+
+
+class TestTaskPropertiesTaskGroupOverWorkRequirement:
+    """
+    Task > Task Group > Work Requirement > TOML. 'arguments',
+    'argumentsPrefix', 'argumentsPostfix' and 'addEnvironment' used to look at
+    the Work Requirement before the Task Group, so a Task Group's own value
+    was lost whenever the Work Requirement set one too.
+    """
+
+    @pytest.mark.parametrize("prop", [ARGS, ARGS_PREFIX, ARGS_POSTFIX])
+    def test_task_group_arguments_win(self, prop):
+        wr_data = {
+            prop: ["wr"],
+            TASK_GROUPS: [{prop: ["tg"], TASKS: [{}]}],
+        }
+        assert _generate_one_task(wr_data).arguments == ["tg"]
+
+    @pytest.mark.parametrize("prop", [ARGS, ARGS_PREFIX, ARGS_POSTFIX])
+    def test_work_requirement_arguments_are_inherited(self, prop):
+        wr_data = {prop: ["wr"], TASK_GROUPS: [{TASKS: [{}]}]}
+        assert _generate_one_task(wr_data).arguments == ["wr"]
+
+    def test_task_arguments_win_over_both(self):
+        wr_data = {
+            ARGS: ["wr"],
+            TASK_GROUPS: [{ARGS: ["tg"], TASKS: [{ARGS: ["task"]}]}],
+        }
+        assert _generate_one_task(wr_data).arguments == ["task"]
+
+    def test_task_group_add_environment_wins(self):
+        wr_data = {
+            ADD_ENVIRONMENT: {"X": "wr"},
+            TASK_GROUPS: [{ADD_ENVIRONMENT: {"X": "tg"}, TASKS: [{}]}],
+        }
+        assert _generate_one_task(wr_data).environment == {"X": "tg"}
+
+    def test_work_requirement_add_environment_is_inherited(self):
+        wr_data = {ADD_ENVIRONMENT: {"X": "wr"}, TASK_GROUPS: [{TASKS: [{}]}]}
+        assert _generate_one_task(wr_data).environment == {"X": "wr"}
+
+
+# ---------------------------------------------------------------------------
+# create_task_group — the order of taskTypes, and the tag's type
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTaskGroupTaskTypeOrder:
+    """
+    The types were gathered through a set, whose order varies from run to
+    run with string hashing, so a dry run's output did too. Declared types
+    come first, in order, then the Tasks' own, in order of first appearance.
+    """
+
+    def test_declared_types_then_the_tasks_types_in_order(self):
+        tg = _call_create_task_group(
+            {
+                TASK_TYPES: ["zeta", "alpha"],
+                TASKS: [
+                    {TASK_TYPE: "mu"},
+                    {TASK_TYPE: "alpha"},
+                    {TASK_TYPE: "beta"},
+                    {TASK_TYPE: "mu"},
+                ],
+            }
+        )
+        assert tg.runSpecification.taskTypes == ["zeta", "alpha", "mu", "beta"]
+
+
+class TestCreateTaskGroupTag:
+    def test_a_string_tag_is_used(self):
+        tg = _call_create_task_group(
+            {TASK_TYPES: ["bash"], TASK_GROUP_TAG: "t", TASKS: [{}]}
+        )
+        assert tg.tag == "t"
+
+    def test_a_non_string_tag_is_a_type_error_naming_the_property(self):
+        with pytest.raises(TypeError, match=f"'{TASK_GROUP_TAG}'"):
+            _call_create_task_group(
+                {TASK_TYPES: ["bash"], TASK_GROUP_TAG: 7, TASKS: [{}]}
+            )

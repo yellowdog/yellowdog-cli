@@ -1,9 +1,11 @@
 # YellowDog Commander
 
 <!--ts-->
+   * [Overview](#overview)
    * [Installation](#installation)
    * [Running](#running)
    * [How It Works](#how-it-works)
+   * [Objects and the Data Client](#objects-and-the-data-client)
    * [Quitting](#quitting)
    * [Naming and Matching Assumptions](#naming-and-matching-assumptions)
       * [Object Naming and Matching](#object-naming-and-matching)
@@ -23,11 +25,15 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Sep 29 15:30:03 BST 2026 -->
+<!-- Added by: pwt, at: Tue Oct  6 11:55:43 BST 2026 -->
 
 <!--te-->
 
+## Overview
+
 YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
+
+Its object actions — downloading, deleting and listing the objects your Tasks write — use the CLI's **data client**, the rclone-backed `yd-download` and `yd-delete`, so they work with whatever storage the configuration's `[dataClient]` section names; see [Objects and the Data Client](#objects-and-the-data-client).
 
 Commander is offered as a useful adjunct to the CLI, but is not formally supported.
 
@@ -80,7 +86,7 @@ Multiple instances can run simultaneously.
 
 ## How It Works
 
-Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess, in the directory containing the selected configuration file (or the launch directory if none is selected), and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
+Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess — under the same Python as Commander itself, so it is always this installation's CLI that runs, whatever your `PATH` holds or however Commander was started — in the directory containing the selected configuration file (or the launch directory if none is selected), and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
 
 The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd-*` command and arguments were used.
 
@@ -88,9 +94,20 @@ A configuration file is optional: if none is selected, Commander runs the `yd-*`
 
 Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
-With no configuration file selected and no YellowDog credentials in the environment either, there is nothing to resolve the Namespace, Tag, and Path placeholders from: they are simply left blank, and nothing is reported, since nothing is wrong yet. Any other failure to resolve them is still reported in the Command Output window, whether or not a configuration file is selected.
+With no configuration file selected and nothing set in the environment either, the Namespace, Tag, and Path placeholders show the CLI's defaults: namespace `default`, your user name as the tag, and a Path of `<user name>*`. A failure to resolve them is reported in the Command Output window, whether or not a configuration file is selected.
 
 Hover over any button, checkbox or field for a one-line description of what it does; the sections below give the detail.
+
+## Objects and the Data Client
+
+The object actions in panel 4 — **Download Matching Objects**, **Delete Matching Objects**, and the listings their dialogs are built from — are carried out by the CLI's data client: `yd-download` and `yd-delete`, which move and remove objects with [rclone](https://rclone.org/). They are fully supported, and are the same commands you would run by hand; see [the CLI's documentation of the data client](https://github.com/yellowdog/yellowdog-cli/blob/main/README.md#data-client) for everything they accept.
+
+They act on the remote storage the data client is configured for — the `remote`, `bucket` and `prefix` in the configuration file's `[dataClient]` section, or the `YD_DATA_CLIENT_*` environment variables — not on anything held by the YellowDog platform itself, and they need no YellowDog credentials. So:
+
+- Before using them, configure the data client: a configuration file whose `[dataClient]` section names the remote (an rclone remote name, or an inline connection string) is all it needs. The rclone binary is downloaded automatically the first time it is needed.
+- The **Path** field is relative to the data client's `prefix` (`{{namespace}}/{{tag}}` by default), so the default Path, `<tag>*`, matches the results your Work Requirements wrote under the current namespace and tag; see [Object Naming and Matching](#object-naming-and-matching).
+- Downloads go to a `results` directory beside the configuration file (or in the launch directory if none is selected), which **Browse Results Directory** opens.
+- The **Properties** field reaches the data client too, so `dataClient.remote=...`, `dataClient.bucket=...` or `dataClient.prefix=...` changes where these actions look, for this session only.
 
 ## Quitting
 
@@ -100,7 +117,7 @@ Choosing **Quit and Stop** signals each command to finish and forces it to stop 
 
 Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-variables` invocations it makes internally to read your configuration.
 
-Reading the configuration is bounded by a 10-second timeout, so an unreachable API URL leaves the Namespace, Tag, and Path placeholders unresolved and reports the timeout in the Command Output window, rather than hanging the window until the platform's own timeout expires.
+Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd-*` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
 
 ## Naming and Matching Assumptions
 
@@ -139,7 +156,7 @@ The **Path** field is the equivalent escape hatch for the object actions, and is
 
 Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default), which is why the default `<tag>*` finds your results: it matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
 
-The default is built from the discovered tag, so when no tag has been discovered — nothing configured yet, or a configuration file deselected — Download Matching Objects and Delete Matching Objects refuse an empty Path field and say so, rather than acting on a guess at what you meant.
+The default is built from the discovered tag, so when no tag could be discovered — the configuration could not be read — Download Matching Objects and Delete Matching Objects refuse an empty Path field and say so, rather than acting on a guess at what you meant. (With nothing configured at all, the tag is the CLI's default, your user name, as the placeholder shows.)
 
 That gives you four ways to widen or narrow the reach of a download or deletion:
 
@@ -185,7 +202,7 @@ Use the **Select** button to choose a `config.toml` file. The selected file's fu
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd-submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Add to…** — runs `yd-submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that have not completed, failed, or been cancelled or begun cancelling) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, and a dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
+- **Add to…** — runs `yd-submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that have not completed, failed, or been cancelled or begun cancelling) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, except that **Follow Progress** does not follow a Work Requirement that a command still running in this window is following already (the **Submit Work Requirement** that created it, an earlier **Add to…**, or a `yd-follow` from the command box), which would show each of its events twice; the output window says when this happens. A dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.

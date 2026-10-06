@@ -323,7 +323,7 @@ def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
 def path_would_be_globbed(remote_path: str) -> bool:
     """
     Whether 'yd-delete' would treat this remote path as a wildcard pattern
-    rather than a literal object. Mirrors dataclient_utils.is_glob (which
+    rather than a literal object. Mirrors dataclient.operations.is_glob (which
     Commander cannot import, since that module pulls in rclone_api): strip a
     leading 'remote:' prefix, then look for glob metacharacters.
 

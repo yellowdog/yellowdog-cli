@@ -1,537 +1,655 @@
 """
-Unit tests for compute_action_common.py.
+Unit tests for compute_action_common.py: yd-compute-stop, yd-compute-start
+and yd-compute-restart, against a fake Platform.
 
 Covers:
-  - apply_compute_action            (dispatch + tag-based interactive path)
-  - _apply_action_by_name_or_id     (named/ID path)
-  - _apply_action_to_instance       (instance-level actions)
-  - _apply_action_to_node_instance_by_id  (node-level actions)
+  - the tag-based listing, and glob patterns expanded to Compute Requirements
+  - explicit targets: Compute Requirement IDs and names, Instances in
+    'cr_id.instance_id' form, and Node IDs, resolved in the order given,
+    confirmed once, and acted on with one call per Compute Requirement for
+    its Instances
+  - what each outcome records ('stopped', 'skipped', 'failed'), and that a
+    session failure (authentication, connection) stops the run, recording
+    the rest as not attempted
+  - '--follow', given only the Compute Requirements actioned, once each
 """
 
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import ANY, MagicMock
 
 import pytest
-from yellowdog_client.model import ComputeRequirementStatus, InstanceStatus
+from requests import ConnectionError as RequestsConnectionError
+from requests import HTTPError, Response
+from yellowdog_client.model import (
+    ComputeRequirementStatus,
+    ConfiguredWorkerPool,
+    InstanceStatus,
+    NodeStatus,
+    ProvisionedWorkerPool,
+)
 
 import yellowdog_cli.utils.compute_action_common as cac_module
+from yellowdog_cli.utils import action_runner, entity_utils
+from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_RESTART,
     COMPUTE_START,
     COMPUTE_STOP,
-    _apply_action_by_name_or_id,
-    _apply_action_to_instance,
-    _apply_action_to_node_instance_by_id,
+    COMPUTE_TERMINATE,
     apply_compute_action,
 )
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
 CR_ID_2 = "ydid:compreq:d9c548:11111111-2222-3333-4444-555555555555"
+CR_ID_OLD = "ydid:compreq:d9c548:00000000-0000-0000-0000-000000000000"
 NODE_ID = "ydid:node:d9c548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8"
+WP_ID = "ydid:wrkrpool:d9c548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8"
 INSTANCE_ID = "i-0123456789abcdef0"
-INSTANCE_SPEC = f"{CR_ID}.{INSTANCE_ID}"
+INSTANCE_ID_2 = "i-0fedcba9876543210"
 # OCI instance IDs (OCIDs) contain dots of their own
 OCI_INSTANCE_ID = (
     "ocid1.instance.oc1.uk-london-1."
     "anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa"
 )
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_cr_summary(
-    id_: str = CR_ID,
-    name: str = "test-cr",
-    status: ComputeRequirementStatus = ComputeRequirementStatus.RUNNING,
-) -> MagicMock:
-    summary = MagicMock()
-    summary.id = id_
-    summary.name = name
-    summary.status = status
-    return summary
+RUNNING = ComputeRequirementStatus.RUNNING
+STOPPED = ComputeRequirementStatus.STOPPED
+TERMINATED = ComputeRequirementStatus.TERMINATED
 
 
-def _make_instance(status: InstanceStatus = InstanceStatus.RUNNING) -> MagicMock:
-    instance = MagicMock()
-    instance.status = status
-    instance.id.instanceId = INSTANCE_ID
-    return instance
+def _http_error(status_code: int) -> HTTPError:
+    response = Response()
+    response.status_code = status_code
+    return HTTPError(f"{status_code} Client Error", response=response)
 
 
-def _config_common(
-    namespace: str = "test-ns",
-    name_tag: str = "test-tag",
-    url: str = "https://test",
-) -> MagicMock:
-    return MagicMock(namespace=namespace, name_tag=name_tag, url=url)
+def _cr(id_: str, name: str, status=RUNNING, namespace: str = "ns") -> Any:
+    return SimpleNamespace(id=id_, name=name, status=status, namespace=namespace)
 
 
-def _make_args(
-    names_or_ids: list[str] | None = None, follow: bool = False
-) -> MagicMock:
-    mock_args = MagicMock()
-    mock_args.compute_requirements_instances_or_nodes = names_or_ids
-    mock_args.follow = follow
-    return mock_args
+def _instance(instance_id: str, status=InstanceStatus.RUNNING) -> Any:
+    return SimpleNamespace(id=SimpleNamespace(instanceId=instance_id), status=status)
 
 
-# ---------------------------------------------------------------------------
-# apply_compute_action: dispatch
-# ---------------------------------------------------------------------------
+def _provisioned_pool(cr_id: str | None = CR_ID) -> ProvisionedWorkerPool:
+    pool = ProvisionedWorkerPool()
+    pool.computeRequirementId = cr_id
+    return pool
 
 
-class TestDispatch:
-    def test_dispatches_to_named_path_when_names_provided(self):
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args([CR_ID])),
-            patch.object(cac_module, "_apply_action_by_name_or_id") as mock_by_name,
-            patch.object(
-                cac_module, "get_compute_requirement_summaries"
-            ) as mock_summaries,
+class FakePlatform:
+    """
+    Compute Requirements, Instances, Nodes and Worker Pools, served through a
+    mock client; 'calls' lists every action taken, and 'records' every
+    outcome recorded.
+    """
+
+    def __init__(self):
+        self.crs: dict[str, Any] = {CR_ID: _cr(CR_ID, "cr-a")}
+        self.instances: dict[tuple[str, str], Any] = {
+            (CR_ID, INSTANCE_ID): _instance(INSTANCE_ID)
+        }
+        self.nodes: dict[str, Any] = {}
+        self.pools: dict[str, Any] = {}
+        self.calls: list[tuple] = []
+        self.records: list[dict] = []
+        self.failures: dict[str, Exception] = {}  # action method -> exception
+        self.lookup_failure: Exception | None = None
+
+        client = MagicMock()
+        compute = client.compute_client
+        compute.get_compute_requirement_by_id.side_effect = self._get_cr
+        compute.get_instances.side_effect = lambda search: SimpleNamespace(
+            list_all=lambda: [
+                instance
+                for (cr_id, _), instance in self.instances.items()
+                if cr_id == search.computeRequirementId
+            ]
+        )
+        for method in (
+            "stop_compute_requirement_by_id",
+            "start_compute_requirement_by_id",
+            "stop_instances",
+            "start_instances",
+            "restart_instances",
+            "terminate_compute_requirement_by_id",
+            "terminate_instances",
         ):
-            apply_compute_action(COMPUTE_STOP)
-
-        mock_by_name.assert_called_once_with(COMPUTE_STOP, [CR_ID])
-        mock_summaries.assert_not_called()
-
-    def test_restart_without_names_prints_error_and_does_not_list(self):
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args(None)),
-            patch.object(cac_module, "print_error") as mock_error,
-            patch.object(
-                cac_module, "get_compute_requirement_summaries"
-            ) as mock_summaries,
-        ):
-            apply_compute_action(COMPUTE_RESTART)
-
-        mock_error.assert_called_once()
-        mock_summaries.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# apply_compute_action: tag-based interactive path
-# ---------------------------------------------------------------------------
-
-
-class TestTagBasedPath:
-    def _call(
-        self,
-        action,
-        summaries: list,
-        selected: list | None = None,
-        confirm_result: bool = True,
-        follow: bool = False,
-        action_raises: Exception | None = None,
-    ) -> tuple:
-        if selected is None:
-            selected = summaries
-
-        mock_client = MagicMock()
-        if action_raises is not None:
-            getattr(
-                mock_client.compute_client, action.cr_method_name
-            ).side_effect = action_raises
-
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args(None, follow=follow)),
-            patch.object(cac_module, "CLIENT", mock_client),
-            patch.object(cac_module, "CONFIG_COMMON", _config_common()),
-            patch.object(
-                cac_module,
-                "get_compute_requirement_summaries",
-                return_value=summaries,
-            ) as mock_get_summaries,
-            patch.object(cac_module, "select", return_value=selected),
-            patch.object(cac_module, "confirmed", return_value=confirm_result),
-            patch.object(cac_module, "print_error") as mock_error,
-            patch.object(cac_module, "print_info"),
-            patch.object(cac_module, "link_entity", return_value="<link>"),
-            patch.object(cac_module, "follow_ids") as mock_follow,
-        ):
-            apply_compute_action(action)
-
-        return mock_client, mock_get_summaries, mock_error, mock_follow
-
-    def test_stop_calls_stop_method_for_each_selected_cr(self):
-        summaries = [_make_cr_summary(CR_ID), _make_cr_summary(CR_ID_2)]
-        mock_client, _, mock_error, _ = self._call(COMPUTE_STOP, summaries)
-        assert mock_client.compute_client.stop_compute_requirement_by_id.call_count == 2
-        mock_error.assert_not_called()
-
-    def test_start_calls_start_method(self):
-        summaries = [_make_cr_summary(status=ComputeRequirementStatus.STOPPED)]
-        mock_client, _, _, _ = self._call(COMPUTE_START, summaries)
-        mock_client.compute_client.start_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
+            getattr(compute, method).side_effect = self._action(method)
+        client.worker_pool_client.get_node_by_id.side_effect = self._lookup(self.nodes)
+        client.worker_pool_client.get_worker_pool_by_id.side_effect = self._lookup(
+            self.pools
         )
+        self.client = client
 
-    def test_summaries_filtered_by_action_valid_statuses(self):
-        _, mock_get_summaries, _, _ = self._call(COMPUTE_STOP, [])
-        assert mock_get_summaries.call_args.args[3] == COMPUTE_STOP.valid_cr_statuses
+    def _get_cr(self, cr_id):
+        if self.lookup_failure is not None:
+            raise self.lookup_failure
+        if cr_id not in self.crs:
+            raise _http_error(404)
+        return self.crs[cr_id]
 
-    def test_no_crs_found_no_action(self):
-        mock_client, _, _, _ = self._call(COMPUTE_STOP, [])
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
+    def _lookup(self, table):
+        def lookup(entity_id):
+            if entity_id not in table:
+                raise _http_error(404)
+            return table[entity_id]
 
-    def test_not_confirmed_no_action(self):
-        mock_client, _, _, _ = self._call(
-            COMPUTE_STOP, [_make_cr_summary()], confirm_result=False
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
+        return lookup
 
-    def test_select_filters_summaries_before_action(self):
-        summaries = [_make_cr_summary(CR_ID), _make_cr_summary(CR_ID_2)]
-        mock_client, _, _, _ = self._call(
-            COMPUTE_STOP, summaries, selected=[summaries[0]]
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
-        )
-
-    def test_action_exception_prints_error(self):
-        _, _, mock_error, _ = self._call(
-            COMPUTE_STOP,
-            [_make_cr_summary()],
-            action_raises=RuntimeError("API failure"),
-        )
-        mock_error.assert_called_once()
-
-    def test_follow_calls_follow_ids_with_selected_cr_ids(self):
-        summaries = [_make_cr_summary(CR_ID)]
-        _, _, _, mock_follow = self._call(COMPUTE_STOP, summaries, follow=True)
-        mock_follow.assert_called_once_with([CR_ID])
-
-    def test_no_follow_when_nothing_actioned(self):
-        _, _, _, mock_follow = self._call(COMPUTE_STOP, [], follow=True)
-        mock_follow.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# _apply_action_by_name_or_id
-# ---------------------------------------------------------------------------
-
-
-class TestByNameOrId:
-    def _call(
-        self,
-        action,
-        names_or_ids: list[str],
-        cr_status: ComputeRequirementStatus = ComputeRequirementStatus.RUNNING,
-        confirm_result: bool = True,
-        follow: bool = False,
-        get_cr_raises: Exception | None = None,
-        name_lookup_result: str | None = None,
-    ) -> tuple:
-        mock_client = MagicMock()
-        if get_cr_raises is not None:
-            mock_client.compute_client.get_compute_requirement_by_id.side_effect = (
-                get_cr_raises
+    def _action(self, method):
+        def act(*args):
+            if method in self.failures:
+                raise self.failures[method]
+            if method.endswith("_by_id"):
+                self.calls.append((method, args[0]))
+                return self.crs.get(args[0])
+            compute_requirement, instances = args
+            self.calls.append(
+                (method, compute_requirement.id, [i.id.instanceId for i in instances])
             )
-        else:
-            mock_client.compute_client.get_compute_requirement_by_id.return_value = (
-                MagicMock(status=cr_status)
-            )
+            return None
 
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args(follow=follow)),
-            patch.object(cac_module, "CLIENT", mock_client),
-            patch.object(cac_module, "CONFIG_COMMON", _config_common()),
-            patch.object(cac_module, "confirmed", return_value=confirm_result),
-            patch.object(
-                cac_module,
-                "get_compute_requirement_id_by_name",
-                return_value=name_lookup_result,
-            ) as mock_name_lookup,
-            patch.object(cac_module, "print_error") as mock_error,
-            patch.object(cac_module, "print_warning") as mock_warning,
-            patch.object(cac_module, "print_info"),
-            patch.object(cac_module, "follow_ids") as mock_follow,
-        ):
-            _apply_action_by_name_or_id(action, names_or_ids)
+        return act
 
-        return mock_client, mock_error, mock_warning, mock_follow, mock_name_lookup
+    def outcomes(self) -> list[tuple]:
+        return [(r["id"], r["type"], r["outcome"]) for r in self.records]
 
-    def test_cr_ydid_valid_status_actioned(self):
-        mock_client, mock_error, _, _, _ = self._call(COMPUTE_STOP, [CR_ID])
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
-        )
-        mock_error.assert_not_called()
 
-    def test_cr_ydid_invalid_status_not_actioned(self):
-        mock_client, mock_error, _, _, _ = self._call(
-            COMPUTE_STOP, [CR_ID], cr_status=ComputeRequirementStatus.STOPPED
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
-        mock_error.assert_called_once()
+@pytest.fixture
+def platform(monkeypatch):
+    fake = FakePlatform()
+    fake.config = SimpleNamespace(namespace="ns", name_tag="tag", url="https://api.x")
+    monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
+    monkeypatch.setattr(cac_module, "select", lambda client, objects: objects)
+    monkeypatch.setattr(cac_module, "follow_ids", MagicMock())
 
-    def test_start_requires_stopped_status(self):
-        mock_client, _, _, _, _ = self._call(
-            COMPUTE_START, [CR_ID], cr_status=ComputeRequirementStatus.STOPPED
-        )
-        mock_client.compute_client.start_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
+    def get_summaries(client, namespace, tag=None, statuses=None, name=None):
+        return [
+            cr
+            for cr in fake.crs.values()
+            if cr.namespace == namespace
+            and (statuses is None or cr.status in statuses)
+            and (name is None or name in cr.name)
+        ]
+
+    monkeypatch.setattr(cac_module, "get_compute_requirement_summaries", get_summaries)
+    monkeypatch.setattr(
+        entity_utils, "get_compute_requirement_summaries", get_summaries
+    )
+
+    def record_action(entity, entity_type, action, outcome, error=None):
+        if isinstance(entity, str):  # as results.record_action() names it
+            is_ydid = get_ydid_type(entity) is not None
+            entity = {
+                "id": entity if is_ydid else None,
+                "name": None if is_ydid else entity,
+            }
+        elif not isinstance(entity, dict):
+            entity = {"id": entity.id, "name": entity.name}
+        fake.records.append(
+            {**entity, "type": entity_type, "outcome": outcome, "error": error}
         )
 
-    def test_cr_ydid_not_found_prints_error(self):
-        mock_client, mock_error, _, _, _ = self._call(
-            COMPUTE_STOP, [CR_ID], get_cr_raises=RuntimeError("404 not found")
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
-        mock_error.assert_called_once()
-
-    def test_cr_name_lookup_found_and_actioned(self):
-        mock_client, _, _, _, mock_name_lookup = self._call(
-            COMPUTE_STOP, ["my-cr-name"], name_lookup_result=CR_ID
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
-        )
-        assert mock_name_lookup.call_args.args[3] == COMPUTE_STOP.valid_cr_statuses
-
-    def test_cr_name_lookup_not_found_prints_warning(self):
-        mock_client, _, mock_warning, _, _ = self._call(
-            COMPUTE_STOP, ["my-cr-name"], name_lookup_result=None
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
-        mock_warning.assert_called_once()
-
-    @pytest.mark.parametrize("name_or_id", [CR_ID, "my-cr-name"])
-    def test_restart_rejects_compute_requirements(self, name_or_id):
-        mock_client, mock_error, _, _, _ = self._call(COMPUTE_RESTART, [name_or_id])
-        mock_error.assert_called_once()
-        mock_client.compute_client.restart_instances.assert_not_called()
-
-    def test_not_confirmed_no_action(self):
-        mock_client, _, _, _, _ = self._call(
-            COMPUTE_STOP, [CR_ID], confirm_result=False
-        )
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_not_called()
-
-    def test_duplicate_names_actioned_once(self):
-        mock_client, _, _, _, _ = self._call(COMPUTE_STOP, [CR_ID, CR_ID])
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
-        )
-
-    def test_cr_name_containing_dot_routes_to_name_lookup(self):
-        # A CR *name* with one dot must not be misclassified as an
-        # instance spec ('cr_id.instance_id')
-        mock_client, _, _, _, mock_name_lookup = self._call(
-            COMPUTE_STOP, ["my.cr-name"], name_lookup_result=CR_ID
-        )
-        assert mock_name_lookup.call_args.args[1] == "my.cr-name"
-        mock_client.compute_client.stop_compute_requirement_by_id.assert_called_once_with(
-            CR_ID
-        )
-
-    @pytest.mark.parametrize("instance_id", [INSTANCE_ID, OCI_INSTANCE_ID])
-    def test_instance_spec_routes_to_instance_action(self, instance_id):
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args(follow=True)),
-            patch.object(
-                cac_module, "_apply_action_to_instance", return_value=CR_ID
-            ) as mock_instance_action,
-            patch.object(cac_module, "follow_ids") as mock_follow,
-        ):
-            _apply_action_by_name_or_id(COMPUTE_RESTART, [f"{CR_ID}.{instance_id}"])
-
-        mock_instance_action.assert_called_once_with(
-            COMPUTE_RESTART, CR_ID, instance_id
-        )
-        mock_follow.assert_called_once_with([CR_ID])
-
-    def test_node_ydid_routes_to_node_action(self):
-        with (
-            patch.object(cac_module, "ARGS_PARSER", _make_args(follow=True)),
-            patch.object(
-                cac_module,
-                "_apply_action_to_node_instance_by_id",
-                return_value=CR_ID,
-            ) as mock_node_action,
-            patch.object(cac_module, "follow_ids") as mock_follow,
-        ):
-            _apply_action_by_name_or_id(COMPUTE_STOP, [NODE_ID])
-
-        mock_node_action.assert_called_once_with(COMPUTE_STOP, NODE_ID)
-        mock_follow.assert_called_once_with([CR_ID])
-
-    def test_follow_called_with_actioned_cr_ids(self):
-        _, _, _, mock_follow, _ = self._call(COMPUTE_STOP, [CR_ID], follow=True)
-        mock_follow.assert_called_once_with([CR_ID])
+    monkeypatch.setattr(cac_module, "record_action", record_action)
+    cac_module.get_instance_by_id.cache_clear()
+    entity_utils._get_instances.cache_clear()
+    yield fake
+    cac_module.get_instance_by_id.cache_clear()
+    entity_utils._get_instances.cache_clear()
 
 
-# ---------------------------------------------------------------------------
-# _apply_action_to_instance
-# ---------------------------------------------------------------------------
-
-
-class TestApplyActionToInstance:
-    def _call(
-        self,
+def _run(
+    platform,
+    action,
+    targets: list[str],
+    follow: bool = False,
+    dry_run: bool | None = None,
+):
+    apply_compute_action(
+        RunContext(
+            args=SimpleNamespace(
+                compute_requirements_instances_or_nodes=targets,
+                follow=follow,
+                dry_run=dry_run,
+                json_output=False,
+            ),
+            config=platform.config,
+            client=platform.client,
+        ),
         action,
-        cr_id: str = CR_ID,
-        instance: MagicMock | str | None = "default",
-        confirm_result: bool = True,
-        get_cr_raises: Exception | None = None,
-        instance_action_raises: Exception | None = None,
-    ) -> tuple:
-        if instance == "default":
-            instance = _make_instance(status=action.valid_instance_statuses[0])
+    )
 
-        mock_client = MagicMock()
-        if get_cr_raises is not None:
-            mock_client.compute_client.get_compute_requirement_by_id.side_effect = (
-                get_cr_raises
-            )
-        if instance_action_raises is not None:
-            getattr(
-                mock_client.compute_client, action.instance_method_name
-            ).side_effect = instance_action_raises
 
-        with (
-            patch.object(cac_module, "CLIENT", mock_client),
-            patch.object(cac_module, "get_instance_by_id", return_value=instance),
-            patch.object(cac_module, "confirmed", return_value=confirm_result),
-            patch.object(cac_module, "print_error") as mock_error,
-            patch.object(cac_module, "print_info"),
-        ):
-            result = _apply_action_to_instance(action, cr_id, INSTANCE_ID)
+# ---------------------------------------------------------------------------
+# Listing: by tag, or by glob pattern
+# ---------------------------------------------------------------------------
 
-        return result, mock_client, mock_error
 
-    def test_invalid_cr_id_returns_none(self):
-        result, _, mock_error = self._call(COMPUTE_STOP, cr_id="not-a-ydid")
-        assert result is None
-        mock_error.assert_called_once()
+class TestListing:
+    def test_the_tag_path_acts_on_crs_in_a_valid_state(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)
+        _run(platform, COMPUTE_STOP, [])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "stopped")]
 
-    def test_cr_not_found_returns_none(self):
-        result, _, mock_error = self._call(
-            COMPUTE_STOP, get_cr_raises=RuntimeError("404")
-        )
-        assert result is None
-        mock_error.assert_called_once()
+    def test_a_glob_selects_matching_names_only(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
+        _run(platform, COMPUTE_STOP, ["cr-*"])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
-    def test_instance_not_found_returns_none(self):
-        result, _, mock_error = self._call(COMPUTE_STOP, instance=None)
-        assert result is None
-        mock_error.assert_called_once()
+    def test_a_glob_respects_the_actions_states(self, platform, monkeypatch):
+        _run(platform, COMPUTE_START, ["cr-*"])  # cr-a is RUNNING
+        assert platform.calls == []
 
-    def test_invalid_instance_status_returns_none(self):
-        result, mock_client, mock_error = self._call(
-            COMPUTE_STOP, instance=_make_instance(status=InstanceStatus.STOPPED)
-        )
-        assert result is None
-        mock_client.compute_client.stop_instances.assert_not_called()
-        mock_error.assert_called_once()
+    def test_declining_skips_everything(self, platform, monkeypatch):
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_STOP, [])
+        assert platform.calls == []
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "skipped")]
 
-    def test_not_confirmed_returns_none(self):
-        result, mock_client, _ = self._call(COMPUTE_STOP, confirm_result=False)
-        assert result is None
-        mock_client.compute_client.stop_instances.assert_not_called()
+    def test_a_failure_carries_on(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
+        platform.failures["stop_compute_requirement_by_id"] = _http_error(500)
+        _run(platform, COMPUTE_STOP, [])
+        assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
 
     @pytest.mark.parametrize(
-        "action,method_name",
+        "error", [_http_error(401), RequestsConnectionError("reset")]
+    )
+    def test_a_session_failure_stops(self, platform, monkeypatch, error):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
+        platform.failures["stop_compute_requirement_by_id"] = error
+        with pytest.raises(ReportedFailure) as raised:
+            _run(platform, COMPUTE_STOP, [])
+        assert classify(raised.value) in SESSION_FAILURES
+        assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
+        assert platform.records[1]["error"].startswith("not attempted:")
+
+    def test_follow_is_given_only_what_was_actioned(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [], follow=True)
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
+
+
+# ---------------------------------------------------------------------------
+# Explicit Compute Requirements
+# ---------------------------------------------------------------------------
+
+
+class TestComputeRequirements:
+    def test_by_id_records_its_name(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [CR_ID])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
+        assert platform.records[0]["name"] == "cr-a"
+
+    def test_by_name(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, ["cr-a"])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
+        assert platform.records[0]["name"] == "cr-a"
+
+    def test_by_namespaced_name(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-a", namespace="other")
+        _run(platform, COMPUTE_STOP, ["other/cr-a"])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID_2)]
+
+    def test_a_name_prefers_the_live_cr_over_a_terminated_one(
+        self, platform, monkeypatch
+    ):
+        platform.crs = {
+            CR_ID_OLD: _cr(CR_ID_OLD, "cr-a", TERMINATED),
+            CR_ID: _cr(CR_ID, "cr-a"),
+        }
+        _run(platform, COMPUTE_STOP, ["cr-a"])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
+
+    def test_a_name_matched_by_two_live_crs_fails(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-a")
+        _run(platform, COMPUTE_STOP, ["cr-a"])
+        assert platform.calls == []
+        assert platform.outcomes() == [(None, "compute-requirements", "failed")]
+
+    def test_a_partial_name_is_not_a_match(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, ["cr"])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "failed"
+
+    @pytest.mark.parametrize("target", [CR_ID, "cr-a"])
+    def test_the_wrong_state_is_skipped_by_id_or_name(
+        self, platform, monkeypatch, target
+    ):
+        _run(platform, COMPUTE_START, [target])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "skipped"
+        assert "RUNNING" in platform.records[0]["error"]
+
+    def test_not_found(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [CR_ID_2])
+        assert platform.outcomes() == [(CR_ID_2, "compute-requirements", "failed")]
+
+    def test_a_cr_name_containing_a_dot_is_a_name(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "my.cr")
+        _run(platform, COMPUTE_STOP, ["my.cr"])
+        assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
+
+    @pytest.mark.parametrize("target", [CR_ID, "cr-a"])
+    def test_restart_refuses_compute_requirements(self, platform, monkeypatch, target):
+        _run(platform, COMPUTE_RESTART, [target])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Instances and Nodes
+# ---------------------------------------------------------------------------
+
+
+class TestInstances:
+    @pytest.mark.parametrize(
+        "action, method",
         [
             (COMPUTE_STOP, "stop_instances"),
-            (COMPUTE_START, "start_instances"),
             (COMPUTE_RESTART, "restart_instances"),
         ],
     )
-    def test_success_calls_instance_method_and_returns_cr_id(self, action, method_name):
-        instance = _make_instance(status=action.valid_instance_statuses[0])
-        result, mock_client, mock_error = self._call(action, instance=instance)
-        assert result == CR_ID
-        getattr(mock_client.compute_client, method_name).assert_called_once_with(
-            mock_client.compute_client.get_compute_requirement_by_id.return_value,
-            [instance],
-        )
-        mock_error.assert_not_called()
+    def test_an_instance(self, platform, monkeypatch, action, method):
+        _run(platform, action, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == [(method, CR_ID, [INSTANCE_ID])]
+        assert platform.outcomes() == [
+            (f"{CR_ID}.{INSTANCE_ID}", "instances", action.past_tense.lower())
+        ]
 
-    def test_instance_action_exception_returns_none_and_prints_error(self):
-        result, _, mock_error = self._call(
-            COMPUTE_STOP, instance_action_raises=RuntimeError("API failure")
-        )
-        assert result is None
-        mock_error.assert_called_once()
+    def test_an_oci_instance_id_with_dots(self, platform, monkeypatch):
+        platform.instances[(CR_ID, OCI_INSTANCE_ID)] = _instance(OCI_INSTANCE_ID)
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{OCI_INSTANCE_ID}"])
+        assert platform.calls == [("stop_instances", CR_ID, [OCI_INSTANCE_ID])]
 
-    def test_invalid_cr_status_exception_prints_error(self):
-        result, _, mock_error = self._call(
+    def test_instances_in_one_cr_are_one_call_and_one_confirmation(
+        self, platform, monkeypatch
+    ):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
+        _run(
+            platform,
             COMPUTE_STOP,
-            instance_action_raises=RuntimeError(
-                "InvalidComputeRequirementStatusException"
-            ),
+            [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
         )
-        assert result is None
-        mock_error.assert_called_once()
+        assert platform.calls == [
+            ("stop_instances", CR_ID, [INSTANCE_ID, INSTANCE_ID_2])
+        ]
+        assert len(prompts) == 1
+        assert "2 Instance(s)" in prompts[0]
+
+    def test_crs_and_instances_share_one_confirmation(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID_2])
+        assert prompts == [
+            "Stop 1 Compute Requirement(s) ('cr-b') and"
+            f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
+        ]
+
+    def test_targets_are_handled_in_the_order_given_without_duplicates(
+        self, platform, monkeypatch
+    ):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)
+        targets = ["nope", CR_ID_2, "nope", f"{CR_ID}.missing"]
+        _run(platform, COMPUTE_STOP, targets)
+        assert [(r["name"], r["outcome"]) for r in platform.records] == [
+            ("nope", "failed"),
+            ("cr-b", "skipped"),
+            ("missing", "failed"),
+        ]
+
+    def test_the_wrong_state_is_skipped(self, platform, monkeypatch):
+        _run(platform, COMPUTE_START, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "skipped"
+
+    def test_an_unknown_instance_fails(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
+        assert platform.outcomes() == [(f"{CR_ID}.i-unknown", "instances", "failed")]
+
+    def test_an_unknown_cr_fails_as_not_found(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [f"{CR_ID_2}.{INSTANCE_ID}"])
+        assert "Cannot find Compute Requirement" in platform.records[0]["error"]
+
+    def test_a_cr_lookup_error_is_not_called_not_found(self, platform, monkeypatch):
+        platform.lookup_failure = _http_error(500)
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert "Cannot find" not in platform.records[0]["error"]
+        assert "500" in platform.records[0]["error"]
+
+    def test_a_failed_call_fails_each_instance(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
+        platform.failures["stop_instances"] = Exception(
+            "InvalidComputeRequirementStatusException: no"
+        )
+        _run(
+            platform,
+            COMPUTE_STOP,
+            [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
+            follow=True,
+        )
+        assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
+        cac_module.follow_ids.assert_not_called()
+
+    def test_follow_names_each_cr_once(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
+        _run(
+            platform,
+            COMPUTE_STOP,
+            [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
+            follow=True,
+        )
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
+
+    def test_declining_skips_everything(self, platform, monkeypatch):
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID])
+        assert platform.calls == []
+        assert {r["outcome"] for r in platform.records} == {"skipped"}
+
+
+class TestNodes:
+    def _node(self, platform, details=True, pool=None):
+        platform.nodes[NODE_ID] = SimpleNamespace(
+            status=NodeStatus.RUNNING,
+            workerPoolId=WP_ID,
+            details=SimpleNamespace(instanceId=INSTANCE_ID) if details else None,
+        )
+        platform.pools[WP_ID] = pool if pool is not None else _provisioned_pool()
+
+    def test_a_node_stands_for_its_instance(self, platform, monkeypatch):
+        self._node(platform)
+        _run(platform, COMPUTE_STOP, [NODE_ID])
+        assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
+
+    def test_a_node_and_its_instance_are_one_target(self, platform, monkeypatch):
+        self._node(platform)
+        _run(platform, COMPUTE_STOP, [NODE_ID, f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
+        assert len(platform.records) == 1
+
+    def test_a_configured_pools_node_fails_and_says_why(
+        self, platform, monkeypatch, capsys
+    ):
+        self._node(platform, pool=ConfiguredWorkerPool())
+        errors = []
+        monkeypatch.setattr(cac_module, "print_error", errors.append, raising=False)
+        monkeypatch.setattr(action_runner, "print_error", errors.append)
+        _run(platform, COMPUTE_STOP, [NODE_ID])
+        assert platform.outcomes() == [(NODE_ID, "nodes", "failed")]
+        assert "Configured Worker Pool" in errors[0]
+
+    def test_a_node_without_details_fails_and_says_why(self, platform, monkeypatch):
+        self._node(platform, details=False)
+        _run(platform, COMPUTE_STOP, [NODE_ID])
+        assert "has not yet reported its Instance" in platform.records[0]["error"]
+
+    def test_an_unknown_node(self, platform, monkeypatch):
+        _run(platform, COMPUTE_STOP, [NODE_ID])
+        assert platform.outcomes() == [(NODE_ID, "nodes", "failed")]
 
 
 # ---------------------------------------------------------------------------
-# _apply_action_to_node_instance_by_id
+# A session failure stops the run
 # ---------------------------------------------------------------------------
 
 
-class TestApplyActionToNodeInstance:
-    def _call(
-        self,
-        action,
-        node_raises: Exception | None = None,
-        worker_pool_cr_id: str | None = CR_ID,
-        instance: MagicMock | str | None = "default",
-    ) -> tuple:
-        if instance == "default":
-            instance = _make_instance(status=action.valid_instance_statuses[0])
+class TestSessionFailures:
+    def test_while_resolving(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
+        targets = [CR_ID, CR_ID_2]
+        calls = {"n": 0}
 
-        mock_client = MagicMock()
-        if node_raises is not None:
-            mock_client.worker_pool_client.get_node_by_id.side_effect = node_raises
+        def get_cr(cr_id):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise _http_error(401)
+            return platform.crs[cr_id]
 
-        with (
-            patch.object(cac_module, "CLIENT", mock_client),
-            patch.object(
-                cac_module,
-                "get_compute_requirement_id_by_worker_pool_id",
-                return_value=worker_pool_cr_id,
-            ),
-            patch.object(cac_module, "get_instance_by_id", return_value=instance),
-            patch.object(
-                cac_module, "_apply_action_to_instance", return_value=CR_ID
-            ) as mock_instance_action,
-            patch.object(cac_module, "print_error") as mock_error,
-            patch.object(cac_module, "print_info"),
-        ):
-            result = _apply_action_to_node_instance_by_id(action, NODE_ID)
-
-        return result, mock_instance_action, mock_error
-
-    def test_node_not_found_returns_none(self):
-        result, mock_instance_action, mock_error = self._call(
-            COMPUTE_STOP, node_raises=RuntimeError("404")
+        platform.client.compute_client.get_compute_requirement_by_id.side_effect = (
+            get_cr
         )
-        assert result is None
-        mock_instance_action.assert_not_called()
-        mock_error.assert_called_once()
+        with pytest.raises(ReportedFailure) as raised:
+            _run(platform, COMPUTE_STOP, [*targets, f"{CR_ID}.{INSTANCE_ID}"])
+        assert classify(raised.value) in SESSION_FAILURES
+        assert platform.calls == []  # nothing is acted on
+        assert [(r["id"], r["outcome"]) for r in platform.records] == [
+            (CR_ID_2, "failed"),
+            (CR_ID, "skipped"),  # resolved, not attempted
+            (f"{CR_ID}.{INSTANCE_ID}", "skipped"),  # not resolved
+        ]
 
-    def test_no_cr_for_worker_pool_returns_none(self):
-        result, mock_instance_action, _ = self._call(
-            COMPUTE_STOP, worker_pool_cr_id=None
-        )
-        assert result is None
-        mock_instance_action.assert_not_called()
+    def test_while_acting(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
+        platform.failures["stop_compute_requirement_by_id"] = _http_error(401)
+        with pytest.raises(ReportedFailure) as raised:
+            _run(platform, COMPUTE_STOP, [CR_ID, CR_ID_2, f"{CR_ID}.{INSTANCE_ID}"])
+        assert classify(raised.value) in SESSION_FAILURES
+        assert [r["outcome"] for r in platform.records] == [
+            "failed",
+            "skipped",
+            "skipped",
+        ]
+        assert platform.calls == []
 
-    def test_instance_not_found_returns_none(self):
-        result, mock_instance_action, mock_error = self._call(
-            COMPUTE_STOP, instance=None
-        )
-        assert result is None
-        mock_instance_action.assert_not_called()
-        mock_error.assert_called_once()
 
-    def test_success_delegates_to_instance_action(self):
-        result, mock_instance_action, _ = self._call(COMPUTE_RESTART)
-        assert result == CR_ID
-        mock_instance_action.assert_called_once_with(
-            COMPUTE_RESTART, CR_ID, INSTANCE_ID, NODE_ID
+# ---------------------------------------------------------------------------
+# Termination: yd-terminate
+# ---------------------------------------------------------------------------
+
+
+class TestTerminate:
+    @pytest.mark.parametrize(
+        "status",
+        [ComputeRequirementStatus.PROVISIONING, RUNNING, STOPPED],
+    )
+    def test_any_live_cr_can_be_terminated(self, platform, monkeypatch, status):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", status)
+        _run(platform, COMPUTE_TERMINATE, [CR_ID])
+        assert platform.calls == [("terminate_compute_requirement_by_id", CR_ID)]
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "terminated")]
+
+    def test_a_terminated_cr_is_skipped(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
+        _run(platform, COMPUTE_TERMINATE, ["cr-a"])
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "skipped"
+
+    @pytest.mark.parametrize("status", [InstanceStatus.STOPPED, InstanceStatus.PENDING])
+    def test_an_instance_in_any_live_state(self, platform, monkeypatch, status):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(INSTANCE_ID, status)
+        _run(platform, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == [("terminate_instances", CR_ID, [INSTANCE_ID])]
+
+    def test_an_instance_already_terminating_is_skipped(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(
+            INSTANCE_ID, InstanceStatus.TERMINATING
         )
+        _run(platform, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.records[0]["outcome"] == "skipped"
+
+    def test_a_terminated_node_is_skipped(self, platform, monkeypatch):
+        platform.nodes[NODE_ID] = SimpleNamespace(
+            status=NodeStatus.TERMINATED, workerPoolId=WP_ID, details=None
+        )
+        _run(platform, COMPUTE_TERMINATE, [NODE_ID])
+        assert platform.outcomes() == [(NODE_ID, "nodes", "skipped")]
+
+    def test_the_confirmation_says_immediately(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(platform, COMPUTE_TERMINATE, [CR_ID])
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a")  # the fake left it as it was
+        _run(platform, COMPUTE_TERMINATE, [])
+        assert len(prompts) == 2
+        assert all(p.startswith("Immediately terminate ") for p in prompts)
+
+    def test_a_dry_run_reports_and_does_nothing(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
+        report = MagicMock()
+        monkeypatch.setattr(cac_module, "report_dry_run", report)
+        _run(platform, COMPUTE_TERMINATE, ["cr-*"], dry_run=True)
+        assert platform.calls == []
+        assert [s.id for s in report.call_args.args[1]] == [CR_ID]
+        assert report.call_args.args[3:6] == (
+            "terminated",
+            "compute-requirements",
+            "terminate",
+        )
+
+    def test_the_command_is_the_action(self, monkeypatch):
+        import yellowdog_cli.terminate as yd_terminate
+
+        apply = MagicMock()
+        monkeypatch.setattr(yd_terminate, "apply_compute_action", apply)
+        monkeypatch.setattr(
+            "yellowdog_cli.utils.wrapper.ARGS_PARSER",
+            MagicMock(debug=True, print_pid=True),
+        )
+        with pytest.raises(SystemExit):
+            yd_terminate.main()
+        (ctx, action), _ = apply.call_args
+        assert isinstance(ctx, RunContext) and action == COMPUTE_TERMINATE
+
+
+# ---------------------------------------------------------------------------
+# The command line
+# ---------------------------------------------------------------------------
+
+
+class TestCommandLine:
+    def test_restart_requires_a_target(self, capsys):
+        parser = build_parser(COMMANDS["yd-compute-restart"], prog="yd-compute-restart")
+        with pytest.raises(SystemExit) as raised:
+            parser.parse_args([])
+        assert raised.value.code == 2
+
+    def test_restart_takes_no_listing_options(self):
+        command = COMMANDS["yd-compute-restart"]
+        flags = {
+            flag
+            for option in command.all_options()
+            for member in getattr(option, "options", (option,))
+            for flag in member.flags
+        }
+        assert not {"--sort", "--interactive", "--namespace", "--tag"} & flags
+
+    @pytest.mark.parametrize("command", ["yd-compute-stop", "yd-compute-start"])
+    def test_globs_and_explicit_names_do_not_mix(self, command):
+        from yellowdog_cli.utils.command_registry import check_glob_and_literal_names
+
+        assert check_glob_and_literal_names in COMMANDS[command].validators

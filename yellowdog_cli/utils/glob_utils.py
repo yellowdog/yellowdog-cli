@@ -9,8 +9,9 @@ def contains_glob_chars(name: str) -> bool:
     """
     Return True if 'name' contains a glob metacharacter (* ? [). Whole-string
     check — for matching entity names/IDs, which never legitimately contain a
-    colon-prefixed component. (rclone remote paths use dataclient_utils.is_glob,
-    which strips a leading 'remote:' prefix first.)
+    colon-prefixed component. (rclone remote paths use
+    dataclient.operations.is_glob, which strips a leading 'remote:' prefix
+    first.)
     """
     return bool(GLOB_CHARS.intersection(name))
 

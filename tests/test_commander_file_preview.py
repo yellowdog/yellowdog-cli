@@ -87,7 +87,9 @@ def preview(qapp):
 
 
 def write_image(path, width: int, height: int) -> str:
-    """Write a real PNG of the given size and return its path as a string."""
+    """
+    Write a real PNG of the given size and return its path as a string.
+    """
     image = QImage(width, height, QImage.Format.Format_RGB32)
     image.fill(QColor("yellow"))
     assert image.save(str(path), "PNG"), f"could not write {path}"
@@ -108,7 +110,9 @@ def listing_view(dialog) -> QAbstractItemView:
 
 
 def _row_index(view: QAbstractItemView, name: str):
-    """The model index of the named row in a file dialog's listing, or None."""
+    """
+    The model index of the named row in a file dialog's listing, or None.
+    """
     model = view.model()
     assert model is not None, "the file dialog's listing has no model"
     root = view.rootIndex()
@@ -249,7 +253,9 @@ def rect_in(widget: QWidget, ancestor: QWidget) -> QRect:
 
 
 def dialog_preview(dialog) -> FilePreview:
-    """The dialog's preview pane; fails loudly when there is none."""
+    """
+    The dialog's preview pane; fails loudly when there is none.
+    """
     found = dialog.findChild(FilePreview, "file_preview")
     assert found is not None, "the browse dialog has no preview pane"
     return found
@@ -304,7 +310,9 @@ def press(dialog, label: str) -> None:
 
 
 def pane_splitter(dialog) -> tuple[QSplitter, int]:
-    """The splitter holding the preview pane, and the pane's index in it."""
+    """
+    The splitter holding the preview pane, and the pane's index in it.
+    """
     splitter = dialog.findChild(QSplitter, "splitter")
     assert splitter is not None, "the file dialog has no splitter"
     index = splitter.indexOf(dialog_preview(dialog))
@@ -1025,7 +1033,9 @@ PADDED_TASKS = [f"task_{n:03d}" for n in range(1, 13)]
 
 
 def task_group(root: Path, names: list[str]) -> Path:
-    """A work requirement directory holding one task group of the named tasks."""
+    """
+    A work requirement directory holding one task group of the named tasks.
+    """
     group = root / "wr_260826-071540" / "task_group_1"
     group.mkdir(parents=True)
     for name in names:

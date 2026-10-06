@@ -6,7 +6,6 @@ rather than passing a path: going through the real entry point is the point, sin
 brings Jsonnet expansion, variable substitution and dependency re-sequencing with it.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -73,9 +72,9 @@ def install_variables() -> dict[str, str | None]:
     Force the corpus's dummy values into the substitution engine, returning what
     each key held beforehand so remove_variables() can put it back exactly.
 
-    Set directly rather than through YD_VAR_* environment variables: variables.py
-    scans the environment at import, which has already happened by the time a
-    fixture runs.
+    Set directly rather than through YD_VAR_* environment variables:
+    variable_substitution.py scans the environment at import, which has already
+    happened by the time a fixture runs.
 
     *Forcing* rather than merging, and that distinction is the whole point. An
     earlier version used add_substitutions_without_overwriting(), which skips a key
@@ -92,7 +91,7 @@ def install_variables() -> dict[str, str | None]:
     explicitly selected config file (see add_substitutions_from_config_file), which
     is what '-c' means in the live layer.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
@@ -119,7 +118,7 @@ def remove_variables(previous: dict[str, str | None]) -> None:
     being deleted -- deleting it would leave the session subtly different from how
     the test found it, which is the same class of failure in the other direction.
     """
-    from yellowdog_cli.utils.variables import (
+    from yellowdog_cli.utils.variable_substitution import (
         VARIABLE_SUBSTITUTIONS,
         _update_and_resolve_substitutions,
     )
@@ -134,11 +133,13 @@ def remove_variables(previous: dict[str, str | None]) -> None:
 
 
 def corpus_files() -> list[Path]:
-    """Every corpus file, in a stable order."""
+    """
+    Every corpus file, in a stable order.
+    """
     return sorted(CORPUS_DIR.glob("*.jsonnet"))
 
 
-# Files the live layer (Tasks 7-8) must not create: credentials need real provider
+# Files the live layer must not create: credentials need real provider
 # secrets, which are out of scope for these tests, and the namespace file is handled
 # once per test account by the session fixture rather than as a per-test resource
 # specification.
@@ -146,7 +147,9 @@ OFFLINE_ONLY = {"credentials.jsonnet", "namespace.jsonnet"}
 
 
 def live_corpus_files() -> list[Path]:
-    """Every corpus file the live layer may create, in the same stable order."""
+    """
+    Every corpus file the live layer may create, in the same stable order.
+    """
     return [path for path in corpus_files() if path.name not in OFFLINE_ONLY]
 
 
@@ -159,32 +162,25 @@ def load_corpus_file(path: Path) -> list[dict]:
     namespace); the assignment goes to the namespace attribute it reads from
     instead of to the property itself.
 
-    Also chdir's to the file's own directory for the duration of the load: a
-    Jsonnet 'import' is resolved relative to the current working directory, not to
-    the file doing the importing, because VariableSubstitutedJsonnetFile
-    (variables.py) writes its variable-substituted copy into os.getcwd() before
-    handing it to the Jsonnet evaluator (see that class's own commit message,
-    "Create Jsonnet temporary file in current directory to fix import path
-    issue") -- i.e. a real invocation is expected to run from the directory
-    containing the spec and anything it imports. Without matching that here,
-    'lib/base.libsonnet' resolves against the repo root (pytest's cwd) instead of
-    tests/resources/, and the import fails regardless of how correct the corpus
-    file itself is.
+    No chdir is needed: a Jsonnet file's imports ('lib/base.libsonnet') are
+    resolved beside it, wherever the loader is run from.
     """
-    from yellowdog_cli.utils.args import ARGS_PARSER
+    from types import SimpleNamespace
+
     from yellowdog_cli.utils.load_resources import load_resource_specifications
 
-    original = ARGS_PARSER.resource_specifications
-    original_cwd = os.getcwd()
-    ARGS_PARSER.args.resource_specifications = [str(path.resolve())]
-    try:
-        os.chdir(path.parent)
-        return load_resource_specifications()
-    finally:
-        os.chdir(original_cwd)
-        ARGS_PARSER.args.resource_specifications = original
+    return load_resource_specifications(
+        SimpleNamespace(
+            resource_specifications=[str(path.resolve())],
+            jsonnet_dry_run=False,
+            validate=False,
+            no_resequence=False,
+        )
+    )
 
 
 def spec_properties(resource: dict) -> dict:
-    """The resource's properties, without the loader's own bookkeeping keys."""
+    """
+    The resource's properties, without the loader's own bookkeeping keys.
+    """
     return {k: v for k, v in resource.items() if k not in META_KEYS}

@@ -3,7 +3,7 @@
 """
 Print, write or check the specification schemas: what yd-submit, yd-provision,
 yd-instantiate, yd-create and yd-nodeaction accept, generated from the
-registry and the installed SDK (utils/spec_schema.py).
+registry and the installed SDK (utils/specs/schema.py).
 
 Built on neither wrapper: yd-schema needs no configuration and no
 credentials, so it is a registry command on ARGS_PARSER alone, like
@@ -14,17 +14,24 @@ import json
 from pathlib import Path
 from sys import exit
 
-from yellowdog_client._version import __version__ as sdk_version
-
 from yellowdog_cli._version import __version__ as cli_version
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.atomic_write import write_text_atomically
+from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
-    print_json,
+    print_json_text,
     print_simple,
 )
-from yellowdog_cli.utils.spec_schema import Family, SchemaGenerationError, build_schema
+from yellowdog_cli.utils.specs.schema import Family, SchemaGenerationError, build_schema
+
+# From the package metadata: importing anything from yellowdog_client builds
+# the whole Platform client, which --list, --check and the config family
+# never need. The SDK is imported only when a family that needs it is built
+from yellowdog_cli.utils.version_info import sdk_version as installed_sdk_version
+
+sdk_version = installed_sdk_version()
 
 INDEX_FILE = "index.json"
 
@@ -33,10 +40,17 @@ def _schema_filename(family: Family) -> str:
     return f"{family.value}.schema.json"
 
 
+def schema_text(document: dict) -> str:
+    """
+    A schema as yd-schema writes it, and prints it: one layout, so that a
+    printed schema and a written one are byte for byte the same.
+    """
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
 def _write_json(path: Path, document: dict) -> None:
-    path.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    # Whole or not at all: an interruption leaves the file as it was
+    write_text_atomically(str(path), schema_text(document))
 
 
 def _write(directory: str) -> int:
@@ -69,8 +83,12 @@ def _write(directory: str) -> int:
 
 def _check(directory: str) -> int:
     """
-    0 if <directory>'s index.json names the installed CLI and SDK versions,
-    else 1, printing which changed and how to fix it.
+    0 if <directory>'s index.json names the installed CLI and SDK versions
+    and every family's file is there and is what they build, else 1,
+    printing what is stale and how to fix it. The schemas are built to
+    compare them -- a few ms each, fastjsonschema's compile being the cost
+    that is not paid -- so that a file edited, missing, or left by another
+    run is not reported up to date on the index's word alone.
     """
     index_path = Path(directory) / INDEX_FILE
     try:
@@ -80,19 +98,37 @@ def _check(directory: str) -> int:
     except (OSError, json.JSONDecodeError, KeyError) as error:
         print_error(f"{index_path}: cannot be read ({error})")
         return 1
-    if written_cli == cli_version and written_sdk == sdk_version:
-        print_simple(
-            f"up to date: CLI {cli_version}, SDK {sdk_version}", override_quiet=True
+    if written_cli != cli_version or written_sdk != sdk_version:
+        print_error(
+            f"written for CLI {written_cli} / SDK {written_sdk}, now {cli_version} /"
+            f" {sdk_version}: run yd-schema --write {directory}"
         )
-        return 0
-    print_error(
-        f"written for CLI {written_cli} / SDK {written_sdk}, now {cli_version} /"
-        f" {sdk_version}: run yd-schema --write {directory}"
+        return 1
+    stale = []
+    for family in Family:
+        path = Path(directory) / _schema_filename(family)
+        try:
+            current = path.read_text(encoding="utf-8") == schema_text(
+                build_schema(family)
+            )
+        except OSError:
+            current = False
+        if not current:
+            stale.append(str(path))
+    if stale:
+        print_error(
+            f"not what CLI {cli_version} / SDK {sdk_version} build:"
+            f" {', '.join(stale)}: run yd-schema --write {directory}"
+        )
+        return 1
+    print_simple(
+        f"up to date: CLI {cli_version}, SDK {sdk_version}", override_quiet=True
     )
-    return 1
+    return 0
 
 
 def main() -> None:
+    configure_output(ARGS_PARSER)
     try:
         if ARGS_PARSER.schema_list:
             for family in Family:
@@ -103,7 +139,7 @@ def main() -> None:
         if ARGS_PARSER.schema_check_dir is not None:
             exit(_check(ARGS_PARSER.schema_check_dir))
         family = Family(ARGS_PARSER.schema_family)
-        print_json(build_schema(family))
+        print_json_text(schema_text(build_schema(family)))
     except SchemaGenerationError as error:
         print_error(str(error))
         exit(1)

@@ -4,7 +4,7 @@ Configuration classes.
 
 from dataclasses import dataclass, field
 
-from yellowdog_cli.utils.settings import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
+from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
 
 
 @dataclass
@@ -83,7 +83,7 @@ class ConfigWorkerPool:
     idle_pool_timeout: float = 30.0
     images_id: str | None = None
     instance_tags: dict | None = None
-    maintainInstanceCount: bool = False  # Only for yd-instantiate
+    maintain_instance_count: bool = False  # Only for yd-instantiate
     max_nodes: int = 0
     max_nodes_set: bool = False  # Is max_nodes explicitly set?
     metrics_enabled: bool = False

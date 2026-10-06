@@ -1,14 +1,17 @@
 """
-Which platform Commander is running on. Decided once, at import, and refused
+Which platform Commander is running on, decided once, at import, and refused
 outright on anything but the three Commander knows how to open a file on,
-rather than guessing. Qt-free.
+rather than guessing; and how a child process is started there: the shell for
+a typed command, the program for a 'yd-*' one, and the environment every
+child gets. Qt-free.
 """
 
 import os
 import sys
 from platform import system as _platform_system
 
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.command_registry import command_module
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 _system = _platform_system()
 MACOS = _system == "Darwin"
@@ -41,3 +44,22 @@ def shell_command() -> tuple[str, str]:
                 return candidate, "/c"
         return "cmd", "/c"
     return ("/bin/sh" if os.path.isfile("/bin/sh") else "sh"), "-c"
+
+
+# Set in every child's environment: a Python writing to a pipe uses the
+# locale's encoding (cp1252 on Windows) unless told otherwise, and the
+# messages the CLI prints carry characters such as '→' and '—'
+CHILD_ENVIRONMENT = {"PYTHONIOENCODING": "utf-8"}
+
+
+def cli_program(command: str, args: list[str]) -> tuple[str, list[str]]:
+    """
+    The program and arguments that run 'command': a console script of this
+    installation's under this interpreter ('python -m <its module>'), so that
+    it is this installation's CLI that runs, whatever the PATH Commander was
+    started with holds; anything else as it is.
+    """
+    module = command_module(command)
+    if module is None:
+        return command, args
+    return sys.executable, ["-m", module, *args]

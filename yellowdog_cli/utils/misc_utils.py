@@ -9,14 +9,15 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from os.path import abspath, dirname, isfile, join, normpath, relpath
+from functools import cache
+from os.path import abspath, dirname, isfile, join, normpath
 from random import choice
 from typing import TYPE_CHECKING, TypeAlias
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 from yellowdog_cli.utils.type_check import check_str
@@ -37,7 +38,7 @@ def pathname_relative_to_config_file(config_file_dir: str, file: str) -> str:
     Find the pathname of a file relative to the location
     of the config file
     """
-    return normpath(relpath(join(config_file_dir, file)))
+    return normpath(relative_if_possible(join(config_file_dir, file)))
 
 
 # Lower case base 36, for the process discriminator added by generate_id()
@@ -110,11 +111,35 @@ def link_entity(base_url: str, entity: _EntityType) -> str:
     )
 
 
+def portal_netloc(api_netloc: str) -> str | None:
+    """
+    The Portal's network location for the API's: each hostname label that is
+    exactly 'api' becomes 'portal' ('api.yellowdog.ai' gives
+    'portal.yellowdog.ai'; a port is kept). None when there is no such label,
+    so that 'capital.example.com' or 'myapihost' is never rewritten.
+    """
+    labels = api_netloc.split(".")
+    portal = ["portal" if label.lower() == "api" else label for label in labels]
+    return None if portal == labels else ".".join(portal)
+
+
+def portal_base_url(api_url: str) -> str:
+    """
+    The Portal's address for an API URL: the API URL with its network
+    location rewritten by portal_netloc() where it names an 'api' host, and
+    otherwise exactly as it is, path included ('https://host/api' is left
+    as it is), less any trailing '/', query or fragment.
+    """
+    parts = urlsplit(api_url)
+    netloc = portal_netloc(parts.netloc) or parts.netloc
+    return urlunsplit((parts.scheme, netloc, parts.path.rstrip("/"), "", ""))
+
+
 def link(base_url: str, url_suffix: str = "", text: str | None = None) -> str:
-    url_parts = urlparse(base_url)
-    netloc = url_parts.netloc.replace("api", "portal")
-    base_url = url_parts.scheme + "://" + netloc
-    url = base_url + "/" + url_suffix
+    """
+    A link to a Portal page: 'url_suffix' under portal_base_url(base_url).
+    """
+    url = portal_base_url(base_url) + "/" + url_suffix
     if not text:
         text = url
     if text == url:
@@ -161,47 +186,12 @@ def get_delimited_string_boundaries(
         the function will return Substring objects: [(4, 19), (24, 37)]
 
     Opening and closing delimiters must be balanced across the entire
-    input_string, otherwise an exception will be raised.
+    input_string, otherwise an exception will be raised. Braces inside an
+    expression are its content: see _scan_delimited().
     """
-    # Escape the delimiters: they are literal strings, not regex patterns
-    openings = [
-        (x.span()[0], 1)
-        for x in re.finditer(re.escape(opening_delimiter), input_string)
-    ]
-    closings = [
-        (x.span()[0], -1)
-        for x in re.finditer(re.escape(closing_delimiter), input_string)
-    ]
-
-    mismatched_delimiters_exception = ValueError(
-        f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
-        f" in '{input_string}'"
+    return _scan_delimited(
+        input_string, opening_delimiter, closing_delimiter, lenient=False
     )
-
-    if len(openings) != len(closings):
-        raise mismatched_delimiters_exception
-
-    slate = 0
-    start = None
-    substrings: list[Substring] = []
-
-    for boundary in sorted(openings + closings):
-        slate += boundary[1]
-        if slate < 0:
-            raise mismatched_delimiters_exception
-        if slate == 1 and start is None:
-            start = boundary[0]
-        elif slate == 0:
-            assert start is not None  # set when slate first reached 1
-            substrings.append(
-                Substring(start=start, end=boundary[0] + len(closing_delimiter))
-            )
-            start = None
-
-    if slate > 0:
-        raise mismatched_delimiters_exception
-
-    return substrings
 
 
 def find_delimited_expressions(
@@ -221,30 +211,121 @@ def find_delimited_expressions(
       when called with ('{"a":{"b":"{{x_{{y}}}}"}}', "{{", "}}")
       the result is: ['{{x_{{y}}}}']
     """
+    return [
+        s[span.start : span.end]
+        for span in find_delimited_expression_spans(
+            s, opening_delimiter, closing_delimiter
+        )
+    ]
+
+
+def find_delimited_expression_spans(
+    s: str, opening_delimiter: str, closing_delimiter: str
+) -> list[Substring]:
+    """
+    Where find_delimited_expressions() finds its expressions, for a caller
+    that substitutes each by its position rather than by its text.
+    """
+    return _scan_delimited(s, opening_delimiter, closing_delimiter, lenient=True)
+
+
+# How much of a value an error about its delimiters quotes
+_SHOWN_VALUE_LENGTH = 200
+
+
+@cache
+def _inside_expression_pattern(
+    opening_delimiter: str, closing_delimiter: str
+) -> re.Pattern:
+    """
+    What _scan_delimited() looks for inside an expression: either delimiter,
+    or a single brace. Compiled once per pair, since it is called per value.
+    """
+    opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
+    tokens = [opening_delimiter, closing_delimiter]
+    if opening_brace != closing_brace:
+        tokens += [opening_brace, closing_brace]
+    return re.compile("|".join(re.escape(token) for token in tokens))
+
+
+def _scan_delimited(
+    s: str, opening_delimiter: str, closing_delimiter: str, lenient: bool
+) -> list[Substring]:
+    """
+    The spans of the top-level delimited expressions in a string, for the two
+    functions above, which must agree on where an expression ends: one finds
+    the expressions in a file's text, the other splits each one to substitute
+    it. Strict, a delimiter that does not balance raises ValueError; lenient,
+    it is text, and so is an expression left open at the end of its line.
+
+    Inside an expression, a single brace -- the last character of the opening
+    delimiter, or the first of the closing one -- is content, and a closing
+    brace that closes one opened in the content is content too. That is what
+    lets a default hold braces of its own: '{{table:t:={"a":1}}}' ends at its
+    last '}}', not its first, and so does '{{cmd:=echo ${HOME}}}'. Outside an
+    expression a brace is plain text, so the JSON around '{"n":{{x}}}' ends
+    the expression at its first '}}'.
+    """
     # Jump from one delimiter to the next rather than stepping through the
     # text a character at a time, which cost ~18ms on a 500kB specification
-    # against ~1.5ms this way. A line break matters only while an expression
-    # is open, so it is looked for only then, between one delimiter and the
-    # next, rather than matched throughout the text
-    expressions: list[str] = []
-    depth = 0
+    # against ~1.5ms this way. Outside an expression only the next opening
+    # delimiter is looked for, with str.find(); single braces are looked for
+    # only while one is open, and a line break only then, between one match
+    # and the next, rather than matched throughout the text
+    # The value quoted at most in part: it can be long (inline Task Data) or
+    # hold a substituted credential
+    shown = s if len(s) <= _SHOWN_VALUE_LENGTH else s[:_SHOWN_VALUE_LENGTH] + "..."
+    mismatched = ValueError(
+        f"Mismatched variable delimiters ('{opening_delimiter}', '{closing_delimiter}')"
+        f" in '{shown}'"
+    )
+    inside = _inside_expression_pattern(opening_delimiter, closing_delimiter)
+    opening_brace, closing_brace = opening_delimiter[-1], closing_delimiter[0]
+
+    spans: list[Substring] = []
+    # For each expression open, innermost last, the braces its content has open
+    open_braces: list[int] = []
     start = 0
-    previous_end = 0
-    for match in re.finditer(
-        f"{re.escape(opening_delimiter)}|{re.escape(closing_delimiter)}", s
-    ):
-        if depth > 0 and s.find("\n", previous_end, match.start()) != -1:
-            depth = 0  # The open expression ended with its line
-        previous_end = match.end()
-        if match.group() == opening_delimiter:
-            if depth == 0:
-                start = match.start()
-            depth += 1
-        elif depth > 0:
-            depth -= 1
-            if depth == 0:
-                expressions.append(s[start : match.end()])
-    return expressions
+    position = 0
+    while True:
+        if not open_braces:  # Only an opening delimiter matters, so find it
+            start = s.find(opening_delimiter, position)
+            before = start if start != -1 else len(s)
+            if not lenient and s.find(closing_delimiter, position, before) != -1:
+                raise mismatched  # A closing delimiter with nothing open
+            if start == -1:
+                break
+            open_braces.append(0)
+            position = start + len(opening_delimiter)
+            continue
+
+        match = inside.search(s, position)
+        if match is None:
+            break
+        if lenient and s.find("\n", position, match.start()) != -1:
+            open_braces = []  # The open expression ended with its line
+            position = match.start()  # Read this match again, outside one
+            continue
+        position = match.end()
+        token = match.group()
+        if token == opening_delimiter:
+            open_braces.append(0)
+        elif token == closing_delimiter and open_braces[-1] > 0:
+            # Its first character closes a brace the content opened
+            open_braces[-1] -= 1
+            position = match.start() + len(closing_brace)
+        elif token == closing_delimiter:
+            open_braces.pop()
+            if not open_braces:
+                spans.append(Substring(start=start, end=match.end()))
+        elif token == opening_brace:
+            open_braces[-1] += 1
+        elif open_braces[-1] > 0:  # A closing brace
+            open_braces[-1] -= 1
+
+    if open_braces and not lenient:
+        raise mismatched
+    return spans
 
 
 def split_delimited_string(
@@ -295,20 +376,6 @@ def split_delimited_string(
     ]
 
 
-def remove_outer_delimiters(
-    input_string: str, opening_delimiter: str, closing_delimiter: str
-) -> str:
-    """
-    Remove the outermost delimiters from a string.
-    There is no checking for a well-formed string.
-    """
-    # The string and the closing delimiter must be reversed ([::-1]) for
-    # removal, then re-reversed
-    return input_string.replace(f"{opening_delimiter}", "", 1)[::-1].replace(
-        f"{closing_delimiter[::-1]}", "", 1
-    )[::-1]
-
-
 def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     """
     Format a string to be consistent with YellowDog naming requirements.
@@ -348,36 +415,34 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     return new_yd_name
 
 
-def dotenv_file_path() -> str | None:
+def dotenv_file_path(config_file: str | None) -> str | None:
     """
-    The .env file a command would load: one beside the config file first,
-    else the nearest one found upwards from the current directory; None
-    when there is neither.
+    The .env file a command would load: one beside the config file
+    ('config_file', else config.toml) first, else the nearest one found
+    upwards from the current directory; None when there is neither.
     """
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
     # fall back to searching upward from CWD.
-    config_path = ARGS_PARSER.config_file or "config.toml"
+    config_path = config_file or "config.toml"
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
     if isfile(config_dir_dotenv):
         return config_dir_dotenv
     return find_dotenv(usecwd=True) or None
 
 
-def load_dotenv_file():
+def load_dotenv_file(config_file: str | None, env_override: bool = False):
     """
     Load extra environment variables from a .env file if it exists.
     Do not override existing variables (environment takes precedence)
     unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
     Report on YD vars that are taken from .env.
     """
-    dotenv_file = dotenv_file_path()
+    dotenv_file = dotenv_file_path(config_file)
     if dotenv_file is None:
         return
 
-    env_override = bool(ARGS_PARSER.env_override) or bool(
-        os.environ.get(YD_ENV_OVERRIDE)
-    )
+    env_override = env_override or bool(os.environ.get(YD_ENV_OVERRIDE))
 
     print_debug(
         f"Loading environment variables from '{dotenv_file}' ("
@@ -415,13 +480,11 @@ def is_http_not_found(e: Exception) -> bool:
     )
 
 
-def config_file_explicitly_selected(args_parser) -> bool:
+def config_file_explicitly_selected(args) -> bool:
     """
     True if the configuration file was explicitly selected using the
-    '--config'/'-c' option. An explicitly selected config file takes
-    precedence over environment variables (but not over the command line).
-
-    The caller's ARGS_PARSER is passed in (rather than using this module's
-    import) so that tests can patch it per-module.
+    '--config'/'-c' option, on the command line 'args'. An explicitly
+    selected config file takes precedence over environment variables (but
+    not over the command line).
     """
-    return args_parser.config_file is not None
+    return args.config_file is not None

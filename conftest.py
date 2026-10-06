@@ -1,13 +1,16 @@
 import atexit
+import contextlib
+import io
 import sys
 import time
 
 import pytest
 from cli_test_helpers import shell
 
-# Strip pytest's own arguments before any yellowdog_cli modules are imported.
-# CLIParser calls parse_args() at module level; without this, pytest's argv
-# (e.g. file paths, -v) would be misinterpreted or cause parse errors.
+# Strip pytest's own arguments, which the CLI's parser would otherwise
+# misinterpret or refuse (file paths, -v). The command line is parsed when
+# pytest_configure() builds what importing the CLI's modules once built (see
+# _build_what_import_built()).
 sys.argv = sys.argv[:1]
 
 
@@ -121,19 +124,33 @@ def _schema_cache_root(tmp_path_factory):
 @pytest.fixture(autouse=True)
 def _session_schema_cache(monkeypatch, _schema_cache_root):
     """
-    Keep the compiled schema validators (schema_cache.py) in a directory of
+    Keep the compiled schema validators (specs/schema_cache.py) in a directory of
     the session's own rather than the system's temporary directory, so an
     in-process test neither reads a validator an earlier run left nor
     leaves one. Commands run as child processes still use the real one. No
     reporter is registered, and nothing counts as already reported, so a
     wrapped main() run by one test reports nothing into the next.
     """
-    from yellowdog_cli.utils import schema_cache
+    from yellowdog_cli.utils.specs import schema_cache
 
     monkeypatch.setattr(schema_cache, "_temp_root", lambda: _schema_cache_root)
     monkeypatch.setattr(schema_cache, "_reporter", None)
     monkeypatch.setattr(schema_cache, "_REPORTED", set())
     yield
+
+
+@pytest.fixture(autouse=True)
+def _output_settings_restored():
+    """
+    Leave the output settings (utils/output_settings.py) as each test found
+    them: a command run through its wrapper configures them from the test's
+    arguments, and a test may configure them itself.
+    """
+    from yellowdog_cli.utils import output_settings
+
+    saved = output_settings.snapshot()
+    yield
+    output_settings.restore(saved)
 
 
 @pytest.fixture(autouse=True)
@@ -507,21 +524,55 @@ def yd_list_row_matches(stdout: str, name: str, status: str) -> bool:
 _dummy_credentials_used = False
 
 
+def _build_what_import_built(config) -> None:
+    """
+    Build what importing the CLI's modules once built, before any test module
+    is imported: the command line (pytest's stripped), the configuration and
+    the wrapper's CONFIG_COMMON (see yellowdog_cli/utils/lazy.py). The tests
+    were written against that; left to first use, the command line would be
+    parsed with whatever sys.argv a test had set at the time, and the
+    configuration loaded part-way through a test that had patched it. A
+    machine with no configuration gets dummy credentials first, as below.
+    """
+    # With stdout and stderr redirected to plain buffers. printing.py builds
+    # its consoles as it is imported, and Rich decides then, from whether
+    # stdout is a terminal, whether they colour their output; this runs before
+    # pytest captures anything, so in a terminal every console would colour,
+    # and every test reading what was printed would find escape codes in it
+    # (it passed through a pipe, which is how it went unseen). Whatever is
+    # printed meanwhile is passed on afterwards.
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            import yellowdog_cli.utils.printing  # noqa: F401
+            from yellowdog_cli.utils import wrapper
+            from yellowdog_cli.utils.args import ARGS_PARSER
+            from yellowdog_cli.utils.lazy import value
+            from yellowdog_cli.utils.output_settings import configure_output
+
+            value(ARGS_PARSER)
+            configure_output(ARGS_PARSER)
+            _supply_dummy_credentials_if_unconfigured(config)
+            value(wrapper.CONFIG_COMMON)
+    finally:
+        sys.stdout.write(out.getvalue())
+        sys.stderr.write(err.getvalue())
+
+
 def _supply_dummy_credentials_if_unconfigured(config) -> None:
     """
     Let the default tests run on a machine with no YellowDog configuration.
 
-    Most test modules import a yd-* command module, and those load their
-    configuration when imported — wrapper.py does 'CONFIG_COMMON =
-    load_config_common()', which reports a missing key or secret and exits. During
-    collection that surfaces as a pytest INTERNALERROR with no tests run at all, even
-    though the default tests never contact the platform. (Only key and secret bite:
+    Building the wrapper's CONFIG_COMMON, which _build_what_import_built() does
+    before collection, reports a missing key or secret and exits. That would
+    surface as a pytest INTERNALERROR with no tests run at all, even though the
+    default tests never contact the platform. (Only key and secret bite:
     namespace and tag already fall back to defaults.)
 
     Whether configuration exists is decided by asking the real loader, not by
     guessing: credentials can come from the environment under either of two names, a
     config.toml, an importCommon indirection inside it, or a .env somewhere above the
-    working directory. If the import succeeds, nothing is touched — an environment
+    working directory. If the load succeeds, nothing is touched — an environment
     variable outranks both config.toml and .env, so a dummy set over a working
     credential would shadow it.
 
@@ -540,7 +591,7 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
         for flag in ("--run-system", "--run-system-compute", "--run-demos")
     ):
         return
-    if _command_modules_import_cleanly():
+    if _configuration_loads_cleanly():
         return
 
     os.environ[YD_KEY] = "dummy-key-for-tests"
@@ -548,24 +599,27 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
     _dummy_credentials_used = True
 
 
-def _command_modules_import_cleanly() -> bool:
+def _configuration_loads_cleanly() -> bool:
     """
-    Whether this machine has a configuration a yd-* command can load.
-
-    wrapper.py loads the common config when imported and exits if it cannot, so this
-    asks the loader itself. Its output is discarded: on failure the CLI prints an
-    error that is about to be made irrelevant by the fallback, and on success it
-    prints notes about where the configuration came from that would otherwise appear
-    twice. Nothing is wasted either way — collection imports this module immediately
-    afterwards, and the second import is cached.
+    Whether this machine has a configuration a yd-* command can load, asked
+    of the loader itself. Its output is discarded: on failure the CLI prints
+    an error that is about to be made irrelevant by the fallback, and on
+    success it prints notes about where the configuration came from that
+    would otherwise appear twice. A load that exits is tried again on next
+    use, so the fallback's credentials are the ones then used.
     """
     from contextlib import redirect_stderr, redirect_stdout
     from io import StringIO
 
+    from yellowdog_cli.utils import load_config, wrapper
+    from yellowdog_cli.utils.args import ARGS_PARSER
+    from yellowdog_cli.utils.lazy import value
+
     discard = StringIO()
     try:
         with redirect_stdout(discard), redirect_stderr(discard):
-            import yellowdog_cli.utils.wrapper  # noqa: F401
+            load_config.ensure_config_loaded(ARGS_PARSER)
+            value(wrapper.CONFIG_COMMON)
     except SystemExit:
         return False
     return True
@@ -581,7 +635,7 @@ def pytest_report_header(config):
 
 
 def pytest_configure(config):
-    _supply_dummy_credentials_if_unconfigured(config)
+    _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"
     )

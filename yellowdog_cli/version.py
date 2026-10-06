@@ -5,8 +5,10 @@ Report version numbers, etc.
 """
 
 import json
+import sys
 from argparse import ArgumentParser
-from importlib.metadata import PackageNotFoundError
+from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, metadata
 from importlib.metadata import version as package_version
 from os.path import abspath
 from sys import executable, path
@@ -15,26 +17,44 @@ from sys import version as py_version
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
-from yellowdog_cli.utils.rclone_version import find_rclone
-from yellowdog_cli.utils.rclone_version import rclone_version as _rclone_version
-from yellowdog_cli.utils.settings import JSON_INDENT
+from yellowdog_cli.utils.dataclient.rclone_version import (
+    NOT_INSTALLED,
+    UNKNOWN,
+    find_rclone,
+)
+from yellowdog_cli.utils.dataclient.rclone_version import (
+    rclone_version as _rclone_version,
+)
+from yellowdog_cli.utils.output_style import JSON_INDENT
+from yellowdog_cli.utils.version_info import docs_url, sdk_version
 
-NOT_INSTALLED = "Not installed"
-SDK_DISTRIBUTION = "yellowdog-sdk"
-
-DOCS_URL = f"https://github.com/yellowdog/yellowdog-cli/blob/v{__version__}/README.md"
+CLI_DISTRIBUTION = "yellowdog-cli"
+UNKNOWN_LICENCE = "Unknown"
 
 
-def sdk_version() -> str:
+def readable(version: str) -> str | None:
     """
-    The installed YellowDog SDK's version, from its package metadata: read
-    without importing the package, whose __init__ builds the whole Platform
-    client (~140ms), so that nothing needs the SDK just to name it.
+    A version as a caller can use it: None when it is not installed, or
+    could not be read ('unknown', an rclone that would not run).
+    """
+    return None if version in (NOT_INSTALLED, UNKNOWN) else version
+
+
+def cli_licence() -> str:
+    """
+    The CLI's licence, from its package metadata ('License-Expression', or
+    the older 'License' field), so that pyproject.toml is the one place it
+    is stated.
     """
     try:
-        return package_version(SDK_DISTRIBUTION)
+        dist_metadata = metadata(CLI_DISTRIBUTION)
     except PackageNotFoundError:
-        return NOT_INSTALLED
+        return UNKNOWN_LICENCE
+    for field in ("License-Expression", "License"):
+        values = dist_metadata.get_all(field)
+        if values and values[0]:
+            return values[0]
+    return UNKNOWN_LICENCE
 
 
 def _jsonnet_version() -> str:
@@ -86,8 +106,9 @@ def main():
         "--json",
         action="store_true",
         help=(
-            "print the version numbers as a JSON object, null for one not"
-            " installed; with --debug, the Python executable and path too"
+            "print the version numbers, author and licence as a JSON object,"
+            " null for a version not installed; with --debug, the Python"
+            " executable and path too"
         ),
     )
     parser.add_argument(
@@ -95,45 +116,39 @@ def main():
     )
     args = parser.parse_args()
 
+    single: dict[str, Callable[[], str]] = {
+        "cli": lambda: __version__,
+        "sdk": sdk_version,
+        "python": lambda: py_version.split()[0],
+        "jsonnet": _jsonnet_version,
+        "rclone": _rclone_version,
+        "mcp": _mcp_version,
+    }
+    chosen = [name for name in single if getattr(args, name)]
+    if chosen and args.debug:
+        parser.error(f"--debug cannot be used with --{chosen[0]}")
+
     if args.json:
         _print_json(debug=args.debug)
         return
 
-    if args.cli:
-        print(__version__)
-        return
-    if args.sdk:
-        print(sdk_version())
-        return
-    if args.python:
-        print(py_version.split()[0])
-        return
-    if args.jsonnet:
-        version = _jsonnet_version()
-        if version == NOT_INSTALLED:
-            exit(1)
-        print(version)
-        return
-    if args.rclone:
-        version = _rclone_version()
-        if version == NOT_INSTALLED:
-            exit(1)
-        print(version)
-        return
-    if args.mcp:
-        version = _mcp_version()
-        if version == NOT_INSTALLED:
-            exit(1)
+    if chosen:
+        # The version alone, for a script to use: nothing, and exit 1, when
+        # it is not installed or could not be read
+        version = readable(single[chosen[0]]())
+        if version is None:
+            sys.exit(1)
         print(version)
         return
 
-    print(f"  YellowDog CLI Version:   {__version__} (Docs: {DOCS_URL})")
+    print(f"  YellowDog CLI Version:   {__version__} (Docs: {docs_url()})")
     print(f"  YellowDog SDK Version:   {sdk_version()}")
-    print(f"  Python Version:          {py_version.split()[0]} ")
+    print(f"  Python Version:          {py_version.split()[0]}")
     print(f"  Jsonnet Version:         {_jsonnet_version()}")
     print(f"  rclone Version:          {_rclone_version()}")
     print(f"  MCP SDK Version:         {_mcp_version()}")
-    print(f"  Author:                  {__author__} ({__email__}) ")
+    print(f"  Author:                  {__author__} ({__email__})")
+    print(f"  Licence:                 {cli_licence()}")
     if args.debug:
         print(f"  Command:                 {abspath(__file__)}")
         rclone = find_rclone()
@@ -151,16 +166,16 @@ def _print_json(debug: bool) -> None:
     which needs it, is not used.
     """
 
-    def installed(version: str) -> str | None:
-        return None if version == NOT_INSTALLED else version
-
+    # null for a version not installed, or one that could not be read
     document: dict = {
         "cli": __version__,
-        "sdk": sdk_version(),
+        "sdk": readable(sdk_version()),
         "python": py_version.split()[0],
-        "jsonnet": installed(_jsonnet_version()),
-        "rclone": installed(_rclone_version()),
-        "mcp": installed(_mcp_version()),
+        "jsonnet": readable(_jsonnet_version()),
+        "rclone": readable(_rclone_version()),
+        "mcp": readable(_mcp_version()),
+        "author": {"name": __author__, "email": __email__},
+        "licence": cli_licence(),
     }
     if debug:
         document["executable"] = executable

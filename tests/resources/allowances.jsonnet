@@ -33,7 +33,7 @@
 //
 // 'allowedHours' has an SDK default of 0 on every subtype, and is not required
 // by the dataclass -- but the live platform rejects 0 outright ("allowedHours
-// must be greater than or equal to 1"), a live-only finding (Task 8) invisible
+// must be greater than or equal to 1"), a live-only finding invisible
 // to the offline model-building path this corpus is otherwise checked against.
 // Every minimal variant below therefore sets 'allowedHours: 1', the smallest
 // value the platform accepts, rather than the true minimal (absent/0).
@@ -54,7 +54,7 @@
 // matches an Allowance to remove by its 'description' alone, and an Allowance
 // with no description can never be matched for removal at all -- so a
 // description-less minimal variant would be silently unremovable by the live
-// layer (Task 8), not merely untested. Giving each one a description makes the
+// layer, not merely untested. Giving each one a description makes the
 // minimal variant genuinely less minimal, but a live resource this suite
 // creates and cannot subsequently remove is the worse of the two compromises.
 

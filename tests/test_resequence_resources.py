@@ -2,10 +2,7 @@
 Unit tests for yellowdog_cli.utils.load_resources._resequence_resources
 """
 
-import pytest
-
-from yellowdog_cli.utils.load_resources import _resequence_resources
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.entity_names import (
     RN_CREDENTIAL,
     RN_IMAGE_FAMILY,
     RN_KEYRING,
@@ -13,6 +10,7 @@ from yellowdog_cli.utils.settings import (
     RN_REQUIREMENT_TEMPLATE,
     RN_SOURCE_TEMPLATE,
 )
+from yellowdog_cli.utils.load_resources import _resequence_resources
 
 
 class TestResequenceResources:
@@ -104,15 +102,14 @@ class TestResequenceResources:
     # ------------------------------------------------------------------
 
     def test_no_resequence_preserves_original_order(self):
-        from unittest.mock import patch
 
         resources = [
             {"resource": RN_REQUIREMENT_TEMPLATE},
             {"resource": RN_NAMESPACE},
         ]
-        with patch("yellowdog_cli.utils.load_resources.ARGS_PARSER") as mock_args:
-            mock_args.no_resequence = True
-            result = _resequence_resources(resources, creation_or_update=True)
+        result = _resequence_resources(
+            resources, creation_or_update=True, resequence=False
+        )
         types = [r["resource"] for r in result]
         assert types == [RN_REQUIREMENT_TEMPLATE, RN_NAMESPACE]
 
@@ -120,10 +117,17 @@ class TestResequenceResources:
     # Error cases
     # ------------------------------------------------------------------
 
-    def test_missing_resource_key_raises(self):
+    def test_a_missing_resource_type_sequences_last_for_creation(self):
+        # Left to per-resource processing, which fails that resource alone,
+        # as it does with one resource or '--no-resequence'
         resources = [{"name": "something"}, {"resource": RN_NAMESPACE}]
-        with pytest.raises(Exception, match="'resource' is not specified"):
-            _resequence_resources(resources)
+        result = _resequence_resources(resources, creation_or_update=True)
+        assert result == [{"resource": RN_NAMESPACE}, {"name": "something"}]
+
+    def test_a_missing_resource_type_sequences_first_for_removal(self):
+        resources = [{"resource": RN_NAMESPACE}, {"name": "something"}]
+        result = _resequence_resources(resources, creation_or_update=False)
+        assert result == [{"name": "something"}, {"resource": RN_NAMESPACE}]
 
     def test_unknown_resource_type_warns_and_sequences_last(self):
         # Unknown types must not abort the batch: they're warned about here

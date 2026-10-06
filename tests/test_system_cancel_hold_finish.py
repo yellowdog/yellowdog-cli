@@ -29,7 +29,8 @@ _WR_STATUSES = (
 
 
 def _wr_status(tag: str) -> str:
-    """Return the current status string of the WR matching tag in NAMESPACE.
+    """
+    Return the current status string of the WR matching tag in NAMESPACE.
 
     Filters yd-list to exactly one WR via tag+namespace, then scans the full
     output for the first known status word. Log messages never contain WR

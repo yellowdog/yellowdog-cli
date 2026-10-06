@@ -1,5 +1,5 @@
 """
-utils/spec_schema.py: the five families' schemas, built from the registry and
+utils/specs/schema.py: the five families' schemas, built from the registry and
 the installed SDK, compile under fastjsonschema; the SDK type mapping follows
 the spec's table row by row on real SDK fields; anything unmapped raises; the
 corpus and the README's examples validate.
@@ -16,10 +16,10 @@ from pathlib import Path
 
 import fastjsonschema
 import pytest
-from resource_live import KNOWN_PARTIAL_FAILURE_NAMES
+from resource_live import MISSING_NAMESPACE_FAILURE_NAMES
 
-from yellowdog_cli.utils import sdk_models
-from yellowdog_cli.utils.spec_schema import (
+from yellowdog_cli.utils.specs import sdk_models
+from yellowdog_cli.utils.specs.schema import (
     FAMILY_COMMANDS,
     FULLY_QUALIFIED_PREFIX,
     UNSET_TOKEN,
@@ -37,14 +37,18 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def _unwrapped(schema: dict) -> dict:
-    """A schema less the {{variable}} wrapping the generator adds."""
+    """
+    A schema less the {{variable}} wrapping the generator adds.
+    """
     if schema.get("if") == {"$ref": "#/$defs/variable"}:
         return schema["else"]
     return schema
 
 
 def _non_null(schema: dict) -> dict:
-    """A schema less the null an Optional field admits."""
+    """
+    A schema less the null an Optional field admits.
+    """
     if schema.get("if") == {"type": "null"}:
         return schema["else"]
     if isinstance(schema.get("type"), list) and "null" in schema["type"]:
@@ -59,7 +63,9 @@ def _non_null(schema: dict) -> dict:
 
 
 def _dispatched(schema: dict) -> dict[str, list]:
-    """A polymorphic dispatch's cases: each member's $def name, and its values."""
+    """
+    A polymorphic dispatch's cases: each member's $def name, and its values.
+    """
     key = schema["required"][0]
     return {
         case["then"]["$ref"].rsplit("/", 1)[-1]: case["if"]["properties"][key]["enum"]
@@ -287,7 +293,9 @@ class TestTypeMapping:
         }
 
     def test_a_nested_polymorphic_base_takes_only_the_declared_name(self):
-        """The CLI does not read these; the SDK dispatches on the exact value."""
+        """
+        The CLI does not read these; the SDK dispatches on the exact value.
+        """
         from yellowdog_client.model import ComputeRequirementDynamicTemplate
 
         defs: dict = {}
@@ -308,7 +316,9 @@ class TestTypeMapping:
         }
 
     def test_a_worker_pool_node_action_takes_the_sdk_action(self):
-        """A Worker Pool file is posted as written: 'action', and 'nodeIdFilter'."""
+        """
+        A Worker Pool file is posted as written: 'action', and 'nodeIdFilter'.
+        """
         defs = build_schema(Family.WORKER_POOL)["$defs"]
         run = defs["NodeRunCommandAction"]
         assert _unwrapped(run["properties"]["action"]) == {"const": "RUN_COMMAND"}
@@ -686,10 +696,12 @@ class TestFamilies:
 
 
 def _known_partial_failure(file_name: str, resource_name: str) -> bool:
-    """A corpus specification the live layer expects yd-create to reject."""
+    """
+    A corpus specification the live layer expects yd-create to reject.
+    """
     return any(
         resource_name.endswith(f"-{suffix}")
-        for suffix in KNOWN_PARTIAL_FAILURE_NAMES.get(file_name, ())
+        for suffix in MISSING_NAMESPACE_FAILURE_NAMES.get(file_name, ())
     )
 
 
@@ -720,11 +732,13 @@ class TestCorpusAndExamples:
         finally:
             resource_corpus.remove_variables(previous)
         assert count > 20
-        assert exempted == sum(map(len, KNOWN_PARTIAL_FAILURE_NAMES.values()))
+        assert exempted == sum(map(len, MISSING_NAMESPACE_FAILURE_NAMES.values()))
 
     def _json_blocks(self, start: str, end: str) -> list:
-        """The README's parseable JSON blocks from the line starting 'start' to
-        the one starting 'end', or to the end of the file if none does."""
+        """
+        The README's parseable JSON blocks from the line starting 'start' to
+        the one starting 'end', or to the end of the file if none does.
+        """
         lines = (REPO / "README.md").read_text().splitlines()
         s = next(i for i, line in enumerate(lines) if line.startswith(start))
         e = next(
@@ -811,11 +825,13 @@ class TestCorpusAndExamples:
 
 
 def test_the_generator_loads_no_command_machinery():
-    """Building a schema needs no command line, configuration or client."""
+    """
+    Building a schema needs no command line, configuration or client.
+    """
     code = (
         "import sys\n"
-        "import yellowdog_cli.utils.spec_schema, yellowdog_cli.utils.spec_properties,"
-        " yellowdog_cli.utils.sdk_models\n"
+        "import yellowdog_cli.utils.specs.schema, yellowdog_cli.utils.specs.properties,"
+        " yellowdog_cli.utils.specs.sdk_models\n"
         "banned = ['yellowdog_cli.utils.wrapper', 'yellowdog_cli.utils.args',"
         " 'yellowdog_cli.utils.printing', 'yellowdog_cli.create']\n"
         "print([m for m in banned if m in sys.modules])\n"

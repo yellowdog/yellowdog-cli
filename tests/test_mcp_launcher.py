@@ -104,3 +104,11 @@ def test_the_missing_extra_message(monkeypatch, capsys):
         main()
     assert exc.value.code == 1
     assert "not installed" in capsys.readouterr().err
+
+
+def test_a_variable_name_the_cli_refuses_is_refused_at_launch(config, capsys):
+    assert "invalid variable name '.x'" in _refused(["-v", ".x=1"], capsys)
+
+
+def test_a_reserved_variable_name_is_refused_at_launch(config, capsys):
+    assert "'namespace' is not a variable" in _refused(["-v", "namespace=n"], capsys)

@@ -1,6 +1,6 @@
 // Credentials: a minimal and maximal variant of all seven credential
 // subtypes, with dummy key material. Offline only -- the live layer
-// (Tasks 7-8) skips this file (see resource_corpus.OFFLINE_ONLY), since real
+// skips this file (see resource_corpus.OFFLINE_ONLY), since real
 // provider secrets are out of scope for these tests. 'keyringName' names the
 // Keyring to add the credential to and belongs to no model at all (see
 // resource_models.build_models()'s Credential branch): it is passed straight

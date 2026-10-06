@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from yellowdog_cli.commander.commander import RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.results_panel import RESULTS_DIR
 from yellowdog_cli.commander.selection import ObjectSummary, object_rows
 from yellowdog_cli.commander.startup import StartupSettings
 
@@ -39,7 +40,9 @@ def window(qapp):
 
 @pytest.fixture
 def captured(window, monkeypatch):
-    """Capture (command, args, kwargs) an action would run, without spawning it."""
+    """
+    Capture (command, args, kwargs) an action would run, without spawning it.
+    """
     calls: list[tuple[str, list[str], dict]] = []
     monkeypatch.setattr(
         window,
@@ -338,3 +341,40 @@ def test_a_large_selection_is_echoed_as_a_count(window, captured, monkeypatch):
     _command, args, kwargs = captured[0]
     assert args[2:] == [obj.path for obj in many]
     assert kwargs["log_args"][-1] == "<4 objects>"
+
+
+# --- What matched nothing ----------------------------------------------------
+
+
+def test_a_path_matching_nothing_says_so_and_downloads_nothing(
+    window, captured, monkeypatch
+):
+    # yd-download's dry run exits 1 for a pattern matching nothing, recording
+    # why: Commander reads the record rather than taking the exit for a
+    # listing that failed, which would download the whole pattern instead
+    calls: list = []
+
+    def capture(command, flags, extra_args=None, failures_recorded=False):
+        calls.append(failures_recorded)
+        return [
+            {
+                "source": "S3:b/pfx/pyex*",
+                "destination": "results",
+                "size": None,
+                "action": "failed",
+                "error": "No matches for wildcard 'S3:b/pfx/pyex*'",
+                "match": "S3:b/pfx/pyex*",
+            }
+        ]
+
+    monkeypatch.setattr(window, "_capture_json", capture)
+    window._discovery.tag = "pyex"
+    window.log_output.setPlainText("")
+
+    window._download_results_action()
+
+    assert calls == [True]
+    assert captured == []
+    log = window.log_output.toPlainText()
+    assert "No matches for wildcard" in log
+    assert "No objects match 'pyex*'" in log

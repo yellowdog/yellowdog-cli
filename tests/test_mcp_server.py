@@ -21,8 +21,8 @@ from mcp.shared.memory import create_client_server_memory_streams  # noqa: E402
 
 from yellowdog_cli.mcp.server import build_server, call_tool  # noqa: E402
 from yellowdog_cli.mcp.tools import ServerSettings, build_tools  # noqa: E402
-from yellowdog_cli.utils.rclone_version import find_rclone  # noqa: E402
-from yellowdog_cli.utils.settings import REDACTED_VALUE  # noqa: E402
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone  # noqa: E402
+from yellowdog_cli.utils.output_style import REDACTED_VALUE  # noqa: E402
 
 
 @pytest.fixture
@@ -38,7 +38,9 @@ def settings(tmp_path, monkeypatch):
 
 
 def _through_client(server, action):
-    """Run 'action(session)' against 'server' over in-memory streams."""
+    """
+    Run 'action(session)' against 'server' over in-memory streams.
+    """
 
     async def main():
         async with create_client_server_memory_streams() as (

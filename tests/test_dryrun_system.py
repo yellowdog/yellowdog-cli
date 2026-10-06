@@ -26,6 +26,7 @@ def test_dry_run_json_is_valid(cmd):
 
 @pytest.mark.system
 def test_delete_dry_run_json_is_valid():
-    result = shell("yd-delete -D --json -n='' -t=''")
+    # A path is required; a wildcard matching nothing gives nothing to act on
+    result = shell("yd-delete -D --json 'pytest-dryrun-no-such-*'")
     assert result.exit_code == 0
     json.loads(result.stdout)  # a JSON array (possibly empty)

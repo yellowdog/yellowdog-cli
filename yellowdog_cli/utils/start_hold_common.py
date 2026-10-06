@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 
 """
-Core functionality for starting and holding Work Requirements.
+Core functionality for starting, holding and finishing Work Requirements:
+yd-start, yd-hold and yd-finish.
+
+Work Requirements are selected by the namespace and tag, by glob patterns
+matched against their names, or explicitly by name or ID. Explicit targets
+are resolved first, in the order given: an ID is fetched directly, whatever
+its namespace, and a name is looked up in the configured namespace (or the
+one it is prefixed with), preferring the Work Requirement in the state the
+action applies to where a name has been reused. The rules for what cannot
+be acted on, confirming and stopping on a session failure are
+action_runner.py's.
 """
 
-from collections.abc import Callable
-from typing import cast
+from dataclasses import dataclass
+from typing import TypeAlias, cast
 
 from yellowdog_client.model import (
     WorkRequirement,
@@ -13,189 +23,287 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
-from yellowdog_cli.utils.entity_utils import (
-    get_filtered_work_requirement_summaries,
-    get_work_requirement_summary_by_name_or_id,
+from yellowdog_cli.utils.action_runner import (
+    SKIPPED,
+    Item,
+    Record,
+    Unit,
+    Unresolved,
+    by_type,
+    carry_out,
+    confirm_items,
+    resolve_targets,
 )
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
+from yellowdog_cli.utils.entity_utils import (
+    AmbiguousNameError,
+    describe_glob_scope,
+    expand_name_globs,
+    find_work_requirement_by_name,
+    get_filtered_work_requirement_summaries,
+)
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_ids
-from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.misc_utils import link_entity
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
+from yellowdog_cli.utils.interactive import select
+from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
+from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import ET_WORK_REQUIREMENTS
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON
+from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-# The '--json' record's outcome for each action
-_OUTCOMES = {"Start": "started", "Hold": "held"}
-
-
-def start_work_requirements():
-    required_state = WorkRequirementStatus.HELD
-    action_function = CLIENT.work_client.start_work_requirement_by_id
-    wr_ids = _start_or_hold_work_requirements("Start", required_state, action_function)
-    if ARGS_PARSER.follow:
-        follow_ids(wr_ids)
+# A Work Requirement to act on: fetched by its ID, or found by its name
+_Target: TypeAlias = WorkRequirement | WorkRequirementSummary
 
 
-def hold_work_requirements():
-    required_state = WorkRequirementStatus.RUNNING
-    action_function = CLIENT.work_client.hold_work_requirement_by_id
-    wr_ids = _start_or_hold_work_requirements("Hold", required_state, action_function)
-    if ARGS_PARSER.follow:
-        follow_ids(wr_ids)
+@dataclass(frozen=True)
+class WorkRequirementAction:
+    name: str  # E.g.: "Start"
+    gerund: str  # E.g.: "Starting"
+    past_tense: str  # E.g.: "Started"
+    method_name: str  # WorkClient method, taking a Work Requirement ID
+    statuses: tuple[WorkRequirementStatus, ...]  # Those it applies to
+
+    @property
+    def statuses_phrase(self) -> str:
+        return " or ".join(str(status) for status in self.statuses)
+
+    def record(
+        self, entity: object, outcome: str | None = None, error: str | None = None
+    ) -> None:
+        """
+        Record the action's outcome for '--json': by default, that it was
+        applied ('started'); otherwise 'skipped' or 'failed'.
+        """
+        record_action(
+            entity,
+            ET_WORK_REQUIREMENTS,
+            self.name.lower(),
+            outcome or self.past_tense.lower(),
+            error,
+        )
+
+    def recorder(self) -> Record:
+        """
+        The action's record, as action_runner calls it.
+        """
+        return lambda entity, _entity_type, outcome, error: self.record(
+            entity, outcome, error
+        )
 
 
-def _record(
-    action: str, entity: object, outcome: str | None = None, error: str | None = None
-) -> None:
+START = WorkRequirementAction(
+    name="Start",
+    gerund="Starting",
+    past_tense="Started",
+    method_name="start_work_requirement_by_id",
+    statuses=(WorkRequirementStatus.HELD,),
+)
+
+FINISH = WorkRequirementAction(
+    name="Finish",
+    gerund="Finishing",
+    past_tense="Finished",
+    method_name="finish_work_requirement_by_id",
+    # A FINISHING one is in neither, so it is left out or skipped
+    statuses=(WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD),
+)
+
+HOLD = WorkRequirementAction(
+    name="Hold",
+    gerund="Holding",
+    past_tense="Held",
+    method_name="hold_work_requirement_by_id",
+    statuses=(WorkRequirementStatus.RUNNING,),
+)
+
+
+def start_work_requirements(ctx: RunContext):
+    apply_work_requirement_action(ctx, START)
+
+
+def hold_work_requirements(ctx: RunContext):
+    apply_work_requirement_action(ctx, HOLD)
+
+
+def finish_work_requirements(ctx: RunContext):
+    apply_work_requirement_action(ctx, FINISH)
+
+
+def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction):
     """
-    Record the action's outcome for '--json': by default, that it was
-    applied ('started'); otherwise 'skipped' or 'failed'.
+    Entry point for yd-start, yd-hold and yd-finish. The command registry
+    ensures that glob patterns are not mixed with explicit names or IDs.
     """
-    record_action(
-        entity,
-        ET_WORK_REQUIREMENTS,
-        action.lower(),
-        outcome or _OUTCOMES[action],
-        error,
-    )
+    names_or_ids: list[str] = ctx.args.work_requirement_names or []
+    globs = [name for name in names_or_ids if contains_glob_chars(name)]
 
+    if names_or_ids and not globs:
+        _apply_by_name_or_id(ctx, action, names_or_ids)
+        return
 
-def _start_or_hold_work_requirements(
-    action: str, required_state: WorkRequirementStatus, action_function: Callable
-) -> list[str]:
-
-    if ARGS_PARSER.work_requirement_names:
-        return _start_or_hold_work_requirements_by_name_or_id(
-            action=action,
-            required_state=required_state,
-            action_function=action_function,
-            names_or_ids=ARGS_PARSER.work_requirement_names,
+    if globs:
+        print_info(
+            f"{action.gerund} Work Requirements "
+            f"{describe_glob_scope(globs, ctx.config.namespace)}"
         )
-
-    print_info(
-        f"{action}ing Work Requirements in namespace "
-        f"'{CONFIG_COMMON.namespace}' with "
-        f"'{CONFIG_COMMON.name_tag}' in tag"
-    )
-
-    selected_work_requirement_summaries: list[WorkRequirementSummary] = (
-        get_filtered_work_requirement_summaries(
-            client=CLIENT,
-            namespace=CONFIG_COMMON.namespace,
-            tag=CONFIG_COMMON.name_tag,
-            include_filter=[required_state],
+        summaries: list[WorkRequirementSummary] = expand_name_globs(
+            globs,
+            ctx.config.namespace,
+            fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
+                ctx.client,
+                name=prefix or None,
+                namespace=namespace,
+                include_filter=list(action.statuses),
+            ),
         )
-    )
-
-    count = 0
-    work_requirement_ids: list[str] = []
-
-    if selected_work_requirement_summaries:
-        selected_work_requirement_summaries = select(
-            CLIENT, selected_work_requirement_summaries
-        )
-
-    if selected_work_requirement_summaries and not confirmed(
-        f"{action} {len(selected_work_requirement_summaries)} Work Requirement(s)?"
-    ):
-        for work_summary in selected_work_requirement_summaries:
-            _record(action, work_summary, "skipped")
-        selected_work_requirement_summaries = []
-
-    if selected_work_requirement_summaries:
-        for work_summary in selected_work_requirement_summaries:
-            if work_summary.status != required_state:
-                _record(action, work_summary, "skipped")
-                continue
-            try:
-                action_function(work_summary.id)  # type: ignore[arg-type]
-            except Exception as e:
-                print_error(
-                    f"Failed to {action} Work Requirement '{work_summary.name}': {e}"
-                )
-                _record(action, work_summary, "failed", str(e))
-                continue  # Don't follow Work Requirements that weren't actioned
-            count += 1
-            _record(action, work_summary)
-            work_requirement_ids.append(cast(str, work_summary.id))
-            # The refetch is only needed to generate the link; the
-            # action has already succeeded
-            try:
-                work_requirement: WorkRequirement = (
-                    CLIENT.work_client.get_work_requirement_by_id(work_summary.id)  # type: ignore[arg-type]
-                )
-                print_info(
-                    f"Applied {action} to "
-                    f"{link_entity(CONFIG_COMMON.url, work_requirement)} "
-                    f"('{work_summary.name}')"
-                )
-            except Exception:
-                print_info(
-                    f"Applied {action} to Work Requirement '{work_summary.name}'"
-                )
-
-        if count > 0:
-            print_info(f"{action} applied to {count} Work Requirement(s)")
-        else:
-            print_info(f"No Work Requirements to {action}")
-
     else:
-        print_info(f"No Work Requirements available to {action}")
-
-    return work_requirement_ids
-
-
-def _start_or_hold_work_requirements_by_name_or_id(
-    action: str,
-    required_state: WorkRequirementStatus,
-    action_function: Callable,
-    names_or_ids: list[str],
-) -> list[str]:
-    """
-    Start or hold Work Requirements by their names or IDs.
-    Return the list actioned of YDIDs.
-    """
-    work_requirement_summaries: list[WorkRequirementSummary] = []
-
-    for name_or_id in names_or_ids:
-        work_requirement_summary = get_work_requirement_summary_by_name_or_id(
-            CLIENT, name_or_id, namespace=CONFIG_COMMON.namespace
+        print_info(
+            f"{action.gerund} Work Requirements in namespace "
+            f"'{ctx.config.namespace}' with "
+            f"'{ctx.config.name_tag}' in tag"
+        )
+        summaries = get_filtered_work_requirement_summaries(
+            client=ctx.client,
+            namespace=ctx.config.namespace,
+            tag=ctx.config.name_tag,
+            include_filter=list(action.statuses),
         )
 
-        if work_requirement_summary is None:
-            print_error(f"Work Requirement '{name_or_id}' not found")
-            _record(action, name_or_id, "failed", "not found")
-            continue
+    selected: list[WorkRequirementSummary] = (
+        select(ctx.client, summaries) if summaries else []
+    )
+    items = [_item(summary) for summary in selected]
+    if items and not confirm_items(
+        f"{action.name} {len(items)} Work Requirement(s)?", items, action.recorder()
+    ):
+        items = []
 
-        fq_name_and_id = (
-            f"'{work_requirement_summary.namespace}/{work_requirement_summary.name}' "
-            f"({work_requirement_summary.id})"
-        )
+    _carry_out(ctx, action, items)
 
-        if work_requirement_summary.status != required_state:
-            print_warning(
-                f"Work Requirement {fq_name_and_id} is not in the required '{required_state}'"
-                f" state for action '{action}'"
-            )
-            _record(action, work_requirement_summary, "skipped")
-            continue
 
-        if not confirmed(f"{action} Work Requirement {fq_name_and_id}?"):
-            _record(action, work_requirement_summary, "skipped")
-            continue
+def _item(work_requirement: _Target) -> Item:
+    return Item(
+        work_requirement, ET_WORK_REQUIREMENTS, work_requirement.id, work_requirement
+    )
 
+
+def _apply_by_name_or_id(
+    ctx: RunContext, action: WorkRequirementAction, names_or_ids: list[str]
+):
+    items = resolve_targets(
+        names_or_ids,
+        resolve=lambda target: _item(_resolve(ctx, action, target)),
+        describe=lambda target: (target, ET_WORK_REQUIREMENTS),
+        record=action.recorder(),
+        verb=action.name.lower(),
+        order=by_type(ET_WORK_REQUIREMENTS),
+    )
+
+    if not items:
+        print_info(f"No Work Requirements {action.past_tense.lower()}")
+        return
+
+    question = (
+        f"{action.name} {len(items)} Work Requirement(s) ("
+        + ", ".join(_label(item.value) for item in items)
+        + ")?"
+    )
+    if not confirm_items(question, items, action.recorder()):
+        print_info(f"No Work Requirements {action.past_tense.lower()}")
+        return
+
+    _carry_out(ctx, action, items)
+
+
+def _label(work_requirement: _Target) -> str:
+    return f"'{work_requirement.namespace}/{work_requirement.name}'"
+
+
+def _resolve(ctx: RunContext, action: WorkRequirementAction, target: str) -> _Target:
+    """
+    The Work Requirement a target names, raising Unresolved if it cannot be
+    acted on. Anything else raised is a failure of the lookup itself.
+    """
+    ydid_type = get_ydid_type(target)
+    if ydid_type == YDIDType.WORK_REQUIREMENT:
         try:
-            action_function(work_requirement_summary.id)
-            print_info(
-                f"Applied action '{action}' to Work Requirement {fq_name_and_id}"
+            work_requirement: _Target = (
+                ctx.client.work_client.get_work_requirement_by_id(target)
             )
-            work_requirement_summaries.append(work_requirement_summary)
-            _record(action, work_requirement_summary)
         except Exception as e:
-            print_error(
-                f"Failed to apply action '{action}' to Work Requirement {fq_name_and_id}: {e}"
-            )
-            _record(action, work_requirement_summary, "failed", str(e))
+            if is_http_not_found(e):
+                raise Unresolved(f"Cannot find Work Requirement {target}") from e
+            raise
+    elif ydid_type is not None:
+        raise Unresolved(f"'{target}' is not a Work Requirement ID")
+    else:
+        work_requirement = _resolve_name(ctx, action, target)
 
-    return [cast(str, wr.id) for wr in work_requirement_summaries]
+    if work_requirement.status not in action.statuses:
+        raise Unresolved(
+            f"Work Requirement {_label(work_requirement)} is"
+            f" {work_requirement.status}, not {action.statuses_phrase}",
+            SKIPPED,
+            work_requirement,
+        )
+    return work_requirement
+
+
+def _resolve_name(
+    ctx: RunContext, action: WorkRequirementAction, name_or_namespaced_name: str
+) -> WorkRequirementSummary:
+    """
+    The Work Requirement with a name, preferring the one in the state the
+    action applies to (entity_utils.find_work_requirement_by_name()).
+    """
+    try:
+        return find_work_requirement_by_name(
+            ctx.client,
+            name_or_namespaced_name,
+            ctx.config.namespace,
+            action.statuses,
+        )
+    except (NotFoundError, AmbiguousNameError) as e:
+        raise Unresolved(str(e)) from e
+
+
+def _carry_out(ctx: RunContext, action: WorkRequirementAction, items: list[Item]):
+    """
+    Apply the action to confirmed Work Requirements; report, and follow those
+    actioned.
+    """
+    done = carry_out(
+        [
+            Unit(
+                [item],
+                act=lambda wr=item.value: _act(ctx, action, wr),
+                failure=lambda e, wr=item.value: (
+                    f"Failed to {action.name.lower()} Work Requirement"
+                    f" {_label(wr)}: {e}"
+                ),
+            )
+            for item in items
+        ],
+        action.recorder(),
+    )
+    actioned_ids = [cast(str, unit.items[0].key) for unit in done]
+
+    if actioned_ids:
+        print_info(f"{action.past_tense} {len(actioned_ids)} Work Requirement(s)")
+        if ctx.args.follow:
+            follow_ids(ctx, actioned_ids)
+    else:
+        print_info(f"No Work Requirements {action.past_tense.lower()}")
+
+
+def _act(ctx: RunContext, action: WorkRequirementAction, work_requirement: _Target):
+    result = getattr(ctx.client.work_client, action.method_name)(work_requirement.id)
+    action.record(work_requirement)
+    if isinstance(result, WorkRequirement):
+        print_info(
+            f"{action.past_tense} {link_entity(ctx.config.url, result)}"
+            f" ({_label(work_requirement)})"
+        )
+    else:
+        print_info(f"{action.past_tense} Work Requirement {_label(work_requirement)}")

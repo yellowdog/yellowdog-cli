@@ -12,6 +12,8 @@ import resource_corpus
 import resource_live
 import resource_models
 
+from yellowdog_cli.utils.exit_codes import ReportedFailure
+
 resource_corpus.require_jsonnet()
 
 
@@ -71,7 +73,7 @@ def test_install_variables_forces_the_corpus_value_and_restores_what_it_found():
     Saves and restores both keys directly, independent of the module's autouse
     fixture, so the outcome does not depend on what that fixture already installed.
     """
-    from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+    from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
     occupied_key = "namespace"  # stands in for the ambient config's value
     fresh_key = "aws_region"
@@ -118,7 +120,7 @@ def test_a_corpus_load_uses_the_test_config_namespace_not_the_ambient_one():
     ('yd-demo' on the machine where it was found) while the live layer, passing
     '-c test-config.toml' to a subprocess, used 'yd-cli-tests'.
     """
-    from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+    from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
     key = "namespace"
     original = (
@@ -324,8 +326,14 @@ def test_allowance_natural_language_date_is_parsed_before_the_model_is_built():
 # lookups, orthogonal to the dispatch and the pops this test is about. Nothing
 # else is faked -- create_resources(), the dispatch, the pops, _get_model_object
 # and print_json are all the real ones -- and in-process needs no config file or
-# credentials beyond what importing yellowdog_cli.create already requires of
+# credentials beyond what importing utils/resource_creation.py already requires of
 # every test in this module.
+#
+# The client it is given is _OfflineClient, never the real one: the dry run is
+# meant to make no Platform call at all, and with the real client a dry run that
+# was not one created the corpus's resources in the account the checkout's
+# config.toml names (it happened once, mid-refactor, while the dry-run setting
+# moved from the command line to CreateOptions).
 _DRY_RUN_FAKE_CST_ID = "ydid:cst:000000:00000000-0000-0000-0000-000000000000"
 _DRY_RUN_FAKE_CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
 
@@ -350,43 +358,100 @@ _DRY_RUN_EXPECTED_FAILURES: dict[str, frozenset[str]] = {
 }
 
 
+class _OfflineClient:
+    """
+    A stand-in for the Platform client that refuses every use, noting what was
+    asked for: a dry run that reaches for the client fails its test, here and
+    at the fixture's end, rather than acting on the account the checkout's
+    configuration names.
+    """
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def __getattr__(self, name: str):
+        self.calls.append(name)
+        raise AssertionError(
+            f"an offline dry run reached for the Platform client ('{name}')"
+        )
+
+
 @pytest.fixture
 def dry_run_create():
     """
-    create.create_resources, in dry-run mode, with only the three name->ID
+    resource_creation.create_resources, in dry-run mode, with only the three name->ID
     platform lookups stubbed (see this section's own comment for why those three
-    and nothing else). Every patch is undone afterwards, including the dry-run
-    flag, which does not exist on the argparse namespace under pytest at all.
+    and nothing else). Every patch is undone afterwards.
     """
-    from yellowdog_cli import create
-    from yellowdog_cli.utils.args import ARGS_PARSER
+    import yellowdog_cli.utils.wrapper as wrapper_module
+    from yellowdog_cli.utils import resource_creation as create
+    from yellowdog_cli.utils.context import RunContext
 
     def _identity_image(client, image_name_or_id, **kwargs):
         return image_name_or_id
 
     patches = {
         "get_image_name_or_id": _identity_image,
-        "get_compute_source_template_id_by_name": lambda **kwargs: _DRY_RUN_FAKE_CST_ID,
+        "get_compute_source_template_id_by_name": (
+            lambda *args, **kwargs: _DRY_RUN_FAKE_CST_ID
+        ),
         "get_compute_requirement_template_id_by_name": (
-            lambda **kwargs: _DRY_RUN_FAKE_CRT_ID
+            lambda *args, **kwargs: _DRY_RUN_FAKE_CRT_ID
         ),
     }
     originals = {name: getattr(create, name) for name in patches}
-    had_dry_run = hasattr(ARGS_PARSER.args, "dry_run")
-    original_dry_run = getattr(ARGS_PARSER.args, "dry_run", None)
-
     for name, replacement in patches.items():
         setattr(create, name, replacement)
-    ARGS_PARSER.args.dry_run = True
+    client = _OfflineClient()
     try:
-        yield create.create_resources
+        yield lambda resources: create.create_resources(
+            RunContext(
+                wrapper_module.ARGS_PARSER,
+                wrapper_module.CONFIG_COMMON,
+                client,  # type: ignore[arg-type]
+            ),
+            resources,
+            create.CreateOptions(dry_run=True),
+        )
     finally:
-        if had_dry_run:
-            ARGS_PARSER.args.dry_run = original_dry_run
-        else:
-            delattr(ARGS_PARSER.args, "dry_run")
         for name, original in originals.items():
             setattr(create, name, original)
+    # create_resources() catches each resource's failure, so the refusal
+    # raised inside it is checked here too
+    assert client.calls == [], (
+        f"an offline dry run reached for the Platform client: {client.calls}"
+    )
+
+
+def test_a_dry_run_that_is_not_one_cannot_reach_the_platform(dry_run_create):
+    """
+    The guard itself: with dry run off, the creators reach for the client, and
+    the stand-in refuses rather than creating anything.
+    """
+    import yellowdog_cli.utils.wrapper as wrapper_module
+    from yellowdog_cli.utils import resource_creation as create
+    from yellowdog_cli.utils.context import RunContext
+
+    client = _OfflineClient()
+    # create_resources() reports the refusal as the resource's failure, and
+    # raises once the file is done
+    with pytest.raises(Exception, match="reached for the Platform client"):
+        create.create_resources(
+            RunContext(
+                wrapper_module.ARGS_PARSER,
+                wrapper_module.CONFIG_COMMON,
+                client,  # type: ignore[arg-type]
+            ),
+            [
+                {
+                    "resource": "Keyring",
+                    "name": "yd-test-offline-guard",
+                    "description": "never created",
+                }
+            ],
+            create.CreateOptions(),
+        )
+    assert client.calls
 
 
 def _dry_run_one(dry_run_create, resource: dict) -> bool:
@@ -395,7 +460,7 @@ def _dry_run_one(dry_run_create, resource: dict) -> bool:
 
     One call per specification, rather than one per file, purely for
     attribution: create_resources() catches each resource's exception, prints it
-    and continues, raising a single RuntimeError naming only a count at the end
+    and continues, raising a single ReportedFailure naming only a count at the end
     -- which cannot say *which* specification failed. Calling it per resource
     makes the answer the caller's own loop variable. The list is passed as an
     argument, so create_resources() deep-copies it and the caller's specification
@@ -404,7 +469,7 @@ def _dry_run_one(dry_run_create, resource: dict) -> bool:
     try:
         dry_run_create([resource])
         return False
-    except RuntimeError:
+    except ReportedFailure:
         return True
 
 

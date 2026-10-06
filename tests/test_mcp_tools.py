@@ -29,7 +29,7 @@ from yellowdog_cli.utils.command_registry import (
     MCP_EXCLUDED_OPTIONS,
     ToolKind,
 )
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
     MCP_TOOL_TIMEOUT_SECONDS,
 )
@@ -42,10 +42,10 @@ class TestCatalogue:
         expected = {
             n.replace("-", "_")
             for n, c in COMMANDS.items()
-            if c.tool is not ToolKind.NONE and n != "yd-rm"
+            if c.tool is not ToolKind.NONE
         }
         assert set(TOOLS) == expected
-        assert "yd_rm" not in TOOLS and "yd_help" not in TOOLS
+        assert "yd_help" not in TOOLS
 
     def test_names_follow_the_sdk_rule(self):
         import re
@@ -154,6 +154,10 @@ class TestSchemaMapping:
         tool, option = positive
         assert tool.input_schema["properties"][_property_name(option)]["minimum"] == 1
 
+    def test_non_negative_int_has_a_minimum_of_zero(self):
+        # A Worker Pool or Compute Requirement can be resized to nothing
+        assert self._prop("yd_resize", "worker_pool_size")["minimum"] == 0
+
     def test_strings_lists_and_appends(self):
         assert self._prop("yd_cancel", "namespace")["type"] == "string"
         assert self._prop("yd_cancel", "work_requirements") == {
@@ -186,12 +190,11 @@ class TestSchemaMapping:
             "remote_paths" in TOOLS["yd_download"].input_schema["required"]
         )  # nargs='+'
         assert "entity_type" in TOOLS["yd_list"].input_schema["required"]  # nargs=None
-        assert "yellowdog_ids" not in TOOLS["yd_show"].input_schema.get(
-            "required", []
-        )  # nargs='*'
-        assert "src_path" not in TOOLS["yd_copy"].input_schema.get(
-            "required", []
-        )  # nargs='?'
+        assert "yellowdog_ids" in TOOLS["yd_show"].input_schema["required"]  # '+'
+        assert "yellowdog_ids" in TOOLS["yd_wait"].input_schema["required"]  # '+'
+        # nargs='?' for --which-rclone alone, which no tool offers
+        assert "src_path" in TOOLS["yd_copy"].input_schema["required"]
+        assert "dst_path" in TOOLS["yd_copy"].input_schema["required"]
 
     def test_exclusive_pair_is_refused_by_schema(self):
         assert {"not": {"required": ["destination", "into"]}} in TOOLS[
@@ -229,12 +232,9 @@ class TestFixedArgs:
             "--nf",
             "--json",
             "--yes",
-            "-n",
-            "ns",
-            "-t",
-            "t",
-            "-v",
-            "a=1",
+            "--namespace=ns",
+            "--tag=t",
+            "--variable=a=1",
         ]
         assert settings.working_dir == str(tmp_path)
 
@@ -544,3 +544,12 @@ class TestSdkFreeImport:
             text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_launch_value_beginning_with_a_dash_stays_a_value():
+    settings = ServerSettings(
+        config_file=None, namespace="-x", tag="--show-secrets", variables=()
+    )
+    args = fixed_args(COMMANDS["yd-variables"], settings)
+    assert "--namespace=-x" in args and "--tag=--show-secrets" in args
+    assert "--show-secrets" not in args

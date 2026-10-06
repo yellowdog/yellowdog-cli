@@ -5,7 +5,7 @@
 //
 // No '{{run_id}}': unlike every other resource here, this one names the
 // single shared, permanent namespace the rest of the corpus operates in --
-// the live layer's session fixture (Tasks 7-8) creates it once per test
+// the live layer's session fixture creates it once per test
 // account, not once per run.
 
 [

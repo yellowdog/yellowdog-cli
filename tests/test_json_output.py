@@ -11,14 +11,19 @@ the contract, so nothing here asserts what was handed to a printer.
 import warnings
 from json import loads as json_loads
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from requests import ConnectionError as ConnectionError_
 from requests import HTTPError, Response
 from yellowdog_client.model import (
     ComputeRequirementStatus,
     ComputeRequirementSummary,
+    ConfiguredWorkerPool,
     InstanceStatus,
+    ProvisionedWorkerPool,
+    TaskStatus,
     WorkerPoolStatus,
     WorkerPoolSummary,
     WorkRequirementStatus,
@@ -36,23 +41,35 @@ import yellowdog_cli.resize as yd_resize
 import yellowdog_cli.shutdown as yd_shutdown
 import yellowdog_cli.start as yd_start
 import yellowdog_cli.terminate as yd_terminate
+import yellowdog_cli.utils.action_runner as action_runner_module
 import yellowdog_cli.utils.compute_action_common as cac_module
+import yellowdog_cli.utils.entity_utils as entity_utils_module
+import yellowdog_cli.utils.event_printing as event_printing_module
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
 import yellowdog_cli.utils.wrapper as wrapper_module
-from yellowdog_cli.utils.entity_utils import get_worker_pool_id_by_name
+from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils.entity_names import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
+from yellowdog_cli.utils.entity_utils import (
+    get_worker_pool_by_id,
+    get_worker_pool_id_by_name,
+)
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.results import record_action, reset_results
-from yellowdog_cli.utils.settings import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
 
 WR_ID_1 = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
 WR_ID_2 = "ydid:workreq:000000:22222222-2222-2222-2222-222222222222"
 WP_ID = "ydid:wrkrpool:000000:33333333-3333-3333-3333-333333333333"
 NODE_ID = "ydid:node:000000:44444444-4444-4444-4444-444444444444"
 CR_ID = "ydid:compreq:000000:55555555-5555-5555-5555-555555555555"
+CR_ID_2 = CR_ID.replace("5555-5555-5555", "5555-5555-7777")
 TASK_ID = "ydid:task:000000:66666666-6666-6666-6666-666666666666"
 ALLOWANCE_ID = "ydid:allow:000000:77777777-7777-7777-7777-777777777777"
+ALLOWANCE_ID_2 = "ydid:allow:000000:88888888-8888-8888-8888-888888888888"
+ALLOWANCE_ID_3 = "ydid:allow:000000:99999999-9999-9999-9999-999999999999"
 INSTANCE_ID = "i-0123456789abcdef0"
 
 _DEFAULTS = {
@@ -75,6 +92,7 @@ _DEFAULTS = {
     "reverse": None,
     "sort": None,
     "validate": False,
+    "jsonnet_dry_run": False,
 }
 
 
@@ -83,7 +101,8 @@ def run(monkeypatch, capsys):
     """
     Return run(module, main_module=None, confirm=True, also=(), **args):
     patch every module's ARGS_PARSER (and that of each module in 'also'),
-    CLIENT and CONFIG_COMMON, run main_module.main()
+    CLIENT and CONFIG_COMMON (the wrapper's, which a command taking a
+    RunContext is given), run main_module.main()
     (default: module) through the wrapper, and return (parsed stdout,
     stderr, client). The exit code is left in run.exit_code.
     """
@@ -101,13 +120,23 @@ def run(monkeypatch, capsys):
             wrapper_module,
             *also,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(module, "CLIENT", client)
-        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+            # A library module (utils/resource_creation.py) reads no ARGS_PARSER
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        # A command taking a RunContext gets these from the wrapper's own;
+        # one not yet migrated imports them by name
+        if hasattr(module, "CLIENT"):
+            monkeypatch.setattr(module, "CLIENT", client)
+            monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        else:
+            monkeypatch.setattr(wrapper_module, "CLIENT", client)
+        monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
         if hasattr(module, "CONFIG_COMMON"):
             monkeypatch.setattr(module, "CONFIG_COMMON", config)
-        if hasattr(module, "confirmed"):
-            monkeypatch.setattr(module, "confirmed", lambda msg: confirm)
+        for target in (module, action_runner_module):
+            if hasattr(target, "confirmed"):
+                monkeypatch.setattr(target, "confirmed", lambda msg: confirm)
         with pytest.raises(SystemExit) as exit_info:
             (main_module or module).main()
         _run.exit_code = exit_info.value.code  # type: ignore[attr-defined]
@@ -116,6 +145,12 @@ def run(monkeypatch, capsys):
 
     yield _run
     reset_results()
+
+
+def _response(status_code: int) -> Response:
+    response = Response()
+    response.status_code = status_code
+    return response
 
 
 def _wr(id_: str, name: str, status=WorkRequirementStatus.RUNNING):
@@ -141,8 +176,8 @@ def _action(id_, name, type_, action, outcome, **extra) -> dict:
 class TestRecordAction:
     def test_an_entity_with_an_error(self, monkeypatch, capsys):
         args = MagicMock(**_DEFAULTS)
-        monkeypatch.setattr(results_module, "ARGS_PARSER", args)
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        output_settings.configure_output(args)
         reset_results()
         record_action(
             SimpleNamespace(id="i", name="n"), "tasks", "abort", "failed", "boom"
@@ -228,34 +263,62 @@ class TestCancel:
 
     def test_by_name(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_cancel,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda client, name, namespace: (
-                _wr(WR_ID_1, "wr-a") if name == "wr-a" else None
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda client, name=None, namespace=None, **k: (
+                [_wr(WR_ID_1, "wr-a")] if name == "wr-a" else []
             ),
         )
         out, _, _ = run(yd_cancel, work_requirement_names=["wr-a", "missing"])
-        assert out[0] == _action(
+        assert out[0]["name"] == "missing" and out[0]["outcome"] == "failed"
+        assert "Cannot find" in out[0]["error"]
+        assert out[1] == _action(
             WR_ID_1, "wr-a", "work-requirements", "cancel", "cancelled"
         )
-        assert out[1]["name"] == "missing" and out[1]["outcome"] == "failed"
-        assert "not found" in out[1]["error"]
 
     def test_by_name_in_the_wrong_state_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_cancel,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a", WorkRequirementStatus.COMPLETED),
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a", WorkRequirementStatus.COMPLETED)],
         )
-        out, err, _ = run(yd_cancel, work_requirement_names=["wr-a"])
+        out, err, _ = run(yd_cancel, abort=False, work_requirement_names=["wr-a"])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "cancel", "skipped")
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "cancel",
+                "skipped",
+                error="Work Requirement 'ns/wr-a' is already COMPLETED",
+            )
         ]
-        assert "not in a valid state" in err  # the warning, on stderr
+        assert "is already COMPLETED" in err  # the warning, on stderr
+
+    @pytest.mark.parametrize(
+        "error, code",
+        [
+            (RuntimeError("401 Unauthorized"), ExitCode.AUTHENTICATION),
+            (ConnectionError_("reset"), ExitCode.CONNECTION),
+        ],
+    )
+    def test_a_session_failure_exits_with_its_code(self, run, monkeypatch, error, code):
+        self._fetch(monkeypatch, [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")])
+        client = MagicMock()
+        client.work_client.cancel_work_requirement_by_id.side_effect = error
+        out, _, _ = run(yd_cancel, client=client, work_requirement_names=[])
+        assert [r["outcome"] for r in out] == ["failed", "skipped"]
+        assert run.exit_code == code
 
     def test_a_task(self, run):
-        out, _, _ = run(yd_cancel, work_requirement_names=[TASK_ID])
-        assert out == [_action(TASK_ID, None, "tasks", "cancel", "cancelled")]
+        client = MagicMock()
+        client.work_client.get_task_by_id.return_value = SimpleNamespace(
+            id=TASK_ID, name="t1", status=TaskStatus.EXECUTING
+        )
+        out, _, _ = run(
+            yd_cancel, client=client, abort=False, work_requirement_names=[TASK_ID]
+        )
+        assert out == [_action(TASK_ID, "t1", "tasks", "cancel", "cancelled")]
 
 
 # ---------------------------------------------------------------------------
@@ -300,9 +363,20 @@ class TestShutdown:
         ]
 
     def test_by_id_with_a_node_and_the_compute_requirement(self, run):
+        from yellowdog_client.model import NodeStatus
+
+        get_worker_pool_by_id.cache_clear()
+        pool = ProvisionedWorkerPool(
+            id=WP_ID, name="wp-a", status=WorkerPoolStatus.RUNNING
+        )
+        pool.computeRequirementId = CR_ID
         client = MagicMock()
-        client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            computeRequirementId=CR_ID
+        client.worker_pool_client.get_worker_pool_by_id.return_value = pool
+        client.worker_pool_client.get_node_by_id.return_value = SimpleNamespace(
+            id=NODE_ID, status=NodeStatus.RUNNING
+        )
+        client.compute_client.terminate_compute_requirement_by_id.return_value = (
+            SimpleNamespace(name="cr-a")
         )
         client.worker_pool_client.shutdown_node_by_id.side_effect = RuntimeError("gone")
         out, _, _ = run(
@@ -311,34 +385,36 @@ class TestShutdown:
             terminate=True,
             worker_pool_nodes_list=[WP_ID, NODE_ID],
         )
+        get_worker_pool_by_id.cache_clear()
         assert out == [
-            _action(WP_ID, None, "worker-pools", "shutdown", "shut down"),
-            _action(CR_ID, None, "compute-requirements", "terminate", "terminated"),
+            _action(WP_ID, "wp-a", "worker-pools", "shutdown", "shut down"),
+            _action(
+                CR_ID,
+                "cr-a",
+                "compute-requirements",
+                "terminate",
+                "terminated",
+                workerPoolId=WP_ID,
+            ),
             _action(NODE_ID, None, "nodes", "shutdown", "failed", error="gone"),
         ]
 
-    def test_a_failed_refetch_records_the_terminate_as_failed(self, run):
-        # '-T' refetches the Worker Pool for its Compute Requirement; when
-        # that fails the termination is recorded as failed, keyed by the
-        # Worker Pool's ID (all that is known), and the command exits 1
+    def test_a_failed_lookup_shuts_nothing_down(self, run):
+        get_worker_pool_by_id.cache_clear()
         client = MagicMock()
         client.worker_pool_client.get_worker_pool_by_id.side_effect = RuntimeError(
-            "refetch failed"
+            "lookup failed"
         )
         out, _, _ = run(
             yd_shutdown, client=client, terminate=True, worker_pool_nodes_list=[WP_ID]
         )
+        get_worker_pool_by_id.cache_clear()
         assert out == [
-            _action(WP_ID, None, "worker-pools", "shutdown", "shut down"),
             _action(
-                WP_ID,
-                None,
-                "compute-requirements",
-                "terminate",
-                "failed",
-                error="refetch failed",
-            ),
+                WP_ID, None, "worker-pools", "shutdown", "failed", error="lookup failed"
+            )
         ]
+        client.worker_pool_client.shutdown_worker_pool_by_id.assert_not_called()
         assert run.exit_code == 1
 
 
@@ -354,23 +430,28 @@ def _cr(id_: str, name: str, status=ComputeRequirementStatus.RUNNING):
 class TestTerminate:
     def test_terminated(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_terminate,
+            cac_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
-        out, _, _ = run(yd_terminate, compute_requirements_instances_or_nodes=[])
+        out, _, _ = run(
+            cac_module, yd_terminate, compute_requirements_instances_or_nodes=[]
+        )
         assert out == [
             _action(CR_ID, "cr-a", "compute-requirements", "terminate", "terminated")
         ]
 
     def test_dry_run(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_terminate,
+            cac_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
         out, _, _ = run(
-            yd_terminate, dry_run=True, compute_requirements_instances_or_nodes=[]
+            cac_module,
+            yd_terminate,
+            dry_run=True,
+            compute_requirements_instances_or_nodes=[],
         )
         assert out == [
             _action(
@@ -385,10 +466,9 @@ class TestTerminate:
 
     def test_an_instance(self, run, monkeypatch):
         instance = MagicMock(status=InstanceStatus.RUNNING)
-        monkeypatch.setattr(
-            yd_terminate, "get_instance_by_id", lambda *a, **k: instance
-        )
+        monkeypatch.setattr(cac_module, "get_instance_by_id", lambda *a, **k: instance)
         out, _, _ = run(
+            cac_module,
             yd_terminate,
             compute_requirements_instances_or_nodes=[f"{CR_ID}.{INSTANCE_ID}"],
         )
@@ -409,32 +489,36 @@ class TestTerminate:
 
 
 class TestFinish:
-    def test_finished_and_already_finishing(self, run, monkeypatch):
+    def test_finishing_ones_are_left_out(self, run, monkeypatch):
+        listed = [
+            _wr(WR_ID_1, "wr-a"),
+            _wr(WR_ID_2, "wr-b", WorkRequirementStatus.FINISHING),
+        ]
         monkeypatch.setattr(
-            yd_finish,
+            shc_module,
             "get_filtered_work_requirement_summaries",
-            lambda *a, **k: [
-                _wr(WR_ID_1, "wr-a"),
-                _wr(WR_ID_2, "wr-b", WorkRequirementStatus.FINISHING),
+            lambda *a, include_filter=None, **k: [
+                wr for wr in listed if wr.status in (include_filter or [wr.status])
             ],
         )
-        out, _, _ = run(yd_finish, work_requirement_names=[])
+        out, _, _ = run(shc_module, yd_finish, work_requirement_names=[])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "finish", "finished"),
-            _action(WR_ID_2, "wr-b", "work-requirements", "finish", "skipped"),
+            _action(WR_ID_1, "wr-a", "work-requirements", "finish", "finished")
         ]
 
     def test_by_name_failed(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_finish,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a"),
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a")],
         )
         client = MagicMock()
         client.work_client.finish_work_requirement_by_id.side_effect = RuntimeError(
             "no"
         )
-        out, _, _ = run(yd_finish, client=client, work_requirement_names=["wr-a"])
+        out, _, _ = run(
+            shc_module, yd_finish, client=client, work_requirement_names=["wr-a"]
+        )
         assert out == [
             _action(
                 WR_ID_1, "wr-a", "work-requirements", "finish", "failed", error="no"
@@ -447,35 +531,301 @@ class TestFinish:
 # ---------------------------------------------------------------------------
 
 
+TASK_ID_2 = TASK_ID.replace("6666-6666", "6666-7777")
+TG_ID = "ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+
+
+def _task(id_=TASK_ID, name="t1", status=TaskStatus.EXECUTING, tg="tg-id"):
+    return SimpleNamespace(id=id_, name=name, status=status, taskGroupId=tg)
+
+
+def _tg(id_="tg-id", name="tg-1"):
+    return SimpleNamespace(id=id_, name=name)
+
+
 class TestAbort:
-    def test_task_ids(self, run):
+    @pytest.fixture()
+    def wrs(self, monkeypatch):
+        """
+        Work Requirements by (namespace, name): 'wr-a' (ID WR_ID_1) and
+        'wr-b' (ID WR_ID_2) in 'ns', each with Task Group 'tg-1'.
+        """
+        known = {
+            ("ns", "wr-a"): _wr(WR_ID_1, "wr-a"),
+            ("ns", "wr-b"): _wr(WR_ID_2, "wr-b"),
+        }
+        lookups = []
+
+        def lookup(client, name, namespace=None):
+            lookups.append((namespace, name))
+            return known.get((namespace, name))
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        monkeypatch.setattr(
+            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
+        )
+        return lookups
+
+    def _client(self, tasks=(), by_id=None):
         client = MagicMock()
-        client.work_client.cancel_task_by_id.side_effect = [None, RuntimeError("x")]
-        task_2 = TASK_ID.replace("6666-6666", "6666-7777")
-        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, task_2])
+        client.work_client.get_tasks.return_value.list_all.return_value = list(tasks)
+        if by_id is not None:
+            client.work_client.get_task_by_id.side_effect = lambda i: by_id[i]
+        return client
+
+    def test_task_ids(self, run):
+        client = self._client(
+            by_id={TASK_ID: _task(), TASK_ID_2: _task(TASK_ID_2, "t2")}
+        )
+        client.work_client.cancel_task.side_effect = [None, RuntimeError("x")]
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
         assert out == [
-            _action(TASK_ID, None, "tasks", "abort", "aborted"),
-            _action(task_2, None, "tasks", "abort", "failed", error="x"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+            _action(TASK_ID_2, "t2", "tasks", "abort", "failed", error="x"),
         ]
 
-    def test_tasks_in_a_work_requirement(self, run, monkeypatch):
-        monkeypatch.setattr(
-            yd_abort,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a"),
-        )
-        monkeypatch.setattr(yd_abort, "get_task_group_name", lambda *a: "tg")
-        client = MagicMock()
-        client.work_client.find_tasks.return_value = [
-            SimpleNamespace(id=TASK_ID, name="t1")
+    @pytest.mark.parametrize(
+        "status", [TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.COMPLETED]
+    )
+    def test_a_task_named_by_id_is_aborted_whatever_its_state(self, run, status):
+        task = _task(status=status)
+        client = self._client(by_id={TASK_ID: task})
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        client.work_client.cancel_task.assert_called_once_with(task, abort=True)
+
+    def test_a_work_requirement_aborts_its_running_tasks(self, run, wrs):
+        client = self._client([_task()])
+        run(yd_abort, client=client, task_id_list=["wr-a"])
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.statuses == [
+            TaskStatus.DOWNLOADING,
+            TaskStatus.EXECUTING,
+            TaskStatus.UPLOADING,
         ]
+
+    def test_an_ambiguous_name_still_tries_the_namespace_reading(
+        self, run, monkeypatch
+    ):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def lookup(client, name, namespace=None):
+            if (namespace, name) == ("ns", "a"):
+                raise AmbiguousNameError("two named 'a'")
+            if (namespace, name) == ("a", "b"):
+                return _wr(WR_ID_1, "b")
+            return None
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["a/b"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+
+    def test_an_ambiguous_name_with_no_other_reading_fails(self, run, monkeypatch):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def lookup(client, name, namespace=None):
+            if name == "a":
+                raise AmbiguousNameError("two named 'a'")
+            return None
+
+        monkeypatch.setattr(
+            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+        )
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["a/b", "a"])
+        assert [(r["name"], r["outcome"], r["error"]) for r in out] == [
+            ("a/b", "failed", "two named 'a'"),
+            ("a", "failed", "two named 'a'"),
+        ]
+
+    def test_a_ydid_of_the_wrong_kind_is_recorded_as_its_own_type(self, run):
+        node = "ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=[node])
+        assert (out[0]["type"], out[0]["outcome"]) == ("nodes", "failed")
+
+    def test_a_task_not_found(self, run):
+        client = self._client()
+        client.work_client.get_task_by_id.side_effect = _http_error(404)
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert out == [
+            _action(TASK_ID, None, "tasks", "abort", "failed", error="not found")
+        ]
+        assert run.exit_code == 1
+
+    def test_declined_is_skipped(self, run, monkeypatch):
+        monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
+        client = self._client(by_id={TASK_ID: _task()})
+        out, _, _ = run(
+            yd_abort, client=client, confirm=False, yes=False, task_id_list=[TASK_ID]
+        )
+        assert out == [
+            _action(TASK_ID, "t1", "tasks", "abort", "skipped", error="declined")
+        ]
+        client.work_client.cancel_task.assert_not_called()
+
+    def test_tasks_not_selected_are_skipped(self, run, monkeypatch, wrs):
+        monkeypatch.setattr(
+            yd_abort, "select", lambda client, objects, **k: objects[:1]
+        )
+        client = self._client([_task(), _task(TASK_ID_2, "t2")])
+        out, _, _ = run(yd_abort, client=client, yes=False, task_id_list=["wr-a"])
+        assert out == [
+            _action(TASK_ID_2, "t2", "tasks", "abort", "skipped", error="not selected"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+        ]
+
+    def test_tasks_in_a_work_requirement(self, run, wrs):
+        client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a"])
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
 
-    def test_declined_is_skipped(self, run):
-        out, _, client = run(yd_abort, confirm=False, task_id_list=[TASK_ID])
-        assert out == [_action(TASK_ID, None, "tasks", "abort", "skipped")]
-        client.work_client.cancel_task_by_id.assert_not_called()
+    def test_namespace_work_requirement_and_task_group(self, run, wrs):
+        """
+        'ns/wr/tg' used to raise ValueError from the namespace split.
+        """
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-a/tg-1"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "wr-a")]
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.taskGroupId == "tg-id"
+
+    def test_work_requirement_and_task_group_is_tried_first(self, run, wrs):
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a/tg-1"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "wr-a")]
+
+    def test_namespace_and_work_requirement(self, run, wrs):
+        client = self._client([_task()])
+        out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-b"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == [("ns", "ns"), ("ns", "wr-b")]
+        search = client.work_client.get_tasks.call_args.args[0]
+        assert search.workRequirementId == WR_ID_2
+
+    def test_task_group_not_found_by_name(self, run, wrs):
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["wr-a/nope"])
+        assert out == [
+            _action(
+                None, "wr-a/nope", "task-groups", "abort", "failed", error="not found"
+            )
+        ]
+
+    def test_nothing_executing_keeps_stdout_a_document(self, run, wrs):
+        """
+        The message printed despite --quiet used to land on stdout too.
+        """
+        out, _, _ = run(
+            yd_abort, client=self._client(), quiet=True, task_id_list=["wr-a"]
+        )
+        assert out == [
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "abort",
+                "skipped",
+                error="no running Tasks",
+            )
+        ]
+
+    def test_task_group_lookup_failing_after_abort_is_still_aborted(
+        self, run, wrs, monkeypatch
+    ):
+        def fails(client, wr_id):
+            raise RuntimeError("lookup failed")
+
+        monkeypatch.setattr(yd_abort, "get_task_groups_from_wr_by_id", fails)
+        out, _, _ = run(yd_abort, client=self._client([_task()]), task_id_list=["wr-a"])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+
+    def test_a_failing_lookup_does_not_stop_later_targets(self, run, wrs):
+        client = self._client()
+        client.work_client.get_tasks.side_effect = [
+            RuntimeError("boom"),
+            MagicMock(list_all=MagicMock(return_value=[_task()])),
+        ]
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a", "wr-b"])
+        assert out == [
+            _action(None, "wr-a", "work-requirements", "abort", "failed", error="boom"),
+            _action(TASK_ID, "t1", "tasks", "abort", "aborted"),
+        ]
+        assert run.exit_code == 1
+
+    def test_a_session_failure_attempts_nothing_further(self, run, wrs):
+        client = self._client([_task(), _task(TASK_ID_2, "t2")])
+        client.work_client.cancel_task.side_effect = _http_error(401)
+        out, err, _ = run(yd_abort, client=client, task_id_list=["wr-a", "wr-b"])
+        assert out == [
+            _action(TASK_ID, "t1", "tasks", "abort", "failed", error="401 error"),
+            _action(
+                TASK_ID_2,
+                "t2",
+                "tasks",
+                "abort",
+                "skipped",
+                error="not attempted: 401 error",
+            ),
+            _action(
+                None,
+                "wr-b",
+                "work-requirements",
+                "abort",
+                "skipped",
+                error="not attempted: 401 error",
+            ),
+        ]
+        assert client.work_client.cancel_task.call_count == 1
+        assert "Not attempting the remaining 2 item(s)" in err
+        # The session's failure, not a per-item one: its own exit code, and
+        # reported once, by the command, not again by the wrapper
+        assert run.exit_code == ExitCode.AUTHENTICATION
+        assert err.count("401 error") == 1
+
+    def test_duplicates_and_overlaps_are_aborted_once(self, run, wrs):
+        client = self._client([_task()], by_id={TASK_ID: _task()})
+        out, err, _ = run(
+            yd_abort, client=client, task_id_list=[TASK_ID, "wr-a", "wr-a"]
+        )
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert client.work_client.cancel_task.call_count == 1
+        assert "Ignoring 1 duplicate target(s)" in err
+
+    def test_targets_are_handled_in_the_order_given(self, run, wrs):
+        client = self._client([_task()], by_id={TASK_ID_2: _task(TASK_ID_2, "t2")})
+        out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a", TASK_ID_2])
+        assert [item["id"] for item in out] == [TASK_ID, TASK_ID_2]
+
+    def test_work_requirement_id_in_another_namespace(self, run, wrs):
+        client = self._client([_task()])
+        client.work_client.get_work_requirement_by_id.return_value = _wr(
+            WR_ID_1, "wr-elsewhere"
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[WR_ID_1])
+        assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
+        assert wrs == []
+
+    def test_task_group_id_not_found_has_no_stray_quotes(self, run, monkeypatch):
+        monkeypatch.setattr(
+            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: []
+        )
+        out, err, _ = run(yd_abort, client=self._client(), task_id_list=[TG_ID])
+        assert out == [
+            _action(TG_ID, None, "task-groups", "abort", "failed", error="not found")
+        ]
+        assert f"Task Group '{TG_ID}' not found" in err
+        assert '"' not in err
+
+    def test_another_kind_of_id_is_refused(self, run):
+        out, _, client = run(yd_abort, task_id_list=[WP_ID])
+        assert out[0]["outcome"] == "failed"
+        assert "is a Worker Pool ID" in out[0]["error"]
+        client.work_client.get_tasks.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -493,25 +843,52 @@ class TestResize:
             **values,
         }
 
-    def _client(self):
+    @staticmethod
+    def _pool(
+        status=WorkerPoolStatus.RUNNING,
+        expected=2,
+        awaiting=False,
+        min_nodes=0,
+        max_nodes=10,
+        configured=False,
+    ) -> Any:
+        if configured:
+            return ConfiguredWorkerPool(
+                id=WP_ID, name="wp-a", namespace="ns", status=status
+            )
+        pool = ProvisionedWorkerPool(
+            id=WP_ID,
+            name="wp-a",
+            namespace="ns",
+            status=status,
+            expectedNodeCount=expected,
+            awaitingNodes=awaiting,
+            properties=SimpleNamespace(minNodes=min_nodes, maxNodes=max_nodes),
+        )
+        return pool
+
+    def _client(self, pool=None):
         client = MagicMock()
-        client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            id=WP_ID, name="wp-a"
+        client.worker_pool_client.get_worker_pool_by_id.return_value = (
+            pool or self._pool()
         )
         return client
 
+    def _resized(self, outcome="resized", **extra):
+        return _action(
+            WP_ID,
+            "wp-a",
+            "worker-pools",
+            "resize",
+            outcome,
+            targetInstanceCount=4,
+            **extra,
+        )
+
     def test_a_worker_pool(self, run):
-        out, _, _ = run(yd_resize, client=self._client(), **self._args())
-        assert out == [
-            _action(
-                WP_ID,
-                "wp-a",
-                "worker-pools",
-                "resize",
-                "resized",
-                targetInstanceCount=4,
-            )
-        ]
+        out, _, client = run(yd_resize, client=self._client(), **self._args())
+        assert out == [self._resized()]
+        client.worker_pool_client.resize_worker_pool.assert_called_once()
 
     def test_dry_run(self, run):
         out, _, client = run(
@@ -526,21 +903,37 @@ class TestResize:
             "too big"
         )
         out, _, _ = run(yd_resize, client=client, **self._args())
-        assert out == [
-            _action(
-                WP_ID,
-                "wp-a",
-                "worker-pools",
-                "resize",
-                "failed",
-                error="too big",
-                targetInstanceCount=4,
-            )
-        ]
+        assert out == [self._resized("failed", error="too big")]
 
-    def test_a_compute_requirement(self, run, monkeypatch):
+    @pytest.mark.parametrize(
+        "pool_args, outcome, words",
+        [
+            ({"configured": True}, "failed", "Configured Worker Pool"),
+            ({"status": WorkerPoolStatus.SHUTDOWN}, "skipped", "is SHUTDOWN"),
+            ({"awaiting": True}, "failed", "awaiting nodes"),
+            ({"max_nodes": 3}, "failed", "outside"),
+            ({"min_nodes": 5}, "failed", "outside"),
+            ({"expected": 4}, "skipped", "already expects 4"),
+        ],
+    )
+    def test_what_cannot_or_need_not_be_resized(self, run, pool_args, outcome, words):
+        client = self._client(self._pool(**pool_args))
+        out, _, _ = run(yd_resize, client=client, **self._args())
+        client.worker_pool_client.resize_worker_pool.assert_not_called()
+        assert out[0]["outcome"] == outcome
+        assert words in out[0]["error"]
+        assert run.exit_code == (1 if outcome == "failed" else 0)
+
+    def test_a_worker_pool_not_found_is_recorded_and_exits_6(self, run):
+        client = MagicMock()
+        client.worker_pool_client.get_worker_pool_by_id.side_effect = _http_error(404)
+        out, _, _ = run(yd_resize, client=client, **self._args())
+        assert [(r["id"], r["outcome"]) for r in out] == [(WP_ID, "failed")]
+        assert run.exit_code == 6
+
+    def test_a_compute_requirement_by_name(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_resize,
+            entity_utils_module,
             "get_compute_requirement_summaries",
             lambda *a, **k: [_cr(CR_ID, "cr-a")],
         )
@@ -557,6 +950,65 @@ class TestResize:
                 targetInstanceCount=4,
             )
         ]
+
+    def test_a_compute_requirement_id_in_another_namespace(self, run):
+        client = MagicMock()
+        client.compute_client.get_compute_requirement_by_id.return_value = (
+            SimpleNamespace(
+                id=CR_ID,
+                name="cr-a",
+                namespace="elsewhere",
+                status=ComputeRequirementStatus.RUNNING,
+                targetInstanceCount=2,
+                expectedInstanceCount=2,
+            )
+        )
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(compute_req_resize=True, worker_pool_name=CR_ID),
+        )
+        assert out[0]["outcome"] == "resized"
+        client.compute_client.get_compute_requirement_summaries.assert_not_called()
+
+    def test_two_running_compute_requirements_of_a_name_are_ambiguous(
+        self, run, monkeypatch
+    ):
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a"), _cr(CR_ID_2, "cr-a")],
+        )
+        out, _, client = run(
+            yd_resize, **self._args(compute_req_resize=True, worker_pool_name="cr-a")
+        )
+        client.compute_client.update_compute_requirement.assert_not_called()
+        assert out[0]["outcome"] == "failed"
+        assert "please supply the ID" in out[0]["error"]
+        assert run.exit_code == 1
+
+    def test_a_compute_requirement_not_running_is_skipped(self, run, monkeypatch):
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [
+                _cr(CR_ID, "cr-a", status=ComputeRequirementStatus.STOPPED)
+            ],
+        )
+        out, _, _ = run(
+            yd_resize, **self._args(compute_req_resize=True, worker_pool_name="cr-a")
+        )
+        assert out[0]["outcome"] == "skipped"
+        assert "is STOPPED" in out[0]["error"]
+
+    def test_a_negative_size_is_a_usage_error(self, capsys):
+        from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+
+        parser = build_parser(COMMANDS["yd-resize"], prog="yd-resize")
+        assert parser.parse_args(["wp", "0"]).worker_pool_size == 0
+        with pytest.raises(SystemExit) as exit_info:
+            parser.parse_args(["wp", "-1"])
+        assert exit_info.value.code == 2
 
     def test_a_401_looking_up_the_name_reaches_the_wrapper(self, run):
         # Not a 'not found': the lookup's failure is classified by the
@@ -595,21 +1047,193 @@ class TestWorkerPoolIdByName:
 
 
 class TestBoost:
-    def test_boosted_and_invalid(self, run):
+    @staticmethod
+    def _client(descriptions=None, boost=None) -> MagicMock:
+        """
+        A client whose Allowances exist with the descriptions given (by ID;
+        every ID by default, described 'budget'), boosting as 'boost' says.
+        """
+        client = MagicMock()
+
+        def get(allowance_id):
+            if descriptions is not None and allowance_id not in descriptions:
+                raise HTTPError("404", response=_response(404))
+            description = (descriptions or {}).get(allowance_id, "budget")
+            return SimpleNamespace(id=allowance_id, description=description)
+
+        client.allowances_client.get_allowance_by_id.side_effect = get
+        if boost is not None:
+            client.allowances_client.boost_allowance_by_id.side_effect = boost
+        else:
+            client.allowances_client.boost_allowance_by_id.return_value = (
+                SimpleNamespace(remainingHours=None)
+            )
+        return client
+
+    def test_boosted_with_the_description(self, run):
         out, _, _ = run(
-            yd_boost, boost_hours=2, allowance_list=[ALLOWANCE_ID, "not-an-id"]
+            yd_boost,
+            client=self._client(),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID],
         )
-        assert out[0] == _action(
-            ALLOWANCE_ID, None, "allowances", "boost", "boosted", hours=2
+        assert out == [
+            _action(
+                ALLOWANCE_ID,
+                None,
+                "allowances",
+                "boost",
+                "boosted",
+                hours=2,
+                description="budget",
+                remainingHours=None,
+            )
+        ]
+
+    def test_a_malformed_id_is_a_usage_error(self, capsys):
+        from yellowdog_cli.utils.command_registry import (
+            COMMANDS,
+            build_parser,
+            check_allowance_ids,
         )
-        assert out[1]["name"] == "not-an-id" and out[1]["outcome"] == "failed"
+
+        parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
+        args = parser.parse_args(["2", ALLOWANCE_ID, "not-an-id"])
+        with pytest.raises(SystemExit) as exit_info:
+            check_allowance_ids(args, parser)
+        assert exit_info.value.code == 2
+        assert "not a YellowDog Allowance ID: 'not-an-id'" in capsys.readouterr().err
+
+    def test_a_missing_one_fails_before_anything_is_boosted(self, run):
+        client = self._client({ALLOWANCE_ID: "a"})
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID_2, ALLOWANCE_ID],
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [
+            (ALLOWANCE_ID_2, "failed"),
+            (ALLOWANCE_ID, "boosted"),
+        ]
+        assert out[0]["error"] == "not found"
+        assert run.exit_code == 1
+
+    def test_one_confirmation_shows_the_descriptions(self):
+        found = [
+            (ALLOWANCE_ID, SimpleNamespace(description="gpu budget")),
+            (ALLOWANCE_ID_2, SimpleNamespace(description=None)),
+        ]
+        assert yd_boost._confirmation("2 hours", found) == (  # type: ignore[arg-type]
+            f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
+            f" {ALLOWANCE_ID_2})?"
+        )
+
+    def test_remaining_hours_are_recorded(self, run):
+        client = self._client(boost=lambda *a: SimpleNamespace(remainingHours=12.5))
+        out, _, _ = run(
+            yd_boost, client=client, boost_hours=2, allowance_list=[ALLOWANCE_ID]
+        )
+        assert out[0]["remainingHours"] == 12.5
+
+    def test_a_repeated_id_is_boosted_once(self, run):
+        out, err, client = run(
+            yd_boost,
+            client=self._client(),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID],
+        )
+        assert client.allowances_client.boost_allowance_by_id.call_count == 1
+        assert [item["outcome"] for item in out] == ["boosted"]
+        assert "Ignoring 1 duplicate Allowance ID(s)" in err
+
+    def test_an_authentication_failure_stops_the_rest(self, run):
+        def boost(*args):
+            raise HTTPError("401 Unauthorized", response=_response(401))
+
+        client = self._client(boost=boost)
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2, ALLOWANCE_ID_3],
+        )
+        assert client.allowances_client.boost_allowance_by_id.call_count == 1
+        assert [item["outcome"] for item in out] == ["failed", "skipped", "skipped"]
+        assert out[1]["error"].startswith("not attempted:")
+        assert out[1]["description"] == "budget"
+        # The session's failure: its own exit code, the cause in the record
+        assert run.exit_code == ExitCode.AUTHENTICATION
+
+    def test_an_authentication_failure_while_fetching_stops_the_rest(self, run):
+        client = self._client()
+        client.allowances_client.get_allowance_by_id.side_effect = HTTPError(
+            "401 Unauthorized", response=_response(401)
+        )
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        client.allowances_client.boost_allowance_by_id.assert_not_called()
+        assert [item["outcome"] for item in out] == ["failed", "skipped"]
+        assert run.exit_code == ExitCode.AUTHENTICATION
+
+    def test_a_failure_of_one_allowance_does_not_stop_the_rest(self, run):
+        results = iter([HTTPError("500", response=_response(500)), SimpleNamespace()])
+
+        def boost(*args):
+            result = next(results)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        client = self._client(boost=boost)
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert [item["outcome"] for item in out] == ["failed", "boosted"]
+        assert run.exit_code == 1
+
+    @pytest.mark.parametrize(
+        "hours, shown",
+        [(1, "1 hour"), (10, "10 hours"), (2.5, "2.50 hours"), (1000, "1,000 hours")],
+    )
+    def test_hours_are_worded_by_number(self, hours, shown):
+        assert yd_boost._hours(hours) == shown
+
+    @pytest.mark.parametrize("hours", ["0", "-5"])
+    def test_hours_below_one_are_a_usage_error(self, hours, capsys):
+        from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+
+        parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
+        with pytest.raises(SystemExit) as exit_info:
+            parser.parse_args([hours, ALLOWANCE_ID])
+        assert exit_info.value.code == 2
+        assert "must be a positive integer" in capsys.readouterr().err
 
     def test_declined_is_skipped(self, run):
         out, _, _ = run(
-            yd_boost, confirm=False, boost_hours=2, allowance_list=[ALLOWANCE_ID]
+            yd_boost,
+            client=self._client(),
+            confirm=False,
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID],
         )
         assert out == [
-            _action(ALLOWANCE_ID, None, "allowances", "boost", "skipped", hours=2)
+            _action(
+                ALLOWANCE_ID,
+                None,
+                "allowances",
+                "boost",
+                "skipped",
+                hours=2,
+                description="budget",
+            )
         ]
 
 
@@ -637,13 +1261,20 @@ class TestStartHold:
 
     def test_by_name_in_the_wrong_state_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(
-            shc_module,
-            "get_work_requirement_summary_by_name_or_id",
-            lambda *a, **k: _wr(WR_ID_1, "wr-a", WorkRequirementStatus.RUNNING),
+            entity_utils_module,
+            "get_filtered_work_requirement_summaries",
+            lambda *a, **k: [_wr(WR_ID_1, "wr-a", WorkRequirementStatus.RUNNING)],
         )
         out, _, _ = run(shc_module, yd_start, work_requirement_names=["wr-a"])
         assert out == [
-            _action(WR_ID_1, "wr-a", "work-requirements", "start", "skipped")
+            _action(
+                WR_ID_1,
+                "wr-a",
+                "work-requirements",
+                "start",
+                "skipped",
+                error="Work Requirement 'ns/wr-a' is RUNNING, not HELD",
+            )
         ]
 
 
@@ -687,7 +1318,9 @@ class TestComputeActions:
     def test_a_compute_requirement_by_id_declined(self, run, monkeypatch):
         client = MagicMock()
         client.compute_client.get_compute_requirement_by_id.return_value = (
-            SimpleNamespace(status=ComputeRequirementStatus.RUNNING)
+            SimpleNamespace(
+                id=CR_ID, name="cr-a", status=ComputeRequirementStatus.RUNNING
+            )
         )
         out, _, _ = run(
             cac_module,
@@ -696,7 +1329,9 @@ class TestComputeActions:
             client=client,
             compute_requirements_instances_or_nodes=[CR_ID],
         )
-        assert out == [_action(CR_ID, None, "compute-requirements", "stop", "skipped")]
+        assert out == [
+            _action(CR_ID, "cr-a", "compute-requirements", "stop", "skipped")
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -729,6 +1364,7 @@ class TestInteractiveSelection:
 
 KEYRING_ID = "ydid:keyring:000000:88888888-8888-8888-8888-888888888888"
 GROUP_ID = "ydid:group:000000:99999999-9999-9999-9999-999999999999"
+APP_ID = "ydid:app:000000:99999999-9999-9999-9999-999999999999"
 
 _CREATOR_DEFAULTS = {
     "show_keyring_passwords": False,
@@ -756,11 +1392,12 @@ def run_create(run, monkeypatch):
     run_create(resources, existing_keyring=None, client=None, **args): drive
     yd-create's main() over 'resources', with the Keyring lookup patched.
     """
-    import yellowdog_cli.create as yd_create
+    import yellowdog_cli.create as create_command
+    import yellowdog_cli.utils.resource_creation as yd_create
 
     def _run(resources, existing_keyring=None, client=None, **values):
         monkeypatch.setattr(
-            yd_create, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda *a, **k: resources
         )
         monkeypatch.setattr(
             yd_create, "get_keyring_summary_by_name", lambda *a: existing_keyring
@@ -775,7 +1412,13 @@ def run_create(run, monkeypatch):
             )
             # No existing Namespace Policy
             client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
-        return run(yd_create, client=client, **{**_CREATOR_DEFAULTS, **values})
+        return run(
+            yd_create,
+            main_module=create_command,
+            client=client,
+            also=(create_command,),
+            **{**_CREATOR_DEFAULTS, **values},
+        )
 
     return _run
 
@@ -800,18 +1443,25 @@ class TestCreate:
         assert out == [_resource("NamespacePolicy", "ns1", None, "updated")]
 
     def test_declined_update_is_skipped(self, run, monkeypatch):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.resource_creation as yd_create
 
         resources = _keyring_and_policy()[:1]
         monkeypatch.setattr(
-            yd_create, "load_resource_specifications", lambda **k: resources
+            create_command, "load_resource_specifications", lambda *a, **k: resources
         )
         monkeypatch.setattr(
             yd_create,
             "get_keyring_summary_by_name",
             lambda *a: SimpleNamespace(id=KEYRING_ID),
         )
-        out, _, client = run(yd_create, confirm=False, **_CREATOR_DEFAULTS)
+        out, _, client = run(
+            yd_create,
+            main_module=create_command,
+            confirm=False,
+            also=(create_command,),
+            **_CREATOR_DEFAULTS,
+        )
         assert out == [_resource("Keyring", "kr", KEYRING_ID, "skipped")]
         client.keyring_client.update_keyring.assert_not_called()
 
@@ -905,9 +1555,10 @@ class TestCreate:
         client.compute_client.add_compute_requirement_template.assert_not_called()
 
     def test_jsonnet_dry_run_is_an_array_of_files(self, run, monkeypatch, tmp_path):
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.file_substitution as file_module
         import yellowdog_cli.utils.load_resources as load_resources_module
-        import yellowdog_cli.utils.variables as variables_module
+        import yellowdog_cli.utils.resource_creation as yd_create
         from yellowdog_cli.utils.check_imports import check_jsonnet_import
 
         try:
@@ -921,7 +1572,8 @@ class TestCreate:
             files.append(str(path))
         out, _, _ = run(
             yd_create,
-            also=(load_resources_module, variables_module),
+            main_module=create_command,
+            also=(load_resources_module, file_module, create_command),
             **{
                 **_CREATOR_DEFAULTS,
                 "jsonnet_dry_run": True,
@@ -937,11 +1589,14 @@ class TestCreate:
 class TestRemove:
     @pytest.fixture()
     def run_remove(self, run, monkeypatch):
-        import yellowdog_cli.remove as yd_remove
+        import yellowdog_cli.remove as remove_command
+        import yellowdog_cli.utils.resource_removal as yd_remove
 
         def _run(resources=(), confirm=True, client=None, **values):
             monkeypatch.setattr(
-                yd_remove, "load_resource_specifications", lambda **k: list(resources)
+                remove_command,
+                "load_resource_specifications",
+                lambda *a, **k: list(resources),
             )
             monkeypatch.setattr(
                 yd_remove,
@@ -950,6 +1605,8 @@ class TestRemove:
             )
             return run(
                 yd_remove,
+                main_module=remove_command,
+                also=(remove_command,),
                 confirm=confirm,
                 client=client,
                 **{**_CREATOR_DEFAULTS, **values},
@@ -984,12 +1641,15 @@ class TestRemove:
         assert out[0]["name"] == "g1"
 
     def test_by_id(self, run_remove):
+        client = MagicMock()
+        client.account_client.get_group.return_value = SimpleNamespace(name="g1")
+        client.account_client.get_application.side_effect = _http_error(404)
         out, _, _ = run_remove(
-            ids=True, resource_specifications=[GROUP_ID, "not-an-id"]
+            ids=True, resource_specifications=[GROUP_ID, APP_ID], client=client
         )
-        assert out[0] == _resource("Group", None, GROUP_ID, "removed")
-        assert out[1]["id"] is None and out[1]["action"] == "failed"
-        assert out[1]["name"] == "not-an-id"
+        assert out[0] == _resource("Group", "g1", GROUP_ID, "removed")
+        assert out[1]["id"] == APP_ID and out[1]["action"] == "failed"
+        assert out[1]["error"] == f"Cannot find Application {APP_ID}"
 
     def test_an_allowance_by_description_without_one_is_skipped(self, run_remove):
         # Recorded by the display name remove_resources() read, as every
@@ -1010,8 +1670,8 @@ class TestRemove:
 
     def test_a_401_on_a_namespace_policy_is_a_failure(self, run, run_remove):
         # Not a 'not found': the existence check's failure is recorded as
-        # 'failed' with its cause, like any other per-resource failure, and
-        # the run goes on to the next resource and exits 1
+        # 'failed' with its cause, and being an authentication failure it
+        # stops the run, which exits 4
         client = MagicMock()
         client.namespaces_client.get_namespace_policy.side_effect = _http_error(401)
         out, _, _ = run_remove(
@@ -1021,7 +1681,7 @@ class TestRemove:
         assert out[0]["resource"] == "NamespacePolicy"
         assert out[0]["action"] == "failed"
         assert "401" in out[0]["error"]
-        assert run.exit_code == 1
+        assert run.exit_code == 4
 
 
 # ---------------------------------------------------------------------------
@@ -1040,7 +1700,10 @@ class TestSubmit:
             yd_submit,
             "CONFIG_WR",
             dataclasses.replace(
-                yd_submit.CONFIG_WR, wr_data_file=None, csv_files=None, wr_name=None
+                lazy_value(yd_submit.CONFIG_WR),
+                wr_data_file=None,
+                csv_files=None,
+                wr_name=None,
             ),
         )
         monkeypatch.setattr(yd_submit, "RcloneUploadedFiles", MagicMock())
@@ -1048,12 +1711,6 @@ class TestSubmit:
             yd_submit, "update_config_work_requirement_object", lambda c: c
         )
         monkeypatch.setattr(yd_submit, "link_entity", lambda *a: "[link]")
-        monkeypatch.setattr(
-            yd_submit,
-            "WR_SNAPSHOT",
-            printing_module.WorkRequirementSnapshot(),
-            raising=False,
-        )
 
         def _run(**values):
             client = MagicMock()
@@ -1114,7 +1771,7 @@ class TestProvision:
             yd_provision,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_provision.CONFIG_WP,
+                lazy_value(yd_provision.CONFIG_WP),
                 worker_pool_data_file=None,
                 template_id="crt-id",
                 name="wp-name",
@@ -1173,7 +1830,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 worker_pool_data_file=None,
                 compute_requirement_data_file=None,
                 template_id="crt-id",
@@ -1232,7 +1889,7 @@ class TestInstantiate:
             yd_instantiate,
             "CONFIG_WP",
             dataclasses.replace(
-                yd_instantiate.CONFIG_WP,
+                lazy_value(yd_instantiate.CONFIG_WP),
                 compute_requirement_batch_size=1,
                 target_instance_count=2,
             ),
@@ -1259,7 +1916,7 @@ class TestConfiguredWorkerPoolToken:
                 ),
             )
         )
-        import yellowdog_cli.create as yd_create
+        import yellowdog_cli.utils.resource_creation as yd_create
 
         # The request's construction is not what is under test
         with pytest.MonkeyPatch.context() as mp:
@@ -1331,12 +1988,12 @@ import yellowdog_cli.help as yd_help  # noqa: E402
 import yellowdog_cli.ls as yd_ls  # noqa: E402
 import yellowdog_cli.nodeaction as yd_nodeaction  # noqa: E402
 import yellowdog_cli.upload as yd_upload  # noqa: E402
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module  # noqa: E402
-import yellowdog_cli.utils.rclone_utils as rclone_utils_module  # noqa: E402
+import yellowdog_cli.utils.dataclient.rclone as rclone_utils_module  # noqa: E402
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module  # noqa: E402
 import yellowdog_cli.version as yd_version  # noqa: E402
 import yellowdog_cli.wait as yd_wait  # noqa: E402
 from yellowdog_cli.utils.config_types import ConfigDataClient  # noqa: E402
-from yellowdog_cli.utils.rclone_version import find_rclone  # noqa: E402
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone  # noqa: E402
 from yellowdog_cli.utils.results import rows_as_objects  # noqa: E402
 
 
@@ -1370,60 +2027,123 @@ class TestWait:
     def _client(self, wr_status=WorkRequirementStatus.COMPLETED):
         client = MagicMock()
         client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
-            status=wr_status
+            name="wr", status=wr_status
         )
         client.worker_pool_client.get_worker_pool_by_id.return_value = SimpleNamespace(
-            status=WorkerPoolStatus.TERMINATED
+            name="wp", status=WorkerPoolStatus.TERMINATED
         )
         client.compute_client.get_compute_requirement_by_id.return_value = (
-            SimpleNamespace(status=ComputeRequirementStatus.TERMINATED)
+            SimpleNamespace(name="cr", status=ComputeRequirementStatus.TERMINATED)
         )
         return client
 
-    def _follow(self, monkeypatch, valid):
-        monkeypatch.setattr(yd_wait, "follow_ids", lambda ids: valid)
+    def _follow(self, monkeypatch, exit_code=0):
+        monkeypatch.setattr(yd_wait, "follow_ids", lambda _ctx, ids, timeout=None: ids)
+        monkeypatch.setattr(yd_wait, "follow_exit_code", lambda: exit_code)
 
     def test_each_id_is_recorded_with_its_status(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1, WP_ID, CR_ID])
+        self._follow(monkeypatch)
         out, _, _ = run(
-            yd_wait, client=self._client(), yellowdog_ids=[WR_ID_1, WP_ID, CR_ID]
+            yd_wait,
+            client=self._client(),
+            timeout=None,
+            yellowdog_ids=[WR_ID_1, WP_ID, CR_ID],
         )
         assert out == [
-            {"id": WR_ID_1, "status": "COMPLETED", "succeeded": True},
-            {"id": WP_ID, "status": "TERMINATED", "succeeded": True},
-            {"id": CR_ID, "status": "TERMINATED", "succeeded": True},
+            {"id": WR_ID_1, "name": "wr", "status": "COMPLETED", "succeeded": True},
+            {"id": WP_ID, "name": "wp", "status": "TERMINATED", "succeeded": True},
+            {"id": CR_ID, "name": "cr", "status": "TERMINATED", "succeeded": True},
         ]
+        assert run.exit_code == 0
 
     def test_a_failed_work_requirement_did_not_succeed(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
+        self._follow(monkeypatch)
         out, err, _ = run(
             yd_wait,
             client=self._client(WorkRequirementStatus.FAILED),
+            timeout=None,
             yellowdog_ids=[WR_ID_1],
         )
-        assert out == [{"id": WR_ID_1, "status": "FAILED", "succeeded": False}]
+        assert out == [
+            {"id": WR_ID_1, "name": "wr", "status": "FAILED", "succeeded": False}
+        ]
         assert "ended with status 'FAILED'" in err
+        assert run.exit_code == 1
 
-    def test_a_non_terminal_state_at_exit_did_not_succeed(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
-        out, _, _ = run(
+    def test_a_non_terminal_state_is_a_failure_not_a_success(self, run, monkeypatch):
+        # Following ended (a timeout, a stream not followed) with the Work
+        # Requirement still running: that used to exit 0
+        self._follow(monkeypatch)
+        out, err, _ = run(
             yd_wait,
             client=self._client(WorkRequirementStatus.RUNNING),
+            timeout=None,
             yellowdog_ids=[WR_ID_1],
         )
-        assert out == [{"id": WR_ID_1, "status": "RUNNING", "succeeded": False}]
+        assert out == [
+            {"id": WR_ID_1, "name": "wr", "status": "RUNNING", "succeeded": False}
+        ]
+        assert "is still RUNNING" in err
+        assert run.exit_code == 1
 
-    def test_an_unfetchable_status_is_null(self, run, monkeypatch):
-        self._follow(monkeypatch, [WR_ID_1])
+    def test_a_non_terminal_state_takes_the_following_failures_code(
+        self, run, monkeypatch
+    ):
+        # The stream was lost for good (8): that is why it is still running
+        self._follow(monkeypatch, exit_code=8)
+        run(
+            yd_wait,
+            client=self._client(WorkRequirementStatus.RUNNING),
+            timeout=None,
+            yellowdog_ids=[WR_ID_1],
+        )
+        assert run.exit_code == 8
+
+    def test_an_unfetchable_status_is_null_with_its_exit_code(self, run, monkeypatch):
+        self._follow(monkeypatch)
         client = self._client()
-        client.work_client.get_work_requirement_by_id.side_effect = Exception("boom")
-        out, _, _ = run(yd_wait, client=client, yellowdog_ids=[WR_ID_1])
-        assert out == [{"id": WR_ID_1, "status": None, "succeeded": False}]
+        response = Response()
+        response.status_code = 404
+        client.work_client.get_work_requirement_by_id.side_effect = HTTPError(
+            "404", response=response
+        )
+        out, _, _ = run(yd_wait, client=client, timeout=None, yellowdog_ids=[WR_ID_1])
+        assert out == [
+            {"id": WR_ID_1, "name": None, "status": None, "succeeded": False}
+        ]
+        assert run.exit_code == 6
 
-    def test_an_invalid_id_is_recorded_before_the_failure(self, run, monkeypatch):
-        self._follow(monkeypatch, [])
-        out, _, _ = run(yd_wait, client=self._client(), yellowdog_ids=["not-an-id"])
-        assert out == [{"id": "not-an-id", "status": None, "succeeded": False}]
+    def test_a_work_requirement_failure_with_another_failure_exits_1(
+        self, run, monkeypatch
+    ):
+        self._follow(monkeypatch)
+        client = self._client(WorkRequirementStatus.CANCELLED)
+        response = Response()
+        response.status_code = 404
+        client.worker_pool_client.get_worker_pool_by_id.side_effect = HTTPError(
+            "404", response=response
+        )
+        run(yd_wait, client=client, timeout=None, yellowdog_ids=[WR_ID_1, WP_ID])
+        assert run.exit_code == 1
+
+    @pytest.mark.parametrize(
+        "argv",
+        [[], ["not-an-id"], ["ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]],
+    )
+    def test_no_id_or_one_that_cannot_be_waited_for_is_a_usage_error(self, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-wait", argv=argv)
+        assert raised.value.code == 2
+
+    def test_a_timeout(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert (
+            CLIParser(command="yd-wait", argv=["--timeout", "60", WR_ID_1]).timeout
+            == 60
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1469,19 +2189,27 @@ class TestFollow:
         from yellowdog_cli.utils.args import CLIParser
 
         args = CLIParser(command="yd-follow", argv=["--json", "--nf", WR_ID_1])
-        for target in (yd_follow, results_module, printing_module, wrapper_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+        for target in (
+            results_module,
+            printing_module,
+            event_printing_module,
+            wrapper_module,
+        ):
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         event = {"name": "wr", "status": "RUNNING", "taskGroups": []}
 
-        def follow(ids, auto_cr=False):
-            printing_module.print_event(
+        def follow(_ctx, ids, auto_cr=False):
+            event_printing_module.print_event(
                 "data:" + __import__("json").dumps(event), YDIDType_WR
             )
             return ids
 
         monkeypatch.setattr(yd_follow, "follow_ids", follow)
-        monkeypatch.setattr(yd_follow, "follow_errors_occurred", lambda: False)
+        monkeypatch.setattr(yd_follow, "follow_exit_code", lambda: 0)
         with pytest.raises(SystemExit) as exit_info:
             yd_follow.main()
         assert exit_info.value.code == 0
@@ -1494,11 +2222,16 @@ class TestFollow:
         from yellowdog_cli.utils.args import CLIParser
 
         args = CLIParser(command="yd-follow", argv=["--json", "--nf", WR_ID_1])
-        for target in (yd_follow, results_module, printing_module, wrapper_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+        for target in (results_module, printing_module, wrapper_module):
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
-        monkeypatch.setattr(yd_follow, "follow_ids", lambda ids, auto_cr=False: ids)
-        monkeypatch.setattr(yd_follow, "follow_errors_occurred", lambda: False)
+        monkeypatch.setattr(
+            yd_follow, "follow_ids", lambda _ctx, ids, auto_cr=False: ids
+        )
+        monkeypatch.setattr(yd_follow, "follow_exit_code", lambda: 0)
         with pytest.raises(SystemExit):
             yd_follow.main()
         assert capsys.readouterr().out == ""
@@ -1575,7 +2308,10 @@ def run_dc(monkeypatch, capsys):
             dcw_module,
             rclone_utils_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         for name in ("CONFIG_DATA_CLIENT", "CONFIG_SRC", "CONFIG_DST"):
             if hasattr(module, name):
                 monkeypatch.setattr(module, name, config)
@@ -1596,7 +2332,8 @@ def _comparable(entries: list[dict]) -> list[dict]:
         {
             k: v
             for k, v in e.items()
-            if k in ("Path", "Name", "IsDir") or (k == "Size" and not e["IsDir"])
+            if k in ("Path", "Name", "IsDir", "Listing")
+            or (k == "Size" and not e["IsDir"])
         }
         for e in entries
     ]
@@ -1607,12 +2344,86 @@ class TestLs:
     def test_the_lsjson_entries(self, remote, run_dc):
         out, _, code = run_dc(yd_ls, remote_paths=["loc:remote"])
         assert code == 0
-        # Exactly the spec's keys, as rclone spells them
-        assert all(set(e) == {"Path", "Name", "Size", "ModTime", "IsDir"} for e in out)
+        # Exactly the spec's keys, as rclone spells them, and the path the
+        # entry was listed under
+        assert all(
+            set(e) == {"Path", "Name", "Size", "ModTime", "IsDir", "Listing"}
+            for e in out
+        )
         assert sorted(_comparable(out), key=lambda e: e["Path"]) == [
-            {"Path": "a.txt", "Name": "a.txt", "Size": 5, "IsDir": False},
-            {"Path": "sub", "Name": "sub", "IsDir": True},
+            {
+                "Path": "a.txt",
+                "Name": "a.txt",
+                "Size": 5,
+                "IsDir": False,
+                "Listing": "loc:remote",
+            },
+            {"Path": "sub", "Name": "sub", "IsDir": True, "Listing": "loc:remote"},
         ]
+
+    def test_entries_from_several_paths_name_their_listing(self, remote, run_dc):
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote", "loc:remote/sub"])
+        assert code == 0
+        assert sorted((e["Listing"], e["Path"]) for e in out) == [
+            ("loc:remote", "a.txt"),
+            ("loc:remote", "sub"),
+            ("loc:remote/sub", "b.txt"),
+        ]
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_a_missing_path_fails_and_the_rest_are_listed(
+        self, remote, run_dc, json_output
+    ):
+        out, err, code = run_dc(
+            yd_ls,
+            remote_paths=["loc:remote/nope", "loc:remote/sub"],
+            json_output=json_output,
+        )
+        assert code == 1
+        text = " ".join(err.split())
+        assert "'loc:remote/nope' does not exist" in text
+        assert "1 path(s) could not be listed" in text
+        if json_output:
+            assert [e["Path"] for e in out] == ["b.txt"]
+        else:
+            assert "b.txt" in out
+
+    @pytest.mark.parametrize("json_output", [True, False])
+    def test_an_empty_directory_is_an_empty_listing(self, remote, run_dc, json_output):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(
+            yd_ls, remote_paths=["loc:remote/empty"], json_output=json_output
+        )
+        assert code == 0
+        assert out == [] if json_output else "(empty)" in out
+
+    def test_a_wildcard_matching_nothing_is_an_empty_listing(self, remote, run_dc):
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote/zz*"])
+        assert out == [] and code == 0
+
+    def test_a_wildcard_in_a_missing_directory_fails(self, remote, run_dc):
+        _, err, code = run_dc(yd_ls, remote_paths=["loc:nosuch/*"])
+        assert code == 1
+        assert "does not exist" in " ".join(err.split())
+
+    def test_a_file_named_by_its_path_is_listed(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_ls, remote_paths=["loc:remote/a.txt"], json_output=False
+        )
+        assert code == 0
+        assert "a.txt" in out
+
+    def test_a_repeated_path_is_listed_once(self, remote, run_dc):
+        out, _, _ = run_dc(yd_ls, remote_paths=["loc:remote/sub", "loc:remote/sub"])
+        assert [e["Path"] for e in out] == ["b.txt"]
+
+    def test_long_with_json_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-ls", argv=["--long", "--json"])
+        assert raised.value.code == 2
+        assert "--long cannot be used with --json" in capsys.readouterr().err
 
     def test_recursive(self, remote, run_dc):
         out, _, _ = run_dc(yd_ls, remote_paths=["loc:remote"], recursive=True)
@@ -1726,10 +2537,127 @@ class TestUpload:
             }
         ]
 
-    def test_a_directory_without_recursive_is_skipped(self, remote, run_dc):
+    def test_a_directory_without_recursive_fails(self, remote, run_dc):
+        # As 'cp' without '-r' does: almost always a mistake
         (remote / "d").mkdir()
-        out, _, _ = run_dc(yd_upload, local_paths=["d"])
-        assert [(r["source"], r["action"]) for r in out] == [("d", "skipped")]
+        out, _, code = run_dc(yd_upload, local_paths=["d"])
+        assert [(r["source"], r["action"]) for r in out] == [("d", "failed")]
+        assert code == 1
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        (remote / "one.txt").write_text("1")
+        (remote / "two.txt").write_text("2")
+        real_copy_to = dcu._copy_to
+
+        def copy_to(rclone, src, dst):
+            if src.endswith("one.txt"):
+                return SimpleNamespace(returncode=1, stderr="refused")
+            return real_copy_to(rclone, src, dst)
+
+        monkeypatch.setattr(dcu, "_copy_to", copy_to)
+        out, err, code = run_dc(yd_upload, local_paths=["one.txt", "two.txt"])
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("one.txt", "failed"),
+            ("two.txt", "uploaded"),
+        ]
+        assert code == 1
+        assert "1 item(s) failed to upload" in " ".join(err.split())
+        assert (remote / "remote" / "two.txt").exists()
+
+    def test_several_directories_to_one_destination_keep_their_names(
+        self, remote, run_dc
+    ):
+        for name in ("a", "b"):
+            (remote / name).mkdir()
+            (remote / name / f"{name}.txt").write_text(name)
+        _, _, code = run_dc(
+            yd_upload, local_paths=["a", "b"], destination="out", recursive=True
+        )
+        assert code == 0
+        assert (remote / "remote" / "out" / "a" / "a.txt").exists()
+        assert (remote / "remote" / "out" / "b" / "b.txt").exists()
+
+    def test_colliding_destinations_upload_nothing(self, remote, run_dc):
+        # Two directories of one name would merge, and under --sync the
+        # second would delete what the first uploaded
+        for parent in ("x", "y"):
+            (remote / parent / "data").mkdir(parents=True)
+            (remote / parent / "data" / f"{parent}.txt").write_text(parent)
+        _, err, code = run_dc(
+            yd_upload, local_paths=["x/data", "y/data"], sync=True, recursive=True
+        )
+        assert code == 2
+        assert "would both be uploaded to 'loc:remote/data'" in " ".join(err.split())
+        assert not (remote / "remote" / "data").exists()
+
+    @pytest.mark.parametrize("names, code", [(("same", "same"), 2), (("x", "y"), 0)])
+    def test_flattened_directories_collide_only_on_a_file(
+        self, remote, run_dc, names, code
+    ):
+        # Flattened, two directories of one name land in one remote directory,
+        # which is refused only where a file would land on another's path
+        for parent, name in zip(("p", "q"), names):
+            (remote / parent / "data").mkdir(parents=True)
+            (remote / parent / "data" / f"{name}.txt").write_text(name)
+        _, _, exit_code = run_dc(
+            yd_upload,
+            local_paths=["p/data", "q/data"],
+            flatten=True,
+            json_output=False,
+        )
+        assert exit_code == code
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "d").mkdir()
+        (remote / "d" / "a.txt").write_text("hello")
+        out, _, code = run_dc(
+            yd_upload,
+            local_paths=["d"],
+            destination="loc:remote",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == ["loc:remote/sub/b.txt"]
+        assert (remote / "remote" / "sub" / "b.txt").exists()
+
+    def test_a_symbolic_link_is_not_recorded_as_uploaded(self, remote, run_dc):
+        (remote / "d").mkdir()
+        (remote / "d" / "real.txt").write_text("r")
+        (remote / "d" / "link.txt").symlink_to(remote / "d" / "real.txt")
+        out, err, _ = run_dc(yd_upload, local_paths=["d"], recursive=True)
+        assert [r["destination"] for r in out] == ["loc:remote/d/real.txt"]
+        assert "1 symbolic link(s)" in " ".join(err.split())
+
+    def test_an_empty_flattened_directory_is_recorded(self, remote, run_dc):
+        (remote / "empty").mkdir()
+        out, _, code = run_dc(yd_upload, local_paths=["empty"], flatten=True)
+        assert [(r["source"], r["action"]) for r in out] == [("empty", "skipped")]
+        assert code == 0
+
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            ([], "the following arguments are required: <local-path>"),
+            (["--sync", "--flatten", "x"], "--sync cannot be used with --flatten"),
+        ],
+    )
+    def test_refused_as_parsed(self, argv, message, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-upload", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
+
+    @pytest.mark.parametrize("command", ["yd-upload", "yd-download"])
+    def test_which_rclone_needs_no_paths(self, command):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command=command, argv=["--which-rclone"])
 
 
 @needs_rclone
@@ -1836,18 +2764,117 @@ class TestDownload:
         assert all(r["match"] == "loc:remote/sub" for r in out)
         assert (remote / "flat" / "c.txt").exists() != dry_run
 
-    def test_a_missing_path_records_nothing(self, remote, run_dc):
-        # The local backend fails the listing, an object store lists nothing
-        # and warns; either way no transfer is recorded, and stdout still
-        # parses
-        out, _, _ = run_dc(yd_download, remote_paths=["loc:remote/nope"])
-        assert out == []
+    def test_a_missing_path_fails(self, remote, run_dc):
+        # Nothing downloaded is not a success: a script fetching results
+        # must not read it as one
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/nope"])
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed")
+        ]
+        assert "does not exist" in out[0]["error"]
+        assert code == 1
+
+    def test_a_wildcard_matching_nothing_fails(self, remote, run_dc):
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/zz*"])
+        assert out[0]["error"] == "No matches for wildcard 'loc:remote/zz*'"
+        assert code == 1
+
+    def test_an_empty_directory_downloads_nothing_successfully(self, remote, run_dc):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(yd_download, remote_paths=["loc:remote/empty"])
+        assert out == [] and code == 0
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc):
+        out, err, code = run_dc(
+            yd_download, remote_paths=["loc:remote/nope", "loc:remote/a.txt"]
+        )
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed"),
+            ("loc:remote/a.txt", "downloaded"),
+        ]
+        assert code == 1
+        assert "1 item(s) failed to download" in " ".join(err.split())
+        assert (remote / "a.txt").exists()
+
+    def test_a_mid_path_wildcard_fails_only_its_argument(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:re*/a.txt", "loc:remote/a.txt"]
+        )
+        assert [r["action"] for r in out] == ["failed", "downloaded"]
+        assert code == 1
+
+    def test_syncs_into_one_destination_download_nothing(self, remote, run_dc):
+        _, err, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub", "loc:remote"],
+            destination="out",
+            sync=True,
+        )
+        assert code == 2
+        assert "would both be synced to 'out'" in " ".join(err.split())
+        assert not (remote / "out").exists()
+
+    def test_a_sync_into_the_current_directory_is_refused(self, remote, run_dc):
+        _, err, code = run_dc(yd_download, remote_paths=["/"], sync=True)
+        assert code == 2
+        assert "name it with '-d .'" in " ".join(err.split())
+
+    def test_a_sync_into_the_current_directory_named_explicitly_runs(
+        self, remote, run_dc
+    ):
+        # A dry run, so the test's own directory is left as it is
+        _, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub"],
+            sync=True,
+            destination=".",
+            dry_run=True,
+        )
+        assert code == 0
+
+    def test_without_sync_one_destination_still_merges(self, remote, run_dc):
+        (remote / "remote" / "other").mkdir()
+        (remote / "remote" / "other" / "c.txt").write_text("c")
+        _, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub", "loc:remote/other"],
+            destination="out",
+        )
+        assert code == 0
+        assert (remote / "out" / "b.txt").exists()
+        assert (remote / "out" / "c.txt").exists()
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "out").mkdir()
+        (remote / "out" / "b.txt").write_text("kept")
+        (remote / "out" / "stale.txt").write_text("gone")
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/sub"],
+            destination="out",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == [str(_Path("out") / "stale.txt")]
+        assert (remote / "out" / "stale.txt").exists()
+
+    def test_sync_with_flatten_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-download", argv=["--sync", "--flatten", "x"])
+        assert raised.value.code == 2
+        assert "--sync cannot be used with --flatten" in capsys.readouterr().err
 
 
 @needs_rclone
 class TestCopy:
     def test_a_directory_records_each_file(self, remote, run_dc):
-        out, _, code = run_dc(yd_copy, src_path="loc:remote/sub", dst_path="loc:dst")
+        out, _, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", recursive=True
+        )
         assert code == 0
         assert out == [
             {
@@ -1872,12 +2899,94 @@ class TestCopy:
 
     def test_dry_run(self, remote, run_dc):
         out, _, _ = run_dc(
-            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", dry_run=True
+            yd_copy,
+            src_path="loc:remote/sub",
+            dst_path="loc:dst",
+            dry_run=True,
+            recursive=True,
         )
         assert [(r["destination"], r["action"]) for r in out] == [
             ("loc:dst/b.txt", "would copy")
         ]
         assert not (remote / "dst").exists()
+
+    def test_a_directory_needs_recursive(self, remote, run_dc):
+        out, err, code = run_dc(yd_copy, src_path="loc:remote/sub", dst_path="loc:dst")
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"]
+        assert "use --recursive to copy it" in " ".join(err.split())
+        assert not (remote / "dst").exists()
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_missing_source_fails(self, remote, run_dc, dry_run):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/nope", dst_path="loc:dst", dry_run=dry_run
+        )
+        assert code == 1
+        assert "'loc:remote/nope' does not exist" in " ".join(err.split())
+
+    def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
+        self, remote, run_dc
+    ):
+        # Once taken for a directory, having no '/', and copied into the
+        # destination instead
+        (remote / "top.txt").write_text("t")
+        _, _, code = run_dc(yd_copy, src_path="loc:top.txt", dst_path="loc:renamed.txt")
+        assert code == 0
+        assert (remote / "renamed.txt").read_text() == "t"
+
+    def test_sync_from_a_file_is_refused(self, remote, run_dc):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/a.txt", dst_path="loc:dst", sync=True
+        )
+        assert code == 2
+        assert "--sync mirrors a directory" in " ".join(err.split())
+
+    @pytest.mark.parametrize("dst_path", ["loc:", "loc:remote"])
+    def test_sync_to_the_root_or_the_bucket_is_refused(self, remote, run_dc, dst_path):
+        _, err, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path=dst_path, sync=True
+        )
+        assert code == 2
+        assert "Nothing was copied" in " ".join(err.split())
+        assert (remote / "remote" / "a.txt").exists()
+
+    def test_sync_implies_recursive(self, remote, run_dc):
+        _, _, code = run_dc(
+            yd_copy, src_path="loc:remote/sub", dst_path="loc:dst", sync=True
+        )
+        assert code == 0
+        assert (remote / "dst" / "b.txt").exists()
+
+    def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        (remote / "dst").mkdir()
+        (remote / "dst" / "b.txt").write_text("kept")
+        (remote / "dst" / "stale.txt").write_text("gone")
+        out, _, code = run_dc(
+            yd_copy,
+            src_path="loc:remote/sub",
+            dst_path="loc:dst",
+            sync=True,
+            dry_run=True,
+        )
+        assert code == 0
+        deletions = [r["destination"] for r in out if r["action"] == "would delete"]
+        assert deletions == ["loc:dst/stale.txt"]
+        assert (remote / "dst" / "stale.txt").exists()
+
+    @pytest.mark.parametrize("argv", [[], ["only-a-source"]])
+    def test_both_paths_are_required_as_parsed(self, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-copy", argv=argv)
+        assert raised.value.code == 2
+        assert "the following arguments are required" in capsys.readouterr().err
+
+    def test_which_rclone_needs_no_paths(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command="yd-copy", argv=["--which-rclone"])
 
 
 @needs_rclone
@@ -1903,10 +3012,92 @@ class TestDelete:
         ]
         assert not (remote / "remote" / "sub").exists()
 
-    def test_a_directory_without_recursive_is_not_recorded(self, remote, run_dc):
-        out, _, _ = run_dc(yd_delete, remote_paths=["loc:remote/*"])
-        assert [r["path"] for r in out] == ["loc:remote/a.txt"]
+    def test_a_directory_without_recursive_fails(self, remote, run_dc):
+        # As 'rm' without '-r' does; the file it matched is still deleted
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/*"])
+        assert sorted((r["path"], r["action"]) for r in out) == [
+            ("loc:remote/a.txt", "deleted"),
+            ("loc:remote/sub", "failed"),
+        ]
+        assert code == 1
         assert (remote / "remote" / "sub" / "b.txt").exists()
+
+    def test_what_was_confirmed_is_what_is_deleted(self, remote, run_dc, monkeypatch):
+        # A file that starts matching after the confirmation is not deleted:
+        # the matches are listed once
+        def confirm(question):
+            (remote / "remote" / "late.txt").write_text("late")
+            return True
+
+        monkeypatch.setattr(yd_delete, "confirmed", confirm)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/*.txt"])
+        assert [r["path"] for r in out] == ["loc:remote/a.txt"]
+        assert (remote / "remote" / "late.txt").exists()
+        assert code == 0
+
+    def test_a_path_already_gone_is_skipped(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/nope", "loc:remote/zz*"]
+        )
+        assert [(r["path"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "skipped"),
+            ("loc:remote/zz*", "skipped"),
+        ]
+        assert code == 0
+
+    def test_an_empty_directory_is_deleted(self, remote, run_dc):
+        (remote / "remote" / "empty").mkdir()
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/empty"], recursive=True
+        )
+        assert [r["action"] for r in out] == ["deleted"]
+        assert not (remote / "remote" / "empty").exists()
+        assert code == 0
+
+    def test_a_failure_does_not_stop_the_rest(self, remote, run_dc, monkeypatch):
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        real = dcu.delete_item
+
+        def delete_item(config, path, is_dir):
+            if path.endswith("a.txt"):
+                dcu.record_deletion(path, is_dir, "failed", error="refused")
+                return False
+            return real(config, path, is_dir)
+
+        monkeypatch.setattr(yd_delete, "delete_item", delete_item)
+        out, err, code = run_dc(
+            yd_delete,
+            remote_paths=["loc:remote/a.txt", "loc:remote/sub"],
+            recursive=True,
+        )
+        assert [r["action"] for r in out] == ["failed", "deleted"]
+        assert code == 1
+        assert "1 item(s) failed to delete" in " ".join(err.split())
+
+    @pytest.mark.parametrize(
+        "paths", [["loc:"], ["loc:remote"], ["loc:remote/"], ["loc:*"]]
+    )
+    def test_the_root_or_the_bucket_is_refused(self, remote, run_dc, paths):
+        _, err, code = run_dc(yd_delete, remote_paths=paths, recursive=True)
+        assert code == 2
+        assert "Nothing was deleted" in " ".join(err.split())
+        assert (remote / "remote" / "a.txt").exists()
+
+    def test_a_repeated_path_is_deleted_once(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/a.txt", "loc:remote/a.txt"]
+        )
+        assert [r["action"] for r in out] == ["deleted"]
+        assert code == 0
+
+    def test_no_path_without_recursive_is_refused_as_parsed(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-delete", argv=[])
+        assert raised.value.code == 2
+        assert "use --recursive to delete the entire" in capsys.readouterr().err
 
     def test_a_literal_directory_needs_recursive(self, remote, run_dc):
         out, _, _ = run_dc(yd_delete, remote_paths=["loc:remote/sub"], recursive=True)
@@ -1991,13 +3182,17 @@ class TestCompare:
             name="tg1", id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
         )
         monkeypatch.setattr(
-            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
         )
-        monkeypatch.setattr(yd_compare, "get_task_group_by_id", lambda c, i: task_group)
+        monkeypatch.setattr(
+            yd_compare, "_get_task_group_by_id", lambda _ctx, i: task_group
+        )
         monkeypatch.setattr(
             yd_compare,
             "WorkerPools",
-            lambda wps: SimpleNamespace(
+            lambda _ctx, wps: SimpleNamespace(
                 check_task_group_for_matching_worker_pools=lambda task_group: [report]
             ),
         )
@@ -2023,6 +3218,61 @@ class TestCompare:
             "matchStatus": "NO",
         } in row["properties"]
         assert len(row["properties"]) == 8
+
+    def test_a_pool_that_cannot_be_compared_is_recorded_and_exits_by_its_cause(
+        self, run, monkeypatch
+    ):
+        from yellowdog_cli.compare import FailedComparison
+
+        failure = FailedComparison(
+            worker_pool_name="pool",
+            worker_pool_id=WP_ID,
+            worker_pool_status="RUNNING",
+            error=_http_error(404),
+        )
+        task_group = SimpleNamespace(
+            name="tg1", id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
+        )
+        monkeypatch.setattr(
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
+        )
+        monkeypatch.setattr(
+            yd_compare, "_get_task_group_by_id", lambda _ctx, i: task_group
+        )
+        monkeypatch.setattr(
+            yd_compare,
+            "WorkerPools",
+            lambda _ctx, wps: SimpleNamespace(
+                check_task_group_for_matching_worker_pools=lambda task_group: [failure]
+            ),
+        )
+        out, err, _ = run(
+            yd_compare,
+            worker_pool_ids=[WP_ID],
+            wr_or_tg_id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1",
+        )
+        assert out[0]["workerPoolMatch"] == "FAILED"
+        assert out[0]["properties"] == [] and out[0]["error"]
+        assert run.exit_code == ExitCode.NOT_FOUND
+        assert "Unable to compare Worker Pool 'pool'" in " ".join(err.split())
+
+    def test_a_work_requirement_with_no_task_groups_says_so(self, run, monkeypatch):
+        monkeypatch.setattr(
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
+        )
+        monkeypatch.setattr(
+            yd_compare,
+            "_get_work_requirement_by_id",
+            lambda _ctx, i: SimpleNamespace(name="wr", id=WR_ID_1, taskGroups=[]),
+        )
+        out, err, _ = run(yd_compare, worker_pool_ids=[WP_ID], wr_or_tg_id=WR_ID_1)
+        assert out == []
+        assert "has no Task Groups to compare" in " ".join(err.split())
+        assert run.exit_code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -2053,14 +3303,21 @@ class TestNodeAction:
         ]
 
     def test_the_submission_table(self, run, monkeypatch):
-        monkeypatch.setattr(yd_nodeaction, "_load_spec", lambda f: {"actions": [{}]})
+        monkeypatch.setattr(
+            yd_nodeaction, "_load_spec", lambda _ctx, f: {"actions": [{}]}
+        )
         monkeypatch.setattr(
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock(), MagicMock()]
         )
         monkeypatch.setattr(
-            yd_nodeaction, "_get_worker_pool_id_for_node", lambda n: WP_ID
+            yd_nodeaction,
+            "_resolve_targets",
+            lambda _ctx: (
+                SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
+                [NODE_ID],
+                [],
+            ),
         )
-        monkeypatch.setattr(yd_nodeaction, "_resolve_node_ids", lambda wp: [NODE_ID])
         out, _, _ = run(
             yd_nodeaction,
             status=False,
@@ -2083,14 +3340,21 @@ class TestNodeAction:
 
 class TestNodeActionOutcomes:
     def _submit(self, run, monkeypatch, **values):
-        monkeypatch.setattr(yd_nodeaction, "_load_spec", lambda f: {"actions": [{}]})
+        monkeypatch.setattr(
+            yd_nodeaction, "_load_spec", lambda _ctx, f: {"actions": [{}]}
+        )
         monkeypatch.setattr(
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock()]
         )
         monkeypatch.setattr(
-            yd_nodeaction, "_get_worker_pool_id_for_node", lambda n: WP_ID
+            yd_nodeaction,
+            "_resolve_targets",
+            lambda _ctx: (
+                SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
+                [NODE_ID],
+                [],
+            ),
         )
-        monkeypatch.setattr(yd_nodeaction, "_resolve_node_ids", lambda wp: [NODE_ID])
         return run(
             yd_nodeaction,
             status=False,
@@ -2131,9 +3395,27 @@ class TestVersion:
     def test_the_versions(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_jsonnet_version", lambda: "Not installed")
         out = self._run(monkeypatch, capsys, "--json")
-        assert set(out) == {"cli", "sdk", "python", "jsonnet", "rclone", "mcp"}
+        assert set(out) == {
+            "cli",
+            "sdk",
+            "python",
+            "jsonnet",
+            "rclone",
+            "mcp",
+            "author",
+            "licence",
+        }
         assert out["cli"] == yd_version.__version__
         assert out["jsonnet"] is None
+
+    def test_the_author_and_licence(self, monkeypatch, capsys):
+        # The plain report's Author and Licence lines, as structured values
+        out = self._run(monkeypatch, capsys, "--json")
+        assert out["author"] == {
+            "name": yd_version.__author__,
+            "email": yd_version.__email__,
+        }
+        assert out["licence"] == yd_version.cli_licence()
 
     def test_the_sdk_version_is_the_sdks_own(self, monkeypatch, capsys):
         # Read from package metadata, so that naming it imports no SDK
@@ -2158,6 +3440,26 @@ class TestVersion:
         with pytest.raises(SystemExit) as exit_info:
             yd_version.main()
         assert exit_info.value.code == 1
+
+    def test_the_report_names_the_licence_from_package_metadata(
+        self, monkeypatch, capsys
+    ):
+        # pyproject.toml is the one place the licence is stated
+        import tomli
+
+        with open(_Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+            declared = tomli.load(f)["project"]["license"]
+        assert yd_version.cli_licence() == declared
+        monkeypatch.setattr(_sys, "argv", ["yd-version"])
+        yd_version.main()
+        assert f"Licence:                 {declared}" in capsys.readouterr().out
+
+    def test_an_unknown_licence(self, monkeypatch):
+        def not_found(_name):
+            raise yd_version.PackageNotFoundError
+
+        monkeypatch.setattr(yd_version, "metadata", not_found)
+        assert yd_version.cli_licence() == yd_version.UNKNOWN_LICENCE
 
     def test_a_missing_rclone_is_null(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_rclone_version", lambda: "Not installed")
@@ -2194,7 +3496,7 @@ class TestHelp:
 
 class TestEntryToName:
     def test_a_directory_is_marked(self):
-        from yellowdog_cli.utils.dataclient_utils import entry_to_name
+        from yellowdog_cli.utils.dataclient.operations import entry_to_name
 
         assert entry_to_name({"Name": "file.txt", "IsDir": False}) == "file.txt"
         assert entry_to_name({"Name": "subdir", "IsDir": True}) == "subdir/"
@@ -2202,7 +3504,7 @@ class TestEntryToName:
 
 class TestJoinRemote:
     def test_a_bare_remote_gets_no_slash(self):
-        from yellowdog_cli.utils.dataclient_utils import _join_remote
+        from yellowdog_cli.utils.dataclient.operations import _join_remote
 
         assert _join_remote("S3:", "x") == "S3:x"
         assert _join_remote("S3:b/", "x") == "S3:b/x"
@@ -2223,7 +3525,7 @@ class TestRemainingParsers:
             ("yd-upload", ["f"]),
             ("yd-copy", ["a", "b"]),
             ("yd-compare", [WR_ID_1, WP_ID]),
-            ("yd-nodeaction", []),
+            ("yd-nodeaction", ["--status"]),
         ],
     )
     def test_json_without_a_short_flag(self, command, argv, capsys):

@@ -4,19 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.results as results_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.output_style import DRY_RUN_MARKER
 from yellowdog_cli.utils.results import flush_results, reset_results
-from yellowdog_cli.utils.settings import DRY_RUN_MARKER
 
 
 @pytest.fixture()
 def json_mode(monkeypatch):
-    """Under '--json', with nothing recorded before or after."""
+    """
+    Under '--json', with nothing recorded before or after.
+    """
     args = MagicMock(json_output=True, strip_ids=False, no_format=True)
-    monkeypatch.setattr(results_module, "ARGS_PARSER", args)
-    monkeypatch.setattr(printing_module, "ARGS_PARSER", args)
+    output_settings.configure_output(args)
+    output_settings.configure_output(args)
     reset_results()
     yield
     reset_results()
@@ -119,7 +120,7 @@ def test_json_empty(json_mode, capsys):
 
 
 def test_entries_to_names_marks_dirs():
-    from yellowdog_cli.utils.dataclient_utils import entries_to_names
+    from yellowdog_cli.utils.dataclient.operations import entries_to_names
 
     entries = [
         {"Name": "file.txt", "IsDir": False},

@@ -51,6 +51,23 @@ class YDIDType(Enum):
     WORK_REQUIREMENT = "Work Requirement"
 
 
+# The YellowDog IDs 'yd-remove --ids' removes (a Worker Pool's is shut down)
+REMOVABLE_YDID_TYPES = frozenset(
+    {
+        YDIDType.ALLOWANCE,
+        YDIDType.APPLICATION,
+        YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+        YDIDType.COMPUTE_SOURCE_TEMPLATE,
+        YDIDType.GROUP,
+        YDIDType.IMAGE,
+        YDIDType.IMAGE_FAMILY,
+        YDIDType.IMAGE_GROUP,
+        YDIDType.KEYRING,
+        YDIDType.WORKER_POOL,
+    }
+)
+
+
 def get_ydid_type(ydid: str | None) -> YDIDType | None:
     """
     Validate and find the type of a YellowDog ID.
@@ -120,6 +137,14 @@ def split_instance_specification(name_or_id: str) -> tuple[str, str] | None:
     ):
         return None
     return cr_id, instance_id
+
+
+def work_requirement_id_of_task_group(task_group_id: str) -> str:
+    """
+    The ID of the Work Requirement a Task Group belongs to: a Task Group's
+    YDID is its Work Requirement's, retyped, with the group's index appended.
+    """
+    return task_group_id.rsplit(":", 1)[0].replace(TYPE_TASKGRP, TYPE_WORKREQ, 1)
 
 
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

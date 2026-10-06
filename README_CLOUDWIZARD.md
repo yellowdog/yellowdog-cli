@@ -44,7 +44,7 @@
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Sep 23 15:47:47 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 14:58:43 BST 2026 -->
 
 <!--te-->
 
@@ -52,7 +52,9 @@
 
 YellowDog Cloud Wizard is an **experimental** utility that automates the process of configuring a cloud provider account for use with YellowDog, and for creating YellowDog resources that work with the account. The goal is to make it quick and easy to get from opening a new cloud provider account to using it productively with YellowDog. 
 
-Cloud Wizard currently supports Amazon AWS, Google GCP and Microsoft Azure.
+Cloud Wizard currently supports Amazon AWS, Google GCP and Microsoft Azure: `--cloud-provider` takes `aws` (or `amazon`), `gcp` (`gce`, `google`) or `azure` (`microsoft`), in any case, and any other name is refused as the command line is read, as is GCP without `--credentials-file`, `add-ssh`/`remove-ssh` for GCP, and Azure's `add-ssh`/`remove-ssh` without `--region-name`.
+
+Each step of a setup or teardown carries on past a step that fails, so that, for example, a teardown removes everything it can; the errors are reported as they happen, and a run that reported any ends with `Cloud Wizard finished with N error(s)` and exit code 1.
 
 # YellowDog Prerequisites
 
@@ -130,7 +132,7 @@ The Compute Requirement Templates are then available for use in YellowDog provis
 
 The AWS Key Secret is not displayed during command operation, and is not retained locally, for security reasons. If you wish to display it, use the `--show-secrets` command line option when invoking `yd-cloudwizard`.
 
-At the conclusion of a successful setup, the command will display the YellowDog Keyring name and password. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control AWS resources via the Portal.
+At the conclusion of setup, the command will display the YellowDog Keyring name and password, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control AWS resources via the Portal.
 
 ### Removal
 
@@ -221,6 +223,8 @@ To add an inbound SSH rule to the default security group for a region, Cloud Wiz
 
 `yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 add-ssh`
 
+Without `--region-name`, `add-ssh` adds the rule in the default security group of every region the account has opted into. Since the rule allows SSH from anywhere (`0.0.0.0/0`), `add-ssh` asks for confirmation first, naming the region or the number of regions (`--yes` skips it).
+
 The rule can be removed using:
 
 `yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 remove-ssh`
@@ -282,7 +286,7 @@ The resources that were created can be inspected in JSON format in the file `clo
 
 The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
 
-At the conclusion of a successful setup, the command will display the YellowDog Keyring name and password. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control GCP resources via the Portal.
+At the conclusion of setup, the command will display the YellowDog Keyring name and password, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control GCP resources via the Portal.
 
 ### Removal
 
@@ -447,7 +451,7 @@ The resources that were created can be inspected in JSON format in the file `clo
 
 The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
 
-At the conclusion of a successful setup, the command will display the YellowDog **Keyring name and password**. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control Azure resources via the Portal.
+At the conclusion of setup, the command will display the YellowDog **Keyring name and password**, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control Azure resources via the Portal.
 
 ### Removal
 

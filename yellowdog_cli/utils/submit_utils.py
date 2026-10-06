@@ -6,9 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
 from os import chdir, getcwd
-from os.path import abspath, exists
+from os.path import abspath, exists, join
 from pathlib import Path
-from time import sleep
 from typing import cast
 
 from yellowdog_client.model import (
@@ -27,12 +26,18 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.dataclient.rclone import make_rclone, parse_rclone_config
+from yellowdog_cli.utils.file_substitution import (
+    process_variable_substitutions_in_file_contents,
+)
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
     print_warning,
 )
+from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_LOCAL_PATH,
     DATA_CLIENT_UPLOAD_PATH,
@@ -59,25 +64,21 @@ from yellowdog_cli.utils.property_names import (
     TASK_TAG,
     TASKS,
 )
-from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.settings import RCLONE_PREFIX
+from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
+from yellowdog_cli.utils.variable_substitution import (
+    resolve_variables_insitu,
+    warn_of_undefined_variables,
+)
+from yellowdog_cli.utils.variable_syntax import (
     L_TASK_COUNT,
     L_TASK_GROUP_COUNT,
     L_TASK_GROUP_NAME,
     L_TASK_GROUP_NUMBER,
     L_TASK_NUMBER,
-    RCLONE_PREFIX,
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
-from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
-from yellowdog_cli.utils.variables import (
-    process_variable_substitutions_in_file_contents,
-    resolve_filename,
-    resolve_variables_insitu,
-    warn_of_undefined_variables,
-)
-from yellowdog_cli.utils.wrapper import ARGS_PARSER
 
 # Names for environment variables optionally added to each Task's environment
 YD_NAMESPACE = "YD_NAMESPACE"
@@ -131,51 +132,6 @@ def update_config_work_requirement_object(
     return ConfigWorkRequirement(**config_wr_dict)
 
 
-def pause_between_batches(task_batch_size: int, batch_number: int, num_tasks: int):
-    """
-    Process a pause between Task batches.
-    """
-    if ARGS_PARSER.pause_between_batches is None:
-        return
-
-    first_batch: bool = batch_number == 0
-    task_num_start = (task_batch_size * batch_number) + 1
-    task_num_end = min(task_batch_size * (batch_number + 1), num_tasks)
-    task_range_str = (
-        f"Tasks {task_num_start}-{task_num_end}"
-        if task_num_start != task_num_end
-        else f"Task {task_num_start}"
-    )
-
-    if ARGS_PARSER.pause_between_batches <= 0:  # Manual delay
-        print_info(
-            (
-                f"Submitting batch number {batch_number + 1} ({task_range_str})"
-                if first_batch
-                else (
-                    "Pausing before submitting batch number"
-                    f" {batch_number + 1} ({task_range_str}). Press enter to continue:"
-                )
-            ),
-            override_quiet=True,
-        )
-        if not first_batch:
-            input()
-
-    elif ARGS_PARSER.pause_between_batches > 0:  # Automatic delay
-        print_info(
-            f"Submitting batch number {batch_number + 1} ({task_range_str})"
-            if first_batch
-            else (
-                f"Pausing for {ARGS_PARSER.pause_between_batches} seconds before"
-                f" submitting batch number {batch_number + 1}"
-                f" ({task_range_str})"
-            )
-        )
-        if not first_batch:
-            sleep(ARGS_PARSER.pause_between_batches)
-
-
 def generate_taskdata_object(
     task_data_inputs: list[dict] | None, task_data_outputs: list[dict] | None
 ) -> TaskData | None:
@@ -201,7 +157,7 @@ def generate_taskdata_object(
     except TypeError as e:
         raise TypeError(
             f"Unable to generate 'taskDataInputs' or 'taskDataOutputs' list: {e!s}"
-        )
+        ) from e
 
 
 def generate_task_error_matchers_list(
@@ -210,12 +166,8 @@ def generate_task_error_matchers_list(
     """
     Generate a list of TaskErrorMatcher objects.
     """
-    error_matchers: list[dict] | None = check_list(
-        tg_data.get(
-            RETRYABLE_ERRORS,
-            wr_data.get(RETRYABLE_ERRORS, config_wr.retryable_errors),
-        ),
-        RETRYABLE_ERRORS,
+    error_matchers: list[dict] | None = Cascade(wr_data, tg_data).checked(
+        RETRYABLE_ERRORS, check_list, config_wr.retryable_errors
     )
 
     return (
@@ -309,7 +261,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
                 else [int(exit_code_str) for exit_code_str in exit_codes_str]
             )
         except Exception as e:
-            raise ValueError(f"Unable to process error exit codes: {e}")
+            raise ValueError(f"Unable to process error exit codes: {e}") from e
 
         statuses_str: list[str] | None = check_list(
             task_error_matcher_data.get(STATUSES_AT_FAILURE), STATUSES_AT_FAILURE
@@ -321,7 +273,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
                 else [TaskStatus(status) for status in statuses_str]
             )
         except Exception as e:
-            raise ValueError(f"Unable to process error status: {e}")
+            raise ValueError(f"Unable to process error status: {e}") from e
 
         error_types: list[str] | None = check_list(
             task_error_matcher_data.get(ERROR_TYPES), ERROR_TYPES
@@ -336,7 +288,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
     except Exception as e:
         raise RuntimeError(
             f"Unable to process task retry error matcher data '{task_error_matcher_data}': {e}"
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -456,9 +408,8 @@ def generate_retry_policy(
     Build a RetryPolicy from TG > WR > config inheritance. Returns None when
     no retryPolicy is defined at any level.
     """
-    policy_data = check_dict(
-        tg_data.get(RETRY_POLICY, wr_data.get(RETRY_POLICY, config_wr.retry_policy)),
-        RETRY_POLICY,
+    policy_data = Cascade(wr_data, tg_data).checked(
+        RETRY_POLICY, check_dict, config_wr.retry_policy
     )
     if policy_data is None:
         return None
@@ -493,11 +444,8 @@ def generate_failure_policy(
     Build a FailurePolicy from TG > WR > config inheritance. Returns None
     when no failurePolicy is defined at any level.
     """
-    policy_data = check_dict(
-        tg_data.get(
-            FAILURE_POLICY, wr_data.get(FAILURE_POLICY, config_wr.failure_policy)
-        ),
-        FAILURE_POLICY,
+    policy_data = Cascade(wr_data, tg_data).checked(
+        FAILURE_POLICY, check_dict, config_wr.failure_policy
     )
     if policy_data is None:
         return None
@@ -576,8 +524,10 @@ class RcloneUploadedFiles:
 
     def __init__(
         self,
+        ctx: RunContext,
         files_directory: str = ".",
     ):
+        self._ctx = ctx
         self._rcloned_files: list[RcloneUploadedFile] = []
         self._files_directory = abspath(files_directory)
         self._working_directory = getcwd()
@@ -623,14 +573,26 @@ class RcloneUploadedFiles:
             if rclone_uploaded_file in self._rcloned_files:
                 # Duplicate
                 return
+            for uploaded in self._rcloned_files:
+                # Another file bound for the same place would be skipped as
+                # already there, and its Tasks given the first file's data
+                if uploaded.upload_file_path == rclone_upload_path and abspath(
+                    uploaded.local_file_path
+                ) != abspath(local_file):
+                    raise ValueError(
+                        f"'{local_file}' and '{uploaded.local_file_path}' are both"
+                        " to be uploaded to"
+                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}'"
+                    )
 
-            if not ARGS_PARSER.dry_run:
+            if not self._ctx.args.dry_run:
                 try:
                     self._upload_rclone_file_core(rclone_uploaded_file)
                 except Exception as e:
                     raise RuntimeError(
-                        f"Unable to upload '{local_file}' -> '{rclone_upload_path}': {e}"
-                    )
+                        f"Unable to upload '{local_file}' ->"
+                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}': {e}"
+                    ) from e
             else:
                 print_dry_run(
                     f"Would upload '{local_file}' -> "
@@ -658,7 +620,7 @@ class RcloneUploadedFiles:
 
         remote_dest = f"{remote_name}:{remote_path}"
 
-        if not ARGS_PARSER.overwrite and rclone.exists(remote_dest):
+        if not self._ctx.args.overwrite and rclone.exists(remote_dest):
             print_info(
                 f"Skipping upload of '{rclone_upload_file.local_file_path}'"
                 f" (already exists at '{self._bucket_and_prefix(rclone_upload_file)}')"
@@ -760,18 +722,20 @@ class RcloneUploadedFiles:
 
         return remote_name, config_section, path_part
 
-    @staticmethod
-    def _bucket_and_prefix(rclone_uploaded_file: RcloneUploadedFile):
+    @classmethod
+    def _bucket_and_prefix(cls, rclone_uploaded_file: RcloneUploadedFile) -> str:
         """
-        Remove everything except the service, bucket name and object name.
+        Where a file is uploaded to, as a message shows it: the remote's name
+        and the path, never an inline remote's parameters, which hold its
+        credentials.
         """
         try:
-            _service, _rclone_details, bucket_name_and_object = (
-                rclone_uploaded_file.upload_file_path.split(":")
+            remote_name, _config, path = cls._parse_rclone_connection_string(
+                rclone_uploaded_file.upload_file_path
             )
-            return bucket_name_and_object
         except Exception:
-            return rclone_uploaded_file.upload_file_path
+            return "<an rclone remote that could not be read>"
+        return f"{remote_name}:{path}"
 
 
 def formatted_number_str(
@@ -874,9 +838,13 @@ def resolve_task_data(
     properties are present at this level. Raises ValueError if more than
     one of 'taskData', 'taskDataFile', 'taskDataFiles' is set.
     """
-    task_data = data.get(TASK_DATA, task_data_default)
-    task_data_file = data.get(TASK_DATA_FILE, task_data_file_default)
-    task_data_files = data.get(TASK_DATA_FILES, task_data_files_default)
+    task_data = check_str(data.get(TASK_DATA, task_data_default), TASK_DATA)
+    task_data_file = check_str(
+        data.get(TASK_DATA_FILE, task_data_file_default), TASK_DATA_FILE
+    )
+    task_data_files = check_list(
+        data.get(TASK_DATA_FILES, task_data_files_default), TASK_DATA_FILES
+    )
     if sum(bool(x) for x in [task_data, task_data_file, task_data_files]) > 1:
         raise ValueError(
             f"Only one of '{TASK_DATA}', '{TASK_DATA_FILE}' or "
@@ -901,11 +869,11 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
     text, so no substitution pass walks it: an undefined variable left in it
     is reported here, by file.
     """
-    with open(resolve_filename(files_directory, filename)) as f:
+    with open(join(files_directory, filename), encoding="utf-8") as f:
         contents = process_variable_substitutions_in_file_contents(
             f.read(), source=filename
         )
-    warn_of_undefined_variables({filename: contents})
+    warn_of_undefined_variables({filename: contents}, per_source=True)
     return contents
 
 
@@ -918,33 +886,27 @@ def get_task_data_property(
     files_directory: str = "",
 ) -> str | None:
     """
-    Get the 'taskData' property for a Task, checking Task → Task Group → WR
-    level in order. 'taskDataFile' is resolved to its file contents at whichever
-    level it is found.
+    Get the 'taskData' property for a Task, checking the Task, Task Group,
+    Work Requirement and configuration levels in turn: the first level that
+    sets any of 'taskData', 'taskDataFile' or 'taskDataFiles' supplies it,
+    so a specification's overrides the configuration's, whichever of the
+    three each uses. 'taskDataFile' is resolved to its file contents.
     """
-    for data, task_data_default, task_data_file_default, task_data_files_default in [
-        (task, None, None, None),
-        (task_group_data, None, None, None),
-        (
-            wr_data,
-            config_wr.task_data,
-            config_wr.task_data_file,
-            config_wr.task_data_files,
-        ),
+    config_level = {
+        TASK_DATA: config_wr.task_data,
+        TASK_DATA_FILE: config_wr.task_data_file,
+        TASK_DATA_FILES: config_wr.task_data_files,
+    }
+    for data, level in [
+        (task, f"Task '{task_name}'"),
+        (task_group_data, "the Task Group"),
+        (wr_data, "the Work Requirement"),
+        (config_level, "the configuration file"),
     ]:
         try:
-            result = resolve_task_data(
-                data,
-                files_directory,
-                task_data_default,
-                task_data_file_default,
-                task_data_files_default,
-            )
-        except ValueError:
-            raise ValueError(
-                f"Task '{task_name}': Only one of '{TASK_DATA}', "
-                f"'{TASK_DATA_FILE}' or '{TASK_DATA_FILES}' should be set"
-            )
+            result = resolve_task_data(data, files_directory)
+        except ValueError as e:
+            raise ValueError(f"In {level}: {e}") from e
         if result is not None:
             return result
 

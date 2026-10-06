@@ -19,9 +19,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.utils.load_config as lc_module
-import yellowdog_cli.utils.variables as var_module
+import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.config_types import ConfigDataClient, ConfigWorkerPool
-from yellowdog_cli.utils.dataclient_utils import resolve_remote_path
+from yellowdog_cli.utils.dataclient.operations import resolve_remote_path
 from yellowdog_cli.utils.property_names import TASK_DATA_FILE, TASK_DATA_FILES
 from yellowdog_cli.utils.provision_utils import get_user_data_property
 from yellowdog_cli.utils.submit_utils import resolve_task_data
@@ -84,14 +84,19 @@ class TestConfigValues:
 
 
 class TestWrappersCheckConfigValues:
-    """Both wrappers check the configuration values once warnings are on."""
+    """
+    Both wrappers check the configuration values once warnings are on.
+    """
 
     @staticmethod
-    def _run(wrapped, module, monkeypatch) -> list[bool]:
+    def _run(wrapped, monkeypatch) -> list[bool]:
+        # The check both wrappers make, in the runner they share
+        import yellowdog_cli.utils.command_runner as runner_module
+
         seen: list[bool] = []
         monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
         monkeypatch.setattr(
-            module,
+            runner_module,
             "warn_of_undefined_config_variables",
             lambda: seen.append(var_module._UNDEFINED_VARIABLE_WARNINGS),
         )
@@ -104,13 +109,13 @@ class TestWrappersCheckConfigValues:
 
         monkeypatch.setattr(wrapper_module, "set_proxy", lambda: None)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
-        seen = self._run(wrapper_module.main_wrapper, wrapper_module, monkeypatch)
+        seen = self._run(wrapper_module.main_wrapper, monkeypatch)
         assert seen == [True]
 
     def test_dataclient_wrapper(self, monkeypatch):
-        import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+        import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 
-        seen = self._run(dcw_module.dataclient_wrapper, dcw_module, monkeypatch)
+        seen = self._run(dcw_module.dataclient_wrapper, monkeypatch)
         assert seen == [True]
 
 
@@ -127,13 +132,23 @@ class TestUserDataFiles:
         [message] = _messages(warnings)
         assert "'__{{nope}}__'" in message and "setup.sh" in message
 
-    def test_concatenated_files_are_reported(self, warnings, tmp_path):
+    def test_concatenated_files_are_reported_by_file(self, warnings, tmp_path):
+        # Only the file holding the reference is named, not every file listed
         a, b = tmp_path / "a.sh", tmp_path / "b.sh"
         a.write_text("echo a\n")
         b.write_text("echo __{{nope}}__\n")
         get_user_data_property(ConfigWorkerPool(user_data_files=[str(a), str(b)]))
         [message] = _messages(warnings)
-        assert "a.sh" in message and "b.sh" in message
+        assert "b.sh" in message and "a.sh" not in message
+
+    def test_each_file_holding_the_variable_is_reported(self, warnings, tmp_path):
+        a, b = tmp_path / "a.sh", tmp_path / "b.sh"
+        a.write_text("echo __{{nope}}__\n")
+        b.write_text("echo __{{nope}}__\n")
+        get_user_data_property(ConfigWorkerPool(user_data_files=[str(a), str(b)]))
+        first, second = _messages(warnings)
+        assert "a.sh" in first and "b.sh" not in first
+        assert "b.sh" in second and "a.sh" not in second
 
 
 class TestNodeActionContentFiles:
@@ -148,6 +163,19 @@ class TestNodeActionContentFiles:
         [message] = _messages(warnings)
         assert "'__{{nope}}__'" in message and "payload.txt" in message
 
+    def test_each_content_file_is_reported(self, warnings, tmp_path):
+        from yellowdog_cli.nodeaction import _parse_action
+
+        a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+        a.write_text("value=__{{nope}}__\n")
+        b.write_text("value=__{{nope}}__\n")
+        _parse_action(
+            {"type": "writeFile", "path": "/tmp/x", "contentFiles": [str(a), str(b)]},
+            ".",
+        )
+        first, second = _messages(warnings)
+        assert "a.txt" in first and "b.txt" in second
+
 
 class TestTaskDataFiles:
     @pytest.mark.parametrize("prop", [TASK_DATA_FILE, TASK_DATA_FILES])
@@ -158,6 +186,21 @@ class TestTaskDataFiles:
         resolve_task_data({prop: value})
         [message] = _messages(warnings)
         assert "'{{nope}}'" in message and "input.json" in message
+
+    def test_each_task_data_file_is_reported(self, warnings, tmp_path):
+        a, b = tmp_path / "a.json", tmp_path / "b.json"
+        a.write_text('{"region": "{{nope}}"}\n')
+        b.write_text('{"region": "{{nope}}"}\n')
+        resolve_task_data({TASK_DATA_FILES: [str(a), str(b)]})
+        first, second = _messages(warnings)
+        assert "a.json" in first and "b.json" in second
+
+    def test_a_file_read_for_every_task_is_reported_once(self, warnings, tmp_path):
+        data = tmp_path / "input.json"
+        data.write_text('{"region": "{{nope}}"}\n')
+        for _ in range(3):
+            resolve_task_data({TASK_DATA_FILE: str(data)})
+        assert len(_messages(warnings)) == 1
 
 
 # ---------------------------------------------------------------------------

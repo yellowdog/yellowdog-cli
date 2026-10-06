@@ -68,7 +68,9 @@ def shown(window: YellowDogApp) -> str:
 
 
 def position_of(window: YellowDogApp, text: str) -> QPoint:
-    """Where, in the output window's viewport, the line containing 'text' is."""
+    """
+    Where, in the output window's viewport, the line containing 'text' is.
+    """
     document = window.log_output.document()
     assert isinstance(document, QTextDocument)
     block = document.find(text).block()
@@ -85,7 +87,9 @@ def menu_action(menu: QMenu, text: str):
 
 
 def filter_to_line_containing(window: YellowDogApp, text: str):
-    """Filter the way a user does: right-click the line, choose the Show Only item."""
+    """
+    Filter the way a user does: right-click the line, choose the Show Only item.
+    """
     menu = window._output._build_output_menu(position_of(window, text))
     show_only = [a for a in menu.actions() if a.text().startswith("Show Only")]
     assert len(show_only) == 1, [a.text() for a in menu.actions()]
@@ -332,7 +336,9 @@ def test_save_takes_what_is_shown(two_runs, tmp_path, monkeypatch):
 
 
 def interleaved(window: YellowDogApp, runs: int = 60):
-    """Many short runs, interleaved with Commander's messages, to scroll through."""
+    """
+    Many short runs, interleaved with Commander's messages, to scroll through.
+    """
     window._output._output_runs[1] = OutputRun(1, "yd-a", pid=111111)
     window._output._output_runs[2] = OutputRun(2, "yd-b", pid=222222)
     for n in range(runs):
@@ -434,7 +440,9 @@ def rows_of(dialog) -> list[str]:
 
 
 def chooser_rows(window: YellowDogApp):
-    """The chooser's rows, read from inside its real exec() and then cancelled."""
+    """
+    The chooser's rows, read from inside its real exec() and then cancelled.
+    """
     rows: list[str] = []
     return rows, lambda dialog: rows.extend(rows_of(dialog))
 
@@ -686,7 +694,9 @@ def test_show_output_is_the_default_button(two_runs, monkeypatch):
 
 
 def listing_widths(window, monkeypatch) -> tuple[int, int, int]:
-    """The chooser listing's viewport width and its rows', and the window's."""
+    """
+    The chooser listing's viewport width and its rows', and the window's.
+    """
     widths: list[tuple[int, int]] = []
 
     def inspect(dialog):

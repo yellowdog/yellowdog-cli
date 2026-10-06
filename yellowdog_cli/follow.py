@@ -6,31 +6,30 @@ A script to follow event streams.
 
 import sys
 
-from yellowdog_cli.utils.follow_utils import follow_errors_occurred, follow_ids
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.follow_utils import follow_exit_code, follow_ids
 from yellowdog_cli.utils.results import results_are_streamed
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # Under '--json' the events are the output, printed as JSON as they
     # arrive, with no document after them
     results_are_streamed()
 
-    if not ARGS_PARSER.yellowdog_ids:
-        print_info("No YellowDog IDs to follow")
-        return
+    # At least one ID is required, and each must be a Work Requirement's,
+    # Worker Pool's or Compute Requirement's, as the command line is parsed
+    follow_ids(ctx, ctx.args.yellowdog_ids, ctx.args.auto_cr)
 
-    follow_ids(ARGS_PARSER.yellowdog_ids, ARGS_PARSER.auto_cr)
-
-    # Exit 1 if any of the event streams couldn't be followed (invalid ID,
-    # entity not found, connection/stream error); the specific error(s) have
+    # If any stream could not be followed (entity not found, credentials
+    # refused, connection lost for good), exit with the code its failure has,
+    # or 1 if the streams failed for different reasons; the errors have
     # already been printed
-    if follow_errors_occurred():
-        sys.exit(1)
+    if exit_code := follow_exit_code():
+        sys.exit(exit_code)
 
 
-# Standalone entry point
+# Entry point
 if __name__ == "__main__":
     main()

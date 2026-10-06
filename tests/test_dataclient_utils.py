@@ -1,5 +1,5 @@
 """
-Unit tests for yellowdog_cli.utils.dataclient_utils
+Unit tests for yellowdog_cli.utils.dataclient.operations
 """
 
 import json
@@ -14,17 +14,21 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.download as yd_download
-import yellowdog_cli.utils.dataclient_utils as dcu_module
-import yellowdog_cli.utils.dataclient_wrapper as dcw_module
+import yellowdog_cli.utils.dataclient.operations as dcu_module
+import yellowdog_cli.utils.dataclient.rclone as rclone_utils_module
+import yellowdog_cli.utils.dataclient.wrapper as dcw_module
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
-import yellowdog_cli.utils.rclone_utils as rclone_utils_module
 import yellowdog_cli.utils.results as results_module
+from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.config_types import ConfigDataClient
-from yellowdog_cli.utils.dataclient_utils import resolve_remote_path, upload_directory
-from yellowdog_cli.utils.rclone_version import find_rclone
+from yellowdog_cli.utils.dataclient.operations import (
+    resolve_remote_path,
+    upload_directory,
+)
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.variables import VARIABLE_SUBSTITUTIONS
+from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
 
 class TestResolveRemotePath:
@@ -97,11 +101,38 @@ class TestResolveRemotePath:
         result = resolve_remote_path(config, relative_path="r2:other/path")
         assert result == "r1:b/r2:other/path"
 
-    def test_strips_leading_slashes_keeps_directory_intent(self):
-        # Leading slashes are stripped; a trailing '/' is preserved because it
-        # denotes directory-destination intent (yd-copy / yd-upload)
+    def test_an_absolute_bucket_keeps_its_leading_slash(self):
+        # On a local or SFTP remote, '/data' is an absolute path; stripped, it
+        # was taken relative to the current directory. Inner slashes are
+        # tidied, and a trailing '/' is preserved because it denotes
+        # directory-destination intent (yd-copy / yd-upload)
         config = self._config(bucket="/b/", prefix="/p/")
-        assert resolve_remote_path(config, relative_path="/sub/") == "myremote:b/p/sub/"
+        assert resolve_remote_path(config, relative_path="/sub/") == (
+            "myremote:/b/p/sub/"
+        )
+
+    def test_an_absolute_prefix_with_no_bucket_keeps_its_leading_slash(self):
+        config = self._config(bucket=None, prefix="/data/results")
+        assert resolve_remote_path(config) == "myremote:/data/results"
+
+    def test_an_object_store_bucket_is_unchanged(self):
+        config = self._config(bucket="b/", prefix="/p/")
+        assert resolve_remote_path(config, relative_path="x") == "myremote:b/p/x"
+
+    def test_a_root_bucket_is_the_root(self):
+        assert resolve_remote_path(self._config(bucket="/", prefix=None)) == (
+            "myremote:/"
+        )
+
+    def test_the_bucket_path_keeps_the_same_rule(self):
+        from yellowdog_cli.utils.dataclient.operations import resolve_bucket_path
+
+        assert resolve_bucket_path(self._config(bucket="/data/", prefix="p")) == (
+            "myremote:/data"
+        )
+        assert resolve_bucket_path(self._config(bucket="b", prefix="p")) == (
+            "myremote:b"
+        )
 
     def test_no_trailing_slash_unchanged(self):
         config = self._config(bucket="b")
@@ -168,27 +199,27 @@ class TestResolveRemotePathVariableSubstitution:
 
 class TestSplitGlobRemotePath:
     def test_glob_in_final_component(self):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
-        assert _split_glob_remote_path("S3:bucket/prefix/xxx*") == (
+        assert split_glob_remote_path("S3:bucket/prefix/xxx*") == (
             "S3:bucket/prefix/",
             "xxx*",
         )
 
     def test_glob_at_top_level(self):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
-        assert _split_glob_remote_path("S3:xxx*") == ("S3:", "xxx*")
+        assert split_glob_remote_path("S3:xxx*") == ("S3:", "xxx*")
 
     @pytest.mark.parametrize(
         "path",
         ["S3:bucket/dir*/file.txt", "S3:buck?t/prefix/file*", "S3:a[1]/b/c*"],
     )
     def test_mid_path_glob_rejected(self, path):
-        from yellowdog_cli.utils.dataclient_utils import _split_glob_remote_path
+        from yellowdog_cli.utils.dataclient.operations import split_glob_remote_path
 
         with pytest.raises(ValueError, match="final path component"):
-            _split_glob_remote_path(path)
+            split_glob_remote_path(path)
 
 
 class TestUploadDirectoryWalksOnlyForJson:
@@ -200,9 +231,7 @@ class TestUploadDirectoryWalksOnlyForJson:
     def _upload(self, monkeypatch, tmp_path, json_output: bool) -> list:
         (tmp_path / "d").mkdir()
         (tmp_path / "d" / "x.txt").write_text("x")
-        monkeypatch.setattr(
-            results_module, "ARGS_PARSER", MagicMock(json_output=json_output)
-        )
+        output_settings.configure_output(MagicMock(json_output=json_output))
         stats: list = []
         real_stat = Path.stat
 
@@ -294,7 +323,10 @@ def run_download(monkeypatch, capsys):
             dcw_module,
             rclone_utils_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
         monkeypatch.setattr(yd_download, "CONFIG_DATA_CLIENT", config)
         with pytest.raises(SystemExit) as exit_info:
             yd_download.main()
@@ -562,7 +594,7 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err
         records = json.loads(out)
         assert [(r["source"], r["action"]) for r in records] == [
             ("loc:remote/a.txt", "failed")
@@ -581,7 +613,7 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err
         assert {(r["source"], r["action"]) for r in json.loads(out)} == {
             ("loc:remote/mydir/b.txt", "failed"),
             ("loc:remote/mydir/sub/c.txt", "failed"),
@@ -594,4 +626,145 @@ class TestFailedTransfer:
         )
         assert code != 0
         assert user_warnings == []
-        assert "Download failed" in err
+        assert "Download of " in err and " failed: " in err
+
+
+@needs_rclone
+def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch):
+    # From a working directory elsewhere: with the leading '/' stripped, the
+    # bucket was taken relative to it
+    from yellowdog_cli.utils.dataclient.operations import upload_file
+
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    source = tmp_path / "a.txt"
+    source.write_text("a", encoding="utf-8")
+    monkeypatch.chdir(elsewhere)
+    output_settings.configure_output(MagicMock(json_output=False))
+    config = ConfigDataClient(remote="loc,type=local", bucket=str(bucket), prefix="p")
+
+    assert upload_file(config, source, resolve_remote_path(config, filename="a.txt"))
+    assert (bucket / "p" / "a.txt").read_text(encoding="utf-8") == "a"
+    assert not (elsewhere / str(bucket).lstrip("/")).exists()
+
+
+# What a bucket-based remote answers 'lsjson --stat' with for a path that is
+# not an object
+_UNNAMED_DIRECTORY = {"Path": "", "Name": "", "Size": -1, "IsDir": True}
+
+
+class TestRemoteStatOnBucketStorage:
+    """
+    rclone answers 'lsjson --stat' of a directory with an unnamed entry. A
+    bucket-based remote (S3, Google Cloud Storage, Azure Blob), which cannot
+    hold an empty directory, answers any path that is not an object with
+    the same entry, exit 0: a missing path, an empty prefix and a prefix
+    holding objects all look the same. remote_stat() lists such a path's
+    first level to tell them apart, so that yd-delete, yd-download and
+    yd-copy find a missing path missing; a listing (yd-ls) takes it as the
+    empty directory rclone says it is. A backend that can hold an empty
+    directory answers a missing path with exit 3, so there the entry is
+    taken as it is.
+    """
+
+    def _rclone(
+        self,
+        monkeypatch,
+        stat: dict,
+        listing: list | None,
+        empty_directories: bool = False,
+    ) -> list:
+        """
+        Answer 'lsjson --stat' with 'stat', 'backend features' with whether
+        the backend can hold an empty directory (by default not: a bucket),
+        and a listing with 'listing' (None: rclone's exit 3, directory not
+        found); returns the commands.
+        """
+        calls: list[list[str]] = []
+
+        def run(_rclone, args):
+            calls.append(args)
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(stat))
+            if args[:2] == ["backend", "features"]:
+                features = {"CanHaveEmptyDirectories": empty_directories}
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"Features": features})
+                )
+            if listing is None:
+                return MagicMock(returncode=3, stdout="")
+            return MagicMock(returncode=0, stdout=json.dumps(listing))
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        return calls
+
+    def test_a_missing_path_is_none(self, monkeypatch):
+        self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [])
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/nope") is None
+
+    def test_a_listing_rclone_cannot_find_is_none(self, monkeypatch):
+        self._rclone(monkeypatch, _UNNAMED_DIRECTORY, None)
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/nope") is None
+
+    def test_a_prefix_holding_objects_is_a_directory(self, monkeypatch):
+        calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [{"Name": "a.txt"}])
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/dir") == _UNNAMED_DIRECTORY
+        # One level only, so that a large tree is not walked to find one item
+        assert calls[-1][-3:] == ["--max-depth", "1", "s3:b/dir"]
+
+    def test_an_empty_directory_where_one_can_be_held_is_a_directory(self, monkeypatch):
+        # Local and SFTP: a missing path would have been rclone's exit 3
+        calls = self._rclone(
+            monkeypatch, _UNNAMED_DIRECTORY, [], empty_directories=True
+        )
+        assert dcu_module.remote_stat(MagicMock(), "/tmp/empty") == _UNNAMED_DIRECTORY
+        assert not any(call[0] == "lsjson" and "--stat" not in call for call in calls)
+
+    def test_a_listing_takes_it_as_an_empty_directory(self, monkeypatch):
+        calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [])
+        stat = dcu_module.remote_stat(MagicMock(), "s3:b/new", confirm_directory=False)
+        assert stat == _UNNAMED_DIRECTORY
+        assert len(calls) == 1  # no listing made
+
+    @pytest.mark.parametrize(
+        "stat",
+        [
+            {"Path": "a.txt", "Name": "a.txt", "Size": 6, "IsDir": False},
+            # A named directory, as a local or SFTP remote answers, even empty
+            {"Path": "dir", "Name": "dir", "Size": -1, "IsDir": True},
+        ],
+        ids=["file", "named-directory"],
+    )
+    def test_a_named_entry_is_taken_as_it_is(self, monkeypatch, stat):
+        calls = self._rclone(monkeypatch, stat, [])
+        assert dcu_module.remote_stat(MagicMock(), "r:x") == stat
+        assert len(calls) == 1
+
+    def test_a_listing_that_fails_raises(self, monkeypatch):
+        def run(_rclone, args):
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(_UNNAMED_DIRECTORY))
+            if args[:2] == ["backend", "features"]:
+                features = {"CanHaveEmptyDirectories": False}
+                return MagicMock(
+                    returncode=0, stdout=json.dumps({"Features": features})
+                )
+            return MagicMock(returncode=1, stdout="", stderr="AccessDenied")
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        monkeypatch.setattr(dcu_module, "_rclone_error_detail", lambda r: r.stderr)
+        with pytest.raises(RuntimeError, match="Cannot access 's3:b/x': AccessDenied"):
+            dcu_module.remote_stat(MagicMock(), "s3:b/x")
+
+    def test_storage_whose_kind_cannot_be_told_raises(self, monkeypatch):
+        def run(_rclone, args):
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(_UNNAMED_DIRECTORY))
+            return MagicMock(returncode=1, stdout="", stderr="unknown backend")
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        monkeypatch.setattr(dcu_module, "_rclone_error_detail", lambda r: r.stderr)
+        with pytest.raises(RuntimeError, match="Cannot tell what kind of storage"):
+            dcu_module.remote_stat(MagicMock(), "x:y")

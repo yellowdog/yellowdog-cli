@@ -7,7 +7,6 @@ A script to Provision a Worker Pool.
 from dataclasses import dataclass
 from datetime import timedelta
 from math import ceil, floor
-from os.path import dirname
 from typing import cast
 
 import requests
@@ -21,9 +20,12 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
 from yellowdog_cli.utils.follow_utils import follow_ids
+from yellowdog_cli.utils.lazy import lazy
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
-    CONFIG_FILE_DIR,
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
 )
@@ -58,25 +60,21 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    shown_value,
+    user_data_source,
 )
 from yellowdog_cli.utils.results import (
     record_document,
     record_document_part,
     record_entity,
 )
-from yellowdog_cli.utils.settings import (
-    ET_WORKER_POOLS,
+from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
+from yellowdog_cli.utils.specs.schema import Family
+from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
-from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
-from yellowdog_cli.utils.variables import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-    resolve_filename,
-)
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 
 # Specifies the cardinality for a Worker Pool batch
@@ -87,80 +85,66 @@ class WPBatch:
     max_nodes: int
 
 
-CONFIG_WP: ConfigWorkerPool = load_config_worker_pool()
+CONFIG_WP: ConfigWorkerPool = lazy(load_config_worker_pool)
 # Generated in main() rather than at import, so that a name tag too long for
 # it is reported as an error by main_wrapper rather than as a traceback
 GENERATED_ID: str = ""
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext) -> None:
     global GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
-    GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
+    GENERATED_ID = generate_id(ctx.config.name_tag)
 
-    if ARGS_PARSER.target is not None:
-        CONFIG_WP.target_instance_count = ARGS_PARSER.target
+    if ctx.args.target is not None:
+        CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
 
     # Direct file > file supplied using '-p' > file supplied in config file
     wp_json_file = (
         (
             CONFIG_WP.worker_pool_data_file
-            if ARGS_PARSER.worker_pool_file is None
-            else ARGS_PARSER.worker_pool_file
+            if ctx.args.worker_pool_file is None
+            else ctx.args.worker_pool_file
         )
-        if ARGS_PARSER.worker_pool_file_positional is None
-        else ARGS_PARSER.worker_pool_file_positional
-    )
-
-    # Where do we find the data files?
-    # content-path > wp_json_file location > config file location
-    files_directory = (
-        (CONFIG_FILE_DIR if wp_json_file is None else dirname(wp_json_file))
-        if ARGS_PARSER.content_path is None
-        else ARGS_PARSER.content_path
+        if ctx.args.worker_pool_file_positional is None
+        else ctx.args.worker_pool_file_positional
     )
 
     if wp_json_file is not None:
-        wp_json_file = resolve_filename(files_directory, wp_json_file)
-        print_info(f"Loading Worker Pool data from: '{wp_json_file}'")
-        create_worker_pool_from_json(wp_json_file)
-    elif ARGS_PARSER.validate:
-        raise ValueError("Option '--validate' needs a Worker Pool specification file")
-    elif CONFIG_WP.template_id is None:
-        print_error("No template ID supplied")
-    else:
-        create_worker_pool_from_toml()
+        create_worker_pool_from_json(ctx, wp_json_file)
+        return
+
+    refuse_file_options(
+        "Worker Pool",
+        validate=bool(ctx.args.validate),
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+    )
+    if CONFIG_WP.template_id is None:
+        raise ValueError("No 'templateId' supplied")
+    create_worker_pool_from_toml(ctx)
 
 
-def create_worker_pool_from_json(wp_json_file: str) -> None:
+def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str) -> None:
     """
     Directly create the Worker Pool using the YellowDog REST API.
     """
-    if wp_json_file.lower().endswith(".jsonnet"):
-        wp_data = load_jsonnet_file_with_variable_substitutions(
-            wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
-        )
-    else:
-        if ARGS_PARSER.jsonnet_dry_run:
-            raise ValueError(
-                "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
-            )
-        wp_data = load_json_file_with_variable_substitutions(
-            wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
-        )
-
-    # Both branches above, JSON and Jsonnet, arrive here with the loaded document
-    wp_data = check_specification(
-        Family.WORKER_POOL, wp_data, wp_json_file, bool(ARGS_PARSER.validate)
+    wp_data = load_specification(
+        wp_json_file,
+        "Worker Pool",
+        family=Family.WORKER_POOL,
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        validate=bool(ctx.args.validate),
+        prefix=WP_VARIABLES_PREFIX,
+        postfix=WP_VARIABLES_POSTFIX,
+        other_extensions_as_json=True,
     )
 
-    _update_node_counts()
-
     # Some values are configurable via the TOML configuration file;
-    # values in the JSON file override values in the TOML file
+    # values in the JSON file override values in the TOML file, and
+    # '--target' overrides both
     try:
         # requirementTemplateUsage insertions
         reqt_template_usage: dict = wp_data["requirementTemplateUsage"]
@@ -170,25 +154,40 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 "requirementName",
                 (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
             ),
-            ("requirementNamespace", CONFIG_COMMON.namespace),
+            ("requirementNamespace", ctx.config.namespace),
             (
                 "requirementTag",
-                (
-                    CONFIG_COMMON.name_tag
-                    if CONFIG_WP.cr_tag is None
-                    else CONFIG_WP.cr_tag
-                ),
+                (ctx.config.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
             ),
             (TEMPLATE_ID, CONFIG_WP.template_id),
-            (USERDATA, get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)),
             (IMAGES_ID, CONFIG_WP.images_id),
             (INSTANCE_TAGS, CONFIG_WP.instance_tags),
         ]:
             if reqt_template_usage.get(key) is None and value is not None:
-                print_info(f"Setting 'requirementTemplateUsage.{key}': '{value}'")
+                print_info(
+                    f"Setting 'requirementTemplateUsage.{key}': '{shown_value(value)}'"
+                )
                 reqt_template_usage[key] = value
 
-        if (
+        # The TOML user data is read only if the specification has none
+        if reqt_template_usage.get(USERDATA) is None:
+            user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
+            if user_data is not None:
+                # Its source and size, never the script itself
+                print_info(
+                    f"Setting 'requirementTemplateUsage.{USERDATA}' from"
+                    f" {user_data_source(CONFIG_WP)} ({len(user_data):,d} characters)"
+                )
+                reqt_template_usage[USERDATA] = user_data
+
+        if ctx.args.target is not None:
+            if reqt_template_usage.get(TARGET_INSTANCE_COUNT) != ctx.args.target:
+                print_info(
+                    f"Setting 'requirementTemplateUsage.{TARGET_INSTANCE_COUNT}':"
+                    f" '{ctx.args.target}' (from '--target')"
+                )
+                reqt_template_usage[TARGET_INSTANCE_COUNT] = ctx.args.target
+        elif (
             reqt_template_usage.get(TARGET_INSTANCE_COUNT) is None
             and CONFIG_WP.target_instance_count is not None
             and CONFIG_WP.target_instance_count_set is True
@@ -198,17 +197,6 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 f" '{CONFIG_WP.target_instance_count}'"
             )
             reqt_template_usage[TARGET_INSTANCE_COUNT] = CONFIG_WP.target_instance_count
-
-        # Allow a Compute Requirement Template name to be used instead of ID
-        reqt_template_usage[TEMPLATE_ID] = get_template_id(
-            CLIENT, reqt_template_usage[TEMPLATE_ID]
-        )
-
-        # Allow Image Family name to be used instead of ID
-        if reqt_template_usage.get(IMAGES_ID) is not None:
-            reqt_template_usage[IMAGES_ID] = get_image_id(
-                CLIENT, reqt_template_usage[IMAGES_ID]
-            )
 
         # provisionedProperties insertions
         provisioned_properties = wp_data["provisionedProperties"]
@@ -266,7 +254,9 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
             ("metricsEnabled", CONFIG_WP.metrics_enabled),
         ]:
             if provisioned_properties.get(key) is None and value is not None:
-                print_info(f"Setting 'provisionedProperties.{key}': '{value}'")
+                print_info(
+                    f"Setting 'provisionedProperties.{key}': '{shown_value(value)}'"
+                )
                 provisioned_properties[key] = value
 
         for key, value, is_set in [
@@ -282,10 +272,50 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 provisioned_properties[key] = value
 
     except KeyError as e:
-        raise KeyError(f"Key error in JSON Worker Pool definition: {e}")
+        raise ValueError(
+            f"The Worker Pool specification '{wp_json_file}' has no"
+            f" '{e.args[0]}' property"
+        ) from e
 
-    if ARGS_PARSER.dry_run:
-        if ARGS_PARSER.json_output:
+    # The name lookups are outside the 'try' above: a name that is not found
+    # raises a KeyError too, and is no error in the specification's keys
+    if reqt_template_usage.get(TEMPLATE_ID) is None:
+        raise ValueError(f"No '{TEMPLATE_ID}' supplied")
+
+    # Allow a Compute Requirement Template name to be used instead of ID
+    reqt_template_usage[TEMPLATE_ID] = get_template_id(
+        ctx.client, reqt_template_usage[TEMPLATE_ID]
+    )
+
+    # Allow Image Family name to be used instead of ID
+    if reqt_template_usage.get(IMAGES_ID) is not None:
+        reqt_template_usage[IMAGES_ID] = get_image_id(
+            ctx.client, reqt_template_usage[IMAGES_ID]
+        )
+
+    _rationalise_specification_node_counts(reqt_template_usage, provisioned_properties)
+
+    # As for a TOML Worker Pool: a Worker Pool's Compute Requirement must not
+    # maintain its instance count
+    if reqt_template_usage.get(MAINTAIN_INSTANCE_COUNT) is True:
+        print_warning(
+            f"Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
+            "'false' when creating a Worker Pool"
+        )
+        reqt_template_usage[MAINTAIN_INSTANCE_COUNT] = False
+
+    # Batching is the TOML path's alone: a specification is one Worker Pool
+    max_nodes = _integer_or_none(provisioned_properties.get(MAX_NODES))
+    if max_nodes is not None and max_nodes > CONFIG_WP.compute_requirement_batch_size:
+        print_warning(
+            f"'maxNodes' ({max_nodes:,d}) is more than"
+            f" 'computeRequirementBatchSize' ({CONFIG_WP.compute_requirement_batch_size:,d}),"
+            " which applies only to a Worker Pool defined in the configuration: this"
+            " specification is provisioned as a single Worker Pool"
+        )
+
+    if ctx.args.dry_run:
+        if ctx.args.json_output:
             record_document(wp_data)
             return
         print_dry_run("Printing JSON Worker Pool specification")
@@ -294,9 +324,10 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         return
 
     response = requests.post(
-        url=f"{CONFIG_COMMON.url}/workerPools/provisioned/template",
-        headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        url=f"{ctx.config.url}/workerPools/provisioned/template",
+        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=wp_data,
+        timeout=RAW_REQUEST_TIMEOUT,
     )
     name = wp_data["requirementTemplateUsage"]["requirementName"]
     if response.status_code == 200:
@@ -308,15 +339,16 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
             id, name, reqt_template_usage["requirementNamespace"], ET_WORKER_POOLS
         )
         print_quiet_result(id)
-        if ARGS_PARSER.follow:
+        if ctx.args.follow:
             print_info("Following Worker Pool event stream")
-            follow_ids([id], auto_cr=ARGS_PARSER.auto_cr)
+            follow_ids(ctx, [id], auto_cr=ctx.args.auto_cr)
     else:
         print_error(f"Failed to provision Worker Pool '{name}'")
-        raise RuntimeError(f"{response.text}")
+        # An HTTPError, so that the wrapper's exit code reflects the status
+        raise requests.HTTPError(response.text, response=response)
 
 
-def create_worker_pool_from_toml():
+def create_worker_pool_from_toml(ctx: RunContext) -> None:
     """
     Create the Worker Pool.
     """
@@ -325,20 +357,16 @@ def create_worker_pool_from_toml():
 
     # Allow the Compute Requirement Template name to be used instead of ID
     CONFIG_WP.template_id = get_template_id(
-        client=CLIENT, template_id_or_name=cast(str, CONFIG_WP.template_id)
+        client=ctx.client, template_id_or_name=cast(str, CONFIG_WP.template_id)
     )
 
     # Allow the Image Family name to be used instead of ID
     if CONFIG_WP.images_id is not None:
         CONFIG_WP.images_id = get_image_id(
-            client=CLIENT, image_name_or_id=CONFIG_WP.images_id
+            client=ctx.client, image_name_or_id=CONFIG_WP.images_id
         )
 
-    node_boot_timeout = (
-        None
-        if CONFIG_WP.node_boot_timeout is None
-        else timedelta(minutes=CONFIG_WP.node_boot_timeout)
-    )
+    node_boot_timeout = timedelta(minutes=CONFIG_WP.node_boot_timeout)
 
     idle_node_auto_shutdown = (
         AutoShutdown(
@@ -368,7 +396,7 @@ def create_worker_pool_from_toml():
     else:
         node_workers = NodeWorkerTarget.per_node(CONFIG_WP.workers_per_node)
 
-    if CONFIG_WP.maintainInstanceCount:
+    if CONFIG_WP.maintain_instance_count:
         print_warning(
             f"Property '{MAINTAIN_INSTANCE_COUNT}' will be set to "
             "'false' when creating a Worker Pool"
@@ -402,6 +430,9 @@ def create_worker_pool_from_toml():
     if num_batches > 1:
         print_info(f"Batching into {num_batches} Compute Requirements")
 
+    # Read once: every batch has the same user data
+    user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
+
     for batch_number in range(num_batches):
         id = add_batch_number_postfix(
             name=(CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
@@ -410,25 +441,25 @@ def create_worker_pool_from_toml():
         )
         if num_batches > 1:
             print_info(
-                f"Provisioning Worker Pool {batch_number + 1} '{CONFIG_COMMON.namespace}/{id}' "
+                f"Provisioning Worker Pool {batch_number + 1} '{ctx.config.namespace}/{id}' "
                 f"with {batches[batch_number].initial_nodes:,d} nodes(s) "
                 f"(minNodes: {batches[batch_number].min_nodes:,d}, "
                 f"maxNodes: {batches[batch_number].max_nodes:,d})"
             )
         else:
-            print_info(f"Provisioning Worker Pool '{CONFIG_COMMON.namespace}/{id}'")
+            print_info(f"Provisioning Worker Pool '{ctx.config.namespace}/{id}'")
         try:
             compute_requirement_template_usage = ComputeRequirementTemplateUsage(
                 templateId=cast(str, CONFIG_WP.template_id),
-                requirementNamespace=CONFIG_COMMON.namespace,
+                requirementNamespace=ctx.config.namespace,
                 requirementName=id,
                 targetInstanceCount=batches[batch_number].initial_nodes,
                 requirementTag=(
-                    CONFIG_COMMON.name_tag
+                    ctx.config.name_tag
                     if CONFIG_WP.cr_tag is None
                     else CONFIG_WP.cr_tag
                 ),
-                userData=get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path),
+                userData=user_data,
                 imagesId=CONFIG_WP.images_id,
                 instanceTags=CONFIG_WP.instance_tags,
                 maintainInstanceCount=False,  # Must be false for Worker Pools
@@ -443,23 +474,23 @@ def create_worker_pool_from_toml():
                 nodeBootTimeout=node_boot_timeout,
                 metricsEnabled=CONFIG_WP.metrics_enabled,
             )
-            if not ARGS_PARSER.dry_run:
-                worker_pool = CLIENT.worker_pool_client.provision_worker_pool(
+            if not ctx.args.dry_run:
+                worker_pool = ctx.client.worker_pool_client.provision_worker_pool(
                     compute_requirement_template_usage,
                     provisioned_worker_pool_properties,
                 )
-                print_info(f"Created {link_entity(CONFIG_COMMON.url, worker_pool)}")
+                print_info(f"Created {link_entity(ctx.config.url, worker_pool)}")
                 print_info(f"YellowDog ID is '{worker_pool.id}'")
                 worker_pool_ids.append(worker_pool.id)  # type: ignore[arg-type]
                 # One per batch: the document is an array if batched
                 record_entity(
                     worker_pool.id,
                     worker_pool.name,
-                    CONFIG_COMMON.namespace,
+                    ctx.config.namespace,
                     ET_WORKER_POOLS,
                 )
                 print_quiet_result(worker_pool.id)
-            elif ARGS_PARSER.json_output:
+            elif ctx.args.json_output:
                 # One per batch, as above
                 record_document_part(
                     worker_pool_specification(
@@ -473,18 +504,28 @@ def create_worker_pool_from_toml():
                     provisioned_worker_pool_properties,
                 )
 
-        except Exception as e:
-            raise RuntimeError(f"Unable to provision worker pool: {e}")
+        except Exception:
+            # Re-raised as it is, so that the wrapper's exit code reflects it
+            print_error(
+                f"Unable to provision Worker Pool '{ctx.config.namespace}/{id}'"
+            )
+            if worker_pool_ids:
+                print_warning(
+                    f"{len(worker_pool_ids)} of {num_batches} Worker Pools were"
+                    " provisioned before the failure, and are still running:"
+                    f" {', '.join(worker_pool_ids)}"
+                )
+            raise
 
     idle_node_shutdown_string = (
-        f"time limit is {CONFIG_WP.idle_node_timeout} minute(s)"
+        f"time limit is {_minutes(CONFIG_WP.idle_node_timeout)} minute(s)"
         if CONFIG_WP.idle_node_timeout != 0
-        else "is **disabled**"
+        else "is disabled"
     )
 
     print_info(
         "Node boot time limit is "
-        f"{CONFIG_WP.node_boot_timeout} minute(s) | "
+        f"{_minutes(CONFIG_WP.node_boot_timeout)} minute(s) | "
         "Node idle shutdown "
         f"{idle_node_shutdown_string}"
     )
@@ -493,7 +534,7 @@ def create_worker_pool_from_toml():
     idle_pool_shutdown_msg = f"Worker Pool auto-shutdown is {idle_pool_shutdown}"
     idle_pool_shutdown_msg = (
         idle_pool_shutdown_msg
-        + f" with a delay of {CONFIG_WP.idle_pool_timeout} minute(s)"
+        + f" with a delay of {_minutes(CONFIG_WP.idle_pool_timeout)} minute(s)"
         if CONFIG_WP.idle_pool_timeout != 0
         else idle_pool_shutdown_msg
     )
@@ -502,13 +543,20 @@ def create_worker_pool_from_toml():
     if CONFIG_WP.metrics_enabled:
         print_info("Node metrics are enabled")
 
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         print_dry_run("Complete")
         return
 
-    if ARGS_PARSER.follow:
+    if ctx.args.follow:
         print_info("Following Worker Pool event stream(s)")
-        follow_ids(worker_pool_ids, auto_cr=ARGS_PARSER.auto_cr)
+        follow_ids(ctx, worker_pool_ids, auto_cr=ctx.args.auto_cr)
+
+
+def _minutes(minutes: float) -> str:
+    """
+    A number of minutes as a message shows it: '10', not '10.0'.
+    """
+    return f"{minutes:,.0f}" if float(minutes).is_integer() else f"{minutes:,}"
 
 
 def _allocate_nodes_to_batches(
@@ -554,43 +602,98 @@ def _allocate_nodes_to_batches(
     return batches
 
 
-def _update_node_counts():
+def _update_node_counts() -> None:
     """
-    Rationalise the node counts.
+    Rationalise the node counts in the TOML configuration.
     """
-    global CONFIG_WP
+    (
+        CONFIG_WP.min_nodes,
+        CONFIG_WP.target_instance_count,
+        CONFIG_WP.max_nodes,
+    ) = cast(
+        tuple[int, int, int],
+        _rationalised_node_counts(
+            CONFIG_WP.min_nodes, CONFIG_WP.target_instance_count, CONFIG_WP.max_nodes
+        ),
+    )
 
+
+def _rationalise_specification_node_counts(
+    requirement_template_usage: dict, provisioned_properties: dict
+) -> None:
+    """
+    Rationalise the node counts in a JSON Worker Pool specification, once the
+    TOML values and '--target' have been merged into it, so that the counts
+    adjusted are the ones that will be sent. A count the specification does
+    not give as an integer is left alone: absent, it is the platform's to
+    default, and otherwise the platform's to reject.
+    """
+    counts = (
+        (provisioned_properties, MIN_NODES),
+        (requirement_template_usage, TARGET_INSTANCE_COUNT),
+        (provisioned_properties, MAX_NODES),
+    )
+    current = [_integer_or_none(section.get(key)) for section, key in counts]
+    rationalised = _rationalised_node_counts(*current)
+    for (section, key), before, after in zip(counts, current, rationalised):
+        if after != before:
+            section[key] = after
+
+
+def _integer_or_none(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _rationalised_node_counts(
+    min_nodes: int | None, target_instance_count: int | None, max_nodes: int | None
+) -> tuple[int | None, int | None, int | None]:
+    """
+    The node counts adjusted to be consistent, reporting each adjustment.
+    A count that is None is not known, and is neither adjusted nor compared.
+    """
     # Automatically set minNodes to 0 if required
-    if CONFIG_WP.min_nodes < 0:
+    if min_nodes is not None and min_nodes < 0:
         print_info(
-            f"Increasing 'minNodes' from {CONFIG_WP.min_nodes} to 0 to satisfy "
-            "minimum constraint"
+            f"Increasing 'minNodes' from {min_nodes} to 0 to satisfy minimum constraint"
         )
-        CONFIG_WP.min_nodes = 0
+        min_nodes = 0
 
     # Automatically increase targetInstanceCount if required
-    if CONFIG_WP.target_instance_count < CONFIG_WP.min_nodes:
+    if (
+        target_instance_count is not None
+        and min_nodes is not None
+        and target_instance_count < min_nodes
+    ):
         print_info(
-            f"Increasing 'targetInstanceCount' from {CONFIG_WP.target_instance_count} "
-            f"to {CONFIG_WP.min_nodes} to match 'minNodes'"
+            f"Increasing 'targetInstanceCount' from {target_instance_count} "
+            f"to {min_nodes} to match 'minNodes'"
         )
-        CONFIG_WP.target_instance_count = CONFIG_WP.min_nodes
+        target_instance_count = min_nodes
 
     # Automatically set maxNodes to 1 if required
-    if CONFIG_WP.max_nodes < 1 and CONFIG_WP.target_instance_count <= 1:
+    if (
+        max_nodes is not None
+        and max_nodes < 1
+        and (target_instance_count is None or target_instance_count <= 1)
+    ):
         print_info(
-            f"Increasing 'maxNodes' from {CONFIG_WP.max_nodes} to 1 to satisfy "
-            "minimum constraint"
+            f"Increasing 'maxNodes' from {max_nodes} to 1 to satisfy minimum constraint"
         )
-        CONFIG_WP.max_nodes = 1
+        max_nodes = 1
 
     # Automatically increase maxNodes if required
-    if CONFIG_WP.target_instance_count > CONFIG_WP.max_nodes:
+    if (
+        target_instance_count is not None
+        and max_nodes is not None
+        and target_instance_count > max_nodes
+    ):
         print_info(
-            f"Increasing 'maxNodes' from {CONFIG_WP.max_nodes} to "
-            f"{CONFIG_WP.target_instance_count} to match 'targetInstanceCount'"
+            f"Increasing 'maxNodes' from {max_nodes} to "
+            f"{target_instance_count} to match 'targetInstanceCount'"
         )
-        CONFIG_WP.max_nodes = CONFIG_WP.target_instance_count
+        max_nodes = target_instance_count
+
+    return min_nodes, target_instance_count, max_nodes
 
 
 # Entry point

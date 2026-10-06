@@ -13,9 +13,10 @@ qt_guard.require_qt()
 
 from PyQt6.QtWidgets import QApplication
 
-from yellowdog_cli.commander.commander import SELECTED_WR_PREFIX, YellowDogApp
+from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.work_panel import SELECTED_WR_PREFIX
 
 
 @pytest.fixture

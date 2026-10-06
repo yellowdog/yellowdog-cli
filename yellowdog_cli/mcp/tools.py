@@ -25,10 +25,11 @@ from yellowdog_cli.utils.command_registry import (
     Exclusive,
     Option,
     ToolKind,
+    non_negative_int,
     positive_int,
     resolve_entity_type,
 )
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
     MCP_TOOL_TIMEOUT_SECONDS,
 )
@@ -85,12 +86,16 @@ OUTPUT_SCHEMA: dict[str, Any] = {
 
 
 class ToolArgumentError(Exception):
-    """A tool call's arguments cannot be turned into a command line."""
+    """
+    A tool call's arguments cannot be turned into a command line.
+    """
 
 
 @dataclass(frozen=True)
 class ServerSettings:
-    """The server's launch options (launcher.py), read by every tool call."""
+    """
+    The server's launch options (launcher.py), read by every tool call.
+    """
 
     config_file: str | None  # absolute, or None for '--nc'
     namespace: str | None
@@ -146,6 +151,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
     elif kind is positive_int:
         schema["type"] = "integer"
         schema["minimum"] = 1
+    elif kind is non_negative_int:
+        schema["type"] = "integer"
+        schema["minimum"] = 0
     elif kind is resolve_entity_type:
         schema["type"] = "string"
         schema["enum"] = list(ENTITY_TYPES)
@@ -163,7 +171,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
 
 
 def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
-    """The JSON Schema of one option, and whether it is required."""
+    """
+    The JSON Schema of one option, and whether it is required.
+    """
     kwargs = option.kwargs
     schema: dict[str, Any] = {}
     action = kwargs.get("action")
@@ -198,8 +208,10 @@ def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
         schema["description"] = ENTITY_TYPE_DESCRIPTION
     elif kwargs.get("help"):
         schema["description"] = kwargs["help"]
-    required = bool(kwargs.get("required")) or (
-        option.positional and kwargs.get("nargs") in (None, "+")
+    required = (
+        bool(kwargs.get("required"))
+        or option.tool_required
+        or (option.positional and kwargs.get("nargs") in (None, "+"))
     )
     return schema, required
 
@@ -311,8 +323,8 @@ def build_tools() -> tuple[ToolSpec, ...]:
     # the same ToolSpec objects every caller of build_tools() sees
     tools = [
         _build_tool(command)
-        for name, command in COMMANDS.items()
-        if command.tool is not ToolKind.NONE and name != "yd-rm"
+        for command in COMMANDS.values()
+        if command.tool is not ToolKind.NONE
     ]
     return tuple(sorted(tools, key=lambda t: t.name))
 
@@ -349,13 +361,14 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
         args.append("--quiet")
     if command.option_named("--yes") is not None:
         args.append("--yes")
+    # Joined, as a tool's own values are (see _joined()): a launch-time value
+    # beginning with '-' is a value, never a flag
     if settings.namespace and command.option_named("--namespace") is not None:
-        args += ["-n", settings.namespace]
+        args.append(f"--namespace={settings.namespace}")
     if settings.tag and command.option_named("--tag") is not None:
-        args += ["-t", settings.tag]
+        args.append(f"--tag={settings.tag}")
     if command.option_named("--variable") is not None:
-        for variable in settings.variables:
-            args += ["-v", variable]
+        args += [f"--variable={variable}" for variable in settings.variables]
     return args
 
 

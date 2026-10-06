@@ -5,27 +5,33 @@ Common utility functions, mostly related to loading configuration data.
 import copy
 import json
 import os
-from os.path import abspath, dirname, join, relpath
+from os.path import abspath, dirname, join
 from pathlib import Path
 from sys import exit
-from typing import cast
+from typing import Any, cast
 
 import fastjsonschema
 from tomli import TOMLDecodeError
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import (
     ConfigCommon,
     ConfigDataClient,
     ConfigWorkerPool,
     ConfigWorkRequirement,
 )
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.file_substitution import (
+    load_toml_file_with_variable_substitutions,
+)
+from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
 from yellowdog_cli.utils.misc_utils import (
     config_file_explicitly_selected as _config_file_explicitly_selected,
 )
 from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
+from yellowdog_cli.utils.output_settings import OUTPUT
+from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     print_debug,
     print_error,
@@ -34,10 +40,8 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
-    CR_MAX_INSTANCES,
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
-    TASK_BATCH_SIZE_DEFAULT,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
     YD_DATA_CLIENT_PREFIX,
@@ -50,19 +54,18 @@ from yellowdog_cli.utils.settings import (
     YD_TAG,
     YD_URL,
     YD_URL_ALT,
-    ExitCode,
 )
-from yellowdog_cli.utils.spec_schema import SchemaGenerationError
-from yellowdog_cli.utils.spec_validation import validate_config
+from yellowdog_cli.utils.specs.schema import SchemaGenerationError
+from yellowdog_cli.utils.specs.validation import validate_config
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.validate_properties import validate_properties
-from yellowdog_cli.utils.variables import (
+from yellowdog_cli.utils.variable_substitution import (
     CLI_DEFINED_VARIABLES,
     VARIABLE_SUBSTITUTIONS,
     add_or_update_substitution,
     add_substitutions_without_overwriting,
     check_user_variable_name,
-    load_toml_file_with_variable_substitutions,
+    register_user_variables,
     resolve_variables_in_string,
     resolve_variables_insitu,
     warn_of_undefined_variables,
@@ -82,14 +85,18 @@ CONFIG_SOURCES: dict[str, str] = {}
 def warn_of_undefined_worker_pool_variables() -> None:
     """
     Warn of undefined variables left in the Worker Pool sections. They are
-    resolved at import, before the warnings are enabled, and nothing resolves
-    them again, so yd-provision and yd-instantiate call this as they start.
+    resolved as they load, before the warnings are enabled, and nothing
+    resolves them again, so yd-provision and yd-instantiate call this as they
+    start.
     """
     warn_of_undefined_variables(_WORKER_POOL_SECTIONS_AS_LOADED)
 
 
 def config_as_written() -> dict | None:
-    """The configuration file as written (see _CONFIG_AS_WRITTEN), or None."""
+    """
+    The configuration file as written (see _CONFIG_AS_WRITTEN), or None.
+    """
+    ensure_config_loaded()
     return _CONFIG_AS_WRITTEN
 
 
@@ -97,9 +104,10 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     """
     Warn of each violation of the configuration file's schema in 'sections',
     those the command reads. Called by the command wrappers as a command
-    starts, never at import, which would print into yd-doctor's table. A
-    key no section reads has already been refused at import, by
-    validate_properties(); everything found here is a warning, and a schema
+    starts, never as the configuration loads, which would print into
+    yd-doctor's table. A key no section reads has already been refused as the
+    file loaded, by validate_properties(); everything found here is a
+    warning, and a schema
     that cannot be built is one warning that the file went unchecked.
 
     Skipped when no warning could be shown ('--quiet'), since building the
@@ -107,7 +115,8 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     would otherwise pay on every discovery -- but not under '--debug', which
     raises a fault in the check rather than warning of it.
     """
-    if warnings_suppressed() and not ARGS_PARSER.debug:
+    ensure_config_loaded()
+    if warnings_suppressed() and not OUTPUT.debug:
         return
     document = config_as_written()
     if document is None:
@@ -123,7 +132,7 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     except Exception as e:
         # A fault in the check itself: the check is advisory, so it never
         # stops a command that would otherwise run; '--debug' shows it
-        if ARGS_PARSER.debug:
+        if OUTPUT.debug:
             raise
         print_warning(
             f"cannot check '{CONFIG_FILE}' against the config schema:"
@@ -140,7 +149,8 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
 def warn_of_undefined_config_variables() -> None:
     """
     Warn of undefined variables left in the configuration values resolved one
-    string at a time at import -- the namespace, tag and URL, and every
+    string at a time as the configuration loads -- the namespace, tag and
+    URL, and every
     '{{dataClient.*}}' value, profiles included -- which the substitution
     passes never walk. Read from the variables they were registered as, which
     hold them resolved. The credentials are left out: their text is not for
@@ -194,7 +204,7 @@ def config_file_explicitly_selected() -> bool:
     '--config'/'-c' option. An explicitly selected config file takes
     precedence over environment variables (but not over the command line).
     """
-    return _config_file_explicitly_selected(ARGS_PARSER)
+    return _config_file_explicitly_selected(_ARGS)
 
 
 def _parse_property_value(value_str: str, property_name: str | None = None):
@@ -280,20 +290,36 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             CLI_DEFINED_VARIABLES.add(path[1])
 
 
-# Support for alternative common env. vars; written into the normal vars.
-for norm, alt in [
-    (YD_KEY, YD_KEY_ALT),
-    (YD_SECRET, YD_SECRET_ALT),
-    (YD_URL, YD_URL_ALT),
-]:
-    alt_value = os.getenv(alt)
-    if os.getenv(norm) is None and alt_value is not None:
-        os.environ[norm] = alt_value
+_DATA_CLIENT_PROFILE_KEYS = (DATA_CLIENT_REMOTE, DATA_CLIENT_BUCKET, DATA_CLIENT_PREFIX)
 
-# CLI > 'config.toml'
-CONFIG_FILE = relpath(
-    "config.toml" if ARGS_PARSER.config_file is None else ARGS_PARSER.config_file
-)
+
+def _validate_data_client_profiles(data_client_section: dict) -> None:
+    """
+    Hold each '[dataClient.<profile>]' table to the keys a profile takes, as
+    validate_properties() holds the rest of the file to ALL_KEYS: a profile
+    is left out of that check, its name being the user's own, so a
+    misspelt key ('bukcet') would otherwise only be warned of while the
+    profile quietly used the base section's value instead.
+    """
+    for name, profile in data_client_section.items():
+        if not isinstance(profile, dict):
+            continue
+        unknown = sorted(key for key in profile if key not in _DATA_CLIENT_PROFILE_KEYS)
+        if unknown:
+            raise ValueError(
+                f"Unknown propert{'y' if len(unknown) == 1 else 'ies'}"
+                f" {', '.join(repr(key) for key in unknown)} in"
+                f" '[{DATA_CLIENT_SECTION}.{name}]' in '{CONFIG_FILE}': a profile"
+                f" takes {', '.join(repr(key) for key in _DATA_CLIENT_PROFILE_KEYS)}"
+            )
+
+
+# Set by _load_config_file(), on first use rather than at import (see
+# ensure_config_loaded()); read from outside through the module __getattr__,
+# config_file() and config_file_dir()
+CONFIG_FILE: str
+CONFIG_FILE_DIR: str
+CONFIG_TOML: dict
 
 # The configuration file as written -- its own substitutions made, the
 # '--property' overrides applied, nothing yet popped or merged by a section
@@ -301,65 +327,155 @@ CONFIG_FILE = relpath(
 # None when no file was read.
 _CONFIG_AS_WRITTEN: dict | None = None
 
-if ARGS_PARSER.no_config:
-    # Suppress use of any TOML config file
-    print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
-    CONFIG_TOML = {COMMON_SECTION: {}}
-    CONFIG_FILE_DIR = os.getcwd()
-    if ARGS_PARSER.property_overrides:
-        _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
+_CONFIG_LOADED = False
 
-else:
-    # Attempt to load configuration data from TOML file
-    try:
-        CONFIG_FILE_DIR = dirname(CONFIG_FILE)
-        config_dir_abs = abspath(CONFIG_FILE_DIR)
-        config_dir_short = Path(config_dir_abs).parts[-1]
-        VARIABLE_SUBSTITUTIONS.update(
-            {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
+# The command line the configuration is loaded under (see
+# ensure_config_loaded()): given, never imported, so that this module can be
+# used, and tested, without parsing one
+_ARGS: Any = None
+_LOADED_NAMES = ("CONFIG_FILE", "CONFIG_FILE_DIR", "CONFIG_TOML")
+
+
+def ensure_config_loaded(args: Any = None) -> None:
+    """
+    Load the configuration, once: the user's variables first (YD_VAR_*,
+    '-v'), which the file's substitutions use, then the file. Every public
+    loader calls it, and the command wrappers before a command runs, so a
+    broken configuration is reported, and exits, before the command starts.
+    It was done at import, which therefore parsed the command line and could
+    exit; a load that exits is tried again on next use.
+
+    'args' is the command line the configuration is loaded under, given by
+    whoever runs the command (prepare_run(), yd-doctor) and kept for the
+    loaders that read it, which call this without one. The first given is
+    the one kept, as the configuration is loaded once.
+    """
+    global _ARGS, _CONFIG_LOADED
+    if args is not None and _ARGS is None:
+        _ARGS = args
+    if _CONFIG_LOADED:
+        return
+    if _ARGS is None:
+        raise RuntimeError(
+            "The configuration is loaded under a command line:"
+            " call ensure_config_loaded(args) first"
         )
-        print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
-        CONFIG_TOML: dict = load_toml_file_with_variable_substitutions(CONFIG_FILE)
+    register_user_variables(
+        _ARGS.variables,
+        _ARGS.config_file,
+        _ARGS.env_override,
+        config_file_explicitly_selected(),
+    )
+    _load_config_file()
+    _CONFIG_LOADED = True
+
+
+def __getattr__(name: str):
+    if name in _LOADED_NAMES:
+        ensure_config_loaded()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def config_file() -> str:
+    """
+    The configuration file's name, relative where it can be.
+    """
+    ensure_config_loaded()
+    return CONFIG_FILE
+
+
+def config_file_dir() -> str:
+    """
+    The configuration file's directory (the current one without a file).
+    """
+    ensure_config_loaded()
+    return CONFIG_FILE_DIR
+
+
+def _load_config_file() -> None:
+    """
+    Read the configuration file: the alternative credential variables copied
+    into the usual ones, the file chosen, read with its substitutions made,
+    validated, and the '--property' overrides applied. Exits on a broken one.
+    """
+    global CONFIG_FILE, CONFIG_FILE_DIR, CONFIG_TOML, _CONFIG_AS_WRITTEN
+    # Support for alternative common env. vars; written into the normal vars.
+    for norm, alt in [
+        (YD_KEY, YD_KEY_ALT),
+        (YD_SECRET, YD_SECRET_ALT),
+        (YD_URL, YD_URL_ALT),
+    ]:
+        alt_value = os.getenv(alt)
+        if os.getenv(norm) is None and alt_value is not None:
+            os.environ[norm] = alt_value
+
+    # CLI > 'config.toml'
+    # Relative where it can be, absolute where it cannot (Windows, another drive)
+    CONFIG_FILE = relative_if_possible(
+        "config.toml" if _ARGS.config_file is None else _ARGS.config_file
+    )
+
+    if _ARGS.no_config:
+        # Suppress use of any TOML config file
+        print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
+        CONFIG_TOML = {COMMON_SECTION: {}}
+        CONFIG_FILE_DIR = os.getcwd()
+        if _ARGS.property_overrides:
+            _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
+
+    else:
+        # Attempt to load configuration data from TOML file
         try:
-            # Strip profile sub-tables from [dataClient] before validation;
-            # profile names are user-defined and not in ALL_KEYS.
-            toml_for_validation = dict(CONFIG_TOML)
-            if DATA_CLIENT_SECTION in toml_for_validation:
-                toml_for_validation[DATA_CLIENT_SECTION] = {
-                    k: v
-                    for k, v in toml_for_validation[DATA_CLIENT_SECTION].items()
-                    if not isinstance(v, dict)
-                }
-            validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
+            CONFIG_FILE_DIR = dirname(CONFIG_FILE)
+            config_dir_abs = abspath(CONFIG_FILE_DIR)
+            config_dir_short = Path(config_dir_abs).parts[-1]
+            VARIABLE_SUBSTITUTIONS.update(
+                {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
+            )
+            print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
+            CONFIG_TOML = load_toml_file_with_variable_substitutions(CONFIG_FILE)
+            try:
+                # Strip profile sub-tables from [dataClient] before validation;
+                # profile names are user-defined and not in ALL_KEYS.
+                toml_for_validation = dict(CONFIG_TOML)
+                if DATA_CLIENT_SECTION in toml_for_validation:
+                    toml_for_validation[DATA_CLIENT_SECTION] = {
+                        k: v
+                        for k, v in toml_for_validation[DATA_CLIENT_SECTION].items()
+                        if not isinstance(v, dict)
+                    }
+                validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
+                _validate_data_client_profiles(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
+            except Exception as e:
+                print_error(e)
+                exit(ExitCode.CONFIGURATION)
+            if _ARGS.property_overrides:
+                _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
+            _CONFIG_AS_WRITTEN = copy.deepcopy(CONFIG_TOML)
+
+        except FileNotFoundError as e:
+            # An explicitly selected config file ('--config'/'-c') must exist
+            if _ARGS.config_file is not None:
+                print_error(e)
+                exit(ExitCode.CONFIGURATION)
+            # No config file, so create a stub config dictionary
+            print_debug(
+                "No configuration file; expecting configuration data on command line "
+                "or in environment variables"
+            )
+            CONFIG_TOML = {COMMON_SECTION: {}}
+            CONFIG_FILE_DIR = os.getcwd()
+
+        except (PermissionError, TOMLDecodeError) as e:
+            print_error(
+                f"Unable to load configuration data from '{CONFIG_FILE}': {e}",
+            )
+            exit(ExitCode.CONFIGURATION)
+
         except Exception as e:
             print_error(e)
             exit(ExitCode.CONFIGURATION)
-        if ARGS_PARSER.property_overrides:
-            _apply_property_overrides(CONFIG_TOML, ARGS_PARSER.property_overrides)
-        _CONFIG_AS_WRITTEN = copy.deepcopy(CONFIG_TOML)
-
-    except FileNotFoundError as e:
-        # An explicitly selected config file ('--config'/'-c') must exist
-        if ARGS_PARSER.config_file is not None:
-            print_error(e)
-            exit(ExitCode.CONFIGURATION)
-        # No config file, so create a stub config dictionary
-        print_debug(
-            "No configuration file; expecting configuration data on command line "
-            "or in environment variables"
-        )
-        CONFIG_TOML = {COMMON_SECTION: {}}
-        CONFIG_FILE_DIR = os.getcwd()
-
-    except (PermissionError, TOMLDecodeError) as e:
-        print_error(
-            f"Unable to load configuration data from '{CONFIG_FILE}': {e}",
-        )
-        exit(ExitCode.CONFIGURATION)
-
-    except Exception as e:
-        print_error(e)
-        exit(ExitCode.CONFIGURATION)
 
 
 def load_config_common(strict: bool = True) -> ConfigCommon:
@@ -369,6 +485,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
     key or secret is reported and exits; without it, as yd-doctor needs,
     either is returned as None.
     """
+    ensure_config_loaded()
     try:
         common_section = CONFIG_TOML.get(COMMON_SECTION, {})
 
@@ -383,7 +500,9 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             common_section = common_section_imported
 
         def file_source(key_name: str) -> str:
-            """The file a [common] value was read from, for CONFIG_SOURCES."""
+            """
+            The file a [common] value was read from, for CONFIG_SOURCES.
+            """
             if common_section_import_file is not None and key_name in imported_keys:
                 return (
                     f"config file ({_imported_file_name(common_section_import_file)})"
@@ -398,11 +517,11 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         # over the environment:
         # command line > config file > environment variable
         for key_name, args_parser_value, env_var_name in [
-            (KEY, ARGS_PARSER.key, YD_KEY),
-            (SECRET, ARGS_PARSER.secret, YD_SECRET),
-            (NAMESPACE, ARGS_PARSER.namespace, YD_NAMESPACE),
-            (NAME_TAG, ARGS_PARSER.tag, YD_TAG),
-            (URL, ARGS_PARSER.url, YD_URL),
+            (KEY, _ARGS.key, YD_KEY),
+            (SECRET, _ARGS.secret, YD_SECRET),
+            (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
+            (NAME_TAG, _ARGS.tag, YD_TAG),
+            (URL, _ARGS.url, YD_URL),
         ]:
             if args_parser_value is not None:
                 common_section[key_name] = args_parser_value
@@ -429,7 +548,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         if common_section.get(NAMESPACE) is None:
             common_section[NAMESPACE] = "default"
             CONFIG_SOURCES[NAMESPACE] = "default"
-            if ARGS_PARSER.namespace_required:
+            if _ARGS.namespace_required:
                 print_debug(
                     "Using default value for 'namespace': "
                     f"'{common_section[NAMESPACE]}'"
@@ -437,7 +556,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         if common_section.get(NAME_TAG) is None:
             common_section[NAME_TAG] = "{{username}}"
             CONFIG_SOURCES[NAME_TAG] = "default"
-            if ARGS_PARSER.tag_required:
+            if _ARGS.tag_required:
                 print_debug(
                     "Using default value for 'tag/prefix/name' = "
                     f"'{VARIABLE_SUBSTITUTIONS['username']}'"
@@ -514,9 +633,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             name_tag=name_tag,
             # Optional
             url=url,
-            use_pac=(
-                True if ARGS_PARSER.use_pac else common_section.get(USE_PAC, False)
-            ),
+            use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
         )
 
     except KeyError as e:
@@ -525,11 +642,16 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
 
 
 def _imported_file_name(filename: str) -> str:
-    """The path an 'importCommon' file is read from, as import_toml() reads it."""
-    return relpath(join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename))))
+    """
+    The path an 'importCommon' file is read from, as import_toml() reads it.
+    """
+    return relative_if_possible(
+        join(CONFIG_FILE_DIR, cast(str, _resolve_value(filename)))
+    )
 
 
 def import_toml(filename: str) -> dict:
+    ensure_config_loaded()
     filename = _imported_file_name(filename)
     print_debug(f"Loading imported common configuration data from: '{filename}'")
     try:
@@ -559,8 +681,8 @@ def _load_namespace_and_tag() -> None:
 
     explicit_config = config_file_explicitly_selected()
 
-    if ARGS_PARSER.namespace is not None:
-        namespace = ARGS_PARSER.namespace
+    if _ARGS.namespace is not None:
+        namespace = _ARGS.namespace
     elif explicit_config and common_section.get(NAMESPACE) is not None:
         namespace = str(common_section[NAMESPACE])
     elif os.environ.get(YD_NAMESPACE) is not None:
@@ -571,8 +693,8 @@ def _load_namespace_and_tag() -> None:
         namespace = "default"
     namespace = _resolve_value(namespace, f"{COMMON_SECTION}.{NAMESPACE}")
 
-    if ARGS_PARSER.tag is not None:
-        name_tag = ARGS_PARSER.tag
+    if _ARGS.tag is not None:
+        name_tag = _ARGS.tag
     elif explicit_config and common_section.get(NAME_TAG) is not None:
         name_tag = str(common_section[NAME_TAG])
     elif os.environ.get(YD_TAG) is not None:
@@ -631,6 +753,7 @@ def register_dc_substitutions() -> None:
     Called from load_config_common() for all @main_wrapper commands, and from
     load_config_data_client() for data client commands (which bypass main_wrapper).
     """
+    ensure_config_loaded()
     base = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
     if not base:
         return
@@ -673,13 +796,14 @@ def load_config_data_client() -> ConfigDataClient:
     Named profiles ([dataClient.<name>]) inherit unset fields from [dataClient].
     Resolved values are registered in VARIABLE_SUBSTITUTIONS for use in specs.
     """
+    ensure_config_loaded()
     _load_namespace_and_tag()
     # Register all {{dataClient.*}} vars for data client commands, which bypass
     # load_config_common() and therefore don't get this called automatically.
     register_dc_substitutions()
     base_section = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
 
-    profile_name = getattr(ARGS_PARSER, "data_client_profile", None) or os.environ.get(
+    profile_name = getattr(_ARGS, "data_client_profile", None) or os.environ.get(
         YD_DATA_CLIENT
     )
     if profile_name is not None:
@@ -720,17 +844,17 @@ def load_config_data_client() -> ConfigDataClient:
         return None
 
     remote = _resolve(
-        getattr(ARGS_PARSER, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
+        getattr(_ARGS, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
     )
     bucket = _resolve(
-        getattr(ARGS_PARSER, "bucket", None), YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET
+        getattr(_ARGS, "bucket", None), YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET
     )
 
-    if getattr(ARGS_PARSER, "no_prefix", False):
+    if getattr(_ARGS, "no_prefix", False):
         prefix = None
     else:
         prefix = _resolve(
-            getattr(ARGS_PARSER, "prefix", None),
+            getattr(_ARGS, "prefix", None),
             YD_DATA_CLIENT_PREFIX,
             DATA_CLIENT_PREFIX,
         )
@@ -776,6 +900,7 @@ def load_config_data_client_for_profile(
     dst_prefix_override (from --dst-prefix) takes highest priority.
     Pass an empty string to suppress the default prefix entirely.
     """
+    ensure_config_loaded()
     _load_namespace_and_tag()
     base_section = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
 
@@ -827,6 +952,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
     """
     Load the configuration data for a Work Requirement
     """
+    ensure_config_loaded()
     try:
         wr_section = CONFIG_TOML[WORK_REQUIREMENT_SECTION]
     except KeyError:
@@ -859,9 +985,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         # Check for properties set on the command line
         task_type = (
-            wr_section.get(TASK_TYPE)
-            if ARGS_PARSER.task_type is None
-            else ARGS_PARSER.task_type
+            wr_section.get(TASK_TYPE) if _ARGS.task_type is None else _ARGS.task_type
         )
         if task_type is not None:
             check_str(task_type, TASK_TYPE)
@@ -877,19 +1001,30 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
 
         task_batch_size = (
             wr_section.get(TASK_BATCH_SIZE, TASK_BATCH_SIZE_DEFAULT)
-            if ARGS_PARSER.task_batch_size is None
-            else ARGS_PARSER.task_batch_size
+            if _ARGS.task_batch_size is None
+            else _ARGS.task_batch_size
         )
+        # The Platform takes at most 10,000 Tasks in one request
+        if (
+            not isinstance(task_batch_size, int)
+            or isinstance(task_batch_size, bool)
+            or not 1 <= task_batch_size <= 10_000
+        ):
+            print_error(
+                f"'{TASK_BATCH_SIZE}' must be a whole number from 1 to 10,000"
+                f" (it is {task_batch_size!r})"
+            )
+            exit(ExitCode.CONFIGURATION)
 
         task_count = (
-            ARGS_PARSER.task_count
-            if ARGS_PARSER.task_count is not None
+            _ARGS.task_count
+            if _ARGS.task_count is not None
             else wr_section.get(TASK_COUNT, 1)
         )
 
         task_group_count = (
-            ARGS_PARSER.task_group_count
-            if ARGS_PARSER.task_group_count is not None
+            _ARGS.task_group_count
+            if _ARGS.task_group_count is not None
             else wr_section.get(TASK_GROUP_COUNT, 1)
         )
 
@@ -949,7 +1084,31 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         exit(ExitCode.CONFIGURATION)
 
     except Exception as e:
+        # A configuration error, as a rule; under '--debug', its traceback,
+        # in case it is a fault in this loader instead
+        if OUTPUT.debug:
+            raise
         print_error(f"{e}")
+        exit(ExitCode.CONFIGURATION)
+
+
+def _number(
+    section: dict, key: str, kind: type[int] | type[float], default=None
+) -> int | float | None:
+    """
+    A section's numeric property, converted as it always has been (int() or
+    float(), which also take a string of digits), or 'default' when it is
+    not set; one that will not convert exits, naming the property, which
+    the conversion's own error does not.
+    """
+    value = section.get(key, default)
+    if value is None:
+        return None
+    try:
+        return kind(value)
+    except (TypeError, ValueError):
+        what = "a whole number" if kind is int else "a number"
+        print_error(f"'{key}' must be {what} (it is {value!r})")
         exit(ExitCode.CONFIGURATION)
 
 
@@ -957,6 +1116,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
     """
     Load the configuration data for a Worker Pool or a Compute Requirement.
     """
+    ensure_config_loaded()
 
     # Allow the use of values in a 'computeRequirement' section, which acts
     # as a configuration synonym for 'workerPool'. Check for duplicates.
@@ -983,7 +1143,8 @@ def load_config_worker_pool() -> ConfigWorkerPool:
     if duplicate_keys:
         print_error(
             f"Duplicate keys in '{WORKER_POOL_SECTION}' and"
-            f" '{COMPUTE_REQUIREMENT_SECTION}': {duplicate_keys}"
+            f" '{COMPUTE_REQUIREMENT_SECTION}':"
+            f" {', '.join(repr(key) for key in sorted(duplicate_keys))}"
         )
         exit(ExitCode.CONFIGURATION)
     wp_section.update(cr_section)
@@ -1018,13 +1179,18 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             compute_requirement_data_file = pathname_relative_to_config_file(
                 CONFIG_FILE_DIR, compute_requirement_data_file
             )
-        workers_per_vcpu = (
-            None
-            if wp_section.get(WORKERS_PER_VCPU) is None
-            else int(wp_section[WORKERS_PER_VCPU])
-        )
+        workers_per_vcpu = cast(int | None, _number(wp_section, WORKERS_PER_VCPU, int))
 
-        cr_batch_size = wp_section.get(COMPUTE_REQUIREMENT_BATCH_SIZE, CR_MAX_INSTANCES)
+        cr_batch_size = cast(
+            int,
+            _number(wp_section, COMPUTE_REQUIREMENT_BATCH_SIZE, int, CR_MAX_INSTANCES),
+        )
+        if cr_batch_size < 1:
+            print_error(
+                f"'{COMPUTE_REQUIREMENT_BATCH_SIZE}' must be at least 1"
+                f" (it is {cr_batch_size:,d})"
+            )
+            exit(ExitCode.CONFIGURATION)
         if cr_batch_size > CR_MAX_INSTANCES:
             print_warning(
                 f"'computeRequirementBatchSize' ({cr_batch_size:,d}) exceeds the"
@@ -1037,24 +1203,40 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             compute_requirement_batch_size=cr_batch_size,
             compute_requirement_data_file=compute_requirement_data_file,
             cr_tag=wp_section.get(CR_TAG),
-            idle_node_timeout=float(wp_section.get(IDLE_NODE_TIMEOUT, 5.0)),
-            idle_pool_timeout=float(wp_section.get(IDLE_POOL_TIMEOUT, 30.0)),
+            idle_node_timeout=cast(
+                float, _number(wp_section, IDLE_NODE_TIMEOUT, float, 5.0)
+            ),
+            idle_pool_timeout=cast(
+                float, _number(wp_section, IDLE_POOL_TIMEOUT, float, 30.0)
+            ),
             images_id=wp_section.get(IMAGES_ID),
             instance_tags=wp_section.get(INSTANCE_TAGS),
-            maintainInstanceCount=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
-            max_nodes=wp_section.get(
-                MAX_NODES, max(1, int(wp_section.get(TARGET_INSTANCE_COUNT, 1)))
+            maintain_instance_count=wp_section.get(MAINTAIN_INSTANCE_COUNT, False),
+            max_nodes=cast(
+                int,
+                _number(
+                    wp_section,
+                    MAX_NODES,
+                    int,
+                    max(
+                        1, cast(int, _number(wp_section, TARGET_INSTANCE_COUNT, int, 1))
+                    ),
+                ),
             ),
             max_nodes_set=(False if wp_section.get(MAX_NODES) is None else True),
             metrics_enabled=wp_section.get(METRICS_ENABLED, False),
-            min_nodes=int(wp_section.get(MIN_NODES, 0)),
+            min_nodes=cast(int, _number(wp_section, MIN_NODES, int, 0)),
             min_nodes_set=(False if wp_section.get(MIN_NODES) is None else True),
             name=cast(
                 str | None,
                 _resolve_value(check_str(wp_section.get(WP_NAME), WP_NAME)),
             ),
-            node_boot_timeout=float(wp_section.get(NODE_BOOT_TIMEOUT, 10.0)),
-            target_instance_count=int(wp_section.get(TARGET_INSTANCE_COUNT, 1)),
+            node_boot_timeout=cast(
+                float, _number(wp_section, NODE_BOOT_TIMEOUT, float, 10.0)
+            ),
+            target_instance_count=cast(
+                int, _number(wp_section, TARGET_INSTANCE_COUNT, int, 1)
+            ),
             target_instance_count_set=(
                 False if wp_section.get(TARGET_INSTANCE_COUNT) is None else True
             ),
@@ -1066,7 +1248,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             worker_tag=worker_tag,
             workers_custom_command=wp_section.get(WORKERS_CUSTOM_COMMAND),
             workers_per_vcpu=workers_per_vcpu,
-            workers_per_node=int(wp_section.get(WORKERS_PER_NODE, 1)),
+            workers_per_node=cast(int, _number(wp_section, WORKERS_PER_NODE, int, 1)),
         )
 
     except KeyError as e:

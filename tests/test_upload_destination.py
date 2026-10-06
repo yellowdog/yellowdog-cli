@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.upload as upload_module
+import yellowdog_cli.utils.dataclient.wrapper as dataclient_wrapper_module
 from yellowdog_cli.utils.config_types import ConfigDataClient
 
 CONFIG = ConfigDataClient(remote="myremote", bucket="b")
@@ -41,7 +42,9 @@ def _run_upload(tmp_path, filenames: list[str], destination: str | None) -> list
         local_paths.append(str(f))
 
     with (
-        patch.object(upload_module, "ARGS_PARSER", _args(local_paths, destination)),
+        patch.object(
+            dataclient_wrapper_module, "ARGS_PARSER", _args(local_paths, destination)
+        ),
         patch.object(upload_module, "CONFIG_DATA_CLIENT", CONFIG),
         patch.object(upload_module, "upload_file") as mock_upload,
     ):

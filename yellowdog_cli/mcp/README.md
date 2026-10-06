@@ -1,7 +1,7 @@
 # YellowDog MCP Server
 
 <!--ts-->
-   * [What yd-mcp Is](#what-yd-mcp-is)
+   * [Overview](#overview)
    * [Installation](#installation)
    * [Launching](#launching)
    * [Configuring a Client](#configuring-a-client)
@@ -16,11 +16,11 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Sep 27 15:05:37 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct  5 15:20:43 BST 2026 -->
 
 <!--te-->
 
-## What `yd-mcp` Is
+## Overview
 
 `yd-mcp` is an MCP server that exposes the YellowDog CLI's `yd-*` commands as tools for an agent.
 
@@ -48,7 +48,7 @@ A configuration file, given either as the positional argument or with `-c`/`--co
 
 Without a configuration file, every command runs with `--nc`, so only the environment (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_DATA_CLIENT_*`) and the launch-time `-n`/`-t`/`-v` options are available to it.
 
-Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call.
+Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call, as is a `-v` variable whose name the CLI would refuse: one that is not `name=value`, a name breaking the CLI's rule for variable names, or one of the names the CLI sets itself (`namespace`, `tag`, `key`, `secret`, `url`), which `-n`/`-t` or the configuration set instead.
 
 A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped` to stderr. A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
 
@@ -118,8 +118,6 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_version` | read-only | `yd-version` | Report version information |
 | `yd_wait` | acting | `yd-wait` | Wait for entities to reach a terminal state |
 
-`yd-rm` shares `yd_delete`'s tool rather than getting one of its own, exactly as it shares `yd-delete`'s command.
-
 ## Results and Errors
 
 A successful call's `content` is one text block holding the command's `--json` document as compact JSON, and its `structuredContent` is `{"result": <document>, "exitCode": 0, "stopped": false}` — `result` is wrapped in an object because `structuredContent` must itself be an object and the document is often an array. The per-family document shapes are the CLI README's own, in [Machine-readable Output and Exit Codes](../../README.md#machine-readable-output-and-exit-codes).
@@ -160,7 +158,7 @@ Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s defaul
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
-Stopping a timed-out data-client command (`yd_upload`, `yd_download`, `yd_copy`, `yd_delete`, `yd_ls`) kills only the CLI's own process, not the `rclone` process it has already started, which inherits the command's output pipes. On Linux and macOS the server returns at the timeout and `rclone` may outlive it; on Windows the call does not return until `rclone` has exited, since the server waits for those pipes to close.
+Each command runs in a process group of its own, and stopping it at the timeout stops the whole group: a data-client command's (`yd_upload`, `yd_download`, `yd_copy`, `yd_delete`, `yd_ls`) `rclone` process stops with it, so nothing goes on transferring after the call has returned. A transfer stopped that way may leave a partly written file behind.
 
 ## What Is Not Exposed, and Why
 
@@ -172,7 +170,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `--work-requirement`, `--worker-pool`, `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)).
 
-Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help). `yd-rm` is not a separate tool either, since it is a synonym of `yd-delete` sharing its command.
+Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help).
 
 ## Namespace, Tag and Variables
 
@@ -196,4 +194,4 @@ A specification given as a path is read by the command exactly as the CLI reads 
 
 Every option value a tool passes on is joined to its flag as one argument (`--namespace=<value>`), so a value that looks like an option, such as `--show-secrets`, is only ever read as the value.
 
-`--show-secrets` and `--show-keyring-passwords` are excluded from every tool that has them, so a credential already held in the configuration cannot be asked back out through a tool result.
+`--show-secrets` and `--show-keyring-passwords` are excluded from every tool that has them, so a credential already held in the configuration cannot be asked back out through a tool result. `yd_variables` redacts the application key and secret, variables whose names look like credentials, and the parameters of inline rclone connection strings whether or not the call names them, so naming `secret` reports `<REDACTED>` rather than the value.

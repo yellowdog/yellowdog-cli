@@ -25,7 +25,9 @@ _SDK_TOKEN = f"yellowdog-sdk/{_sdk_version}"
 
 
 def _sdk_prepared_ua() -> str:
-    """User-Agent on a request prepared exactly as the SDK's Proxy does."""
+    """
+    User-Agent on a request prepared exactly as the SDK's Proxy does.
+    """
     provider = ApiKeyAuthenticationHeadersProvider(ApiKey("id", "secret"))
     session = requests.Session()
     prepared = session.prepare_request(
@@ -90,3 +92,73 @@ def test_set_user_agent_idempotent():
     assert ua == SDK_USER_AGENT
     # The SDK token must appear exactly once despite repeated patching.
     assert ua.count(_SDK_TOKEN) == 1
+
+
+# --- the baseline alone, and an SDK without the callable --------------------
+
+
+def test_the_baseline_alone_imports_no_sdk():
+    """
+    set_proxy() sets the baseline for the PAC file's fetch, in yd-variables
+    too, which uses no client: it must not import the SDK, as the full
+    set_user_agent() does to wrap the SDK's auth callable.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "import sys\n"
+        "from yellowdog_cli.utils.user_agent import set_default_user_agent, CLI_USER_AGENT\n"
+        "import requests.utils\n"
+        "set_default_user_agent()\n"
+        "assert requests.utils.default_user_agent() == CLI_USER_AGENT\n"
+        "print('yellowdog_client' in sys.modules)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "False"
+
+
+def test_set_proxy_sets_only_the_baseline(monkeypatch):
+    from types import SimpleNamespace
+
+    from yellowdog_cli.utils import user_agent, wrapper
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        user_agent, "set_default_user_agent", lambda: calls.append("baseline")
+    )
+    monkeypatch.setattr(user_agent, "set_user_agent", lambda: calls.append("full"))
+    monkeypatch.setattr(
+        wrapper, "CONFIG_COMMON", SimpleNamespace(use_pac=True, url="https://x")
+    )
+
+    class _NoProxy:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *exc):
+            return False
+
+    import pypac
+
+    monkeypatch.setattr(pypac, "pac_context_for_url", lambda url: _NoProxy())
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    wrapper.set_proxy()
+    assert calls == ["baseline"]
+
+
+def test_an_sdk_without_the_auth_callable_keeps_the_baseline(monkeypatch):
+    import yellowdog_client.common.credentials as credentials
+
+    from yellowdog_cli.utils import user_agent
+
+    monkeypatch.delattr(credentials, "ApiKeyAuthenticationHeadersProvider")
+    debug: list[str] = []
+    import yellowdog_cli.utils.printing as printing
+
+    monkeypatch.setattr(printing, "print_debug", debug.append)
+    user_agent.set_user_agent()  # No exception: the header is cosmetic
+    assert requests.utils.default_user_agent() == CLI_USER_AGENT
+    assert debug and "keep the CLI's User-Agent" in debug[0]
