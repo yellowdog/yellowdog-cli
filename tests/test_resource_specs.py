@@ -328,6 +328,12 @@ def test_allowance_natural_language_date_is_parsed_before_the_model_is_built():
 # and print_json are all the real ones -- and in-process needs no config file or
 # credentials beyond what importing utils/resource_creation.py already requires of
 # every test in this module.
+#
+# The client it is given is _OfflineClient, never the real one: the dry run is
+# meant to make no Platform call at all, and with the real client a dry run that
+# was not one created the corpus's resources in the account the checkout's
+# config.toml names (it happened once, mid-refactor, while the dry-run setting
+# moved from the command line to CreateOptions).
 _DRY_RUN_FAKE_CST_ID = "ydid:cst:000000:00000000-0000-0000-0000-000000000000"
 _DRY_RUN_FAKE_CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
 
@@ -350,6 +356,24 @@ _DRY_RUN_EXPECTED_FAILURES: dict[str, frozenset[str]] = {
         {"static-template-min", "dynamic-template-min"}
     ),
 }
+
+
+class _OfflineClient:
+    """
+    A stand-in for the Platform client that refuses every use, noting what was
+    asked for: a dry run that reaches for the client fails its test, here and
+    at the fixture's end, rather than acting on the account the checkout's
+    configuration names.
+    """
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def __getattr__(self, name: str):
+        self.calls.append(name)
+        raise AssertionError(
+            f"an offline dry run reached for the Platform client ('{name}')"
+        )
 
 
 @pytest.fixture
@@ -378,12 +402,13 @@ def dry_run_create():
     originals = {name: getattr(create, name) for name in patches}
     for name, replacement in patches.items():
         setattr(create, name, replacement)
+    client = _OfflineClient()
     try:
         yield lambda resources: create.create_resources(
             RunContext(
                 wrapper_module.ARGS_PARSER,
                 wrapper_module.CONFIG_COMMON,
-                wrapper_module.CLIENT,
+                client,  # type: ignore[arg-type]
             ),
             resources,
             create.CreateOptions(dry_run=True),
@@ -391,6 +416,42 @@ def dry_run_create():
     finally:
         for name, original in originals.items():
             setattr(create, name, original)
+    # create_resources() catches each resource's failure, so the refusal
+    # raised inside it is checked here too
+    assert client.calls == [], (
+        f"an offline dry run reached for the Platform client: {client.calls}"
+    )
+
+
+def test_a_dry_run_that_is_not_one_cannot_reach_the_platform(dry_run_create):
+    """
+    The guard itself: with dry run off, the creators reach for the client, and
+    the stand-in refuses rather than creating anything.
+    """
+    import yellowdog_cli.utils.wrapper as wrapper_module
+    from yellowdog_cli.utils import resource_creation as create
+    from yellowdog_cli.utils.context import RunContext
+
+    client = _OfflineClient()
+    # create_resources() reports the refusal as the resource's failure, and
+    # raises once the file is done
+    with pytest.raises(Exception, match="reached for the Platform client"):
+        create.create_resources(
+            RunContext(
+                wrapper_module.ARGS_PARSER,
+                wrapper_module.CONFIG_COMMON,
+                client,  # type: ignore[arg-type]
+            ),
+            [
+                {
+                    "resource": "Keyring",
+                    "name": "yd-test-offline-guard",
+                    "description": "never created",
+                }
+            ],
+            create.CreateOptions(),
+        )
+    assert client.calls
 
 
 def _dry_run_one(dry_run_create, resource: dict) -> bool:
