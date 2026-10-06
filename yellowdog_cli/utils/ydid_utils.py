@@ -76,47 +76,8 @@ def get_ydid_type(ydid: str | None) -> YDIDType | None:
     """
     if ydid is None or not is_valid_ydid(ydid):
         return None
-
-    if ydid.startswith(f"{YDID}:{TYPE_WORKREQ}:"):
-        return YDIDType.WORK_REQUIREMENT
-    if ydid.startswith(f"{YDID}:{TYPE_TASKGRP}:"):
-        return YDIDType.TASK_GROUP
-    if ydid.startswith(f"{YDID}:{TYPE_TASK}:"):
-        return YDIDType.TASK
-    if ydid.startswith(f"{YDID}:{TYPE_WRKRPOOL}:"):
-        return YDIDType.WORKER_POOL
-    if ydid.startswith(f"{YDID}:{TYPE_WRKR}:"):
-        return YDIDType.WORKER
-    if ydid.startswith(f"{YDID}:{TYPE_COMPREQ}:"):
-        return YDIDType.COMPUTE_REQUIREMENT
-    if ydid.startswith(f"{YDID}:{TYPE_COMPSRC}:"):
-        return YDIDType.COMPUTE_SOURCE
-    if ydid.startswith(f"{YDID}:{TYPE_NODE}:"):
-        return YDIDType.NODE
-    if ydid.startswith(f"{YDID}:{TYPE_CRT}:"):
-        return YDIDType.COMPUTE_REQUIREMENT_TEMPLATE
-    if ydid.startswith(f"{YDID}:{TYPE_CST}:"):
-        return YDIDType.COMPUTE_SOURCE_TEMPLATE
-    if ydid.startswith(f"{YDID}:{TYPE_IMGFAM}:"):
-        return YDIDType.IMAGE_FAMILY
-    if ydid.startswith(f"{YDID}:{TYPE_IMGGRP}:"):
-        return YDIDType.IMAGE_GROUP
-    if ydid.startswith(f"{YDID}:{TYPE_IMAGE}:"):
-        return YDIDType.IMAGE
-    if ydid.startswith(f"{YDID}:{TYPE_KEYRING}:"):
-        return YDIDType.KEYRING
-    if ydid.startswith(f"{YDID}:{TYPE_ALLOW}:"):
-        return YDIDType.ALLOWANCE
-    if ydid.startswith(f"{YDID}:{TYPE_APP}:"):
-        return YDIDType.APPLICATION
-    if ydid.startswith(f"{YDID}:{TYPE_USER}:"):
-        return YDIDType.USER
-    if ydid.startswith(f"{YDID}:{TYPE_GROUP}:"):
-        return YDIDType.GROUP
-    if ydid.startswith(f"{YDID}:{TYPE_ROLE}:"):
-        return YDIDType.ROLE
-
-    return None
+    # A valid YDID's type token is one of _TYPE_TOKENS
+    return _TYPE_TOKENS[ydid.split(":", 2)[1]]
 
 
 def split_instance_specification(name_or_id: str) -> tuple[str, str] | None:
@@ -157,29 +118,31 @@ YDID_HIGHLIGHT_RE = re.compile(
     rf"(?P<ydid>{YDID}:[a-z]+:{_HEX}(?::{_HEX})?:{_UUID}(?::\d+)*)"
 )
 
-_TYPES = (
-    TYPE_WORKREQ,
-    TYPE_TASKGRP,
-    TYPE_TASK,
-    TYPE_WRKRPOOL,
-    TYPE_WRKR,
-    TYPE_COMPREQ,
-    TYPE_COMPSRC,
-    TYPE_NODE,
-    TYPE_CRT,
-    TYPE_CST,
-    TYPE_IMGFAM,
-    TYPE_IMGGRP,
-    TYPE_IMAGE,
-    TYPE_KEYRING,
-    TYPE_ALLOW,
-    TYPE_APP,
-    TYPE_USER,
-    TYPE_GROUP,
-    TYPE_ROLE,
-)
+# Each YDID type token and the type it names: the only tokens a valid YDID
+# can have, held to every YDIDType by tests/test_ydid_utils.py
+_TYPE_TOKENS: dict[str, YDIDType] = {
+    TYPE_WORKREQ: YDIDType.WORK_REQUIREMENT,
+    TYPE_TASKGRP: YDIDType.TASK_GROUP,
+    TYPE_TASK: YDIDType.TASK,
+    TYPE_WRKRPOOL: YDIDType.WORKER_POOL,
+    TYPE_WRKR: YDIDType.WORKER,
+    TYPE_COMPREQ: YDIDType.COMPUTE_REQUIREMENT,
+    TYPE_COMPSRC: YDIDType.COMPUTE_SOURCE,
+    TYPE_NODE: YDIDType.NODE,
+    TYPE_CRT: YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
+    TYPE_CST: YDIDType.COMPUTE_SOURCE_TEMPLATE,
+    TYPE_IMGFAM: YDIDType.IMAGE_FAMILY,
+    TYPE_IMGGRP: YDIDType.IMAGE_GROUP,
+    TYPE_IMAGE: YDIDType.IMAGE,
+    TYPE_KEYRING: YDIDType.KEYRING,
+    TYPE_ALLOW: YDIDType.ALLOWANCE,
+    TYPE_APP: YDIDType.APPLICATION,
+    TYPE_USER: YDIDType.USER,
+    TYPE_GROUP: YDIDType.GROUP,
+    TYPE_ROLE: YDIDType.ROLE,
+}
 _YDID_RE = re.compile(
-    rf"^{YDID}:(?:{'|'.join(_TYPES)}):{_HEX}(?::{_HEX})?:{_UUID}(?::\d+)*$"
+    rf"^{YDID}:(?:{'|'.join(_TYPE_TOKENS)}):{_HEX}(?::{_HEX})?:{_UUID}(?::\d+)*$"
 )
 
 

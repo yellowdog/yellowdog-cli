@@ -3,7 +3,9 @@ Utility function to follow event streams.
 """
 
 import signal
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from json import loads as json_loads
 from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
@@ -13,6 +15,7 @@ from rich.progress import (
     BarColumn,
     Progress,
     ProgressColumn,
+    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -21,7 +24,9 @@ from rich.text import Text
 from yellowdog_client.model import (
     ComputeRequirementStatus,
     ProvisionedWorkerPool,
+    TaskGroup,
     TaskStatus,
+    WorkRequirement,
 )
 
 from yellowdog_cli.utils.context import RunContext
@@ -152,6 +157,121 @@ def _progress_desc(
     return desc
 
 
+@dataclass
+class _TaskCounts:
+    """
+    A Work Requirement's Task counts, as its progress bar shows them.
+    """
+
+    total: int = 0
+    completed: int = 0
+    failed: int = 0
+    aborted: int = 0
+    cancelled: int = 0
+    resubmitted: int = 0
+
+    def add_task_groups(self, task_groups: list[TaskGroup] | None) -> None:
+        """
+        Add a fetched Work Requirement's Task Groups' counts.
+        """
+        for task_group in task_groups or []:
+            summary = task_group.taskSummary
+            if summary:
+                self.total += summary.taskCount or 0
+                counts = summary.statusCounts or {}
+                self.completed += counts.get(TaskStatus.COMPLETED, 0)
+                self.failed += counts.get(TaskStatus.FAILED, 0)
+                self.aborted += counts.get(TaskStatus.ABORTED, 0)
+                self.cancelled += counts.get(TaskStatus.CANCELLED, 0)
+                self.resubmitted += counts.get(TaskStatus.RESUBMITTED, 0)
+
+    @staticmethod
+    def of_event(event_data: dict) -> "_TaskCounts":
+        """
+        The counts in a Work Requirement event's Task Groups.
+        """
+        counts = _TaskCounts()
+        for task_group in event_data.get("taskGroups", []):
+            summary = task_group.get("taskSummary", {})
+            counts.total += summary.get("taskCount", 0)
+            status_counts = summary.get("statusCounts", {})
+            counts.completed += status_counts.get("COMPLETED", 0)
+            counts.failed += status_counts.get("FAILED", 0)
+            counts.aborted += status_counts.get("ABORTED", 0)
+            counts.cancelled += status_counts.get("CANCELLED", 0)
+            counts.resubmitted += status_counts.get("RESUBMITTED", 0)
+        return counts
+
+    def show(self, progress: Progress, bar_task: TaskID, wr_status: str) -> None:
+        progress.update(
+            bar_task,
+            total=self.total if self.total > 0 else None,
+            completed=self.completed,
+            description=_progress_desc(
+                wr_status,
+                self.total,
+                self.completed,
+                self.failed,
+                self.aborted,
+                self.cancelled,
+                self.resubmitted,
+            ),
+        )
+
+    def failures(self) -> str | None:
+        """
+        The Tasks that did not succeed, as the closing warning gives them, or
+        None if there were none.
+        """
+        parts = []
+        if self.failed:
+            parts.append(f"{self.failed:,} failed")
+        if self.aborted:
+            parts.append(f"{self.aborted:,} aborted")
+        if self.cancelled:
+            parts.append(f"{self.cancelled:,} cancelled")
+        return " · ".join(parts) if parts else None
+
+
+@dataclass(frozen=True)
+class _FetchedWorkRequirement:
+    """
+    What the progress bar starts from: the Work Requirement, if it could be
+    fetched, how long it has run (or ran) and whether it has finished.
+    """
+
+    wr: WorkRequirement | None = None
+    age_seconds: float = 0.0
+    finished: bool = False
+
+
+def _fetch_for_progress(ctx: RunContext, ydid: str) -> _FetchedWorkRequirement | None:
+    """
+    The Work Requirement to follow, or None if it does not exist, having
+    reported that.
+    """
+    try:
+        wr = ctx.client.work_client.get_work_requirement_by_id(ydid)
+    except Exception as e:
+        if is_http_not_found(e):
+            # Fail fast with a plain error rather than starting the live
+            # progress display around an event stream that will just 404
+            print_error(f"Work Requirement '{ydid}' not found")
+            _record_follow_failure(ExitCode.NOT_FOUND)
+            return None
+        # Other fetch errors may be transient; leave them to the event stream
+        return _FetchedWorkRequirement()
+
+    finished = wr.status is not None and wr.status.finished
+    age_seconds = 0.0
+    if finished and wr.createdTime is not None and wr.statusChangedTime is not None:
+        # Show how long the WR actually ran, not how long ago we fetched it
+        age_seconds = max(0.0, (wr.statusChangedTime - wr.createdTime).total_seconds())
+    elif wr.createdTime is not None:
+        age_seconds = max(0.0, time() - wr.createdTime.timestamp())
+    return _FetchedWorkRequirement(wr, age_seconds, finished)
+
+
 def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     """
     Follow a Work Requirement event stream, displaying a live Rich progress bar.
@@ -159,38 +279,9 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     Safe to call from either the main thread or a daemon thread; signal
     handling is skipped automatically when not in the main thread.
     """
-    total_tasks = completed_tasks = failed_tasks = aborted_tasks = cancelled_tasks = (
-        resubmitted_tasks
-    ) = 0
-
-    wr = None
-    wr_name = ""
-    wr_age_seconds = 0.0
-    wr_is_terminal = False
-    try:
-        wr = ctx.client.work_client.get_work_requirement_by_id(ydid)
-        wr_name = wr.name or ""
-        wr_is_terminal = wr.status is not None and wr.status.finished
-        if (
-            wr_is_terminal
-            and wr.createdTime is not None
-            and wr.statusChangedTime is not None
-        ):
-            # Show how long the WR actually ran, not how long ago we fetched it
-            wr_age_seconds = max(
-                0.0,
-                (wr.statusChangedTime - wr.createdTime).total_seconds(),
-            )
-        elif wr.createdTime is not None:
-            wr_age_seconds = max(0.0, time() - wr.createdTime.timestamp())
-    except Exception as e:
-        if is_http_not_found(e):
-            # Fail fast with a plain error rather than starting the live
-            # progress display around an event stream that will just 404
-            print_error(f"Work Requirement '{ydid}' not found")
-            _record_follow_failure(ExitCode.NOT_FOUND)
-            return
-        # Other fetch errors may be transient; leave them to the event stream
+    fetched = _fetch_for_progress(ctx, ydid)
+    if fetched is None:
+        return
 
     progress = Progress(
         TextColumn("{task.description}"),
@@ -205,52 +296,26 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
         console=CONSOLE,
         transient=False,
     )
+    wr_name = (fetched.wr.name or "") if fetched.wr is not None else ""
     bar_task = progress.add_task("Starting\u2026", total=None, wr_name=wr_name)
-    if wr_age_seconds > 0:
-        progress.tasks[0].start_time = monotonic() - wr_age_seconds
-    if wr_is_terminal:
+    if fetched.age_seconds > 0:
+        progress.tasks[0].start_time = monotonic() - fetched.age_seconds
+    if fetched.finished:
         progress.stop_task(bar_task)
 
+    counts = _TaskCounts()
     # Pre-populate from the fetched WR so the bar shows a meaningful state
     # even if no events arrive (e.g. the WR is already in a terminal state).
-    if wr is not None:
+    if fetched.wr is not None:
         try:
-            for tg in wr.taskGroups or []:
-                summary = tg.taskSummary
-                if summary:
-                    total_tasks += summary.taskCount or 0
-                    counts = summary.statusCounts or {}
-                    completed_tasks += counts.get(TaskStatus.COMPLETED, 0)
-                    failed_tasks += counts.get(TaskStatus.FAILED, 0)
-                    aborted_tasks += counts.get(TaskStatus.ABORTED, 0)
-                    cancelled_tasks += counts.get(TaskStatus.CANCELLED, 0)
-                    resubmitted_tasks += counts.get(TaskStatus.RESUBMITTED, 0)
-            wr_status = wr.status.value if wr.status else ""
-            progress.update(
-                bar_task,
-                total=total_tasks if total_tasks > 0 else None,
-                completed=completed_tasks,
-                description=_progress_desc(
-                    wr_status,
-                    total_tasks,
-                    completed_tasks,
-                    failed_tasks,
-                    aborted_tasks,
-                    cancelled_tasks,
-                    resubmitted_tasks,
-                ),
-            )
+            counts.add_task_groups(fetched.wr.taskGroups)
+            wr_status = fetched.wr.status.value if fetched.wr.status else ""
+            counts.show(progress, bar_task, wr_status)
         except Exception:
             pass
 
     def on_event(event: str, ydid_type: YDIDType) -> None:
-        nonlocal \
-            total_tasks, \
-            completed_tasks, \
-            failed_tasks, \
-            aborted_tasks, \
-            cancelled_tasks, \
-            resubmitted_tasks
+        nonlocal counts
         if not event.startswith("data:"):
             return
         try:
@@ -259,82 +324,52 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
             return
         if ydid_type is not YDIDType.WORK_REQUIREMENT:
             return
+        counts = _TaskCounts.of_event(event_data)
+        counts.show(progress, bar_task, event_data.get("status", ""))
 
-        new_total = new_completed = new_failed = new_aborted = new_cancelled = (
-            new_resubmitted
-        ) = 0
-        for tg in event_data.get("taskGroups", []):
-            summary = tg.get("taskSummary", {})
-            new_total += summary.get("taskCount", 0)
-            counts = summary.get("statusCounts", {})
-            new_completed += counts.get("COMPLETED", 0)
-            new_failed += counts.get("FAILED", 0)
-            new_aborted += counts.get("ABORTED", 0)
-            new_cancelled += counts.get("CANCELLED", 0)
-            new_resubmitted += counts.get("RESUBMITTED", 0)
+    print_info(f"Tracking progress for Work Requirement '{ydid}'")
+    with _cursor_restored_on_interrupt(), progress:
+        follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
 
-        total_tasks = new_total
-        completed_tasks = new_completed
-        failed_tasks = new_failed
-        aborted_tasks = new_aborted
-        cancelled_tasks = new_cancelled
-        resubmitted_tasks = new_resubmitted
+    if (failures := counts.failures()) is not None:
+        print_warning(f"Work Requirement finished with {failures} task(s)")
 
-        wr_status = event_data.get("status", "")
-        progress.update(
-            bar_task,
-            total=total_tasks if total_tasks > 0 else None,
-            completed=completed_tasks,
-            description=_progress_desc(
-                wr_status,
-                total_tasks,
-                completed_tasks,
-                failed_tasks,
-                aborted_tasks,
-                cancelled_tasks,
-                resubmitted_tasks,
-            ),
-        )
 
-    def _restore_cursor() -> None:
-        try:
-            CONSOLE.file.write("\033[?25h")
-            CONSOLE.file.flush()
-        except Exception:
-            pass
+def _restore_cursor() -> None:
+    try:
+        CONSOLE.file.write("\033[?25h")
+        CONSOLE.file.flush()
+    except Exception:
+        pass
 
-    _original_sigint = signal.getsignal(signal.SIGINT)
 
-    def _on_sigint(sig: int, frame) -> None:
+@contextmanager
+def _cursor_restored_on_interrupt() -> Iterator[None]:
+    """
+    Restore the terminal's cursor, which the progress bar hides, when the
+    block ends and on a keyboard interrupt, which is then raised as usual.
+    The interrupt is caught only in the main thread, the only one signal
+    handlers can be set in.
+    """
+    original_sigint = signal.getsignal(signal.SIGINT)
+
+    def on_sigint(sig: int, frame) -> None:
         _restore_cursor()
-        signal.signal(signal.SIGINT, _original_sigint)
+        signal.signal(signal.SIGINT, original_sigint)
         signal.default_int_handler(sig, frame)
 
     try:
-        signal.signal(signal.SIGINT, _on_sigint)
+        signal.signal(signal.SIGINT, on_sigint)
         in_main_thread = True
     except ValueError:
         in_main_thread = False  # Signal handlers only work in the main thread
 
-    print_info(f"Tracking progress for Work Requirement '{ydid}'")
     try:
-        with progress:
-            follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
+        yield
     finally:
         if in_main_thread:
-            signal.signal(signal.SIGINT, _original_sigint)
+            signal.signal(signal.SIGINT, original_sigint)
         _restore_cursor()
-
-    terminal_failures = failed_tasks + aborted_tasks + cancelled_tasks
-    if terminal_failures:
-        parts = []
-        if failed_tasks:
-            parts.append(f"{failed_tasks:,} failed")
-        if aborted_tasks:
-            parts.append(f"{aborted_tasks:,} aborted")
-        if cancelled_tasks:
-            parts.append(f"{cancelled_tasks:,} cancelled")
-        print_warning(f"Work Requirement finished with {' · '.join(parts)} task(s)")
 
 
 _FOLLOWABLE = frozenset(

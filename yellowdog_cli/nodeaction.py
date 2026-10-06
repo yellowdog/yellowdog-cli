@@ -5,6 +5,7 @@ A script to submit Node Actions to Worker Pool nodes.
 """
 
 import time
+from dataclasses import dataclass
 from os.path import abspath, dirname
 from os.path import join as path_join
 from typing import Any, TypeAlias, cast
@@ -148,6 +149,10 @@ _FINISHED_NODE_STATUSES = (NodeStatus.TERMINATED, NodeStatus.DEREGISTERED)
 
 # A Worker Pool to act on: fetched, or chosen from a listing
 _Pool: TypeAlias = WorkerPool | WorkerPoolSummary
+
+# A submission's Worker Pool, nodes (None for all), action groups and actions,
+# as _record_submission() records them
+_SubmissionRecord: TypeAlias = tuple[str, list[str] | None, int | None, int]
 
 
 def _pool_label(pool: _Pool) -> str:
@@ -557,7 +562,9 @@ def _invalid(spec_file: str) -> ReportedFailure:
     )
 
 
-def _after_failure(e: Exception, not_attempted: list[str], submission: tuple) -> None:
+def _after_failure(
+    e: Exception, not_attempted: list[str], submission: _SubmissionRecord
+) -> None:
     """
     Having recorded a failed submission: if the failure is the session's,
     record the nodes not yet attempted as skipped and raise ReportedFailure,
@@ -577,6 +584,24 @@ def _after_failure(e: Exception, not_attempted: list[str], submission: tuple) ->
     raise ReportedFailure(e)
 
 
+@dataclass(frozen=True)
+class _ParsedActions:
+    """
+    A specification's actions: grouped, or a flat list.
+    """
+
+    action_groups: list[NodeActionGroup] | None
+    actions: list[NodeAction]
+    group_count: int | None
+    action_count: int
+
+    @property
+    def what(self) -> str:
+        if self.action_groups is not None:
+            return f"{self.group_count} action group(s)"
+        return f"{self.action_count} action(s)"
+
+
 def _submit_actions(ctx: RunContext):
     """
     Load a node action spec and submit actions to the target worker pool/nodes.
@@ -594,8 +619,57 @@ def _submit_actions(ctx: RunContext):
 
     # The actions are parsed before anything is looked up, so that a faulty
     # specification fails first
-    grouped = ACTION_GROUPS in spec
-    if grouped:
+    parsed = _parse_spec_actions(spec, spec_file, source_dir)
+
+    pool, node_ids, skipped = _resolve_targets(ctx)
+    wp_id = cast(str, pool.id)
+    submission: _SubmissionRecord = (
+        wp_id,
+        node_ids,
+        parsed.group_count,
+        parsed.action_count,
+    )
+    if skipped:
+        _record_submission(
+            wp_id,
+            skipped,
+            parsed.group_count,
+            parsed.action_count,
+            "skipped",
+            "node finished",
+        )
+    if node_ids is not None and not node_ids:
+        print_info("No nodes to submit Node Actions to")
+        return
+
+    target_desc = "all nodes" if node_ids is None else f"{len(node_ids)} node(s)"
+    if not confirmed(
+        f"Submit {parsed.what} to {target_desc} in Worker Pool {_pool_label(pool)}?"
+    ):
+        _record_submission(*submission, "skipped")
+        return
+
+    submitted: list[str] | None
+    if parsed.action_groups is not None:
+        if not _submit_grouped(ctx, pool, node_ids, parsed, submission, target_desc):
+            return
+        submitted = node_ids
+    elif node_ids is None:
+        if not _submit_to_all_nodes(ctx, pool, parsed, submission):
+            return
+        submitted = None
+    else:
+        submitted = _submit_to_each_node(ctx, wp_id, node_ids, parsed, submission)
+
+    if ctx.args.follow:
+        _follow_submitted(ctx, wp_id, submitted)
+
+
+def _parse_spec_actions(spec: dict, spec_file: str, source_dir: str) -> _ParsedActions:
+    """
+    The specification's actions, or its faults reported and the failure raised.
+    """
+    if ACTION_GROUPS in spec:
         group_specs = spec[ACTION_GROUPS]
         if not isinstance(group_specs, list):
             print_error(f"'{ACTION_GROUPS}' must be a list")
@@ -603,9 +677,13 @@ def _submit_actions(ctx: RunContext):
         action_groups = _parse_action_groups(group_specs, source_dir)
         if action_groups is None:
             raise _invalid(spec_file)
-        group_count: int | None = len(action_groups)
-        action_count = sum(len(group.actions or []) for group in action_groups)
-    elif ACTIONS in spec:
+        return _ParsedActions(
+            action_groups=action_groups,
+            actions=[],
+            group_count=len(action_groups),
+            action_count=sum(len(group.actions or []) for group in action_groups),
+        )
+    if ACTIONS in spec:
         action_specs = spec[ACTIONS]
         if not isinstance(action_specs, list):
             print_error(f"'{ACTIONS}' must be a list")
@@ -613,97 +691,128 @@ def _submit_actions(ctx: RunContext):
         actions = _parse_actions(action_specs, source_dir)
         if actions is None:
             raise _invalid(spec_file)
-        group_count = None
-        action_count = len(actions)
-    else:
-        print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
-        raise _invalid(spec_file)
-
-    pool, node_ids, skipped = _resolve_targets(ctx)
-    wp_id = cast(str, pool.id)
-    submission = (wp_id, node_ids, group_count, action_count)
-    if skipped:
-        _record_submission(
-            wp_id, skipped, group_count, action_count, "skipped", "node finished"
+        return _ParsedActions(
+            action_groups=None,
+            actions=actions,
+            group_count=None,
+            action_count=len(actions),
         )
-    if node_ids is not None and not node_ids:
-        print_info("No nodes to submit Node Actions to")
-        return
+    print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
+    raise _invalid(spec_file)
 
-    what = f"{group_count} action group(s)" if grouped else f"{action_count} action(s)"
-    target_desc = "all nodes" if node_ids is None else f"{len(node_ids)} node(s)"
-    if not confirmed(
-        f"Submit {what} to {target_desc} in Worker Pool {_pool_label(pool)}?"
-    ):
-        _record_submission(*submission, "skipped")
-        return
 
-    if grouped:
-        # The platform requires NodeIdFilter.LIST on every action when
-        # node_id_filter_list is provided.
-        if node_ids:
-            for group in action_groups:
-                for action in group.actions or []:
-                    action.nodeIdFilter = NodeIdFilter.LIST
+def _submit_grouped(
+    ctx: RunContext,
+    pool: _Pool,
+    node_ids: list[str] | None,
+    parsed: _ParsedActions,
+    submission: _SubmissionRecord,
+    target_desc: str,
+) -> bool:
+    """
+    Submit the action groups in one call; False if it failed, having
+    reported and recorded the failure.
+    """
+    action_groups = cast(list[NodeActionGroup], parsed.action_groups)
+    # The platform requires NodeIdFilter.LIST on every action when
+    # node_id_filter_list is provided.
+    if node_ids:
+        for group in action_groups:
+            for action in group.actions or []:
+                action.nodeIdFilter = NodeIdFilter.LIST
+    try:
+        ctx.client.worker_pool_client.add_node_actions_grouped_by_id(
+            cast(str, pool.id),
+            action_groups=action_groups,
+            node_id_filter_list=node_ids,
+        )
+    except Exception as e:
+        error = _submission_error(e, specific_nodes=bool(node_ids))
+        print_error(error)
+        _record_submission(*submission, "failed", error=error)
+        _after_failure(e, [], submission)
+        return False
+    print_info(
+        f"Submitted {parsed.what} to {target_desc} in Worker Pool {_pool_label(pool)}"
+    )
+    _record_submission(*submission, "submitted")
+    return True
+
+
+def _submit_to_all_nodes(
+    ctx: RunContext,
+    pool: _Pool,
+    parsed: _ParsedActions,
+    submission: _SubmissionRecord,
+) -> bool:
+    """
+    Submit the actions to every node in the pool in one call; False if it
+    failed, having reported and recorded the failure.
+    """
+    try:
+        ctx.client.worker_pool_client.add_node_actions_by_id(
+            cast(str, pool.id), *parsed.actions
+        )
+    except Exception as e:
+        error = _submission_error(e)
+        print_error(error)
+        _record_submission(*submission, "failed", error)
+        _after_failure(e, [], submission)
+        return False
+    print_info(
+        f"Submitted {parsed.what} to all nodes in Worker Pool {_pool_label(pool)}"
+    )
+    _record_submission(*submission, "submitted")
+    return True
+
+
+def _submit_to_each_node(
+    ctx: RunContext,
+    wp_id: str,
+    node_ids: list[str],
+    parsed: _ParsedActions,
+    submission: _SubmissionRecord,
+) -> list[str]:
+    """
+    Submit the actions to each node in turn, returning the nodes they were
+    submitted to; a node that fails is reported and recorded, and the rest
+    are still tried unless the failure is the session's.
+    """
+    submitted = []
+    for index, node_id in enumerate(node_ids):
         try:
-            ctx.client.worker_pool_client.add_node_actions_grouped_by_id(
-                wp_id, action_groups=action_groups, node_id_filter_list=node_ids
+            ctx.client.worker_pool_client.add_node_actions_for_node_by_id(
+                wp_id, node_id, *parsed.actions
             )
         except Exception as e:
-            error = _submission_error(e, specific_nodes=bool(node_ids))
+            error = _submission_error(e, node_id=node_id)
             print_error(error)
-            _record_submission(*submission, "failed", error=error)
-            _after_failure(e, [], submission)
-            return
-        print_info(
-            f"Submitted {what} to {target_desc} in Worker Pool {_pool_label(pool)}"
-        )
-        _record_submission(*submission, "submitted")
-        submitted = node_ids
+            _record_submission(
+                wp_id, [node_id], None, parsed.action_count, "failed", error
+            )
+            _after_failure(e, node_ids[index + 1 :], submission)
+            continue
+        print_info(f"Submitted {parsed.what} to node {node_id}")
+        _record_submission(wp_id, [node_id], None, parsed.action_count, "submitted")
+        submitted.append(node_id)
+    return submitted
 
-    elif node_ids is None:
+
+def _follow_submitted(ctx: RunContext, wp_id: str, submitted: list[str] | None) -> None:
+    """
+    Follow the queues of the nodes the actions were submitted to; None is
+    every node in the pool.
+    """
+    follow_ids = (
+        submitted
+        if submitted is not None
+        else [cast(str, n.id) for n in _get_nodes_for_pool(ctx, wp_id)]
+    )
+    if follow_ids:
         try:
-            ctx.client.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
-        except Exception as e:
-            error = _submission_error(e)
-            print_error(error)
-            _record_submission(*submission, "failed", error)
-            _after_failure(e, [], submission)
-            return
-        print_info(f"Submitted {what} to all nodes in Worker Pool {_pool_label(pool)}")
-        _record_submission(*submission, "submitted")
-        submitted = None
-
-    else:
-        submitted = []
-        for index, node_id in enumerate(node_ids):
-            try:
-                ctx.client.worker_pool_client.add_node_actions_for_node_by_id(
-                    wp_id, node_id, *actions
-                )
-            except Exception as e:
-                error = _submission_error(e, node_id=node_id)
-                print_error(error)
-                _record_submission(
-                    wp_id, [node_id], None, action_count, "failed", error
-                )
-                _after_failure(e, node_ids[index + 1 :], submission)
-                continue
-            print_info(f"Submitted {what} to node {node_id}")
-            _record_submission(wp_id, [node_id], None, action_count, "submitted")
-            submitted.append(node_id)
-
-    if ctx.args.follow:
-        follow_ids = (
-            submitted
-            if submitted is not None
-            else [cast(str, n.id) for n in _get_nodes_for_pool(ctx, wp_id)]
-        )
-        if follow_ids:
-            try:
-                _follow_node_actions(ctx, follow_ids, initial_delay=True)
-            except _FollowTimedOut as e:
-                raise ReportedFailure(TimeoutError(str(e)))
+            _follow_node_actions(ctx, follow_ids, initial_delay=True)
+        except _FollowTimedOut as e:
+            raise ReportedFailure(TimeoutError(str(e)))
 
 
 def _follow_node_actions(

@@ -84,24 +84,7 @@ def main(ctx: RunContext):
         CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
 
-    # Direct file > file supplied using '-C' > file supplied in config file
-    cr_json_file = (
-        (
-            ctx.args.worker_pool_file
-            if ctx.args.compute_requirement is None
-            else ctx.args.compute_requirement
-        )
-        if ctx.args.compute_requirement_file_positional is None
-        else ctx.args.compute_requirement_file_positional
-    )
-
-    # -C > -P > workerPoolData / computeRequirementData
-    cr_json_file = (
-        CONFIG_WP.worker_pool_data_file if cr_json_file is None else cr_json_file
-    )
-    if cr_json_file is None:  # Finally, try 'computeRequirementData'
-        cr_json_file = CONFIG_WP.compute_requirement_data_file
-
+    cr_json_file = _compute_requirement_file(ctx)
     if cr_json_file is not None:
         _create_compute_requirement_from_json(
             ctx, cr_json_file, name, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
@@ -117,9 +100,35 @@ def main(ctx: RunContext):
     if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")
 
+    _create_compute_requirement_from_toml(ctx, name)
+
+
+def _compute_requirement_file(ctx: RunContext) -> str | None:
+    """
+    The Compute Requirement specification file, if one is given: direct file
+    > '-C' > '-P' > 'workerPoolData' > 'computeRequirementData'.
+    """
+    for cr_json_file in (
+        ctx.args.compute_requirement_file_positional,
+        ctx.args.compute_requirement,
+        ctx.args.worker_pool_file,
+        CONFIG_WP.worker_pool_data_file,
+        CONFIG_WP.compute_requirement_data_file,
+    ):
+        if cr_json_file is not None:
+            return cr_json_file
+    return None
+
+
+def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
+    """
+    Provision the Compute Requirement the configuration describes, in
+    batches if 'computeRequirementBatchSize' requires them, or with
+    '--report' report on the first.
+    """
     # Allow use of CRT name instead of ID
     CONFIG_WP.template_id = get_template_id(
-        client=ctx.client, template_id_or_name=CONFIG_WP.template_id
+        client=ctx.client, template_id_or_name=cast(str, CONFIG_WP.template_id)
     )
 
     # Allow use of IF name instead of ID
@@ -147,7 +156,7 @@ def main(ctx: RunContext):
     user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
 
     compute_requirement_ids: list[str] = []
-    for batch_number in range(num_batches):
+    for batch_number, batch in enumerate(batches):
         id = add_batch_number_postfix(
             name=name,
             batch_number=batch_number,
@@ -157,7 +166,7 @@ def main(ctx: RunContext):
             if num_batches > 1:
                 print_info(
                     f"Provisioning Compute Requirement {batch_number + 1} '{ctx.config.namespace}/{id}'"
-                    f" with {batches[batch_number].target_instances:,d} instance(s)"
+                    f" with {batch.target_instances:,d} instance(s)"
                 )
             else:
                 print_info(
@@ -169,71 +178,19 @@ def main(ctx: RunContext):
                 templateId=cast(str, CONFIG_WP.template_id),
                 requirementNamespace=ctx.config.namespace,
                 requirementName=id,
-                targetInstanceCount=batches[batch_number].target_instances,
+                targetInstanceCount=batch.target_instances,
                 requirementTag=requirement_tag(CONFIG_WP, ctx.config.name_tag),
                 maintainInstanceCount=CONFIG_WP.maintain_instance_count,
                 instanceTags=CONFIG_WP.instance_tags,
                 imagesId=CONFIG_WP.images_id,
                 userData=user_data,
             )
-
             if ctx.args.report:
-                print_info("Generating provisioning report only")
-                if num_batches > 1:
-                    # The Platform tests one Compute Requirement at a time
-                    print_warning(
-                        f"The report is for the first of {num_batches} Compute"
-                        f" Requirements, of {batches[0].target_instances:,d}"
-                        " instance(s): 'computeRequirementBatchSize' divides the"
-                        f" {CONFIG_WP.target_instance_count:,d} requested"
-                    )
-                try:
-                    test_result: ComputeRequirementTemplateTestResult = (
-                        ctx.client.compute_client.test_compute_requirement_template(
-                            compute_requirement_template_usage
-                        )
-                    )
-                    print_compute_template_test_result(test_result)
-                except requests.HTTPError as http_error:
-                    resp = http_error.response
-                    if resp is not None and resp.status_code == 404:
-                        raise NotFoundError(_message_of(resp.text)) from http_error
-                    if resp is not None and "No sources" in resp.text:
-                        print_info(
-                            "No Compute Sources match the Template's constraints"
-                        )
-                    else:
-                        raise http_error
+                _report_on(ctx, compute_requirement_template_usage, batches)
                 return
-
-            if not ctx.args.dry_run:
-                compute_requirement = (
-                    ctx.client.compute_client.provision_compute_requirement_template(
-                        compute_requirement_template_usage
-                    )
-                )
-                compute_requirement_ids.append(compute_requirement.id)  # type: ignore[arg-type]
-                # One per batch: the document is an array if batched
-                record_entity(
-                    compute_requirement.id,
-                    compute_requirement.name,
-                    ctx.config.namespace,
-                    ET_COMPUTE_REQUIREMENTS,
-                )
-                print_quiet_result(compute_requirement.id)
-                print_info(
-                    f"Provisioned {link_entity(ctx.config.url, compute_requirement)}"
-                )
-                print_info(f"YellowDog ID is '{compute_requirement.id}'")
-
-            elif ctx.args.json_output:
-                # One per batch, as above
-                record_document_part(Json.dump(compute_requirement_template_usage))
-            else:
-                print_dry_run("Printing JSON Compute Requirement specification")
-                print_yd_object(compute_requirement_template_usage)
-                print_dry_run("Complete")
-
+            _provision_batch(
+                ctx, compute_requirement_template_usage, compute_requirement_ids
+            )
         except Exception:
             # Re-raised as it is, so that the wrapper's exit code reflects it
             print_error(
@@ -251,6 +208,77 @@ def main(ctx: RunContext):
 
     if ctx.args.follow:
         follow_ids(ctx, compute_requirement_ids)
+
+
+def _report_on(
+    ctx: RunContext,
+    compute_requirement_template_usage: ComputeRequirementTemplateUsage,
+    batches: list[CRBatch],
+) -> None:
+    """
+    Report what provisioning the first batch's Compute Requirement would do.
+    """
+    print_info("Generating provisioning report only")
+    if len(batches) > 1:
+        # The Platform tests one Compute Requirement at a time
+        print_warning(
+            f"The report is for the first of {len(batches)} Compute"
+            f" Requirements, of {batches[0].target_instances:,d}"
+            " instance(s): 'computeRequirementBatchSize' divides the"
+            f" {CONFIG_WP.target_instance_count:,d} requested"
+        )
+    try:
+        test_result: ComputeRequirementTemplateTestResult = (
+            ctx.client.compute_client.test_compute_requirement_template(
+                compute_requirement_template_usage
+            )
+        )
+        print_compute_template_test_result(test_result)
+    except requests.HTTPError as http_error:
+        resp = http_error.response
+        if resp is not None and resp.status_code == 404:
+            raise NotFoundError(_message_of(resp.text)) from http_error
+        if resp is not None and "No sources" in resp.text:
+            print_info("No Compute Sources match the Template's constraints")
+        else:
+            raise http_error
+
+
+def _provision_batch(
+    ctx: RunContext,
+    compute_requirement_template_usage: ComputeRequirementTemplateUsage,
+    compute_requirement_ids: list[str],
+) -> None:
+    """
+    Provision one batch's Compute Requirement, adding its ID to those
+    provisioned as soon as it exists, or under '--dry-run' show it.
+    """
+    if ctx.args.dry_run:
+        if ctx.args.json_output:
+            # One per batch: the document is an array if batched
+            record_document_part(Json.dump(compute_requirement_template_usage))
+        else:
+            print_dry_run("Printing JSON Compute Requirement specification")
+            print_yd_object(compute_requirement_template_usage)
+            print_dry_run("Complete")
+        return
+
+    compute_requirement = (
+        ctx.client.compute_client.provision_compute_requirement_template(
+            compute_requirement_template_usage
+        )
+    )
+    compute_requirement_ids.append(compute_requirement.id)  # type: ignore[arg-type]
+    # One per batch, as above
+    record_entity(
+        compute_requirement.id,
+        compute_requirement.name,
+        ctx.config.namespace,
+        ET_COMPUTE_REQUIREMENTS,
+    )
+    print_quiet_result(compute_requirement.id)
+    print_info(f"Provisioned {link_entity(ctx.config.url, compute_requirement)}")
+    print_info(f"YellowDog ID is '{compute_requirement.id}'")
 
 
 def _message_of(response_text: str) -> str:

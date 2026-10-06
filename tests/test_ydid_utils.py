@@ -5,6 +5,7 @@ Unit tests for yellowdog_cli.utils.ydid_utils
 import pytest
 
 from yellowdog_cli.utils.ydid_utils import (
+    _TYPE_TOKENS,
     TYPE_ALLOW,
     TYPE_APP,
     TYPE_COMPREQ,
@@ -65,6 +66,9 @@ class TestGetYdidType:
     )
     def test_known_prefix_returns_correct_type(self, ydid, expected):
         assert get_ydid_type(ydid) == expected
+
+    def test_every_type_has_exactly_one_token(self):
+        assert sorted(_TYPE_TOKENS.values(), key=str) == sorted(YDIDType, key=str)
 
     def test_none_returns_none(self):
         assert get_ydid_type(None) is None

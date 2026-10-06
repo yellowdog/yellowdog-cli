@@ -2,14 +2,19 @@
 Unit tests for follow_utils.py.
 """
 
+import json
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 
 import yellowdog_cli.utils.follow_utils as fu
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.ydid_utils import YDIDType
 
 
 def _ctx() -> RunContext:
@@ -73,6 +78,159 @@ class TestFollowWorkRequirementWithProgress:
         mock_error.assert_not_called()
         mock_follow.assert_called_once()
         assert fu.follow_errors_occurred() is False
+
+
+class _RecordingProgress:
+    """
+    Stands in for Rich's Progress, recording each update and whether the bar
+    was stopped.
+    """
+
+    def __init__(self, *columns, **kwargs):
+        self.updates: list[dict] = []
+        self.stopped = False
+        self.tasks = [SimpleNamespace(start_time=None)]
+        _RecordingProgress.last = self
+
+    def add_task(self, description, total=None, **fields):
+        return 0
+
+    def stop_task(self, task_id):
+        self.stopped = True
+
+    def update(self, task_id, **fields):
+        self.updates.append(fields)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _task_group(total: int, **counts: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        taskSummary=SimpleNamespace(
+            taskCount=total,
+            statusCounts={TaskStatus[name.upper()]: n for name, n in counts.items()},
+        )
+    )
+
+
+def _event(status: str, *task_groups: tuple[int, dict]) -> str:
+    return "data:" + json.dumps(
+        {
+            "status": status,
+            "taskGroups": [
+                {"taskSummary": {"taskCount": total, "statusCounts": counts}}
+                for total, counts in task_groups
+            ],
+        }
+    )
+
+
+class TestProgressCounts:
+    """
+    The counts the progress bar shows, from the Work Requirement as fetched
+    and then from each event, and the warning of failed Tasks at the end.
+    """
+
+    def _follow(self, wr, events=(), ydid_type=None):
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.return_value = wr
+
+        def follow_events(ctx, ydid, follow_type, on_event):
+            for event in events:
+                on_event(event, ydid_type or YDIDType.WORK_REQUIREMENT)
+
+        with (
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(fu, "Progress", _RecordingProgress),
+            patch.object(fu, "follow_events", follow_events),
+            patch.object(fu, "print_info"),
+            patch.object(fu, "print_warning") as warning,
+        ):
+            fu.follow_work_requirement_with_progress(
+                _ctx(), "ydid:workreq:000000:aaa:bbb"
+            )
+        return _RecordingProgress.last, warning
+
+    def _wr(self, *task_groups, status=WorkRequirementStatus.RUNNING, **times):
+        return SimpleNamespace(
+            name="wr",
+            status=status,
+            taskGroups=list(task_groups),
+            createdTime=times.get("created"),
+            statusChangedTime=times.get("changed"),
+        )
+
+    def test_the_fetched_counts_are_shown_first(self):
+        wr = self._wr(_task_group(6, completed=2, failed=1), _task_group(4, aborted=1))
+        progress, warning = self._follow(wr)
+        assert progress.updates == [
+            {
+                "total": 10,
+                "completed": 2,
+                "description": "RUNNING  4/10  2 completed · 1 failed · 1 aborted",
+            }
+        ]
+        assert not progress.stopped
+        warning.assert_called_once_with(
+            "Work Requirement finished with 1 failed · 1 aborted task(s)"
+        )
+
+    def test_a_task_group_without_a_summary_counts_nothing(self):
+        wr = self._wr(SimpleNamespace(taskSummary=None), status=None)
+        progress, warning = self._follow(wr)
+        assert progress.updates == [
+            {"total": None, "completed": 0, "description": "  0/0"}
+        ]
+        warning.assert_not_called()
+
+    def test_each_event_replaces_the_counts(self):
+        wr = self._wr(_task_group(10, failed=3))
+        events = [
+            "id: 1",  # Not a data line
+            "data:{not json",
+            _event("RUNNING", (10, {"COMPLETED": 4, "RESUBMITTED": 1})),
+            _event(
+                "COMPLETED",
+                (10, {"COMPLETED": 7, "CANCELLED": 2}),
+                (5, {"COMPLETED": 5}),
+            ),
+        ]
+        progress, warning = self._follow(wr, events)
+        assert [update["description"] for update in progress.updates] == [
+            "RUNNING  3/10  3 failed",
+            "RUNNING  5/10  4 completed · 1 resubmitted",
+            "COMPLETED  14/15  12 completed · 2 cancelled",
+        ]
+        assert progress.updates[-1]["total"] == 15
+        assert progress.updates[-1]["completed"] == 12
+        # The fetched Work Requirement's failures were replaced by the events'
+        warning.assert_called_once_with(
+            "Work Requirement finished with 2 cancelled task(s)"
+        )
+
+    def test_an_event_for_another_type_is_ignored(self):
+        wr = self._wr(_task_group(1))
+        events = [_event("RUNNING", (1, {"FAILED": 1}))]
+        progress, warning = self._follow(wr, events, ydid_type=YDIDType.TASK)
+        assert len(progress.updates) == 1
+        warning.assert_not_called()
+
+    def test_a_finished_work_requirement_shows_how_long_it_ran(self, monkeypatch):
+        created = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        wr = self._wr(
+            _task_group(1, completed=1),
+            status=WorkRequirementStatus.COMPLETED,
+            created=created,
+            changed=created + timedelta(minutes=5),
+        )
+        monkeypatch.setattr(fu, "monotonic", lambda: 1000.0)
+        progress, _ = self._follow(wr)
+        assert progress.stopped
+        assert progress.tasks[0].start_time == 1000.0 - 300
 
 
 class TestFollowErrorFlag:

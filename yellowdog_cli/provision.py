@@ -424,8 +424,8 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
                 f"Provisioning Worker Pool '{ctx.config.namespace}/{batch_name}'"
             )
         try:
-            worker_pool_id = _provision_batch(
-                ctx, batch_name, batch, user_data, node_workers
+            _provision_batch(
+                ctx, batch_name, batch, user_data, node_workers, worker_pool_ids
             )
         except Exception:
             # Re-raised as it is, so that the wrapper's exit code reflects it
@@ -439,8 +439,6 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
                     f" {', '.join(worker_pool_ids)}"
                 )
             raise
-        if worker_pool_id is not None:
-            worker_pool_ids.append(worker_pool_id)
 
     _print_timeouts()
 
@@ -472,10 +470,11 @@ def _provision_batch(
     batch: WPBatch,
     user_data: str | None,
     node_workers: NodeWorkerTarget,
-) -> str | None:
+    worker_pool_ids: list[str],
+) -> None:
     """
-    Provision one batch's Worker Pool, returning its ID, or under '--dry-run'
-    show it and return None.
+    Provision one batch's Worker Pool, adding its ID to those provisioned as
+    soon as it exists, or under '--dry-run' show it.
     """
     compute_requirement_template_usage = ComputeRequirementTemplateUsage(
         templateId=cast(str, CONFIG_WP.template_id),
@@ -513,7 +512,7 @@ def _provision_batch(
                 compute_requirement_template_usage,
                 provisioned_worker_pool_properties,
             )
-        return None
+        return
 
     worker_pool = ctx.client.worker_pool_client.provision_worker_pool(
         compute_requirement_template_usage,
@@ -521,6 +520,7 @@ def _provision_batch(
     )
     print_info(f"Created {link_entity(ctx.config.url, worker_pool)}")
     print_info(f"YellowDog ID is '{worker_pool.id}'")
+    worker_pool_ids.append(worker_pool.id)  # type: ignore[arg-type]
     # One per batch, as above
     record_entity(
         worker_pool.id,
@@ -529,7 +529,6 @@ def _provision_batch(
         ET_WORKER_POOLS,
     )
     print_quiet_result(worker_pool.id)
-    return worker_pool.id
 
 
 def _print_timeouts() -> None:
