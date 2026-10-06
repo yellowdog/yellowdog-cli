@@ -8,8 +8,9 @@ these build on.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, TypeVar
+from collections.abc import Callable, Sequence
+from functools import cache
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from rich.markup import escape
 from tabulate import tabulate
@@ -720,6 +721,68 @@ def print_numbered_object_list(
     Print a numbered list of objects.
     Assume that the list supplied is already sorted.
     """
+    if not objects:
+        return
+
+    if OUTPUT.auto_select_all and OUTPUT.details and OUTPUT.quiet:
+        return
+
+    print_info(
+        "Displaying"
+        f" {'all' if showing_all else 'matching'}"
+        f" {(object_type_name if object_type_name is not None else get_type_name(objects[0]))}(s):",  # type: ignore
+        override_quiet=override_quiet,
+    )
+    print()
+
+    table_builder = _table_builder(objects[0], object_type_name)
+    if table_builder is None:  # No table for the type: its names alone
+        table = [
+            [index + 1, ":", obj.name]  # type: ignore[union-attr]
+            for index, obj in enumerate(objects)
+        ]
+        print_table_core(indent(tabulate(table, tablefmt="plain"), indent_width=4))
+    else:
+        headers, table = table_builder(objects)
+        print_table_core(
+            indent(
+                tabulate(table, headers=headers, tablefmt="simple_outline"),
+                indent_width=4,
+            )
+        )
+    print(flush=True)
+
+
+# Builds a numbered table's headers and rows from a list of objects
+_TableBuilder = Callable[[Any], tuple[list[str], list]]
+
+
+def _table_builder(first: object, object_type_name: str | None) -> _TableBuilder | None:
+    """
+    The table builder for a list whose first object is the one given, or None
+    if there is no table for its type.
+    """
+    if isinstance(first, str):
+        return _names_table
+    # Attribute definitions are dicts, so are known by the name passed
+    if object_type_name == "Attribute Definition":
+        return attribute_definitions_table
+    for model_class, builder in _model_table_builders():
+        if isinstance(first, model_class):
+            return builder
+    return None
+
+
+def _names_table(names: Sequence[str]) -> tuple[list[str], list[list]]:
+    return ["#", "Name"], [[index + 1, name] for index, name in enumerate(names)]
+
+
+@cache
+def _model_table_builders() -> tuple[tuple[type, _TableBuilder], ...]:
+    """
+    The table builder for each object type with one, built on first use so
+    that importing this module does not import the SDK.
+    """
     from yellowdog_client.model import (
         Allowance,
         Application,
@@ -743,82 +806,29 @@ def print_numbered_object_list(
         WorkRequirementSummary,
     )
 
-    if not objects:
-        return
-
-    if OUTPUT.auto_select_all and OUTPUT.details and OUTPUT.quiet:
-        return
-
-    print_info(
-        "Displaying"
-        f" {'all' if showing_all else 'matching'}"
-        f" {(object_type_name if object_type_name is not None else get_type_name(objects[0]))}(s):",  # type: ignore
-        override_quiet=override_quiet,
+    return (
+        (ComputeRequirementSummary, compute_requirement_table),
+        (WorkRequirementSummary, work_requirement_table),
+        (TaskGroup, task_group_table),
+        (Task, task_table),
+        (WorkerPoolSummary, worker_pool_table),
+        (ComputeRequirementTemplateSummary, compute_requirement_template_table),
+        (ComputeSourceTemplateSummary, compute_source_template_table),
+        (KeyringSummary, keyring_table),
+        (MachineImageFamilySummary, image_family_table),
+        (Instance, instances_table),
+        (Allowance, allowances_table),
+        (AWSAvailabilityZone, aws_availability_zone_table),
+        (NamespacePolicy, namespace_policies_table),
+        (Node, nodes_table),
+        (Worker, workers_table),
+        (User, users_table),
+        (Application, applications_table),
+        (Group, groups_table),
+        (Role, roles_table),
+        (PermissionDetail, permissions_table),
+        (Namespace, namespaces_table),
     )
-    print()
-
-    headers = None
-    if isinstance(objects[0], str):
-        headers = ["#", "Name"]
-        table = [[index + 1, name] for index, name in enumerate(objects)]
-    elif isinstance(objects[0], ComputeRequirementSummary):
-        headers, table = compute_requirement_table(objects)  # type: ignore
-    elif isinstance(objects[0], WorkRequirementSummary):
-        headers, table = work_requirement_table(objects)  # type: ignore
-    elif isinstance(objects[0], TaskGroup):
-        headers, table = task_group_table(objects)  # type: ignore
-    elif isinstance(objects[0], Task):
-        headers, table = task_table(objects)  # type: ignore
-    elif isinstance(objects[0], WorkerPoolSummary):
-        headers, table = worker_pool_table(objects)  # type: ignore
-    elif isinstance(objects[0], ComputeRequirementTemplateSummary):
-        headers, table = compute_requirement_template_table(objects)  # type: ignore
-    elif isinstance(objects[0], ComputeSourceTemplateSummary):
-        headers, table = compute_source_template_table(objects)  # type: ignore
-    elif isinstance(objects[0], KeyringSummary):
-        headers, table = keyring_table(objects)  # type: ignore
-    elif isinstance(objects[0], MachineImageFamilySummary):
-        headers, table = image_family_table(objects)  # type: ignore
-    elif isinstance(objects[0], Instance):
-        headers, table = instances_table(objects)  # type: ignore
-    elif isinstance(objects[0], Allowance):
-        headers, table = allowances_table(objects)  # type: ignore
-    elif isinstance(objects[0], AWSAvailabilityZone):
-        headers, table = aws_availability_zone_table(objects)  # type: ignore
-    elif object_type_name == "Attribute Definition":
-        headers, table = attribute_definitions_table(objects)  # type: ignore
-    elif isinstance(objects[0], NamespacePolicy):
-        headers, table = namespace_policies_table(objects)  # type: ignore
-    elif isinstance(objects[0], Node):
-        headers, table = nodes_table(objects)  # type: ignore
-    elif isinstance(objects[0], Worker):
-        headers, table = workers_table(objects)  # type: ignore
-    elif isinstance(objects[0], User):
-        headers, table = users_table(objects)  # type: ignore
-    elif isinstance(objects[0], Application):
-        headers, table = applications_table(objects)  # type: ignore
-    elif isinstance(objects[0], Group):
-        headers, table = groups_table(objects)  # type: ignore
-    elif isinstance(objects[0], Role):
-        headers, table = roles_table(objects)  # type: ignore
-    elif isinstance(objects[0], PermissionDetail):
-        headers, table = permissions_table(objects)  # type: ignore
-    elif isinstance(objects[0], Namespace):
-        headers, table = namespaces_table(objects)  # type: ignore
-    else:
-        table = []
-        for index, obj in enumerate(objects):
-            table.append([index + 1, ":", obj.name])  # type: ignore[union-attr]
-    if headers is None:
-        print_table_core(indent(tabulate(table, tablefmt="plain"), indent_width=4))
-    else:
-        print_table_core(
-            indent(
-                tabulate(table, headers=headers, tablefmt="simple_outline"),
-                indent_width=4,
-            )
-        )
-    print(flush=True)
 
 
 def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:

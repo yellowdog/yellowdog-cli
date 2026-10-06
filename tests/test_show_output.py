@@ -27,6 +27,7 @@ from yellowdog_cli.show import show_ydids
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.ydid_utils import YDIDType
 
 UUID = "98879b5a-9192-4a56-ad25-fc1330e49185"
 
@@ -204,6 +205,15 @@ def _run(
     ):
         failures = show_ydids(ctx, ydids)
     return failures, capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Every YellowDog ID type has a resolver
+# ---------------------------------------------------------------------------
+
+
+def test_every_ydid_type_has_a_resolver():
+    assert set(show_module._RESOLVERS) == set(YDIDType)
 
 
 # ---------------------------------------------------------------------------

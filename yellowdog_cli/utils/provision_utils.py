@@ -17,6 +17,7 @@ from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
 from yellowdog_cli.utils.load_config import config_file_dir
+from yellowdog_cli.utils.misc_utils import generate_id
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
 from yellowdog_cli.utils.type_check import check_list, check_str
@@ -173,6 +174,23 @@ def user_data_source(config: ConfigWorkerPool) -> str:
     if config.user_data_files is not None:
         return ", ".join(f"'{path}'" for path in config.user_data_files)
     return f"the configuration's '{USERDATA}'"
+
+
+def requirement_name(config: ConfigWorkerPool, name_tag: str) -> str:
+    """
+    The name the configuration gives the Compute Requirement (or Worker Pool),
+    else one generated from the name tag. Generated whether or not it is used,
+    so that a name tag too long for it is always reported.
+    """
+    generated = generate_id(name_tag)
+    return config.name if config.name is not None else generated
+
+
+def requirement_tag(config: ConfigWorkerPool, name_tag: str) -> str:
+    """
+    The Compute Requirement's tag: the configuration's, else the name tag.
+    """
+    return name_tag if config.cr_tag is None else config.cr_tag
 
 
 def shown_value(value: object) -> str:

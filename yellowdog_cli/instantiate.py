@@ -29,7 +29,6 @@ from yellowdog_cli.utils.load_config import (
 )
 from yellowdog_cli.utils.misc_utils import (
     add_batch_number_postfix,
-    generate_id,
     link_entity,
 )
 from yellowdog_cli.utils.printing import (
@@ -44,6 +43,8 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    requirement_name,
+    requirement_tag,
     shown_value,
     user_data_source,
 )
@@ -70,17 +71,14 @@ class CRBatch:
 
 
 CONFIG_WP: ConfigWorkerPool = lazy(load_config_worker_pool)
-# Generated in main() rather than at import, so that a name tag too long for
-# it is reported as an error by main_wrapper rather than as a traceback
-GENERATED_ID: str = ""
 
 
 @main_wrapper
 def main(ctx: RunContext):
-    global GENERATED_ID
-
     warn_of_undefined_worker_pool_variables()
-    GENERATED_ID = generate_id(ctx.config.name_tag)
+    # In main() rather than at import, so that a name tag too long for the
+    # generated name is reported as an error by main_wrapper
+    name = requirement_name(CONFIG_WP, ctx.config.name_tag)
 
     if ctx.args.target is not None:
         CONFIG_WP.target_instance_count = ctx.args.target
@@ -106,7 +104,7 @@ def main(ctx: RunContext):
 
     if cr_json_file is not None:
         _create_compute_requirement_from_json(
-            ctx, cr_json_file, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+            ctx, cr_json_file, name, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
         )
         return
 
@@ -151,7 +149,7 @@ def main(ctx: RunContext):
     compute_requirement_ids: list[str] = []
     for batch_number in range(num_batches):
         id = add_batch_number_postfix(
-            name=CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID,
+            name=name,
             batch_number=batch_number,
             num_batches=num_batches,
         )
@@ -172,11 +170,7 @@ def main(ctx: RunContext):
                 requirementNamespace=ctx.config.namespace,
                 requirementName=id,
                 targetInstanceCount=batches[batch_number].target_instances,
-                requirementTag=(
-                    ctx.config.name_tag
-                    if CONFIG_WP.cr_tag is None
-                    else CONFIG_WP.cr_tag
-                ),
+                requirementTag=requirement_tag(CONFIG_WP, ctx.config.name_tag),
                 maintainInstanceCount=CONFIG_WP.maintain_instance_count,
                 instanceTags=CONFIG_WP.instance_tags,
                 imagesId=CONFIG_WP.images_id,
@@ -305,7 +299,11 @@ def _allocate_nodes_to_batches(
 
 
 def _create_compute_requirement_from_json(
-    ctx: RunContext, cr_json_file: str, prefix: str = "", postfix: str = ""
+    ctx: RunContext,
+    cr_json_file: str,
+    name: str,
+    prefix: str = "",
+    postfix: str = "",
 ) -> None:
     """
     Directly create the Compute Requirement using the YellowDog REST API.
@@ -337,16 +335,9 @@ def _create_compute_requirement_from_json(
     # values in the JSON file override values in the TOML file, and
     # '--target' overrides both
     for key, value in [
-        # Generate a default name
-        (
-            "requirementName",
-            (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
-        ),
+        ("requirementName", name),
         ("requirementNamespace", ctx.config.namespace),
-        (
-            "requirementTag",
-            (ctx.config.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
-        ),
+        ("requirementTag", requirement_tag(CONFIG_WP, ctx.config.name_tag)),
         ("templateId", CONFIG_WP.template_id),
         ("imagesId", CONFIG_WP.images_id),
         ("instanceTags", CONFIG_WP.instance_tags),

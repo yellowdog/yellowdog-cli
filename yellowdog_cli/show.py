@@ -4,6 +4,7 @@
 Command to show the JSON details of YellowDog entities via their IDs.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from sys import exit as sys_exit
 from typing import Any
@@ -33,6 +34,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
     ExitCode,
+    NotFoundError,
     ReportedFailure,
     classify,
 )
@@ -164,9 +166,10 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
     could not be resolved, having already reported why.
 
     Resolution is deliberately separated from printing: the JSON array's
-    indentation and commas were previously threaded through each branch below,
-    applied to some of them and forgotten on the rest, which left the array
-    unparseable for most entity types.
+    indentation and commas were previously threaded through each entity type's
+    branch, applied to some of them and forgotten on the rest, which left the
+    array unparseable for most entity types. Each type's resolution is now an
+    entry in _RESOLVERS.
     """
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form
@@ -175,213 +178,239 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
             ctx, cr_id_instance_id[0], cr_id_instance_id[1]
         )
 
+    if (ydid_type := get_ydid_type(ydid)) is None:
+        print_error(f"Invalid YellowDog ID '{ydid}'")
+        return None
+
+    resolver = _RESOLVERS[ydid_type]
+    print_info(f"Showing details of {resolver.noun} ID '{ydid}'")
     try:
-        if (ydid_type := get_ydid_type(ydid)) is None:
-            print_error(f"Invalid YellowDog ID '{ydid}'")
-            return None
-
-        if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
-            print_info(f"Showing details of Compute Source Template ID '{ydid}'")
-            if ctx.args.substitute_ids:
-                print_info("Substituting Image Family ID with name")
-            return [
-                (
-                    substitute_image_family_id_for_name_in_cst(
-                        ctx.client,
-                        ctx.client.compute_client.get_compute_source_template(ydid),
-                        substitute=bool(ctx.args.substitute_ids),
-                    ),
-                    {RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE},
-                )
-            ]
-
-        elif ydid_type == YDIDType.COMPUTE_REQUIREMENT_TEMPLATE:
-            print_info(f"Showing details of Compute Requirement Template ID '{ydid}'")
-            if ctx.args.substitute_ids:
-                print_info(
-                    "Substituting Compute Source Template IDs and Image Family IDs with names"
-                )
-            return [
-                (
-                    substitute_ids_for_names_in_crt(
-                        ctx.client,
-                        ctx.client.compute_client.get_compute_requirement_template(
-                            ydid
-                        ),
-                        substitute=bool(ctx.args.substitute_ids),
-                    ),
-                    {RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE},
-                )
-            ]
-
-        elif ydid_type == YDIDType.COMPUTE_REQUIREMENT:
-            print_info(f"Showing details of Compute Requirement ID '{ydid}'")
-            return [
-                (ctx.client.compute_client.get_compute_requirement_by_id(ydid), None)
-            ]
-
-        elif ydid_type == YDIDType.COMPUTE_SOURCE:
-            print_info(f"Showing details of Compute Source ID '{ydid}'")
-            compute_requirement = (
-                ctx.client.compute_client.get_compute_requirement_by_id(
-                    ydid.rsplit(":", 1)[0].replace(TYPE_COMPSRC, TYPE_COMPREQ)
-                )
-            )
-            for source in compute_requirement.provisionStrategy.sources or []:
-                if source.id == ydid:
-                    return [(source, None)]
-            _report_not_found(f"Compute Source ID '{ydid}' not found")
-            return None
-
-        elif ydid_type == YDIDType.WORKER_POOL:
-            print_info(f"Showing details of Worker Pool ID '{ydid}'")
-            worker_pool = ctx.client.worker_pool_client.get_worker_pool_by_id(ydid)
-            items: list[ShowItem] = [
-                (
-                    worker_pool,
-                    (
-                        {RESOURCE_PROPERTY_NAME: RN_CONFIGURED_POOL}
-                        if isinstance(worker_pool, ConfiguredWorkerPool)
-                        else {}
-                    ),
-                )
-            ]
-            if ctx.args.show_token and isinstance(worker_pool, ConfiguredWorkerPool):
-                print_info("Showing Configured Worker Pool token data")
-                items.append(
-                    (
-                        ctx.client.worker_pool_client.get_configured_worker_pool_token_by_id(
-                            ydid
-                        ),
-                        None,
-                    )
-                )
-            return items
-
-        elif ydid_type == YDIDType.NODE:
-            print_info(f"Showing details of Node ID '{ydid}'")
-            return [(ctx.client.worker_pool_client.get_node_by_id(ydid), None)]
-
-        elif ydid_type == YDIDType.WORKER:
-            print_info(f"Showing details of Worker ID '{ydid}'")
-            node = ctx.client.worker_pool_client.get_node_by_id(
-                ydid.rsplit(":", 1)[0].replace(TYPE_WRKR, TYPE_NODE)
-            )
-            for worker in node.workers or []:
-                if worker.id == ydid:
-                    return [(worker, None)]
-            _report_not_found(f"Worker ID '{ydid}' not found")
-            return None
-
-        elif ydid_type == YDIDType.WORK_REQUIREMENT:
-            print_info(f"Showing details of Work Requirement ID '{ydid}'")
-            return [(ctx.client.work_client.get_work_requirement_by_id(ydid), None)]
-
-        elif ydid_type == YDIDType.TASK_GROUP:
-            print_info(f"Showing details of Task Group ID '{ydid}'")
-            work_requirement = ctx.client.work_client.get_work_requirement_by_id(
-                work_requirement_id_of_task_group(ydid)
-            )
-            for task_group in work_requirement.taskGroups or []:
-                if task_group.id == ydid:
-                    return [(task_group, None)]
-            _report_not_found(f"Task Group ID '{ydid}' not found")
-            return None
-
-        elif ydid_type == YDIDType.TASK:
-            print_info(f"Showing details of Task ID '{ydid}'")
-            return [(ctx.client.work_client.get_task_by_id(ydid), None)]
-
-        elif ydid_type == YDIDType.IMAGE_FAMILY:
-            print_info(f"Showing details of Image Family ID '{ydid}'")
-            return [
-                (
-                    ctx.client.images_client.get_image_family_by_id(ydid),
-                    {RESOURCE_PROPERTY_NAME: RN_IMAGE_FAMILY},
-                )
-            ]
-
-        elif ydid_type == YDIDType.IMAGE_GROUP:
-            print_info(f"Showing details of Image Group ID '{ydid}'")
-            return [(ctx.client.images_client.get_image_group_by_id(ydid), None)]
-
-        elif ydid_type == YDIDType.IMAGE:
-            print_info(f"Showing details of Image ID '{ydid}'")
-            return [(ctx.client.images_client.get_image(ydid), None)]
-
-        elif ydid_type == YDIDType.KEYRING:
-            print_info(f"Showing details of Keyring ID '{ydid}'")
-            # The Keyring with its credentials and accessors, in one call
-            keyring = ctx.client.keyring_client.get_keyring(ydid)
-            return [(keyring, {RESOURCE_PROPERTY_NAME: RN_KEYRING})]
-
-        elif ydid_type == YDIDType.ALLOWANCE:
-            print_info(f"Showing details of Allowance ID '{ydid}'")
-            allowance = ctx.client.allowances_client.get_allowance_by_id(ydid)
-            if ctx.args.substitute_ids:
-                print_info("Substituting ID with name")
-                allowance = substitute_id_for_name_in_allowance(
-                    ctx.client,
-                    allowance,  # type: ignore[arg-type]
-                    substitute=bool(ctx.args.substitute_ids),
-                )
-            return [(allowance, {RESOURCE_PROPERTY_NAME: RN_ALLOWANCE})]
-
-        elif ydid_type == YDIDType.APPLICATION:
-            print_info(f"Showing details of Application ID '{ydid}'")
-            # The Application first, so that one that does not exist is
-            # reported as such rather than by its groups' lookup
-            application = ctx.client.account_client.get_application(ydid)
-            group_names = [
-                group.name
-                for group in get_application_group_summaries(ctx.client, ydid)
-            ]
-            return [
-                (
-                    application,
-                    {
-                        PROP_GROUPS: group_names,
-                        RESOURCE_PROPERTY_NAME: RN_APPLICATION,
-                    },
-                )
-            ]
-
-        elif ydid_type == YDIDType.USER:
-            print_info(f"Showing details of User ID '{ydid}'")
-            user = ctx.client.account_client.get_user(ydid)
-            return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
-
-        elif ydid_type == YDIDType.GROUP:
-            print_info(f"Showing details of Group ID '{ydid}'")
-            return [
-                (
-                    ctx.client.account_client.get_group(ydid),
-                    {RESOURCE_PROPERTY_NAME: RN_GROUP},
-                )
-            ]
-
-        elif ydid_type == YDIDType.ROLE:
-            print_info(f"Showing details of Role ID '{ydid}'")
-            return [
-                (
-                    ctx.client.account_client.get_role(ydid),
-                    {RESOURCE_PROPERTY_NAME: RN_ROLE},
-                )
-            ]
-
-        else:
-            # Every YDIDType is handled above: a guard against a new one
-            print_error(f"Unknown (or unsupported) YellowDog ID type for '{ydid}'")
-            return None
-
+        return resolver.resolve(ctx, ydid)
     except Exception as e:
         if classify(e) in SESSION_FAILURES:
             raise  # For show_ydids(), which stops
-        if is_http_not_found(e):
-            _report_not_found(f"{ydid_type.value} ID '{ydid}' not found")  # type: ignore[union-attr]
+        if is_http_not_found(e) or isinstance(e, NotFoundError):
+            _report_not_found(f"{ydid_type.value} ID '{ydid}' not found")
         else:
             print_error(f"Unable to show details for '{ydid}': {e}")
         return None
+
+
+# A resolver returns the object(s) a YellowDog ID names, raising if there are
+# none
+_Resolve = Callable[[RunContext, str], list[ShowItem]]
+
+
+@dataclass(frozen=True)
+class _Resolver:
+    """
+    How one YellowDog ID type is resolved, and what its progress message calls
+    the entity.
+    """
+
+    noun: str
+    resolve: _Resolve
+
+
+def _fetched(get: Callable[[Any, str], Any], resource: str | None = None) -> _Resolve:
+    """
+    A resolver for an entity fetched by its own ID, with the 'resource'
+    property added to its JSON where it can be created from that.
+    """
+
+    def resolve(ctx: RunContext, ydid: str) -> list[ShowItem]:
+        return [
+            (
+                get(ctx.client, ydid),
+                {RESOURCE_PROPERTY_NAME: resource} if resource is not None else None,
+            )
+        ]
+
+    return resolve
+
+
+def _member_of(
+    get_parent: Callable[[Any, str], Any], members: Callable[[Any], list | None]
+) -> _Resolve:
+    """
+    A resolver for an entity with no lookup of its own, found by ID among the
+    members of the parent it belongs to.
+    """
+
+    def resolve(ctx: RunContext, ydid: str) -> list[ShowItem]:
+        for member in members(get_parent(ctx.client, ydid)) or []:
+            if member.id == ydid:
+                return [(member, None)]
+        raise NotFoundError(ydid)
+
+    return resolve
+
+
+def _compute_source_template(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    if ctx.args.substitute_ids:
+        print_info("Substituting Image Family ID with name")
+    return [
+        (
+            substitute_image_family_id_for_name_in_cst(
+                ctx.client,
+                ctx.client.compute_client.get_compute_source_template(ydid),
+                substitute=bool(ctx.args.substitute_ids),
+            ),
+            {RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE},
+        )
+    ]
+
+
+def _compute_requirement_template(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    if ctx.args.substitute_ids:
+        print_info(
+            "Substituting Compute Source Template IDs and Image Family IDs with names"
+        )
+    return [
+        (
+            substitute_ids_for_names_in_crt(
+                ctx.client,
+                ctx.client.compute_client.get_compute_requirement_template(ydid),
+                substitute=bool(ctx.args.substitute_ids),
+            ),
+            {RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE},
+        )
+    ]
+
+
+def _worker_pool(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    worker_pool = ctx.client.worker_pool_client.get_worker_pool_by_id(ydid)
+    configured = isinstance(worker_pool, ConfiguredWorkerPool)
+    items: list[ShowItem] = [
+        (
+            worker_pool,
+            {RESOURCE_PROPERTY_NAME: RN_CONFIGURED_POOL} if configured else {},
+        )
+    ]
+    if ctx.args.show_token and configured:
+        print_info("Showing Configured Worker Pool token data")
+        items.append(
+            (
+                ctx.client.worker_pool_client.get_configured_worker_pool_token_by_id(
+                    ydid
+                ),
+                None,
+            )
+        )
+    return items
+
+
+def _allowance(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    allowance = ctx.client.allowances_client.get_allowance_by_id(ydid)
+    if ctx.args.substitute_ids:
+        print_info("Substituting ID with name")
+        allowance = substitute_id_for_name_in_allowance(
+            ctx.client,
+            allowance,  # type: ignore[arg-type]
+            substitute=bool(ctx.args.substitute_ids),
+        )
+    return [(allowance, {RESOURCE_PROPERTY_NAME: RN_ALLOWANCE})]
+
+
+def _application(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    # The Application first, so that one that does not exist is reported as
+    # such rather than by its groups' lookup
+    application = ctx.client.account_client.get_application(ydid)
+    group_names = [
+        group.name for group in get_application_group_summaries(ctx.client, ydid)
+    ]
+    return [
+        (
+            application,
+            {PROP_GROUPS: group_names, RESOURCE_PROPERTY_NAME: RN_APPLICATION},
+        )
+    ]
+
+
+def _user(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    user = ctx.client.account_client.get_user(ydid)
+    return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
+
+
+# Every YDIDType, held to that by tests/test_show_output.py
+_RESOLVERS: dict[YDIDType, _Resolver] = {
+    YDIDType.COMPUTE_SOURCE_TEMPLATE: _Resolver(
+        "Compute Source Template", _compute_source_template
+    ),
+    YDIDType.COMPUTE_REQUIREMENT_TEMPLATE: _Resolver(
+        "Compute Requirement Template", _compute_requirement_template
+    ),
+    YDIDType.COMPUTE_REQUIREMENT: _Resolver(
+        "Compute Requirement",
+        _fetched(lambda c, ydid: c.compute_client.get_compute_requirement_by_id(ydid)),
+    ),
+    YDIDType.COMPUTE_SOURCE: _Resolver(
+        "Compute Source",
+        _member_of(
+            lambda c, ydid: c.compute_client.get_compute_requirement_by_id(
+                ydid.rsplit(":", 1)[0].replace(TYPE_COMPSRC, TYPE_COMPREQ)
+            ),
+            lambda compute_requirement: compute_requirement.provisionStrategy.sources,
+        ),
+    ),
+    YDIDType.WORKER_POOL: _Resolver("Worker Pool", _worker_pool),
+    YDIDType.NODE: _Resolver(
+        "Node", _fetched(lambda c, ydid: c.worker_pool_client.get_node_by_id(ydid))
+    ),
+    YDIDType.WORKER: _Resolver(
+        "Worker",
+        _member_of(
+            lambda c, ydid: c.worker_pool_client.get_node_by_id(
+                ydid.rsplit(":", 1)[0].replace(TYPE_WRKR, TYPE_NODE)
+            ),
+            lambda node: node.workers,
+        ),
+    ),
+    YDIDType.WORK_REQUIREMENT: _Resolver(
+        "Work Requirement",
+        _fetched(lambda c, ydid: c.work_client.get_work_requirement_by_id(ydid)),
+    ),
+    YDIDType.TASK_GROUP: _Resolver(
+        "Task Group",
+        _member_of(
+            lambda c, ydid: c.work_client.get_work_requirement_by_id(
+                work_requirement_id_of_task_group(ydid)
+            ),
+            lambda work_requirement: work_requirement.taskGroups,
+        ),
+    ),
+    YDIDType.TASK: _Resolver(
+        "Task", _fetched(lambda c, ydid: c.work_client.get_task_by_id(ydid))
+    ),
+    YDIDType.IMAGE_FAMILY: _Resolver(
+        "Image Family",
+        _fetched(
+            lambda c, ydid: c.images_client.get_image_family_by_id(ydid),
+            RN_IMAGE_FAMILY,
+        ),
+    ),
+    YDIDType.IMAGE_GROUP: _Resolver(
+        "Image Group",
+        _fetched(lambda c, ydid: c.images_client.get_image_group_by_id(ydid)),
+    ),
+    YDIDType.IMAGE: _Resolver(
+        "Image", _fetched(lambda c, ydid: c.images_client.get_image(ydid))
+    ),
+    # The Keyring with its credentials and accessors, in one call
+    YDIDType.KEYRING: _Resolver(
+        "Keyring",
+        _fetched(lambda c, ydid: c.keyring_client.get_keyring(ydid), RN_KEYRING),
+    ),
+    YDIDType.ALLOWANCE: _Resolver("Allowance", _allowance),
+    YDIDType.APPLICATION: _Resolver("Application", _application),
+    YDIDType.USER: _Resolver("User", _user),
+    YDIDType.GROUP: _Resolver(
+        "Group", _fetched(lambda c, ydid: c.account_client.get_group(ydid), RN_GROUP)
+    ),
+    YDIDType.ROLE: _Resolver(
+        "Role", _fetched(lambda c, ydid: c.account_client.get_role(ydid), RN_ROLE)
+    ),
+}
 
 
 def _resolve_instance_details(

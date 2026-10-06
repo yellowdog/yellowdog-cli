@@ -221,3 +221,10 @@ class TestCountOption:
             yd_list.list_work_requirements(_ctx())
         assert capsys.readouterr().out.strip() == "5"
         mock_select.assert_not_called()
+
+
+def test_every_entity_type_has_a_lister():
+    import yellowdog_cli.list as yd_list
+    from yellowdog_cli.utils.command_registry import ENTITY_TYPES
+
+    assert set(yd_list._LISTERS) == set(ENTITY_TYPES)

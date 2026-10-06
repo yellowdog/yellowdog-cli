@@ -234,6 +234,28 @@ def _apply_status_filter(ctx: RunContext, objects: list) -> list:
 
 @main_wrapper
 def main(ctx: RunContext):
+    _adjust_output_options(ctx)
+
+    if ctx.args.output_file and ctx.args.details:
+        if exists(ctx.args.output_file):
+            if not confirmed(
+                f"Overwrite file '{ctx.args.output_file}' with new resource details?"
+            ):
+                return
+
+    _warn_of_unknown_statuses(ctx)
+
+    # An option that does not apply to the entity type has been refused as
+    # the command line was parsed ('check_list_options' in the registry); the
+    # type itself is a required positional, so is always given
+    _LISTERS[cast(str, ctx.args.entity_type)](ctx)
+
+
+def _adjust_output_options(ctx: RunContext) -> None:
+    """
+    Settle the output options the others imply, configuring the output from
+    them as they are adjusted.
+    """
     _apply_count_option(ctx)
 
     if not (ctx.args.json_output or ctx.args.count_only):
@@ -260,59 +282,20 @@ def main(ctx: RunContext):
     # ... and '--details' as set here
     configure_output(ctx.args)
 
-    if ctx.args.output_file and ctx.args.details:
-        if exists(ctx.args.output_file):
-            if not confirmed(
-                f"Overwrite file '{ctx.args.output_file}' with new resource details?"
-            ):
-                return
 
-    entity_type = ctx.args.entity_type
-
-    if sf := ctx.args.status_filter:
-        known = _KNOWN_STATUSES.get(entity_type or "", frozenset())
-        if known:
-            unknown = [s for s in sf if s.upper() not in known]
-            if unknown:
-                print_warning(
-                    f"Unrecognised status value(s): {', '.join(repr(s) for s in unknown)}. "
-                    f"Known values: {', '.join(sorted(known))}"
-                )
-
-    # An option that does not apply to the entity type has been refused as
-    # the command line was parsed ('check_list_options' in the registry)
-    if entity_type in (ET_WORK_REQUIREMENTS, ET_TASK_GROUPS, ET_TASKS):
-        list_work_requirements(ctx)
-    elif entity_type in (ET_WORKER_POOLS, ET_NODES, ET_WORKERS):
-        list_worker_pools(ctx)
-    elif entity_type in (ET_COMPUTE_REQUIREMENTS, ET_INSTANCES):
-        list_compute_requirements(ctx)
-    elif entity_type == ET_COMPUTE_REQUIREMENT_TEMPLATES:
-        list_compute_requirement_templates(ctx)
-    elif entity_type == ET_COMPUTE_SOURCE_TEMPLATES:
-        list_compute_source_templates(ctx)
-    elif entity_type == ET_KEYRINGS:
-        list_keyrings(ctx)
-    elif entity_type == ET_IMAGE_FAMILIES:
-        list_image_families(ctx)
-    elif entity_type == ET_ALLOWANCES:
-        list_allowances(ctx)
-    elif entity_type == ET_ATTRIBUTE_DEFINITIONS:
-        list_attribute_definitions(ctx)
-    elif entity_type == ET_NAMESPACES:
-        list_namespaces(ctx)
-    elif entity_type == ET_NAMESPACE_POLICIES:
-        list_namespace_policies(ctx)
-    elif entity_type == ET_USERS:
-        list_users(ctx)
-    elif entity_type == ET_APPLICATIONS:
-        list_applications(ctx)
-    elif entity_type == ET_GROUPS:
-        list_groups(ctx)
-    elif entity_type == ET_ROLES:
-        list_roles(ctx)
-    elif entity_type == ET_PERMISSIONS:
-        list_permissions(ctx)
+def _warn_of_unknown_statuses(ctx: RunContext) -> None:
+    """
+    Warn of a '--status' value the entity type has no status for.
+    """
+    known = _KNOWN_STATUSES.get(ctx.args.entity_type or "", frozenset())
+    if not (ctx.args.status_filter and known):
+        return
+    unknown = [s for s in ctx.args.status_filter if s.upper() not in known]
+    if unknown:
+        print_warning(
+            f"Unrecognised status value(s): {', '.join(repr(s) for s in unknown)}. "
+            f"Known values: {', '.join(sorted(known))}"
+        )
 
 
 def list_work_requirements(ctx: RunContext):
@@ -1499,6 +1482,34 @@ def get_autoscaling_capacity(ctx: RunContext, namespace: str) -> dict:
             f"Failed to get autoscaling details for namespace '{namespace}' ({response.text})"
         )
         return {"namespace": namespace}
+
+
+# The function listing each entity type; one listing a parent's children lists
+# the parent's type too. Every type yd-list accepts, held to that by
+# tests/test_list.py
+_LISTERS: dict[str, Callable[[RunContext], None]] = {
+    ET_WORK_REQUIREMENTS: list_work_requirements,
+    ET_TASK_GROUPS: list_work_requirements,
+    ET_TASKS: list_work_requirements,
+    ET_WORKER_POOLS: list_worker_pools,
+    ET_NODES: list_worker_pools,
+    ET_WORKERS: list_worker_pools,
+    ET_COMPUTE_REQUIREMENTS: list_compute_requirements,
+    ET_INSTANCES: list_compute_requirements,
+    ET_COMPUTE_REQUIREMENT_TEMPLATES: list_compute_requirement_templates,
+    ET_COMPUTE_SOURCE_TEMPLATES: list_compute_source_templates,
+    ET_KEYRINGS: list_keyrings,
+    ET_IMAGE_FAMILIES: list_image_families,
+    ET_ALLOWANCES: list_allowances,
+    ET_ATTRIBUTE_DEFINITIONS: list_attribute_definitions,
+    ET_NAMESPACES: list_namespaces,
+    ET_NAMESPACE_POLICIES: list_namespace_policies,
+    ET_USERS: list_users,
+    ET_APPLICATIONS: list_applications,
+    ET_GROUPS: list_groups,
+    ET_ROLES: list_roles,
+    ET_PERMISSIONS: list_permissions,
+}
 
 
 # Entry point

@@ -1264,149 +1264,170 @@ def create_application(ctx: RunContext, resource: dict):
     # Every Group is resolved before anything is changed
     new_group_ids = None if groups is None else _group_ids(ctx, groups)
 
-    def grant_keyrings(app_id: str, api_key: ApiKey, outcome: str):
-        """
-        Grant the application access to its Keyrings; a grant that fails
-        fails the resource, after the others have been tried.
-        """
-        failures: list[tuple[str, Exception]] = []
-        for keyring_name in keyrings:
-            try:
-                ctx.client.keyring_client.grant_application_access_to_keyring(
-                    keyring_name, app_id, api_key
-                )
-                print_info(f"Granted Application access to Keyring '{keyring_name}'")
-            except Exception as e:
-                failures.append((keyring_name, e))
-        if failures:
-            keyring_names = ", ".join(f"'{k}'" for k, _ in failures)
-            raise RuntimeError(
-                f"Application {outcome}, but access to Keyring(s) {keyring_names}"
-                f" could not be granted: {failures[0][1]}"
-            ) from failures[0][1]
-
-    def update_groups(app: Application):
-        """
-        Helper function to add/remove groups from an application.
-        """
-        if new_group_ids is None:
-            return
-        current_group_ids = {
-            group.id
-            for group in get_application_group_summaries(ctx.client, cast(str, app.id))
-        }
-
-        if current_group_ids == new_group_ids:
-            print_info("No Group additions or deletions required")
-            return
-
-        group_ids_to_remove = current_group_ids - new_group_ids
-        for group_id in group_ids_to_remove:
-            ctx.client.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
-            clear_application_caches()
-            print_info(f"Removed Group {_group_shown(ctx, group_id)} from Application")
-
-        group_ids_to_add = new_group_ids - current_group_ids
-        for group_id in group_ids_to_add:
-            ctx.client.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
-            clear_application_caches()
-            print_info(f"Added Group {_group_shown(ctx, group_id)} to Application")
-
-    def show_key_and_secret(api_key: ApiKey):
-        """
-        Helper function to display the app key and secret. Under '--json'
-        they are the record's instead, since stdout holds only the
-        document, and this is the only time the Platform returns them.
-        """
-        if _OPTIONS.json_output:
-            return
-        print_info(f"Application Key ID     = '{api_key.id}'", override_quiet=True)
-        print_info(f"Application Key Secret = '{api_key.secret}'", override_quiet=True)
-
-    def key_and_secret(api_key: ApiKey | None) -> dict:
-        """
-        The record's extra fields for a key and secret the Platform returned.
-        """
-        if api_key is None:
-            return {}
-        return {"apiKeyId": api_key.id, "apiKeySecret": api_key.secret}
-
-    def add_application():
-        """
-        Helper function to add a new application and its groups.
-        """
-        app_response: AddApplicationResponse = (
-            ctx.client.account_client.add_application(
-                _get_model_object(RN_ADD_APPLICATION_REQUEST, resource)
-            )
-        )
-        app = cast(Application, app_response.application)
-        print_info(f"Created Application '{app.name}' ({app.id})")
-        show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
-        record_resource(
-            RN_APPLICATION,
-            name,
-            app.id,
-            "created",
-            **key_and_secret(app_response.apiKey),
-        )
-        clear_application_caches()
-        print_quiet_result(app.id)
-        update_groups(app)
-        if keyrings:
-            if app_response.apiKey is None:
-                raise RuntimeError(
-                    "Application created, but no API key was returned with which"
-                    " to grant it access to its Keyring(s)"
-                )
-            grant_keyrings(cast(str, app.id), app_response.apiKey, "created")
-
-    def update_application(app_id: str):
-        """
-        Helper function to update an existing application, including updating
-        its groups.
-        """
-        if keyrings and not _OPTIONS.regenerate_app_keys:
-            # A grant needs the key, which the Platform returns only when
-            # the application is created or its key regenerated
-            raise ValueError(
-                f"Application '{name}' exists: granting it access to Keyring(s)"
-                " needs its API key; re-run with '--regenerate-app-keys'"
-            )
-        if not confirmed(f"Update Application '{name}' ({app_id})?"):
-            record_resource(RN_APPLICATION, name, app_id, "skipped")
-            return
-
-        app: Application = ctx.client.account_client.update_application(
-            app_id, _get_model_object(RN_UPDATE_APPLICATION_REQUEST, resource)
-        )
-        clear_application_caches()
-        print_info(f"Updated Application '{app.name}' ({app.id})")
-        update_groups(app)
-
-        api_key: ApiKey | None = None
-        if _OPTIONS.regenerate_app_keys:
-            print_info("Regenerating Application key and secret")
-            api_key = ctx.client.account_client.regenerate_application_api_key(app_id)
-            clear_application_caches()
-            if api_key is not None:
-                show_key_and_secret(api_key)
-        record_resource(
-            RN_APPLICATION, name, app.id, "updated", **key_and_secret(api_key)
-        )
-        print_quiet_result(app.id)
-        if _OPTIONS.regenerate_app_keys and api_key is None:
-            raise RuntimeError("Application updated, but no new API key was returned")
-
-        if keyrings:
-            grant_keyrings(app_id, cast(ApiKey, api_key), "updated")
-
-    # Main logic
     app_id = get_application_id_by_name(ctx.client, name)
     if app_id is None:
-        add_application()
+        _add_application(ctx, resource, name, new_group_ids, keyrings)
     else:
-        update_application(app_id)
+        _update_application(ctx, resource, name, app_id, new_group_ids, keyrings)
+
+
+def _add_application(
+    ctx: RunContext,
+    resource: dict,
+    name: str,
+    new_group_ids: set[str] | None,
+    keyrings: list[str],
+):
+    """
+    Add a new application, its groups and its Keyring grants.
+    """
+    app_response: AddApplicationResponse = ctx.client.account_client.add_application(
+        _get_model_object(RN_ADD_APPLICATION_REQUEST, resource)
+    )
+    app = cast(Application, app_response.application)
+    print_info(f"Created Application '{app.name}' ({app.id})")
+    _show_key_and_secret(app_response.apiKey)  # type: ignore[arg-type]
+    record_resource(
+        RN_APPLICATION,
+        name,
+        app.id,
+        "created",
+        **_key_and_secret(app_response.apiKey),
+    )
+    clear_application_caches()
+    print_quiet_result(app.id)
+    _update_application_groups(ctx, app, new_group_ids)
+    if keyrings:
+        if app_response.apiKey is None:
+            raise RuntimeError(
+                "Application created, but no API key was returned with which"
+                " to grant it access to its Keyring(s)"
+            )
+        _grant_keyrings(
+            ctx, keyrings, cast(str, app.id), app_response.apiKey, "created"
+        )
+
+
+def _update_application(
+    ctx: RunContext,
+    resource: dict,
+    name: str,
+    app_id: str,
+    new_group_ids: set[str] | None,
+    keyrings: list[str],
+):
+    """
+    Update an existing application, including its groups, its key (with
+    '--regenerate-app-keys') and its Keyring grants.
+    """
+    if keyrings and not _OPTIONS.regenerate_app_keys:
+        # A grant needs the key, which the Platform returns only when the
+        # application is created or its key regenerated
+        raise ValueError(
+            f"Application '{name}' exists: granting it access to Keyring(s)"
+            " needs its API key; re-run with '--regenerate-app-keys'"
+        )
+    if not confirmed(f"Update Application '{name}' ({app_id})?"):
+        record_resource(RN_APPLICATION, name, app_id, "skipped")
+        return
+
+    app: Application = ctx.client.account_client.update_application(
+        app_id, _get_model_object(RN_UPDATE_APPLICATION_REQUEST, resource)
+    )
+    clear_application_caches()
+    print_info(f"Updated Application '{app.name}' ({app.id})")
+    _update_application_groups(ctx, app, new_group_ids)
+
+    api_key: ApiKey | None = None
+    if _OPTIONS.regenerate_app_keys:
+        print_info("Regenerating Application key and secret")
+        api_key = ctx.client.account_client.regenerate_application_api_key(app_id)
+        clear_application_caches()
+        if api_key is not None:
+            _show_key_and_secret(api_key)
+    record_resource(RN_APPLICATION, name, app.id, "updated", **_key_and_secret(api_key))
+    print_quiet_result(app.id)
+    if _OPTIONS.regenerate_app_keys and api_key is None:
+        raise RuntimeError("Application updated, but no new API key was returned")
+
+    if keyrings:
+        _grant_keyrings(ctx, keyrings, app_id, cast(ApiKey, api_key), "updated")
+
+
+def _grant_keyrings(
+    ctx: RunContext, keyrings: list[str], app_id: str, api_key: ApiKey, outcome: str
+):
+    """
+    Grant the application access to its Keyrings; a grant that fails fails
+    the resource, after the others have been tried.
+    """
+    failures: list[tuple[str, Exception]] = []
+    for keyring_name in keyrings:
+        try:
+            ctx.client.keyring_client.grant_application_access_to_keyring(
+                keyring_name, app_id, api_key
+            )
+            print_info(f"Granted Application access to Keyring '{keyring_name}'")
+        except Exception as e:
+            failures.append((keyring_name, e))
+    if failures:
+        keyring_names = ", ".join(f"'{k}'" for k, _ in failures)
+        raise RuntimeError(
+            f"Application {outcome}, but access to Keyring(s) {keyring_names}"
+            f" could not be granted: {failures[0][1]}"
+        ) from failures[0][1]
+
+
+def _update_application_groups(
+    ctx: RunContext, app: Application, new_group_ids: set[str] | None
+):
+    """
+    Make the application's groups match those given; None leaves them as
+    they are.
+    """
+    if new_group_ids is None:
+        return
+    current_group_ids = {
+        group.id
+        for group in get_application_group_summaries(ctx.client, cast(str, app.id))
+    }
+
+    if current_group_ids == new_group_ids:
+        print_info("No Group additions or deletions required")
+        return
+
+    group_ids_to_remove = current_group_ids - new_group_ids
+    for group_id in group_ids_to_remove:
+        ctx.client.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
+        clear_application_caches()
+        print_info(f"Removed Group {_group_shown(ctx, group_id)} from Application")
+
+    group_ids_to_add = new_group_ids - current_group_ids
+    for group_id in group_ids_to_add:
+        ctx.client.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
+        clear_application_caches()
+        print_info(f"Added Group {_group_shown(ctx, group_id)} to Application")
+
+
+def _show_key_and_secret(api_key: ApiKey):
+    """
+    Display the app key and secret. Under '--json' they are the record's
+    instead, since stdout holds only the document, and this is the only time
+    the Platform returns them.
+    """
+    if _OPTIONS.json_output:
+        return
+    print_info(f"Application Key ID     = '{api_key.id}'", override_quiet=True)
+    print_info(f"Application Key Secret = '{api_key.secret}'", override_quiet=True)
+
+
+def _key_and_secret(api_key: ApiKey | None) -> dict:
+    """
+    The record's extra fields for a key and secret the Platform returned.
+    """
+    if api_key is None:
+        return {}
+    return {"apiKeyId": api_key.id, "apiKeySecret": api_key.secret}
 
 
 def update_user(ctx: RunContext, resource: dict, internal_user: bool):
