@@ -549,6 +549,57 @@ class TestAddToPartitioning:
 # ---------------------------------------------------------------------------
 
 
+class TestPlanExtension:
+    """
+    _plan_extension() alone: the plan of an '--add-to', decided without a
+    client, a Work Requirement or any patching.
+    """
+
+    @staticmethod
+    def _positions(extension) -> dict[str, tuple[int, int, int, int]]:
+        return {
+            addition.task_group.name: (
+                addition.position.spec_index,
+                addition.position.number,
+                addition.position.count,
+                addition.position.existing_tasks,
+            )
+            for addition in extension.additions
+        }
+
+    def test_new_task_groups_are_appended_and_their_tasks_added_first(self):
+        existing = [_make_tg("a", task_count=4), _make_tg("b", task_count=1)]
+        spec = [_make_tg("b"), _make_tg("x"), _make_tg("y")]
+        extension = submit_module._plan_extension(existing, spec)
+        assert [tg.name for tg in extension.new] == ["x", "y"]
+        assert [tg.name for tg in extension.task_groups] == ["a", "b", "x", "y"]
+        assert [a.task_group.name for a in extension.additions] == ["x", "y", "b"]
+        # (spec index, number in the Work Requirement, count, Tasks held)
+        assert self._positions(extension) == {
+            "x": (1, 2, 4, 0),
+            "y": (2, 3, 4, 0),
+            "b": (0, 1, 4, 1),
+        }
+
+    def test_a_matched_task_group_is_added_to_as_it_exists(self):
+        existing_b = _make_tg("b", task_count=2)
+        extension = submit_module._plan_extension([existing_b], [_make_tg("b")])
+        assert extension.new == []
+        assert extension.additions[0].task_group is existing_b
+
+    def test_a_matched_task_group_with_no_task_summary_holds_no_tasks(self):
+        existing = _make_tg("a")
+        existing.taskSummary = None
+        extension = submit_module._plan_extension([existing], [_make_tg("a")])
+        assert extension.additions[0].position.existing_tasks == 0
+
+    def test_a_task_type_the_existing_task_group_does_not_allow_is_refused(self):
+        existing = [_make_tg("a", task_types=["bash"])]
+        spec = [_make_tg("a", task_types=["bash", "docker"])]
+        with pytest.raises(ValueError, match="'docker'"):
+            submit_module._plan_extension(existing, spec)
+
+
 class TestAddToFailure:
     """
     The Work Requirement added to is not cancelled when adding fails, so the

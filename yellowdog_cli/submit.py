@@ -518,17 +518,27 @@ def _create_work_requirement(
     return work_requirement
 
 
-def _extend_work_requirement(
-    run: _Submission,
-    work_requirement: WorkRequirement,
-    existing_tgs: list[TaskGroup],
-    spec_task_groups: list[TaskGroup],
-) -> tuple[WorkRequirement, list[_Addition]]:
+@dataclass
+class _Extension:
     """
-    Append to the Work Requirement being added to the specification's Task
-    Groups it does not have yet, or in a dry run start the snapshot with
-    them, and return it with the Tasks to add: those of the new Task Groups,
-    then those of the ones it had already.
+    How the specification's Task Groups extend a Work Requirement:
+    'task_groups', its Task Groups once the 'new' ones are appended, and the
+    'additions' of Tasks to make, the new Task Groups' first.
+    """
+
+    task_groups: list[TaskGroup]
+    new: list[TaskGroup]
+    additions: list[_Addition]
+
+
+def _plan_extension(
+    existing_tgs: list[TaskGroup], spec_task_groups: list[TaskGroup]
+) -> _Extension:
+    """
+    The specification's Task Groups matched by name to those the Work
+    Requirement already has, which take their Tasks, the rest appended as
+    new; a ValueError if a matched one's Tasks need a task type it does not
+    allow. Decides everything and does nothing, so it needs no client.
     """
     n_existing = len(existing_tgs)
 
@@ -572,48 +582,6 @@ def _extend_work_requirement(
                 " add them under a new Task Group name."
             )
 
-    all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
-
-    if run.ctx.args.dry_run:
-        # Seed the snapshot with every Task Group the Tasks below will attach
-        # to, or the first batch has nothing to attach to. The existing Task
-        # Groups' own Tasks can't be shown: the API's Task Group carries a
-        # summary of them, not the Tasks themselves -- hence the line saying
-        # which of the Task Groups below are already there.
-        work_requirement.taskGroups = all_task_groups
-        run.snapshot.set_work_requirement(work_requirement)
-        if existing_tgs:
-            print_dry_run(
-                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
-                " Task Group(s), shown below without their existing Tasks: "
-                + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
-            )
-        if new_tgs:
-            print_dry_run(
-                f"Would add {len(new_tgs)} new Task Group(s) to existing"
-                f" Work Requirement '{run.name}'"
-            )
-
-    # If there are new TGs, update the Work Requirement with the full TG list
-    elif new_tgs:
-        work_requirement.taskGroups = all_task_groups
-        work_requirement = run.ctx.client.work_client.update_work_requirement(
-            work_requirement
-        )
-        print_info(
-            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{run.name}'"
-        )
-
-    if not run.ctx.args.dry_run:
-        # The Work Requirement added to, as a creator's document names the
-        # one it created
-        record_entity(
-            work_requirement.id,
-            work_requirement.name,
-            run.ctx.config.namespace,  # Where it was looked up
-            ET_WORK_REQUIREMENTS,
-        )
-
     # New TGs take no task offset, numbered by where they were appended;
     # matched (existing) TGs are numbered by their own position, their task
     # numbers following those already there
@@ -634,7 +602,64 @@ def _extend_work_requirement(
                 existing_tg,
             )
         )
-    return work_requirement, additions
+    new = [tg for _, tg in new_tgs]
+    return _Extension(existing_tgs + new, new, additions)
+
+
+def _extend_work_requirement(
+    run: _Submission,
+    work_requirement: WorkRequirement,
+    existing_tgs: list[TaskGroup],
+    spec_task_groups: list[TaskGroup],
+) -> tuple[WorkRequirement, list[_Addition]]:
+    """
+    Append to the Work Requirement being added to the specification's Task
+    Groups it does not have yet, as _plan_extension() decides, or in a dry
+    run start the snapshot with them, and return it with the Tasks to add.
+    """
+    extension = _plan_extension(existing_tgs, spec_task_groups)
+
+    if run.ctx.args.dry_run:
+        # Seed the snapshot with every Task Group the Tasks below will attach
+        # to, or the first batch has nothing to attach to. The existing Task
+        # Groups' own Tasks can't be shown: the API's Task Group carries a
+        # summary of them, not the Tasks themselves -- hence the line saying
+        # which of the Task Groups below are already there.
+        work_requirement.taskGroups = extension.task_groups
+        run.snapshot.set_work_requirement(work_requirement)
+        if existing_tgs:
+            print_dry_run(
+                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
+                " Task Group(s), shown below without their existing Tasks: "
+                + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
+            )
+        if extension.new:
+            print_dry_run(
+                f"Would add {len(extension.new)} new Task Group(s) to existing"
+                f" Work Requirement '{run.name}'"
+            )
+        return work_requirement, extension.additions
+
+    # If there are new TGs, update the Work Requirement with the full TG list
+    if extension.new:
+        work_requirement.taskGroups = extension.task_groups
+        work_requirement = run.ctx.client.work_client.update_work_requirement(
+            work_requirement
+        )
+        print_info(
+            f"Added {len(extension.new)} new Task Group(s) to existing Work"
+            f" Requirement '{run.name}'"
+        )
+
+    # The Work Requirement added to, as a creator's document names the one it
+    # created
+    record_entity(
+        work_requirement.id,
+        work_requirement.name,
+        run.ctx.config.namespace,  # Where it was looked up
+        ET_WORK_REQUIREMENTS,
+    )
+    return work_requirement, extension.additions
 
 
 def _add_tasks(
