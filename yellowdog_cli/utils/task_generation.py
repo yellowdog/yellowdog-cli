@@ -147,8 +147,8 @@ def _generate_task(source: TaskSource, task_number: int) -> Task:
         levels.checked(ADD_YD_ENV_VARS, check_bool, config_wr.add_yd_env_vars) or False
     )
 
-    # Task timeout is automatically inherited from the Task Group level
-    # unless overridden by the Task
+    # The Task's own 'timeout', set on the Task or in the configuration only;
+    # without one, the Platform applies its Task Group's 'taskTimeout'
     task_timeout_minutes = levels.checked(
         TASK_LEVEL_TIMEOUT, check_float_or_int, config_wr.task_level_timeout
     )
