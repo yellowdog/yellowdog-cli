@@ -2,8 +2,7 @@
 Unit tests for yellowdog_cli.utils.load_resources._resequence_resources
 """
 
-from yellowdog_cli.utils.load_resources import _resequence_resources
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.entity_names import (
     RN_CREDENTIAL,
     RN_IMAGE_FAMILY,
     RN_KEYRING,
@@ -11,6 +10,7 @@ from yellowdog_cli.utils.settings import (
     RN_REQUIREMENT_TEMPLATE,
     RN_SOURCE_TEMPLATE,
 )
+from yellowdog_cli.utils.load_resources import _resequence_resources
 
 
 class TestResequenceResources:

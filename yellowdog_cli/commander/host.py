@@ -11,7 +11,7 @@ import sys
 from platform import system as _platform_system
 
 from yellowdog_cli.utils.command_registry import command_module
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 _system = _platform_system()
 MACOS = _system == "Darwin"

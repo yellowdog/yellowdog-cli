@@ -114,7 +114,7 @@ from yellowdog_cli.commander.selection import (
 )
 from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 # The 'yd-' commands that take none of the options Commander adds to the others
 # (the config source, namespace, tag, variables, properties, '--nf', '--pp'),

@@ -59,12 +59,17 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, NotFoundError, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    NotFoundError,
+    classify,
+)
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
-from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR, ExitCode
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
     TYPE_IMGGRP,

@@ -41,10 +41,10 @@ from typing import Any, NamedTuple, NoReturn
 import fastjsonschema
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.spec_properties import (
     ALL_CONFIG_SECTIONS,
     CONFIG_SECTIONS,

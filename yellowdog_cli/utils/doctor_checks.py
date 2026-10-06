@@ -36,7 +36,8 @@ from yellowdog_cli.utils.check_imports import (
     check_jsonnet_import,
     check_mcp_imports,
 )
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_BUCKET,
     DATA_CLIENT_PREFIX,
@@ -50,12 +51,10 @@ from yellowdog_cli.utils.property_names import (
 from yellowdog_cli.utils.rclone_utils import shown_remote
 from yellowdog_cli.utils.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.settings import (
-    ERROR_MARKER,
     PYPI_PROJECT_URL,
     PYTHON_MAX_TESTED_VERSION,
     PYTHON_MIN_VERSION,
     YD_DATA_CLIENT,
-    ExitCode,
 )
 from yellowdog_cli.utils.version_info import sdk_version
 
@@ -599,7 +598,7 @@ def check_config_value(prop: str) -> Callable[[Context], Result]:
 
     def run(ctx: Context) -> Result:
         from yellowdog_cli.utils import load_config
-        from yellowdog_cli.utils.settings import REDACTED_VALUE
+        from yellowdog_cli.utils.output_style import REDACTED_VALUE
 
         value = getattr(ctx.config_common, attribute)
         if value is None:

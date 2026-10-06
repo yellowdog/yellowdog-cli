@@ -20,6 +20,8 @@ from yellowdog_cli.utils.config_types import (
     ConfigWorkerPool,
     ConfigWorkRequirement,
 )
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
 from yellowdog_cli.utils.misc_utils import (
     config_file_explicitly_selected as _config_file_explicitly_selected,
 )
@@ -35,10 +37,8 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
-    CR_MAX_INSTANCES,
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
-    TASK_BATCH_SIZE_DEFAULT,
     YD_DATA_CLIENT,
     YD_DATA_CLIENT_BUCKET,
     YD_DATA_CLIENT_PREFIX,
@@ -51,7 +51,6 @@ from yellowdog_cli.utils.settings import (
     YD_TAG,
     YD_URL,
     YD_URL_ALT,
-    ExitCode,
 )
 from yellowdog_cli.utils.spec_schema import SchemaGenerationError
 from yellowdog_cli.utils.spec_validation import validate_config

@@ -16,7 +16,7 @@ import pytest
 
 import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.misc_utils import BASE36_DIGITS
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.variable_syntax import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
     FORMAT_NAME_TYPE_TAG,
@@ -1691,7 +1691,7 @@ class TestUndefinedVariableWarnings:
         assert self._warnings(enabled) == []
 
     def test_lazy_variables_are_not_reported(self, enabled):
-        from yellowdog_cli.utils.settings import L_TASK_NAME, L_WR_NAME
+        from yellowdog_cli.utils.variable_syntax import L_TASK_NAME, L_WR_NAME
 
         var_module.resolve_variables_insitu(
             {"a": f"{{{{{L_TASK_NAME}}}}}", "b": f"{{{{{L_WR_NAME}}}}}"}

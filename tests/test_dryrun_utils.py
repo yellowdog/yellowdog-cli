@@ -7,8 +7,8 @@ import pytest
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.output_style import DRY_RUN_MARKER
 from yellowdog_cli.utils.results import flush_results, reset_results
-from yellowdog_cli.utils.settings import DRY_RUN_MARKER
 
 
 @pytest.fixture()

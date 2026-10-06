@@ -48,16 +48,13 @@ import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.entity_names import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
 )
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import record_action, reset_results
-from yellowdog_cli.utils.settings import (
-    RN_REQUIREMENT_TEMPLATE,
-    RN_SOURCE_TEMPLATE,
-    ExitCode,
-)
 
 WR_ID_1 = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
 WR_ID_2 = "ydid:workreq:000000:22222222-2222-2222-2222-222222222222"

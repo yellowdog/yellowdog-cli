@@ -16,11 +16,8 @@ import pytest
 
 import yellowdog_cli.utils.variable_substitution as variables_module
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
-from yellowdog_cli.utils.settings import (
-    REDACTED_VALUE,
-    SECRET_VARIABLE_NAME_PATTERN,
-    WARNING_MARKER,
-)
+from yellowdog_cli.utils.output_style import REDACTED_VALUE, WARNING_MARKER
+from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 from yellowdog_cli.variables import report_variables
 
 SUBSTITUTIONS = {

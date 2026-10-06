@@ -15,6 +15,11 @@ from rich.console import Console
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 
 import yellowdog_cli.utils.printing as printing_module
+from yellowdog_cli.utils.output_style import (
+    DEBUG_STYLE,
+    DRY_RUN_MARKER,
+    MAX_TABLE_DESCRIPTION,
+)
 from yellowdog_cli.utils.printing import (
     StatusCount,
     _truncate_text,
@@ -29,11 +34,6 @@ from yellowdog_cli.utils.printing import (
     status_counts_msg,
     task_table,
     work_requirement_table,
-)
-from yellowdog_cli.utils.settings import (
-    DEBUG_STYLE,
-    DRY_RUN_MARKER,
-    MAX_TABLE_DESCRIPTION,
 )
 
 # ---------------------------------------------------------------------------

@@ -16,12 +16,12 @@ from typing import Any
 
 from yellowdog_client.model import Allowance
 
+from yellowdog_cli.utils.entity_names import ET_ALLOWANCES
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import ET_ALLOWANCES
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 
 

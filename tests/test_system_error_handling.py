@@ -24,7 +24,8 @@ Run with: pytest --run-system tests/test_system_error_handling.py
 import pytest
 from cli_test_helpers import shell
 
-from yellowdog_cli.utils.settings import ERROR_MARKER, ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.ydid_utils import TYPE_KEYRING, YDID
 
 

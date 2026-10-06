@@ -6,17 +6,7 @@ from os.path import abspath, dirname
 from sys import exit
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.printing import print_info, print_warning
-from yellowdog_cli.utils.settings import (
-    NAMESPACE_PREFIX_SEPARATOR,
-    PROP_CREDENTIAL,
-    PROP_DESCRIPTION,
-    PROP_ID,
-    PROP_NAME,
-    PROP_NAMESPACE,
-    PROP_RESOURCE,
-    PROP_SOURCE,
-    PROP_USERNAME,
+from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -33,6 +23,18 @@ from yellowdog_cli.utils.settings import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
+from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.property_names import (
+    PROP_CREDENTIAL,
+    PROP_DESCRIPTION,
+    PROP_ID,
+    PROP_NAME,
+    PROP_NAMESPACE,
+    PROP_RESOURCE,
+    PROP_SOURCE,
+    PROP_USERNAME,
+)
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import (
     strip_schema_key,

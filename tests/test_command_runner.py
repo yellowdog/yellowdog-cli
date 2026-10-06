@@ -16,8 +16,8 @@ from requests import HTTPError, Response
 
 import yellowdog_cli.utils.command_runner as runner_module
 import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import rows_as_objects
-from yellowdog_cli.utils.settings import ExitCode
 
 
 def _http_error(status: int) -> HTTPError:

@@ -21,9 +21,14 @@ from requests import HTTPError, Response
 
 import yellowdog_cli.utils.resource_creation as yd_create
 from yellowdog_cli.utils import entity_utils, resource_processing
-from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    ExitCode,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt
-from yellowdog_cli.utils.settings import RAW_REQUEST_TIMEOUT, ExitCode
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 
 def _http_error(status: int, text: str = "error") -> HTTPError:

@@ -18,7 +18,7 @@ from yellowdog_client.model import ApplicationDetails, Feature
 
 import yellowdog_cli.application as application_module
 from yellowdog_cli.application import _portal_url, report_application
-from yellowdog_cli.utils.settings import ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode
 
 API_URL = "https://api.yellowdog.ai"
 NON_API_URL = "https://yd.example.com/api"

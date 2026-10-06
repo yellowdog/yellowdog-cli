@@ -25,7 +25,15 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.args import ARGS_PARSER
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.limits import (
+    EVENT_STREAM_CONNECT_TIMEOUT,
+    EVENT_STREAM_MAX_OUTAGE,
+    EVENT_STREAM_MAX_RETRY_INTERVAL,
+    EVENT_STREAM_READ_TIMEOUT,
+    EVENT_STREAM_RECONNECT_DELAY,
+    EVENT_STREAM_RETRY_INTERVAL,
+)
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     CONSOLE,
@@ -33,15 +41,6 @@ from yellowdog_cli.utils.printing import (
     print_event,
     print_info,
     print_warning,
-)
-from yellowdog_cli.utils.settings import (
-    EVENT_STREAM_CONNECT_TIMEOUT,
-    EVENT_STREAM_MAX_OUTAGE,
-    EVENT_STREAM_MAX_RETRY_INTERVAL,
-    EVENT_STREAM_READ_TIMEOUT,
-    EVENT_STREAM_RECONNECT_DELAY,
-    EVENT_STREAM_RETRY_INTERVAL,
-    ExitCode,
 )
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type

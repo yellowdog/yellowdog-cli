@@ -29,11 +29,11 @@ from yellowdog_client.model import (
 import yellowdog_cli.nodeaction as na_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.exit_codes import (
+    ExitCode,
     NotFoundError,
     ReportedFailure,
     classify,
 )
-from yellowdog_cli.utils.settings import ExitCode
 
 WP_A = "ydid:wrkrpool:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 WP_B = "ydid:wrkrpool:000000:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

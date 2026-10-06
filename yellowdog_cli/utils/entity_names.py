@@ -1,0 +1,51 @@
+"""
+Resource type names (a resource specification's 'resource', and the
+resource types yd-create and yd-remove report) and entity type names (the
+CLI's arguments for yd-list and the action commands).
+"""
+
+# Resource type names for create/remove
+RESOURCE_PROPERTY_NAME = "resource"
+RN_ADD_APPLICATION_REQUEST = "AddApplicationRequest"
+RN_ALLOWANCE = "Allowance"
+RN_APPLICATION = "Application"
+RN_CONFIGURED_POOL = "ConfiguredWorkerPool"
+RN_CREDENTIAL = "Credential"
+RN_EXTERNAL_USER = "ExternalUser"
+RN_GROUP = "Group"
+RN_IMAGE = "MachineImage"  # Not a specification resource; reported by yd-create
+RN_IMAGE_FAMILY = "MachineImageFamily"
+RN_IMAGE_GROUP = "MachineImageGroup"  # Likewise
+RN_INTERNAL_USER = "InternalUser"
+RN_KEYRING = "Keyring"
+RN_NAMESPACE = "Namespace"
+RN_NAMESPACE_POLICY = "NamespacePolicy"
+RN_NUMERIC_ATTRIBUTE_DEFINITION = "NumericAttributeDefinition"
+RN_REQUIREMENT_TEMPLATE = "ComputeRequirementTemplate"
+RN_ROLE = "Role"
+RN_SOURCE_TEMPLATE = "ComputeSourceTemplate"
+RN_STRING_ATTRIBUTE_DEFINITION = "StringAttributeDefinition"
+RN_UPDATE_APPLICATION_REQUEST = "UpdateApplicationRequest"
+
+# Entity type names (used as CLI arguments and for dispatch)
+ET_ALLOWANCES = "allowances"
+ET_APPLICATIONS = "applications"
+ET_ATTRIBUTE_DEFINITIONS = "attribute-definitions"
+ET_COMPUTE_REQUIREMENT_TEMPLATES = "compute-requirement-templates"
+ET_COMPUTE_REQUIREMENTS = "compute-requirements"
+ET_COMPUTE_SOURCE_TEMPLATES = "compute-source-templates"
+ET_GROUPS = "groups"
+ET_IMAGE_FAMILIES = "image-families"
+ET_INSTANCES = "instances"
+ET_KEYRINGS = "keyrings"
+ET_NAMESPACE_POLICIES = "namespace-policies"
+ET_NAMESPACES = "namespaces"
+ET_NODES = "nodes"
+ET_PERMISSIONS = "permissions"
+ET_ROLES = "roles"
+ET_TASK_GROUPS = "task-groups"
+ET_TASKS = "tasks"
+ET_USERS = "users"
+ET_WORK_REQUIREMENTS = "work-requirements"
+ET_WORKER_POOLS = "worker-pools"
+ET_WORKERS = "workers"

@@ -20,7 +20,10 @@ from yellowdog_cli.utils.property_names import (
     TASK_TAG,
     TASKS,
 )
-from yellowdog_cli.utils.settings import VAR_CLOSING_DELIMITER, VAR_OPENING_DELIMITER
+from yellowdog_cli.utils.variable_syntax import (
+    VAR_CLOSING_DELIMITER,
+    VAR_OPENING_DELIMITER,
+)
 
 # Convenience aliases for lazy-substitution placeholder tokens
 _TN = f"{VAR_OPENING_DELIMITER}{su.L_TASK_NUMBER}{VAR_CLOSING_DELIMITER}"

@@ -47,6 +47,40 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.entity_names import (
+    ET_ALLOWANCES,
+    ET_APPLICATIONS,
+    ET_ATTRIBUTE_DEFINITIONS,
+    ET_COMPUTE_REQUIREMENT_TEMPLATES,
+    ET_COMPUTE_REQUIREMENTS,
+    ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_GROUPS,
+    ET_IMAGE_FAMILIES,
+    ET_INSTANCES,
+    ET_KEYRINGS,
+    ET_NAMESPACE_POLICIES,
+    ET_NAMESPACES,
+    ET_NODES,
+    ET_PERMISSIONS,
+    ET_ROLES,
+    ET_TASK_GROUPS,
+    ET_TASKS,
+    ET_USERS,
+    ET_WORK_REQUIREMENTS,
+    ET_WORKER_POOLS,
+    ET_WORKERS,
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_GROUP,
+    RN_IMAGE_FAMILY,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_ROLE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+)
 from yellowdog_cli.utils.entity_utils import (
     filter_summaries_by_name_glob,
     get_all_applications,
@@ -70,6 +104,7 @@ from yellowdog_cli.utils.entity_utils import (
 )
 from yellowdog_cli.utils.glob_utils import glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.printing import (
     print_info,
     print_json,
@@ -80,43 +115,7 @@ from yellowdog_cli.utils.printing import (
     print_yd_object_list,
     sorted_objects,
 )
-from yellowdog_cli.utils.settings import (
-    ET_ALLOWANCES,
-    ET_APPLICATIONS,
-    ET_ATTRIBUTE_DEFINITIONS,
-    ET_COMPUTE_REQUIREMENT_TEMPLATES,
-    ET_COMPUTE_REQUIREMENTS,
-    ET_COMPUTE_SOURCE_TEMPLATES,
-    ET_GROUPS,
-    ET_IMAGE_FAMILIES,
-    ET_INSTANCES,
-    ET_KEYRINGS,
-    ET_NAMESPACE_POLICIES,
-    ET_NAMESPACES,
-    ET_NODES,
-    ET_PERMISSIONS,
-    ET_ROLES,
-    ET_TASK_GROUPS,
-    ET_TASKS,
-    ET_USERS,
-    ET_WORK_REQUIREMENTS,
-    ET_WORKER_POOLS,
-    ET_WORKERS,
-    PROP_GROUPS,
-    PROP_RESOURCE,
-    RAW_REQUEST_TIMEOUT,
-    RN_ALLOWANCE,
-    RN_APPLICATION,
-    RN_GROUP,
-    RN_IMAGE_FAMILY,
-    RN_KEYRING,
-    RN_NAMESPACE,
-    RN_NUMERIC_ATTRIBUTE_DEFINITION,
-    RN_REQUIREMENT_TEMPLATE,
-    RN_ROLE,
-    RN_SOURCE_TEMPLATE,
-    RN_STRING_ATTRIBUTE_DEFINITION,
-)
+from yellowdog_cli.utils.property_names import PROP_GROUPS, PROP_RESOURCE
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 
 

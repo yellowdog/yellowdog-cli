@@ -19,13 +19,12 @@ from yellowdog_client.model.exceptions.not_authorised_exception import (
 
 import yellowdog_cli.submit as submit_module
 from yellowdog_cli.utils.args import CLIParser
-from yellowdog_cli.utils.exit_codes import classify
-from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
     MAX_BATCH_SUBMIT_ATTEMPTS,
-    ExitCode,
 )
+from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
 
 # ---------------------------------------------------------------------------
 # Helpers

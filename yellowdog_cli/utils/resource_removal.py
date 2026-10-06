@@ -14,43 +14,7 @@ from requests import Response, delete
 from requests.exceptions import HTTPError
 from yellowdog_client.model import MachineImageFamily
 
-from yellowdog_cli.utils.entity_utils import (
-    clear_application_caches,
-    clear_compute_requirement_template_cache,
-    clear_compute_source_template_cache,
-    clear_group_caches,
-    clear_image_caches,
-    clear_keyring_cache,
-    get_application_id_by_name,
-    get_compute_requirement_template_id_by_name,
-    get_compute_source_template_id_by_name,
-    get_group_id_by_name,
-    get_keyring_summary_by_name,
-    get_namespace_id_by_name,
-    get_worker_pool_summaries,
-    remove_allowances_matching_description,
-)
-from yellowdog_cli.utils.exit_codes import NotFoundError
-from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.resource_processing import (
-    missing_property,
-    process_each,
-    process_resources,
-)
-from yellowdog_cli.utils.results import record_resource
-from yellowdog_cli.utils.settings import (
-    NAMESPACE_PREFIX_SEPARATOR,
-    PROP_CREDENTIAL,
-    PROP_DESCRIPTION,
-    PROP_ID,
-    PROP_KEYRING_NAME,
-    PROP_NAME,
-    PROP_NAMESPACE,
-    PROP_SOURCE,
-    PROP_USERNAME,
-    RAW_REQUEST_TIMEOUT,
+from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -69,6 +33,44 @@ from yellowdog_cli.utils.settings import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
+from yellowdog_cli.utils.entity_utils import (
+    clear_application_caches,
+    clear_compute_requirement_template_cache,
+    clear_compute_source_template_cache,
+    clear_group_caches,
+    clear_image_caches,
+    clear_keyring_cache,
+    get_application_id_by_name,
+    get_compute_requirement_template_id_by_name,
+    get_compute_source_template_id_by_name,
+    get_group_id_by_name,
+    get_keyring_summary_by_name,
+    get_namespace_id_by_name,
+    get_worker_pool_summaries,
+    remove_allowances_matching_description,
+)
+from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.interactive import confirmed
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
+from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.property_names import (
+    PROP_CREDENTIAL,
+    PROP_DESCRIPTION,
+    PROP_ID,
+    PROP_KEYRING_NAME,
+    PROP_NAME,
+    PROP_NAMESPACE,
+    PROP_SOURCE,
+    PROP_USERNAME,
+)
+from yellowdog_cli.utils.resource_processing import (
+    missing_property,
+    process_each,
+    process_resources,
+)
+from yellowdog_cli.utils.results import record_resource
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType, get_ydid_type
 

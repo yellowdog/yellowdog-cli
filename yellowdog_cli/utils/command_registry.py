@@ -26,11 +26,7 @@ from importlib.metadata import entry_points
 from importlib.util import find_spec
 from typing import Any
 
-from yellowdog_cli.utils.glob_utils import contains_glob_chars
-from yellowdog_cli.utils.settings import (
-    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
-    DEFAULT_URL,
-    DOCTOR_DEFAULT_TIMEOUT,
+from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_APPLICATIONS,
     ET_ATTRIBUTE_DEFINITIONS,
@@ -52,9 +48,14 @@ from yellowdog_cli.utils.settings import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
-    SCHEMA_FAMILIES,
-    SECRET_VARIABLE_NAME_PATTERN,
 )
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
+from yellowdog_cli.utils.limits import (
+    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
+    DOCTOR_DEFAULT_TIMEOUT,
+)
+from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
+from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
 Validator = Callable[[Namespace, ArgumentParser], None]
 
@@ -1205,7 +1206,7 @@ def check_allowance_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-boost's Allowance IDs, before anything is fetched or boosted. The
     YDID parser is imported here, so this module still imports nothing at
-    load beyond settings.py and glob_utils.py.
+    load beyond the constants modules and glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -1393,7 +1394,7 @@ def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
     yd-compare's positional IDs, by type, before anything is fetched: a Work
     Requirement or Task Group ID, then Worker Pool IDs. The YDID parser is
     imported here, so this module still imports nothing at load beyond
-    settings.py and glob_utils.py.
+    the constants modules and glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -2355,7 +2356,7 @@ def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
     which takes neither it nor --validate; node and Worker Pool IDs of the
     right kind; and --timeout only with --follow. The YDID parser is
     imported here, so this module still imports nothing at load beyond
-    settings.py and glob_utils.py.
+    the constants modules and glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -2895,7 +2896,7 @@ def check_variable_names(args: Namespace, parser: ArgumentParser) -> None:
     """
     import re
 
-    from yellowdog_cli.utils.settings import VARIABLE_NAME_PATTERN
+    from yellowdog_cli.utils.variable_syntax import VARIABLE_NAME_PATTERN
 
     for name in args.variable_names:
         if not re.fullmatch(VARIABLE_NAME_PATTERN, name):

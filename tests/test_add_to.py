@@ -14,7 +14,10 @@ import yellowdog_cli.utils.submit_utils as su
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
-from yellowdog_cli.utils.settings import VAR_CLOSING_DELIMITER, VAR_OPENING_DELIMITER
+from yellowdog_cli.utils.variable_syntax import (
+    VAR_CLOSING_DELIMITER,
+    VAR_OPENING_DELIMITER,
+)
 
 # Lazy-sub placeholder shortcuts
 _TN = f"{VAR_OPENING_DELIMITER}{su.L_TASK_NUMBER}{VAR_CLOSING_DELIMITER}"

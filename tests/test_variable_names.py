@@ -2,14 +2,15 @@
 The rule for variable names, and where it is enforced.
 
 A variable name starts with a letter, digit or '_', and continues with
-letters, digits, '_', '.' and '-' (VARIABLE_NAME_PATTERN in settings.py). A
-name that breaks the rule is an error wherever a variable is defined -- '-v',
-'YD_VAR_*' environment variables, '[common.variables]' and '--property
-common.variables.<name>' -- and the same rule decides what a '{{...}}'
-expression refers to: one whose name breaks it is text, never a variable, so
-the undefined-variable warning and the circular-reference check cover every
-reference there is. An 'env:' name belongs to the operating system, and may be
-anything but whitespace and the substitution syntax.
+letters, digits, '_', '.' and '-' (VARIABLE_NAME_PATTERN in
+variable_syntax.py). A name that breaks the rule is an error wherever a
+variable is defined -- '-v', 'YD_VAR_*' environment variables,
+'[common.variables]' and '--property common.variables.<name>' -- and the
+same rule decides what a '{{...}}' expression refers to: one whose name
+breaks it is text, never a variable, so the undefined-variable warning and
+the circular-reference check cover every reference there is. An 'env:' name
+belongs to the operating system, and may be anything but whitespace and the
+substitution syntax.
 
 The variables the CLI defines from its own configuration -- 'namespace', 'tag',
 'key', 'secret' and 'url' (RESERVED_VARIABLE_NAMES) -- are an error at those
@@ -25,7 +26,8 @@ from unittest.mock import MagicMock
 import pytest
 
 import yellowdog_cli.utils.variable_substitution as var_module
-from yellowdog_cli.utils.settings import RESERVED_VARIABLE_NAMES, ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.variable_syntax import RESERVED_VARIABLE_NAMES
 
 VALID = ["a", "A1", "_x", "9lives", "42", "my-var", "dataClient.1.remote", "a.b-c_d"]
 INVALID = ["", "my var", ".ID", "-x", "a:b", "num:x", "a}}b", "a=b", "a{b", "é"]

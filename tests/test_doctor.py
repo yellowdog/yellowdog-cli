@@ -21,7 +21,8 @@ except ImportError:  # Python 3.10
 
 from yellowdog_cli import doctor
 from yellowdog_cli.utils import doctor_checks as dc
-from yellowdog_cli.utils.settings import DOCTOR_DEFAULT_TIMEOUT, PYTHON_MIN_VERSION
+from yellowdog_cli.utils.limits import DOCTOR_DEFAULT_TIMEOUT
+from yellowdog_cli.utils.settings import PYTHON_MIN_VERSION
 from yellowdog_cli.utils.variable_substitution import undefined_variable_references
 
 

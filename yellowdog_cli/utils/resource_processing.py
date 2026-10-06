@@ -16,8 +16,8 @@ from yellowdog_cli.utils.load_resources import (
     resource_display_name,
 )
 from yellowdog_cli.utils.printing import print_error
+from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.results import record_resource
-from yellowdog_cli.utils.settings import PROP_RESOURCE
 
 Item = TypeVar("Item")
 

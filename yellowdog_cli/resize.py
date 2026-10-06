@@ -23,6 +23,7 @@ from yellowdog_client.model import (
     WorkerPool,
 )
 
+from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     find_compute_requirement_by_name,
@@ -39,7 +40,6 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 

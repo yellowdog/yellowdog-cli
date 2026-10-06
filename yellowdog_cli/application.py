@@ -16,10 +16,9 @@ from yellowdog_cli.utils.entity_utils import (
     get_application_details,
     get_application_group_summaries,
 )
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.misc_utils import portal_base_url
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import (
     ARGS_PARSER,
     CLIENT,

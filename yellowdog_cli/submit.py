@@ -45,6 +45,7 @@ from yellowdog_cli.utils.csv_data import (
     load_jsonnet_file_with_csv_task_expansion,
     load_toml_file_with_csv_task_expansion,
 )
+from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     find_work_requirement_by_name,
@@ -58,6 +59,12 @@ from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
     work_requirement_failed,
+)
+from yellowdog_cli.utils.limits import (
+    BATCH_SUBMIT_RETRY_DELAY,
+    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
+    MAX_BATCH_SUBMIT_ATTEMPTS,
+    RAW_REQUEST_TIMEOUT,
 )
 from yellowdog_cli.utils.load_config import (
     CONFIG_FILE_DIR,
@@ -129,21 +136,6 @@ from yellowdog_cli.utils.property_names import (
 )
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.results import record_document, record_entity
-from yellowdog_cli.utils.settings import (
-    BATCH_SUBMIT_RETRY_DELAY,
-    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
-    ET_WORK_REQUIREMENTS,
-    L_TASK_COUNT,
-    L_TASK_GROUP_COUNT,
-    L_TASK_GROUP_NAME,
-    L_TASK_GROUP_NUMBER,
-    L_TASK_NAME,
-    L_TASK_NUMBER,
-    L_WR_NAME,
-    MAX_BATCH_SUBMIT_ATTEMPTS,
-    RAW_REQUEST_TIMEOUT,
-    VAR_NAME_OF_UNNAMED_TASK,
-)
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.submit_utils import (
@@ -181,6 +173,16 @@ from yellowdog_cli.utils.variable_substitution import (
     load_jsonnet_file_with_variable_substitutions,
     load_toml_file_with_variable_substitutions,
     resolve_variables_insitu,
+)
+from yellowdog_cli.utils.variable_syntax import (
+    L_TASK_COUNT,
+    L_TASK_GROUP_COUNT,
+    L_TASK_GROUP_NAME,
+    L_TASK_GROUP_NUMBER,
+    L_TASK_NAME,
+    L_TASK_NUMBER,
+    L_WR_NAME,
+    VAR_NAME_OF_UNNAMED_TASK,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type

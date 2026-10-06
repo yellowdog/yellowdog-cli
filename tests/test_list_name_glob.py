@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.entity_names import (
     ET_APPLICATIONS,
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,

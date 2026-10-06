@@ -10,24 +10,7 @@ from typing import Any
 
 from yellowdog_client.model import ConfiguredWorkerPool
 
-from yellowdog_cli.utils.entity_utils import (
-    get_application_group_summaries,
-    get_instance_by_id,
-    substitute_id_for_name_in_allowance,
-    substitute_ids_for_names_in_crt,
-    substitute_image_family_id_for_name_in_cst,
-)
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
-from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import (
-    print_error,
-    print_info,
-    print_to_file,
-    print_warning,
-    print_yd_object,
-)
-from yellowdog_cli.utils.settings import (
-    PROP_GROUPS,
+from yellowdog_cli.utils.entity_names import (
     RESOURCE_PROPERTY_NAME,
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -38,8 +21,29 @@ from yellowdog_cli.utils.settings import (
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
-    ExitCode,
 )
+from yellowdog_cli.utils.entity_utils import (
+    get_application_group_summaries,
+    get_instance_by_id,
+    substitute_id_for_name_in_allowance,
+    substitute_ids_for_names_in_crt,
+    substitute_image_family_id_for_name_in_cst,
+)
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
+from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.printing import (
+    print_error,
+    print_info,
+    print_to_file,
+    print_warning,
+    print_yd_object,
+)
+from yellowdog_cli.utils.property_names import PROP_GROUPS
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,

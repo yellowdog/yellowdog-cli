@@ -1,15 +1,54 @@
 """
 Map an exception reaching a command wrapper to the process exit code, so a
 script can tell an authentication failure from a missing entity from an
-unreachable platform. The codes are ExitCode's, in settings.py.
+unreachable platform. The codes are ExitCode's.
 """
 
 from __future__ import annotations
 
 import sys
+from enum import IntEnum
 from typing import TYPE_CHECKING
 
-from yellowdog_cli.utils.settings import ExitCode
+
+class ExitCode(IntEnum):
+    """
+    The process exit codes, so a script can tell kinds of failure apart.
+
+    | Code | Name           | When                                               |
+    |------|----------------|----------------------------------------------------|
+    | 0    | SUCCESS        |                                                    |
+    | 1    | FAILURE        | the operation, the work (yd-wait, yd-submit -E),   |
+    |      |                | or a check (yd-doctor) failed                      |
+    | 2    | USAGE          | argparse's own                                     |
+    | 3    | CONFIGURATION  | missing configuration data, unreadable or invalid  |
+    |      |                | TOML, a variable error at load, a missing --config |
+    | 4    | AUTHENTICATION | HTTP 401, NotAuthorisedException, 'Unauthorized'   |
+    | 5    | PERMISSION     | HTTP 403, 'MissingPermissionException'             |
+    | 6    | NOT_FOUND      | HTTP 404 reaching the wrapper, or NotFoundError    |
+    | 7    | PLATFORM       | HTTP 5xx, InternalServerException,                 |
+    |      |                | ServerErrorException                               |
+    | 8    | CONNECTION     | requests connection errors and timeouts            |
+    | 130  | INTERRUPTED    | keyboard interrupt                                 |
+
+    What reaches a command wrapper is mapped by exit_codes.classify();
+    commands that catch a failure themselves exit FAILURE. So does any
+    command whose recorded results include a 'failed' outcome/action, even
+    where main() itself returns normally (results.any_failed(), checked by
+    both wrappers straight after a successful run).
+    """
+
+    SUCCESS = 0
+    FAILURE = 1
+    USAGE = 2
+    CONFIGURATION = 3
+    AUTHENTICATION = 4
+    PERMISSION = 5
+    NOT_FOUND = 6
+    PLATFORM = 7
+    CONNECTION = 8
+    INTERRUPTED = 130
+
 
 # The message text the wrappers recognise for their friendly messages; the
 # last resort, after every typed check

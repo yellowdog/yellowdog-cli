@@ -21,11 +21,11 @@ from yellowdog_cli.utils.dataclient_utils import (
     split_glob_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_config import load_config_data_client
 from yellowdog_cli.utils.printing import print_dry_run, print_error, print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
-from yellowdog_cli.utils.settings import ExitCode
 
 CONFIG_DATA_CLIENT: ConfigDataClient = load_config_data_client()
 

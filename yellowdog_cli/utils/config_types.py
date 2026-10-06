@@ -4,7 +4,7 @@ Configuration classes.
 
 from dataclasses import dataclass, field
 
-from yellowdog_cli.utils.settings import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
+from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
 
 
 @dataclass

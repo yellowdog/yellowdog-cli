@@ -16,11 +16,14 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
-from yellowdog_cli.utils.settings import WP_VARIABLES_POSTFIX, WP_VARIABLES_PREFIX
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions_in_file_contents,
     warn_of_undefined_variables,
+)
+from yellowdog_cli.utils.variable_syntax import (
+    WP_VARIABLES_POSTFIX,
+    WP_VARIABLES_PREFIX,
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 

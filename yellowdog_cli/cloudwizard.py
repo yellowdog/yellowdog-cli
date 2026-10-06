@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.check_imports import check_cloudwizard_imports
 from yellowdog_cli.utils.command_registry import cloud_provider_of
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.printing import print_error, print_info
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 
 if TYPE_CHECKING:

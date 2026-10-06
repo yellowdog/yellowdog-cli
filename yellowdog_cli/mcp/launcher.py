@@ -11,7 +11,7 @@ import sys
 
 from yellowdog_cli.mcp.tools import ServerSettings
 from yellowdog_cli.utils.check_imports import check_mcp_imports
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.variable_syntax import (
     RESERVED_VARIABLE_NAMES,
     VARIABLE_NAME_PATTERN,
     VARIABLE_NAME_RULE,

@@ -1,9 +1,10 @@
 """
-String and numeric constants, etc.
+Configuration and environment constants: the default URL, the YD_*
+environment variable names, name prefixes and separators, supported Python
+versions, and the schema families. Other constants live by concern:
+exit_codes.py (ExitCode), limits.py, variable_syntax.py, output_style.py,
+entity_names.py and property_names.py (the PROP_* names).
 """
-
-import re
-from enum import IntEnum
 
 DEFAULT_URL = "https://api.yellowdog.ai"
 
@@ -11,46 +12,7 @@ DEFAULT_URL = "https://api.yellowdog.ai"
 # source, by each of load_config.py's section loaders.
 MISSING_CONFIG_DATA = "Missing configuration data"
 
-
-class ExitCode(IntEnum):
-    """
-    The process exit codes, so a script can tell kinds of failure apart.
-
-    | Code | Name           | When                                               |
-    |------|----------------|----------------------------------------------------|
-    | 0    | SUCCESS        |                                                    |
-    | 1    | FAILURE        | the operation, the work (yd-wait, yd-submit -E),   |
-    |      |                | or a check (yd-doctor) failed                      |
-    | 2    | USAGE          | argparse's own                                     |
-    | 3    | CONFIGURATION  | missing configuration data, unreadable or invalid  |
-    |      |                | TOML, a variable error at load, a missing --config |
-    | 4    | AUTHENTICATION | HTTP 401, NotAuthorisedException, 'Unauthorized'   |
-    | 5    | PERMISSION     | HTTP 403, 'MissingPermissionException'             |
-    | 6    | NOT_FOUND      | HTTP 404 reaching the wrapper, or NotFoundError    |
-    | 7    | PLATFORM       | HTTP 5xx, InternalServerException,                 |
-    |      |                | ServerErrorException                               |
-    | 8    | CONNECTION     | requests connection errors and timeouts            |
-    | 130  | INTERRUPTED    | keyboard interrupt                                 |
-
-    What reaches a command wrapper is mapped by exit_codes.classify();
-    commands that catch a failure themselves exit FAILURE. So does any
-    command whose recorded results include a 'failed' outcome/action, even
-    where main() itself returns normally (results.any_failed(), checked by
-    both wrappers straight after a successful run).
-    """
-
-    SUCCESS = 0
-    FAILURE = 1
-    USAGE = 2
-    CONFIGURATION = 3
-    AUTHENTICATION = 4
-    PERMISSION = 5
-    NOT_FOUND = 6
-    PLATFORM = 7
-    CONNECTION = 8
-    INTERRUPTED = 130
-
-
+# Environment variables
 YD_KEY = "YD_KEY"
 YD_SECRET = "YD_SECRET"
 YD_NAMESPACE = "YD_NAMESPACE"
@@ -60,57 +22,15 @@ YD_DATA_CLIENT = "YD_DATA_CLIENT"
 YD_DATA_CLIENT_BUCKET = "YD_DATA_CLIENT_BUCKET"
 YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
-
 YD_ENV_VAR_PREFIX = "YD_VAR_"
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
-ENV_VAR_SUB_PREFIX = "env:"
-
-# The most rclone listings a data client command runs at once: a wildcard
-# download lists each matched directory's files to record them under '--json'
-# or to flatten them, and these run concurrently
-DATA_CLIENT_LISTING_WORKERS = 8
-
-# The MCP server (yellowdog_cli/mcp/): its name to clients, and the default
-# bound on a tool call, since a client gives up on one after a fixed time;
-# yd_follow's is shorter, its result being the events collected in that time
-MCP_SERVER_NAME = "yellowdog-cli"
-MCP_TOOL_TIMEOUT_SECONDS = 300
-MCP_FOLLOW_TIMEOUT_SECONDS = 60
-
-# Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
-RAND_VAR_DIGITS = 3
-RAND_VAR_6_DIGITS = 6
-
 # Alternative env.var names
 YD_KEY_ALT = "YD_API_KEY_ID"
 YD_SECRET_ALT = "YD_API_KEY_SECRET"
 YD_URL_ALT = "YD_API_URL"
 
-TASK_BATCH_SIZE_DEFAULT = 1_000
-DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS = 1
-MAX_BATCH_SUBMIT_ATTEMPTS = 4  # Initial attempt plus retries
-BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for each
-# (connect, read) for the CLI's direct Platform requests ('--json-raw', and
-# yd-provision's and yd-instantiate's raw paths): the read allows for a large
-# Task batch, while a silently dropped connection no longer hangs forever
-RAW_REQUEST_TIMEOUT = (10.0, 300.0)  # Seconds
-
-CR_MAX_INSTANCES = (
-    10_000  # This is enforced by the platform (MAX_WORKER_POOL_NODE_COUNT)
-)
-
-# Reconnecting a dropped event stream: the first wait, doubling to the most,
-# for at most an outage this long before giving up
-EVENT_STREAM_RETRY_INTERVAL = 5.0  # Seconds
-EVENT_STREAM_MAX_RETRY_INTERVAL = 30.0  # Seconds
-EVENT_STREAM_MAX_OUTAGE = 300.0  # Seconds
-# The wait before reconnecting a stream closed while its entity is still live
-EVENT_STREAM_RECONNECT_DELAY = 1.0  # Seconds
-EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
-# Generous read timeout: a silently dropped connection must not block the
-# event stream forever; a timeout during a quiet period just reconnects
-EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
-NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+# The MCP server's name to its clients (yellowdog_cli/mcp/)
+MCP_SERVER_NAME = "yellowdog-cli"
 
 # yd-doctor
 PYTHON_MIN_VERSION = (
@@ -118,110 +38,15 @@ PYTHON_MIN_VERSION = (
     10,
 )  # must match pyproject.toml's requires-python; a test holds them together
 PYTHON_MAX_TESTED_VERSION = (3, 14)
-DOCTOR_DEFAULT_TIMEOUT = 10  # seconds, per network call
 PYPI_PROJECT_URL = "https://pypi.org/pypi/yellowdog-cli/json"
 
 # Prepended by format_yd_name() to a name that doesn't start with a letter.
 # The underscore is what makes the prefix visible as a prefix: bare 'yd' merges
 # into the name it is fixing, so 'yd2024-run' reads as a name the user chose.
 NAME_START_PREFIX = "yd_"
-
 NAMESPACE_PREFIX_SEPARATOR = "/"
-WP_VARIABLES_PREFIX = "__"
-WP_VARIABLES_POSTFIX = "__"
-CSV_VAR_OPENING_DELIMITER = "<<"
-CSV_VAR_CLOSING_DELIMITER = ">>"
-VAR_OPENING_DELIMITER = "{{"
-VAR_CLOSING_DELIMITER = "}}"
-VAR_DEFAULT_SEPARATOR = ":="
-VAR_UNSET_SUFFIX = "::"
-# A variable name: a letter, digit or '_', then letters, digits, '_', '.' and
-# '-'. Enforced wherever a variable is defined, and what decides whether a
-# '{{...}}' expression refers to a variable at all: one that breaks it (Docker's
-# '{{.ID}}', Go's '{{- .Values }}') is text. '.' and '-' may not come first for
-# that reason. The rule rules out the substitution syntax ('}}', ':=', '::', a
-# type tag's ':') by construction.
-VARIABLE_NAME_PATTERN = r"[A-Za-z0-9_][A-Za-z0-9_.-]*"
-VARIABLE_NAME_RULE = (
-    "a name must start with a letter, digit or '_', and contain only letters,"
-    " digits, '_', '.' and '-'"
-)
-# Variables the CLI defines itself from its configuration ('[common]', the
-# YD_* environment variables, the options), mapped to where each is set. They
-# are not user variables: defined as one, only '{{name}}' would change, not the
-# namespace, tag or credentials the command acts on -- and one unset with
-# '{{::}}' would simply be defined again from the configuration -- so each is an
-# error wherever a user variable is defined
-RESERVED_VARIABLE_NAMES = {
-    "namespace": "'namespace' in '[common]', 'YD_NAMESPACE' or '--namespace'",
-    "tag": "'tag' in '[common]', 'YD_TAG' or '--tag'",
-    "key": "'key' in '[common]', 'YD_KEY' or '--key'",
-    "secret": "'secret' in '[common]', 'YD_SECRET' or '--secret'",
-    "url": "'url' in '[common]', 'YD_URL' or '--url'",
-}
-# An 'env:' name belongs to the operating system rather than to us (Windows has
-# 'ProgramFiles(x86)'), so it may hold anything but whitespace and the syntax
-ENV_VARIABLE_NAME_PATTERN = r"[^\s{}:=]+"
-
-# Lazy variable substitution names (used in submit/task naming)
-L_WR_NAME = "wr_name"
-L_TASK_NAME = "task_name"
-L_TASK_NUMBER = "task_number"
-L_TASK_GROUP_NAME = "task_group_name"
-L_TASK_GROUP_NUMBER = "task_group_number"
-L_TASK_COUNT = "task_count"
-L_TASK_GROUP_COUNT = "task_group_count"
-LAZY_VARIABLE_NAMES = (
-    L_WR_NAME,
-    L_TASK_NAME,
-    L_TASK_NUMBER,
-    L_TASK_GROUP_NAME,
-    L_TASK_GROUP_NUMBER,
-    L_TASK_COUNT,
-    L_TASK_GROUP_COUNT,
-)
-
-TYPE_TAG_TERMINATOR = ":"
-# The character(s) of VAR_DEFAULT_SEPARATOR that follow TYPE_TAG_TERMINATOR.
-# Used as a negative lookahead in the type-tag regex: after matching e.g. 'num:',
-# if this follows, the ':' is part of ':=' (a default separator), not a type tag.
-TYPE_TAG_DEFAULT_GUARD = VAR_DEFAULT_SEPARATOR[len(TYPE_TAG_TERMINATOR) :]
-NUMBER_TYPE_TAG = "num" + TYPE_TAG_TERMINATOR
-BOOL_TYPE_TAG = "bool" + TYPE_TAG_TERMINATOR
-ARRAY_TYPE_TAG = "array" + TYPE_TAG_TERMINATOR
-TABLE_TYPE_TAG = "table" + TYPE_TAG_TERMINATOR
-FORMAT_NAME_TYPE_TAG = "format_name" + TYPE_TAG_TERMINATOR
-# The most in-situ substitution passes a specification is given to settle; a
-# pass that changes nothing ends them. Real chains of references settle in two
-# or three, so reaching this means a circular one.
-VAR_SUBSTITUTION_MAX_PASSES = 10
 RCLONE_PREFIX = "rclone:"
 
-VAR_NAME_OF_UNNAMED_TASK = "none"
-
-DEFAULT_LOG_WIDTH = 120
-MAX_TABLE_DESCRIPTION = 50
-MAX_LINES_COLOURED_FORMATTING = 1024
-ERROR_STYLE = "bold red3"
-WARNING_STYLE = "red3"
-# Mark the messages printed by print_error() and print_warning()
-ERROR_MARKER = "ERROR : "
-WARNING_MARKER = "WARNING : "
-# Marks and colours the configuration/startup messages shown only under '--debug'
-DEBUG_MARKER = "DEBUG : "
-DEBUG_STYLE = "dark_orange"
-# Marks the messages reporting what a '--dry-run' would have done
-DRY_RUN_MARKER = "DRY-RUN : "
-# Stands in for a credential that's being withheld ('--show-secrets' reveals it)
-REDACTED_VALUE = "<REDACTED>"
-# The names of user-defined variables that 'yd-variables' redacts in its full
-# report, as looking like credentials (searched for anywhere in the name). A
-# heuristic, and stated as one: the command prints this pattern whenever it
-# redacts by it. 'key' alone is deliberately absent: 'APP_KEY_DEMO' is an
-# identifier, not a secret
-SECRET_VARIABLE_NAME_PATTERN = re.compile(
-    r"secret|password|passwd|token|credential|private_key", re.IGNORECASE
-)
 # The specification families yd-schema knows, in utils/spec_schema.py's
 # Family order. Carried here, as a plain tuple, rather than imported from
 # spec_schema.py: that module reaches into the installed SDK and compiles
@@ -237,161 +62,3 @@ SCHEMA_FAMILIES: tuple[str, ...] = (
     "node-actions",
     "config",
 )
-JSON_INDENT = 2
-# A state as a whole word: '_' is a word character, so a name holding one
-# ('MY_NEW_TASKS') is left alone, as are 'ALREADY' and 'UNTERMINATED'
-HIGHLIGHTED_STATES = [
-    re.compile(r"\b(?P<active>ALLOCATED)\b"),
-    re.compile(r"\b(?P<active>DOING_TASK)\b"),
-    re.compile(r"\b(?P<active>BATCH_ALLOCATION)\b"),
-    re.compile(r"\b(?P<active>EXECUTING)\b"),
-    re.compile(r"\b(?P<active>EXPECTED)\b"),
-    re.compile(r"\b(?P<active>PENDING)\b"),
-    re.compile(r"\b(?P<active>READY)\b"),
-    re.compile(r"\b(?P<active>RUNNING)\b"),
-    re.compile(r"\b(?P<active>TARGET)\b"),
-    re.compile(r"\b(?P<active>ALIVE)\b"),
-    re.compile(r"\b(?P<active>MATCHING)\b"),
-    re.compile(r"\b(?P<active>MAYBE MATCHING)\b"),
-    re.compile(r"\b(?P<active>FINISHING)\b"),
-    re.compile(r"\b(?P<cancelled>ABORTED)\b"),
-    re.compile(r"\b(?P<cancelled>CANCELLED)\b"),
-    re.compile(r"\b(?P<cancelled>CANCELLING)\b"),
-    re.compile(r"\b(?P<cancelled>DEREGISTERED)\b"),
-    re.compile(r"\b(?P<cancelled>SHUTDOWN)\b"),
-    re.compile(r"\b(?P<cancelled>STOPPED)\b"),
-    re.compile(r"\b(?P<cancelled>TERMINATED)\b"),
-    re.compile(r"\b(?P<completed>COMPLETED)\b"),
-    re.compile(r"\b(?P<failed>FAILED)\b"),
-    re.compile(r"\b(?P<failed>FAILING)\b"),
-    re.compile(r"\b(?P<failed>LOST)\b"),
-    re.compile(r"\b(?P<failed>NON-MATCHING)\b"),
-    re.compile(r"\b(?P<idle>EMPTY)\b"),
-    re.compile(r"\b(?P<idle>FOUND)\b"),
-    re.compile(r"\b(?P<idle>IDLE)\b"),
-    re.compile(r"\b(?P<idle>SLEEPING)\b"),
-    re.compile(r"\b(?P<idle>STARTING)\b"),
-    re.compile(r"\b(?P<idle>WAITING)\b"),
-    re.compile(r"\b(?P<idle>HELD)\b"),
-    re.compile(r"\b(?P<starved>STARVED)\b"),
-    re.compile(r"\b(?P<transitioning>CONFIGURING)\b"),
-    re.compile(r"\b(?P<transitioning>DOWNLOADING)\b"),
-    # re.compile(r"(?P<transitioning>LATE$)"),
-    re.compile(r"\b(?P<transitioning>NEW)\b"),
-    re.compile(r"\b(?P<transitioning>PROVISIONING)\b"),
-    re.compile(r"\b(?P<transitioning>STOPPING)\b"),
-    re.compile(r"\b(?P<transitioning>TERMINATING)\b"),
-    re.compile(r"\b(?P<transitioning>UNAVAILABLE)\b"),
-    re.compile(r"\b(?P<transitioning>UNKNOWN)\b"),
-    re.compile(r"\b(?P<transitioning>UPLOADING)\b"),
-]
-# For Rich colour options, see colour list & swatches at:
-# https://rich.readthedocs.io/en/stable/appendix/colors.html
-DEFAULT_THEME = {
-    "pyexamples.date_time": "bold deep_sky_blue1",
-    "pyexamples.quoted": "bold green4",
-    "pyexamples.url": "bold green4",
-    "pyexamples.ydid": "bold dark_orange",
-    "pyexamples.table_outline": "bold deep_sky_blue4",
-    "pyexamples.table_content": "bold green4",
-    "pyexamples.transitioning": "bold dark_orange",
-    "pyexamples.executing": "bold deep_sky_blue4",
-    "pyexamples.failed": "bold red3",
-    "pyexamples.completed": "bold green4",
-    "pyexamples.cancelled": "bold grey35",
-    "pyexamples.active": "bold deep_sky_blue4",
-    "pyexamples.idle": "bold dark_goldenrod",
-    "pyexamples.starved": "bold dark_orange",
-}
-
-# Resource type names for create/remove
-RESOURCE_PROPERTY_NAME = "resource"
-RN_ADD_APPLICATION_REQUEST = "AddApplicationRequest"
-RN_ALLOWANCE = "Allowance"
-RN_APPLICATION = "Application"
-RN_CONFIGURED_POOL = "ConfiguredWorkerPool"
-RN_CREDENTIAL = "Credential"
-RN_EXTERNAL_USER = "ExternalUser"
-RN_GROUP = "Group"
-RN_IMAGE = "MachineImage"  # Not a specification resource; reported by yd-create
-RN_IMAGE_FAMILY = "MachineImageFamily"
-RN_IMAGE_GROUP = "MachineImageGroup"  # Likewise
-RN_INTERNAL_USER = "InternalUser"
-RN_KEYRING = "Keyring"
-RN_NAMESPACE = "Namespace"
-RN_NAMESPACE_POLICY = "NamespacePolicy"
-RN_NUMERIC_ATTRIBUTE_DEFINITION = "NumericAttributeDefinition"
-RN_REQUIREMENT_TEMPLATE = "ComputeRequirementTemplate"
-RN_ROLE = "Role"
-RN_SOURCE_TEMPLATE = "ComputeSourceTemplate"
-RN_STRING_ATTRIBUTE_DEFINITION = "StringAttributeDefinition"
-RN_UPDATE_APPLICATION_REQUEST = "UpdateApplicationRequest"
-
-# Entity type names (used as CLI arguments and for dispatch)
-ET_ALLOWANCES = "allowances"
-ET_APPLICATIONS = "applications"
-ET_ATTRIBUTE_DEFINITIONS = "attribute-definitions"
-ET_COMPUTE_REQUIREMENT_TEMPLATES = "compute-requirement-templates"
-ET_COMPUTE_REQUIREMENTS = "compute-requirements"
-ET_COMPUTE_SOURCE_TEMPLATES = "compute-source-templates"
-ET_GROUPS = "groups"
-ET_IMAGE_FAMILIES = "image-families"
-ET_INSTANCES = "instances"
-ET_KEYRINGS = "keyrings"
-ET_NAMESPACE_POLICIES = "namespace-policies"
-ET_NAMESPACES = "namespaces"
-ET_NODES = "nodes"
-ET_PERMISSIONS = "permissions"
-ET_ROLES = "roles"
-ET_TASK_GROUPS = "task-groups"
-ET_TASKS = "tasks"
-ET_USERS = "users"
-ET_WORK_REQUIREMENTS = "work-requirements"
-ET_WORKER_POOLS = "worker-pools"
-ET_WORKERS = "workers"
-
-# Property Names
-PROP_ACCESS_DELEGATES = "accessDelegates"
-PROP_ADMIN_GROUP = "adminGroup"
-PROP_AUTOSCALING_MAX_NODES = "autoscalingMaxNodes"
-PROP_CREATED_BY_ID = "createdById"
-PROP_CREATED_BY_USER_ID = "createdByUserId"
-PROP_CREATED_TIME = "createdTime"
-PROP_CREDENTIAL = "credential"
-PROP_CST_ID = "sourceTemplateId"
-PROP_DEFAULT_RANK_ORDER = "defaultRankOrder"
-PROP_DELETABLE = "deletable"
-PROP_DESCRIPTION = "description"
-PROP_EFFECTIVE_FROM = "effectiveFrom"
-PROP_EFFECTIVE_UNTIL = "effectiveUntil"
-PROP_GLOBAL = "global"
-PROP_GROUPS = "groups"
-PROP_ID = "id"
-PROP_IMAGE = "image"
-PROP_IMAGES_ID = "imagesId"
-PROP_IMAGE_ID = "imageId"
-PROP_INSTANCE_PRICING = "instancePricing"
-PROP_KEYRING_NAME = "keyringName"
-PROP_KEYRINGS = "keyrings"
-PROP_NAME = "name"
-PROP_NAMESPACE = "namespace"
-PROP_NAMESPACES = "namespaces"
-PROP_OPTIONS = "options"
-PROP_OS_TYPE = "osType"
-PROP_PROVIDER = "provider"
-PROP_RANGE = "range"
-PROP_REMAINING_HOURS = "remainingHours"
-PROP_REQUIREMENT_CREATED_FROM = "requirementCreatedFromId"
-PROP_RESOURCE = "resource"
-PROP_ROLE = "role"
-PROP_ROLES = "roles"
-PROP_SCOPE = "scope"
-PROP_SOURCE = "source"
-PROP_SOURCES = "sources"
-PROP_SOURCE_CREATED_FROM = "sourceCreatedFromId"
-PROP_SUPPORTING_RESOURCE_CREATED = "supportingResourceCreated"
-PROP_TITLE = "title"
-PROP_TRAITS = "traits"
-PROP_TYPE = "type"
-PROP_UNITS = "units"
-PROP_USERNAME = "username"

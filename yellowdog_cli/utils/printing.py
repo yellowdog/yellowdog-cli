@@ -26,9 +26,7 @@ from tabulate import tabulate
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.cloudwizard_aws_types import AWSAvailabilityZone
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
-from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASKS
-from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.output_style import (
     DEBUG_MARKER,
     DEBUG_STYLE,
     DEFAULT_LOG_WIDTH,
@@ -40,6 +38,11 @@ from yellowdog_cli.utils.settings import (
     JSON_INDENT,
     MAX_LINES_COLOURED_FORMATTING,
     MAX_TABLE_DESCRIPTION,
+    WARNING_MARKER,
+    WARNING_STYLE,
+)
+from yellowdog_cli.utils.property_names import (
+    NAME,
     PROP_ACCESS_DELEGATES,
     PROP_ADMIN_GROUP,
     PROP_CREATED_BY_ID,
@@ -53,9 +56,10 @@ from yellowdog_cli.utils.settings import (
     PROP_SOURCE,
     PROP_SUPPORTING_RESOURCE_CREATED,
     PROP_TRAITS,
-    WARNING_MARKER,
-    WARNING_STYLE,
+    TASK_GROUPS,
+    TASKS,
 )
+from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType
 
 if TYPE_CHECKING:

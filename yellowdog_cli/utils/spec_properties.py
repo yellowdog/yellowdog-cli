@@ -484,7 +484,7 @@ NUMERIC_PATTERN = (
 _CAST_TYPES = ["number", "boolean", "string"]
 INT_CAST: dict[str, Any] = {"type": _CAST_TYPES, "pattern": INTEGER_PATTERN}
 FLOAT_CAST: dict[str, Any] = {"type": _CAST_TYPES, "pattern": NUMERIC_PATTERN}
-# settings.VARIABLE_NAME_PATTERN, anchored (a test holds the two together)
+# variable_syntax.VARIABLE_NAME_PATTERN, anchored (a test holds the two together)
 _VARIABLE_NAMES: dict[str, Any] = {
     "type": "object",
     "propertyNames": {"pattern": r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"},

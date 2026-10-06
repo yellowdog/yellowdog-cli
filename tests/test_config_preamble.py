@@ -25,7 +25,7 @@ from unittest.mock import patch
 import pytest
 
 import yellowdog_cli.utils.wrapper as wrapper
-from yellowdog_cli.utils.settings import DEBUG_MARKER
+from yellowdog_cli.utils.output_style import DEBUG_MARKER
 
 CONFIG_TOML = """
 [common]

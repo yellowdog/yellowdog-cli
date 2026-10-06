@@ -16,7 +16,6 @@ import pytest
 
 from yellowdog_cli.utils import load_config
 from yellowdog_cli.utils import property_names as pn
-from yellowdog_cli.utils.settings import VARIABLE_NAME_PATTERN
 from yellowdog_cli.utils.spec_properties import (
     ALL_CONFIG_SECTIONS,
     CONFIG_COMMON,
@@ -25,6 +24,7 @@ from yellowdog_cli.utils.spec_properties import (
     Level,
     properties_at,
 )
+from yellowdog_cli.utils.variable_syntax import VARIABLE_NAME_PATTERN
 
 try:
     import tomllib

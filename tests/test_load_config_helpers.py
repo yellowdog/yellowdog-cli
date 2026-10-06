@@ -25,6 +25,8 @@ import pytest
 import yellowdog_cli.utils.load_config as lc_module
 import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.limits import TASK_BATCH_SIZE_DEFAULT
 from yellowdog_cli.utils.load_config import (
     _load_namespace_and_tag,
     load_config_common,
@@ -52,14 +54,7 @@ from yellowdog_cli.utils.property_names import (
     WP_NAME,
     WR_NAME,
 )
-from yellowdog_cli.utils.settings import (
-    TASK_BATCH_SIZE_DEFAULT,
-    YD_KEY,
-    YD_NAMESPACE,
-    YD_SECRET,
-    YD_TAG,
-    ExitCode,
-)
+from yellowdog_cli.utils.settings import YD_KEY, YD_NAMESPACE, YD_SECRET, YD_TAG
 
 # ---------------------------------------------------------------------------
 # Helpers

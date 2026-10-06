@@ -15,6 +15,11 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.entity_names import (
+    ET_TASK_GROUPS,
+    ET_TASKS,
+    ET_WORK_REQUIREMENTS,
+)
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     get_filtered_work_requirement_summaries,
@@ -26,11 +31,6 @@ from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record_action
-from yellowdog_cli.utils.settings import (
-    ET_TASK_GROUPS,
-    ET_TASKS,
-    ET_WORK_REQUIREMENTS,
-)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,

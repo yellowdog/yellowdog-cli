@@ -26,9 +26,8 @@ import yellowdog_cli.utils.dataclient_wrapper as dcw_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.results import record, reset_results
-from yellowdog_cli.utils.settings import ExitCode
 
 
 def _http_error(status: int) -> HTTPError:

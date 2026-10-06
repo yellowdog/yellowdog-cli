@@ -18,8 +18,8 @@ import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import entity_utils
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.settings import ExitCode
 
 
 @pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])

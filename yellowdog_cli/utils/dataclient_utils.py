@@ -20,6 +20,7 @@ from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
+from yellowdog_cli.utils.limits import DATA_CLIENT_LISTING_WORKERS
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
@@ -32,7 +33,6 @@ from yellowdog_cli.utils.rclone_utils import (
     parse_rclone_config,
 )
 from yellowdog_cli.utils.results import json_requested, record
-from yellowdog_cli.utils.settings import DATA_CLIENT_LISTING_WORKERS
 from yellowdog_cli.utils.variable_substitution import resolve_variables_in_string
 
 # The keys of an rclone 'lsjson' entry that yd-ls records under '--json',

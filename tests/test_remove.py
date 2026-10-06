@@ -19,8 +19,8 @@ from requests import HTTPError, Response
 import yellowdog_cli.utils.resource_removal as yd_remove
 from yellowdog_cli.utils import resource_processing
 from yellowdog_cli.utils.args import CLIParser
-from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
-from yellowdog_cli.utils.settings import RAW_REQUEST_TIMEOUT, ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType
 
 GROUP_ID = "ydid:group:000000:99999999-9999-9999-9999-999999999999"

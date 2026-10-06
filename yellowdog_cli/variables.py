@@ -6,6 +6,7 @@ Command to report the processed values of variable substitutions.
 
 from dataclasses import dataclass, field
 
+from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import print_json, print_warning
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_REMOTE,
@@ -14,10 +15,6 @@ from yellowdog_cli.utils.property_names import (
     SECRET,
 )
 from yellowdog_cli.utils.rclone_utils import is_inline_remote, shown_remote
-from yellowdog_cli.utils.settings import (
-    REDACTED_VALUE,
-    SECRET_VARIABLE_NAME_PATTERN,
-)
 from yellowdog_cli.utils.variable_substitution import (
     explain_unset_variable,
     get_all_user_variables,
@@ -25,6 +22,7 @@ from yellowdog_cli.utils.variable_substitution import (
     get_user_variable,
     warn_of_undefined_variables,
 )
+from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 
 # The credential variables the CLI injects into the substitution table itself:
@@ -32,13 +30,13 @@ from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
 # They're the only ones that can be *known* to be credentials.
 #
 # Beyond them, the report also redacts every variable whose name matches
-# SECRET_VARIABLE_NAME_PATTERN (settings.py). Name-pattern redaction was once
-# rejected because it catches identifiers, misses badly-named secrets, and
-# would read as a guarantee the command cannot keep. That objection was to a
-# *silent* heuristic: this one is applied visibly, the command printing the
-# count and the pattern itself whenever it redacts by it, and saying that
-# everything else is shown in full -- so what is withheld, and what is not, is
-# stated rather than implied.
+# SECRET_VARIABLE_NAME_PATTERN (variable_syntax.py). Name-pattern redaction
+# was once rejected because it catches identifiers, misses badly-named
+# secrets, and would read as a guarantee the command cannot keep. That
+# objection was to a *silent* heuristic: this one is applied visibly, the
+# command printing the count and the pattern itself whenever it redacts by it,
+# and saying that everything else is shown in full -- so what is withheld, and
+# what is not, is stated rather than implied.
 #
 # The one other thing the CLI can *know* is that an inline rclone connection
 # string carries credentials in its parameters: it registers the

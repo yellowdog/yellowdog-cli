@@ -22,8 +22,7 @@ from yellowdog_cli.compare import (
     PropertyMatch,
     WorkerPools,
 )
-from yellowdog_cli.utils.exit_codes import NotFoundError, classify
-from yellowdog_cli.utils.settings import ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 
 # ---------------------------------------------------------------------------
 # Helpers

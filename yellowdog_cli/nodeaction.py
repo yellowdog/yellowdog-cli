@@ -37,6 +37,7 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.limits import NODE_ACTION_QUEUE_POLL_INTERVAL
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
@@ -66,11 +67,6 @@ from yellowdog_cli.utils.property_names import (
     NODE_WORKERS,
 )
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
-from yellowdog_cli.utils.settings import (
-    NODE_ACTION_QUEUE_POLL_INTERVAL,
-    WP_VARIABLES_POSTFIX,
-    WP_VARIABLES_PREFIX,
-)
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variable_substitution import (
@@ -78,6 +74,10 @@ from yellowdog_cli.utils.variable_substitution import (
     load_jsonnet_file_with_variable_substitutions,
     process_variable_substitutions_in_file_contents,
     warn_of_undefined_variables,
+)
+from yellowdog_cli.utils.variable_syntax import (
+    WP_VARIABLES_POSTFIX,
+    WP_VARIABLES_PREFIX,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type

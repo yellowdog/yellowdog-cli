@@ -25,6 +25,11 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.entity_names import (
+    ET_COMPUTE_REQUIREMENTS,
+    ET_NODES,
+    ET_WORKER_POOLS,
+)
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,
@@ -44,11 +49,6 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.results import record_action
-from yellowdog_cli.utils.settings import (
-    ET_COMPUTE_REQUIREMENTS,
-    ET_NODES,
-    ET_WORKER_POOLS,
-)
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 

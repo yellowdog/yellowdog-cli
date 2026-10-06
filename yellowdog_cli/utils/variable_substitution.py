@@ -19,6 +19,8 @@ from tomli import load as toml_load
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
+from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
 from yellowdog_cli.utils.misc_utils import (
     PID,
     PROCESS_DISCRIMINATOR,
@@ -44,7 +46,8 @@ from yellowdog_cli.utils.property_names import (
     VARIABLES,
 )
 from yellowdog_cli.utils.results import record
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.settings import YD_ENV_VAR_PREFIX
+from yellowdog_cli.utils.variable_syntax import (
     ARRAY_TYPE_TAG,
     BOOL_TYPE_TAG,
     ENV_VAR_SUB_PREFIX,
@@ -60,14 +63,11 @@ from yellowdog_cli.utils.settings import (
     VAR_CLOSING_DELIMITER,
     VAR_DEFAULT_SEPARATOR,
     VAR_OPENING_DELIMITER,
-    VAR_SUBSTITUTION_MAX_PASSES,
     VAR_UNSET_SUFFIX,
     VARIABLE_NAME_PATTERN,
     VARIABLE_NAME_RULE,
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
-    YD_ENV_VAR_PREFIX,
-    ExitCode,
 )
 
 # Sentinel returned by process_variable_substitutions() when a property

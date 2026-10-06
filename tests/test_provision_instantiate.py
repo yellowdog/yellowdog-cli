@@ -24,8 +24,8 @@ import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
-from yellowdog_cli.utils.settings import ExitCode
 
 CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
 

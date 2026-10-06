@@ -19,13 +19,13 @@ from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.command_runner import describe_error, run_command
 from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.exit_codes import (
+    ExitCode,
     classify,
 )
 from yellowdog_cli.utils.load_config import (
     load_config_common,
 )
 from yellowdog_cli.utils.printing import print_debug
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.spec_properties import ALL_CONFIG_SECTIONS
 
 if TYPE_CHECKING:

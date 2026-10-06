@@ -13,12 +13,8 @@ import requests
 
 import yellowdog_cli.submit as submit_module
 from yellowdog_cli.utils.args import CLIParser
-from yellowdog_cli.utils.exit_codes import classify
-from yellowdog_cli.utils.settings import (
-    MAX_BATCH_SUBMIT_ATTEMPTS,
-    RAW_REQUEST_TIMEOUT,
-    ExitCode,
-)
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TIMEOUT
 
 WR_ID = "ydid:workreq:000000:00000000-0000-0000-0000-000000000000"
 

@@ -29,7 +29,7 @@ from yellowdog_cli.utils.command_registry import (
     positive_int,
     resolve_entity_type,
 )
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
     MCP_TOOL_TIMEOUT_SECONDS,
 )

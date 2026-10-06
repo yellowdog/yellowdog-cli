@@ -16,7 +16,7 @@ from glob import glob
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 _GLOB_CHARS = frozenset("*?[")
 

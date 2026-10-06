@@ -21,8 +21,8 @@ from mcp.shared.memory import create_client_server_memory_streams  # noqa: E402
 
 from yellowdog_cli.mcp.server import build_server, call_tool  # noqa: E402
 from yellowdog_cli.mcp.tools import ServerSettings, build_tools  # noqa: E402
+from yellowdog_cli.utils.output_style import REDACTED_VALUE  # noqa: E402
 from yellowdog_cli.utils.rclone_version import find_rclone  # noqa: E402
-from yellowdog_cli.utils.settings import REDACTED_VALUE  # noqa: E402
 
 
 @pytest.fixture

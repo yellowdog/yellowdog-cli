@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cli_test_helpers import shell
 
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,

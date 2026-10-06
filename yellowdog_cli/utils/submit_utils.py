@@ -62,21 +62,21 @@ from yellowdog_cli.utils.property_names import (
 )
 from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
 from yellowdog_cli.utils.results import json_requested
-from yellowdog_cli.utils.settings import (
-    L_TASK_COUNT,
-    L_TASK_GROUP_COUNT,
-    L_TASK_GROUP_NAME,
-    L_TASK_GROUP_NUMBER,
-    L_TASK_NUMBER,
-    RCLONE_PREFIX,
-    VAR_CLOSING_DELIMITER,
-    VAR_OPENING_DELIMITER,
-)
+from yellowdog_cli.utils.settings import RCLONE_PREFIX
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions_in_file_contents,
     resolve_variables_insitu,
     warn_of_undefined_variables,
+)
+from yellowdog_cli.utils.variable_syntax import (
+    L_TASK_COUNT,
+    L_TASK_GROUP_COUNT,
+    L_TASK_GROUP_NAME,
+    L_TASK_GROUP_NUMBER,
+    L_TASK_NUMBER,
+    VAR_CLOSING_DELIMITER,
+    VAR_OPENING_DELIMITER,
 )
 from yellowdog_cli.utils.wrapper import ARGS_PARSER
 

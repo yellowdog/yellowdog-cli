@@ -18,8 +18,7 @@ from yellowdog_client.model import ComputeRequirementStatus
 
 import yellowdog_cli.list as yd_list
 from yellowdog_cli.utils.args import CLIParser
-from yellowdog_cli.utils.exit_codes import classify
-from yellowdog_cli.utils.settings import (
+from yellowdog_cli.utils.entity_names import (
     ET_ATTRIBUTE_DEFINITIONS,
     ET_COMPUTE_REQUIREMENTS,
     ET_GROUPS,
@@ -27,9 +26,9 @@ from yellowdog_cli.utils.settings import (
     ET_ROLES,
     ET_TASKS,
     ET_WORKER_POOLS,
-    RAW_REQUEST_TIMEOUT,
-    ExitCode,
 )
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 CR_ID = "ydid:compreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 

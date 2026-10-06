@@ -12,10 +12,10 @@ from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
+from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
-from yellowdog_cli.utils.settings import RN_SOURCE_TEMPLATE
 
 RESOURCE_PREFIX = "yellowdog-cloudwizard"
 RESOURCE_GROUP_PREFIX = f"{RESOURCE_PREFIX}-rg"

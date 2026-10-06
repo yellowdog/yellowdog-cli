@@ -17,7 +17,7 @@ not finished, whatever the reason.
 import sys
 from typing import Any
 
-from yellowdog_cli.utils.exit_codes import classify
+from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.follow_utils import (
     WR_FAILURE_STATUS_VALUES,
     follow_exit_code,
@@ -25,7 +25,6 @@ from yellowdog_cli.utils.follow_utils import (
 )
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 

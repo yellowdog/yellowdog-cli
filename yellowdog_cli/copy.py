@@ -18,13 +18,13 @@ from yellowdog_cli.utils.dataclient_utils import (
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient_wrapper import dataclient_wrapper
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.load_config import (
     load_config_data_client,
     load_config_data_client_for_profile,
 )
 from yellowdog_cli.utils.printing import print_error, print_info
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
-from yellowdog_cli.utils.settings import ExitCode
 
 CONFIG_SRC: ConfigDataClient = load_config_data_client()
 CONFIG_DST: ConfigDataClient = load_config_data_client_for_profile(

@@ -38,6 +38,27 @@ from yellowdog_client.model import (
 )
 from yellowdog_client.model.exceptions import InvalidRequestException
 
+from yellowdog_cli.utils.entity_names import (
+    RN_ADD_APPLICATION_REQUEST,
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
+    RN_GROUP,
+    RN_IMAGE,
+    RN_IMAGE_FAMILY,
+    RN_IMAGE_GROUP,
+    RN_INTERNAL_USER,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+    RN_UPDATE_APPLICATION_REQUEST,
+)
 from yellowdog_cli.utils.entity_utils import (
     allowances_to_remove,
     clear_application_caches,
@@ -64,10 +85,12 @@ from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
 )
 from yellowdog_cli.utils.interactive import confirmed
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_info,
@@ -75,14 +98,7 @@ from yellowdog_cli.utils.printing import (
     print_quiet_result,
     print_warning,
 )
-from yellowdog_cli.utils.provision_utils import resolve_user_data_in_spec
-from yellowdog_cli.utils.resource_processing import (
-    missing_property,
-    process_resources,
-)
-from yellowdog_cli.utils.results import record, record_resource
-from yellowdog_cli.utils.settings import (
-    NAMESPACE_PREFIX_SEPARATOR,
+from yellowdog_cli.utils.property_names import (
     PROP_AUTOSCALING_MAX_NODES,
     PROP_CREDENTIAL,
     PROP_CST_ID,
@@ -116,28 +132,14 @@ from yellowdog_cli.utils.settings import (
     PROP_TYPE,
     PROP_UNITS,
     PROP_USERNAME,
-    RAW_REQUEST_TIMEOUT,
-    REDACTED_VALUE,
-    RN_ADD_APPLICATION_REQUEST,
-    RN_ALLOWANCE,
-    RN_APPLICATION,
-    RN_CONFIGURED_POOL,
-    RN_CREDENTIAL,
-    RN_EXTERNAL_USER,
-    RN_GROUP,
-    RN_IMAGE,
-    RN_IMAGE_FAMILY,
-    RN_IMAGE_GROUP,
-    RN_INTERNAL_USER,
-    RN_KEYRING,
-    RN_NAMESPACE,
-    RN_NAMESPACE_POLICY,
-    RN_NUMERIC_ATTRIBUTE_DEFINITION,
-    RN_REQUIREMENT_TEMPLATE,
-    RN_SOURCE_TEMPLATE,
-    RN_STRING_ATTRIBUTE_DEFINITION,
-    RN_UPDATE_APPLICATION_REQUEST,
 )
+from yellowdog_cli.utils.provision_utils import resolve_user_data_in_spec
+from yellowdog_cli.utils.resource_processing import (
+    missing_property,
+    process_resources,
+)
+from yellowdog_cli.utils.results import record, record_resource
+from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 

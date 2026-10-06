@@ -20,7 +20,7 @@ from yellowdog_cli.utils.compact_json import (
     FloatAsWritten,
     IntAsWritten,
 )
-from yellowdog_cli.utils.settings import ERROR_MARKER
+from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:

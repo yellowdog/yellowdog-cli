@@ -25,7 +25,7 @@ from requests import HTTPError, Response
 import yellowdog_cli.show as show_module
 import yellowdog_cli.utils.printing as printing_module
 from yellowdog_cli.show import show_ydids
-from yellowdog_cli.utils.settings import ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode
 
 UUID = "98879b5a-9192-4a56-ad25-fc1330e49185"
 

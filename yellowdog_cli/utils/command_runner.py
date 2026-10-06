@@ -13,7 +13,7 @@ import sys
 from collections.abc import Callable
 from typing import Any, NoReturn
 
-from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
 from yellowdog_cli.utils.load_config import (
     warn_of_config_violations,
     warn_of_undefined_config_variables,
@@ -25,7 +25,6 @@ from yellowdog_cli.utils.results import (
     flush_results_after_failure,
 )
 from yellowdog_cli.utils.schema_cache import report_problems_to
-from yellowdog_cli.utils.settings import ExitCode
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
 
 
