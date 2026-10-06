@@ -6,7 +6,6 @@ A script to submit a Work Requirement.
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import timedelta
 from math import ceil
 from os.path import dirname
 from sys import exit as sys_exit
@@ -64,26 +63,14 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
-    ADD_ENVIRONMENT,
-    ADD_YD_ENV_VARS,
-    ARGS,
-    ARGS_POSTFIX,
-    ARGS_PREFIX,
-    ENV,
     FAILURE_POLICY,
     MAX_RETRIES,
     NAME,
     PRIORITY,
     RETRY_POLICY,
     RETRYABLE_ERRORS,
-    SET_TASK_NAMES,
     TASK_COUNT,
-    TASK_DATA_INPUTS,
-    TASK_DATA_OUTPUTS,
     TASK_GROUPS,
-    TASK_LEVEL_TIMEOUT,
-    TASK_NAME,
-    TASK_TYPE,
     TASKS,
     WR_TAG,
 )
@@ -96,19 +83,14 @@ from yellowdog_cli.utils.specs.loading import (
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
-    assemble_arguments,
-    create_task,
     formatted_number_str,
-    generate_taskdata_object,
-    get_task_data_property,
-    get_task_name,
-    merge_environment,
     update_config_work_requirement_object,
 )
 from yellowdog_cli.utils.task_batches import (
     run_batches,
     submit_with_retries,
 )
+from yellowdog_cli.utils.task_generation import TaskSource, generate_batch_of_tasks
 from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.task_groups import (
     check_task_groups,
@@ -117,24 +99,18 @@ from yellowdog_cli.utils.task_groups import (
     promote_task_type,
 )
 from yellowdog_cli.utils.type_check import (
-    check_bool,
     check_dict,
     check_float_or_int,
     check_int,
-    check_list,
     check_str,
 )
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variable_substitution import (
-    add_or_update_substitution,
     add_substitutions_without_overwriting,
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import (
-    L_TASK_NAME,
-    L_TASK_NUMBER,
     L_WR_NAME,
-    VAR_NAME_OF_UNNAMED_TASK,
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -788,23 +764,25 @@ def add_tasks_to_task_group(
     # Add lazy substitutions for use in any Task property
     position.substitute(cast(str, task_group.name), num_tasks)
 
+    source = TaskSource(
+        config_wr=run.config_wr,
+        wr_name=run.name,
+        namespace=run.ctx.config.namespace,
+        wr_data=wr_data,
+        files_directory=files_directory,
+        task_group=task_group,
+        position=position,
+        tasks=tasks,
+        task_count=task_count,
+        num_tasks=num_tasks,
+        uploaded_files=run.uploaded_files,
+    )
     num_submitted_tasks = run_batches(
         run.ctx,
         num_tasks,
         batch_size,
         _parallel_batches(run),
-        make_batch=lambda start, end: generate_batch_of_tasks_for_task_group(
-            run,
-            start,
-            end,
-            wr_data,
-            files_directory,
-            task_group,
-            position,
-            tasks,
-            task_count,
-            num_tasks,
-        ),
+        make_batch=lambda start, end: generate_batch_of_tasks(source, start, end),
         send_batch=lambda tasks_list, batch_number, num_batches: (
             submit_batch_of_tasks_to_task_group(
                 run,
@@ -841,176 +819,6 @@ def _parallel_batches(run: _Submission) -> int:
         if parallel_batches is not None:
             return parallel_batches
     return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
-
-
-def generate_batch_of_tasks_for_task_group(
-    run: _Submission,
-    start_task_number: int,
-    end_task_number: int,
-    wr_data: dict,
-    files_directory: str,
-    task_group: TaskGroup,
-    position: TaskGroupPosition,
-    tasks: list,
-    task_count: int | None,
-    num_tasks: int,
-) -> list[Task]:
-    """
-    Generate a batch of Tasks for the specification's Task Group at
-    'position', for subsequent addition to 'task_group', numbered on from
-    the Tasks it already holds.
-    """
-    task_group_data = wr_data[TASK_GROUPS][position.spec_index]
-    tasks_list: list[Task] = []
-    for task_number in range(start_task_number, end_task_number):
-        task = tasks[task_number] if task_count is None else tasks[0]
-        # The Task's properties, from itself, its Task Group or the Work
-        # Requirement; the configuration's are the defaults
-        levels = Cascade(wr_data, task_group_data, task)
-
-        set_task_names = (
-            levels.checked(SET_TASK_NAMES, check_bool, run.config_wr.set_task_names)
-            or False
-        )
-
-        display_task_number = task_number + position.existing_tasks
-        display_num_tasks = position.existing_tasks + num_tasks
-
-        # The run's configuration, not a per-Task copy: get_task_name() makes the
-        # Task-level lazy substitutions in the name itself, and the per-Task
-        # copy can only be made once the name it substitutes is known
-        task_name = get_task_name(
-            check_str(
-                task.get(NAME, task.get(TASK_NAME, run.config_wr.task_name)), NAME
-            ),
-            set_task_names,
-            display_task_number,
-            display_num_tasks,
-            position.number,
-            position.count,
-            task_group.name,
-        )
-
-        task_name = None if task_name is None else format_yd_name(task_name)
-
-        add_or_update_substitution(
-            L_TASK_NAME,
-            VAR_NAME_OF_UNNAMED_TASK if task_name is None else task_name,
-        )
-        add_or_update_substitution(
-            L_TASK_NUMBER,
-            formatted_number_str(display_task_number, display_num_tasks),
-        )
-        resolve_variables_insitu(task)
-        config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
-
-        arguments_list = levels.checked(ARGS, check_list, config_wr.args)
-        arguments_list = assemble_arguments(
-            levels.checked(ARGS_PREFIX, check_list, config_wr.args_prefix),
-            arguments_list,
-            levels.checked(ARGS_POSTFIX, check_list, config_wr.args_postfix),
-        )
-        env = merge_environment(
-            levels.checked(ENV, check_dict, config_wr.env),
-            levels.checked(ADD_ENVIRONMENT, check_dict, config_wr.add_environment),
-        )
-
-        add_yd_env_vars = (
-            levels.checked(ADD_YD_ENV_VARS, check_bool, config_wr.add_yd_env_vars)
-            or False
-        )
-
-        # Task timeout is automatically inherited from the Task Group level
-        # unless overridden by the Task
-        task_timeout_minutes = levels.checked(
-            TASK_LEVEL_TIMEOUT, check_float_or_int, config_wr.task_level_timeout
-        )
-        task_timeout = (
-            None
-            if task_timeout_minutes is None
-            else timedelta(minutes=task_timeout_minutes)
-        )
-
-        # Data client inputs and outputs
-        task_data_inputs = levels.checked(
-            TASK_DATA_INPUTS, check_list, config_wr.task_data_inputs
-        )
-        task_data_outputs = levels.checked(
-            TASK_DATA_OUTPUTS, check_list, config_wr.task_data_outputs
-        )
-        # This will 'pop' any 'localFile' properties, required for the
-        # following 'generate' call
-        run.uploaded_files.upload_dataclient_input_files(task_data_inputs)  # type: ignore[union-attr]
-        task_data_inputs_and_outputs = generate_taskdata_object(
-            task_data_inputs, task_data_outputs
-        )
-
-        task_type = _task_type_of(
-            task, task_group, config_wr, task_name, display_task_number
-        )
-
-        tasks_list.append(
-            create_task(
-                wr_data=wr_data,
-                task_group_data=task_group_data,
-                task_data=task,
-                task_name=task_name,
-                task_number=display_task_number + 1,
-                tg_name=task_group.name,
-                tg_number=position.number + 1,
-                task_type=cast(str, task_type),
-                args=cast(list, arguments_list),
-                task_data_property=get_task_data_property(
-                    config_wr,
-                    wr_data,
-                    task_group_data,
-                    task,
-                    task_name,
-                    files_directory,
-                ),
-                env=env,
-                task_timeout=task_timeout,
-                add_yd_env_vars=add_yd_env_vars,
-                task_data_inputs_and_outputs=task_data_inputs_and_outputs,
-                wr_name=run.name,
-                namespace=run.ctx.config.namespace,
-                total_num_task_groups=position.count,
-                total_num_tasks=display_num_tasks,
-            )
-        )
-
-    return tasks_list
-
-
-def _task_type_of(
-    task: dict,
-    task_group: TaskGroup,
-    config_wr: ConfigWorkRequirement,
-    task_name: str | None,
-    task_number: int,
-) -> str | None:
-    """
-    The Task's type: its own, else its Task Group's sole type, else the
-    configuration's if the Task Group allows it. Else, None if the Task
-    Group's template supplies one; anything else is an error here, rather
-    than a Task the Platform refuses.
-    """
-    if TASK_TYPE in task:
-        return task[TASK_TYPE]
-    task_types = task_group.runSpecification.taskTypes
-    if len(task_types) == 1:
-        return task_types[0]
-    if config_wr.task_type is not None and config_wr.task_type in task_types:
-        return config_wr.task_type
-    template = task_group.taskTemplate
-    if template is not None and template.taskType is not None:
-        return None
-    raise ValueError(
-        f"Task {task_number + 1}"
-        + ("" if task_name is None else f" ('{task_name}')")
-        + f" in Task Group '{task_group.name}' has no '{TASK_TYPE}', and the"
-        f" Task Group allows several {task_types}: set the Task's '{TASK_TYPE}'"
-    )
 
 
 def submit_batch_of_tasks_to_task_group(

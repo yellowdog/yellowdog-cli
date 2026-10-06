@@ -108,7 +108,7 @@ def _run_add_tasks(
     generate_calls: list[tuple[int, int]] = []
     submit_calls: list[int] = []
 
-    def fake_generate(_ctx, start, end, *args, **kwargs):
+    def fake_generate(_source, start, end, *args, **kwargs):
         generate_calls.append((start, end))
         return [MagicMock()] * (end - start)
 
@@ -120,7 +120,7 @@ def _run_add_tasks(
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
-            "generate_batch_of_tasks_for_task_group",
+            "generate_batch_of_tasks",
             side_effect=fake_generate,
         ),
         patch.object(
@@ -186,7 +186,7 @@ def _run_add_tasks_tracking_tpe(
     config_wr_mock.task_count = None
     config_wr_mock.parallel_batches = None
 
-    def fake_generate(_ctx, start, end, *args, **kwargs):
+    def fake_generate(_source, start, end, *args, **kwargs):
         return [MagicMock()] * (end - start)
 
     def fake_submit(_ctx, tasks_list, *args, **kwargs):
@@ -196,7 +196,7 @@ def _run_add_tasks_tracking_tpe(
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
-            "generate_batch_of_tasks_for_task_group",
+            "generate_batch_of_tasks",
             side_effect=fake_generate,
         ),
         patch.object(
@@ -312,7 +312,7 @@ class TestParallelBatching:
         assert len(result["submit_calls"]) == 3
 
     def test_generation_is_sequential_in_main_thread(self):
-        # generate_batch_of_tasks_for_task_group is called in the for loop
+        # generate_batch_of_tasks is called in the for loop
         # before executor.submit, so calls are always in ascending order
         result = _run_add_tasks(num_tasks=9, batch_size=3, parallel_batches=3)
         assert result["generate_calls"] == [(0, 3), (3, 6), (6, 9)]
@@ -407,8 +407,8 @@ class TestTaskCountExpansion:
             patch.object(submit_module, "CONFIG_WR", config_wr_mock),
             patch.object(
                 submit_module,
-                "generate_batch_of_tasks_for_task_group",
-                side_effect=lambda _ctx, start, end, *a, **k: (
+                "generate_batch_of_tasks",
+                side_effect=lambda _source, start, end, *a, **k: (
                     [MagicMock()] * (end - start)
                 ),
             ),

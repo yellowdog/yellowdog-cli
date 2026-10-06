@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_generation as task_generation_module
 import yellowdog_cli.utils.task_groups as task_groups_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
@@ -204,7 +205,7 @@ def _task_group(task_types: list[str], template_type: str | None = None):
 
 
 def _task_type_of(task: dict, task_group, config_type: str | None = None):
-    return submit_module._task_type_of(
+    return task_generation_module._task_type_of(
         task, task_group, ConfigWorkRequirement(task_type=config_type), "t1", 0
     )
 

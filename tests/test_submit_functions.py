@@ -1,6 +1,6 @@
 """
-Tests for create_task_group, submit_work_requirement and
-generate_batch_of_tasks_for_task_group in submit.py.
+Tests for create_task_group (utils/task_groups.py), submit_work_requirement
+(submit.py) and generate_batch_of_tasks (utils/task_generation.py).
 """
 
 from datetime import timedelta
@@ -18,6 +18,7 @@ from yellowdog_client.model import (
 from yellowdog_client.model.instance_pricing_preference import InstancePricingPreference
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_generation as task_generation_module
 import yellowdog_cli.utils.task_groups as task_groups_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
@@ -885,7 +886,7 @@ class TestSubmitWRTaskGroupCountAsFloat:
 
 
 # ---------------------------------------------------------------------------
-# generate_batch_of_tasks_for_task_group — Task Group over Work Requirement
+# generate_batch_of_tasks — Task Group over Work Requirement
 # ---------------------------------------------------------------------------
 
 
@@ -894,19 +895,14 @@ def _generate_one_task(wr_data: dict) -> Task:
     Generate the single Task of wr_data's single Task Group, as submission
     would, with nothing uploaded.
     """
-    config_common = MagicMock()
-    config_common.namespace = "test-ns"
-    with (
-        patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
-        patch.object(wrapper_module, "CONFIG_COMMON", config_common),
-    ):
-        task_group = MagicMock()
-        task_group.name = "tg"
-        task_group.runSpecification.taskTypes = ["bash"]
-        (task,) = submit_module.generate_batch_of_tasks_for_task_group(
-            _submission(name="test-wr", uploaded_files=MagicMock()),
-            start_task_number=0,
-            end_task_number=1,
+    task_group = MagicMock()
+    task_group.name = "tg"
+    task_group.runSpecification.taskTypes = ["bash"]
+    (task,) = task_generation_module.generate_batch_of_tasks(
+        task_generation_module.TaskSource(
+            config_wr=ConfigWorkRequirement(),
+            wr_name="test-wr",
+            namespace="test-ns",
             wr_data=wr_data,
             files_directory=".",
             task_group=task_group,
@@ -914,7 +910,11 @@ def _generate_one_task(wr_data: dict) -> Task:
             tasks=wr_data[TASK_GROUPS][0][TASKS],
             task_count=None,
             num_tasks=1,
-        )
+            uploaded_files=MagicMock(),
+        ),
+        0,
+        1,
+    )
     return task
 
 
