@@ -7,7 +7,10 @@ import re
 
 DEFAULT_LOG_WIDTH = 120
 MAX_TABLE_DESCRIPTION = 50
-MAX_LINES_COLOURED_FORMATTING = 1024
+# Longer output is printed uncoloured: Rich's highlighting costs ~50us a
+# line for a table (a span per cell) and ~11us for JSON, on Apple silicon
+MAX_LINES_COLOURED_TABLE = 2000
+MAX_LINES_COLOURED_JSON = 5000
 JSON_INDENT = 2
 
 ERROR_STYLE = "bold red3"
@@ -25,51 +28,70 @@ DRY_RUN_MARKER = "DRY-RUN : "
 REDACTED_VALUE = "<REDACTED>"
 
 # A state as a whole word: '_' is a word character, so a name holding one
-# ('MY_NEW_TASKS') is left alone, as are 'ALREADY' and 'UNTERMINATED'
+# ('MY_NEW_TASKS') is left alone, as are 'ALREADY' and 'UNTERMINATED'. One
+# regex per style, not per state: each scans the whole text, and 42 of them
+# were half the cost of colouring a table. Longest first, so that 'MAYBE
+# MATCHING' is matched whole rather than as 'MATCHING'
+_STATES_BY_STYLE: dict[str, tuple[str, ...]] = {
+    "active": (
+        "ALLOCATED",
+        "DOING_TASK",
+        "BATCH_ALLOCATION",
+        "EXECUTING",
+        "EXPECTED",
+        "PENDING",
+        "READY",
+        "RUNNING",
+        "TARGET",
+        "ALIVE",
+        "MATCHING",
+        "MAYBE MATCHING",
+        "FINISHING",
+    ),
+    "cancelled": (
+        "ABORTED",
+        "CANCELLED",
+        "CANCELLING",
+        "DEREGISTERED",
+        "SHUTDOWN",
+        "STOPPED",
+        "TERMINATED",
+    ),
+    "completed": ("COMPLETED",),
+    "failed": (
+        "FAILED",
+        "FAILING",
+        "LOST",
+        "NON-MATCHING",
+    ),
+    "idle": (
+        "EMPTY",
+        "FOUND",
+        "IDLE",
+        "SLEEPING",
+        "STARTING",
+        "WAITING",
+        "HELD",
+    ),
+    "starved": ("STARVED",),
+    "transitioning": (
+        "CONFIGURING",
+        "DOWNLOADING",
+        # "LATE", at the end of a line only, was once highlighted too
+        "NEW",
+        "PROVISIONING",
+        "STOPPING",
+        "TERMINATING",
+        "UNAVAILABLE",
+        "UNKNOWN",
+        "UPLOADING",
+    ),
+}
 HIGHLIGHTED_STATES = [
-    re.compile(r"\b(?P<active>ALLOCATED)\b"),
-    re.compile(r"\b(?P<active>DOING_TASK)\b"),
-    re.compile(r"\b(?P<active>BATCH_ALLOCATION)\b"),
-    re.compile(r"\b(?P<active>EXECUTING)\b"),
-    re.compile(r"\b(?P<active>EXPECTED)\b"),
-    re.compile(r"\b(?P<active>PENDING)\b"),
-    re.compile(r"\b(?P<active>READY)\b"),
-    re.compile(r"\b(?P<active>RUNNING)\b"),
-    re.compile(r"\b(?P<active>TARGET)\b"),
-    re.compile(r"\b(?P<active>ALIVE)\b"),
-    re.compile(r"\b(?P<active>MATCHING)\b"),
-    re.compile(r"\b(?P<active>MAYBE MATCHING)\b"),
-    re.compile(r"\b(?P<active>FINISHING)\b"),
-    re.compile(r"\b(?P<cancelled>ABORTED)\b"),
-    re.compile(r"\b(?P<cancelled>CANCELLED)\b"),
-    re.compile(r"\b(?P<cancelled>CANCELLING)\b"),
-    re.compile(r"\b(?P<cancelled>DEREGISTERED)\b"),
-    re.compile(r"\b(?P<cancelled>SHUTDOWN)\b"),
-    re.compile(r"\b(?P<cancelled>STOPPED)\b"),
-    re.compile(r"\b(?P<cancelled>TERMINATED)\b"),
-    re.compile(r"\b(?P<completed>COMPLETED)\b"),
-    re.compile(r"\b(?P<failed>FAILED)\b"),
-    re.compile(r"\b(?P<failed>FAILING)\b"),
-    re.compile(r"\b(?P<failed>LOST)\b"),
-    re.compile(r"\b(?P<failed>NON-MATCHING)\b"),
-    re.compile(r"\b(?P<idle>EMPTY)\b"),
-    re.compile(r"\b(?P<idle>FOUND)\b"),
-    re.compile(r"\b(?P<idle>IDLE)\b"),
-    re.compile(r"\b(?P<idle>SLEEPING)\b"),
-    re.compile(r"\b(?P<idle>STARTING)\b"),
-    re.compile(r"\b(?P<idle>WAITING)\b"),
-    re.compile(r"\b(?P<idle>HELD)\b"),
-    re.compile(r"\b(?P<starved>STARVED)\b"),
-    re.compile(r"\b(?P<transitioning>CONFIGURING)\b"),
-    re.compile(r"\b(?P<transitioning>DOWNLOADING)\b"),
-    # re.compile(r"(?P<transitioning>LATE$)"),
-    re.compile(r"\b(?P<transitioning>NEW)\b"),
-    re.compile(r"\b(?P<transitioning>PROVISIONING)\b"),
-    re.compile(r"\b(?P<transitioning>STOPPING)\b"),
-    re.compile(r"\b(?P<transitioning>TERMINATING)\b"),
-    re.compile(r"\b(?P<transitioning>UNAVAILABLE)\b"),
-    re.compile(r"\b(?P<transitioning>UNKNOWN)\b"),
-    re.compile(r"\b(?P<transitioning>UPLOADING)\b"),
+    re.compile(
+        rf"\b(?P<{style}>{'|'.join(re.escape(state) for state in sorted(states, key=len, reverse=True))})\b"
+    )
+    for style, states in _STATES_BY_STYLE.items()
 ]
 # For Rich colour options, see colour list & swatches at:
 # https://rich.readthedocs.io/en/stable/appendix/colors.html

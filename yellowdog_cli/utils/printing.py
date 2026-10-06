@@ -35,7 +35,7 @@ from yellowdog_cli.utils.output_style import (
     ERROR_STYLE,
     HIGHLIGHTED_STATES,
     JSON_INDENT,
-    MAX_LINES_COLOURED_FORMATTING,
+    MAX_LINES_COLOURED_JSON,
     WARNING_MARKER,
     WARNING_STYLE,
 )
@@ -112,9 +112,10 @@ class PrintTableHighlighter(RegexHighlighter):
 
     base_style = "pyexamples."
     table_outline_chars = "┌─┬│┼┐┤└┴┘├"
+    # '+', not '*', which also matched the empty string at every position
     highlights = [  # type: ignore[assignment]  # noqa: RUF012
-        re.compile(rf"(?P<table_outline>[{table_outline_chars}]*)"),
-        re.compile(rf"(?P<table_content>[^{table_outline_chars}]*)"),
+        re.compile(rf"(?P<table_outline>[{table_outline_chars}]+)"),
+        re.compile(rf"(?P<table_content>[^{table_outline_chars}]+)"),
         YDID_HIGHLIGHT_RE,
         *HIGHLIGHTED_STATES,
     ]
@@ -460,13 +461,16 @@ def print_json_text(json_text: str) -> None:
     Print a JSON document's text exactly as given, with no wrapping, so that
     what is printed is byte for byte what a file holding it would hold
     (yd-schema prints a schema as --write writes it). It is coloured only
-    for a terminal, where nobody is reading the bytes, and then with no line
-    limit: unlike print_json()'s documents, a schema is always long, and
-    the largest takes Rich well under a tenth of a second.
+    for a terminal, where nobody is reading the bytes, and to print_json()'s
+    line limit.
     """
     global _JSON_DOCUMENT_PRINTED
     _JSON_DOCUMENT_PRINTED = True
-    if CONSOLE_JSON.is_terminal and not OUTPUT.no_format:
+    if (
+        CONSOLE_JSON.is_terminal
+        and not OUTPUT.no_format
+        and json_text.count("\n") <= MAX_LINES_COLOURED_JSON
+    ):
         CONSOLE_JSON.print(escape(json_text.removesuffix("\n")), soft_wrap=True)
         return
     print(json_text, end="" if json_text.endswith("\n") else "\n", flush=True)
@@ -487,7 +491,7 @@ def print_json(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
     # Coloured formatting of JSON console output is expensive
-    if json_string.count("\n") > MAX_LINES_COLOURED_FORMATTING or OUTPUT.no_format:
+    if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
         if with_final_comma:
             print(json_string, end=",\n", flush=True)
         else:

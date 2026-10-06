@@ -17,7 +17,7 @@ from tabulate import tabulate
 from yellowdog_cli.utils.cloudwizard.aws_types import AWSAvailabilityZone
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
-    MAX_LINES_COLOURED_FORMATTING,
+    MAX_LINES_COLOURED_TABLE,
     MAX_TABLE_DESCRIPTION,
 )
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, indent, print_info
@@ -89,7 +89,7 @@ def print_table_core(table: str):
     """
     Core function for printing a table.
     """
-    if OUTPUT.no_format or table.count("\n") > MAX_LINES_COLOURED_FORMATTING:
+    if OUTPUT.no_format or table.count("\n") > MAX_LINES_COLOURED_TABLE:
         print(table, flush=True)
     else:
         CONSOLE_TABLE.print(escape(table), soft_wrap=True)
