@@ -12,10 +12,12 @@ import pytest
 import requests
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_batches as task_batches_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TIMEOUT
 
 
@@ -25,6 +27,16 @@ def _ctx() -> RunContext:
     """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
     )
 
 
@@ -78,8 +90,7 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
             patch.object(submit_module.requests, "post", post),
             patch.object(wrapper_module, "CLIENT", client),
             patch.object(wrapper_module, "CONFIG_COMMON", MagicMock(url="https://x")),
-            patch.object(submit_module, "TASK_BATCH_SIZE", 1),
-            patch.object(submit_module, "sleep", sleep),
+            patch.object(task_batches_module, "sleep", sleep),
             patch.object(
                 submit_module,
                 "load_json_file_with_variable_substitutions",
@@ -97,7 +108,7 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
         ):
             stack.enter_context(patcher)
         try:
-            submit_module.submit_json_raw(_ctx(), "raw.json")
+            submit_module.submit_json_raw(_submission(task_batch_size=1), "raw.json")
         except Exception as e:
             outcome["raised"] = e
     return outcome
@@ -221,4 +232,4 @@ class TestJsonRawMissingProperties:
             ),
             pytest.raises(ValueError, match=message),
         ):
-            submit_module.submit_json_raw(_ctx(), "raw.json")
+            submit_module.submit_json_raw(_submission(), "raw.json")

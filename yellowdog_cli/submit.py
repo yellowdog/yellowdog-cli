@@ -4,9 +4,8 @@
 A script to submit a Work Requirement.
 """
 
-from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import timedelta
 from gzip import compress
 from json import dumps as json_dumps
@@ -14,9 +13,7 @@ from json import loads as json_loads
 from math import ceil
 from os.path import dirname
 from sys import exit as sys_exit
-from threading import Event
-from time import sleep
-from typing import NoReturn, cast
+from typing import cast
 
 import requests
 from yellowdog_client.model import (
@@ -27,12 +24,6 @@ from yellowdog_client.model import (
     TaskTemplate,
     WorkRequirement,
     WorkRequirementStatus,
-)
-from yellowdog_client.model.exceptions.invalid_request_exception import (
-    InvalidRequestException,
-)
-from yellowdog_client.model.exceptions.not_authorised_exception import (
-    NotAuthorisedException,
 )
 from yellowdog_client.model.instance_pricing_preference import (
     InstancePricingPreference,
@@ -52,8 +43,6 @@ from yellowdog_cli.utils.entity_utils import (
     find_work_requirement_by_name,
 )
 from yellowdog_cli.utils.exit_codes import (
-    MISSING_PERMISSION_TEXT,
-    UNAUTHORIZED_TEXT,
     NotFoundError,
 )
 from yellowdog_cli.utils.file_substitution import (
@@ -66,11 +55,9 @@ from yellowdog_cli.utils.follow_utils import (
     follow_work_requirement_with_progress,
     work_requirement_failed,
 )
-from yellowdog_cli.utils.lazy import lazy
+from yellowdog_cli.utils.lazy import lazy, value
 from yellowdog_cli.utils.limits import (
-    BATCH_SUBMIT_RETRY_DELAY,
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
-    MAX_BATCH_SUBMIT_ATTEMPTS,
     RAW_REQUEST_TIMEOUT,
 )
 from yellowdog_cli.utils.load_config import (
@@ -160,9 +147,13 @@ from yellowdog_cli.utils.submit_utils import (
     get_task_group_name,
     get_task_name,
     merge_environment,
-    pause_between_batches,
     resolve_task_data,
     update_config_work_requirement_object,
+)
+from yellowdog_cli.utils.task_batches import (
+    raise_for_response,
+    run_batches,
+    submit_with_retries,
 )
 from yellowdog_cli.utils.type_check import (
     check_bool,
@@ -197,25 +188,40 @@ CONFIG_WR: ConfigWorkRequirement = lazy(load_config_work_requirement)
 
 # Generated in main() rather than at import, so that a name tag too long for
 # it is reported as an error by main_wrapper rather than as a traceback
-ID: str = ""
-# The Task batch size: the configuration's unless set here (as a test does)
-TASK_BATCH_SIZE: int | None = None
-
-# What a dry run reports, built up as the Work Requirement is
-WR_SNAPSHOT = WorkRequirementSnapshot()
-
-RCLONE_UPLOADED_FILES: RcloneUploadedFiles | None = None
-
-
-def _task_batch_size() -> int:
+@dataclass
+class _Submission:
     """
-    The Task batch size: TASK_BATCH_SIZE if set, else the configuration's.
+    One yd-submit run: what it runs with (ctx), and its own state, which the
+    functions below share and change as the submission proceeds, in place of
+    module globals.
     """
-    return CONFIG_WR.task_batch_size if TASK_BATCH_SIZE is None else TASK_BATCH_SIZE
+
+    ctx: RunContext
+    # The [workRequirement] configuration, re-substituted once the run has
+    # named its Work Requirement and Task Groups
+    config_wr: ConfigWorkRequirement
+    # The Work Requirement's name, generated, then from the specification
+    name: str = ""
+    # What a dry run reports, built up as the Work Requirement is
+    snapshot: WorkRequirementSnapshot = field(default_factory=WorkRequirementSnapshot)
+    uploaded_files: RcloneUploadedFiles | None = None
+    # The Task batch size, if not the configuration's (as a test sets it)
+    task_batch_size: int | None = None
+    legacy_retry_warned: bool = False
+
+    @property
+    def batch_size(self) -> int:
+        """
+        The Task batch size: task_batch_size if set, else the configuration's.
+        """
+        if self.task_batch_size is None:
+            return self.config_wr.task_batch_size
+        return self.task_batch_size
 
 
 @main_wrapper
 def main(ctx: RunContext):
+    run = _Submission(ctx, config_wr=value(CONFIG_WR))
 
     if ctx.args.upgrade_rclone:
         upgrade_rclone()
@@ -225,20 +231,19 @@ def main(ctx: RunContext):
         which_rclone()
         return
 
-    global ID
-    ID = generate_id(ctx.config.name_tag)
+    run.name = generate_id(ctx.config.name_tag)
 
     # The task batch size is checked as the configuration is loaded, and
     # the options '--json-raw' cannot be combined with as the command line is
     # parsed ('check_submit_combinations' in the registry)
     if ctx.args.json_raw:
-        submit_json_raw(ctx, ctx.args.json_raw)
+        submit_json_raw(run, ctx.args.json_raw)
         return
 
     # Direct file > file supplied using '-r' > file supplied in config file
     wr_data_file = (
         (
-            CONFIG_WR.wr_data_file
+            run.config_wr.wr_data_file
             if ctx.args.work_req_file is None
             else ctx.args.work_req_file
         )
@@ -246,7 +251,7 @@ def main(ctx: RunContext):
         else ctx.args.work_requirement_file_positional
     )
 
-    csv_files = _csv_files(ctx)
+    csv_files = _csv_files(run)
 
     if csv_files is None and ctx.args.process_csv_only:
         raise ValueError(
@@ -270,8 +275,8 @@ def main(ctx: RunContext):
             raise ValueError(
                 "Option '--validate' needs a Work Requirement specification file"
             )
-        wr_data = _work_requirement_from_csv(ctx, csv_files, files_directory)
-        _submit_or_add_to(ctx, files_directory=files_directory, wr_data=wr_data)
+        wr_data = _work_requirement_from_csv(run, csv_files, files_directory)
+        _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
         if ctx.args.jsonnet_dry_run and not wr_data_file.lower().endswith(".jsonnet"):
@@ -341,7 +346,7 @@ def main(ctx: RunContext):
             Family.WORK_REQUIREMENT, wr_data, wr_data_file, bool(ctx.args.validate)
         )
         validate_properties(wr_data, "Work Requirement JSON")
-        _submit_or_add_to(ctx, files_directory=files_directory, wr_data=wr_data)
+        _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
 
     else:
         if ctx.args.validate:
@@ -349,29 +354,31 @@ def main(ctx: RunContext):
                 "Option '--validate' needs a Work Requirement specification file"
             )
         _submit_or_add_to(
-            ctx, files_directory=files_directory, task_count=CONFIG_WR.task_count
+            run, files_directory=files_directory, task_count=run.config_wr.task_count
         )
 
     if ctx.args.dry_run:
         if ctx.args.json_output:
-            record_document(WR_SNAPSHOT.wr_data)
+            record_document(run.snapshot.wr_data)
         else:
-            WR_SNAPSHOT.print()
+            run.snapshot.print()
 
 
-def _csv_files(ctx: RunContext) -> list[str] | None:
+def _csv_files(run: _Submission) -> list[str] | None:
     """
     The CSV files named, on the command line or else in the configuration;
     None if none is, as 'csvFiles = []' in the configuration names none.
     """
     csv_files = (
-        CONFIG_WR.csv_files if ctx.args.csv_files is None else ctx.args.csv_files
+        run.config_wr.csv_files
+        if run.ctx.args.csv_files is None
+        else run.ctx.args.csv_files
     )
     return csv_files or None
 
 
 def _work_requirement_from_csv(
-    ctx: RunContext, csv_files: list[str], files_directory: str
+    run: _Submission, csv_files: list[str], files_directory: str
 ) -> dict:
     """
     The Work Requirement built from the TOML configuration and a CSV file,
@@ -386,15 +393,15 @@ def _work_requirement_from_csv(
             " one CSV file can be used"
         )
     return csv_expand_toml_tasks(
-        CONFIG_WR,
+        run.config_wr,
         csv_files[0],
         files_directory,
-        csv_only=bool(ctx.args.process_csv_only),
+        csv_only=bool(run.ctx.args.process_csv_only),
     )
 
 
 def _submit_or_add_to(
-    ctx: RunContext,
+    run: _Submission,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -404,16 +411,16 @@ def _submit_or_add_to(
     otherwise into a new one. Both honour '--dry-run', though only the former
     needs to read from the platform to do so.
     """
-    if ctx.args.add_to:
+    if run.ctx.args.add_to:
         add_to_existing_work_requirement(
-            ctx,
+            run,
             files_directory=files_directory,
             wr_data=wr_data,
             task_count=task_count,
         )
     else:
         submit_work_requirement(
-            ctx,
+            run,
             files_directory=files_directory,
             wr_data=wr_data,
             task_count=task_count,
@@ -421,7 +428,7 @@ def _submit_or_add_to(
 
 
 def submit_work_requirement(
-    ctx: RunContext,
+    run: _Submission,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -438,35 +445,36 @@ def submit_work_requirement(
     # Create a default tasks_data dictionary if required
     if wr_data is None:
         wr_data = (
-            {TASK_GROUPS: []} if ctx.args.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
+            {TASK_GROUPS: []} if run.ctx.args.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
         )
     check_dict(wr_data)
     check_task_groups(wr_data)
     promote_task_type(wr_data)
 
     # Overwrite the WR name?
-    global ID, CONFIG_WR
-    ID = format_yd_name(
+    run.name = format_yd_name(
         check_str(
-            wr_data.get(NAME, ID if CONFIG_WR.wr_name is None else CONFIG_WR.wr_name),
+            wr_data.get(
+                NAME,
+                run.name if run.config_wr.wr_name is None else run.config_wr.wr_name,
+            ),
             NAME,
         )
     )
     # Lazy substitution of the Work Requirement name, now it's defined
-    add_substitutions_without_overwriting(subs={L_WR_NAME: ID})
+    add_substitutions_without_overwriting(subs={L_WR_NAME: run.name})
     # Announced before its Task Groups, which announce themselves as they're
     # generated; this is the only report of the name in a dry run
-    print_info(f"Generated Work Requirement '{ID}'")
+    print_info(f"Generated Work Requirement '{run.name}'")
     # Re-process substitutions in the CONFIG_WR object
-    CONFIG_WR = update_config_work_requirement_object(CONFIG_WR)
+    run.config_wr = update_config_work_requirement_object(run.config_wr)
     # Re-process substitutions in the wr_data dictionary
     resolve_variables_insitu(wr_data)
 
     # Handle any files that need to be uploaded
-    global RCLONE_UPLOADED_FILES
-    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(ctx, files_directory=files_directory)
+    run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
 
-    expand_task_groups(wr_data)
+    expand_task_groups(run, wr_data)
 
     # Create the list of TaskGroup objects
     task_groups: list[TaskGroup] = []
@@ -475,6 +483,7 @@ def submit_work_requirement(
     ):
         task_groups.append(
             create_task_group(
+                run,
                 tg_number,
                 cast(dict, wr_data),
                 task_group_data,
@@ -483,52 +492,58 @@ def submit_work_requirement(
         )
 
     # Create the Work Requirement
-    priority = check_float_or_int(wr_data.get(PRIORITY, CONFIG_WR.priority), PRIORITY)
+    priority = check_float_or_int(
+        wr_data.get(PRIORITY, run.config_wr.priority), PRIORITY
+    )
     wr_tag = check_str(
         wr_data.get(
             WR_TAG,
-            ctx.config.name_tag if CONFIG_WR.wr_tag is None else CONFIG_WR.wr_tag,
+            run.ctx.config.name_tag
+            if run.config_wr.wr_tag is None
+            else run.config_wr.wr_tag,
         ),
         WR_TAG,
     )
     work_requirement = WorkRequirement(
-        namespace=ctx.config.namespace,
-        name=ID,
+        namespace=run.ctx.config.namespace,
+        name=run.name,
         taskGroups=task_groups,
         tag=wr_tag,
         priority=priority,
     )
-    if not ctx.args.dry_run:
-        work_requirement = ctx.client.work_client.add_work_requirement(work_requirement)
+    if not run.ctx.args.dry_run:
+        work_requirement = run.ctx.client.work_client.add_work_requirement(
+            work_requirement
+        )
         # Recorded now, so a failure adding its Tasks still reports it
         record_entity(
             work_requirement.id,
             work_requirement.name,
-            ctx.config.namespace,
+            run.ctx.config.namespace,
             ET_WORK_REQUIREMENTS,
         )
         print_quiet_result(work_requirement.id)
         print_info(
             "Created "
-            f"{link_entity(ctx.config.url, work_requirement)} "
-            f"('{ctx.config.namespace}/{work_requirement.name}')"
+            f"{link_entity(run.ctx.config.url, work_requirement)} "
+            f"('{run.ctx.config.namespace}/{work_requirement.name}')"
         )
         print_info(f"YellowDog ID is '{work_requirement.id}'")
     else:
-        WR_SNAPSHOT.set_work_requirement(work_requirement)
+        run.snapshot.set_work_requirement(work_requirement)
 
     try:
         # Held before any Task is added, so that none starts; inside the
         # clean-up, as a Work Requirement that cannot be held as asked is
         # one left live without its Tasks
-        if ctx.args.hold and not ctx.args.dry_run:
-            ctx.client.work_client.hold_work_requirement(work_requirement)
+        if run.ctx.args.hold and not run.ctx.args.dry_run:
+            run.ctx.client.work_client.hold_work_requirement(work_requirement)
             print_info("Work Requirement status is set to 'HELD'")
 
         # Add Tasks to their Task Groups
         for tg_number, task_group in enumerate(task_groups):
             add_tasks_to_task_group(
-                ctx,
+                run,
                 tg_number,
                 task_group,
                 cast(dict, wr_data),
@@ -540,13 +555,13 @@ def submit_work_requirement(
     # An interrupt too: Ctrl-C part-way through would otherwise leave the
     # Work Requirement live with only some of its Tasks
     except (Exception, KeyboardInterrupt):
-        cleanup_on_failure(ctx, work_requirement)
+        cleanup_on_failure(run, work_requirement)
         raise
 
-    if ctx.args.progress:
-        follow_progress_bar(ctx, work_requirement)
-    elif ctx.args.follow:
-        follow_progress(ctx, work_requirement)
+    if run.ctx.args.progress:
+        follow_progress_bar(run, work_requirement)
+    elif run.ctx.args.follow:
+        follow_progress(run, work_requirement)
 
 
 def check_task_groups(wr_data: dict) -> None:
@@ -585,7 +600,7 @@ def promote_task_type(data: dict) -> None:
         data[TASK_TYPES] = [data[TASK_TYPE]]
 
 
-def expand_task_groups(wr_data: dict) -> None:
+def expand_task_groups(run: _Submission, wr_data: dict) -> None:
     """
     Expand a single Task Group into 'taskGroupCount' copies of itself, in
     place. A count given as a whole-valued float ('2.0', which the schema
@@ -593,7 +608,7 @@ def expand_task_groups(wr_data: dict) -> None:
     is an error.
     """
     task_group_count = check_float_or_int(
-        wr_data.get(TASK_GROUP_COUNT, CONFIG_WR.task_group_count), TASK_GROUP_COUNT
+        wr_data.get(TASK_GROUP_COUNT, run.config_wr.task_group_count), TASK_GROUP_COUNT
     )
     if task_group_count is None:
         return
@@ -625,14 +640,10 @@ def expand_task_groups(wr_data: dict) -> None:
 
 # Per-invocation flag so the deprecation warning fires once even when many
 # Task Groups use the legacy retry mechanism
-_LEGACY_RETRY_WARNED = False
-
-
-def _warn_legacy_retry_mechanism_once() -> None:
-    global _LEGACY_RETRY_WARNED
-    if _LEGACY_RETRY_WARNED:
+def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
+    if run.legacy_retry_warned:
         return
-    _LEGACY_RETRY_WARNED = True
+    run.legacy_retry_warned = True
     print_warning(
         f"'{MAX_RETRIES}' and '{RETRYABLE_ERRORS}' are deprecated; "
         f"please use '{RETRY_POLICY}' and (optionally) '{FAILURE_POLICY}' "
@@ -641,6 +652,7 @@ def _warn_legacy_retry_mechanism_once() -> None:
 
 
 def create_task_group(
+    run: _Submission,
     tg_number: int,
     wr_data: dict,
     task_group_data: dict,
@@ -675,7 +687,7 @@ def create_task_group(
     if num_tasks == 1:  # Account for Task expansion
         _task_count = check_int(
             task_group_data.get(
-                TASK_COUNT, wr_data.get(TASK_COUNT, CONFIG_WR.task_count)
+                TASK_COUNT, wr_data.get(TASK_COUNT, run.config_wr.task_count)
             ),
             TASK_COUNT,
         )
@@ -690,7 +702,7 @@ def create_task_group(
         pass
     task_group_name = format_yd_name(
         get_task_group_name(
-            check_str(task_group_data.get(NAME, CONFIG_WR.task_group_name), NAME),
+            check_str(task_group_data.get(NAME, run.config_wr.task_group_name), NAME),
             effective_tg_number,
             num_task_groups,
             num_tasks,
@@ -705,8 +717,8 @@ def create_task_group(
     )
     add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
     resolve_variables_insitu(task_group_data)
-    # Create a copy of global CONFIG_WR and apply lazy substitutions
-    config_wr = update_config_work_requirement_object(deepcopy(CONFIG_WR))
+    # Copy the run's configuration and apply the lazy substitutions to it
+    config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
 
     # Resolve taskTemplate early so it can satisfy the task-type validation below
     task_template_data = check_dict(
@@ -815,7 +827,7 @@ def create_task_group(
         )
 
     if legacy_in_use:
-        _warn_legacy_retry_mechanism_once()
+        _warn_legacy_retry_mechanism_once(run)
 
     run_specification = RunSpecification(
         taskTypes=task_types,
@@ -955,7 +967,7 @@ def create_task_group(
 
 
 def add_tasks_to_task_group(
-    ctx: RunContext,
+    run: _Submission,
     tg_number: int,
     task_group: TaskGroup,
     wr_data: dict,
@@ -977,7 +989,7 @@ def add_tasks_to_task_group(
     task_number_offset: starting task number within the TG (for adding to an
       existing Task Group that already contains tasks).
     """
-    batch_size = _task_batch_size()
+    batch_size = run.batch_size
 
     num_tasks = len(wr_data[TASK_GROUPS][tg_number][TASKS])
 
@@ -985,7 +997,7 @@ def add_tasks_to_task_group(
     # in the Task Group, create 'taskCount' duplicates of the Task.
     task_group_task_count = check_int(
         wr_data[TASK_GROUPS][tg_number].get(
-            TASK_COUNT, wr_data.get(TASK_COUNT, CONFIG_WR.task_count)
+            TASK_COUNT, wr_data.get(TASK_COUNT, run.config_wr.task_count)
         ),
         TASK_COUNT,
     )
@@ -1021,7 +1033,7 @@ def add_tasks_to_task_group(
     tasks = wr_data[TASK_GROUPS][tg_number][TASKS]
     num_tasks = len(tasks) if task_count is None else task_count
     num_task_batches: int = ceil(num_tasks / batch_size)
-    if num_task_batches > 1 and not ctx.args.dry_run:
+    if num_task_batches > 1 and not run.ctx.args.dry_run:
         print_info(
             f"Adding Tasks to Task Group '{task_group.name}' in "
             f"{num_task_batches} batches (batch size = {batch_size})"
@@ -1035,90 +1047,41 @@ def add_tasks_to_task_group(
     )
     add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
 
-    num_submitted_tasks = 0
-
-    parallel_upload_threads = _parallel_batches(ctx)
-
-    # Single batch or sequential batch submission; a Task Group with no Tasks
-    # has no batches, and a pool of no threads cannot be built for it
-    if parallel_upload_threads == 1 or num_task_batches <= 1:
-        if num_task_batches > 1:
-            print_info(f"Uploading {num_task_batches} Task batches sequentially")
-        for batch_number in range(num_task_batches):
-            if ctx.args.pause_between_batches is not None and num_task_batches > 1:
-                pause_between_batches(
-                    ctx,
-                    task_batch_size=batch_size,
-                    batch_number=batch_number,
-                    num_tasks=num_tasks,
-                )
-            tasks_list = generate_batch_of_tasks_for_task_group(
-                ctx,
-                (batch_size * batch_number),
-                min(batch_size * (batch_number + 1), num_tasks),
-                wr_data,
-                files_directory,
-                task_group,
-                effective_tg_number,
-                tasks,
-                task_count,
-                num_tasks,
-                num_task_groups,
-                task_number_offset=task_number_offset,
-                wr_tg_index=tg_number,
-            )
-            num_submitted_tasks += submit_batch_of_tasks_to_task_group(
-                ctx,
+    num_submitted_tasks = run_batches(
+        run.ctx,
+        num_tasks,
+        batch_size,
+        _parallel_batches(run),
+        make_batch=lambda start, end: generate_batch_of_tasks_for_task_group(
+            run,
+            start,
+            end,
+            wr_data,
+            files_directory,
+            task_group,
+            effective_tg_number,
+            tasks,
+            task_count,
+            num_tasks,
+            num_task_groups,
+            task_number_offset=task_number_offset,
+            wr_tg_index=tg_number,
+        ),
+        send_batch=lambda tasks_list, batch_number, num_batches: (
+            submit_batch_of_tasks_to_task_group(
+                run,
                 tasks_list,
                 work_requirement,
                 task_group,
-                num_task_batches,
+                num_batches,
                 batch_number,
                 batch_size,
                 num_tasks,
             )
+        ),
+    )
 
-    # Parallel batches
-    else:
-        if ctx.args.pause_between_batches is not None:
-            print_warning(
-                "Option 'pause-between-batches/-P' is ignored for parallel batch uploads"
-            )
-        max_workers = min(num_task_batches, parallel_upload_threads)
-        print_info(
-            f"Submitting Task batches using {max_workers} parallel submission threads"
-        )
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            batches = _Batches(executor)
-            for batch_number in range(num_task_batches):
-                batches.submit(
-                    submit_batch_of_tasks_to_task_group,
-                    ctx,
-                    generate_batch_of_tasks_for_task_group(
-                        ctx,
-                        (batch_size * batch_number),
-                        min(batch_size * (batch_number + 1), num_tasks),
-                        wr_data,
-                        files_directory,
-                        task_group,
-                        effective_tg_number,
-                        tasks,
-                        task_count,
-                        num_tasks,
-                        num_task_groups,
-                        task_number_offset=task_number_offset,
-                        wr_tg_index=tg_number,
-                    ),
-                    work_requirement,
-                    task_group,
-                    num_task_batches,
-                    batch_number,
-                    batch_size,
-                    num_tasks,
-                )
-            num_submitted_tasks = batches.total()
-
-    if not ctx.args.dry_run:
+    if not run.ctx.args.dry_run:
         if num_submitted_tasks > 0:
             print_info(
                 f"Added a total of {num_submitted_tasks:,d} Task(s) to Task Group"
@@ -1128,62 +1091,22 @@ def add_tasks_to_task_group(
             print_info(f"No Tasks added to Task Group '{task_group.name}'")
 
 
-class _Batches:
-    """
-    A Task Group's batches, uploaded on a pool of threads. Once one fails,
-    a batch not yet started is skipped: the Work Requirement is about to be
-    cancelled, and its Tasks would only be submitted to it. Each batch checks
-    as it starts, rather than the queue being cancelled, since a thread takes
-    the next batch as soon as it is free, before the failure can be seen.
-    """
-
-    def __init__(self, executor: ThreadPoolExecutor):
-        self._executor = executor
-        self._stop = Event()
-        self._futures: list[Future] = []
-
-    def submit(self, function: Callable[..., int], *args) -> None:
-        self._futures.append(self._executor.submit(self._run, function, *args))
-
-    def _run(self, function: Callable[..., int], *args) -> int:
-        if self._stop.is_set():
-            return 0
-        try:
-            return function(*args)
-        except BaseException:
-            self._stop.set()
-            raise
-
-    def total(self) -> int:
-        """
-        The Tasks submitted, once every batch has finished or been skipped;
-        the first failure is raised then.
-        """
-        total = 0
-        failure: BaseException | None = None
-        for future in self._futures:
-            try:
-                total += future.result()
-            except BaseException as e:
-                failure = failure or e
-        if failure is not None:
-            raise failure
-        return total
-
-
-def _parallel_batches(ctx: RunContext) -> int:
+def _parallel_batches(run: _Submission) -> int:
     """
     The number of Task batches to upload in parallel: the command line's,
     else the configuration's, else the default.
     """
-    for parallel_batches in (ctx.args.parallel_batches, CONFIG_WR.parallel_batches):
+    for parallel_batches in (
+        run.ctx.args.parallel_batches,
+        run.config_wr.parallel_batches,
+    ):
         if parallel_batches is not None:
             return parallel_batches
     return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
 
 
 def generate_batch_of_tasks_for_task_group(
-    ctx: RunContext,
+    run: _Submission,
     start_task_number: int,
     end_task_number: int,
     wr_data: dict,
@@ -1218,7 +1141,7 @@ def generate_batch_of_tasks_for_task_group(
                     SET_TASK_NAMES,
                     task_group_data.get(
                         SET_TASK_NAMES,
-                        wr_data.get(SET_TASK_NAMES, CONFIG_WR.set_task_names),
+                        wr_data.get(SET_TASK_NAMES, run.config_wr.set_task_names),
                     ),
                 ),
                 SET_TASK_NAMES,
@@ -1229,11 +1152,13 @@ def generate_batch_of_tasks_for_task_group(
         display_task_number = task_number + task_number_offset
         display_num_tasks = task_number_offset + num_tasks
 
-        # The global CONFIG_WR, not a per-Task copy: get_task_name() makes the
+        # The run's configuration, not a per-Task copy: get_task_name() makes the
         # Task-level lazy substitutions in the name itself, and the per-Task
         # copy can only be made once the name it substitutes is known
         task_name = get_task_name(
-            check_str(task.get(NAME, task.get(TASK_NAME, CONFIG_WR.task_name)), NAME),
+            check_str(
+                task.get(NAME, task.get(TASK_NAME, run.config_wr.task_name)), NAME
+            ),
             set_task_names,
             display_task_number,
             display_num_tasks,
@@ -1253,7 +1178,7 @@ def generate_batch_of_tasks_for_task_group(
             formatted_number_str(display_task_number, display_num_tasks),
         )
         resolve_variables_insitu(task)
-        config_wr = update_config_work_requirement_object(deepcopy(CONFIG_WR))
+        config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
 
         arguments_list = check_list(
             task.get(
@@ -1337,7 +1262,7 @@ def generate_batch_of_tasks_for_task_group(
         )
         # This will 'pop' any 'localFile' properties, required for the
         # following 'generate' call
-        RCLONE_UPLOADED_FILES.upload_dataclient_input_files(task_data_inputs)  # type: ignore[union-attr]
+        run.uploaded_files.upload_dataclient_input_files(task_data_inputs)  # type: ignore[union-attr]
         task_data_inputs_and_outputs = generate_taskdata_object(
             task_data_inputs, task_data_outputs
         )
@@ -1369,8 +1294,8 @@ def generate_batch_of_tasks_for_task_group(
                 task_timeout=task_timeout,
                 add_yd_env_vars=add_yd_env_vars,
                 task_data_inputs_and_outputs=task_data_inputs_and_outputs,
-                wr_name=ID,
-                namespace=ctx.config.namespace,
+                wr_name=run.name,
+                namespace=run.ctx.config.namespace,
                 total_num_task_groups=num_task_groups,
                 total_num_tasks=display_num_tasks,
             )
@@ -1411,7 +1336,7 @@ def _task_type_of(
 
 
 def submit_batch_of_tasks_to_task_group(
-    ctx: RunContext,
+    run: _Submission,
     tasks_list: list[Task],
     work_requirement: WorkRequirement,
     task_group: TaskGroup,
@@ -1424,8 +1349,10 @@ def submit_batch_of_tasks_to_task_group(
     Submit a batch of tasks to a task group. Return the number of tasks
     submitted.
     """
-    if ctx.args.dry_run:
-        WR_SNAPSHOT.add_tasks(task_group.name, tasks_list)
+    if run.ctx.args.dry_run:
+        run.snapshot.add_tasks(
+            task_group.name, tasks_list, first_task=batch_number * task_batch_size
+        )
         return len(tasks_list)
 
     batch_number_str = formatted_number_str(batch_number, num_task_batches)
@@ -1448,14 +1375,14 @@ def submit_batch_of_tasks_to_task_group(
             )
 
     def attempt() -> None:
-        ctx.client.work_client.add_tasks_to_task_group_by_name(
-            ctx.config.namespace,
+        run.ctx.client.work_client.add_tasks_to_task_group_by_name(
+            run.ctx.config.namespace,
             work_requirement.name,
             task_group.name,
             tasks_list,
         )
 
-    _submit_with_retries(
+    submit_with_retries(
         attempt,
         report_success,
         batch=f"batch {batch_number_str} of {num_task_batches}",
@@ -1464,80 +1391,7 @@ def submit_batch_of_tasks_to_task_group(
     return len(tasks_list)
 
 
-def _submit_with_retries(
-    attempt: Callable[[], None],
-    report_success: Callable[[], None],
-    batch: str,
-    batch_in_full: str,
-) -> None:
-    """
-    Make one batch submission, retrying it with a growing delay while it
-    fails in a way a retry could cure. Returns once it succeeds; raises its
-    last failure, as it was raised, once it cannot.
-    """
-    for attempt_number in range(MAX_BATCH_SUBMIT_ATTEMPTS):
-        try:
-            attempt()
-            report_success()
-            return
-
-        except Exception as e:
-            # On a retry, this implies that the previous attempt, which
-            # reported an error, did in fact add the batch. On the first
-            # attempt it is a genuine name collision: a failure, and one not
-            # to retry, since the retry would take it for success.
-            duplicate_names = "Task names must be unique within task group" in str(e)
-            if duplicate_names and attempt_number > 0:
-                report_success()
-                return
-
-            # Raised as it is, not wrapped, so that the wrapper's classify()
-            # still sees its type and the exit code names the kind of failure
-            if (
-                duplicate_names
-                or _is_permanent_failure(e)
-                or attempt_number == MAX_BATCH_SUBMIT_ATTEMPTS - 1
-            ):
-                print_error(f"Failed to submit {batch_in_full}")
-                raise
-
-            if attempt_number == 0:
-                print_warning(f"Failed to submit {batch}: {e}")
-            delay = BATCH_SUBMIT_RETRY_DELAY * 2**attempt_number
-            print_info(
-                f"Retrying submission of {batch} in {delay:g}s "
-                f"(retry attempt {attempt_number + 1} of {MAX_BATCH_SUBMIT_ATTEMPTS - 1})"
-            )
-            sleep(delay)
-
-    raise AssertionError("unreachable: the last attempt returns or raises")
-
-
-def _is_permanent_failure(exception: Exception) -> bool:
-    """
-    A failure that resubmitting the same batch cannot cure: the request
-    itself is invalid, or the credentials are refused or lack permission;
-    for a direct request ('--json-raw'), any 4xx but a timeout or 429.
-    """
-    if isinstance(exception, (InvalidRequestException, NotAuthorisedException)):
-        return True
-    if isinstance(exception, requests.HTTPError):
-        # A refusal, but not a timeout or a request to slow down
-        status = getattr(exception.response, "status_code", None)
-        if isinstance(status, int) and 400 <= status < 500:
-            return status not in (408, 429)
-    message = str(exception)
-    return any(
-        text in message
-        for text in (
-            "InvalidRequestException",
-            MISSING_PERMISSION_TEXT,
-            UNAUTHORIZED_TEXT,
-        )
-    )
-
-
-def follow_progress(ctx: RunContext, work_requirement: WorkRequirement) -> None:
+def follow_progress(run: _Submission, work_requirement: WorkRequirement) -> None:
     """
     Follow and report the progress of a Work Requirement.
 
@@ -1545,15 +1399,15 @@ def follow_progress(ctx: RunContext, work_requirement: WorkRequirement) -> None:
     a failure state (FAILED/CANCELLED), so that a following submission reflects
     the outcome.
     """
-    if not ctx.args.dry_run:
+    if not run.ctx.args.dry_run:
         print_info("Following Work Requirement event stream")
         wr_id = cast(str, work_requirement.id)
-        follow_events(ctx, wr_id, YDIDType.WORK_REQUIREMENT)
-        if ctx.args.exit_on_failure and work_requirement_failed(ctx, wr_id):
+        follow_events(run.ctx, wr_id, YDIDType.WORK_REQUIREMENT)
+        if run.ctx.args.exit_on_failure and work_requirement_failed(run.ctx, wr_id):
             sys_exit(1)
 
 
-def follow_progress_bar(ctx: RunContext, work_requirement: WorkRequirement) -> None:
+def follow_progress_bar(run: _Submission, work_requirement: WorkRequirement) -> None:
     """
     Follow a Work Requirement and display a live progress bar.
 
@@ -1561,38 +1415,38 @@ def follow_progress_bar(ctx: RunContext, work_requirement: WorkRequirement) -> N
     a failure state (FAILED/CANCELLED), so that a following submission reflects
     the outcome.
     """
-    if ctx.args.dry_run:
+    if run.ctx.args.dry_run:
         return
     wr_id = cast(str, work_requirement.id)
-    follow_work_requirement_with_progress(ctx, wr_id)
-    if ctx.args.exit_on_failure and work_requirement_failed(ctx, wr_id):
+    follow_work_requirement_with_progress(run.ctx, wr_id)
+    if run.ctx.args.exit_on_failure and work_requirement_failed(run.ctx, wr_id):
         sys_exit(1)
 
 
-def cleanup_on_failure(ctx: RunContext, work_requirement: WorkRequirement) -> None:
+def cleanup_on_failure(run: _Submission, work_requirement: WorkRequirement) -> None:
     """
     Clean up the Work Requirement and any uploaded Objects on failure. Each
     step's own failure is reported and the next step still made, so that the
     failure being cleaned up after, which the caller re-raises, is the one
     the command reports.
     """
-    if ctx.args.dry_run:
+    if run.ctx.args.dry_run:
         return
 
     try:
-        ctx.client.work_client.cancel_work_requirement(work_requirement)
+        run.ctx.client.work_client.cancel_work_requirement(work_requirement)
         print_warning(f"Cancelled Work Requirement '{work_requirement.name}'")
     except Exception as e:
         print_error(f"Unable to cancel Work Requirement '{work_requirement.name}': {e}")
 
     try:
-        RCLONE_UPLOADED_FILES.delete()  # type: ignore[union-attr]
+        run.uploaded_files.delete()  # type: ignore[union-attr]
     except Exception as e:
         print_error(f"Unable to delete the files uploaded for its Tasks: {e}")
 
 
 def add_to_existing_work_requirement(
-    ctx: RunContext,
+    run: _Submission,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -1601,18 +1455,16 @@ def add_to_existing_work_requirement(
     Add task groups and/or tasks to an existing Work Requirement identified
     by the --add-to argument (name or YellowDog ID).
     """
-    work_requirement = _work_requirement_to_add_to(ctx, cast(str, ctx.args.add_to))
+    work_requirement = _work_requirement_to_add_to(run, cast(str, run.ctx.args.add_to))
     existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
 
     # Use the existing WR's name as the ID for substitutions
-    global ID, CONFIG_WR
-    ID = cast(str, work_requirement.name)
-    add_substitutions_without_overwriting(subs={L_WR_NAME: ID})
-    CONFIG_WR = update_config_work_requirement_object(CONFIG_WR)
+    run.name = cast(str, work_requirement.name)
+    add_substitutions_without_overwriting(subs={L_WR_NAME: run.name})
+    run.config_wr = update_config_work_requirement_object(run.config_wr)
 
     # Initialise rclone file uploads
-    global RCLONE_UPLOADED_FILES
-    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(ctx, files_directory=files_directory)
+    run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
 
     # Build spec data
     wr_data = {TASK_GROUPS: [{TASKS: [{}]}]} if wr_data is None else wr_data
@@ -1622,7 +1474,7 @@ def add_to_existing_work_requirement(
 
     resolve_variables_insitu(cast(dict, wr_data))
 
-    expand_task_groups(wr_data)
+    expand_task_groups(run, wr_data)
 
     n_existing = len(existing_tgs)
     n_spec = len(wr_data[TASK_GROUPS])
@@ -1635,6 +1487,7 @@ def add_to_existing_work_requirement(
     for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS]):
         spec_task_groups.append(
             create_task_group(
+                run,
                 tg_number,
                 cast(dict, wr_data),
                 task_group_data,
@@ -1686,43 +1539,43 @@ def add_to_existing_work_requirement(
 
     all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
 
-    if ctx.args.dry_run:
+    if run.ctx.args.dry_run:
         # Seed the snapshot with every Task Group the Tasks below will attach
         # to, or the first batch has nothing to attach to. The existing Task
         # Groups' own Tasks can't be shown: the API's Task Group carries a
         # summary of them, not the Tasks themselves -- hence the line saying
         # which of the Task Groups below are already there.
         work_requirement.taskGroups = all_task_groups
-        WR_SNAPSHOT.set_work_requirement(work_requirement)
+        run.snapshot.set_work_requirement(work_requirement)
         if existing_tgs:
             print_dry_run(
-                f"Work Requirement '{ID}' already contains {len(existing_tgs)}"
+                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
                 " Task Group(s), shown below without their existing Tasks: "
                 + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
             )
         if new_tgs:
             print_dry_run(
                 f"Would add {len(new_tgs)} new Task Group(s) to existing"
-                f" Work Requirement '{ID}'"
+                f" Work Requirement '{run.name}'"
             )
 
     # If there are new TGs, update the Work Requirement with the full TG list
     elif new_tgs:
         work_requirement.taskGroups = all_task_groups
-        work_requirement = ctx.client.work_client.update_work_requirement(
+        work_requirement = run.ctx.client.work_client.update_work_requirement(
             work_requirement
         )
         print_info(
-            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{ID}'"
+            f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{run.name}'"
         )
 
-    if not ctx.args.dry_run:
+    if not run.ctx.args.dry_run:
         # The Work Requirement added to, as a creator's document names the
         # one it created
         record_entity(
             work_requirement.id,
             work_requirement.name,
-            ctx.config.namespace,  # Where it was looked up
+            run.ctx.config.namespace,  # Where it was looked up
             ET_WORK_REQUIREMENTS,
         )
 
@@ -1731,7 +1584,7 @@ def add_to_existing_work_requirement(
         # appended
         for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs):
             add_tasks_to_task_group(
-                ctx,
+                run,
                 tg_number=spec_idx,
                 task_group=spec_tg,
                 wr_data=cast(dict, wr_data),
@@ -1751,7 +1604,7 @@ def add_to_existing_work_requirement(
                 task_summary.taskCount if task_summary is not None else 0
             )
             add_tasks_to_task_group(
-                ctx,
+                run,
                 tg_number=spec_idx,
                 task_group=existing_tg,
                 wr_data=cast(dict, wr_data),
@@ -1767,18 +1620,18 @@ def add_to_existing_work_requirement(
         # Unlike a new Work Requirement, this one is not cancelled, so the
         # Tasks already added to it stay live -- and may read the files
         # uploaded for them, which are therefore left in place too
-        if not ctx.args.dry_run:
+        if not run.ctx.args.dry_run:
             print_warning(
-                f"Adding to Work Requirement '{ID}' failed part-way: any Tasks"
+                f"Adding to Work Requirement '{run.name}' failed part-way: any Tasks"
                 " already added remain in it, and any files uploaded for them"
                 " have been left in place"
             )
         raise
 
-    if ctx.args.progress:
-        follow_progress_bar(ctx, work_requirement)
-    elif ctx.args.follow:
-        follow_progress(ctx, work_requirement)
+    if run.ctx.args.progress:
+        follow_progress_bar(run, work_requirement)
+    elif run.ctx.args.follow:
+        follow_progress(run, work_requirement)
 
 
 # The states of a Work Requirement that can still take Tasks: a FINISHING one
@@ -1786,7 +1639,7 @@ def add_to_existing_work_requirement(
 _ADDABLE_STATUSES = (WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD)
 
 
-def _work_requirement_to_add_to(ctx: RunContext, target: str) -> WorkRequirement:
+def _work_requirement_to_add_to(run: _Submission, target: str) -> WorkRequirement:
     """
     The Work Requirement '--add-to' names, fetched in full: by its YDID,
     whatever its namespace, or by its name, preferring the one that can still
@@ -1798,13 +1651,13 @@ def _work_requirement_to_add_to(ctx: RunContext, target: str) -> WorkRequirement
     else:
         try:
             summary = find_work_requirement_by_name(
-                ctx.client, target, ctx.config.namespace, _ADDABLE_STATUSES
+                run.ctx.client, target, run.ctx.config.namespace, _ADDABLE_STATUSES
             )
         except AmbiguousNameError as e:
             raise ValueError(str(e)) from e
         work_requirement_id = cast(str, summary.id)
     try:
-        work_requirement = ctx.client.work_client.get_work_requirement_by_id(
+        work_requirement = run.ctx.client.work_client.get_work_requirement_by_id(
             work_requirement_id
         )
     except Exception as e:
@@ -1820,7 +1673,7 @@ def _work_requirement_to_add_to(ctx: RunContext, target: str) -> WorkRequirement
     return work_requirement
 
 
-def submit_json_raw(ctx: RunContext, wr_file: str):
+def submit_json_raw(run: _Submission, wr_file: str):
     """
     Submit a 'raw' JSON Work Requirement, consisting of a combined Work
     Requirement definition and the constituent Tasks.
@@ -1829,7 +1682,7 @@ def submit_json_raw(ctx: RunContext, wr_file: str):
     # Load file contents, with variable substitutions
     if wr_file.lower().endswith(".jsonnet"):
         wr_data = load_jsonnet_file_with_variable_substitutions(
-            wr_file, dry_run=bool(ctx.args.jsonnet_dry_run)
+            wr_file, dry_run=bool(run.ctx.args.jsonnet_dry_run)
         )
     elif wr_file.lower().endswith(".json"):
         wr_data = load_json_file_with_variable_substitutions(wr_file)
@@ -1849,9 +1702,9 @@ def submit_json_raw(ctx: RunContext, wr_file: str):
     add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
     resolve_variables_insitu(wr_data)
 
-    if ctx.args.dry_run:
+    if run.ctx.args.dry_run:
         # This will show the results of any variable substitutions
-        if ctx.args.json_output:
+        if run.ctx.args.json_output:
             record_document(wr_data)
             return
         print_dry_run("Printing JSON Work Requirement specification:")
@@ -1877,15 +1730,17 @@ def submit_json_raw(ctx: RunContext, wr_file: str):
 
     # Submit the Work Requirement and its Task Groups
     response = requests.post(
-        url=f"{ctx.config.url}/work/requirements",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
+        url=f"{run.ctx.config.url}/work/requirements",
+        headers={
+            "Authorization": f"yd-key {run.ctx.config.key}:{run.ctx.config.secret}"
+        },
         json=wr_data,
         timeout=RAW_REQUEST_TIMEOUT,
     )
 
     if response.status_code != 200:
         print_error(f"Failed to create Work Requirement '{wr_name}'")
-        _raise_for_response(response)
+        raise_for_response(response)
 
     wr_id = json_loads(response.text)["id"]
     namespace = cast(str, wr_data.get("namespace"))
@@ -1894,28 +1749,30 @@ def submit_json_raw(ctx: RunContext, wr_file: str):
     print_quiet_result(wr_id)
 
     try:
-        _submit_json_raw_tasks(ctx, wr_id, wr_name, namespace, task_lists)
+        _submit_json_raw_tasks(run, wr_id, wr_name, namespace, task_lists)
     except (Exception, KeyboardInterrupt):
         # As for a Work Requirement built from a specification: one left
         # with only some of its Tasks is cancelled, and a failure to cancel
         # it is reported without masking the failure that is re-raised
         try:
-            ctx.client.work_client.cancel_work_requirement_by_id(wr_id)
+            run.ctx.client.work_client.cancel_work_requirement_by_id(wr_id)
             print_warning(f"Cancelled Work Requirement '{wr_name}'")
         except Exception as e:
             print_error(f"Unable to cancel Work Requirement '{wr_name}': {e}")
         raise
 
-    if ctx.args.progress:
+    if run.ctx.args.progress:
         follow_progress_bar(
-            ctx, ctx.client.work_client.get_work_requirement_by_id(wr_id)
+            run, run.ctx.client.work_client.get_work_requirement_by_id(wr_id)
         )
-    elif ctx.args.follow:
-        follow_progress(ctx, ctx.client.work_client.get_work_requirement_by_id(wr_id))
+    elif run.ctx.args.follow:
+        follow_progress(
+            run, run.ctx.client.work_client.get_work_requirement_by_id(wr_id)
+        )
 
 
 def _submit_json_raw_tasks(
-    ctx: RunContext,
+    run: _Submission,
     wr_id: str,
     wr_name: str,
     namespace: str,
@@ -1926,9 +1783,9 @@ def _submit_json_raw_tasks(
     Task Group's Tasks in batches. A batch that fails raises, once the
     batches already under way have finished; those not yet started are not.
     """
-    batch_size = _task_batch_size()
-    if ctx.args.hold:
-        ctx.client.work_client.hold_work_requirement_by_id(wr_id)
+    batch_size = run.batch_size
+    if run.ctx.args.hold:
+        run.ctx.client.work_client.hold_work_requirement_by_id(wr_id)
         print_info("Work Requirement status set to 'HELD'")
 
     # Submit Tasks in batches
@@ -1936,37 +1793,31 @@ def _submit_json_raw_tasks(
         if not task_list:
             print_info(f"No Tasks to add to Task Group '{task_group_name}'")
             continue
-        num_batches = ceil(len(task_list) / batch_size)
-        max_workers = min(num_batches, _parallel_batches(ctx))
-        print_info(
-            f"Submitting task batches using {max_workers} parallel submission thread(s)"
-        )
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            batches = _Batches(executor)
-            for batch_number in range(num_batches):
-                task_batch = task_list[
-                    batch_number * batch_size : min(
-                        len(task_list), (batch_number + 1) * batch_size
-                    )
-                ]
-                batches.submit(
-                    submit_json_task_batch,
-                    ctx,
+        num_submitted_tasks = run_batches(
+            run.ctx,
+            len(task_list),
+            batch_size,
+            _parallel_batches(run),
+            make_batch=lambda start, end, task_list=task_list: task_list[start:end],
+            send_batch=lambda task_batch, batch_number, num_batches, name=task_group_name: (
+                submit_json_task_batch(
+                    run,
                     task_batch,
                     batch_number,
                     num_batches,
-                    task_group_name,
+                    name,
                     wr_name,
                     namespace,
                 )
-            num_submitted_tasks = batches.total()
+            ),
+        )
         print_info(
             f"Added a total of {num_submitted_tasks} Task(s) to Task Group '{task_group_name}'"
         )
 
 
 def submit_json_task_batch(
-    ctx: RunContext,
+    run: _Submission,
     task_batch: list[dict],
     batch_number: int,
     num_batches: int,
@@ -1984,11 +1835,11 @@ def submit_json_task_batch(
     def attempt() -> None:
         response = requests.post(
             url=(
-                f"{ctx.config.url}/work/namespaces/{namespace}"
+                f"{run.ctx.config.url}/work/namespaces/{namespace}"
                 f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
             ),
             headers={
-                "Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}",
+                "Authorization": f"yd-key {run.ctx.config.key}:{run.ctx.config.secret}",
                 "Content-Encoding": "gzip",
                 "Content-Type": "application/json",
             },
@@ -1996,7 +1847,7 @@ def submit_json_task_batch(
             timeout=RAW_REQUEST_TIMEOUT,
         )
         if response.status_code != 200:
-            _raise_for_response(response)
+            raise_for_response(response)
 
     def report_success() -> None:
         print_info(
@@ -2007,19 +1858,8 @@ def submit_json_task_batch(
     batch = (
         f"batch {batch_number_str} of {num_batches} to Task Group '{task_group_name}'"
     )
-    _submit_with_retries(attempt, report_success, batch=batch, batch_in_full=batch)
+    submit_with_retries(attempt, report_success, batch=batch, batch_in_full=batch)
     return len(task_batch)
-
-
-def _raise_for_response(response: requests.Response) -> NoReturn:
-    """
-    Raise a failed response as an HTTPError carrying it, so that the
-    wrapper's classify() can name the failure by its status code, with the
-    Platform's own explanation (the response body) as its message.
-    """
-    raise requests.HTTPError(
-        f"HTTP {response.status_code}: {response.text}", response=response
-    )
 
 
 # Entry point

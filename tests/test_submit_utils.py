@@ -806,18 +806,20 @@ class TestTaskDataLevels:
 
 
 def test_a_manual_pause_without_a_terminal_is_no_answer(monkeypatch):
-    from yellowdog_cli.utils import interactive
+    from yellowdog_cli.utils import interactive, task_batches
 
     monkeypatch.setattr(
         wrapper_module,
         "ARGS_PARSER",
         MagicMock(pause_between_batches=0),
     )
-    monkeypatch.setattr(su, "json_requested", lambda: False)
+    monkeypatch.setattr(task_batches, "json_requested", lambda: False)
 
     def _no_answer(prompt):
         raise interactive.NoAnswerToPrompt()
 
     monkeypatch.setattr(interactive, "_get_user_input", _no_answer)
     with pytest.raises(interactive.NoAnswerToPrompt):
-        su.pause_between_batches(_ctx(), task_batch_size=2, batch_number=1, num_tasks=4)
+        task_batches.pause_between_batches(
+            _ctx(), task_batch_size=2, batch_number=1, num_tasks=4
+        )

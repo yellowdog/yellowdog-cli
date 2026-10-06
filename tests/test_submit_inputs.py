@@ -14,6 +14,7 @@ import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
     TASK_GROUPS,
     TASK_TYPE,
@@ -28,6 +29,16 @@ def _ctx() -> RunContext:
     """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
     )
 
 
@@ -51,7 +62,7 @@ class TestCsvFiles:
                 return_value=from_command_line,
             ),
         ):
-            return submit_module._csv_files(_ctx())
+            return submit_module._csv_files(_submission())
 
     def test_an_empty_list_in_the_configuration_names_none(self):
         # 'csvFiles = []' used to reach csv_files[0]: 'list index out of range'
@@ -69,15 +80,17 @@ class TestWorkRequirementFromCsv:
         # Without a specification there is one Task Group, so the files after
         # the first used to be ignored without a word
         with pytest.raises(ValueError, match=r"Number of CSV files \(2\) exceeds"):
-            submit_module._work_requirement_from_csv(_ctx(), ["a.csv", "b.csv"], ".")
+            submit_module._work_requirement_from_csv(
+                _submission(), ["a.csv", "b.csv"], "."
+            )
 
     def test_one_csv_file_is_expanded(self):
         with patch.object(
             submit_module, "csv_expand_toml_tasks", return_value={"x": 1}
         ) as expand:
-            assert submit_module._work_requirement_from_csv(_ctx(), ["a.csv"], "d") == {
-                "x": 1
-            }
+            assert submit_module._work_requirement_from_csv(
+                _submission(), ["a.csv"], "d"
+            ) == {"x": 1}
         assert expand.call_args.args[1:] == ("a.csv", "d")
 
 

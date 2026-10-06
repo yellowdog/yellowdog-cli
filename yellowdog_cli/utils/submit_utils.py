@@ -8,7 +8,6 @@ from datetime import timedelta
 from os import chdir, getcwd
 from os.path import abspath, exists, join
 from pathlib import Path
-from time import sleep
 from typing import cast
 
 from yellowdog_client.model import (
@@ -31,7 +30,6 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
-from yellowdog_cli.utils.interactive import wait_for_enter
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
@@ -65,7 +63,6 @@ from yellowdog_cli.utils.property_names import (
     TASKS,
 )
 from yellowdog_cli.utils.rclone_utils import make_rclone, parse_rclone_config
-from yellowdog_cli.utils.results import json_requested
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
@@ -132,52 +129,6 @@ def update_config_work_requirement_object(
     config_wr_dict = config_wr.__dict__
     resolve_variables_insitu(config_wr_dict)
     return ConfigWorkRequirement(**config_wr_dict)
-
-
-def pause_between_batches(
-    ctx: RunContext, task_batch_size: int, batch_number: int, num_tasks: int
-):
-    """
-    Process a pause between Task batches.
-    """
-    if ctx.args.pause_between_batches is None:
-        return
-
-    first_batch: bool = batch_number == 0
-    task_num_start = (task_batch_size * batch_number) + 1
-    task_num_end = min(task_batch_size * (batch_number + 1), num_tasks)
-    task_range_str = (
-        f"Tasks {task_num_start}-{task_num_end}"
-        if task_num_start != task_num_end
-        else f"Task {task_num_start}"
-    )
-
-    if ctx.args.pause_between_batches <= 0:  # Manual delay
-        if first_batch:
-            print_info(
-                f"Submitting batch number {batch_number + 1} ({task_range_str})",
-                override_quiet=not json_requested(),
-            )
-        else:
-            # The prompt goes to stderr under '--json', and with no terminal
-            # to answer from NoAnswerToPrompt is raised, not an EOFError
-            wait_for_enter(
-                "Pausing before submitting batch number"
-                f" {batch_number + 1} ({task_range_str}). Press enter to continue:"
-            )
-
-    elif ctx.args.pause_between_batches > 0:  # Automatic delay
-        print_info(
-            f"Submitting batch number {batch_number + 1} ({task_range_str})"
-            if first_batch
-            else (
-                f"Pausing for {ctx.args.pause_between_batches} seconds before"
-                f" submitting batch number {batch_number + 1}"
-                f" ({task_range_str})"
-            )
-        )
-        if not first_batch:
-            sleep(ctx.args.pause_between_batches)
 
 
 def generate_taskdata_object(

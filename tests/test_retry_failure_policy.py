@@ -4,7 +4,7 @@ builders in submit_utils.py, and the conflict-and-deprecation handling in
 submit.py.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from yellowdog_client.model import (
@@ -430,20 +430,20 @@ class TestRetryConflictDetection:
 
 class TestDeprecationWarning:
     def setup_method(self):
-        # Reset the per-invocation flag so each test starts clean
-        submit_module._LEGACY_RETRY_WARNED = False
+        # A run of its own, so each test starts with nothing warned of
+        self.run = submit_module._Submission(ctx=MagicMock(), config_wr=MagicMock())
 
     def test_warning_fires_first_time(self):
         with patch.object(submit_module, "print_warning") as mock:
-            submit_module._warn_legacy_retry_mechanism_once()
+            submit_module._warn_legacy_retry_mechanism_once(self.run)
         assert mock.call_count == 1
         assert "deprecated" in mock.call_args.args[0]
 
     def test_warning_does_not_fire_second_time(self):
         with patch.object(submit_module, "print_warning") as mock:
-            submit_module._warn_legacy_retry_mechanism_once()
-            submit_module._warn_legacy_retry_mechanism_once()
-            submit_module._warn_legacy_retry_mechanism_once()
+            submit_module._warn_legacy_retry_mechanism_once(self.run)
+            submit_module._warn_legacy_retry_mechanism_once(self.run)
+            submit_module._warn_legacy_retry_mechanism_once(self.run)
         assert mock.call_count == 1
 
 

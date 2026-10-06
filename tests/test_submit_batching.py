@@ -4,12 +4,18 @@ add_tasks_to_task_group (submit.py), and for the retrying of a batch that
 fails in submit_batch_of_tasks_to_task_group.
 """
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 import requests
-from yellowdog_client.model import TaskGroup, WorkRequirement
+from yellowdog_client.model import (
+    RunSpecification,
+    Task,
+    TaskGroup,
+    WorkRequirement,
+)
 from yellowdog_client.model.exceptions.invalid_request_exception import (
     InvalidRequestException,
 )
@@ -18,15 +24,18 @@ from yellowdog_client.model.exceptions.not_authorised_exception import (
 )
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.task_batches as task_batches_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
     MAX_BATCH_SUBMIT_ATTEMPTS,
     TASK_BATCH_SIZE_DEFAULT,
 )
+from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
 
 
@@ -36,6 +45,16 @@ def _ctx() -> RunContext:
     """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
     )
 
 
@@ -97,7 +116,6 @@ def _run_add_tasks(
         return len(tasks_list)
 
     with (
-        patch.object(submit_module, "TASK_BATCH_SIZE", batch_size),
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
@@ -109,7 +127,7 @@ def _run_add_tasks(
             "submit_batch_of_tasks_to_task_group",
             side_effect=fake_submit,
         ),
-        patch.object(submit_module, "pause_between_batches", pause_mock),
+        patch.object(task_batches_module, "pause_between_batches", pause_mock),
         patch.object(
             CLIParser,
             "parallel_batches",
@@ -130,7 +148,7 @@ def _run_add_tasks(
         ),
     ):
         submit_module.add_tasks_to_task_group(
-            _ctx(),
+            _submission(task_batch_size=batch_size),
             tg_number=0,
             task_group=_make_tg(),
             wr_data=wr_data,
@@ -174,7 +192,6 @@ def _run_add_tasks_tracking_tpe(
         return len(tasks_list)
 
     with (
-        patch.object(submit_module, "TASK_BATCH_SIZE", batch_size),
         patch.object(submit_module, "CONFIG_WR", config_wr_mock),
         patch.object(
             submit_module,
@@ -186,8 +203,10 @@ def _run_add_tasks_tracking_tpe(
             "submit_batch_of_tasks_to_task_group",
             side_effect=fake_submit,
         ),
-        patch.object(submit_module, "pause_between_batches"),
-        patch.object(submit_module, "ThreadPoolExecutor", side_effect=tracking_tpe),
+        patch.object(task_batches_module, "pause_between_batches"),
+        patch.object(
+            task_batches_module, "ThreadPoolExecutor", side_effect=tracking_tpe
+        ),
         patch.object(
             CLIParser,
             "parallel_batches",
@@ -208,7 +227,7 @@ def _run_add_tasks_tracking_tpe(
         ),
     ):
         submit_module.add_tasks_to_task_group(
-            _ctx(),
+            _submission(task_batch_size=batch_size),
             tg_number=0,
             task_group=_make_tg(),
             wr_data=_make_wr_data(num_tasks),
@@ -411,7 +430,7 @@ class TestTaskCountExpansion:
             ),
         ):
             submit_module.add_tasks_to_task_group(
-                _ctx(),
+                _submission(),
                 tg_number=0,
                 task_group=_make_tg(),
                 wr_data=wr_data,
@@ -444,14 +463,14 @@ class TestBatchSubmitRetries:
                 "add_tasks_to_task_group_by_name",
                 add_tasks,
             ),
-            patch.object(submit_module, "sleep", sleep_mock),
+            patch.object(task_batches_module, "sleep", sleep_mock),
             patch.object(
                 CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
             ),
         ):
             try:
                 outcome["result"] = submit_module.submit_batch_of_tasks_to_task_group(
-                    _ctx(),
+                    _submission(),
                     [MagicMock(), MagicMock()],
                     _make_wr(),
                     _make_tg(),
@@ -538,7 +557,7 @@ class TestBatchesStopAfterAFailure:
             return 10
 
         with ThreadPoolExecutor(max_workers=threads) as executor:
-            batches = submit_module._Batches(executor)
+            batches = task_batches_module.Batches(executor)
             for number in range(6):
                 batches.submit(batch, number)
             with pytest.raises(RuntimeError, match="refused"):
@@ -550,7 +569,102 @@ class TestBatchesStopAfterAFailure:
 
     def test_all_batches_succeeding_are_totalled(self):
         with ThreadPoolExecutor(max_workers=3) as executor:
-            batches = submit_module._Batches(executor)
+            batches = task_batches_module.Batches(executor)
             for number in range(5):
                 batches.submit(lambda n: n + 1, number)
             assert batches.total() == 15
+
+
+class TestDryRunSnapshotOrder:
+    """
+    A dry run's snapshot shows a Task Group's Tasks in Task order, however
+    the batches carrying them finish: batches submitted in parallel used to
+    be added as they completed, so the printed Work Requirement's Tasks came
+    out in a different order from run to run.
+    """
+
+    @staticmethod
+    def _snapshot() -> WorkRequirementSnapshot:
+        snapshot = WorkRequirementSnapshot()
+        snapshot.set_work_requirement(
+            WorkRequirement(
+                namespace="ns",
+                name="wr",
+                taskGroups=[
+                    TaskGroup(
+                        name="grp",
+                        runSpecification=RunSpecification(taskTypes=["bash"]),
+                    )
+                ],
+            )
+        )
+        return snapshot
+
+    @staticmethod
+    def _task_names(snapshot: WorkRequirementSnapshot) -> list[str]:
+        return [task["name"] for task in snapshot.wr_data[TASK_GROUPS][0][TASKS]]
+
+    def test_batches_added_out_of_order_are_shown_in_task_order(self):
+        snapshot = self._snapshot()
+        batches = {
+            start: [
+                Task(taskType="bash", name=f"t{n}") for n in range(start, start + 3)
+            ]
+            for start in (0, 3, 6, 9)
+        }
+        for start in (6, 0, 9, 3):
+            snapshot.add_tasks("grp", batches[start], first_task=start)
+        assert self._task_names(snapshot) == [f"t{n}" for n in range(12)]
+
+    def test_parallel_dry_run_batches_finishing_in_reverse(self):
+        num_tasks, batch_size, threads = 12, 3, 4
+        num_batches = num_tasks // batch_size
+        run = _submission(task_batch_size=batch_size)
+        run.snapshot = self._snapshot()
+        task_group = run.snapshot.wr_data[TASK_GROUPS][0]
+        finished: list[int] = []
+        # Each batch waits for the batch after it, so they finish last first
+        done = [threading.Event() for _ in range(num_batches)]
+
+        def send_batch(tasks_list, batch_number, num_batches):
+            if batch_number + 1 < num_batches:
+                assert done[batch_number + 1].wait(timeout=10)
+            submitted = submit_module.submit_batch_of_tasks_to_task_group(
+                run,
+                tasks_list,
+                _make_wr(),
+                _make_tg(task_group["name"]),
+                num_batches,
+                batch_number,
+                batch_size,
+                num_tasks,
+            )
+            finished.append(batch_number)
+            done[batch_number].set()
+            return submitted
+
+        with (
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=True
+            ),
+            patch.object(
+                CLIParser,
+                "pause_between_batches",
+                new_callable=PropertyMock,
+                return_value=None,
+            ),
+        ):
+            total = task_batches_module.run_batches(
+                run.ctx,
+                num_tasks,
+                batch_size,
+                threads,
+                make_batch=lambda start, end: [
+                    Task(taskType="bash", name=f"t{n}") for n in range(start, end)
+                ],
+                send_batch=send_batch,
+            )
+
+        assert total == num_tasks
+        assert finished == [3, 2, 1, 0]
+        assert self._task_names(run.snapshot) == [f"t{n}" for n in range(num_tasks)]

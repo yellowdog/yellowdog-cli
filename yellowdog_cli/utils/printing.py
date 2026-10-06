@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import re
 import sys
+from bisect import bisect_left
 from datetime import datetime
 from json import dumps as json_dumps
 from os import get_terminal_size, getpid
 from textwrap import fill
 from textwrap import indent as text_indent
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
@@ -551,6 +553,10 @@ class WorkRequirementSnapshot:
 
     def __init__(self):
         self.wr_data: dict = {}
+        # Per Task Group, each batch added as (first Task, count), in Task
+        # order: batches submitted in parallel arrive in any order
+        self._batches: dict[str, list[tuple[int, int]]] = {}
+        self._lock = Lock()
 
     def set_work_requirement(self, wr: WorkRequirement):
         """
@@ -561,18 +567,28 @@ class WorkRequirementSnapshot:
 
         self.wr_data = Json.dump(wr)  # type: ignore[assignment]  # Dictionary holding the complete WR
 
-    def add_tasks(self, task_group_name: str, tasks: list[Task]):
+    def add_tasks(self, task_group_name: str, tasks: list[Task], first_task: int = 0):
         """
-        Add the list of Tasks to a named Task Group within the
-        Work Requirement. Cumulative.
+        Add a batch of Tasks to a named Task Group within the Work
+        Requirement, placed by 'first_task', the number of its first Task
+        within the Task Group, so that batches added in any order, from
+        any thread, are shown in Task order. Cumulative.
         """
         from yellowdog_client.common.json import Json
 
-        for task_group in self.wr_data[TASK_GROUPS]:
-            if task_group[NAME] == task_group_name:
-                task_group[TASKS] = task_group.get(TASKS, [])
-                task_group[TASKS] += [Json.dump(task) for task in tasks]
-                return
+        dumped = [Json.dump(task) for task in tasks]
+        with self._lock:
+            for task_group in self.wr_data[TASK_GROUPS]:
+                if task_group[NAME] == task_group_name:
+                    # The batches already added, as (first Task, count);
+                    # this one's Tasks go after those that start before it
+                    batches = self._batches.setdefault(task_group_name, [])
+                    position = bisect_left(batches, (first_task, 0))
+                    offset = sum(count for _, count in batches[:position])
+                    batches.insert(position, (first_task, len(dumped)))
+                    task_list = task_group.setdefault(TASKS, [])
+                    task_list[offset:offset] = dumped
+                    return
 
     def print(self):
         """

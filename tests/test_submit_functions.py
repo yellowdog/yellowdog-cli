@@ -22,6 +22,7 @@ import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
     ADD_ENVIRONMENT,
     ARGS,
@@ -53,6 +54,16 @@ def _ctx() -> RunContext:
     """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
     )
 
 
@@ -108,6 +119,7 @@ def _call_create_task_group(
         ),
     ):
         return submit_module.create_task_group(
+            _submission(),
             tg_number=tg_number,
             wr_data=wr_data,
             task_group_data=task_group_data,
@@ -447,7 +459,7 @@ def _run_submit_wr(
     create_tg_calls: list[tuple] = []
     add_tasks_calls: list[int] = []
 
-    def fake_create_tg(tg_number, wr_data, task_group_data, **kwargs):
+    def fake_create_tg(_run, tg_number, wr_data, task_group_data, **kwargs):
         create_tg_calls.append((tg_number, task_group_data))
         return mock_tg
 
@@ -470,7 +482,6 @@ def _run_submit_wr(
     with (
         patch.object(submit_module, "CONFIG_WR", config_wr),
         patch.object(wrapper_module, "CONFIG_COMMON", mock_config_common),
-        patch.object(submit_module, "ID", wr_id),
         patch.object(submit_module, "RcloneUploadedFiles"),
         patch.object(
             submit_module,
@@ -504,7 +515,7 @@ def _run_submit_wr(
         patch.object(CLIParser, "empty", new_callable=PropertyMock, return_value=False),
     ):
         submit_module.submit_work_requirement(
-            _ctx(),
+            _submission(name=wr_id),
             files_directory=".",
             wr_data=wr_data,
         )
@@ -643,7 +654,6 @@ class TestSubmitWRCleanupOnFailure:
                 "CONFIG_COMMON",
                 MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
             ),
-            patch.object(submit_module, "ID", "test-wr"),
             patch.object(submit_module, "RcloneUploadedFiles"),
             patch.object(
                 submit_module,
@@ -687,7 +697,7 @@ class TestSubmitWRCleanupOnFailure:
             pytest.raises(type(error)) as raised,
         ):
             submit_module.submit_work_requirement(
-                _ctx(), files_directory=".", wr_data=wr_data
+                _submission(name="test-wr"), files_directory=".", wr_data=wr_data
             )
 
         assert raised.value is error
@@ -711,7 +721,6 @@ class TestSubmitWRHoldFailure:
                 "CONFIG_COMMON",
                 MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
             ),
-            patch.object(submit_module, "ID", "test-wr"),
             patch.object(submit_module, "RcloneUploadedFiles"),
             patch.object(
                 submit_module,
@@ -756,7 +765,7 @@ class TestSubmitWRHoldFailure:
             pytest.raises(RuntimeError) as raised,
         ):
             submit_module.submit_work_requirement(
-                _ctx(), files_directory=".", wr_data=wr_data
+                _submission(name="test-wr"), files_directory=".", wr_data=wr_data
             )
 
         assert raised.value is error
@@ -778,12 +787,13 @@ class TestCleanupOnFailure:
         uploaded.delete.side_effect = delete_error
         with (
             patch.object(wrapper_module, "CLIENT", client),
-            patch.object(submit_module, "RCLONE_UPLOADED_FILES", uploaded),
             patch.object(
                 CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
             ),
         ):
-            submit_module.cleanup_on_failure(_ctx(), _make_mock_wr())
+            submit_module.cleanup_on_failure(
+                _submission(uploaded_files=uploaded), _make_mock_wr()
+            )
         return {"client": client, "uploaded": uploaded}
 
     def test_a_failed_cancel_still_deletes_the_uploaded_files(self, capsys):
@@ -888,14 +898,12 @@ def _generate_one_task(wr_data: dict) -> Task:
     with (
         patch.object(submit_module, "CONFIG_WR", ConfigWorkRequirement()),
         patch.object(wrapper_module, "CONFIG_COMMON", config_common),
-        patch.object(submit_module, "ID", "test-wr"),
-        patch.object(submit_module, "RCLONE_UPLOADED_FILES", MagicMock()),
     ):
         task_group = MagicMock()
         task_group.name = "tg"
         task_group.runSpecification.taskTypes = ["bash"]
         (task,) = submit_module.generate_batch_of_tasks_for_task_group(
-            _ctx(),
+            _submission(name="test-wr", uploaded_files=MagicMock()),
             start_task_number=0,
             end_task_number=1,
             wr_data=wr_data,

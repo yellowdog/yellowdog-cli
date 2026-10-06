@@ -1710,12 +1710,6 @@ class TestSubmit:
             yd_submit, "update_config_work_requirement_object", lambda c: c
         )
         monkeypatch.setattr(yd_submit, "link_entity", lambda *a: "[link]")
-        monkeypatch.setattr(
-            yd_submit,
-            "WR_SNAPSHOT",
-            printing_module.WorkRequirementSnapshot(),
-            raising=False,
-        )
 
         def _run(**values):
             client = MagicMock()

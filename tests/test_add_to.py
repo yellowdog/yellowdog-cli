@@ -14,7 +14,7 @@ import yellowdog_cli.utils.submit_utils as su
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.printing import WorkRequirementSnapshot
+from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
@@ -28,6 +28,16 @@ def _ctx() -> RunContext:
     """
     return RunContext(
         wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
+
+def _submission(**state) -> submit_module._Submission:
+    """
+    A yd-submit run as main() starts one, from the wrapper globals and
+    submit's CONFIG_WR (as patched), with any of its state given.
+    """
+    return submit_module._Submission(
+        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
     )
 
 
@@ -165,7 +175,9 @@ class TestAddToNotFound:
             ),
             pytest.raises(NotFoundError, match="Cannot find"),
         ):
-            submit_module.add_to_existing_work_requirement(_ctx(), files_directory=".")
+            submit_module.add_to_existing_work_requirement(
+                _submission(), files_directory="."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +218,9 @@ class TestAddToTerminalStatusRejection:
             ),
             pytest.raises(ValueError, match="cannot take Tasks"),
         ):
-            submit_module.add_to_existing_work_requirement(_ctx(), files_directory=".")
+            submit_module.add_to_existing_work_requirement(
+                _submission(), files_directory="."
+            )
 
     @pytest.mark.parametrize(
         "status",
@@ -255,7 +269,7 @@ class TestAddToTerminalStatusRejection:
         ):
             mock_ctg.return_value = _make_tg("task_group_1")
             submit_module.add_to_existing_work_requirement(
-                _ctx(),
+                _submission(),
                 files_directory=".",
                 wr_data={TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]},
             )
@@ -335,6 +349,7 @@ class TestAddToPartitioning:
             return updated_wr
 
         def fake_create_tg(
+            _run,
             tg_number,
             wr_data,
             task_group_data,
@@ -386,13 +401,13 @@ class TestAddToPartitioning:
                 CLIParser, "dry_run", new_callable=PropertyMock, return_value=dry_run
             ),
         ):
-            submit_module.WR_SNAPSHOT = WorkRequirementSnapshot()
+            run = _submission()
             # Kept on the instance, so a test whose run raises can still see it
             self.uploaded_files = rclone_class.return_value
             submit_module.add_to_existing_work_requirement(
-                _ctx(), files_directory=".", wr_data=wr_data
+                run, files_directory=".", wr_data=wr_data
             )
-            snapshot = submit_module.WR_SNAPSHOT
+            snapshot = run.snapshot
 
         return {
             "add_tasks_calls": add_tasks_calls,
@@ -693,7 +708,9 @@ class TestSubmitOrAddToDispatch:
                 side_effect=lambda _ctx, **kw: calls.append("submit"),
             ),
         ):
-            submit_module._submit_or_add_to(_ctx(), files_directory=".", wr_data={})
+            submit_module._submit_or_add_to(
+                _submission(), files_directory=".", wr_data={}
+            )
         assert len(calls) == 1
         return calls[0]
 
@@ -726,6 +743,9 @@ class TestAddToById:
                 return_value=existing,
             ) as get,
         ):
-            assert submit_module._work_requirement_to_add_to(_ctx(), wr_id) is existing
+            assert (
+                submit_module._work_requirement_to_add_to(_submission(), wr_id)
+                is existing
+            )
         find.assert_not_called()
         get.assert_called_once_with(wr_id)
