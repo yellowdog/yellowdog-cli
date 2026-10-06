@@ -915,8 +915,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             command_and_args = self._split_text(command_text, "command")
             if command_and_args is None:
                 return
-            # The standalone ones are given nothing (UNDECORATED_YD_COMMANDS),
-            # so the Properties field has nothing to do with them
+            # The standalone ones are given at most '--nf'
+            # (UNDECORATED_YD_COMMANDS), so the Properties field has nothing
+            # to do with them
             if (
                 command_and_args[0] not in UNDECORATED_YD_COMMANDS
                 and not self._properties_are_usable()

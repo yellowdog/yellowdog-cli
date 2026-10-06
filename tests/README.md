@@ -167,7 +167,7 @@ Around 550 tests covering `yd-commander`. They need PyQt6 (the `commander` extra
 | File | What it tests |
 |---|---|
 | `test_commander_button_wiring.py` | Every main-window button is connected to the action it claims to perform — a button wired to nothing, or to the wrong action, looks healthy to every other test |
-| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned), and a selected definition file survives the hand-over — its path resolved against the directory the command runs in, and read back through Show |
+| `test_commander_commands.py` | Each action translates into the correct `yd-*` command and arguments (`_run_command_in_subprocess` stubbed, so nothing is spawned), and a selected definition file survives the hand-over — its path resolved against the directory the command runs in, and read back through Show; a typed standalone command given only `--nf`, and only where its real `--help` offers it |
 | `test_commander_dialog_behaviour.py` | The dialogs as dialogs: real `exec()`, real clicks, real geometry — the bug classes that reached users (inert buttons, a stolen default button, a list squeezed until no row shows) |
 | `test_commander_entity_selection.py` | Choosing which entities a bulk destructive action affects: the listing, the `Confirmation` returned, and the YDIDs that reach the command |
 | `test_commander_entity_summaries.py` | Parsing `-D --json` entity listings; a listing without YDIDs must be refused rather than falling back to name-based targeting; the status column survives from `report_dry_run()`'s real records |

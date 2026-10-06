@@ -6,6 +6,7 @@ instead of spawning a process, so no yd-* command is actually run.
 """
 
 import os
+import subprocess
 from os.path import abspath, dirname, join, realpath
 
 import pytest
@@ -14,9 +15,14 @@ import qt_guard
 qt_guard.require_qt()
 
 from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.results_panel import NO_OBJECT_PATH, RESULTS_DIR
 from yellowdog_cli.commander.selection import Confirmation, EntitySummary, ObjectSummary
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.window_base import (
+    NO_FORMAT_UNDECORATED_YD_COMMANDS,
+    UNDECORATED_YD_COMMANDS,
+)
 
 
 @pytest.fixture
@@ -875,17 +881,43 @@ def test_build_args_any_yd_command_respects_user_config_flag(window):
     assert args == ["--nc", "-w", "--nf", "--pp"]
 
 
-def test_a_typed_standalone_yd_command_runs_as_typed(window, captured):
-    # yd-version takes none of the options added to the others, and used to be
-    # handed to the shell for that reason, which failed where the shell did
+def test_a_typed_standalone_yd_command_is_given_only_nf(window, captured):
+    # yd-version takes none of the configuration options added to the others,
+    # and used to be handed to the shell for that reason, which failed where
+    # the shell did; it does take '--nf', and the output window has no colour
     window._config_file = "d/config.toml"
     window.namespace_override.setPlainText("ns")
     window.properties.setPlainText("common.tag='unclosed")  # not its concern
     window._run_any_command_core("yd-version --json")
     assert captured == [("yd-version", ["--json"])]
     assert window._build_command_args("yd-version", ["--json"], yd_command=False) == [
-        "--json"
+        "--json",
+        "--nf",
     ]
+
+
+@pytest.mark.parametrize("typed", ["--nf", "--no-format"])
+def test_a_typed_nf_is_not_given_twice(window, typed):
+    assert window._build_command_args("yd-help", [typed], yd_command=False) == [typed]
+
+
+@pytest.mark.parametrize("command", sorted(UNDECORATED_YD_COMMANDS))
+def test_the_standalone_commands_given_nf_are_those_taking_it(command):
+    # Three of them parse their own arguments outside the registry, so the
+    # list is kept by hand; held here to what each one's '--help' offers
+    program, args = cli_program(command, ["--help"])
+    result = subprocess.run(
+        [program, *args], capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    takes_nf = "--nf" in result.stdout
+    assert takes_nf == (command in NO_FORMAT_UNDECORATED_YD_COMMANDS)
+
+
+def test_a_standalone_command_without_nf_is_given_nothing(window):
+    assert window._build_command_args(
+        "yd-format-json", ["a.json"], yd_command=False
+    ) == ["a.json"]
 
 
 def test_a_typed_non_yd_command_goes_to_the_shell_by_its_full_path(
