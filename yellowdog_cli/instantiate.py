@@ -19,6 +19,10 @@ from yellowdog_client.model import (
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS
 from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.file_substitution import (
+    load_json_file_with_variable_substitutions,
+    load_jsonnet_file_with_variable_substitutions,
+)
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
@@ -31,7 +35,6 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
 )
 from yellowdog_cli.utils.printing import (
-    print_compute_template_test_result,
     print_dry_run,
     print_error,
     print_info,
@@ -53,10 +56,7 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import check_specification
-from yellowdog_cli.utils.variable_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-)
+from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,

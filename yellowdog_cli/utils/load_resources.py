@@ -23,6 +23,11 @@ from yellowdog_cli.utils.entity_names import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
+from yellowdog_cli.utils.file_substitution import (
+    load_json_file_with_variable_substitutions,
+    load_jsonnet_file_with_variable_substitutions,
+    load_toml_file_with_variable_substitutions,
+)
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.property_names import (
     PROP_CREDENTIAL,
@@ -41,12 +46,7 @@ from yellowdog_cli.utils.spec_validation import (
     validate_all_and_exit,
     warn_of_violations,
 )
-from yellowdog_cli.utils.variable_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-    load_toml_file_with_variable_substitutions,
-    resolve_variables_insitu,
-)
+from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 # Internal key stamped onto each resource dict to record the directory of the

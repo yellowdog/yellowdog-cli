@@ -55,6 +55,11 @@ from yellowdog_cli.utils.exit_codes import (
     UNAUTHORIZED_TEXT,
     NotFoundError,
 )
+from yellowdog_cli.utils.file_substitution import (
+    load_json_file_with_variable_substitutions,
+    load_jsonnet_file_with_variable_substitutions,
+    load_toml_file_with_variable_substitutions,
+)
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
@@ -169,9 +174,6 @@ from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variable_substitution import (
     add_or_update_substitution,
     add_substitutions_without_overwriting,
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-    load_toml_file_with_variable_substitutions,
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import (

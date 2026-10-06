@@ -21,6 +21,9 @@ from yellowdog_cli.utils.config_types import (
     ConfigWorkRequirement,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.file_substitution import (
+    load_toml_file_with_variable_substitutions,
+)
 from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
 from yellowdog_cli.utils.misc_utils import (
     config_file_explicitly_selected as _config_file_explicitly_selected,
@@ -62,7 +65,6 @@ from yellowdog_cli.utils.variable_substitution import (
     add_or_update_substitution,
     add_substitutions_without_overwriting,
     check_user_variable_name,
-    load_toml_file_with_variable_substitutions,
     resolve_variables_in_string,
     resolve_variables_insitu,
     warn_of_undefined_variables,

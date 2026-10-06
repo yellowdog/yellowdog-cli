@@ -14,24 +14,27 @@ from unittest.mock import patch
 from rich.console import Console
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
 
+import yellowdog_cli.utils.event_printing as event_printing_module
 import yellowdog_cli.utils.printing as printing_module
+import yellowdog_cli.utils.tables as tables_module
+from yellowdog_cli.utils.event_printing import StatusCount, status_counts_msg
 from yellowdog_cli.utils.output_style import (
     DEBUG_STYLE,
     DRY_RUN_MARKER,
     MAX_TABLE_DESCRIPTION,
 )
 from yellowdog_cli.utils.printing import (
-    StatusCount,
-    _truncate_text,
-    _yes_or_no,
-    get_type_name,
     indent,
-    keyring_table,
     print_debug,
     print_dry_run,
     print_info,
     print_string,
-    status_counts_msg,
+)
+from yellowdog_cli.utils.tables import (
+    _truncate_text,
+    _yes_or_no,
+    get_type_name,
+    keyring_table,
     task_table,
     work_requirement_table,
 )
@@ -625,12 +628,12 @@ class TestNotATerminal:
 
     def test_a_table_row_stays_one_line(self, monkeypatch):
         buffer = StringIO()
-        monkeypatch.setattr(printing_module, "ARGS_PARSER", self._args())
+        monkeypatch.setattr(tables_module, "ARGS_PARSER", self._args())
         monkeypatch.setattr(
-            printing_module, "CONSOLE_TABLE", Console(file=buffer, emoji=False)
+            tables_module, "CONSOLE_TABLE", Console(file=buffer, emoji=False)
         )
         row = "│ " + "x" * 120 + " │"
-        printing_module.print_table_core(row)
+        tables_module.print_table_core(row)
         assert buffer.getvalue() == row + "\n"
 
     def test_a_message_is_wrapped_once(self, monkeypatch):
@@ -703,12 +706,12 @@ class TestPrintEventWithNullFields:
 
         printed: list[str] = []
         monkeypatch.setattr(
-            printing_module, "ARGS_PARSER", SimpleNamespace(events_as_json=False)
+            event_printing_module, "ARGS_PARSER", SimpleNamespace(events_as_json=False)
         )
         monkeypatch.setattr(
-            printing_module, "print_info", lambda msg, **k: printed.append(msg)
+            event_printing_module, "print_info", lambda msg, **k: printed.append(msg)
         )
-        printing_module.print_event("data:" + json.dumps(event), id_type)
+        event_printing_module.print_event("data:" + json.dumps(event), id_type)
         return printed
 
     def test_a_compute_requirement_source_with_no_instance_summary(self, monkeypatch):
@@ -770,7 +773,7 @@ class TestSortedObjects:
     @staticmethod
     def _args(monkeypatch, reverse=None):
         monkeypatch.setattr(
-            printing_module, "ARGS_PARSER", SimpleNamespace(sort=None, reverse=reverse)
+            tables_module, "ARGS_PARSER", SimpleNamespace(sort=None, reverse=reverse)
         )
 
     def test_a_none_name_sorts_first(self, monkeypatch):
@@ -780,7 +783,7 @@ class TestSortedObjects:
             SimpleNamespace(name=None),
             SimpleNamespace(name="a"),
         ]
-        assert [o.name for o in printing_module.sorted_objects(objects)] == [
+        assert [o.name for o in tables_module.sorted_objects(objects)] == [
             None,
             "a",
             "b",
@@ -789,12 +792,12 @@ class TestSortedObjects:
     def test_reverse_applies(self, monkeypatch):
         self._args(monkeypatch, reverse=True)
         objects = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]
-        assert [o.name for o in printing_module.sorted_objects(objects)] == ["b", "a"]
+        assert [o.name for o in tables_module.sorted_objects(objects)] == ["b", "a"]
 
     def test_objects_without_names_sort_by_namespace(self, monkeypatch):
         self._args(monkeypatch)
         objects = [SimpleNamespace(namespace="y"), SimpleNamespace(namespace=None)]
-        assert [o.namespace for o in printing_module.sorted_objects(objects)] == [
+        assert [o.namespace for o in tables_module.sorted_objects(objects)] == [
             None,
             "y",
         ]
@@ -802,7 +805,7 @@ class TestSortedObjects:
 
 def test_a_node_without_details_is_still_listed():
     node = SimpleNamespace(details=None, workers=[], status="RUNNING", id="ydid:node:x")
-    _, rows = printing_module.nodes_table([node])
+    _, rows = tables_module.nodes_table([node])
     assert rows == [[1, None, None, None, None, "", None, 0, "RUNNING", "ydid:node:x"]]
 
 

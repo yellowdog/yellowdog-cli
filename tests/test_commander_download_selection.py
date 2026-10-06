@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from yellowdog_cli.commander.commander import RESULTS_DIR, YellowDogApp
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.results_panel import RESULTS_DIR
 from yellowdog_cli.commander.selection import ObjectSummary, object_rows
 from yellowdog_cli.commander.startup import StartupSettings
 

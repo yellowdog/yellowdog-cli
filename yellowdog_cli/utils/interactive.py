@@ -14,10 +14,9 @@ from yellowdog_cli.utils.printing import (
     CONSOLE_ERR,
     print_error,
     print_info,
-    print_numbered_object_list,
     print_string,
-    sorted_objects,
 )
+from yellowdog_cli.utils.tables import print_numbered_object_list, sorted_objects
 
 if TYPE_CHECKING:
     # For the annotation only: every command that confirms an action imports

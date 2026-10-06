@@ -13,14 +13,14 @@ from yellowdog_cli.utils.entity_utils import (
     get_image_name_or_id,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.file_substitution import (
+    process_variable_substitutions_in_file_contents,
+)
 from yellowdog_cli.utils.load_config import CONFIG_FILE_DIR
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
 from yellowdog_cli.utils.type_check import check_list, check_str
-from yellowdog_cli.utils.variable_substitution import (
-    process_variable_substitutions_in_file_contents,
-    warn_of_undefined_variables,
-)
+from yellowdog_cli.utils.variable_substitution import warn_of_undefined_variables
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,

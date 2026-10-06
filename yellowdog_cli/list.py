@@ -108,14 +108,13 @@ from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.printing import (
     print_info,
     print_json,
-    print_numbered_object_list,
     print_objects_as_json,
     print_warning,
     print_yd_object,
     print_yd_object_list,
-    sorted_objects,
 )
 from yellowdog_cli.utils.property_names import PROP_GROUPS, PROP_RESOURCE
+from yellowdog_cli.utils.tables import print_numbered_object_list, sorted_objects
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
 
 

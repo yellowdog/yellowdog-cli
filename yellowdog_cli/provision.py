@@ -21,6 +21,10 @@ from yellowdog_client.model import (
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
+from yellowdog_cli.utils.file_substitution import (
+    load_json_file_with_variable_substitutions,
+    load_jsonnet_file_with_variable_substitutions,
+)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
@@ -68,10 +72,6 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.spec_schema import Family
 from yellowdog_cli.utils.spec_validation import check_specification
-from yellowdog_cli.utils.variable_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-)
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,

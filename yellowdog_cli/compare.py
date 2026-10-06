@@ -32,14 +32,9 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import (
-    indent,
-    print_error,
-    print_info,
-    print_table_core,
-    print_warning,
-)
+from yellowdog_cli.utils.printing import indent, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
+from yellowdog_cli.utils.tables import print_table_core
 from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,

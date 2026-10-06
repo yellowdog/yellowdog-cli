@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import yellowdog_cli.utils.file_substitution as file_module
 import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.misc_utils import BASE36_DIGITS
 from yellowdog_cli.utils.variable_syntax import (
@@ -911,7 +912,7 @@ class TestUnsetSuffix:
         import json
 
         raw = '{"name": "job", "taskType": "{{::}}"}'
-        processed = var_module.process_variable_substitutions_in_file_contents(raw)
+        processed = file_module.process_variable_substitutions_in_file_contents(raw)
         # Token left intact → JSON is still valid
         data = json.loads(processed)
         assert data["taskType"] == "{{::}}"
@@ -921,7 +922,7 @@ class TestUnsetSuffix:
         import json
 
         raw = '{"name": "job", "taskType": "{{::}}"}'
-        processed = var_module.process_variable_substitutions_in_file_contents(raw)
+        processed = file_module.process_variable_substitutions_in_file_contents(raw)
         data = json.loads(processed)
         var_module.process_variable_substitutions_insitu(data)
         assert "taskType" not in data
@@ -932,7 +933,7 @@ class TestUnsetSuffix:
         import json
 
         raw = '{"name": "job", "tag": "{{missing_var::}}"}'
-        processed = var_module.process_variable_substitutions_in_file_contents(raw)
+        processed = file_module.process_variable_substitutions_in_file_contents(raw)
         data = json.loads(processed)
         var_module.process_variable_substitutions_insitu(data)
         assert "tag" not in data
@@ -1051,46 +1052,46 @@ class TestProcessVariableSubstitutionsInFileContents:
     def test_no_vars_unchanged(self):
         content = "no variables here"
         assert (
-            var_module.process_variable_substitutions_in_file_contents(content)
+            file_module.process_variable_substitutions_in_file_contents(content)
             == content
         )
 
     def test_simple_string_substitution(self):
         content = 'key = "{{myvar}}"'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == 'key = "hello"'
 
     def test_number_type_tag_strips_quotes(self):
         # "{{num:num_var}}" → 42 (int) → replace quoted expression with bare value
         content = '"{{num:num_var}}"'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == "42"
 
     def test_bool_type_tag_strips_quotes_and_lowercases(self):
         var_module.VARIABLE_SUBSTITUTIONS["flag"] = "true"
         content = '"{{bool:flag}}"'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == "true"
 
     def test_single_quotes_also_stripped(self):
         content = "'{{num:num_var}}'"
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == "42"
 
     def test_unresolved_var_left_unchanged(self):
         content = '"{{unknown_var}}"'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == '"{{unknown_var}}"'
 
     def test_multiple_vars_substituted(self):
         content = "{{myvar}} has {{num_var}} items"
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == "hello has 42 items"
 
     def test_array_type_tag_emits_valid_json(self):
         var_module.VARIABLE_SUBSTITUTIONS["arr"] = '["Alpha", "Beta"]'
         content = '{"items": "{{array:arr}}"}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         import json
 
         assert json.loads(result) == {"items": ["Alpha", "Beta"]}
@@ -1098,7 +1099,7 @@ class TestProcessVariableSubstitutionsInFileContents:
     def test_table_type_tag_emits_valid_json(self):
         var_module.VARIABLE_SUBSTITUTIONS["tbl"] = '{"Key": "Value", "flag": true}'
         content = '{"table": "{{table:tbl}}"}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         import json
 
         assert json.loads(result) == {"table": {"Key": "Value", "flag": True}}
@@ -1106,7 +1107,7 @@ class TestProcessVariableSubstitutionsInFileContents:
     def test_array_type_tag_single_quotes_jsonnet(self):
         var_module.VARIABLE_SUBSTITUTIONS["arr"] = '["Alpha", "Beta"]'
         content = "'{{array:arr}}'"
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == '["Alpha", "Beta"]'
 
     # Several expressions on one line, which is what compact (unindented)
@@ -1116,30 +1117,30 @@ class TestProcessVariableSubstitutionsInFileContents:
 
     def test_typed_expressions_on_one_line(self):
         content = '{"a":"{{num:num_var}}","b":"{{bool:bool_var}}"}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert json.loads(result) == {"a": 42, "b": True}
 
     def test_typed_expression_followed_by_closing_braces(self):
         # The object's own '}}' is not a closing delimiter
         content = '{"env":{"n":"{{num:num_var}}"}}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert json.loads(result) == {"env": {"n": 42}}
 
     def test_untyped_expression_followed_by_closing_braces(self):
         # This one raised 'Mismatched variable delimiters' outright
         content = '{"env":{"A":"{{myvar}}"}}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert json.loads(result) == {"env": {"A": "hello"}}
 
     def test_nested_typed_expressions_on_one_line(self):
         var_module.VARIABLE_SUBSTITUTIONS["which"] = "num_var"
         content = '{"a":"{{num:{{which}}}}","b":"{{bool:bool_var}}"}'
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert json.loads(result) == {"a": 42, "b": True}
 
     def test_typed_and_untyped_expressions_on_one_line(self):
         content = "{a:'{{myvar}}',b:'{{num:num_var}}'}"
-        result = var_module.process_variable_substitutions_in_file_contents(content)
+        result = file_module.process_variable_substitutions_in_file_contents(content)
         assert result == "{a:'hello',b:42}"
 
 
@@ -1168,7 +1169,7 @@ class TestRandomDefaultSubstitutions:
         # Drawn once at import, so every substitution in one command agrees
         content = "{{random}} {{random}} {{random6}} {{random6}}"
         first, second, third, fourth = (
-            var_module.process_variable_substitutions_in_file_contents(content).split()
+            file_module.process_variable_substitutions_in_file_contents(content).split()
         )
         assert first == second
         assert third == fourth
@@ -1300,7 +1301,7 @@ class TestVariableValueRendering:
     def test_toml_boolean_round_trips_through_the_bool_tag(self, tmp_path):
         toml_file = tmp_path / "config.toml"
         toml_file.write_text("[common.variables]\nb = true\n")
-        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        file_module.load_toml_file_with_variable_substitutions(str(toml_file))
         assert var_module.get_user_variable("b") == "true"
         assert var_module.process_variable_substitutions("{{bool:b}}") is True
 
@@ -1309,19 +1310,19 @@ class TestVariableValueRendering:
         # JSON form at all: rendering them must fall back to str()
         toml_file = tmp_path / "config.toml"
         toml_file.write_text("[common.variables]\nd = 2024-01-01\n")
-        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        file_module.load_toml_file_with_variable_substitutions(str(toml_file))
         assert var_module.get_user_variable("d") == "2024-01-01"
 
     def test_toml_array_of_strings_round_trips(self, tmp_path):
         toml_file = tmp_path / "config.toml"
         toml_file.write_text('[common.variables]\nstrs = ["a", "b"]\n')
-        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        file_module.load_toml_file_with_variable_substitutions(str(toml_file))
         assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
 
     def test_toml_table_round_trips(self, tmp_path):
         toml_file = tmp_path / "config.toml"
         toml_file.write_text('[common.variables]\ntbl = { x = "y" }\n')
-        var_module.load_toml_file_with_variable_substitutions(str(toml_file))
+        file_module.load_toml_file_with_variable_substitutions(str(toml_file))
         assert var_module.process_variable_substitutions("{{table:tbl}}") == {"x": "y"}
 
 
@@ -1345,7 +1346,7 @@ def _write_toml(path, props: dict) -> None:
 
 
 def _load_json(path) -> dict:
-    return var_module.load_json_file_with_variable_substitutions(str(path))
+    return file_module.load_json_file_with_variable_substitutions(str(path))
 
 
 def _load_jsonnet(path) -> dict:
@@ -1355,11 +1356,11 @@ def _load_jsonnet(path) -> dict:
         check_jsonnet_import()
     except ImportError as exc:
         pytest.skip(str(exc))
-    return var_module.load_jsonnet_file_with_variable_substitutions(str(path))
+    return file_module.load_jsonnet_file_with_variable_substitutions(str(path))
 
 
 def _load_toml(path) -> dict:
-    return var_module.load_toml_file_with_variable_substitutions(str(path))["spec"]
+    return file_module.load_toml_file_with_variable_substitutions(str(path))["spec"]
 
 
 SPEC_FORMATS = {
@@ -1590,7 +1591,7 @@ class TestCompactSpecifications:
                 }
             )
         )
-        assert var_module.load_json_file_with_variable_substitutions(str(path)) == {
+        assert file_module.load_json_file_with_variable_substitutions(str(path)) == {
             "taskCount": 42,
             "fiaft": True,
             "name": "42-hello",
@@ -1810,27 +1811,27 @@ class TestFileContentsPasses:
     def test_a_chain_resolves(self, monkeypatch):
         _chain_env_vars(monkeypatch, 8)
         var_module.VARIABLE_SUBSTITUTIONS["region"] = "end"
-        result = var_module.process_variable_substitutions_in_file_contents(
+        result = file_module.process_variable_substitutions_in_file_contents(
             "echo {{env:YD_TEST_0}}\n"
         )
         assert result == "echo end\n"
 
     def test_a_type_tag_revealed_by_a_pass_takes_effect(self, monkeypatch):
         monkeypatch.setenv("YD_TEST_TYPED", "{{num:num_var}}")
-        result = var_module.process_variable_substitutions_in_file_contents(
+        result = file_module.process_variable_substitutions_in_file_contents(
             '{"n": "{{env:YD_TEST_TYPED}}"}'
         )
         assert json.loads(result) == {"n": 42}
 
     def test_nothing_to_substitute_is_returned_unchanged(self):
         text = "no variables, {{undefined}}, {{missing::}}"
-        assert var_module.process_variable_substitutions_in_file_contents(text) == text
+        assert file_module.process_variable_substitutions_in_file_contents(text) == text
 
     def test_mutually_referring_variables_are_an_error(self, monkeypatch):
         monkeypatch.setenv("YD_TEST_A", "{{env:YD_TEST_B}}")
         monkeypatch.setenv("YD_TEST_B", "{{env:YD_TEST_A}}")
         with pytest.raises(ValueError, match=r"circular.*'setup\.sh'"):
-            var_module.process_variable_substitutions_in_file_contents(
+            file_module.process_variable_substitutions_in_file_contents(
                 "echo {{env:YD_TEST_A}}", source="setup.sh"
             )
 
@@ -1839,19 +1840,19 @@ class TestFileContentsPasses:
         with pytest.raises(
             ValueError, match=r"Circular variable reference: 's'.*'setup\.sh'"
         ):
-            var_module.process_variable_substitutions_in_file_contents(
+            file_module.process_variable_substitutions_in_file_contents(
                 "echo {{s}}", source="setup.sh"
             )
 
     def test_the_error_names_the_file_contents_without_a_source(self, monkeypatch):
         var_module.add_substitutions_without_overwriting({"s": "{{s}}"})
         with pytest.raises(ValueError, match="Circular"):
-            var_module.process_variable_substitutions_in_file_contents("{{s}}")
+            file_module.process_variable_substitutions_in_file_contents("{{s}}")
 
     def test_only_the_delimiters_being_substituted_are_checked(self):
         var_module.VARIABLE_SUBSTITUTIONS["v"] = "{{v}}"
         text = "echo {{v}} __{{myvar}}__"
-        result = var_module.process_variable_substitutions_in_file_contents(
+        result = file_module.process_variable_substitutions_in_file_contents(
             text, prefix="__", postfix="__"
         )
         assert result == "echo {{v}} hello"
@@ -1861,7 +1862,7 @@ class TestFileContentsPasses:
         # in-situ pass after this one, so a typed expression not standing
         # alone in quotes is written here, as text
         text = '{"name": "{{num:num_var}}-{{myvar}}"}'
-        result = var_module.process_variable_substitutions_in_file_contents(text)
+        result = file_module.process_variable_substitutions_in_file_contents(text)
         assert result == '{"name": "42-hello"}'
 
     def test_an_unquoted_typed_expression_in_a_script_is_substituted(self):
@@ -1869,7 +1870,7 @@ class TestFileContentsPasses:
         var_module.VARIABLE_SUBSTITUTIONS["count"] = "1.10"
         var_module.VARIABLE_SUBSTITUTIONS["flag"] = "true"
         text = 'N={{num:count}}\nM="{{num:count}}"\nF={{bool:flag}}\n'
-        result = var_module.process_variable_substitutions_in_file_contents(text)
+        result = file_module.process_variable_substitutions_in_file_contents(text)
         # Quoted, the quotes go with it; a number keeps its written form
         assert result == "N=1.10\nM=1.10\nF=true\n"
 
@@ -1963,7 +1964,9 @@ class TestStringResolution:
     def test_no_single_value_substitution_outside_variable_substitution_py(self):
         # Every value substituted outside variable_substitution.py goes
         # through a resolving call; a bare process_variable_substitutions()
-        # brings the one-link chains, and the misreported variables, back
+        # brings the one-link chains, and the misreported variables, back.
+        # file_substitution.py is the engine's own: its text passes repeat
+        # until the text settles and apply the circular check themselves
         from pathlib import Path
 
         import yellowdog_cli
@@ -1972,7 +1975,7 @@ class TestStringResolution:
         callers = [
             str(path.relative_to(package))
             for path in package.rglob("*.py")
-            if path.name != "variable_substitution.py"
+            if path.name not in ("variable_substitution.py", "file_substitution.py")
             and "process_variable_substitutions(" in path.read_text()
         ]
         assert callers == []
@@ -1999,7 +2002,7 @@ class TestReviewedSubstitutionErrors:
         ],
     )
     def test_a_jsonnet_error_says_where(self, message, expected):
-        assert var_module._jsonnet_error(message) == expected
+        assert file_module._jsonnet_error(message) == expected
 
     def test_a_typed_variable_is_held_as_text(self):
         var_module.VARIABLE_SUBSTITUTIONS["count"] = "5"
@@ -2012,7 +2015,7 @@ class TestReviewedSubstitutionErrors:
         path = tmp_path / "config.toml"
         path.write_text('[common]\nvariables = "x"\n', encoding="utf-8")
         with pytest.raises(ValueError, match=r"must be a table of name = value"):
-            var_module.load_toml_file_with_variable_substitutions(str(path))
+            file_module.load_toml_file_with_variable_substitutions(str(path))
 
     def test_a_variable_without_a_value_says_what_is_wanted(self, tmp_path):
         import subprocess

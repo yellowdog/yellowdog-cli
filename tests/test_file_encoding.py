@@ -71,7 +71,7 @@ def test_the_check_finds_what_it_looks_for():
 
 
 def test_a_specification_with_non_ascii_text_loads(tmp_path):
-    from yellowdog_cli.utils.variable_substitution import (
+    from yellowdog_cli.utils.file_substitution import (
         load_json_file_with_variable_substitutions,
     )
 

@@ -15,9 +15,10 @@ import gui_harness
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QApplication
 
-from yellowdog_cli.commander.commander import NO_LISTING_TAG, YellowDogApp
+from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.selection import newest_entity_id
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.window_base import NO_LISTING_TAG
 
 OLDER = {
     "id": "ydid:workreq:1",

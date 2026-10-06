@@ -10,11 +10,9 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from yellowdog_cli.commander.commander import (
-    SELECTED_WP_PREFIX,
-    SELECTED_WR_PREFIX,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.compute_panel import SELECTED_WP_PREFIX
+from yellowdog_cli.commander.work_panel import SELECTED_WR_PREFIX
 
 LONG_NAME = "a_rather_long_work_requirement_definition_name.jsonnet"
 

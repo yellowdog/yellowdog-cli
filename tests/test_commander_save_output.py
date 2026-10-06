@@ -11,10 +11,7 @@ qt_guard.require_qt()
 
 from PyQt6.QtWidgets import QPushButton
 
-from yellowdog_cli.commander.commander import (
-    SAVED_OUTPUT_NAME_FORMAT,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import SAVED_OUTPUT_NAME_FORMAT, YellowDogApp
 
 
 @pytest.fixture

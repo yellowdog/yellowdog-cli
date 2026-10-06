@@ -131,12 +131,6 @@
     ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-    # commander.py is lifted from the standalone yellow-gui demo (a separate
-    # repo); these are pre-existing findings in the original, not introduced
-    # by the relocation. Suppressed here rather than reformatted, to keep the
-    # diff against the source limited to the documented path decoupling.
-    "yellowdog_cli/commander/commander.py" = ["E402", "RUF005"]
-
     # Commander's tests call tests/qt_guard.py's require_qt() before importing
     # anything that pulls in Qt, so that a node without Qt's runtime libraries
     # skips them rather than failing to collect. That is necessarily a statement

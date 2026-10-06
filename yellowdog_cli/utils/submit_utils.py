@@ -27,6 +27,9 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.file_substitution import (
+    process_variable_substitutions_in_file_contents,
+)
 from yellowdog_cli.utils.interactive import wait_for_enter
 from yellowdog_cli.utils.printing import (
     print_dry_run,
@@ -65,7 +68,6 @@ from yellowdog_cli.utils.results import json_requested
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
-    process_variable_substitutions_in_file_contents,
     resolve_variables_insitu,
     warn_of_undefined_variables,
 )

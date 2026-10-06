@@ -25,6 +25,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import yellowdog_cli.utils.file_substitution as file_module
 import yellowdog_cli.utils.variable_substitution as var_module
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.variable_syntax import RESERVED_VARIABLE_NAMES
@@ -64,7 +65,7 @@ class TestDefinitionsAreChecked:
         config = tmp_path / "config.toml"
         config.write_text('[common.variables]\n"my var" = "x"\n')
         with pytest.raises(ValueError, match=r"'my var'.*config\.toml"):
-            var_module.load_toml_file_with_variable_substitutions(str(config))
+            file_module.load_toml_file_with_variable_substitutions(str(config))
 
     def test_a_valid_name_starting_with_a_digit_is_defined(self, subs):
         var_module.add_or_update_substitution("9lives", "cat")
@@ -95,12 +96,12 @@ class TestReservedNames:
         config = tmp_path / "config.toml"
         config.write_text('[common.variables]\ntag = "x"\n')
         with pytest.raises(ValueError, match=r"'tag'.*config\.toml"):
-            var_module.load_toml_file_with_variable_substitutions(str(config))
+            file_module.load_toml_file_with_variable_substitutions(str(config))
 
     def test_config_file_common_properties_are_unaffected(self, subs, tmp_path):
         config = tmp_path / "config.toml"
         config.write_text('[common]\ntag = "x"\n[common.variables]\nother = "y"\n')
-        var_module.load_toml_file_with_variable_substitutions(str(config))
+        file_module.load_toml_file_with_variable_substitutions(str(config))
 
 
 class TestReferences:

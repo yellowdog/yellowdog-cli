@@ -13,13 +13,15 @@ from tomli import load as toml_load
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.file_substitution import (
+    load_jsonnet_file_with_variable_substitutions,
+    parse_json_file,
+)
 from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_info, print_json, print_warning
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.variable_substitution import (
     TYPE_TAGS,
-    load_jsonnet_file_with_variable_substitutions,
-    parse_json_file,
     process_typed_variable_substitution,
     resolve_variables_insitu,
     typed_value_as_text,

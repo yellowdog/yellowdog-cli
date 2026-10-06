@@ -16,11 +16,7 @@ from rich.markup import escape
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.doctor_checks import Check, Context, Result, Status, run_checks
-from yellowdog_cli.utils.printing import (
-    CONSOLE_TABLE,
-    print_json,
-    print_simple,
-)
+from yellowdog_cli.utils.printing import CONSOLE_TABLE, print_json, print_simple
 
 Row = tuple[Check, Result]
 

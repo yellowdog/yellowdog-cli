@@ -19,11 +19,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from yellowdog_cli.commander.commander import (
-    ENTITY_LIST_PADDING,
-    SKIP_CONFIRMATION_BUTTON_TEXT,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.selection import (
     MAX_DIALOG_LIST_ROWS,
     Confirmation,
@@ -32,6 +28,10 @@ from yellowdog_cli.commander.selection import (
     entity_rows,
 )
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.window_dialogs import (
+    ENTITY_LIST_PADDING,
+    SKIP_CONFIRMATION_BUTTON_TEXT,
+)
 
 
 @pytest.fixture

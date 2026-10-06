@@ -17,11 +17,8 @@ import gui_harness
 from PyQt6.QtCore import QEventLoop, QPoint, QProcess, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel
 
-from yellowdog_cli.commander.commander import (
-    MAX_SPIN_NODES,
-    NO_LISTING_TAG,
-    YellowDogApp,
-)
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.compute_panel import MAX_SPIN_NODES
 from yellowdog_cli.commander.selection import (
     AWAITING_NODES_NOTE,
     PROVISIONED_WORKER_POOL_TYPE,
@@ -29,6 +26,7 @@ from yellowdog_cli.commander.selection import (
     pool_rows,
 )
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.window_base import NO_LISTING_TAG
 
 
 def pool(n: int, expected: int, lo: int, hi: int | None, created: str) -> dict:

@@ -43,6 +43,7 @@ import yellowdog_cli.start as yd_start
 import yellowdog_cli.terminate as yd_terminate
 import yellowdog_cli.utils.compute_action_common as cac_module
 import yellowdog_cli.utils.entity_utils as entity_utils_module
+import yellowdog_cli.utils.event_printing as event_printing_module
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
@@ -1538,9 +1539,9 @@ class TestCreate:
 
     def test_jsonnet_dry_run_is_an_array_of_files(self, run, monkeypatch, tmp_path):
         import yellowdog_cli.create as create_command
+        import yellowdog_cli.utils.file_substitution as file_module
         import yellowdog_cli.utils.load_resources as load_resources_module
         import yellowdog_cli.utils.resource_creation as yd_create
-        import yellowdog_cli.utils.variable_substitution as variables_module
         from yellowdog_cli.utils.check_imports import check_jsonnet_import
 
         try:
@@ -1555,7 +1556,7 @@ class TestCreate:
         out, _, _ = run(
             yd_create,
             main_module=create_command,
-            also=(load_resources_module, variables_module, create_command),
+            also=(load_resources_module, file_module, create_command),
             **{
                 **_CREATOR_DEFAULTS,
                 "jsonnet_dry_run": True,
@@ -2174,13 +2175,19 @@ class TestFollow:
         from yellowdog_cli.utils.args import CLIParser
 
         args = CLIParser(command="yd-follow", argv=["--json", "--nf", WR_ID_1])
-        for target in (yd_follow, results_module, printing_module, wrapper_module):
+        for target in (
+            yd_follow,
+            results_module,
+            printing_module,
+            event_printing_module,
+            wrapper_module,
+        ):
             monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         event = {"name": "wr", "status": "RUNNING", "taskGroups": []}
 
         def follow(ids, auto_cr=False):
-            printing_module.print_event(
+            event_printing_module.print_event(
                 "data:" + __import__("json").dumps(event), YDIDType_WR
             )
             return ids

@@ -38,7 +38,7 @@ from yellowdog_cli.nodeaction import (
     _parse_node_worker_target,
     _submission_error,
 )
-from yellowdog_cli.utils.printing import node_action_type_label as _action_type_label
+from yellowdog_cli.utils.tables import node_action_type_label as _action_type_label
 
 # ---------------------------------------------------------------------------
 # _parse_node_worker_target

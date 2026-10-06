@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import yellowdog_cli.utils.printing as printing
-from yellowdog_cli.utils.printing import sorted_objects
+import yellowdog_cli.utils.tables as tables
+from yellowdog_cli.utils.tables import sorted_objects
 
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -20,7 +20,7 @@ def args(monkeypatch):
     """A stand-in ARGS_PARSER with controllable sort/reverse, applied to the
     module-level singleton sorted_objects() reads."""
     ns = SimpleNamespace(sort="name", reverse=None)
-    monkeypatch.setattr(printing, "ARGS_PARSER", ns)
+    monkeypatch.setattr(tables, "ARGS_PARSER", ns)
     return ns
 
 
