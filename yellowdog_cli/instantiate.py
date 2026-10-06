@@ -20,10 +20,6 @@ from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS
 from yellowdog_cli.utils.exit_codes import NotFoundError
-from yellowdog_cli.utils.file_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-)
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
@@ -56,8 +52,8 @@ from yellowdog_cli.utils.results import (
     record_document_part,
     record_entity,
 )
+from yellowdog_cli.utils.spec_loading import load_specification
 from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
@@ -109,7 +105,6 @@ def main(ctx: RunContext):
         cr_json_file = CONFIG_WP.compute_requirement_data_file
 
     if cr_json_file is not None:
-        print_info(f"Loading Compute Requirement data from: '{cr_json_file}'")
         _create_compute_requirement_from_json(
             ctx, cr_json_file, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
         )
@@ -321,27 +316,16 @@ def _create_compute_requirement_from_json(
             "Compute Requirement / Worker Pool specifications"
         )
 
-    if cr_json_file.lower().endswith(".jsonnet"):
-        cr_data = load_jsonnet_file_with_variable_substitutions(
-            cr_json_file,
-            prefix=prefix,
-            postfix=postfix,
-            dry_run=bool(ctx.args.jsonnet_dry_run),
-        )
-    else:
-        if ctx.args.jsonnet_dry_run:
-            raise ValueError(
-                "Option '--jsonnet-dry-run' can only be used with files "
-                "ending in '.jsonnet'"
-            )
-        cr_data = load_json_file_with_variable_substitutions(
-            cr_json_file, prefix=prefix, postfix=postfix
-        )
-
-    # Both branches above, JSON and Jsonnet, arrive here with the loaded
-    # document, validated before 'requirementTemplateUsage' is unwrapped
-    cr_data = check_specification(
-        Family.COMPUTE_REQUIREMENT, cr_data, cr_json_file, bool(ctx.args.validate)
+    # Validated before 'requirementTemplateUsage' is unwrapped
+    cr_data = load_specification(
+        cr_json_file,
+        "Compute Requirement",
+        family=Family.COMPUTE_REQUIREMENT,
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        validate=bool(ctx.args.validate),
+        prefix=prefix,
+        postfix=postfix,
+        other_extensions_as_json=True,
     )
 
     # Use only the 'requirementTemplateUsage' value (if present);

@@ -1,5 +1,5 @@
 """
-Tests for 'yd-submit --json-raw' (submit_json_raw in submit.py): a failure
+Tests for 'yd-submit --json-raw' (utils/json_raw.py): a failure
 is raised as an HTTPError carrying the Platform's response, so that the exit
 code names it, and a Work Requirement left with only some of its Tasks is
 cancelled, as one built from a specification is.
@@ -11,13 +11,13 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 import requests
 
-import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.json_raw as json_raw_module
+import yellowdog_cli.utils.spec_loading as spec_loading_module
 import yellowdog_cli.utils.task_batches as task_batches_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
-from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TIMEOUT
 
 
@@ -30,13 +30,17 @@ def _ctx() -> RunContext:
     )
 
 
-def _submission(**state) -> submit_module._Submission:
+def _submit_json_raw(follow=None) -> None:
     """
-    A yd-submit run as main() starts one, from the wrapper globals and
-    submit's CONFIG_WR (as patched), with any of its state given.
+    Submit 'raw.json' as yd-submit does: one Task to a batch, one batch at
+    a time, so the order of the requests is fixed.
     """
-    return submit_module._Submission(
-        _ctx(), config_wr=lazy_value(submit_module.CONFIG_WR), **state
+    json_raw_module.submit_json_raw(
+        _ctx(),
+        "raw.json",
+        batch_size=1,
+        parallel_batches=1,
+        follow=MagicMock() if follow is None else follow,
     )
 
 
@@ -76,29 +80,27 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
     post = MagicMock(side_effect=answer)
     client = MagicMock()
     sleep = MagicMock()
-    outcome: dict = {"post": post, "client": client, "sleep": sleep}
+    follow = MagicMock()
+    outcome: dict = {"post": post, "client": client, "sleep": sleep, "follow": follow}
     flags = {
         "dry_run": False,
         "hold": False,
-        "follow": False,
-        "progress": False,
-        "parallel_batches": None,
         **flag_overrides,
     }
     with ExitStack() as stack:
         for patcher in (
-            patch.object(submit_module.requests, "post", post),
+            patch.object(json_raw_module.requests, "post", post),
             patch.object(wrapper_module, "CLIENT", client),
             patch.object(wrapper_module, "CONFIG_COMMON", MagicMock(url="https://x")),
             patch.object(task_batches_module, "sleep", sleep),
             patch.object(
-                submit_module,
+                spec_loading_module,
                 "load_json_file_with_variable_substitutions",
                 return_value=_wr_data(),
             ),
-            patch.object(submit_module, "add_substitutions_without_overwriting"),
-            patch.object(submit_module, "record_entity"),
-            patch.object(submit_module, "print_quiet_result"),
+            patch.object(json_raw_module, "add_substitutions_without_overwriting"),
+            patch.object(json_raw_module, "record_entity"),
+            patch.object(json_raw_module, "print_quiet_result"),
             *(
                 patch.object(
                     CLIParser, flag, new_callable=PropertyMock, return_value=value
@@ -108,7 +110,7 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
         ):
             stack.enter_context(patcher)
         try:
-            submit_module.submit_json_raw(_submission(task_batch_size=1), "raw.json")
+            _submit_json_raw(follow)
         except Exception as e:
             outcome["raised"] = e
     return outcome
@@ -199,12 +201,17 @@ class TestJsonRawBatchRetries:
             assert call.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
 
 
-class TestJsonRawProgress:
-    def test_progress_follows_with_the_progress_bar(self):
-        with patch.object(submit_module, "follow_progress_bar") as progress_bar:
-            outcome = _submit([_created()] + [_response(200)] * 4, progress=True)
+class TestJsonRawFollow:
+    def test_the_new_work_requirement_is_handed_to_follow(self):
+        # yd-submit's callback follows it as '--follow' or '--progress' asks
+        outcome = _submit([_created()] + [_response(200)] * 4)
         assert "raised" not in outcome
-        progress_bar.assert_called_once()
+        outcome["follow"].assert_called_once_with(WR_ID)
+
+    def test_one_whose_tasks_failed_is_not(self):
+        outcome = _submit([_created(), _response(200), _response(500, "boom")])
+        assert "raised" in outcome
+        outcome["follow"].assert_not_called()
 
 
 class TestJsonRawMissingProperties:
@@ -222,14 +229,14 @@ class TestJsonRawMissingProperties:
     def test_a_missing_property_is_named(self, data, message):
         with (
             patch.object(
-                submit_module,
+                spec_loading_module,
                 "load_json_file_with_variable_substitutions",
                 return_value=data,
             ),
-            patch.object(submit_module, "add_substitutions_without_overwriting"),
+            patch.object(json_raw_module, "add_substitutions_without_overwriting"),
             patch.object(
                 CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
             ),
             pytest.raises(ValueError, match=message),
         ):
-            submit_module.submit_json_raw(_submission(), "raw.json")
+            _submit_json_raw()

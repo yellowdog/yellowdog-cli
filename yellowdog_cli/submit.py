@@ -7,15 +7,11 @@ A script to submit a Work Requirement.
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import timedelta
-from gzip import compress
-from json import dumps as json_dumps
-from json import loads as json_loads
 from math import ceil
 from os.path import dirname
 from sys import exit as sys_exit
 from typing import cast
 
-import requests
 from yellowdog_client.model import (
     CloudProvider,
     RunSpecification,
@@ -33,9 +29,6 @@ from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.csv_data import (
     csv_expand_toml_tasks,
-    load_json_file_with_csv_task_expansion,
-    load_jsonnet_file_with_csv_task_expansion,
-    load_toml_file_with_csv_task_expansion,
 )
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
@@ -45,20 +38,15 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
 )
-from yellowdog_cli.utils.file_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-    load_toml_file_with_variable_substitutions,
-)
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
     work_requirement_failed,
 )
+from yellowdog_cli.utils.json_raw import submit_json_raw
 from yellowdog_cli.utils.lazy import lazy, value
 from yellowdog_cli.utils.limits import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
-    RAW_REQUEST_TIMEOUT,
 )
 from yellowdog_cli.utils.load_config import (
     config_file_dir,
@@ -76,7 +64,6 @@ from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
     print_info,
-    print_json,
     print_quiet_result,
     print_warning,
 )
@@ -131,8 +118,8 @@ from yellowdog_cli.utils.property_names import (
 )
 from yellowdog_cli.utils.rclone_utils import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.results import record_document, record_entity
+from yellowdog_cli.utils.spec_loading import CsvExpansion, load_specification
 from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
     assemble_arguments,
@@ -152,7 +139,6 @@ from yellowdog_cli.utils.submit_utils import (
     update_config_work_requirement_object,
 )
 from yellowdog_cli.utils.task_batches import (
-    raise_for_response,
     run_batches,
     submit_with_retries,
 )
@@ -238,7 +224,15 @@ def main(ctx: RunContext):
     # the options '--json-raw' cannot be combined with as the command line is
     # parsed ('check_submit_combinations' in the registry)
     if ctx.args.json_raw:
-        submit_json_raw(run, ctx.args.json_raw)
+        submit_json_raw(
+            ctx,
+            ctx.args.json_raw,
+            batch_size=run.batch_size,
+            parallel_batches=_parallel_batches(run),
+            follow=lambda wr_id: _follow(
+                run, ctx.client.work_client.get_work_requirement_by_id(wr_id)
+            ),
+        )
         return
 
     # Direct file > file supplied using '-r' > file supplied in config file
@@ -280,71 +274,21 @@ def main(ctx: RunContext):
         _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
-        if ctx.args.jsonnet_dry_run and not wr_data_file.lower().endswith(".jsonnet"):
-            raise ValueError(
-                "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
-            )
-
-        wr_data_file = relative_if_possible(wr_data_file)
-        print_info(f"Loading Work Requirement data from: '{wr_data_file}'")
-
-        # JSON file
-        if wr_data_file.lower().endswith(".json"):
-            if csv_files is not None:
-                wr_data = load_json_file_with_csv_task_expansion(
-                    json_file=wr_data_file,
-                    csv_files=csv_files,
-                    files_directory=files_directory,
-                    csv_only=bool(ctx.args.process_csv_only),
+        wr_data = load_specification(
+            relative_if_possible(wr_data_file),
+            "Work Requirement",
+            family=Family.WORK_REQUIREMENT,
+            jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+            validate=bool(ctx.args.validate),
+            # TOML is undocumented
+            toml=True,
+            csv=(
+                None
+                if csv_files is None
+                else CsvExpansion(
+                    csv_files, files_directory, bool(ctx.args.process_csv_only)
                 )
-            else:
-                wr_data = load_json_file_with_variable_substitutions(
-                    filename=wr_data_file, prefix="", postfix=""
-                )
-
-        # Jsonnet file
-        elif wr_data_file.lower().endswith(".jsonnet"):
-            if csv_files is not None:
-                wr_data = load_jsonnet_file_with_csv_task_expansion(
-                    jsonnet_file=wr_data_file,
-                    csv_files=csv_files,
-                    files_directory=files_directory,
-                    dry_run=bool(ctx.args.jsonnet_dry_run),
-                    csv_only=bool(ctx.args.process_csv_only),
-                )
-            else:
-                wr_data = load_jsonnet_file_with_variable_substitutions(
-                    filename=wr_data_file,
-                    prefix="",
-                    postfix="",
-                    dry_run=bool(ctx.args.jsonnet_dry_run),
-                )
-
-        # TOML file (undocumented)
-        elif wr_data_file.lower().endswith(".toml"):
-            if csv_files is not None:
-                wr_data = load_toml_file_with_csv_task_expansion(
-                    toml_file=wr_data_file,
-                    csv_files=csv_files,
-                    files_directory=files_directory,
-                    csv_only=bool(ctx.args.process_csv_only),
-                )
-            else:
-                wr_data = load_toml_file_with_variable_substitutions(
-                    filename=wr_data_file
-                )
-
-        # None of the above
-        else:
-            raise ValueError(
-                f"Work Requirement data file '{wr_data_file}' "
-                "must end with '.json', '.jsonnet', or '.toml'"
-            )
-
-        # Every branch above -- JSON, Jsonnet, TOML, each with or without CSV
-        # task expansion -- arrives here with the loaded document
-        wr_data = check_specification(
-            Family.WORK_REQUIREMENT, wr_data, wr_data_file, bool(ctx.args.validate)
+            ),
         )
         validate_properties(wr_data, "Work Requirement JSON")
         _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
@@ -1595,195 +1539,6 @@ def _work_requirement_to_add_to(run: _Submission, target: str) -> WorkRequiremen
             " RUNNING or HELD one can"
         )
     return work_requirement
-
-
-def submit_json_raw(run: _Submission, wr_file: str):
-    """
-    Submit a 'raw' JSON Work Requirement, consisting of a combined Work
-    Requirement definition and the constituent Tasks.
-    """
-
-    # Load file contents, with variable substitutions
-    if wr_file.lower().endswith(".jsonnet"):
-        wr_data = load_jsonnet_file_with_variable_substitutions(
-            wr_file, dry_run=bool(run.ctx.args.jsonnet_dry_run)
-        )
-    elif wr_file.lower().endswith(".json"):
-        wr_data = load_json_file_with_variable_substitutions(wr_file)
-    else:
-        raise ValueError(
-            f"Work Requirement file '{wr_file}' must end in '.json' or '.jsonnet'"
-        )
-
-    if not isinstance(wr_data, dict):
-        raise ValueError(f"Work Requirement file '{wr_file}' must be a JSON object")
-    if "name" not in wr_data:
-        raise ValueError(f"Property '{NAME}' is not defined in '{wr_file}'")
-
-    # Lazy substitution of Work Requirement name
-    wr_data["name"] = format_yd_name(check_str(wr_data["name"], NAME))
-    wr_name = wr_data["name"]
-    add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
-    resolve_variables_insitu(wr_data)
-
-    if run.ctx.args.dry_run:
-        # This will show the results of any variable substitutions
-        if run.ctx.args.json_output:
-            record_document(wr_data)
-            return
-        print_dry_run("Printing JSON Work Requirement specification:")
-        print_json(wr_data)
-        print_dry_run("Complete")
-        return
-
-    # Extract Tasks from Task Groups
-    task_lists = {}
-    if TASK_GROUPS not in wr_data:
-        raise ValueError(f"Property '{TASK_GROUPS}' is not defined")
-    task_groups = check_list(wr_data[TASK_GROUPS], TASK_GROUPS)
-    if not task_groups:
-        raise ValueError("There must be at least one Task Group")
-    for tg_number, task_group in enumerate(task_groups):
-        if not isinstance(task_group, dict) or "name" not in task_group:
-            raise ValueError(
-                f"Task Group {tg_number + 1} of {len(task_groups)} has no"
-                f" '{NAME}' property"
-            )
-        task_lists[task_group["name"]] = task_group.get(TASKS, [])
-        task_group.pop(TASKS, None)
-
-    # Submit the Work Requirement and its Task Groups
-    response = requests.post(
-        url=f"{run.ctx.config.url}/work/requirements",
-        headers={
-            "Authorization": f"yd-key {run.ctx.config.key}:{run.ctx.config.secret}"
-        },
-        json=wr_data,
-        timeout=RAW_REQUEST_TIMEOUT,
-    )
-
-    if response.status_code != 200:
-        print_error(f"Failed to create Work Requirement '{wr_name}'")
-        raise_for_response(response)
-
-    wr_id = json_loads(response.text)["id"]
-    namespace = cast(str, wr_data.get("namespace"))
-    print_info(f"Created Work Requirement '{namespace}/{wr_name}' ({wr_id})")
-    record_entity(wr_id, wr_name, namespace, ET_WORK_REQUIREMENTS)
-    print_quiet_result(wr_id)
-
-    try:
-        _submit_json_raw_tasks(run, wr_id, wr_name, namespace, task_lists)
-    except (Exception, KeyboardInterrupt):
-        # As for a Work Requirement built from a specification: one left
-        # with only some of its Tasks is cancelled, and a failure to cancel
-        # it is reported without masking the failure that is re-raised
-        try:
-            run.ctx.client.work_client.cancel_work_requirement_by_id(wr_id)
-            print_warning(f"Cancelled Work Requirement '{wr_name}'")
-        except Exception as e:
-            print_error(f"Unable to cancel Work Requirement '{wr_name}': {e}")
-        raise
-
-    if run.ctx.args.progress:
-        follow_progress_bar(
-            run, run.ctx.client.work_client.get_work_requirement_by_id(wr_id)
-        )
-    elif run.ctx.args.follow:
-        follow_progress(
-            run, run.ctx.client.work_client.get_work_requirement_by_id(wr_id)
-        )
-
-
-def _submit_json_raw_tasks(
-    run: _Submission,
-    wr_id: str,
-    wr_name: str,
-    namespace: str,
-    task_lists: dict[str, list],
-) -> None:
-    """
-    Hold the newly created raw Work Requirement if asked, then submit each
-    Task Group's Tasks in batches. A batch that fails raises, once the
-    batches already under way have finished; those not yet started are not.
-    """
-    batch_size = run.batch_size
-    if run.ctx.args.hold:
-        run.ctx.client.work_client.hold_work_requirement_by_id(wr_id)
-        print_info("Work Requirement status set to 'HELD'")
-
-    # Submit Tasks in batches
-    for task_group_name, task_list in task_lists.items():
-        if not task_list:
-            print_info(f"No Tasks to add to Task Group '{task_group_name}'")
-            continue
-        num_submitted_tasks = run_batches(
-            run.ctx,
-            len(task_list),
-            batch_size,
-            _parallel_batches(run),
-            make_batch=lambda start, end, task_list=task_list: task_list[start:end],
-            send_batch=lambda task_batch, batch_number, num_batches, name=task_group_name: (
-                submit_json_task_batch(
-                    run,
-                    task_batch,
-                    batch_number,
-                    num_batches,
-                    name,
-                    wr_name,
-                    namespace,
-                )
-            ),
-        )
-        print_info(
-            f"Added a total of {num_submitted_tasks} Task(s) to Task Group '{task_group_name}'"
-        )
-
-
-def submit_json_task_batch(
-    run: _Submission,
-    task_batch: list[dict],
-    batch_number: int,
-    num_batches: int,
-    task_group_name: str,
-    wr_name: str,
-    namespace: str,
-) -> int:
-    """
-    Submit a batch of tasks using the REST API, retrying it as the main path
-    does. Return the number of tasks submitted.
-    """
-    task_batch_compressed = compress(json_dumps(task_batch).encode("utf-8"))
-    batch_number_str = formatted_number_str(batch_number, num_batches)
-
-    def attempt() -> None:
-        response = requests.post(
-            url=(
-                f"{run.ctx.config.url}/work/namespaces/{namespace}"
-                f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
-            ),
-            headers={
-                "Authorization": f"yd-key {run.ctx.config.key}:{run.ctx.config.secret}",
-                "Content-Encoding": "gzip",
-                "Content-Type": "application/json",
-            },
-            data=task_batch_compressed,
-            timeout=RAW_REQUEST_TIMEOUT,
-        )
-        if response.status_code != 200:
-            raise_for_response(response)
-
-    def report_success() -> None:
-        print_info(
-            f"Added {len(task_batch)} Task(s) to Task Group "
-            f"'{task_group_name}' (Batch {batch_number_str} of {num_batches})"
-        )
-
-    batch = (
-        f"batch {batch_number_str} of {num_batches} to Task Group '{task_group_name}'"
-    )
-    submit_with_retries(attempt, report_success, batch=batch, batch_in_full=batch)
-    return len(task_batch)
 
 
 # Entry point

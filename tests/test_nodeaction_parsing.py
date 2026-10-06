@@ -30,6 +30,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.nodeaction as na_module
+import yellowdog_cli.utils.spec_loading as spec_loading_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.nodeaction import (
     _load_spec,
@@ -779,7 +780,7 @@ class TestLoadSpec:
     def test_jsonnet_extension_uses_jsonnet_loader(self, tmp_path):
         f = tmp_path / "spec.jsonnet"
         with patch.object(
-            na_module,
+            spec_loading_module,
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actions": []},
         ) as mock_loader:
@@ -793,7 +794,7 @@ class TestLoadSpec:
         """
         f = tmp_path / "spec.JSONNET"
         with patch.object(
-            na_module,
+            spec_loading_module,
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actionGroups": []},
         ) as mock_loader:
@@ -804,7 +805,7 @@ class TestLoadSpec:
     def test_mixed_case_jsonnet_extension_uses_jsonnet_loader(self, tmp_path):
         f = tmp_path / "spec.Jsonnet"
         with patch.object(
-            na_module,
+            spec_loading_module,
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actions": []},
         ) as mock_loader:
@@ -814,12 +815,12 @@ class TestLoadSpec:
     def test_json_loader_not_called_for_jsonnet(self, tmp_path):
         f = tmp_path / "spec.jsonnet"
         with patch.object(
-            na_module,
+            spec_loading_module,
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actions": []},
         ):
             with patch.object(
-                na_module, "load_json_file_with_variable_substitutions"
+                spec_loading_module, "load_json_file_with_variable_substitutions"
             ) as mock_json:
                 _load_spec(_ctx(), str(f))
         mock_json.assert_not_called()

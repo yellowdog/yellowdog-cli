@@ -22,10 +22,6 @@ from yellowdog_client.model import (
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
-from yellowdog_cli.utils.file_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
-)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
@@ -72,8 +68,8 @@ from yellowdog_cli.utils.results import (
     record_document_part,
     record_entity,
 )
+from yellowdog_cli.utils.spec_loading import load_specification
 from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -118,7 +114,6 @@ def main(ctx: RunContext) -> None:
     )
 
     if wp_json_file is not None:
-        print_info(f"Loading Worker Pool data from: '{wp_json_file}'")
         create_worker_pool_from_json(ctx, wp_json_file)
     elif ctx.args.validate:
         raise ValueError("Option '--validate' needs a Worker Pool specification file")
@@ -132,25 +127,15 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str) -> None:
     """
     Directly create the Worker Pool using the YellowDog REST API.
     """
-    if wp_json_file.lower().endswith(".jsonnet"):
-        wp_data = load_jsonnet_file_with_variable_substitutions(
-            wp_json_file,
-            prefix=WP_VARIABLES_PREFIX,
-            postfix=WP_VARIABLES_POSTFIX,
-            dry_run=bool(ctx.args.jsonnet_dry_run),
-        )
-    else:
-        if ctx.args.jsonnet_dry_run:
-            raise ValueError(
-                "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
-            )
-        wp_data = load_json_file_with_variable_substitutions(
-            wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
-        )
-
-    # Both branches above, JSON and Jsonnet, arrive here with the loaded document
-    wp_data = check_specification(
-        Family.WORKER_POOL, wp_data, wp_json_file, bool(ctx.args.validate)
+    wp_data = load_specification(
+        wp_json_file,
+        "Worker Pool",
+        family=Family.WORKER_POOL,
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        validate=bool(ctx.args.validate),
+        prefix=WP_VARIABLES_PREFIX,
+        postfix=WP_VARIABLES_POSTFIX,
+        other_extensions_as_json=True,
     )
 
     # Some values are configurable via the TOML configuration file;

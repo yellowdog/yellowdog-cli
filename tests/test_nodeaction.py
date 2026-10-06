@@ -27,6 +27,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.nodeaction as na_module
+import yellowdog_cli.utils.spec_loading as spec_loading_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
@@ -128,7 +129,9 @@ def platform(monkeypatch, tmp_path):
         SimpleNamespace(namespace="ns", name_tag=None, url="https://api.x"),
     )
     monkeypatch.setattr(na_module, "confirmed", lambda message: True)
-    monkeypatch.setattr(na_module, "check_specification", lambda f, spec, *a: spec)
+    monkeypatch.setattr(
+        spec_loading_module, "check_specification", lambda f, spec, *a: spec
+    )
     monkeypatch.setattr(na_module, "record", lambda row: fake.records.append(dict(row)))
     return fake
 
@@ -143,6 +146,7 @@ def _submit(monkeypatch, platform, nodes=None, worker_pool=None, **extra):
         follow=False,
         timeout=None,
         validate=False,
+        jsonnet_dry_run=False,
         status=False,
         details=False,
         json_output=False,

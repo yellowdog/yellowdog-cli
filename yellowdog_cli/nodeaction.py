@@ -38,8 +38,6 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.file_substitution import (
-    load_json_file_with_variable_substitutions,
-    load_jsonnet_file_with_variable_substitutions,
     process_variable_substitutions_in_file_contents,
 )
 from yellowdog_cli.utils.interactive import confirmed, select
@@ -70,8 +68,8 @@ from yellowdog_cli.utils.property_names import (
     NODE_WORKERS,
 )
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
+from yellowdog_cli.utils.spec_loading import load_specification
 from yellowdog_cli.utils.spec_schema import Family
-from yellowdog_cli.utils.spec_validation import check_specification
 from yellowdog_cli.utils.tables import (
     NODE_ACTION_QUEUE_HEADINGS,
     node_action_queue_table,
@@ -510,23 +508,15 @@ def _load_spec(ctx: RunContext, spec_file: str) -> dict | None:
     Load and parse a node action spec file (JSON or Jsonnet),
     applying variable substitutions with the worker-pool prefix/postfix.
     """
-    if spec_file.lower().endswith(".jsonnet"):
-        spec = load_jsonnet_file_with_variable_substitutions(
-            spec_file,
-            prefix=WP_VARIABLES_PREFIX,
-            postfix=WP_VARIABLES_POSTFIX,
-            dry_run=bool(ctx.args.jsonnet_dry_run),
-        )
-    else:
-        spec = load_json_file_with_variable_substitutions(
-            spec_file,
-            prefix=WP_VARIABLES_PREFIX,
-            postfix=WP_VARIABLES_POSTFIX,
-        )
-
-    # Both branches above, JSON and Jsonnet, arrive here with the loaded document
-    spec = check_specification(
-        Family.NODE_ACTIONS, spec, spec_file, bool(ctx.args.validate)
+    spec = load_specification(
+        spec_file,
+        "Node Action",
+        family=Family.NODE_ACTIONS,
+        jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        validate=bool(ctx.args.validate),
+        prefix=WP_VARIABLES_PREFIX,
+        postfix=WP_VARIABLES_POSTFIX,
+        other_extensions_as_json=True,
     )
 
     if not isinstance(spec, dict):
