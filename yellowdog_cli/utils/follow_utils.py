@@ -24,7 +24,7 @@ from yellowdog_client.model import (
     TaskStatus,
 )
 
-from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.event_printing import print_event
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import (
@@ -37,7 +37,6 @@ from yellowdog_cli.utils.limits import (
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import CONSOLE, print_error, print_info, print_warning
-from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # Work Requirement terminal states that indicate failure. Shared by yd-wait
@@ -87,14 +86,14 @@ def reset_follow_errors() -> None:
         _FOLLOW_FAILURES.clear()
 
 
-def work_requirement_failed(wr_id: str) -> bool:
+def work_requirement_failed(ctx: RunContext, wr_id: str) -> bool:
     """
     Fetch a Work Requirement and report whether it ended in a failure state
     (FAILED or CANCELLED). A fetch error is treated as failure. Prints a
     warning (or error) describing the outcome; success is left to the caller.
     """
     try:
-        wr = CLIENT.work_client.get_work_requirement_by_id(wr_id)
+        wr = ctx.client.work_client.get_work_requirement_by_id(wr_id)
         status = wr.status.value if wr.status else "UNKNOWN"
     except Exception as e:
         print_error(f"Could not fetch final status for '{wr_id}': {e}")
@@ -153,7 +152,7 @@ def _progress_desc(
     return desc
 
 
-def follow_work_requirement_with_progress(ydid: str) -> None:
+def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     """
     Follow a Work Requirement event stream, displaying a live Rich progress bar.
 
@@ -169,7 +168,7 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
     wr_age_seconds = 0.0
     wr_is_terminal = False
     try:
-        wr = CLIENT.work_client.get_work_requirement_by_id(ydid)
+        wr = ctx.client.work_client.get_work_requirement_by_id(ydid)
         wr_name = wr.name or ""
         wr_is_terminal = wr.status is not None and wr.status.finished
         if (
@@ -320,7 +319,7 @@ def follow_work_requirement_with_progress(ydid: str) -> None:
     print_info(f"Tracking progress for Work Requirement '{ydid}'")
     try:
         with progress:
-            follow_events(ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
+            follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
     finally:
         if in_main_thread:
             signal.signal(signal.SIGINT, _original_sigint)
@@ -350,7 +349,10 @@ _STOP_FOLLOWING = Event()
 
 
 def follow_ids(
-    ydids: list[str], auto_cr: bool = False, timeout: float | None = None
+    ctx: RunContext,
+    ydids: list[str],
+    auto_cr: bool = False,
+    timeout: float | None = None,
 ) -> list[str]:
     """
     Creates an event thread for each YDID passed on the command line. With
@@ -381,7 +383,7 @@ def follow_ids(
         # Provisioned Worker Pools, to follow both
         for ydid in unique_ydids:
             if get_ydid_type(ydid) == YDIDType.WORKER_POOL:
-                cr_ydid = _compute_requirement_of_worker_pool(ydid)
+                cr_ydid = _compute_requirement_of_worker_pool(ctx, ydid)
                 if cr_ydid is not None and cr_ydid not in to_follow:
                     print_info(
                         f"Adding event stream for Compute Requirement '{cr_ydid}'"
@@ -392,7 +394,7 @@ def follow_ids(
 
     # Rich only supports one live display at a time, so the progress bar can
     # only be used when following a single Work Requirement
-    use_progress = bool(ARGS_PARSER.progress)
+    use_progress = bool(ctx.args.progress)
     if (
         use_progress
         and sum(
@@ -421,9 +423,9 @@ def follow_ids(
             continue
 
         if use_progress and ydid_type == YDIDType.WORK_REQUIREMENT:
-            target, args = follow_work_requirement_with_progress, (ydid,)
+            target, args = follow_work_requirement_with_progress, (ctx, ydid)
         else:
-            target, args = follow_events, (ydid, ydid_type)
+            target, args = follow_events, (ctx, ydid, ydid_type)
         thread = Thread(target=target, args=args, daemon=True)
         try:
             thread.start()
@@ -437,7 +439,7 @@ def follow_ids(
     # terminal cursor even if Rich's Live context is running in a daemon thread
     # (signal handlers can only be installed from the main thread).
     _original_sigint = signal.getsignal(signal.SIGINT)
-    if ARGS_PARSER.progress and threads:
+    if ctx.args.progress and threads:
 
         def _on_sigint(sig, frame):
             try:
@@ -462,23 +464,27 @@ def follow_ids(
             break
         sleep(0.1)
 
-    if ARGS_PARSER.progress:
+    if ctx.args.progress:
         signal.signal(signal.SIGINT, _original_sigint)
 
-    if len(threads) > 1 and not ARGS_PARSER.print_pid:
+    if len(threads) > 1 and not ctx.args.print_pid:
         print_info("All event streams have concluded")
 
     return valid_original
 
 
-def _compute_requirement_of_worker_pool(worker_pool_id: str) -> str | None:
+def _compute_requirement_of_worker_pool(
+    ctx: RunContext, worker_pool_id: str
+) -> str | None:
     """
     The Compute Requirement of a Provisioned Worker Pool, to follow with it;
     None for a Configured one, which has none. A pool that cannot be fetched
     is a failure to follow, recorded as one.
     """
     try:
-        worker_pool = CLIENT.worker_pool_client.get_worker_pool_by_id(worker_pool_id)
+        worker_pool = ctx.client.worker_pool_client.get_worker_pool_by_id(
+            worker_pool_id
+        )
     except Exception as e:
         print_error(
             f"Unable to find the Compute Requirement of Worker Pool"
@@ -491,7 +497,7 @@ def _compute_requirement_of_worker_pool(worker_pool_id: str) -> str | None:
     return None
 
 
-def _entity_finished(ydid: str, ydid_type: YDIDType) -> bool:
+def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool:
     """
     Whether the entity whose event stream has closed has finished, as the
     Platform closes a stream when it does. A stream closed for any other
@@ -501,12 +507,12 @@ def _entity_finished(ydid: str, ydid_type: YDIDType) -> bool:
     """
     try:
         if ydid_type == YDIDType.WORK_REQUIREMENT:
-            status = CLIENT.work_client.get_work_requirement_by_id(ydid).status
+            status = ctx.client.work_client.get_work_requirement_by_id(ydid).status
             return status is None or status.finished
         if ydid_type == YDIDType.WORKER_POOL:
-            status = CLIENT.worker_pool_client.get_worker_pool_by_id(ydid).status
+            status = ctx.client.worker_pool_client.get_worker_pool_by_id(ydid).status
             return status is None or status.finished
-        status = CLIENT.compute_client.get_compute_requirement_by_id(ydid).status
+        status = ctx.client.compute_client.get_compute_requirement_by_id(ydid).status
         return status is None or status == ComputeRequirementStatus.TERMINATED
     except Exception as e:
         print_warning(
@@ -551,6 +557,7 @@ class _Outage:
 
 
 def follow_events(
+    ctx: RunContext,
     ydid: str,
     ydid_type: YDIDType,
     on_event: Callable[[str, YDIDType], None] | None = None,
@@ -574,9 +581,9 @@ def follow_events(
         try:
             response = requests.get(
                 headers={
-                    "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"
+                    "Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"
                 },
-                url=get_event_url(ydid, ydid_type),
+                url=get_event_url(ctx, ydid, ydid_type),
                 stream=True,
                 timeout=(EVENT_STREAM_CONNECT_TIMEOUT, EVENT_STREAM_READ_TIMEOUT),
             )
@@ -644,7 +651,7 @@ def follow_events(
         # something in between, in which case it is reconnected
         if _STOP_FOLLOWING.is_set():
             return
-        if _entity_finished(ydid, ydid_type):
+        if _entity_finished(ctx, ydid, ydid_type):
             concluded = True
             break
         sleep(EVENT_STREAM_RECONNECT_DELAY)
@@ -653,13 +660,13 @@ def follow_events(
         print_info(f"Event stream concluded for '{ydid}'")
 
 
-def get_event_url(ydid: str, ydid_type: YDIDType) -> str:
+def get_event_url(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> str:
     """
     Get the event stream URL. Assumes we've already checked that the
     YDID is one of these types.
     """
     if ydid_type is YDIDType.WORK_REQUIREMENT:
-        return f"{CONFIG_COMMON.url}/work/requirements/{ydid}/updates"
+        return f"{ctx.config.url}/work/requirements/{ydid}/updates"
     if ydid_type == YDIDType.WORKER_POOL:
-        return f"{CONFIG_COMMON.url}/workerPools/{ydid}/updates"
-    return f"{CONFIG_COMMON.url}/compute/requirements/{ydid}/updates"
+        return f"{ctx.config.url}/workerPools/{ydid}/updates"
+    return f"{ctx.config.url}/compute/requirements/{ydid}/updates"

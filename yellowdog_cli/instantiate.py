@@ -17,6 +17,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS
 from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.file_substitution import (
@@ -62,7 +63,7 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
 
@@ -79,25 +80,25 @@ GENERATED_ID: str = ""
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     global GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
-    GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
+    GENERATED_ID = generate_id(ctx.config.name_tag)
 
-    if ARGS_PARSER.target is not None:
-        CONFIG_WP.target_instance_count = ARGS_PARSER.target
+    if ctx.args.target is not None:
+        CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
 
     # Direct file > file supplied using '-C' > file supplied in config file
     cr_json_file = (
         (
-            ARGS_PARSER.worker_pool_file
-            if ARGS_PARSER.compute_requirement is None
-            else ARGS_PARSER.compute_requirement
+            ctx.args.worker_pool_file
+            if ctx.args.compute_requirement is None
+            else ctx.args.compute_requirement
         )
-        if ARGS_PARSER.compute_requirement_file_positional is None
-        else ARGS_PARSER.compute_requirement_file_positional
+        if ctx.args.compute_requirement_file_positional is None
+        else ctx.args.compute_requirement_file_positional
     )
 
     # -C > -P > workerPoolData / computeRequirementData
@@ -110,11 +111,11 @@ def main():
     if cr_json_file is not None:
         print_info(f"Loading Compute Requirement data from: '{cr_json_file}'")
         _create_compute_requirement_from_json(
-            cr_json_file, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+            ctx, cr_json_file, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
         )
         return
 
-    if ARGS_PARSER.validate:
+    if ctx.args.validate:
         raise ValueError(
             "Option '--validate' needs a Compute Requirement specification file"
         )
@@ -124,16 +125,16 @@ def main():
 
     # Allow use of CRT name instead of ID
     CONFIG_WP.template_id = get_template_id(
-        client=CLIENT, template_id_or_name=CONFIG_WP.template_id
+        client=ctx.client, template_id_or_name=CONFIG_WP.template_id
     )
 
     # Allow use of IF name instead of ID
     if CONFIG_WP.images_id is not None:
         CONFIG_WP.images_id = get_image_id(
-            client=CLIENT, image_name_or_id=CONFIG_WP.images_id
+            client=ctx.client, image_name_or_id=CONFIG_WP.images_id
         )
 
-    if not ARGS_PARSER.report:
+    if not ctx.args.report:
         print_info(
             "Provisioning Compute Requirement with "
             f"{CONFIG_WP.target_instance_count:,d} instance(s)"
@@ -145,11 +146,11 @@ def main():
     )
 
     num_batches = len(batches)
-    if num_batches > 1 and not ARGS_PARSER.report:
+    if num_batches > 1 and not ctx.args.report:
         print_info(f"Batching into {num_batches} Compute Requirements")
 
     # Read once: every batch has the same user data
-    user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+    user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
 
     compute_requirement_ids: list[str] = []
     for batch_number in range(num_batches):
@@ -158,25 +159,25 @@ def main():
             batch_number=batch_number,
             num_batches=num_batches,
         )
-        if not (ARGS_PARSER.dry_run or ARGS_PARSER.report):
+        if not (ctx.args.dry_run or ctx.args.report):
             if num_batches > 1:
                 print_info(
-                    f"Provisioning Compute Requirement {batch_number + 1} '{CONFIG_COMMON.namespace}/{id}'"
+                    f"Provisioning Compute Requirement {batch_number + 1} '{ctx.config.namespace}/{id}'"
                     f" with {batches[batch_number].target_instances:,d} instance(s)"
                 )
             else:
                 print_info(
-                    f"Provisioning Compute Requirement '{CONFIG_COMMON.namespace}/{id}'"
+                    f"Provisioning Compute Requirement '{ctx.config.namespace}/{id}'"
                 )
 
         try:
             compute_requirement_template_usage = ComputeRequirementTemplateUsage(
                 templateId=cast(str, CONFIG_WP.template_id),
-                requirementNamespace=CONFIG_COMMON.namespace,
+                requirementNamespace=ctx.config.namespace,
                 requirementName=id,
                 targetInstanceCount=batches[batch_number].target_instances,
                 requirementTag=(
-                    CONFIG_COMMON.name_tag
+                    ctx.config.name_tag
                     if CONFIG_WP.cr_tag is None
                     else CONFIG_WP.cr_tag
                 ),
@@ -186,7 +187,7 @@ def main():
                 userData=user_data,
             )
 
-            if ARGS_PARSER.report:
+            if ctx.args.report:
                 print_info("Generating provisioning report only")
                 if num_batches > 1:
                     # The Platform tests one Compute Requirement at a time
@@ -198,7 +199,7 @@ def main():
                     )
                 try:
                     test_result: ComputeRequirementTemplateTestResult = (
-                        CLIENT.compute_client.test_compute_requirement_template(
+                        ctx.client.compute_client.test_compute_requirement_template(
                             compute_requirement_template_usage
                         )
                     )
@@ -215,9 +216,9 @@ def main():
                         raise http_error
                 return
 
-            if not ARGS_PARSER.dry_run:
+            if not ctx.args.dry_run:
                 compute_requirement = (
-                    CLIENT.compute_client.provision_compute_requirement_template(
+                    ctx.client.compute_client.provision_compute_requirement_template(
                         compute_requirement_template_usage
                     )
                 )
@@ -226,16 +227,16 @@ def main():
                 record_entity(
                     compute_requirement.id,
                     compute_requirement.name,
-                    CONFIG_COMMON.namespace,
+                    ctx.config.namespace,
                     ET_COMPUTE_REQUIREMENTS,
                 )
                 print_quiet_result(compute_requirement.id)
                 print_info(
-                    f"Provisioned {link_entity(CONFIG_COMMON.url, compute_requirement)}"
+                    f"Provisioned {link_entity(ctx.config.url, compute_requirement)}"
                 )
                 print_info(f"YellowDog ID is '{compute_requirement.id}'")
 
-            elif ARGS_PARSER.json_output:
+            elif ctx.args.json_output:
                 # One per batch, as above
                 record_document_part(Json.dump(compute_requirement_template_usage))
             else:
@@ -247,8 +248,8 @@ def main():
             # Re-raised as it is, so that the wrapper's exit code reflects it
             print_error(
                 "Unable to"
-                f" {'report on' if ARGS_PARSER.report else 'provision'} Compute"
-                f" Requirement '{CONFIG_COMMON.namespace}/{id}'"
+                f" {'report on' if ctx.args.report else 'provision'} Compute"
+                f" Requirement '{ctx.config.namespace}/{id}'"
             )
             if compute_requirement_ids:
                 print_warning(
@@ -258,8 +259,8 @@ def main():
                 )
             raise
 
-    if ARGS_PARSER.follow:
-        follow_ids(compute_requirement_ids)
+    if ctx.args.follow:
+        follow_ids(ctx, compute_requirement_ids)
 
 
 def _message_of(response_text: str) -> str:
@@ -308,13 +309,13 @@ def _allocate_nodes_to_batches(
 
 
 def _create_compute_requirement_from_json(
-    cr_json_file: str, prefix: str = "", postfix: str = ""
+    ctx: RunContext, cr_json_file: str, prefix: str = "", postfix: str = ""
 ) -> None:
     """
     Directly create the Compute Requirement using the YellowDog REST API.
     """
 
-    if ARGS_PARSER.report:
+    if ctx.args.report:
         raise ValueError(
             "Compute Template reports aren't available when using JSON "
             "Compute Requirement / Worker Pool specifications"
@@ -325,7 +326,7 @@ def _create_compute_requirement_from_json(
             cr_json_file, prefix=prefix, postfix=postfix
         )
     else:
-        if ARGS_PARSER.jsonnet_dry_run:
+        if ctx.args.jsonnet_dry_run:
             raise ValueError(
                 "Option '--jsonnet-dry-run' can only be used with files "
                 "ending in '.jsonnet'"
@@ -337,7 +338,7 @@ def _create_compute_requirement_from_json(
     # Both branches above, JSON and Jsonnet, arrive here with the loaded
     # document, validated before 'requirementTemplateUsage' is unwrapped
     cr_data = check_specification(
-        Family.COMPUTE_REQUIREMENT, cr_data, cr_json_file, bool(ARGS_PARSER.validate)
+        Family.COMPUTE_REQUIREMENT, cr_data, cr_json_file, bool(ctx.args.validate)
     )
 
     # Use only the 'requirementTemplateUsage' value (if present);
@@ -353,10 +354,10 @@ def _create_compute_requirement_from_json(
             "requirementName",
             (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
         ),
-        ("requirementNamespace", CONFIG_COMMON.namespace),
+        ("requirementNamespace", ctx.config.namespace),
         (
             "requirementTag",
-            (CONFIG_COMMON.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
+            (ctx.config.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
         ),
         ("templateId", CONFIG_WP.template_id),
         ("imagesId", CONFIG_WP.images_id),
@@ -379,7 +380,7 @@ def _create_compute_requirement_from_json(
 
     # The TOML user data is read only if the specification has none
     if cr_data.get("userData") is None:
-        user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+        user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
         if user_data is not None:
             # Its source and size, never the script itself
             print_info(
@@ -389,13 +390,13 @@ def _create_compute_requirement_from_json(
             cr_data["userData"] = user_data
 
     if (
-        ARGS_PARSER.target is not None
-        and cr_data.get("targetInstanceCount") != ARGS_PARSER.target
+        ctx.args.target is not None
+        and cr_data.get("targetInstanceCount") != ctx.args.target
     ):
         print_info(
-            f"Setting 'targetInstanceCount' to '{ARGS_PARSER.target}' (from '--target')"
+            f"Setting 'targetInstanceCount' to '{ctx.args.target}' (from '--target')"
         )
-        cr_data["targetInstanceCount"] = ARGS_PARSER.target
+        cr_data["targetInstanceCount"] = ctx.args.target
 
     # Neither the specification nor the configuration names a template
     if cr_data.get("templateId") is None:
@@ -403,17 +404,17 @@ def _create_compute_requirement_from_json(
 
     # Allow use of CRT name instead of ID
     cr_data["templateId"] = get_template_id(
-        client=CLIENT, template_id_or_name=cr_data["templateId"]
+        client=ctx.client, template_id_or_name=cr_data["templateId"]
     )
 
     # Allow use of IF name instead of ID
     if cr_data.get("imagesId") is not None:
         cr_data["imagesId"] = get_image_id(
-            client=CLIENT, image_name_or_id=cr_data["imagesId"]
+            client=ctx.client, image_name_or_id=cr_data["imagesId"]
         )
 
-    if ARGS_PARSER.dry_run:
-        if ARGS_PARSER.json_output:
+    if ctx.args.dry_run:
+        if ctx.args.json_output:
             record_document(cr_data)
             return
         print_dry_run("Printing JSON Compute Requirement specification")
@@ -422,8 +423,8 @@ def _create_compute_requirement_from_json(
         return
 
     response = requests.post(
-        url=f"{CONFIG_COMMON.url}/compute/templates/provision",
-        headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        url=f"{ctx.config.url}/compute/templates/provision",
+        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=cr_data,
         timeout=RAW_REQUEST_TIMEOUT,
     )
@@ -437,9 +438,9 @@ def _create_compute_requirement_from_json(
             id, name, cr_data["requirementNamespace"], ET_COMPUTE_REQUIREMENTS
         )
         print_quiet_result(id)
-        if ARGS_PARSER.follow:
+        if ctx.args.follow:
             print_info("Following Compute Requirement event stream")
-            follow_events(id, YDIDType.COMPUTE_REQUIREMENT)
+            follow_events(ctx, id, YDIDType.COMPUTE_REQUIREMENT)
     else:
         print_error(f"Failed to provision Compute Requirement '{name}'")
         # An HTTPError, so that the wrapper's exit code reflects the status

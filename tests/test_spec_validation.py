@@ -413,10 +413,16 @@ def run(monkeypatch, capsys):
             # A library module (utils/resource_creation.py) reads no ARGS_PARSER
             if hasattr(target, "ARGS_PARSER"):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(module, "CLIENT", client)
-        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        # A command taking a RunContext gets these from the wrapper's own
+        if hasattr(module, "CLIENT"):
+            monkeypatch.setattr(module, "CLIENT", client)
+            monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        else:
+            monkeypatch.setattr(wrapper_module, "CLIENT", client)
         config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
-        monkeypatch.setattr(module, "CONFIG_COMMON", config)
+        monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
+        if hasattr(module, "CONFIG_COMMON"):
+            monkeypatch.setattr(module, "CONFIG_COMMON", config)
         with pytest.raises(SystemExit) as exit_info:
             (main_module or module).main()
         _run.exit_code = exit_info.value.code  # type: ignore[attr-defined]

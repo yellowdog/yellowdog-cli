@@ -5,9 +5,9 @@ Configuration and utilities related to GCP account setup.
 from google.cloud import compute_v1
 from google.oauth2 import service_account
 from google.oauth2.service_account import Credentials
-from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.printing import print_info, print_warning
@@ -26,10 +26,8 @@ class GCPConfig(CommonCloudConfig):
     Class for GCP resource creation.
     """
 
-    def __init__(
-        self, service_account_file: str, client: PlatformClient, instance_type: str
-    ):
-        super().__init__(client=client, cloud_provider="GCP")
+    def __init__(self, service_account_file: str, ctx: RunContext, instance_type: str):
+        super().__init__(ctx=ctx, cloud_provider="GCP")
         self._service_account_file = service_account_file
         try:
             self._credentials: Credentials = (
@@ -113,7 +111,7 @@ class GCPConfig(CommonCloudConfig):
             )
             self._source_names_ondemand.append(name)
         print_info("Creating YellowDog Compute Source Templates")
-        create_resources(self._source_template_resources)
+        create_resources(self._ctx, self._source_template_resources)
 
         # Create Compute Requirement Templates
         self._create_compute_requirement_templates(resource_prefix=YD_RESOURCE_PREFIX)
@@ -123,7 +121,8 @@ class GCPConfig(CommonCloudConfig):
 
         # Create Credential and add to Keyring
         create_resources(
-            [self._generate_yd_gcp_credential(YD_KEYRING_NAME, YD_CREDENTIAL_NAME)]
+            self._ctx,
+            [self._generate_yd_gcp_credential(YD_KEYRING_NAME, YD_CREDENTIAL_NAME)],
         )
 
         # Save the Compute Requirement and Source Templates

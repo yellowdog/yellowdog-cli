@@ -10,14 +10,24 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.property_names import (
     TASK_GROUPS,
     TASK_TYPE,
     TASK_TYPES,
     TASKS,
 )
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # ---------------------------------------------------------------------------
 # The CSV files named
@@ -39,7 +49,7 @@ class TestCsvFiles:
                 return_value=from_command_line,
             ),
         ):
-            return submit_module._csv_files()
+            return submit_module._csv_files(_ctx())
 
     def test_an_empty_list_in_the_configuration_names_none(self):
         # 'csvFiles = []' used to reach csv_files[0]: 'list index out of range'

@@ -17,6 +17,7 @@ not finished, whatever the reason.
 import sys
 from typing import Any
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.follow_utils import (
     WR_FAILURE_STATUS_VALUES,
@@ -25,7 +26,7 @@ from yellowdog_cli.utils.follow_utils import (
 )
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # The states each type's event stream concludes in, and of those the ones
@@ -53,19 +54,19 @@ def _record_status(ydid: str, name: str | None, status: str | None) -> None:
     record({"id": ydid, "name": name, "status": status, "succeeded": succeeded})
 
 
-def _fetch(ydid: str, ydid_type: YDIDType | None) -> Any:
+def _fetch(ctx: RunContext, ydid: str, ydid_type: YDIDType | None) -> Any:
     if ydid_type == YDIDType.WORK_REQUIREMENT:
-        return CLIENT.work_client.get_work_requirement_by_id(ydid)
+        return ctx.client.work_client.get_work_requirement_by_id(ydid)
     if ydid_type == YDIDType.WORKER_POOL:
-        return CLIENT.worker_pool_client.get_worker_pool_by_id(ydid)
-    return CLIENT.compute_client.get_compute_requirement_by_id(ydid)
+        return ctx.client.worker_pool_client.get_worker_pool_by_id(ydid)
+    return ctx.client.compute_client.get_compute_requirement_by_id(ydid)
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # At least one ID is required, each a Work Requirement's, Worker Pool's or
     # Compute Requirement's, as the command line is parsed
-    follow_ids(ARGS_PARSER.yellowdog_ids, timeout=ARGS_PARSER.timeout)
+    follow_ids(ctx, ctx.args.yellowdog_ids, timeout=ctx.args.timeout)
     # Why an entity may still be live once following has ended: a stream
     # that could not be followed (its cause), else the timeout
     following_code = follow_exit_code() or ExitCode.FAILURE
@@ -75,11 +76,11 @@ def main():
     # given, once each.
     failures: list[ExitCode] = []
     work_requirement_failed = False
-    for ydid in dict.fromkeys(ARGS_PARSER.yellowdog_ids):
+    for ydid in dict.fromkeys(ctx.args.yellowdog_ids):
         ydid_type = get_ydid_type(ydid)
         label = ydid_type.value if ydid_type is not None else "Entity"
         try:
-            entity = _fetch(ydid, ydid_type)
+            entity = _fetch(ctx, ydid, ydid_type)
         except Exception as e:
             print_error(f"Could not fetch final status for '{ydid}': {e}")
             failures.append(classify(e))

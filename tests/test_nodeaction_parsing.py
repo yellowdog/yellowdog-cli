@@ -30,6 +30,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.nodeaction as na_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.nodeaction import (
     _load_spec,
     _parse_action,
@@ -38,7 +39,16 @@ from yellowdog_cli.nodeaction import (
     _parse_node_worker_target,
     _submission_error,
 )
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.tables import node_action_type_label as _action_type_label
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # ---------------------------------------------------------------------------
 # _parse_node_worker_target
@@ -721,27 +731,27 @@ class TestLoadSpec:
     def test_json_file_returns_dict(self, tmp_path):
         f = tmp_path / "spec.json"
         f.write_text('{"actions": []}')
-        result = _load_spec(str(f))
+        result = _load_spec(_ctx(), str(f))
         assert result == {"actions": []}
 
     def test_json_file_array_returns_none(self, tmp_path):
         f = tmp_path / "spec.json"
         f.write_text('[{"type": "runCommand"}]')
         with patch.object(na_module, "print_error"):
-            result = _load_spec(str(f))
+            result = _load_spec(_ctx(), str(f))
         assert result is None
 
     def test_json_file_array_emits_error(self, tmp_path):
         f = tmp_path / "spec.json"
         f.write_text("[]")
         with patch.object(na_module, "print_error") as mock_err:
-            _load_spec(str(f))
+            _load_spec(_ctx(), str(f))
         mock_err.assert_called_once()
 
     def test_uppercase_json_extension_uses_json_loader(self, tmp_path):
         f = tmp_path / "spec.JSON"
         f.write_text('{"actions": []}')
-        result = _load_spec(str(f))
+        result = _load_spec(_ctx(), str(f))
         assert result == {"actions": []}
 
     def test_jsonnet_extension_uses_jsonnet_loader(self, tmp_path):
@@ -751,7 +761,7 @@ class TestLoadSpec:
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actions": []},
         ) as mock_loader:
-            result = _load_spec(str(f))
+            result = _load_spec(_ctx(), str(f))
         mock_loader.assert_called_once()
         assert result == {"actions": []}
 
@@ -763,7 +773,7 @@ class TestLoadSpec:
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actionGroups": []},
         ) as mock_loader:
-            result = _load_spec(str(f))
+            result = _load_spec(_ctx(), str(f))
         mock_loader.assert_called_once()
         assert result == {"actionGroups": []}
 
@@ -774,7 +784,7 @@ class TestLoadSpec:
             "load_jsonnet_file_with_variable_substitutions",
             return_value={"actions": []},
         ) as mock_loader:
-            _load_spec(str(f))
+            _load_spec(_ctx(), str(f))
         mock_loader.assert_called_once()
 
     def test_json_loader_not_called_for_jsonnet(self, tmp_path):
@@ -787,7 +797,7 @@ class TestLoadSpec:
             with patch.object(
                 na_module, "load_json_file_with_variable_substitutions"
             ) as mock_json:
-                _load_spec(str(f))
+                _load_spec(_ctx(), str(f))
         mock_json.assert_not_called()
 
 

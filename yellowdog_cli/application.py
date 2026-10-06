@@ -11,6 +11,7 @@ from urllib.parse import quote
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import ApplicationDetails
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import (
     get_all_roles_and_namespaces_for_application,
     get_application_details,
@@ -19,12 +20,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.misc_utils import portal_base_url
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
-from yellowdog_cli.utils.wrapper import (
-    ARGS_PARSER,
-    CLIENT,
-    CONFIG_COMMON,
-    main_wrapper,
-)
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 # What 'groupsAndRoles' says, under --json, when they are null for want of
 # the permission to look them up
@@ -33,11 +29,11 @@ ROLES_LABEL = "With role(s) [in namespace(s)]"
 
 
 @main_wrapper
-def main():
-    report_application()
+def main(ctx: RunContext):
+    report_application(ctx)
 
 
-def report_application():
+def report_application(ctx: RunContext):
     """
     Report the details of the Application, as JSON or as a readable report.
 
@@ -46,20 +42,20 @@ def report_application():
     for an Application, and is reported as such; any other failure is warned
     of, and exits with the failure's exit code once the rest is reported.
     """
-    application_details: ApplicationDetails = get_application_details(CLIENT)
-    portal_url = _portal_url(CONFIG_COMMON.url, application_details.accountName)
-    groups, roles, error = _groups_and_roles(cast(str, application_details.id))
+    application_details: ApplicationDetails = get_application_details(ctx.client)
+    portal_url = _portal_url(ctx.config.url, application_details.accountName)
+    groups, roles, error = _groups_and_roles(ctx, cast(str, application_details.id))
     exit_code = None if error is None else classify(error)
     permission_denied = exit_code == ExitCode.PERMISSION
 
-    if ARGS_PARSER.json_output:
+    if ctx.args.json_output:
         _print_json(application_details, portal_url, groups, roles, permission_denied)
     else:
         _print_report(application_details, portal_url, groups, roles, permission_denied)
 
     if error is not None and not permission_denied:
         print_warning(f"Unable to determine groups and roles: {error}")
-        if ARGS_PARSER.debug:
+        if ctx.args.debug:
             raise error
         sys.exit(exit_code)
 
@@ -78,6 +74,7 @@ def _portal_url(url: str, account_name: str | None) -> str | None:
 
 
 def _groups_and_roles(
+    ctx: RunContext,
     application_id: str,
 ) -> tuple[list[str] | None, dict | None, Exception | None]:
     """
@@ -88,9 +85,9 @@ def _groups_and_roles(
     try:
         groups = [
             cast(str, group.name)
-            for group in get_application_group_summaries(CLIENT, application_id)
+            for group in get_application_group_summaries(ctx.client, application_id)
         ]
-        roles = get_all_roles_and_namespaces_for_application(CLIENT, application_id)
+        roles = get_all_roles_and_namespaces_for_application(ctx.client, application_id)
         return groups, roles, None
     except Exception as e:
         return None, None, e

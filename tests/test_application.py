@@ -18,6 +18,7 @@ from yellowdog_client.model import ApplicationDetails, Feature
 
 import yellowdog_cli.application as application_module
 from yellowdog_cli.application import _portal_url, report_application
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 
 API_URL = "https://api.yellowdog.ai"
@@ -95,10 +96,8 @@ def _run(
 
     args = _args(json_output)
     args.debug = debug
+    ctx = RunContext(args=args, config=SimpleNamespace(url=url), client=MagicMock())
     with (
-        patch.object(application_module, "ARGS_PARSER", args),
-        patch.object(application_module, "CLIENT", MagicMock()),
-        patch.object(application_module, "CONFIG_COMMON", SimpleNamespace(url=url)),
         patch.object(
             application_module,
             "get_application_details",
@@ -114,7 +113,7 @@ def _run(
         ),
         patch("yellowdog_cli.utils.printing.ARGS_PARSER", args),
     ):
-        report_application()
+        report_application(ctx)
 
     return capsys.readouterr().out
 

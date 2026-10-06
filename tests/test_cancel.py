@@ -16,7 +16,7 @@ Covers:
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as RequestsConnectionError
@@ -218,7 +218,7 @@ class TestListing:
 
         cancel.side_effect = failing_b
         _run(platform, [], follow=True)
-        yd_cancel.follow_ids.assert_called_once_with([WR_A])
+        yd_cancel.follow_ids.assert_called_once_with(ANY, [WR_A])
 
 
 # ---------------------------------------------------------------------------

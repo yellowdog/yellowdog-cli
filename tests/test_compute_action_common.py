@@ -16,7 +16,7 @@ Covers:
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as RequestsConnectionError
@@ -272,7 +272,7 @@ class TestListing:
 
     def test_follow_is_given_only_what_was_actioned(self, platform, monkeypatch):
         _run(platform, COMPUTE_STOP, [], follow=True)
-        cac_module.follow_ids.assert_called_once_with([CR_ID])
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +451,7 @@ class TestInstances:
             [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
             follow=True,
         )
-        cac_module.follow_ids.assert_called_once_with([CR_ID])
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
 
     def test_declining_skips_everything(self, platform, monkeypatch):
         monkeypatch.setattr(action_runner, "confirmed", lambda message: False)

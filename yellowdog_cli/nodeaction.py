@@ -26,6 +26,7 @@ from yellowdog_client.model import (
     WorkerPoolSummary,
 )
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
@@ -81,7 +82,7 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # Action type strings used in spec files
@@ -133,13 +134,13 @@ def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # '--validate' with '--status', and a missing '--actions', are refused as
     # the command line is parsed ('check_node_action_args' in the registry)
-    if ARGS_PARSER.status:
-        _show_status()
+    if ctx.args.status:
+        _show_status(ctx)
     else:
-        _submit_actions()
+        _submit_actions(ctx)
 
 
 # The states of a node that can take Node Actions, offered for selection and
@@ -155,9 +156,9 @@ def _pool_label(pool: _Pool) -> str:
     return f"'{pool.namespace}/{pool.name}'" if pool.name else str(pool.id)
 
 
-def _get_worker_pool(worker_pool_id: str) -> WorkerPool:
+def _get_worker_pool(ctx: RunContext, worker_pool_id: str) -> WorkerPool:
     try:
-        return CLIENT.worker_pool_client.get_worker_pool_by_id(
+        return ctx.client.worker_pool_client.get_worker_pool_by_id(
             worker_pool_id=worker_pool_id
         )
     except Exception as e:
@@ -166,9 +167,9 @@ def _get_worker_pool(worker_pool_id: str) -> WorkerPool:
         raise
 
 
-def _get_node(node_id: str) -> Node:
+def _get_node(ctx: RunContext, node_id: str) -> Node:
     try:
-        return CLIENT.worker_pool_client.get_node_by_id(node_id)
+        return ctx.client.worker_pool_client.get_node_by_id(node_id)
     except Exception as e:
         if is_http_not_found(e):
             raise NotFoundError(f"Cannot find Node {node_id}") from e
@@ -186,7 +187,7 @@ def _without_duplicates(node_ids: list[str]) -> list[str]:
     return unique
 
 
-def _resolve_worker_pool() -> _Pool:
+def _resolve_worker_pool(ctx: RunContext) -> _Pool:
     """
     The Worker Pool named by --worker-pool (a name, or a YDID, checked as
     the command line is parsed), else one chosen interactively from the
@@ -194,16 +195,18 @@ def _resolve_worker_pool() -> _Pool:
     NotFoundError for one that does not exist, and ValueError for one that
     has finished or when none can be chosen.
     """
-    wp_name = ARGS_PARSER.worker_pool_name
+    wp_name = ctx.args.worker_pool_name
 
     if wp_name is not None:
         if get_ydid_type(wp_name) == YDIDType.WORKER_POOL:
-            pool: _Pool = _get_worker_pool(wp_name)
+            pool: _Pool = _get_worker_pool(ctx, wp_name)
         else:
-            wp_id = get_worker_pool_id_by_name(CLIENT, wp_name, CONFIG_COMMON.namespace)
+            wp_id = get_worker_pool_id_by_name(
+                ctx.client, wp_name, ctx.config.namespace
+            )
             if wp_id is None:
                 raise NotFoundError(f"Cannot find Worker Pool '{wp_name}'")
-            pool = _get_worker_pool(wp_id)
+            pool = _get_worker_pool(ctx, wp_id)
         if pool.status is not None and pool.status.finished:
             raise ValueError(f"Worker Pool {_pool_label(pool)} is {pool.status}")
         return pool
@@ -211,20 +214,20 @@ def _resolve_worker_pool() -> _Pool:
     summaries: list[WorkerPoolSummary] = [
         summary
         for summary in get_worker_pool_summaries(
-            CLIENT,
-            namespace=CONFIG_COMMON.namespace,
-            name=CONFIG_COMMON.name_tag if CONFIG_COMMON.name_tag else None,
+            ctx.client,
+            namespace=ctx.config.namespace,
+            name=ctx.config.name_tag if ctx.config.name_tag else None,
         )
         if summary.status is None or not summary.status.finished
     ]
     if not summaries:
         raise ValueError(
-            f"No active Worker Pools found in namespace '{CONFIG_COMMON.namespace}'"
+            f"No active Worker Pools found in namespace '{ctx.config.namespace}'"
         )
     selected = cast(
         list[WorkerPoolSummary],
         select(
-            CLIENT,
+            ctx.client,
             cast(list[Any], summaries),
             single_result=True,
             force_interactive=True,
@@ -235,12 +238,14 @@ def _resolve_worker_pool() -> _Pool:
     return selected[0]
 
 
-def _get_nodes_for_pool(wp_id: str, live_only: bool = True) -> list[Node]:
+def _get_nodes_for_pool(
+    ctx: RunContext, wp_id: str, live_only: bool = True
+) -> list[Node]:
     """
     The nodes registered to the Worker Pool: those that can take Node
     Actions, unless 'live_only' is False.
     """
-    nodes = CLIENT.worker_pool_client.get_nodes(
+    nodes = ctx.client.worker_pool_client.get_nodes(
         NodeSearch(workerPoolId=wp_id)
     ).list_all()
     if not live_only:
@@ -248,15 +253,15 @@ def _get_nodes_for_pool(wp_id: str, live_only: bool = True) -> list[Node]:
     return [node for node in nodes if node.status in _LIVE_NODE_STATUSES]
 
 
-def _choose_nodes(pool: _Pool) -> list[str]:
+def _choose_nodes(ctx: RunContext, pool: _Pool) -> list[str]:
     """The IDs of the nodes chosen interactively from the pool's live ones."""
-    live = _get_nodes_for_pool(cast(str, pool.id))
+    live = _get_nodes_for_pool(ctx, cast(str, pool.id))
     if not live:
         raise ValueError(f"No running nodes in Worker Pool {_pool_label(pool)}")
     selected = cast(
         list[Node],
         select(
-            CLIENT,
+            ctx.client,
             cast(list[Any], live),
             force_interactive=True,
             sort_objects=False,
@@ -267,7 +272,7 @@ def _choose_nodes(pool: _Pool) -> list[str]:
     return [cast(str, node.id) for node in selected]
 
 
-def _resolve_targets() -> tuple[_Pool, list[str] | None, list[str]]:
+def _resolve_targets(ctx: RunContext) -> tuple[_Pool, list[str] | None, list[str]]:
     """
     The Worker Pool, the nodes to target (None for all of them, with
     --all-nodes) and the nodes given that are skipped, having finished.
@@ -278,18 +283,18 @@ def _resolve_targets() -> tuple[_Pool, list[str] | None, list[str]]:
     Without --node, the nodes are chosen interactively from the pool's live
     ones.
     """
-    node_ids = _without_duplicates(ARGS_PARSER.node_ids or [])
+    node_ids = _without_duplicates(ctx.args.node_ids or [])
 
     if not node_ids:
-        pool = _resolve_worker_pool()
-        if ARGS_PARSER.all_nodes:
+        pool = _resolve_worker_pool(ctx)
+        if ctx.args.all_nodes:
             return pool, None, []
-        return pool, _choose_nodes(pool), []
+        return pool, _choose_nodes(ctx, pool), []
 
-    nodes = [_get_node(node_id) for node_id in node_ids]
+    nodes = [_get_node(ctx, node_id) for node_id in node_ids]
     pool_ids = list(dict.fromkeys(cast(str, node.workerPoolId) for node in nodes))
-    if ARGS_PARSER.worker_pool_name is not None:
-        pool = _resolve_worker_pool()
+    if ctx.args.worker_pool_name is not None:
+        pool = _resolve_worker_pool(ctx)
         strangers = [node.id for node in nodes if node.workerPoolId != pool.id]
         if strangers:
             raise ValueError(
@@ -302,7 +307,7 @@ def _resolve_targets() -> tuple[_Pool, list[str] | None, list[str]]:
             f" ({', '.join(pool_ids)}); give the nodes of one pool at a time"
         )
     else:
-        pool = _get_worker_pool(pool_ids[0])
+        pool = _get_worker_pool(ctx, pool_ids[0])
 
     targets: list[str] = []
     skipped: list[str] = []
@@ -498,7 +503,7 @@ def _parse_action_groups(
     return groups
 
 
-def _load_spec(spec_file: str) -> dict | None:
+def _load_spec(ctx: RunContext, spec_file: str) -> dict | None:
     """
     Load and parse a node action spec file (JSON or Jsonnet),
     applying variable substitutions with the worker-pool prefix/postfix.
@@ -518,7 +523,7 @@ def _load_spec(spec_file: str) -> dict | None:
 
     # Both branches above, JSON and Jsonnet, arrive here with the loaded document
     spec = check_specification(
-        Family.NODE_ACTIONS, spec, spec_file, bool(ARGS_PARSER.validate)
+        Family.NODE_ACTIONS, spec, spec_file, bool(ctx.args.validate)
     )
 
     if not isinstance(spec, dict):
@@ -579,22 +584,19 @@ def _after_failure(e: Exception, not_attempted: list[str], submission: tuple) ->
     raise ReportedFailure(e)
 
 
-def _submit_actions():
+def _submit_actions(ctx: RunContext):
     """
     Load a node action spec and submit actions to the target worker pool/nodes.
     """
-    spec_file = cast(str, ARGS_PARSER.node_action_spec)
-    spec = _load_spec(spec_file)
+    spec_file = cast(str, ctx.args.node_action_spec)
+    spec = _load_spec(ctx, spec_file)
     if spec is None:
         raise _invalid(spec_file)
 
     # Resolve the directory to use when opening contentFile(s).
     # Priority: --content-path > spec file's directory > config file directory.
     source_dir = (
-        ARGS_PARSER.content_path
-        or dirname(abspath(spec_file))
-        or config_file_dir()
-        or "."
+        ctx.args.content_path or dirname(abspath(spec_file)) or config_file_dir() or "."
     )
 
     # The actions are parsed before anything is looked up, so that a faulty
@@ -624,7 +626,7 @@ def _submit_actions():
         print_error(f"Spec must contain either '{ACTIONS}' or '{ACTION_GROUPS}'")
         raise _invalid(spec_file)
 
-    pool, node_ids, skipped = _resolve_targets()
+    pool, node_ids, skipped = _resolve_targets(ctx)
     wp_id = cast(str, pool.id)
     submission = (wp_id, node_ids, group_count, action_count)
     if skipped:
@@ -651,7 +653,7 @@ def _submit_actions():
                 for action in group.actions or []:
                     action.nodeIdFilter = NodeIdFilter.LIST
         try:
-            CLIENT.worker_pool_client.add_node_actions_grouped_by_id(
+            ctx.client.worker_pool_client.add_node_actions_grouped_by_id(
                 wp_id, action_groups=action_groups, node_id_filter_list=node_ids
             )
         except Exception as e:
@@ -668,7 +670,7 @@ def _submit_actions():
 
     elif node_ids is None:
         try:
-            CLIENT.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
+            ctx.client.worker_pool_client.add_node_actions_by_id(wp_id, *actions)
         except Exception as e:
             error = _submission_error(e)
             print_error(error)
@@ -683,7 +685,7 @@ def _submit_actions():
         submitted = []
         for index, node_id in enumerate(node_ids):
             try:
-                CLIENT.worker_pool_client.add_node_actions_for_node_by_id(
+                ctx.client.worker_pool_client.add_node_actions_for_node_by_id(
                     wp_id, node_id, *actions
                 )
             except Exception as e:
@@ -698,21 +700,21 @@ def _submit_actions():
             _record_submission(wp_id, [node_id], None, action_count, "submitted")
             submitted.append(node_id)
 
-    if ARGS_PARSER.follow:
+    if ctx.args.follow:
         follow_ids = (
             submitted
             if submitted is not None
-            else [cast(str, n.id) for n in _get_nodes_for_pool(wp_id)]
+            else [cast(str, n.id) for n in _get_nodes_for_pool(ctx, wp_id)]
         )
         if follow_ids:
             try:
-                _follow_node_actions(follow_ids, initial_delay=True)
+                _follow_node_actions(ctx, follow_ids, initial_delay=True)
             except _FollowTimedOut as e:
                 raise ReportedFailure(TimeoutError(str(e)))
 
 
 def _follow_node_actions(
-    node_ids: list[str], initial_delay: bool = False
+    ctx: RunContext, node_ids: list[str], initial_delay: bool = False
 ) -> list[tuple[str, NodeActionQueueSnapshot]]:
     """
     Poll the node action queue for each node until all reach EMPTY or FAILED
@@ -724,7 +726,7 @@ def _follow_node_actions(
     pending = set(node_ids)
     done: dict[str, NodeActionQueueSnapshot] = {}
     latest: dict[str, NodeActionQueueSnapshot] = {}
-    timeout = ARGS_PARSER.timeout
+    timeout = ctx.args.timeout
     deadline = None if timeout is None else time.monotonic() + timeout
     print_info(f"Following node action queue(s) for {len(pending)} node(s)...")
     if initial_delay:
@@ -736,7 +738,7 @@ def _follow_node_actions(
         for node_id in sorted(pending):
             try:
                 snapshot: NodeActionQueueSnapshot = (
-                    CLIENT.worker_pool_client.get_node_actions_by_id(node_id)
+                    ctx.client.worker_pool_client.get_node_actions_by_id(node_id)
                 )
             except Exception as e:
                 if classify(e) in SESSION_FAILURES:
@@ -787,25 +789,25 @@ class _FollowTimedOut(Exception):
         self.rows = rows
 
 
-def _show_status():
+def _show_status(ctx: RunContext):
     """
     Show the node action queue status for selected node(s).
     """
-    node_ids = _without_duplicates(ARGS_PARSER.node_ids or [])
+    node_ids = _without_duplicates(ctx.args.node_ids or [])
     if not node_ids:
-        pool = _resolve_worker_pool()
+        pool = _resolve_worker_pool(ctx)
         wp_id = cast(str, pool.id)
-        if ARGS_PARSER.all_nodes:
-            node_ids = [cast(str, n.id) for n in _get_nodes_for_pool(wp_id)]
+        if ctx.args.all_nodes:
+            node_ids = [cast(str, n.id) for n in _get_nodes_for_pool(ctx, wp_id)]
             if not node_ids:
                 print_warning(f"No running nodes in Worker Pool {_pool_label(pool)}")
                 return
         else:
-            node_ids = _choose_nodes(pool)
+            node_ids = _choose_nodes(ctx, pool)
 
-    if ARGS_PARSER.follow:
+    if ctx.args.follow:
         try:
-            final_rows = _follow_node_actions(node_ids)
+            final_rows = _follow_node_actions(ctx, node_ids)
         except _FollowTimedOut as e:
             if json_requested():
                 _record_queues(e.rows)
@@ -819,7 +821,7 @@ def _show_status():
     for node_id in node_ids:
         try:
             snapshot: NodeActionQueueSnapshot = (
-                CLIENT.worker_pool_client.get_node_actions_by_id(node_id)
+                ctx.client.worker_pool_client.get_node_actions_by_id(node_id)
             )
         except Exception as e:
             if classify(e) in SESSION_FAILURES:
@@ -830,7 +832,7 @@ def _show_status():
             continue
 
         # Under '--json' the table's rows, '--details' or not
-        if ARGS_PARSER.details and not json_requested():
+        if ctx.args.details and not json_requested():
             print_info(f"Node action queue for node '{node_id}':")
             print_yd_object(snapshot)
         else:

@@ -18,7 +18,9 @@ from yellowdog_client.model.exceptions.not_authorised_exception import (
 )
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
@@ -26,6 +28,14 @@ from yellowdog_cli.utils.limits import (
     TASK_BATCH_SIZE_DEFAULT,
 )
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,11 +86,11 @@ def _run_add_tasks(
     generate_calls: list[tuple[int, int]] = []
     submit_calls: list[int] = []
 
-    def fake_generate(start, end, *args, **kwargs):
+    def fake_generate(_ctx, start, end, *args, **kwargs):
         generate_calls.append((start, end))
         return [MagicMock()] * (end - start)
 
-    def fake_submit(tasks_list, *args, **kwargs):
+    def fake_submit(_ctx, tasks_list, *args, **kwargs):
         submit_calls.append(len(tasks_list))
         return len(tasks_list)
 
@@ -118,6 +128,7 @@ def _run_add_tasks(
         ),
     ):
         submit_module.add_tasks_to_task_group(
+            _ctx(),
             tg_number=0,
             task_group=_make_tg(),
             wr_data=wr_data,
@@ -154,10 +165,10 @@ def _run_add_tasks_tracking_tpe(
     config_wr_mock.task_count = None
     config_wr_mock.parallel_batches = None
 
-    def fake_generate(start, end, *args, **kwargs):
+    def fake_generate(_ctx, start, end, *args, **kwargs):
         return [MagicMock()] * (end - start)
 
-    def fake_submit(tasks_list, *args, **kwargs):
+    def fake_submit(_ctx, tasks_list, *args, **kwargs):
         return len(tasks_list)
 
     with (
@@ -195,6 +206,7 @@ def _run_add_tasks_tracking_tpe(
         ),
     ):
         submit_module.add_tasks_to_task_group(
+            _ctx(),
             tg_number=0,
             task_group=_make_tg(),
             wr_data=_make_wr_data(num_tasks),
@@ -374,12 +386,14 @@ class TestTaskCountExpansion:
             patch.object(
                 submit_module,
                 "generate_batch_of_tasks_for_task_group",
-                side_effect=lambda start, end, *a, **k: [MagicMock()] * (end - start),
+                side_effect=lambda _ctx, start, end, *a, **k: (
+                    [MagicMock()] * (end - start)
+                ),
             ),
             patch.object(
                 submit_module,
                 "submit_batch_of_tasks_to_task_group",
-                side_effect=lambda tasks_list, *a, **k: len(tasks_list),
+                side_effect=lambda _ctx, tasks_list, *a, **k: len(tasks_list),
             ),
             patch.object(
                 CLIParser, "parallel_batches", new_callable=PropertyMock, return_value=1
@@ -395,6 +409,7 @@ class TestTaskCountExpansion:
             ),
         ):
             submit_module.add_tasks_to_task_group(
+                _ctx(),
                 tg_number=0,
                 task_group=_make_tg(),
                 wr_data=wr_data,
@@ -423,7 +438,7 @@ class TestBatchSubmitRetries:
         outcome: dict = {"add_tasks": add_tasks, "sleep": sleep_mock}
         with (
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "add_tasks_to_task_group_by_name",
                 add_tasks,
             ),
@@ -434,6 +449,7 @@ class TestBatchSubmitRetries:
         ):
             try:
                 outcome["result"] = submit_module.submit_batch_of_tasks_to_task_group(
+                    _ctx(),
                     [MagicMock(), MagicMock()],
                     _make_wr(),
                     _make_tg(),

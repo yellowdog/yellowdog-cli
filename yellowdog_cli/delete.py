@@ -9,8 +9,8 @@ bucket are refused before anything is deleted, a failure is recorded and
 the rest still attempted, and a path already gone is skipped.
 """
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient_utils import (
     delete_item,
     deletion_targets,
@@ -32,23 +32,23 @@ CONFIG_DATA_CLIENT: ConfigDataClient = lazy(load_config_data_client)
 
 
 @dataclient_wrapper
-def main():
-    if ARGS_PARSER.upgrade_rclone:
+def main(ctx: DataClientContext):
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
-    recursive = ARGS_PARSER.recursive or False
-    dry_run = ARGS_PARSER.dry_run or False
+    recursive = ctx.args.recursive or False
+    dry_run = ctx.args.dry_run or False
 
     # No paths, with --recursive (the command line refuses it without):
     # the entire default prefix. Each path given is deleted once
     remote_paths = [
         resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=path)
-        for path in dict.fromkeys(ARGS_PARSER.remote_paths or [])
+        for path in dict.fromkeys(ctx.args.remote_paths or [])
     ] or [resolve_remote_path(CONFIG_DATA_CLIENT)]
     _refuse_roots(remote_paths)
 

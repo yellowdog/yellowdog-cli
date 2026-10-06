@@ -330,7 +330,7 @@ def _apply_action_to_summaries(
     if actioned_ids:
         print_info(f"{action.past_tense} {len(actioned_ids)} Compute Requirement(s)")
         if ctx.args.follow:
-            follow_ids(actioned_ids)
+            follow_ids(ctx, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
 
@@ -443,7 +443,7 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
             actioned_ids.append(cr_id)
 
     if actioned_ids and ctx.args.follow:
-        follow_ids(actioned_ids)
+        follow_ids(ctx, actioned_ids)
 
 
 def _instances_failure(action: ComputeAction, group: list[_Instance], e: Exception):

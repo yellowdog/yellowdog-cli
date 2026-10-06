@@ -11,13 +11,23 @@ from yellowdog_client.model import TaskGroup, WorkRequirement, WorkRequirementSt
 
 import yellowdog_cli.submit as submit_module
 import yellowdog_cli.utils.submit_utils as su
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # Lazy-sub placeholder shortcuts
 _TN = f"{VAR_OPENING_DELIMITER}{su.L_TASK_NUMBER}{VAR_CLOSING_DELIMITER}"
@@ -153,7 +163,7 @@ class TestAddToNotFound:
             ),
             pytest.raises(NotFoundError, match="Cannot find"),
         ):
-            submit_module.add_to_existing_work_requirement(files_directory=".")
+            submit_module.add_to_existing_work_requirement(_ctx(), files_directory=".")
 
 
 # ---------------------------------------------------------------------------
@@ -188,13 +198,13 @@ class TestAddToTerminalStatusRejection:
                 CLIParser, "add_to", new_callable=PropertyMock, return_value="my-wr"
             ),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
                 return_value=_make_wr("my-wr", status, []),
             ),
             pytest.raises(ValueError, match="cannot take Tasks"),
         ):
-            submit_module.add_to_existing_work_requirement(files_directory=".")
+            submit_module.add_to_existing_work_requirement(_ctx(), files_directory=".")
 
     @pytest.mark.parametrize(
         "status",
@@ -219,7 +229,7 @@ class TestAddToTerminalStatusRejection:
                 CLIParser, "add_to", new_callable=PropertyMock, return_value="my-wr"
             ),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
                 return_value=existing_wr,
             ),
@@ -233,7 +243,7 @@ class TestAddToTerminalStatusRejection:
             patch.object(submit_module, "create_task_group") as mock_ctg,
             patch.object(submit_module, "add_tasks_to_task_group"),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "update_work_requirement",
                 return_value=existing_wr,
             ),
@@ -243,6 +253,7 @@ class TestAddToTerminalStatusRejection:
         ):
             mock_ctg.return_value = _make_tg("task_group_1")
             submit_module.add_to_existing_work_requirement(
+                _ctx(),
                 files_directory=".",
                 wr_data={TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]},
             )
@@ -294,6 +305,7 @@ class TestAddToPartitioning:
         get_wr_mock = MagicMock(return_value=existing_wr)
 
         def fake_add_tasks(
+            _ctx,
             tg_number,
             task_group,
             wr_data,
@@ -343,7 +355,7 @@ class TestAddToPartitioning:
                 CLIParser, "add_to", new_callable=PropertyMock, return_value="my-wr"
             ),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
                 get_wr_mock,
             ),
@@ -361,7 +373,7 @@ class TestAddToPartitioning:
                 submit_module, "add_tasks_to_task_group", side_effect=fake_add_tasks
             ),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "update_work_requirement",
                 side_effect=fake_update_wr,
             ),
@@ -376,7 +388,7 @@ class TestAddToPartitioning:
             # Kept on the instance, so a test whose run raises can still see it
             self.uploaded_files = rclone_class.return_value
             submit_module.add_to_existing_work_requirement(
-                files_directory=".", wr_data=wr_data
+                _ctx(), files_directory=".", wr_data=wr_data
             )
             snapshot = submit_module.WR_SNAPSHOT
 
@@ -557,7 +569,7 @@ class TestAddToFailure:
 
     def test_the_work_requirement_is_not_cancelled(self, capsys):
         with patch.object(
-            submit_module.CLIENT.work_client, "cancel_work_requirement"
+            wrapper_module.CLIENT.work_client, "cancel_work_requirement"
         ) as cancel:
             self._fail(capsys)
         cancel.assert_not_called()
@@ -671,15 +683,15 @@ class TestSubmitOrAddToDispatch:
             patch.object(
                 submit_module,
                 "add_to_existing_work_requirement",
-                side_effect=lambda **kw: calls.append("add_to"),
+                side_effect=lambda _ctx, **kw: calls.append("add_to"),
             ),
             patch.object(
                 submit_module,
                 "submit_work_requirement",
-                side_effect=lambda **kw: calls.append("submit"),
+                side_effect=lambda _ctx, **kw: calls.append("submit"),
             ),
         ):
-            submit_module._submit_or_add_to(files_directory=".", wr_data={})
+            submit_module._submit_or_add_to(_ctx(), files_directory=".", wr_data={})
         assert len(calls) == 1
         return calls[0]
 
@@ -707,11 +719,11 @@ class TestAddToById:
         with (
             patch.object(submit_module, "find_work_requirement_by_name", find),
             patch.object(
-                submit_module.CLIENT.work_client,
+                wrapper_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
                 return_value=existing,
             ) as get,
         ):
-            assert submit_module._work_requirement_to_add_to(wr_id) is existing
+            assert submit_module._work_requirement_to_add_to(_ctx(), wr_id) is existing
         find.assert_not_called()
         get.assert_called_once_with(wr_id)

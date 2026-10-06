@@ -25,6 +25,7 @@ from requests import HTTPError, Response
 import yellowdog_cli.show as show_module
 import yellowdog_cli.utils.printing as printing_module
 from yellowdog_cli.show import show_ydids
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 
 UUID = "98879b5a-9192-4a56-ad25-fc1330e49185"
@@ -190,16 +191,15 @@ def _names(parsed) -> list[str]:
 def _run(
     ydids: list[str], client: MagicMock, args: MagicMock, capsys
 ) -> tuple[int, str]:
+    ctx = RunContext(args=args, config=MagicMock(), client=client)
     with (
-        patch.object(show_module, "ARGS_PARSER", args),
-        patch.object(show_module, "CLIENT", client),
         patch.object(show_module, "ConfiguredWorkerPool", _FakeConfiguredWorkerPool),
         patch.object(printing_module, "ARGS_PARSER", args),
         # printing.py imports Json where it uses it, from the SDK's module
         patch("yellowdog_client.common.json.Json", _StubJson),
         patch.object(show_module, "print_error"),
     ):
-        failures = show_ydids(ydids)
+        failures = show_ydids(ctx, ydids)
     return failures, capsys.readouterr().out
 
 

@@ -6,8 +6,8 @@ List files and directories in a remote data client.
 
 from collections import defaultdict
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient_utils import (
     config_glob_matches,
     config_remote_stat,
@@ -42,7 +42,9 @@ def _fmt_modtime(mod_time: str | None) -> str:
     return mod_time.split(".")[0].rstrip("Z")
 
 
-def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> None:
+def _ls_glob(
+    ctx: DataClientContext, config: ConfigDataClient, remote_path: str, recursive: bool
+) -> None:
     """
     List remote entries whose names match a glob pattern.
 
@@ -56,7 +58,7 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
 
     base = remote_dir.rstrip("/")
 
-    long = ARGS_PARSER.long_listing or False
+    long = ctx.args.long_listing or False
     if not recursive:
         entries = []
         for e in matches:
@@ -85,7 +87,7 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
                 print_simple(f"{e['Name']}/", override_quiet=True)
                 sub_listing = list_remote(config, entry_path, recursive=True)
                 if sub_listing.dirs or sub_listing.files:
-                    _print_tree(sub_listing)
+                    _print_tree(ctx, sub_listing)
             else:
                 if long:
                     line = f"{e['Name']}  {_fmt_size(e.get('Size'))}  {_fmt_modtime(e.get('ModTime'))}".rstrip()
@@ -95,29 +97,29 @@ def _ls_glob(config: ConfigDataClient, remote_path: str, recursive: bool) -> Non
 
 
 @dataclient_wrapper
-def main():
+def main(ctx: DataClientContext):
 
-    if ARGS_PARSER.upgrade_rclone:
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
-    recursive = ARGS_PARSER.recursive or False
+    recursive = ctx.args.recursive or False
 
     # The configured prefix by default; each path given listed once
     remote_paths = [
         resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=path)
-        for path in dict.fromkeys(ARGS_PARSER.remote_paths or [])
+        for path in dict.fromkeys(ctx.args.remote_paths or [])
     ] or [resolve_remote_path(CONFIG_DATA_CLIENT)]
 
     failed = 0
     for remote_path in remote_paths:
         print_info(f"Listing '{remote_path}'")
         try:
-            _list(remote_path, recursive)
+            _list(ctx, remote_path, recursive)
         except Exception as e:
             # Not there, not reachable, or not a usable wildcard: reported,
             # and the other paths still listed
@@ -129,7 +131,7 @@ def main():
         raise SystemExit(ExitCode.FAILURE)
 
 
-def _list(remote_path: str, recursive: bool) -> None:
+def _list(ctx: DataClientContext, remote_path: str, recursive: bool) -> None:
     """
     List one remote path: under '--json' as records, otherwise as a table.
     A path that does not exist, or cannot be reached, raises.
@@ -143,23 +145,23 @@ def _list(remote_path: str, recursive: bool) -> None:
         ):
             record({**entry, "Listing": remote_path})
     elif is_glob(remote_path):
-        _ls_glob(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
+        _ls_glob(ctx, CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
     else:
         stat = config_remote_stat(CONFIG_DATA_CLIENT, remote_path)
         if stat is None:
             raise FileNotFoundError(f"'{remote_path}' does not exist")
         if not stat["IsDir"]:
-            _print_file(stat)
+            _print_file(ctx, stat)
             return
         listing = list_remote(CONFIG_DATA_CLIENT, remote_path, recursive=recursive)
-        _print_listing(listing, recursive=recursive)
+        _print_listing(ctx, listing, recursive=recursive)
 
 
-def _print_file(entry: dict) -> None:
+def _print_file(ctx: DataClientContext, entry: dict) -> None:
     """
     A file named by its own path, as a listing shows one.
     """
-    if ARGS_PARSER.long_listing:
+    if ctx.args.long_listing:
         line = (
             f"  {_fmt_size(entry.get('Size'))}  {entry['Name']}"
             f"  {_fmt_modtime(entry.get('ModTime'))}"
@@ -169,20 +171,20 @@ def _print_file(entry: dict) -> None:
     print_simple(line, override_quiet=True)
 
 
-def _print_listing(listing, recursive: bool = False) -> None:
+def _print_listing(ctx: DataClientContext, listing, recursive: bool = False) -> None:
 
     if not listing.dirs and not listing.files:
         print_simple("  (empty)")
         return
     if recursive:
-        _print_tree(listing)
+        _print_tree(ctx, listing)
     else:
-        _print_flat(listing)
+        _print_flat(ctx, listing)
 
 
-def _print_flat(listing) -> None:
+def _print_flat(ctx: DataClientContext, listing) -> None:
 
-    long = ARGS_PARSER.long_listing or False
+    long = ctx.args.long_listing or False
     entries = []
     for d in listing.dirs:
         entries.append(("DIR", d.name + "/", ""))
@@ -225,7 +227,7 @@ def _find_base_prefix(listing) -> str:
     return "/".join(common)
 
 
-def _print_tree(listing) -> None:
+def _print_tree(ctx: DataClientContext, listing) -> None:
     """
     Print a recursive listing as an indented tree using box-drawing characters.
     """
@@ -256,7 +258,7 @@ def _print_tree(listing) -> None:
                 print_simple(f"{prefix}{connector}{name}/", override_quiet=True)
                 _render(rel_path, child_prefix)
             else:
-                if ARGS_PARSER.long_listing:
+                if ctx.args.long_listing:
                     size_str = _fmt_size(size)
                     mod_time_str = _fmt_modtime(mod_time)
                     line = f"{prefix}{connector}{name}  {size_str}  {mod_time_str}".rstrip()

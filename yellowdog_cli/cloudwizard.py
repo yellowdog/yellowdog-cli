@@ -9,16 +9,17 @@ from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.check_imports import check_cloudwizard_imports
 from yellowdog_cli.utils.command_registry import cloud_provider_of
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.printing import print_error, print_info
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     """
     Main dispatcher for Cloud Wizard setup and teardown. The provider, and
     what each operation needs, were checked as the command line was parsed.
@@ -26,37 +27,37 @@ def main():
 
     check_cloudwizard_imports()
 
-    provider = cloud_provider_of(ARGS_PARSER.cloud_provider)  # type: ignore[arg-type]
+    provider = cloud_provider_of(ctx.args.cloud_provider)  # type: ignore[arg-type]
     print_info(f"YellowDog automated cloud provider setup/teardown for '{provider}'")
     if provider == "AWS":
         from yellowdog_cli.utils.cloudwizard_aws import AWSConfig
 
         cloud_provider_config = AWSConfig(
-            client=CLIENT,
-            region_name=ARGS_PARSER.region_name,
-            show_secrets=ARGS_PARSER.show_secrets,
-            instance_type=ARGS_PARSER.instance_type,  # type: ignore[arg-type]
+            ctx=ctx,
+            region_name=ctx.args.region_name,
+            show_secrets=ctx.args.show_secrets,
+            instance_type=ctx.args.instance_type,  # type: ignore[arg-type]
         )
     elif provider == "GCP":
         from yellowdog_cli.utils.cloudwizard_gcp import GCPConfig
 
         cloud_provider_config = GCPConfig(
-            service_account_file=ARGS_PARSER.credentials_file,  # type: ignore[arg-type]
-            client=CLIENT,
-            instance_type=ARGS_PARSER.instance_type,  # type: ignore[arg-type]
+            service_account_file=ctx.args.credentials_file,  # type: ignore[arg-type]
+            ctx=ctx,
+            instance_type=ctx.args.instance_type,  # type: ignore[arg-type]
         )
     else:
         from yellowdog_cli.utils.cloudwizard_azure import AzureConfig
 
         cloud_provider_config = AzureConfig(
-            client=CLIENT,
-            instance_type=ARGS_PARSER.instance_type,  # type: ignore[arg-type]
+            ctx=ctx,
+            instance_type=ctx.args.instance_type,  # type: ignore[arg-type]
         )
 
     run_operation(
         cloud_provider_config,
-        ARGS_PARSER.operation,  # type: ignore[arg-type]  # A required positional
-        ARGS_PARSER.region_name,
+        ctx.args.operation,  # type: ignore[arg-type]  # A required positional
+        ctx.args.region_name,
     )
 
 

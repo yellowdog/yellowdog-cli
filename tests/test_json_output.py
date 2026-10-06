@@ -2037,7 +2037,7 @@ class TestWait:
         return client
 
     def _follow(self, monkeypatch, exit_code=0):
-        monkeypatch.setattr(yd_wait, "follow_ids", lambda ids, timeout=None: ids)
+        monkeypatch.setattr(yd_wait, "follow_ids", lambda _ctx, ids, timeout=None: ids)
         monkeypatch.setattr(yd_wait, "follow_exit_code", lambda: exit_code)
 
     def test_each_id_is_recorded_with_its_status(self, run, monkeypatch):
@@ -2189,17 +2189,18 @@ class TestFollow:
 
         args = CLIParser(command="yd-follow", argv=["--json", "--nf", WR_ID_1])
         for target in (
-            yd_follow,
             results_module,
             printing_module,
             event_printing_module,
             wrapper_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         event = {"name": "wr", "status": "RUNNING", "taskGroups": []}
 
-        def follow(ids, auto_cr=False):
+        def follow(_ctx, ids, auto_cr=False):
             event_printing_module.print_event(
                 "data:" + __import__("json").dumps(event), YDIDType_WR
             )
@@ -2219,10 +2220,14 @@ class TestFollow:
         from yellowdog_cli.utils.args import CLIParser
 
         args = CLIParser(command="yd-follow", argv=["--json", "--nf", WR_ID_1])
-        for target in (yd_follow, results_module, printing_module, wrapper_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+        for target in (results_module, printing_module, wrapper_module):
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
-        monkeypatch.setattr(yd_follow, "follow_ids", lambda ids, auto_cr=False: ids)
+        monkeypatch.setattr(
+            yd_follow, "follow_ids", lambda _ctx, ids, auto_cr=False: ids
+        )
         monkeypatch.setattr(yd_follow, "follow_exit_code", lambda: 0)
         with pytest.raises(SystemExit):
             yd_follow.main()
@@ -2300,7 +2305,9 @@ def run_dc(monkeypatch, capsys):
             dcw_module,
             rclone_utils_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         for name in ("CONFIG_DATA_CLIENT", "CONFIG_SRC", "CONFIG_DST"):
             if hasattr(module, name):
                 monkeypatch.setattr(module, name, config)
@@ -3171,13 +3178,17 @@ class TestCompare:
             name="tg1", id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
         )
         monkeypatch.setattr(
-            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
         )
-        monkeypatch.setattr(yd_compare, "_get_task_group_by_id", lambda i: task_group)
+        monkeypatch.setattr(
+            yd_compare, "_get_task_group_by_id", lambda _ctx, i: task_group
+        )
         monkeypatch.setattr(
             yd_compare,
             "WorkerPools",
-            lambda wps: SimpleNamespace(
+            lambda _ctx, wps: SimpleNamespace(
                 check_task_group_for_matching_worker_pools=lambda task_group: [report]
             ),
         )
@@ -3219,13 +3230,17 @@ class TestCompare:
             name="tg1", id="ydid:taskgrp:000000:11111111-1111-1111-1111-111111111111:1"
         )
         monkeypatch.setattr(
-            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
         )
-        monkeypatch.setattr(yd_compare, "_get_task_group_by_id", lambda i: task_group)
+        monkeypatch.setattr(
+            yd_compare, "_get_task_group_by_id", lambda _ctx, i: task_group
+        )
         monkeypatch.setattr(
             yd_compare,
             "WorkerPools",
-            lambda wps: SimpleNamespace(
+            lambda _ctx, wps: SimpleNamespace(
                 check_task_group_for_matching_worker_pools=lambda task_group: [failure]
             ),
         )
@@ -3241,12 +3256,14 @@ class TestCompare:
 
     def test_a_work_requirement_with_no_task_groups_says_so(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_compare, "_get_provisioned_worker_pool_by_id", lambda i: MagicMock()
+            yd_compare,
+            "_get_provisioned_worker_pool_by_id",
+            lambda _ctx, i: MagicMock(),
         )
         monkeypatch.setattr(
             yd_compare,
             "_get_work_requirement_by_id",
-            lambda i: SimpleNamespace(name="wr", id=WR_ID_1, taskGroups=[]),
+            lambda _ctx, i: SimpleNamespace(name="wr", id=WR_ID_1, taskGroups=[]),
         )
         out, err, _ = run(yd_compare, worker_pool_ids=[WP_ID], wr_or_tg_id=WR_ID_1)
         assert out == []
@@ -3282,14 +3299,16 @@ class TestNodeAction:
         ]
 
     def test_the_submission_table(self, run, monkeypatch):
-        monkeypatch.setattr(yd_nodeaction, "_load_spec", lambda f: {"actions": [{}]})
+        monkeypatch.setattr(
+            yd_nodeaction, "_load_spec", lambda _ctx, f: {"actions": [{}]}
+        )
         monkeypatch.setattr(
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock(), MagicMock()]
         )
         monkeypatch.setattr(
             yd_nodeaction,
             "_resolve_targets",
-            lambda: (
+            lambda _ctx: (
                 SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
                 [NODE_ID],
                 [],
@@ -3317,14 +3336,16 @@ class TestNodeAction:
 
 class TestNodeActionOutcomes:
     def _submit(self, run, monkeypatch, **values):
-        monkeypatch.setattr(yd_nodeaction, "_load_spec", lambda f: {"actions": [{}]})
+        monkeypatch.setattr(
+            yd_nodeaction, "_load_spec", lambda _ctx, f: {"actions": [{}]}
+        )
         monkeypatch.setattr(
             yd_nodeaction, "_parse_actions", lambda specs, d: [MagicMock()]
         )
         monkeypatch.setattr(
             yd_nodeaction,
             "_resolve_targets",
-            lambda: (
+            lambda _ctx: (
                 SimpleNamespace(id=WP_ID, name="wp", namespace="ns"),
                 [NODE_ID],
                 [],

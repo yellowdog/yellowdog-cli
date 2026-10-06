@@ -20,6 +20,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
 from yellowdog_cli.utils.file_substitution import (
     load_json_file_with_variable_substitutions,
@@ -77,7 +78,7 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 
 # Specifies the cardinality for a Worker Pool batch
@@ -95,39 +96,39 @@ GENERATED_ID: str = ""
 
 
 @main_wrapper
-def main() -> None:
+def main(ctx: RunContext) -> None:
     global GENERATED_ID
 
     warn_of_undefined_worker_pool_variables()
-    GENERATED_ID = generate_id(CONFIG_COMMON.name_tag)
+    GENERATED_ID = generate_id(ctx.config.name_tag)
 
-    if ARGS_PARSER.target is not None:
-        CONFIG_WP.target_instance_count = ARGS_PARSER.target
+    if ctx.args.target is not None:
+        CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
 
     # Direct file > file supplied using '-p' > file supplied in config file
     wp_json_file = (
         (
             CONFIG_WP.worker_pool_data_file
-            if ARGS_PARSER.worker_pool_file is None
-            else ARGS_PARSER.worker_pool_file
+            if ctx.args.worker_pool_file is None
+            else ctx.args.worker_pool_file
         )
-        if ARGS_PARSER.worker_pool_file_positional is None
-        else ARGS_PARSER.worker_pool_file_positional
+        if ctx.args.worker_pool_file_positional is None
+        else ctx.args.worker_pool_file_positional
     )
 
     if wp_json_file is not None:
         print_info(f"Loading Worker Pool data from: '{wp_json_file}'")
-        create_worker_pool_from_json(wp_json_file)
-    elif ARGS_PARSER.validate:
+        create_worker_pool_from_json(ctx, wp_json_file)
+    elif ctx.args.validate:
         raise ValueError("Option '--validate' needs a Worker Pool specification file")
     elif CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")
     else:
-        create_worker_pool_from_toml()
+        create_worker_pool_from_toml(ctx)
 
 
-def create_worker_pool_from_json(wp_json_file: str) -> None:
+def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str) -> None:
     """
     Directly create the Worker Pool using the YellowDog REST API.
     """
@@ -136,7 +137,7 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
             wp_json_file, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
         )
     else:
-        if ARGS_PARSER.jsonnet_dry_run:
+        if ctx.args.jsonnet_dry_run:
             raise ValueError(
                 "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
             )
@@ -146,7 +147,7 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
 
     # Both branches above, JSON and Jsonnet, arrive here with the loaded document
     wp_data = check_specification(
-        Family.WORKER_POOL, wp_data, wp_json_file, bool(ARGS_PARSER.validate)
+        Family.WORKER_POOL, wp_data, wp_json_file, bool(ctx.args.validate)
     )
 
     # Some values are configurable via the TOML configuration file;
@@ -161,14 +162,10 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 "requirementName",
                 (CONFIG_WP.name if CONFIG_WP.name is not None else GENERATED_ID),
             ),
-            ("requirementNamespace", CONFIG_COMMON.namespace),
+            ("requirementNamespace", ctx.config.namespace),
             (
                 "requirementTag",
-                (
-                    CONFIG_COMMON.name_tag
-                    if CONFIG_WP.cr_tag is None
-                    else CONFIG_WP.cr_tag
-                ),
+                (ctx.config.name_tag if CONFIG_WP.cr_tag is None else CONFIG_WP.cr_tag),
             ),
             (TEMPLATE_ID, CONFIG_WP.template_id),
             (IMAGES_ID, CONFIG_WP.images_id),
@@ -182,7 +179,7 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
 
         # The TOML user data is read only if the specification has none
         if reqt_template_usage.get(USERDATA) is None:
-            user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+            user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
             if user_data is not None:
                 # Its source and size, never the script itself
                 print_info(
@@ -191,13 +188,13 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
                 )
                 reqt_template_usage[USERDATA] = user_data
 
-        if ARGS_PARSER.target is not None:
-            if reqt_template_usage.get(TARGET_INSTANCE_COUNT) != ARGS_PARSER.target:
+        if ctx.args.target is not None:
+            if reqt_template_usage.get(TARGET_INSTANCE_COUNT) != ctx.args.target:
                 print_info(
                     f"Setting 'requirementTemplateUsage.{TARGET_INSTANCE_COUNT}':"
-                    f" '{ARGS_PARSER.target}' (from '--target')"
+                    f" '{ctx.args.target}' (from '--target')"
                 )
-                reqt_template_usage[TARGET_INSTANCE_COUNT] = ARGS_PARSER.target
+                reqt_template_usage[TARGET_INSTANCE_COUNT] = ctx.args.target
         elif (
             reqt_template_usage.get(TARGET_INSTANCE_COUNT) is None
             and CONFIG_WP.target_instance_count is not None
@@ -295,13 +292,13 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
 
     # Allow a Compute Requirement Template name to be used instead of ID
     reqt_template_usage[TEMPLATE_ID] = get_template_id(
-        CLIENT, reqt_template_usage[TEMPLATE_ID]
+        ctx.client, reqt_template_usage[TEMPLATE_ID]
     )
 
     # Allow Image Family name to be used instead of ID
     if reqt_template_usage.get(IMAGES_ID) is not None:
         reqt_template_usage[IMAGES_ID] = get_image_id(
-            CLIENT, reqt_template_usage[IMAGES_ID]
+            ctx.client, reqt_template_usage[IMAGES_ID]
         )
 
     _rationalise_specification_node_counts(reqt_template_usage, provisioned_properties)
@@ -325,8 +322,8 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
             " specification is provisioned as a single Worker Pool"
         )
 
-    if ARGS_PARSER.dry_run:
-        if ARGS_PARSER.json_output:
+    if ctx.args.dry_run:
+        if ctx.args.json_output:
             record_document(wp_data)
             return
         print_dry_run("Printing JSON Worker Pool specification")
@@ -335,8 +332,8 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
         return
 
     response = requests.post(
-        url=f"{CONFIG_COMMON.url}/workerPools/provisioned/template",
-        headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        url=f"{ctx.config.url}/workerPools/provisioned/template",
+        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=wp_data,
         timeout=RAW_REQUEST_TIMEOUT,
     )
@@ -350,16 +347,16 @@ def create_worker_pool_from_json(wp_json_file: str) -> None:
             id, name, reqt_template_usage["requirementNamespace"], ET_WORKER_POOLS
         )
         print_quiet_result(id)
-        if ARGS_PARSER.follow:
+        if ctx.args.follow:
             print_info("Following Worker Pool event stream")
-            follow_ids([id], auto_cr=ARGS_PARSER.auto_cr)
+            follow_ids(ctx, [id], auto_cr=ctx.args.auto_cr)
     else:
         print_error(f"Failed to provision Worker Pool '{name}'")
         # An HTTPError, so that the wrapper's exit code reflects the status
         raise requests.HTTPError(response.text, response=response)
 
 
-def create_worker_pool_from_toml() -> None:
+def create_worker_pool_from_toml(ctx: RunContext) -> None:
     """
     Create the Worker Pool.
     """
@@ -368,13 +365,13 @@ def create_worker_pool_from_toml() -> None:
 
     # Allow the Compute Requirement Template name to be used instead of ID
     CONFIG_WP.template_id = get_template_id(
-        client=CLIENT, template_id_or_name=cast(str, CONFIG_WP.template_id)
+        client=ctx.client, template_id_or_name=cast(str, CONFIG_WP.template_id)
     )
 
     # Allow the Image Family name to be used instead of ID
     if CONFIG_WP.images_id is not None:
         CONFIG_WP.images_id = get_image_id(
-            client=CLIENT, image_name_or_id=CONFIG_WP.images_id
+            client=ctx.client, image_name_or_id=CONFIG_WP.images_id
         )
 
     node_boot_timeout = timedelta(minutes=CONFIG_WP.node_boot_timeout)
@@ -442,7 +439,7 @@ def create_worker_pool_from_toml() -> None:
         print_info(f"Batching into {num_batches} Compute Requirements")
 
     # Read once: every batch has the same user data
-    user_data = get_user_data_property(CONFIG_WP, ARGS_PARSER.content_path)
+    user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
 
     for batch_number in range(num_batches):
         id = add_batch_number_postfix(
@@ -452,21 +449,21 @@ def create_worker_pool_from_toml() -> None:
         )
         if num_batches > 1:
             print_info(
-                f"Provisioning Worker Pool {batch_number + 1} '{CONFIG_COMMON.namespace}/{id}' "
+                f"Provisioning Worker Pool {batch_number + 1} '{ctx.config.namespace}/{id}' "
                 f"with {batches[batch_number].initial_nodes:,d} nodes(s) "
                 f"(minNodes: {batches[batch_number].min_nodes:,d}, "
                 f"maxNodes: {batches[batch_number].max_nodes:,d})"
             )
         else:
-            print_info(f"Provisioning Worker Pool '{CONFIG_COMMON.namespace}/{id}'")
+            print_info(f"Provisioning Worker Pool '{ctx.config.namespace}/{id}'")
         try:
             compute_requirement_template_usage = ComputeRequirementTemplateUsage(
                 templateId=cast(str, CONFIG_WP.template_id),
-                requirementNamespace=CONFIG_COMMON.namespace,
+                requirementNamespace=ctx.config.namespace,
                 requirementName=id,
                 targetInstanceCount=batches[batch_number].initial_nodes,
                 requirementTag=(
-                    CONFIG_COMMON.name_tag
+                    ctx.config.name_tag
                     if CONFIG_WP.cr_tag is None
                     else CONFIG_WP.cr_tag
                 ),
@@ -485,23 +482,23 @@ def create_worker_pool_from_toml() -> None:
                 nodeBootTimeout=node_boot_timeout,
                 metricsEnabled=CONFIG_WP.metrics_enabled,
             )
-            if not ARGS_PARSER.dry_run:
-                worker_pool = CLIENT.worker_pool_client.provision_worker_pool(
+            if not ctx.args.dry_run:
+                worker_pool = ctx.client.worker_pool_client.provision_worker_pool(
                     compute_requirement_template_usage,
                     provisioned_worker_pool_properties,
                 )
-                print_info(f"Created {link_entity(CONFIG_COMMON.url, worker_pool)}")
+                print_info(f"Created {link_entity(ctx.config.url, worker_pool)}")
                 print_info(f"YellowDog ID is '{worker_pool.id}'")
                 worker_pool_ids.append(worker_pool.id)  # type: ignore[arg-type]
                 # One per batch: the document is an array if batched
                 record_entity(
                     worker_pool.id,
                     worker_pool.name,
-                    CONFIG_COMMON.namespace,
+                    ctx.config.namespace,
                     ET_WORKER_POOLS,
                 )
                 print_quiet_result(worker_pool.id)
-            elif ARGS_PARSER.json_output:
+            elif ctx.args.json_output:
                 # One per batch, as above
                 record_document_part(
                     worker_pool_specification(
@@ -518,7 +515,7 @@ def create_worker_pool_from_toml() -> None:
         except Exception:
             # Re-raised as it is, so that the wrapper's exit code reflects it
             print_error(
-                f"Unable to provision Worker Pool '{CONFIG_COMMON.namespace}/{id}'"
+                f"Unable to provision Worker Pool '{ctx.config.namespace}/{id}'"
             )
             if worker_pool_ids:
                 print_warning(
@@ -554,13 +551,13 @@ def create_worker_pool_from_toml() -> None:
     if CONFIG_WP.metrics_enabled:
         print_info("Node metrics are enabled")
 
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         print_dry_run("Complete")
         return
 
-    if ARGS_PARSER.follow:
+    if ctx.args.follow:
         print_info("Following Worker Pool event stream(s)")
-        follow_ids(worker_pool_ids, auto_cr=ARGS_PARSER.auto_cr)
+        follow_ids(ctx, worker_pool_ids, auto_cr=ctx.args.auto_cr)
 
 
 def _minutes(minutes: float) -> str:

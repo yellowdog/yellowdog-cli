@@ -200,8 +200,7 @@ yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descript
 scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
-uv.lock                   # Locked dependency versions for reproducible installs
-Makefile                  # format, build, install, update, toc, schema_descriptions, pypi, pyright targets
+Makefile                  # format, test, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials

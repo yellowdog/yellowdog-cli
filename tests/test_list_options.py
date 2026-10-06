@@ -17,7 +17,9 @@ from requests import HTTPError, Response
 from yellowdog_client.model import ComputeRequirementStatus
 
 import yellowdog_cli.list as yd_list
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_ATTRIBUTE_DEFINITIONS,
     ET_COMPUTE_REQUIREMENTS,
@@ -29,6 +31,14 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 CR_ID = "ydid:compreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -54,9 +64,9 @@ def _args(entity_type: str, **values) -> Any:
 def listing(monkeypatch):
     """Patch list.py's collaborators; the test sets ARGS_PARSER itself."""
     client = MagicMock()
-    monkeypatch.setattr(yd_list, "CLIENT", client)
+    monkeypatch.setattr(wrapper_module, "CLIENT", client)
     monkeypatch.setattr(
-        yd_list,
+        wrapper_module,
         "CONFIG_COMMON",
         SimpleNamespace(
             namespace="ns", name_tag="tag", url="https://api.x", key="k", secret="s"
@@ -69,7 +79,7 @@ def listing(monkeypatch):
     printed: list = []
     monkeypatch.setattr(yd_list, "print_objects_as_json", printed.append)
     monkeypatch.setattr(
-        yd_list, "_print_json_or_count", lambda objects: printed.append(objects)
+        yd_list, "_print_json_or_count", lambda _ctx, objects: printed.append(objects)
     )
     return SimpleNamespace(client=client, printed=printed)
 
@@ -119,20 +129,20 @@ def test_an_option_that_applies_is_accepted(argv):
 
 def test_active_compute_requirements_include_provisioning(listing, monkeypatch):
     monkeypatch.setattr(
-        yd_list,
+        wrapper_module,
         "ARGS_PARSER",
         _args(ET_COMPUTE_REQUIREMENTS, active_only=True, json_output=True),
     )
     fetch = MagicMock(return_value=[])
     monkeypatch.setattr(yd_list, "get_compute_requirement_summaries", fetch)
-    monkeypatch.setattr(yd_list, "_print_empty", lambda message: None)
-    yd_list.list_compute_requirements()
+    monkeypatch.setattr(yd_list, "_print_empty", lambda _ctx, message: None)
+    yd_list.list_compute_requirements(_ctx())
     assert ComputeRequirementStatus.PROVISIONING in fetch.call_args.args[3]
 
 
 def test_compute_requirement_details_are_the_full_objects(listing, monkeypatch):
     monkeypatch.setattr(
-        yd_list,
+        wrapper_module,
         "ARGS_PARSER",
         _args(ET_COMPUTE_REQUIREMENTS, json_output=True, details=True),
     )
@@ -142,14 +152,14 @@ def test_compute_requirement_details_are_the_full_objects(listing, monkeypatch):
     )
     full = SimpleNamespace(id=CR_ID, name="cr", provisionStrategy="...")
     listing.client.compute_client.get_compute_requirement_by_id.return_value = full
-    yd_list.list_compute_requirements()
+    yd_list.list_compute_requirements(_ctx())
     assert listing.printed == [[full]]
 
 
 def test_ids_only_lists_every_work_requirements_tasks_without_asking(
     listing, monkeypatch, capsys
 ):
-    monkeypatch.setattr(yd_list, "ARGS_PARSER", _args(ET_TASKS, ids_only=True))
+    monkeypatch.setattr(wrapper_module, "ARGS_PARSER", _args(ET_TASKS, ids_only=True))
     monkeypatch.setattr(
         yd_list,
         "get_filtered_work_requirement_summaries",
@@ -165,14 +175,16 @@ def test_ids_only_lists_every_work_requirements_tasks_without_asking(
         "get_all_tasks_in_task_group",
         lambda client, tg_id: [SimpleNamespace(id=f"{tg_id}-t", status=None)],
     )
-    yd_list.list_work_requirements()
+    yd_list.list_work_requirements(_ctx())
     assert capsys.readouterr().out.split() == ["wr1-tg-t", "wr2-tg-t"]
 
 
 def test_ids_only_names_an_instance_by_its_compute_requirement(
     listing, monkeypatch, capsys
 ):
-    monkeypatch.setattr(yd_list, "ARGS_PARSER", _args(ET_INSTANCES, ids_only=True))
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(ET_INSTANCES, ids_only=True)
+    )
     monkeypatch.setattr(
         yd_list,
         "get_compute_requirement_summaries",
@@ -181,21 +193,21 @@ def test_ids_only_names_an_instance_by_its_compute_requirement(
     listing.client.compute_client.get_instances.return_value.list_all.return_value = [
         SimpleNamespace(id=SimpleNamespace(instanceId="i-1"), status=None)
     ]
-    yd_list.list_compute_requirements()
+    yd_list.list_compute_requirements(_ctx())
     assert capsys.readouterr().out.split() == [f"{CR_ID}.i-1"]
 
 
 def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(
     listing, monkeypatch
 ):
-    monkeypatch.setattr(yd_list, "ARGS_PARSER", _args(ET_ATTRIBUTE_DEFINITIONS))
+    monkeypatch.setattr(wrapper_module, "ARGS_PARSER", _args(ET_ATTRIBUTE_DEFINITIONS))
     response = Response()
     response.status_code = 401
     response._content = b"no"
     get = MagicMock(return_value=response)
     monkeypatch.setattr(yd_list, "get", get)
     with pytest.raises(HTTPError) as raised:
-        yd_list.list_attribute_definitions()
+        yd_list.list_attribute_definitions(_ctx())
     assert get.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
     assert classify(raised.value) == ExitCode.AUTHENTICATION
 
@@ -210,7 +222,9 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(
 def test_ids_only_does_not_fetch_each_one(
     listing, monkeypatch, capsys, entity_type, lister, summaries, fetch
 ):
-    monkeypatch.setattr(yd_list, "ARGS_PARSER", _args(entity_type, ids_only=True))
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(entity_type, ids_only=True)
+    )
     monkeypatch.setattr(
         yd_list,
         summaries,
@@ -219,17 +233,17 @@ def test_ids_only_does_not_fetch_each_one(
             SimpleNamespace(id="b", name="b"),
         ],
     )
-    getattr(yd_list, lister)()
+    getattr(yd_list, lister)(_ctx())
     assert capsys.readouterr().out.split() == ["a", "b"]
     getattr(listing.client.account_client, fetch).assert_not_called()
 
 
 def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch):
     monkeypatch.setattr(
-        yd_list, "ARGS_PARSER", _args(ET_WORKER_POOLS, json_output=True)
+        wrapper_module, "ARGS_PARSER", _args(ET_WORKER_POOLS, json_output=True)
     )
     monkeypatch.setattr(
-        yd_list,
+        wrapper_module,
         "CONFIG_COMMON",
         SimpleNamespace(namespace="dev", name_tag="tag", url="https://api.x"),
     )
@@ -238,5 +252,5 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
         SimpleNamespace(id="b", name="b", namespace="dev-team", status=None),
     ]
     monkeypatch.setattr(yd_list, "get_worker_pool_summaries", lambda *a, **k: pools)
-    yd_list.list_worker_pools()
+    yd_list.list_worker_pools(_ctx())
     assert [p.id for p in listing.printed[0]] == ["a"]

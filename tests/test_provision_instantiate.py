@@ -82,18 +82,17 @@ def run(monkeypatch, capsys):
     ):
         args = MagicMock(**{**_DEFAULTS, **values})
         client = client or MagicMock()
+        # The command takes a RunContext, built from the wrapper's own
         for target in (
-            module,
             results_module,
             printing_module,
             interactive_module,
             wrapper_module,
         ):
             monkeypatch.setattr(target, "ARGS_PARSER", args)
-        monkeypatch.setattr(module, "CLIENT", client)
-        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        monkeypatch.setattr(wrapper_module, "CLIENT", client)
         monkeypatch.setattr(
-            module,
+            wrapper_module,
             "CONFIG_COMMON",
             MagicMock(namespace="ns", name_tag="tag", url="https://u"),
         )

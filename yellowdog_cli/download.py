@@ -7,8 +7,8 @@ Download files from a remote data client.
 from dataclasses import dataclass
 from pathlib import Path
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient_utils import (
     config_glob_matches,
     download_files,
@@ -90,20 +90,20 @@ class _Download:
 
 
 @dataclient_wrapper
-def main():
-    if ARGS_PARSER.upgrade_rclone:
+def main(ctx: DataClientContext):
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
-    sync = ARGS_PARSER.sync or False
-    flatten = ARGS_PARSER.flatten or False
-    dry_run = ARGS_PARSER.dry_run or False
-    explicit_destination = ARGS_PARSER.destination
-    into_dir = ARGS_PARSER.into
+    sync = ctx.args.sync or False
+    flatten = ctx.args.flatten or False
+    dry_run = ctx.args.dry_run or False
+    explicit_destination = ctx.args.destination
+    into_dir = ctx.args.into
 
     downloads = [
         _Download(
@@ -120,7 +120,7 @@ def main():
                 explicit_destination=explicit_destination,
             ),
         )
-        for remote_path_str in dict.fromkeys(ARGS_PARSER.remote_paths)
+        for remote_path_str in dict.fromkeys(ctx.args.remote_paths)
     ]
     if sync:
         _refuse_unsafe_syncs(downloads, explicit_destination)

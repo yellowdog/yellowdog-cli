@@ -88,7 +88,7 @@ class _Config(cloudwizard_common.CommonCloudConfig):
     """A provider whose setup creates a Keyring, then fails as told."""
 
     def __init__(self, fail_with: Exception | None = None, report_error: bool = False):
-        super().__init__(client=None, cloud_provider="Test")  # type: ignore[arg-type]
+        super().__init__(ctx=SimpleNamespace(client=None), cloud_provider="Test")  # type: ignore[arg-type]
         self._fail_with = fail_with
         self._report_error = report_error
 

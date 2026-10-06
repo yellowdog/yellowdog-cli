@@ -290,7 +290,7 @@ def _carry_out(ctx: RunContext, action: WorkRequirementAction, items: list[Item]
     if actioned_ids:
         print_info(f"{action.past_tense} {len(actioned_ids)} Work Requirement(s)")
         if ctx.args.follow:
-            follow_ids(actioned_ids)
+            follow_ids(ctx, actioned_ids)
     else:
         print_info(f"No Work Requirements {action.past_tense.lower()}")
 

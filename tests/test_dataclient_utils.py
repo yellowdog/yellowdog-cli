@@ -321,7 +321,9 @@ def run_download(monkeypatch, capsys):
             dcw_module,
             rclone_utils_module,
         ):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(yd_download, "CONFIG_DATA_CLIENT", config)
         with pytest.raises(SystemExit) as exit_info:
             yd_download.main()

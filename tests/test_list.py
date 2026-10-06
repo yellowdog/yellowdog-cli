@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cli_test_helpers import shell
 
+import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
@@ -18,6 +20,13 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
 )
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
 
 
 @pytest.mark.system
@@ -78,8 +87,8 @@ class TestCountOption:
         args_parser = MagicMock(
             count_only=True, quiet=False, json_output=True, details=True, ids_only=True
         )
-        with patch.object(yd_list, "ARGS_PARSER", args_parser):
-            yd_list._apply_count_option()
+        with patch.object(wrapper_module, "ARGS_PARSER", args_parser):
+            yd_list._apply_count_option(_ctx())
         assert args_parser.quiet is True
         assert args_parser.json_output is False
         assert args_parser.details is False
@@ -91,16 +100,16 @@ class TestCountOption:
         args_parser = MagicMock(
             count_only=False, quiet=False, json_output=True, details=True, ids_only=True
         )
-        with patch.object(yd_list, "ARGS_PARSER", args_parser):
-            yd_list._apply_count_option()
+        with patch.object(wrapper_module, "ARGS_PARSER", args_parser):
+            yd_list._apply_count_option(_ctx())
         assert args_parser.quiet is False
         assert args_parser.json_output is True
 
     def test_print_json_or_count_prints_count(self, capsys):
         import yellowdog_cli.list as yd_list
 
-        with patch.object(yd_list, "ARGS_PARSER", _args_parser()):
-            yd_list._print_json_or_count([object(), object(), object()])
+        with patch.object(wrapper_module, "ARGS_PARSER", _args_parser()):
+            yd_list._print_json_or_count(_ctx(), [object(), object(), object()])
         assert capsys.readouterr().out.strip() == "3"
 
     def test_print_json_or_count_delegates_to_json(self):
@@ -108,10 +117,10 @@ class TestCountOption:
 
         objects = [object()]
         with (
-            patch.object(yd_list, "ARGS_PARSER", _args_parser(count_only=False)),
+            patch.object(wrapper_module, "ARGS_PARSER", _args_parser(count_only=False)),
             patch.object(yd_list, "print_objects_as_json") as mock_json,
         ):
-            yd_list._print_json_or_count(objects)
+            yd_list._print_json_or_count(_ctx(), objects)
         mock_json.assert_called_once_with(objects)
 
     def test_keyrings_count(self, capsys):
@@ -123,13 +132,13 @@ class TestCountOption:
             MagicMock(),
         ]
         with (
-            patch.object(yd_list, "CLIENT", client),
-            patch.object(yd_list, "ARGS_PARSER", _args_parser()),
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(wrapper_module, "ARGS_PARSER", _args_parser()),
             patch.object(
                 yd_list, "sorted_objects", side_effect=lambda objects: objects
             ),
         ):
-            yd_list.list_keyrings()
+            yd_list.list_keyrings(_ctx())
         assert capsys.readouterr().out.strip() == "2"
 
     def test_keyrings_count_empty(self, capsys):
@@ -138,10 +147,10 @@ class TestCountOption:
         client = MagicMock()
         client.keyring_client.get_keyrings.return_value.list_all.return_value = []
         with (
-            patch.object(yd_list, "CLIENT", client),
-            patch.object(yd_list, "ARGS_PARSER", _args_parser()),
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(wrapper_module, "ARGS_PARSER", _args_parser()),
         ):
-            yd_list.list_keyrings()
+            yd_list.list_keyrings(_ctx())
         assert capsys.readouterr().out.strip() == "0"
 
     def test_keyrings_search_by_the_globs_literal_prefix(self, capsys):
@@ -158,10 +167,12 @@ class TestCountOption:
             SimpleNamespace(name="proj-other"),
         ]
         with (
-            patch.object(yd_list, "CLIENT", client),
-            patch.object(yd_list, "ARGS_PARSER", _args_parser(name_glob="proj-?")),
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(
+                wrapper_module, "ARGS_PARSER", _args_parser(name_glob="proj-?")
+            ),
         ):
-            yd_list.list_keyrings()
+            yd_list.list_keyrings(_ctx())
         client.keyring_client.get_keyrings.assert_called_once_with(
             KeyringSearch(name="proj-")
         )
@@ -173,11 +184,15 @@ class TestCountOption:
         wr_1, wr_2 = MagicMock(id="wr_1"), MagicMock(id="wr_2")
         tg_1, tg_2 = MagicMock(id="tg_1"), MagicMock(id="tg_2")
         with (
-            patch.object(yd_list, "CLIENT", MagicMock()),
+            patch.object(wrapper_module, "CLIENT", MagicMock()),
             patch.object(
-                yd_list, "CONFIG_COMMON", MagicMock(namespace="ns", name_tag="tag")
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(namespace="ns", name_tag="tag"),
             ),
-            patch.object(yd_list, "ARGS_PARSER", _args_parser(entity_type=ET_TASKS)),
+            patch.object(
+                wrapper_module, "ARGS_PARSER", _args_parser(entity_type=ET_TASKS)
+            ),
             patch.object(
                 yd_list,
                 "get_filtered_work_requirement_summaries",
@@ -201,6 +216,6 @@ class TestCountOption:
             patch.object(yd_list, "select") as mock_select,
             patch.object(yd_list, "print_info"),
         ):
-            yd_list.list_work_requirements()
+            yd_list.list_work_requirements(_ctx())
         assert capsys.readouterr().out.strip() == "5"
         mock_select.assert_not_called()

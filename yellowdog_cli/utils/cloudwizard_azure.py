@@ -9,9 +9,9 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.network.models import NetworkSecurityGroup
 from azure.mgmt.resource.resources import ResourceManagementClient
 from azure.mgmt.subscription import SubscriptionClient
-from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
@@ -50,13 +50,13 @@ class AzureConfig(CommonCloudConfig):
 
     def __init__(
         self,
-        client: PlatformClient,
+        ctx: RunContext,
         instance_type: str | None = None,
     ):
         """
         Set up Azure config details.
         """
-        super().__init__(client=client, cloud_provider="AZURE")
+        super().__init__(ctx=ctx, cloud_provider="AZURE")
 
         # Check for required Azure credential environment variables
         error = False
@@ -434,7 +434,7 @@ class AzureConfig(CommonCloudConfig):
 
         # Create Compute Source Templates
         print_info("Creating YellowDog Compute Source Templates")
-        create_resources(self._source_template_resources)
+        create_resources(self._ctx, self._source_template_resources)
 
         # Create Compute Requirement Templates
         self._create_compute_requirement_templates(resource_prefix=YD_RESOURCE_PREFIX)
@@ -444,7 +444,7 @@ class AzureConfig(CommonCloudConfig):
             credential_resource = self._generate_yd_azure_credential(
                 YD_KEYRING_NAME, YD_CREDENTIAL_NAME
             )
-            create_resources([credential_resource])
+            create_resources(self._ctx, [credential_resource])
         except Exception as e:
             print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
 

@@ -20,7 +20,9 @@ import pytest
 from requests import HTTPError, Response
 
 import yellowdog_cli.utils.resource_creation as yd_create
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import entity_utils, resource_processing
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import (
     ExitCode,
     NotFoundError,
@@ -29,6 +31,13 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper globals, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
 
 
 def _http_error(status: int, text: str = "error") -> HTTPError:
@@ -48,7 +57,7 @@ def _response(status: int, text: str = "") -> Response:
 @pytest.fixture
 def env(monkeypatch):
     client = MagicMock()
-    monkeypatch.setattr(yd_create, "CLIENT", client)
+    monkeypatch.setattr(wrapper_module, "CLIENT", client)
     args = SimpleNamespace(
         dry_run=False,
         json_output=False,
@@ -59,7 +68,7 @@ def env(monkeypatch):
     )
     monkeypatch.setattr(yd_create, "_OPTIONS", args)
     monkeypatch.setattr(
-        yd_create,
+        wrapper_module,
         "CONFIG_COMMON",
         SimpleNamespace(namespace="ns", url="https://api.x/api", key="k", secret="s"),
     )
@@ -90,7 +99,7 @@ def _namespaces(*names: str) -> list[dict]:
 def test_a_shared_cause_gives_its_exit_code(env):
     env.client.namespaces_client.create_namespace.side_effect = _http_error(403)
     with pytest.raises(ReportedFailure) as raised:
-        yd_create.create_resources(_namespaces("a", "b"))
+        yd_create.create_resources(_ctx(), _namespaces("a", "b"))
     assert classify(raised.value) == ExitCode.PERMISSION
     assert env.client.namespaces_client.create_namespace.call_count == 2
 
@@ -101,14 +110,14 @@ def test_different_causes_exit_1(env):
         _http_error(404),
     ]
     with pytest.raises(ReportedFailure) as raised:
-        yd_create.create_resources(_namespaces("a", "b"))
+        yd_create.create_resources(_ctx(), _namespaces("a", "b"))
     assert classify(raised.value) == ExitCode.FAILURE
 
 
 def test_a_session_failure_stops_the_run(env):
     env.client.namespaces_client.create_namespace.side_effect = _http_error(401)
     with pytest.raises(ReportedFailure) as raised:
-        yd_create.create_resources(_namespaces("a", "b", "c"))
+        yd_create.create_resources(_ctx(), _namespaces("a", "b", "c"))
     assert classify(raised.value) == ExitCode.AUTHENTICATION
     assert env.client.namespaces_client.create_namespace.call_count == 1
     assert [(r["name"], r["action"]) for r in env.records] == [
@@ -132,7 +141,7 @@ def test_a_failure_is_printed_once_naming_the_resource(env, capsys):
         },
     }
     with pytest.raises(ReportedFailure) as raised:
-        yd_create.create_resources([credential])
+        yd_create.create_resources(_ctx(), [credential])
     output = capsys.readouterr()
     text = " ".join((output.out + output.err).split())  # Rich wraps lines
     assert text.count("Keyring 'kr' not found") == 1
@@ -142,7 +151,7 @@ def test_a_failure_is_printed_once_naming_the_resource(env, capsys):
 
 def test_an_unknown_resource_type_fails(env):
     with pytest.raises(ReportedFailure):
-        yd_create.create_resources([{"resource": "Nonsense", "name": "x"}])
+        yd_create.create_resources(_ctx(), [{"resource": "Nonsense", "name": "x"}])
     assert env.records[0]["error"] == "Unknown resource type 'Nonsense'"
 
 
@@ -181,7 +190,7 @@ def test_matching_allowances_are_chosen_before_and_removed_after_the_new_one(
         "remove_allowances",
         lambda client, allowances: calls.append(("remove", allowances)) or ["old"],
     )
-    yd_create.create_allowance(_allowance())
+    yd_create.create_allowance(_ctx(), _allowance())
     assert calls == [("choose", "d"), "add", ("remove", [old])]
     assert [(r["id"], r["action"]) for r in allowance_env.records] == [
         ("new", "created"),
@@ -198,7 +207,7 @@ def test_a_failed_creation_removes_nothing(allowance_env, monkeypatch):
     remove = MagicMock()
     monkeypatch.setattr(yd_create, "remove_allowances", remove)
     with pytest.raises(ValueError):
-        yd_create.create_allowance(_allowance())
+        yd_create.create_allowance(_ctx(), _allowance())
     remove.assert_not_called()
 
 
@@ -212,7 +221,7 @@ def test_an_unanswerable_choice_fails_before_the_new_allowance_exists(
 
     monkeypatch.setattr(yd_create, "allowances_to_remove", _no_answer)
     with pytest.raises(NoAnswerToPrompt):
-        yd_create.create_allowance(_allowance())
+        yd_create.create_allowance(_ctx(), _allowance())
     allowance_env.client.allowances_client.add_allowance.assert_not_called()
 
 
@@ -221,7 +230,7 @@ def test_a_template_name_not_found_fails_the_allowance(allowance_env, monkeypatc
         yd_create, "get_compute_source_template_id_by_name", lambda *a: None
     )
     with pytest.raises(NotFoundError):
-        yd_create.create_allowance(_allowance(sourceCreatedFromId="cst"))
+        yd_create.create_allowance(_ctx(), _allowance(sourceCreatedFromId="cst"))
     allowance_env.client.allowances_client.add_allowance.assert_not_called()
 
 
@@ -234,7 +243,7 @@ def test_a_dry_run_leaves_a_template_name_not_found(allowance_env, monkeypatch):
     monkeypatch.setattr(
         yd_create, "_show_dry_run_specification", lambda t, r: shown.append(r)
     )
-    yd_create.create_allowance(_allowance(sourceCreatedFromId="cst"))
+    yd_create.create_allowance(_ctx(), _allowance(sourceCreatedFromId="cst"))
     assert shown[0]["sourceCreatedFromId"] == "cst"
 
 
@@ -248,7 +257,7 @@ def test_a_requirement_template_is_looked_for_in_the_configured_namespace(
         lambda *a: lookups.append(a[1:]) or "crt-id",
     )
     resource = {"type": "RequirementsAllowance", "requirementCreatedFromId": "crt"}
-    yd_create.create_allowance(resource)
+    yd_create.create_allowance(_ctx(), resource)
     assert lookups == [("crt", "ns")]
     assert resource["requirementCreatedFromId"] == "crt-id"
 
@@ -278,7 +287,9 @@ def test_a_dry_run_shows_allowance_dates_in_iso_8601(allowance_env, monkeypatch)
     monkeypatch.setattr(
         yd_create, "_show_dry_run_specification", lambda t, r: shown.append(r)
     )
-    yd_create.create_allowance(_allowance(effectiveFrom=datetime(2026, 1, 2, 3, 4)))
+    yd_create.create_allowance(
+        _ctx(), _allowance(effectiveFrom=datetime(2026, 1, 2, 3, 4))
+    )
     assert shown[0]["effectiveFrom"] == "2026-01-02T03:04:00"
 
 
@@ -322,7 +333,7 @@ def test_an_unknown_group_fails_an_application_before_any_change(env, monkeypatc
     monkeypatch.setattr(yd_create, "get_group_id_by_name", lambda *a: None)
     monkeypatch.setattr(yd_create, "get_application_id_by_name", lambda *a: "aid")
     with pytest.raises(NotFoundError, match="Group 'admin' not found"):
-        yd_create.create_application({"name": "a", "groups": ["admin"]})
+        yd_create.create_application(_ctx(), {"name": "a", "groups": ["admin"]})
     env.client.account_client.update_application.assert_not_called()
     env.client.account_client.remove_application_from_group.assert_not_called()
 
@@ -330,7 +341,9 @@ def test_an_unknown_group_fails_an_application_before_any_change(env, monkeypatc
 def test_an_unknown_group_fails_a_user_before_any_change(env, monkeypatch):
     monkeypatch.setattr(yd_create, "get_group_id_by_name", lambda *a: None)
     with pytest.raises(NotFoundError):
-        yd_create.update_user({"name": "u", "groups": ["admin"]}, internal_user=True)
+        yd_create.update_user(
+            _ctx(), {"name": "u", "groups": ["admin"]}, internal_user=True
+        )
     env.client.account_client.remove_user_from_group.assert_not_called()
 
 
@@ -349,13 +362,13 @@ def existing_application(env, monkeypatch):
 
 
 def test_an_application_without_groups_keeps_its_groups(existing_application):
-    yd_create.create_application({"name": "a"})
+    yd_create.create_application(_ctx(), {"name": "a"})
     existing_application.summaries.assert_not_called()
     existing_application.client.account_client.remove_application_from_group.assert_not_called()
 
 
 def test_an_application_with_no_groups_leaves_them_all(existing_application):
-    yd_create.create_application({"name": "a", "groups": []})
+    yd_create.create_application(_ctx(), {"name": "a", "groups": []})
     existing_application.client.account_client.remove_application_from_group.assert_called_once_with(
         "g1", "aid"
     )
@@ -363,7 +376,7 @@ def test_an_application_with_no_groups_leaves_them_all(existing_application):
 
 def test_keyrings_for_an_existing_application_need_its_key(existing_application):
     with pytest.raises(ValueError, match="--regenerate-app-keys"):
-        yd_create.create_application({"name": "a", "keyrings": ["kr"]})
+        yd_create.create_application(_ctx(), {"name": "a", "keyrings": ["kr"]})
     existing_application.client.account_client.update_application.assert_not_called()
 
 
@@ -379,7 +392,7 @@ def test_a_keyring_grant_that_fails_fails_the_application(env, monkeypatch):
         _http_error(404),
     ]
     with pytest.raises(RuntimeError, match="Keyring\\(s\\) 'kr2'") as raised:
-        yd_create.create_application({"name": "a", "keyrings": ["kr1", "kr2"]})
+        yd_create.create_application(_ctx(), {"name": "a", "keyrings": ["kr1", "kr2"]})
     assert classify(raised.value) == ExitCode.NOT_FOUND
     assert env.records[0]["action"] == "created"
 
@@ -401,13 +414,13 @@ def existing_group(env, monkeypatch):
 
 
 def test_a_group_without_roles_keeps_its_roles(existing_group):
-    yd_create.create_group({"name": "g"})
+    yd_create.create_group(_ctx(), {"name": "g"})
     existing_group.client.account_client.remove_role_from_group.assert_not_called()
     existing_group.client.account_client.add_role_to_group.assert_not_called()
 
 
 def test_a_group_with_no_roles_loses_them_all(existing_group):
-    yd_create.create_group({"name": "g", "roles": []})
+    yd_create.create_group(_ctx(), {"name": "g", "roles": []})
     existing_group.client.account_client.remove_role_from_group.assert_called_once_with(
         "gid", "r1"
     )
@@ -419,7 +432,7 @@ def test_an_unknown_role_fails_the_group_before_any_change(env, monkeypatch):
     monkeypatch.setattr(yd_create, "get_role_id_by_name", lambda *a: None)
     roles = [{"role": {"name": "nope"}, "scope": {"global": True}}]
     with pytest.raises(NotFoundError, match="Role 'nope' not found"):
-        yd_create.create_group({"name": "g", "roles": roles})
+        yd_create.create_group(_ctx(), {"name": "g", "roles": roles})
     env.client.account_client.add_group.assert_not_called()
 
 
@@ -431,7 +444,7 @@ def test_a_user_without_groups_keeps_them(env, monkeypatch):
     )
     get_user_groups = MagicMock()
     monkeypatch.setattr(yd_create, "get_user_groups", get_user_groups)
-    yd_create.update_user({"name": "u"}, internal_user=False)
+    yd_create.update_user(_ctx(), {"name": "u"}, internal_user=False)
     get_user_groups.assert_not_called()
     assert env.records[0]["action"] == "updated"
 
@@ -439,7 +452,7 @@ def test_a_user_without_groups_keeps_them(env, monkeypatch):
 def test_a_user_who_does_not_exist_fails(env, monkeypatch):
     monkeypatch.setattr(yd_create, "get_user_by_name_or_id", lambda *a: None)
     with pytest.raises(NotFoundError, match="User not found"):
-        yd_create.update_user({"name": "u"}, internal_user=False)
+        yd_create.update_user(_ctx(), {"name": "u"}, internal_user=False)
 
 
 def test_identifiers_naming_different_users_are_refused(env, monkeypatch):
@@ -448,9 +461,11 @@ def test_identifiers_naming_different_users_are_refused(env, monkeypatch):
         yd_create, "get_user_by_name_or_id", lambda client, i: users.get(i)
     )
     with pytest.raises(ValueError, match="different Users"):
-        yd_create.update_user({"name": "u", "username": "v"}, internal_user=True)
+        yd_create.update_user(
+            _ctx(), {"name": "u", "username": "v"}, internal_user=True
+        )
     with pytest.raises(ValueError, match="do not match"):
-        yd_create.update_user({"name": "u", "id": "u3"}, internal_user=True)
+        yd_create.update_user(_ctx(), {"name": "u", "id": "u3"}, internal_user=True)
 
 
 # ---------------------------------------------------------------------------
@@ -481,13 +496,13 @@ def requirement_template(env, monkeypatch):
 
 def test_a_dry_run_leaves_a_source_template_name_unresolved(env, requirement_template):
     env.args.dry_run = True
-    yd_create.create_compute_requirement_template(requirement_template)
+    yd_create.create_compute_requirement_template(_ctx(), requirement_template)
     assert env.shown[0]["sources"] == [{"sourceTemplateId": "cst-made-earlier"}]
 
 
 def test_a_source_template_name_not_found_fails_for_real(env, requirement_template):
     with pytest.raises(NotFoundError):
-        yd_create.create_compute_requirement_template(requirement_template)
+        yd_create.create_compute_requirement_template(_ctx(), requirement_template)
 
 
 def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(env, monkeypatch):
@@ -495,7 +510,7 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(env, monke
     monkeypatch.setattr(yd_create, "post", post)
     with pytest.raises(HTTPError) as raised:
         yd_create.create_attribute_definition(
-            {"name": "a", "title": "A"}, "StringAttributeDefinition"
+            _ctx(), {"name": "a", "title": "A"}, "StringAttributeDefinition"
         )
     assert post.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
     assert classify(raised.value) == ExitCode.AUTHENTICATION
@@ -510,7 +525,7 @@ def test_an_existing_attribute_definition_is_updated(env, monkeypatch):
     put = MagicMock(return_value=_response(200))
     monkeypatch.setattr(yd_create, "put", put)
     yd_create.create_attribute_definition(
-        {"name": "a", "title": "A"}, "StringAttributeDefinition"
+        _ctx(), {"name": "a", "title": "A"}, "StringAttributeDefinition"
     )
     assert put.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
     assert env.records[0]["action"] == "updated"
@@ -519,13 +534,13 @@ def test_an_existing_attribute_definition_is_updated(env, monkeypatch):
 def test_a_namespace_policy_lookup_failure_is_not_taken_as_none(env):
     env.client.namespaces_client.get_namespace_policy.side_effect = _http_error(401)
     with pytest.raises(HTTPError):
-        yd_create.create_namespace_policy({"namespace": "ns"})
+        yd_create.create_namespace_policy(_ctx(), {"namespace": "ns"})
     env.client.namespaces_client.save_namespace_policy.assert_not_called()
 
 
 def test_a_namespace_policy_not_found_is_created(env):
     env.client.namespaces_client.get_namespace_policy.side_effect = _http_error(404)
-    yd_create.create_namespace_policy({"namespace": "ns"})
+    yd_create.create_namespace_policy(_ctx(), {"namespace": "ns"})
     env.client.namespaces_client.save_namespace_policy.assert_called_once()
     assert env.records[0]["action"] == "created"
 
@@ -549,7 +564,9 @@ def test_a_new_image_family_records_its_groups_and_images(env, monkeypatch):
         ],
     )
     images.add_image_group.return_value = SimpleNamespace(id="g2", name="g2", images=[])
-    yd_create.create_image_family({"name": "f", "namespace": "ns", "osType": "LINUX"})
+    yd_create.create_image_family(
+        _ctx(), {"name": "f", "namespace": "ns", "osType": "LINUX"}
+    )
     assert [(r["resource"], r["id"]) for r in env.records] == [
         ("MachineImageFamily", "fam"),
         ("MachineImageGroup", "g1"),
@@ -576,5 +593,5 @@ def test_an_unknown_type_is_named(class_name):
 
 def test_a_missing_required_property_is_named_without_quotes_round_it():
     with pytest.raises(ValueError) as raised:
-        yd_create.create_namespace({})
+        yd_create.create_namespace(_ctx(), {})
     assert str(raised.value) == "Expected property 'name' to be defined"

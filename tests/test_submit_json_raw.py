@@ -12,9 +12,19 @@ import pytest
 import requests
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TIMEOUT
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 WR_ID = "ydid:workreq:000000:00000000-0000-0000-0000-000000000000"
 
@@ -64,8 +74,8 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
     with ExitStack() as stack:
         for patcher in (
             patch.object(submit_module.requests, "post", post),
-            patch.object(submit_module, "CLIENT", client),
-            patch.object(submit_module, "CONFIG_COMMON", MagicMock(url="https://x")),
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(wrapper_module, "CONFIG_COMMON", MagicMock(url="https://x")),
             patch.object(submit_module, "TASK_BATCH_SIZE", 1),
             patch.object(submit_module, "sleep", sleep),
             patch.object(
@@ -85,7 +95,7 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
         ):
             stack.enter_context(patcher)
         try:
-            submit_module.submit_json_raw("raw.json")
+            submit_module.submit_json_raw(_ctx(), "raw.json")
         except Exception as e:
             outcome["raised"] = e
     return outcome
@@ -209,4 +219,4 @@ class TestJsonRawMissingProperties:
             ),
             pytest.raises(ValueError, match=message),
         ):
-            submit_module.submit_json_raw("raw.json")
+            submit_module.submit_json_raw(_ctx(), "raw.json")

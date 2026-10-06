@@ -23,7 +23,17 @@ from yellowdog_client.model import (
     UpdateKeyringRequest,
 )
 
+import yellowdog_cli.utils.wrapper as wrapper_module
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import get_keyring_summary_by_name
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper globals, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 YDID = "ydid:keyring:000000:00000000-0000-0000-0000-000000000000"
 
@@ -69,11 +79,11 @@ def create_module():
 def _run_create(create_module, client, confirm: bool, resource: dict, capsys):
     args = MagicMock(quiet=False, show_keyring_passwords=False)
     with (
-        patch.object(create_module, "CLIENT", client),
+        patch.object(wrapper_module, "CLIENT", client),
         patch.object(create_module, "_OPTIONS", args),
         patch.object(create_module, "confirmed", lambda _: confirm),
     ):
-        create_module.create_keyring(resource)
+        create_module.create_keyring(_ctx(), resource)
     return capsys.readouterr().out
 
 
@@ -155,10 +165,10 @@ def remove_module():
 
 def _run_remove(remove_module, client, ydid: str, capsys) -> tuple[bool, str]:
     with (
-        patch.object(remove_module, "CLIENT", client),
+        patch.object(wrapper_module, "CLIENT", client),
         patch.object(remove_module, "confirmed", lambda _: True),
     ):
-        result = remove_module.remove_resource_by_id(ydid)
+        result = remove_module.remove_resource_by_id(_ctx(), ydid)
     captured = capsys.readouterr()
     return result, " ".join((captured.out + captured.err).split())
 

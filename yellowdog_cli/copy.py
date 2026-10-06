@@ -11,6 +11,7 @@ destination that is a remote's root or the configured bucket itself.
 
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient_utils import (
     config_remote_stat,
     copy_remote,
@@ -37,21 +38,21 @@ CONFIG_DST: ConfigDataClient = lazy(
 
 
 @dataclient_wrapper
-def main():
-    if ARGS_PARSER.upgrade_rclone:
+def main(ctx: DataClientContext):
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
     # Both paths are given: the command line refuses otherwise
-    src_path = resolve_remote_path(CONFIG_SRC, relative_path=ARGS_PARSER.src_path)
-    dst_path = resolve_remote_path(CONFIG_DST, relative_path=ARGS_PARSER.dst_path)
+    src_path = resolve_remote_path(CONFIG_SRC, relative_path=ctx.args.src_path)
+    dst_path = resolve_remote_path(CONFIG_DST, relative_path=ctx.args.dst_path)
 
-    sync = ARGS_PARSER.sync or False
-    recursive = bool(ARGS_PARSER.recursive) or sync  # --sync implies --recursive
+    sync = ctx.args.sync or False
+    recursive = bool(ctx.args.recursive) or sync  # --sync implies --recursive
 
     stat = config_remote_stat(CONFIG_SRC, src_path)
     if stat is None:
@@ -74,7 +75,7 @@ def main():
         dst_path=dst_path,
         src_is_file=src_is_file,
         sync=sync,
-        dry_run=ARGS_PARSER.dry_run or False,
+        dry_run=ctx.args.dry_run or False,
     )
 
     print_info("Copy complete")

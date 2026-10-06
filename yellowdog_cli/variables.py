@@ -6,6 +6,7 @@ Command to report the processed values of variable substitutions.
 
 from dataclasses import dataclass, field
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import print_json, print_warning
 from yellowdog_cli.utils.property_names import (
@@ -23,7 +24,7 @@ from yellowdog_cli.utils.variable_substitution import (
     warn_of_undefined_variables,
 )
 from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 
 # The credential variables the CLI injects into the substitution table itself:
 # load_config_common() adds these two alongside 'url', 'namespace' and 'tag'.
@@ -143,15 +144,13 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> R
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # Like yd-show, whose output is also always JSON, the warnings and the
     # wrapper's trailing 'Done' are printed around it unless '--quiet' is
     # given, which is how a caller needing the JSON alone asks for it (as
     # Commander does)
-    variable_names = ARGS_PARSER.variable_names
-    report = report_variables(
-        variable_names, show_secrets=bool(ARGS_PARSER.show_secrets)
-    )
+    variable_names = ctx.args.variable_names
+    report = report_variables(variable_names, show_secrets=bool(ctx.args.show_secrets))
     # A redacted value is REDACTED_VALUE here, and so carries no reference
     # to check. 'key' and 'secret', which --show-secrets reports in full, are
     # left out of the check by name

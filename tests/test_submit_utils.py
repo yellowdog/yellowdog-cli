@@ -11,7 +11,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import yellowdog_cli.utils.submit_utils as su
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import (
     TASK_DATA,
@@ -25,6 +27,14 @@ from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper globals."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 # Convenience aliases for lazy-substitution placeholder tokens
 _TN = f"{VAR_OPENING_DELIMITER}{su.L_TASK_NUMBER}{VAR_CLOSING_DELIMITER}"
@@ -563,7 +573,7 @@ class TestUploadRcloneFileCore:
         mock_rclone.exists.return_value = remote_exists
         mock_rclone.copy_to.return_value = MagicMock(returncode=0, stderr="")
 
-        instance = su.RcloneUploadedFiles()
+        instance = su.RcloneUploadedFiles(_ctx())
 
         with (
             patch.object(
@@ -573,7 +583,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                type(lazy_value(su.ARGS_PARSER)),
+                type(lazy_value(wrapper_module.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: overwrite),
             ),
@@ -620,7 +630,7 @@ class TestUploadRcloneFileCore:
             returncode=1, stderr="connection refused"
         )
 
-        instance = su.RcloneUploadedFiles()
+        instance = su.RcloneUploadedFiles(_ctx())
 
         with (
             patch.object(
@@ -630,7 +640,7 @@ class TestUploadRcloneFileCore:
             ),
             patch.object(su, "make_rclone", return_value=mock_rclone),
             patch.object(
-                type(lazy_value(su.ARGS_PARSER)),
+                type(lazy_value(wrapper_module.ARGS_PARSER)),
                 "overwrite",
                 new_callable=lambda: property(lambda self: False),
             ),
@@ -720,9 +730,11 @@ class TestUploadPathShownWithoutCredentials:
 
     def test_a_failed_upload_names_no_credentials(self, tmp_path, monkeypatch):
         (tmp_path / "x.txt").write_text("x", encoding="utf-8")
-        instance = su.RcloneUploadedFiles(files_directory=str(tmp_path))
+        instance = su.RcloneUploadedFiles(_ctx(), files_directory=str(tmp_path))
         monkeypatch.setattr(
-            type(lazy_value(su.ARGS_PARSER)), "dry_run", property(lambda self: False)
+            type(lazy_value(wrapper_module.ARGS_PARSER)),
+            "dry_run",
+            property(lambda self: False),
         )
 
         def _fail(*args):
@@ -739,9 +751,11 @@ def test_two_local_files_for_one_upload_path_are_refused(tmp_path, monkeypatch):
     for name in ("a.txt", "b.txt"):
         (tmp_path / name).write_text(name, encoding="utf-8")
     monkeypatch.setattr(
-        type(lazy_value(su.ARGS_PARSER)), "dry_run", property(lambda self: True)
+        type(lazy_value(wrapper_module.ARGS_PARSER)),
+        "dry_run",
+        property(lambda self: True),
     )
-    instance = su.RcloneUploadedFiles(files_directory=str(tmp_path))
+    instance = su.RcloneUploadedFiles(_ctx(), files_directory=str(tmp_path))
     instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")
     instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")  # The same: fine
     with pytest.raises(ValueError, match="are both to be uploaded to"):
@@ -791,7 +805,7 @@ def test_a_manual_pause_without_a_terminal_is_no_answer(monkeypatch):
     from yellowdog_cli.utils import interactive
 
     monkeypatch.setattr(
-        su,
+        wrapper_module,
         "ARGS_PARSER",
         MagicMock(pause_between_batches=0),
     )
@@ -802,4 +816,4 @@ def test_a_manual_pause_without_a_terminal_is_no_answer(monkeypatch):
 
     monkeypatch.setattr(interactive, "_get_user_input", _no_answer)
     with pytest.raises(interactive.NoAnswerToPrompt):
-        su.pause_between_batches(task_batch_size=2, batch_number=1, num_tasks=4)
+        su.pause_between_batches(_ctx(), task_batch_size=2, batch_number=1, num_tasks=4)

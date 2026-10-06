@@ -122,7 +122,9 @@ class TestRealPathRecordsThroughARealParse:
         args = CLIParser(command="yd-cancel", argv=["--json", "--yes", "nonesuch-wr"])
         # yd-cancel takes a RunContext, built from the wrapper's own
         for target in (results_module, printing_module, wrapper_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         monkeypatch.setattr(
             wrapper_module,
@@ -159,7 +161,9 @@ class TestRealPathRecordsThroughARealParse:
         reset_results()
         args = CLIParser(command="yd-delete", argv=["--json", "--yes", "loc:some/path"])
         for target in (yd_delete, results_module, printing_module, dcw_module):
-            monkeypatch.setattr(target, "ARGS_PARSER", args)
+            # A command taking a context has none of its own
+            if hasattr(target, "ARGS_PARSER"):
+                monkeypatch.setattr(target, "ARGS_PARSER", args)
         monkeypatch.setattr(yd_delete, "CONFIG_DATA_CLIENT", MagicMock())
         monkeypatch.setattr(
             yd_delete, "resolve_remote_path", lambda *a, **k: "loc:some/path"

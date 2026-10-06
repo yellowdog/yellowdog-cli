@@ -359,7 +359,9 @@ def dry_run_create():
     platform lookups stubbed (see this section's own comment for why those three
     and nothing else). Every patch is undone afterwards.
     """
+    import yellowdog_cli.utils.wrapper as wrapper_module
     from yellowdog_cli.utils import resource_creation as create
+    from yellowdog_cli.utils.context import RunContext
 
     def _identity_image(client, image_name_or_id, **kwargs):
         return image_name_or_id
@@ -378,7 +380,13 @@ def dry_run_create():
         setattr(create, name, replacement)
     try:
         yield lambda resources: create.create_resources(
-            resources, create.CreateOptions(dry_run=True)
+            RunContext(
+                wrapper_module.ARGS_PARSER,
+                wrapper_module.CONFIG_COMMON,
+                wrapper_module.CLIENT,
+            ),
+            resources,
+            create.CreateOptions(dry_run=True),
         )
     finally:
         for name, original in originals.items():

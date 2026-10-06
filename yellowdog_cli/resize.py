@@ -170,7 +170,7 @@ def _resize_worker_pool(ctx: RunContext, target: str):
 
     if ctx.args.follow:
         print_info("Following event stream(s)")
-        follow_ids([cast(str, worker_pool.id)], auto_cr=ctx.args.auto_cr)
+        follow_ids(ctx, [cast(str, worker_pool.id)], auto_cr=ctx.args.auto_cr)
 
 
 def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
@@ -260,7 +260,9 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
                 " ignored when resizing Compute Requirements"
             )
         print_info("Following event stream")
-        follow_events(cast(str, compute_requirement.id), YDIDType.COMPUTE_REQUIREMENT)
+        follow_events(
+            ctx, cast(str, compute_requirement.id), YDIDType.COMPUTE_REQUIREMENT
+        )
 
 
 def _find_compute_requirement(

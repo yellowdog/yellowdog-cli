@@ -6,12 +6,13 @@ Covers:
   - _resolve_instance_details  (lookup and error paths)
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
 import yellowdog_cli.show as show_module
 from yellowdog_cli.show import _resolve_instance_details, resolve_details
+from yellowdog_cli.utils.context import RunContext
 
 CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
 NODE_ID = "ydid:node:d9c548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8"
@@ -32,6 +33,12 @@ def _make_args() -> MagicMock:
     return mock_args
 
 
+def _ctx(client=None) -> RunContext:
+    return RunContext(
+        args=_make_args(), config=MagicMock(), client=client or MagicMock()
+    )
+
+
 # ---------------------------------------------------------------------------
 # resolve_details: routing
 # ---------------------------------------------------------------------------
@@ -41,33 +48,29 @@ class TestRouting:
     @pytest.mark.parametrize("instance_id", [INSTANCE_ID, OCI_INSTANCE_ID])
     def test_instance_spec_routes_to_instance_details(self, instance_id):
         with (
-            patch.object(show_module, "ARGS_PARSER", _make_args()),
             patch.object(show_module, "_resolve_instance_details") as mock_instance,
         ):
-            resolve_details(f"{CR_ID}.{instance_id}")
+            resolve_details(_ctx(), f"{CR_ID}.{instance_id}")
 
-        mock_instance.assert_called_once_with(CR_ID, instance_id)
+        mock_instance.assert_called_once_with(ANY, CR_ID, instance_id)
 
     @pytest.mark.parametrize("ydid", [CR_ID, NODE_ID])
     def test_plain_ydid_does_not_route_to_instance_details(self, ydid):
         with (
-            patch.object(show_module, "ARGS_PARSER", _make_args()),
-            patch.object(show_module, "CLIENT", MagicMock()),
             patch.object(show_module, "_resolve_instance_details") as mock_instance,
             patch.object(show_module, "print_info"),
         ):
-            resolve_details(ydid)
+            resolve_details(_ctx(), ydid)
 
         mock_instance.assert_not_called()
 
     def test_non_cr_prefix_with_dot_is_not_an_instance_spec(self):
         # A Node YDID with a dotted suffix is not an instance specification
         with (
-            patch.object(show_module, "ARGS_PARSER", _make_args()),
             patch.object(show_module, "_resolve_instance_details") as mock_instance,
             patch.object(show_module, "print_error") as mock_error,
         ):
-            assert resolve_details(f"{NODE_ID}.{INSTANCE_ID}") is None
+            assert resolve_details(_ctx(), f"{NODE_ID}.{INSTANCE_ID}") is None
 
         mock_instance.assert_not_called()
         mock_error.assert_called_once()
@@ -98,13 +101,11 @@ class TestResolveInstanceDetails:
             )
 
         with (
-            patch.object(show_module, "ARGS_PARSER", _make_args()),
-            patch.object(show_module, "CLIENT", mock_client),
             patch.object(show_module, "get_instance_by_id", mock_lookup),
             patch.object(show_module, "print_error") as mock_error,
             patch.object(show_module, "print_info"),
         ):
-            resolved = _resolve_instance_details(CR_ID, INSTANCE_ID)
+            resolved = _resolve_instance_details(_ctx(mock_client), CR_ID, INSTANCE_ID)
 
         return mock_lookup, resolved, mock_error
 

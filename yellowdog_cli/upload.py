@@ -13,8 +13,8 @@ recorded and the rest still attempted.
 from dataclasses import dataclass
 from pathlib import Path
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
+from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient_utils import (
     flattened_destinations,
     record_transfer,
@@ -46,20 +46,20 @@ class _Upload:
 
 
 @dataclient_wrapper
-def main():
-    if ARGS_PARSER.upgrade_rclone:
+def main(ctx: DataClientContext):
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
-    sync = ARGS_PARSER.sync or False
-    flatten = ARGS_PARSER.flatten or False
-    dry_run = ARGS_PARSER.dry_run or False
+    sync = ctx.args.sync or False
+    flatten = ctx.args.flatten or False
+    dry_run = ctx.args.dry_run or False
 
-    uploads, failed = _plan(ARGS_PARSER.local_paths, flatten, sync)
+    uploads, failed = _plan(ctx, ctx.args.local_paths, flatten, sync)
     _refuse_colliding_destinations(uploads, flatten)
 
     for upload in uploads:
@@ -85,15 +85,15 @@ def main():
 
 
 def _plan(
-    local_paths: list[str], flatten: bool, sync: bool
+    ctx: DataClientContext, local_paths: list[str], flatten: bool, sync: bool
 ) -> tuple[list[_Upload], int]:
     """
     Each argument's upload, in the order given, and how many arguments
     failed already: a path that does not exist, or a directory given
     without --recursive, --flatten or --sync, each reported and recorded.
     """
-    recursive = bool(ARGS_PARSER.recursive) or sync  # --sync implies --recursive
-    destination = ARGS_PARSER.destination
+    recursive = bool(ctx.args.recursive) or sync  # --sync implies --recursive
+    destination = ctx.args.destination
     several = len(local_paths) > 1
     uploads: list[_Upload] = []
     failed = 0

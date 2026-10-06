@@ -356,7 +356,7 @@ def _carry_out(ctx: RunContext, items: list[Item]):
         if shut_down_node_ids:
             print_info(f"Shut down {len(shut_down_node_ids)} Node(s)")
         if ctx.args.follow and shut_down_pool_ids:
-            follow_ids(shut_down_pool_ids, auto_cr=ctx.args.auto_cr)
+            follow_ids(ctx, shut_down_pool_ids, auto_cr=ctx.args.auto_cr)
     else:
         print_info("No Worker Pools or Nodes shut down")
 

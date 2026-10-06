@@ -22,6 +22,7 @@ from yellowdog_cli.compare import (
     PropertyMatch,
     WorkerPools,
 )
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 
 # ---------------------------------------------------------------------------
@@ -303,38 +304,37 @@ def platform(monkeypatch):
     client.worker_pool_client.get_nodes.side_effect = lambda search: SimpleNamespace(
         list_all=lambda: state.nodes
     )
-    monkeypatch.setattr(compare_module, "CLIENT", client)
-    monkeypatch.setattr(
-        compare_module, "ARGS_PARSER", SimpleNamespace(running_nodes_only=False)
+    state.ctx = RunContext(
+        args=SimpleNamespace(running_nodes_only=False),
+        config=MagicMock(),
+        client=client,
     )
-    WorkerPools._get_compute_requirement.cache_clear()
-    WorkerPools._get_all_nodes_in_worker_pool_cached.cache_clear()
     yield state
-    WorkerPools._get_compute_requirement.cache_clear()
-    WorkerPools._get_all_nodes_in_worker_pool_cached.cache_clear()
 
 
-def _rows(task_group, pool=None) -> dict[str, list[str]]:
+def _rows(platform, task_group, pool=None) -> dict[str, list[str]]:
     (report,) = WorkerPools(
-        [pool or _pool()]
+        platform.ctx, [pool or _pool()]
     ).check_task_group_for_matching_worker_pools(task_group)
     return {row[0]: row[1:] for row in report.detail_rows()}
 
 
 class TestMatching:
     def test_a_fully_matching_pool(self, platform):
-        rows = _rows(_run_spec(providers=[CloudProvider.AWS], regions=["eu-west-2"]))
+        rows = _rows(
+            platform, _run_spec(providers=[CloudProvider.AWS], regions=["eu-west-2"])
+        )
         assert {row[2] for row in rows.values()} == {"YES"}
 
     def test_the_compute_requirement_is_fetched_once_per_pool(self, platform):
-        pools = WorkerPools([_pool()])
+        pools = WorkerPools(platform.ctx, [_pool()])
         for _ in range(3):
             pools.check_task_group_for_matching_worker_pools(_run_spec())
         assert platform.cr_fetches == 1
 
     def test_fleet_overrides_are_instance_types(self, platform):
         platform.sources = [_aws(overrides=[SimpleNamespace(instanceType="t3.large")])]
-        rows = _rows(_run_spec(instanceTypes=["t3.small"]))
+        rows = _rows(platform, _run_spec(instanceTypes=["t3.small"]))
         assert rows["Instance Type(s)"] == ["t3.small", "t3.large, t3.small", "NO"]
 
     def test_an_unknown_provider_fails_a_provider_constraint(self, platform):
@@ -346,28 +346,34 @@ class TestMatching:
                 instanceType="sim",
             )
         ]
-        rows = _rows(_run_spec(providers=[CloudProvider.AWS]))
+        rows = _rows(platform, _run_spec(providers=[CloudProvider.AWS]))
         assert rows["Provider(s)"] == ["AWS", "UNKNOWN", "NO"]
 
     @pytest.mark.parametrize("worker_tags", [None, []])
     def test_no_worker_tags_is_no_constraint(self, platform, worker_tags):
-        assert _rows(_run_spec(workerTags=worker_tags))["Worker Tag(s)"][2] == "YES"
+        assert (
+            _rows(platform, _run_spec(workerTags=worker_tags))["Worker Tag(s)"][2]
+            == "YES"
+        )
 
     @pytest.mark.parametrize("namespaces", [None, []])
     def test_no_namespaces_is_no_constraint(self, platform, namespaces):
-        assert _rows(_run_spec(namespaces=namespaces))["Namespace(s)"][2] == "YES"
+        assert (
+            _rows(platform, _run_spec(namespaces=namespaces))["Namespace(s)"][2]
+            == "YES"
+        )
 
     def test_worker_tags_are_shown_sorted(self, platform):
-        rows = _rows(_run_spec(workerTags=["wt", "b", "a"]))
+        rows = _rows(platform, _run_spec(workerTags=["wt", "b", "a"]))
         assert rows["Worker Tag(s)"] == ["a, b, wt", "wt", "YES"]
 
     def test_no_task_types_is_yes_without_nodes(self, platform):
         platform.nodes = []
-        assert _rows(_run_spec(taskTypes=[]))["Task Type(s)"][2] == "YES"
+        assert _rows(platform, _run_spec(taskTypes=[]))["Task Type(s)"][2] == "YES"
 
     def test_task_types_without_nodes_are_maybe(self, platform):
         platform.nodes = []
-        assert _rows(_run_spec())["Task Type(s)"] == [
+        assert _rows(platform, _run_spec())["Task Type(s)"] == [
             "bash",
             UNKNOWN_STRING,
             "MAYBE (no Nodes available)",
@@ -378,18 +384,22 @@ class TestMatching:
             _node(status=NodeStatus.TERMINATED, task_types=()),
             _node(task_types=("bash", "docker")),
         ]
-        assert _rows(_run_spec())["Task Type(s)"] == ["bash", "bash, docker", "YES"]
+        assert _rows(platform, _run_spec())["Task Type(s)"] == [
+            "bash",
+            "bash, docker",
+            "YES",
+        ]
 
     def test_a_node_without_details_is_not_a_non_match(self, platform):
         platform.nodes = [_node(details=False)]
-        rows = _rows(_run_spec(ram=_dr(4.0, None), vcpus=_dr(1.0, 4.0)))
+        rows = _rows(platform, _run_spec(ram=_dr(4.0, None), vcpus=_dr(1.0, 4.0)))
         assert rows["RAM (GB)"][1:] == [UNKNOWN_STRING, "MAYBE (no Nodes available)"]
         assert rows["vCPUs Count"][2] == "MAYBE (no Nodes available)"
         assert rows["Task Type(s)"][2] == "MAYBE (no Nodes available)"
 
     def test_nodes_without_details_are_left_out_of_the_range(self, platform):
         platform.nodes = [_node(details=False), _node(ram=8.0)]
-        assert _rows(_run_spec(ram=_dr(4.0, None)))["RAM (GB)"] == [
+        assert _rows(platform, _run_spec(ram=_dr(4.0, None)))["RAM (GB)"] == [
             "4.0 or more",
             "8.0",
             "YES",
@@ -397,18 +407,16 @@ class TestMatching:
 
     def test_any_node_out_of_range_is_no(self, platform):
         platform.nodes = [_node(ram=16.0), _node(ram=2.0), _node(ram=8.0)]
-        assert _rows(_run_spec(ram=_dr(4.0, None)))["RAM (GB)"] == [
+        assert _rows(platform, _run_spec(ram=_dr(4.0, None)))["RAM (GB)"] == [
             "4.0 or more",
             "2.0, 8.0, 16.0",
             "NO",
         ]
 
-    def test_running_nodes_only(self, platform, monkeypatch):
-        monkeypatch.setattr(
-            compare_module, "ARGS_PARSER", SimpleNamespace(running_nodes_only=True)
-        )
+    def test_running_nodes_only(self, platform):
+        platform.ctx.args.running_nodes_only = True
         platform.nodes = [_node(status=NodeStatus.TERMINATED, ram=2.0), _node()]
-        assert _rows(_run_spec(ram=_dr(4.0, None)))["RAM (GB)"][2] == "YES"
+        assert _rows(platform, _run_spec(ram=_dr(4.0, None)))["RAM (GB)"][2] == "YES"
 
     def test_a_pool_that_cannot_be_compared_fails_in_its_place(self, platform):
         # The other pools are still compared
@@ -416,26 +424,30 @@ class TestMatching:
         broken.computeRequirementId = None
         broken.id, broken.name = "ydid:wrkrpool:000000:broken", "broken"
         reports = WorkerPools(
-            [broken, _pool()]
+            platform.ctx, [broken, _pool()]
         ).check_task_group_for_matching_worker_pools(_run_spec())
         assert isinstance(reports[0], FailedComparison)
         assert "has no Compute Requirement" in str(reports[0].error)
         assert reports[1].summary() == MatchType.YES
 
     def test_a_session_failure_stops_the_comparison(self, platform):
-        platform_client = compare_module.CLIENT
+        platform_client = platform.ctx.client
         platform_client.compute_client.get_compute_requirement_by_id.side_effect = (
             RequestsConnectionError("reset")
         )
         with pytest.raises(RequestsConnectionError):
-            WorkerPools([_pool()]).check_task_group_for_matching_worker_pools(
-                _run_spec()
-            )
+            WorkerPools(
+                platform.ctx, [_pool()]
+            ).check_task_group_for_matching_worker_pools(_run_spec())
 
 
 # ---------------------------------------------------------------------------
 # Lookup failures keep their exit codes
 # ---------------------------------------------------------------------------
+
+
+def _ctx(client) -> RunContext:
+    return RunContext(args=SimpleNamespace(), config=MagicMock(), client=client)
 
 
 def _http_error(status_code: int) -> HTTPError:
@@ -446,15 +458,15 @@ def _http_error(status_code: int) -> HTTPError:
 
 class TestLookupFailures:
     @pytest.fixture
-    def client(self, monkeypatch):
-        client = MagicMock()
-        monkeypatch.setattr(compare_module, "CLIENT", client)
-        return client
+    def client(self):
+        return MagicMock()
 
     def test_a_missing_work_requirement_is_not_found(self, client):
         client.work_client.get_work_requirement_by_id.side_effect = _http_error(404)
         with pytest.raises(NotFoundError) as raised:
-            compare_module._get_work_requirement_by_id("ydid:workreq:000000:x")
+            compare_module._get_work_requirement_by_id(
+                _ctx(client), "ydid:workreq:000000:x"
+            )
         assert (
             str(raised.value) == "Work Requirement ID 'ydid:workreq:000000:x' not found"
         )
@@ -466,7 +478,9 @@ class TestLookupFailures:
 
         monkeypatch.setattr(compare_module, "get_task_group_by_id", missing)
         with pytest.raises(NotFoundError) as raised:
-            compare_module._get_task_group_by_id("ydid:taskgrp:000000:x:1")
+            compare_module._get_task_group_by_id(
+                _ctx(MagicMock()), "ydid:taskgrp:000000:x:1"
+            )
         assert str(raised.value) == "Task Group ID 'ydid:taskgrp:000000:x:1' not found"
         assert classify(raised.value) == ExitCode.NOT_FOUND
 
@@ -476,7 +490,9 @@ class TestLookupFailures:
 
         monkeypatch.setattr(compare_module, "get_worker_pool_by_id", missing)
         with pytest.raises(NotFoundError) as raised:
-            compare_module._get_provisioned_worker_pool_by_id("ydid:wrkrpool:000000:x")
+            compare_module._get_provisioned_worker_pool_by_id(
+                _ctx(MagicMock()), "ydid:wrkrpool:000000:x"
+            )
         assert classify(raised.value) == ExitCode.NOT_FOUND
 
     @pytest.mark.parametrize(
@@ -489,5 +505,7 @@ class TestLookupFailures:
     def test_other_failures_keep_their_exit_codes(self, client, error, code):
         client.work_client.get_work_requirement_by_id.side_effect = error
         with pytest.raises(RuntimeError) as raised:
-            compare_module._get_work_requirement_by_id("ydid:workreq:000000:x")
+            compare_module._get_work_requirement_by_id(
+                _ctx(client), "ydid:workreq:000000:x"
+            )
         assert classify(raised.value) == code

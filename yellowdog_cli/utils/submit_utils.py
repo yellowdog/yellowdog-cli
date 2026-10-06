@@ -27,6 +27,7 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
@@ -80,7 +81,6 @@ from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER
 
 # Names for environment variables optionally added to each Task's environment
 YD_NAMESPACE = "YD_NAMESPACE"
@@ -134,11 +134,13 @@ def update_config_work_requirement_object(
     return ConfigWorkRequirement(**config_wr_dict)
 
 
-def pause_between_batches(task_batch_size: int, batch_number: int, num_tasks: int):
+def pause_between_batches(
+    ctx: RunContext, task_batch_size: int, batch_number: int, num_tasks: int
+):
     """
     Process a pause between Task batches.
     """
-    if ARGS_PARSER.pause_between_batches is None:
+    if ctx.args.pause_between_batches is None:
         return
 
     first_batch: bool = batch_number == 0
@@ -150,7 +152,7 @@ def pause_between_batches(task_batch_size: int, batch_number: int, num_tasks: in
         else f"Task {task_num_start}"
     )
 
-    if ARGS_PARSER.pause_between_batches <= 0:  # Manual delay
+    if ctx.args.pause_between_batches <= 0:  # Manual delay
         if first_batch:
             print_info(
                 f"Submitting batch number {batch_number + 1} ({task_range_str})",
@@ -164,18 +166,18 @@ def pause_between_batches(task_batch_size: int, batch_number: int, num_tasks: in
                 f" {batch_number + 1} ({task_range_str}). Press enter to continue:"
             )
 
-    elif ARGS_PARSER.pause_between_batches > 0:  # Automatic delay
+    elif ctx.args.pause_between_batches > 0:  # Automatic delay
         print_info(
             f"Submitting batch number {batch_number + 1} ({task_range_str})"
             if first_batch
             else (
-                f"Pausing for {ARGS_PARSER.pause_between_batches} seconds before"
+                f"Pausing for {ctx.args.pause_between_batches} seconds before"
                 f" submitting batch number {batch_number + 1}"
                 f" ({task_range_str})"
             )
         )
         if not first_batch:
-            sleep(ARGS_PARSER.pause_between_batches)
+            sleep(ctx.args.pause_between_batches)
 
 
 def generate_taskdata_object(
@@ -578,8 +580,10 @@ class RcloneUploadedFiles:
 
     def __init__(
         self,
+        ctx: RunContext,
         files_directory: str = ".",
     ):
+        self._ctx = ctx
         self._rcloned_files: list[RcloneUploadedFile] = []
         self._files_directory = abspath(files_directory)
         self._working_directory = getcwd()
@@ -637,7 +641,7 @@ class RcloneUploadedFiles:
                         f" '{self._bucket_and_prefix(rclone_uploaded_file)}'"
                     )
 
-            if not ARGS_PARSER.dry_run:
+            if not self._ctx.args.dry_run:
                 try:
                     self._upload_rclone_file_core(rclone_uploaded_file)
                 except Exception as e:
@@ -672,7 +676,7 @@ class RcloneUploadedFiles:
 
         remote_dest = f"{remote_name}:{remote_path}"
 
-        if not ARGS_PARSER.overwrite and rclone.exists(remote_dest):
+        if not self._ctx.args.overwrite and rclone.exists(remote_dest):
             print_info(
                 f"Skipping upload of '{rclone_upload_file.local_file_path}'"
                 f" (already exists at '{self._bucket_and_prefix(rclone_upload_file)}')"

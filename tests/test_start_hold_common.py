@@ -17,7 +17,7 @@ Covers:
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as RequestsConnectionError
@@ -223,7 +223,7 @@ class TestListing:
 
         work.start_work_requirement_by_id.side_effect = start
         _run(platform, START, [], follow=True)
-        shc_module.follow_ids.assert_called_once_with([WR_A])
+        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A])
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ class TestFinish:
         ]
         assert [r["outcome"] for r in platform.records] == ["finished", "finished"]
         # Only those this run finished are followed
-        shc_module.follow_ids.assert_called_once_with([WR_A, WR_B])
+        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A, WR_B])
 
     def test_a_glob(self, platform, monkeypatch):
         platform.wrs = {

@@ -10,6 +10,7 @@ from typing import Any
 
 from yellowdog_client.model import ConfiguredWorkerPool
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     RESOURCE_PROPERTY_NAME,
     RN_ALLOWANCE,
@@ -44,7 +45,7 @@ from yellowdog_cli.utils.printing import (
     print_yd_object,
 )
 from yellowdog_cli.utils.property_names import PROP_GROUPS
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,
     TYPE_COMPSRC,
@@ -63,10 +64,10 @@ ShowItem = tuple[Any, dict | None]
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # At least one ID is required, and '--substitute-ids' refused where no ID
     # can use it, as the command line is parsed
-    if exit_code := show_ydids(ARGS_PARSER.yellowdog_ids):
+    if exit_code := show_ydids(ctx, ctx.args.yellowdog_ids):
         sys_exit(exit_code)
 
 
@@ -85,7 +86,7 @@ def _report_not_found(message: str) -> None:
     _TALLY.not_found += 1
 
 
-def show_ydids(ydids: list[str]) -> int:
+def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     """
     Resolve and print the details of each of the supplied YellowDog IDs, and
     return the exit code: 0 if all were shown; 6 (NOT_FOUND) if those that
@@ -94,7 +95,7 @@ def show_ydids(ydids: list[str]) -> int:
     (authentication, connection) stops the run: what was resolved is printed
     and the failure raised with its own exit code.
     """
-    if ARGS_PARSER.strip_ids:
+    if ctx.args.strip_ids:
         print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
     _TALLY.not_found = 0
@@ -108,7 +109,7 @@ def show_ydids(ydids: list[str]) -> int:
     as_json_array = len(ydids) > 1
     for index, ydid in enumerate(ydids):
         try:
-            resolved = resolve_details(ydid)
+            resolved = resolve_details(ctx, ydid)
         except Exception as e:  # Re-raised by the resolvers only if SESSION_FAILURES
             print_error(f"Unable to show details for '{ydid}': {e}")
             if remaining := len(ydids) - index - 1:
@@ -116,21 +117,21 @@ def show_ydids(ydids: list[str]) -> int:
                     f"Not attempting the remaining {remaining} ID(s), which would"
                     " fail in the same way"
                 )
-            _print_items(items, as_json_array=as_json_array or len(items) > 1)
+            _print_items(ctx, items, as_json_array=as_json_array or len(items) > 1)
             raise ReportedFailure(e)
         if resolved is None:  # The reason has already been reported
             failures += 1
             continue
         items += resolved
 
-    _print_items(items, as_json_array=as_json_array or len(items) > 1)
+    _print_items(ctx, items, as_json_array=as_json_array or len(items) > 1)
 
     if not failures:
         return ExitCode.SUCCESS
     return ExitCode.NOT_FOUND if _TALLY.not_found == failures else ExitCode.FAILURE
 
 
-def _print_items(items: list[ShowItem], as_json_array: bool):
+def _print_items(ctx: RunContext, items: list[ShowItem], as_json_array: bool):
     """
     Print the resolved objects, framing them as a JSON array if required.
     This is the only place the array's indentation and its separating commas
@@ -138,8 +139,8 @@ def _print_items(items: list[ShowItem], as_json_array: bool):
     """
     if as_json_array:
         print("[")
-        if ARGS_PARSER.output_file is not None:
-            print_to_file("[", ARGS_PARSER.output_file)
+        if ctx.args.output_file is not None:
+            print_to_file("[", ctx.args.output_file)
 
     for index, (yd_object, add_fields) in enumerate(items):
         print_yd_object(
@@ -151,11 +152,11 @@ def _print_items(items: list[ShowItem], as_json_array: bool):
 
     if as_json_array:
         print("]")
-        if ARGS_PARSER.output_file is not None:
-            print_to_file("]", ARGS_PARSER.output_file)
+        if ctx.args.output_file is not None:
+            print_to_file("]", ctx.args.output_file)
 
 
-def resolve_details(ydid: str) -> list[ShowItem] | None:
+def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
     """
     Resolve a YellowDog ID to the object(s) to be shown. Returns None if the ID
     could not be resolved, having already reported why.
@@ -168,7 +169,9 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form
     if (cr_id_instance_id := split_instance_specification(ydid)) is not None:
-        return _resolve_instance_details(cr_id_instance_id[0], cr_id_instance_id[1])
+        return _resolve_instance_details(
+            ctx, cr_id_instance_id[0], cr_id_instance_id[1]
+        )
 
     try:
         if (ydid_type := get_ydid_type(ydid)) is None:
@@ -177,12 +180,13 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         if ydid_type == YDIDType.COMPUTE_SOURCE_TEMPLATE:
             print_info(f"Showing details of Compute Source Template ID '{ydid}'")
-            if ARGS_PARSER.substitute_ids:
+            if ctx.args.substitute_ids:
                 print_info("Substituting Image Family ID with name")
             return [
                 (
                     substitute_image_family_id_for_name_in_cst(
-                        CLIENT, CLIENT.compute_client.get_compute_source_template(ydid)
+                        ctx.client,
+                        ctx.client.compute_client.get_compute_source_template(ydid),
                     ),
                     {RESOURCE_PROPERTY_NAME: RN_SOURCE_TEMPLATE},
                 )
@@ -190,15 +194,17 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.COMPUTE_REQUIREMENT_TEMPLATE:
             print_info(f"Showing details of Compute Requirement Template ID '{ydid}'")
-            if ARGS_PARSER.substitute_ids:
+            if ctx.args.substitute_ids:
                 print_info(
                     "Substituting Compute Source Template IDs and Image Family IDs with names"
                 )
             return [
                 (
                     substitute_ids_for_names_in_crt(
-                        CLIENT,
-                        CLIENT.compute_client.get_compute_requirement_template(ydid),
+                        ctx.client,
+                        ctx.client.compute_client.get_compute_requirement_template(
+                            ydid
+                        ),
                     ),
                     {RESOURCE_PROPERTY_NAME: RN_REQUIREMENT_TEMPLATE},
                 )
@@ -206,12 +212,16 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.COMPUTE_REQUIREMENT:
             print_info(f"Showing details of Compute Requirement ID '{ydid}'")
-            return [(CLIENT.compute_client.get_compute_requirement_by_id(ydid), None)]
+            return [
+                (ctx.client.compute_client.get_compute_requirement_by_id(ydid), None)
+            ]
 
         elif ydid_type == YDIDType.COMPUTE_SOURCE:
             print_info(f"Showing details of Compute Source ID '{ydid}'")
-            compute_requirement = CLIENT.compute_client.get_compute_requirement_by_id(
-                ydid.rsplit(":", 1)[0].replace(TYPE_COMPSRC, TYPE_COMPREQ)
+            compute_requirement = (
+                ctx.client.compute_client.get_compute_requirement_by_id(
+                    ydid.rsplit(":", 1)[0].replace(TYPE_COMPSRC, TYPE_COMPREQ)
+                )
             )
             for source in compute_requirement.provisionStrategy.sources or []:
                 if source.id == ydid:
@@ -221,7 +231,7 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.WORKER_POOL:
             print_info(f"Showing details of Worker Pool ID '{ydid}'")
-            worker_pool = CLIENT.worker_pool_client.get_worker_pool_by_id(ydid)
+            worker_pool = ctx.client.worker_pool_client.get_worker_pool_by_id(ydid)
             items: list[ShowItem] = [
                 (
                     worker_pool,
@@ -232,11 +242,11 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
                     ),
                 )
             ]
-            if ARGS_PARSER.show_token and isinstance(worker_pool, ConfiguredWorkerPool):
+            if ctx.args.show_token and isinstance(worker_pool, ConfiguredWorkerPool):
                 print_info("Showing Configured Worker Pool token data")
                 items.append(
                     (
-                        CLIENT.worker_pool_client.get_configured_worker_pool_token_by_id(
+                        ctx.client.worker_pool_client.get_configured_worker_pool_token_by_id(
                             ydid
                         ),
                         None,
@@ -246,11 +256,11 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.NODE:
             print_info(f"Showing details of Node ID '{ydid}'")
-            return [(CLIENT.worker_pool_client.get_node_by_id(ydid), None)]
+            return [(ctx.client.worker_pool_client.get_node_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.WORKER:
             print_info(f"Showing details of Worker ID '{ydid}'")
-            node = CLIENT.worker_pool_client.get_node_by_id(
+            node = ctx.client.worker_pool_client.get_node_by_id(
                 ydid.rsplit(":", 1)[0].replace(TYPE_WRKR, TYPE_NODE)
             )
             for worker in node.workers or []:
@@ -261,11 +271,11 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.WORK_REQUIREMENT:
             print_info(f"Showing details of Work Requirement ID '{ydid}'")
-            return [(CLIENT.work_client.get_work_requirement_by_id(ydid), None)]
+            return [(ctx.client.work_client.get_work_requirement_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.TASK_GROUP:
             print_info(f"Showing details of Task Group ID '{ydid}'")
-            work_requirement = CLIENT.work_client.get_work_requirement_by_id(
+            work_requirement = ctx.client.work_client.get_work_requirement_by_id(
                 work_requirement_id_of_task_group(ydid)
             )
             for task_group in work_requirement.taskGroups or []:
@@ -276,46 +286,47 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.TASK:
             print_info(f"Showing details of Task ID '{ydid}'")
-            return [(CLIENT.work_client.get_task_by_id(ydid), None)]
+            return [(ctx.client.work_client.get_task_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.IMAGE_FAMILY:
             print_info(f"Showing details of Image Family ID '{ydid}'")
             return [
                 (
-                    CLIENT.images_client.get_image_family_by_id(ydid),
+                    ctx.client.images_client.get_image_family_by_id(ydid),
                     {RESOURCE_PROPERTY_NAME: RN_IMAGE_FAMILY},
                 )
             ]
 
         elif ydid_type == YDIDType.IMAGE_GROUP:
             print_info(f"Showing details of Image Group ID '{ydid}'")
-            return [(CLIENT.images_client.get_image_group_by_id(ydid), None)]
+            return [(ctx.client.images_client.get_image_group_by_id(ydid), None)]
 
         elif ydid_type == YDIDType.IMAGE:
             print_info(f"Showing details of Image ID '{ydid}'")
-            return [(CLIENT.images_client.get_image(ydid), None)]
+            return [(ctx.client.images_client.get_image(ydid), None)]
 
         elif ydid_type == YDIDType.KEYRING:
             print_info(f"Showing details of Keyring ID '{ydid}'")
             # The Keyring with its credentials and accessors, in one call
-            keyring = CLIENT.keyring_client.get_keyring(ydid)
+            keyring = ctx.client.keyring_client.get_keyring(ydid)
             return [(keyring, {RESOURCE_PROPERTY_NAME: RN_KEYRING})]
 
         elif ydid_type == YDIDType.ALLOWANCE:
             print_info(f"Showing details of Allowance ID '{ydid}'")
-            allowance = CLIENT.allowances_client.get_allowance_by_id(ydid)
-            if ARGS_PARSER.substitute_ids:
+            allowance = ctx.client.allowances_client.get_allowance_by_id(ydid)
+            if ctx.args.substitute_ids:
                 print_info("Substituting ID with name")
-                allowance = substitute_id_for_name_in_allowance(CLIENT, allowance)  # type: ignore[arg-type]
+                allowance = substitute_id_for_name_in_allowance(ctx.client, allowance)  # type: ignore[arg-type]
             return [(allowance, {RESOURCE_PROPERTY_NAME: RN_ALLOWANCE})]
 
         elif ydid_type == YDIDType.APPLICATION:
             print_info(f"Showing details of Application ID '{ydid}'")
             # The Application first, so that one that does not exist is
             # reported as such rather than by its groups' lookup
-            application = CLIENT.account_client.get_application(ydid)
+            application = ctx.client.account_client.get_application(ydid)
             group_names = [
-                group.name for group in get_application_group_summaries(CLIENT, ydid)
+                group.name
+                for group in get_application_group_summaries(ctx.client, ydid)
             ]
             return [
                 (
@@ -329,14 +340,14 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
 
         elif ydid_type == YDIDType.USER:
             print_info(f"Showing details of User ID '{ydid}'")
-            user = CLIENT.account_client.get_user(ydid)
+            user = ctx.client.account_client.get_user(ydid)
             return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
 
         elif ydid_type == YDIDType.GROUP:
             print_info(f"Showing details of Group ID '{ydid}'")
             return [
                 (
-                    CLIENT.account_client.get_group(ydid),
+                    ctx.client.account_client.get_group(ydid),
                     {RESOURCE_PROPERTY_NAME: RN_GROUP},
                 )
             ]
@@ -345,7 +356,7 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
             print_info(f"Showing details of Role ID '{ydid}'")
             return [
                 (
-                    CLIENT.account_client.get_role(ydid),
+                    ctx.client.account_client.get_role(ydid),
                     {RESOURCE_PROPERTY_NAME: RN_ROLE},
                 )
             ]
@@ -365,7 +376,9 @@ def resolve_details(ydid: str) -> list[ShowItem] | None:
         return None
 
 
-def _resolve_instance_details(cr_id: str, instance_id: str) -> list[ShowItem] | None:
+def _resolve_instance_details(
+    ctx: RunContext, cr_id: str, instance_id: str
+) -> list[ShowItem] | None:
     """
     Resolve the details of an Instance within a Compute Requirement, supplied
     in 'cr_id.instance_id' form.
@@ -379,7 +392,7 @@ def _resolve_instance_details(cr_id: str, instance_id: str) -> list[ShowItem] | 
     # returns an empty list for a non-existent Compute Requirement, which is
     # indistinguishable from a Compute Requirement without this Instance
     try:
-        CLIENT.compute_client.get_compute_requirement_by_id(cr_id)
+        ctx.client.compute_client.get_compute_requirement_by_id(cr_id)
     except Exception as e:
         if classify(e) in SESSION_FAILURES:
             raise  # For show_ydids(), which stops
@@ -390,7 +403,7 @@ def _resolve_instance_details(cr_id: str, instance_id: str) -> list[ShowItem] | 
         return None
 
     try:
-        instance = get_instance_by_id(CLIENT, cr_id, instance_id)
+        instance = get_instance_by_id(ctx.client, cr_id, instance_id)
     except Exception as e:
         if classify(e) in SESSION_FAILURES:
             raise  # For show_ydids(), which stops

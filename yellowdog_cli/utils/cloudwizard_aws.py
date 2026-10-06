@@ -7,7 +7,6 @@ from time import sleep
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils.cloudwizard_aws_types import (
     AWSAccessKey,
@@ -16,6 +15,7 @@ from yellowdog_cli.utils.cloudwizard_aws_types import (
     AWSUser,
 )
 from yellowdog_cli.utils.cloudwizard_common import CommonCloudConfig, print_error
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
@@ -90,7 +90,7 @@ class AWSConfig(CommonCloudConfig):
 
     def __init__(
         self,
-        client: PlatformClient,
+        ctx: RunContext,
         region_name: str | None,
         show_secrets: bool = False,
         instance_type: str | None = None,
@@ -98,7 +98,7 @@ class AWSConfig(CommonCloudConfig):
         """
         Set up AWS config details.
         """
-        super().__init__(client=client, cloud_provider="AWS")
+        super().__init__(ctx=ctx, cloud_provider="AWS")
         try:  # Check for valid credentials
             boto3.client("iam").list_users(MaxItems=1)
         except (ClientError, BotoCoreError) as e:
@@ -314,7 +314,7 @@ class AWSConfig(CommonCloudConfig):
 
         # Create Compute Source Templates
         print_info("Creating YellowDog Compute Source Templates")
-        create_resources(self._source_template_resources)
+        create_resources(self._ctx, self._source_template_resources)
 
         # Create Compute Requirement Templates
         self._create_compute_requirement_templates(resource_prefix=YD_RESOURCE_PREFIX)
@@ -338,7 +338,7 @@ class AWSConfig(CommonCloudConfig):
                 credential_resource = self._generate_yd_aws_credential(
                     YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
                 )
-                create_resources([credential_resource])
+                create_resources(self._ctx, [credential_resource])
             else:
                 print_warning("AWS Credential not added to YellowDog Keyring")
 

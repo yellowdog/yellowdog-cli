@@ -6,6 +6,7 @@ per-resource failure for a missing 'resource' naming no internal key.
 """
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -121,15 +122,16 @@ def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
     monkeypatch.setattr(module, "print_warning", lambda *a, **k: handled.append("w"))
     monkeypatch.setattr(module, "record_resource", lambda *a, **k: None)
     run = getattr(module, dispatch)
+    ctx = MagicMock()  # the handlers are stubbed
     for resource_type in RESOURCE_TYPES:
         before = len(handled)
         if module_name == "resource_creation":
-            run(resource_type, {}, None, False)
+            run(ctx, resource_type, {}, None, False)
         else:
-            run(resource_type, {})
+            run(ctx, resource_type, {})
         assert len(handled) == before + 1, resource_type
     with pytest.raises(ValueError, match="Unknown resource type"):
         if module_name == "resource_creation":
-            run("NoSuchType", {}, None, False)
+            run(ctx, "NoSuchType", {}, None, False)
         else:
-            run("NoSuchType", {})
+            run(ctx, "NoSuchType", {})

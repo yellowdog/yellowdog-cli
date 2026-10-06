@@ -39,6 +39,7 @@ from yellowdog_client.model.instance_pricing_preference import (
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.csv_data import (
     csv_expand_toml_tasks,
     load_json_file_with_csv_task_expansion,
@@ -187,7 +188,7 @@ from yellowdog_cli.utils.variable_syntax import (
     L_WR_NAME,
     VAR_NAME_OF_UNNAMED_TASK,
 )
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, CONFIG_COMMON, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 # The Work Requirement configuration from the TOML file, read on first use
@@ -212,40 +213,40 @@ def _task_batch_size() -> int:
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
 
-    if ARGS_PARSER.upgrade_rclone:
+    if ctx.args.upgrade_rclone:
         upgrade_rclone()
         return
 
-    if ARGS_PARSER.which_rclone:
+    if ctx.args.which_rclone:
         which_rclone()
         return
 
     global ID
-    ID = generate_id(CONFIG_COMMON.name_tag)
+    ID = generate_id(ctx.config.name_tag)
 
     # The task batch size is checked as the configuration is loaded, and
     # the options '--json-raw' cannot be combined with as the command line is
     # parsed ('check_submit_combinations' in the registry)
-    if ARGS_PARSER.json_raw:
-        submit_json_raw(ARGS_PARSER.json_raw)
+    if ctx.args.json_raw:
+        submit_json_raw(ctx, ctx.args.json_raw)
         return
 
     # Direct file > file supplied using '-r' > file supplied in config file
     wr_data_file = (
         (
             CONFIG_WR.wr_data_file
-            if ARGS_PARSER.work_req_file is None
-            else ARGS_PARSER.work_req_file
+            if ctx.args.work_req_file is None
+            else ctx.args.work_req_file
         )
-        if ARGS_PARSER.work_requirement_file_positional is None
-        else ARGS_PARSER.work_requirement_file_positional
+        if ctx.args.work_requirement_file_positional is None
+        else ctx.args.work_requirement_file_positional
     )
 
-    csv_files = _csv_files()
+    csv_files = _csv_files(ctx)
 
-    if csv_files is None and ARGS_PARSER.process_csv_only:
+    if csv_files is None and ctx.args.process_csv_only:
         raise ValueError(
             "Option '--process-csv-only' is only valid if CSV file(s) specified"
         )
@@ -254,8 +255,8 @@ def main():
     # content-path > wr_data_file location > config file location
     files_directory = (
         (config_file_dir() if wr_data_file is None else dirname(wr_data_file))
-        if ARGS_PARSER.content_path is None
-        else ARGS_PARSER.content_path
+        if ctx.args.content_path is None
+        else ctx.args.content_path
     )
 
     if wr_data_file is None and csv_files is not None:
@@ -263,17 +264,15 @@ def main():
         # configuration and the CSV file, with task-level prototype
         # properties (taskName, taskGroupName, taskTimeout) no file may
         # carry, so there is nothing of the user's to check it against
-        if ARGS_PARSER.validate:
+        if ctx.args.validate:
             raise ValueError(
                 "Option '--validate' needs a Work Requirement specification file"
             )
         wr_data = _work_requirement_from_csv(csv_files, files_directory)
-        _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
+        _submit_or_add_to(ctx, files_directory=files_directory, wr_data=wr_data)
 
     elif wr_data_file is not None:
-        if ARGS_PARSER.jsonnet_dry_run and not wr_data_file.lower().endswith(
-            ".jsonnet"
-        ):
+        if ctx.args.jsonnet_dry_run and not wr_data_file.lower().endswith(".jsonnet"):
             raise ValueError(
                 "Option '--jsonnet-dry-run' can only be used with files ending in '.jsonnet'"
             )
@@ -330,34 +329,34 @@ def main():
         # Every branch above -- JSON, Jsonnet, TOML, each with or without CSV
         # task expansion -- arrives here with the loaded document
         wr_data = check_specification(
-            Family.WORK_REQUIREMENT, wr_data, wr_data_file, bool(ARGS_PARSER.validate)
+            Family.WORK_REQUIREMENT, wr_data, wr_data_file, bool(ctx.args.validate)
         )
         validate_properties(wr_data, "Work Requirement JSON")
-        _submit_or_add_to(files_directory=files_directory, wr_data=wr_data)
+        _submit_or_add_to(ctx, files_directory=files_directory, wr_data=wr_data)
 
     else:
-        if ARGS_PARSER.validate:
+        if ctx.args.validate:
             raise ValueError(
                 "Option '--validate' needs a Work Requirement specification file"
             )
         _submit_or_add_to(
-            files_directory=files_directory, task_count=CONFIG_WR.task_count
+            ctx, files_directory=files_directory, task_count=CONFIG_WR.task_count
         )
 
-    if ARGS_PARSER.dry_run:
-        if ARGS_PARSER.json_output:
+    if ctx.args.dry_run:
+        if ctx.args.json_output:
             record_document(WR_SNAPSHOT.wr_data)
         else:
             WR_SNAPSHOT.print()
 
 
-def _csv_files() -> list[str] | None:
+def _csv_files(ctx: RunContext) -> list[str] | None:
     """
     The CSV files named, on the command line or else in the configuration;
     None if none is, as 'csvFiles = []' in the configuration names none.
     """
     csv_files = (
-        CONFIG_WR.csv_files if ARGS_PARSER.csv_files is None else ARGS_PARSER.csv_files
+        CONFIG_WR.csv_files if ctx.args.csv_files is None else ctx.args.csv_files
     )
     return csv_files or None
 
@@ -379,6 +378,7 @@ def _work_requirement_from_csv(csv_files: list[str], files_directory: str) -> di
 
 
 def _submit_or_add_to(
+    ctx: RunContext,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -388,14 +388,16 @@ def _submit_or_add_to(
     otherwise into a new one. Both honour '--dry-run', though only the former
     needs to read from the platform to do so.
     """
-    if ARGS_PARSER.add_to:
+    if ctx.args.add_to:
         add_to_existing_work_requirement(
+            ctx,
             files_directory=files_directory,
             wr_data=wr_data,
             task_count=task_count,
         )
     else:
         submit_work_requirement(
+            ctx,
             files_directory=files_directory,
             wr_data=wr_data,
             task_count=task_count,
@@ -403,6 +405,7 @@ def _submit_or_add_to(
 
 
 def submit_work_requirement(
+    ctx: RunContext,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -419,7 +422,7 @@ def submit_work_requirement(
     # Create a default tasks_data dictionary if required
     if wr_data is None:
         wr_data = (
-            {TASK_GROUPS: []} if ARGS_PARSER.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
+            {TASK_GROUPS: []} if ctx.args.empty else {TASK_GROUPS: [{TASKS: [{}]}]}
         )
     check_dict(wr_data)
     check_task_groups(wr_data)
@@ -445,7 +448,7 @@ def submit_work_requirement(
 
     # Handle any files that need to be uploaded
     global RCLONE_UPLOADED_FILES
-    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(files_directory=files_directory)
+    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(ctx, files_directory=files_directory)
 
     expand_task_groups(wr_data)
 
@@ -468,31 +471,31 @@ def submit_work_requirement(
     wr_tag = check_str(
         wr_data.get(
             WR_TAG,
-            CONFIG_COMMON.name_tag if CONFIG_WR.wr_tag is None else CONFIG_WR.wr_tag,
+            ctx.config.name_tag if CONFIG_WR.wr_tag is None else CONFIG_WR.wr_tag,
         ),
         WR_TAG,
     )
     work_requirement = WorkRequirement(
-        namespace=CONFIG_COMMON.namespace,
+        namespace=ctx.config.namespace,
         name=ID,
         taskGroups=task_groups,
         tag=wr_tag,
         priority=priority,
     )
-    if not ARGS_PARSER.dry_run:
-        work_requirement = CLIENT.work_client.add_work_requirement(work_requirement)
+    if not ctx.args.dry_run:
+        work_requirement = ctx.client.work_client.add_work_requirement(work_requirement)
         # Recorded now, so a failure adding its Tasks still reports it
         record_entity(
             work_requirement.id,
             work_requirement.name,
-            CONFIG_COMMON.namespace,
+            ctx.config.namespace,
             ET_WORK_REQUIREMENTS,
         )
         print_quiet_result(work_requirement.id)
         print_info(
             "Created "
-            f"{link_entity(CONFIG_COMMON.url, work_requirement)} "
-            f"('{CONFIG_COMMON.namespace}/{work_requirement.name}')"
+            f"{link_entity(ctx.config.url, work_requirement)} "
+            f"('{ctx.config.namespace}/{work_requirement.name}')"
         )
         print_info(f"YellowDog ID is '{work_requirement.id}'")
     else:
@@ -502,13 +505,14 @@ def submit_work_requirement(
         # Held before any Task is added, so that none starts; inside the
         # clean-up, as a Work Requirement that cannot be held as asked is
         # one left live without its Tasks
-        if ARGS_PARSER.hold and not ARGS_PARSER.dry_run:
-            CLIENT.work_client.hold_work_requirement(work_requirement)
+        if ctx.args.hold and not ctx.args.dry_run:
+            ctx.client.work_client.hold_work_requirement(work_requirement)
             print_info("Work Requirement status is set to 'HELD'")
 
         # Add Tasks to their Task Groups
         for tg_number, task_group in enumerate(task_groups):
             add_tasks_to_task_group(
+                ctx,
                 tg_number,
                 task_group,
                 cast(dict, wr_data),
@@ -520,13 +524,13 @@ def submit_work_requirement(
     # An interrupt too: Ctrl-C part-way through would otherwise leave the
     # Work Requirement live with only some of its Tasks
     except (Exception, KeyboardInterrupt):
-        cleanup_on_failure(work_requirement)
+        cleanup_on_failure(ctx, work_requirement)
         raise
 
-    if ARGS_PARSER.progress:
-        follow_progress_bar(work_requirement)
-    elif ARGS_PARSER.follow:
-        follow_progress(work_requirement)
+    if ctx.args.progress:
+        follow_progress_bar(ctx, work_requirement)
+    elif ctx.args.follow:
+        follow_progress(ctx, work_requirement)
 
 
 def check_task_groups(wr_data: dict) -> None:
@@ -935,6 +939,7 @@ def create_task_group(
 
 
 def add_tasks_to_task_group(
+    ctx: RunContext,
     tg_number: int,
     task_group: TaskGroup,
     wr_data: dict,
@@ -1000,7 +1005,7 @@ def add_tasks_to_task_group(
     tasks = wr_data[TASK_GROUPS][tg_number][TASKS]
     num_tasks = len(tasks) if task_count is None else task_count
     num_task_batches: int = ceil(num_tasks / batch_size)
-    if num_task_batches > 1 and not ARGS_PARSER.dry_run:
+    if num_task_batches > 1 and not ctx.args.dry_run:
         print_info(
             f"Adding Tasks to Task Group '{task_group.name}' in "
             f"{num_task_batches} batches (batch size = {batch_size})"
@@ -1016,7 +1021,7 @@ def add_tasks_to_task_group(
 
     num_submitted_tasks = 0
 
-    parallel_upload_threads = _parallel_batches()
+    parallel_upload_threads = _parallel_batches(ctx)
 
     # Single batch or sequential batch submission; a Task Group with no Tasks
     # has no batches, and a pool of no threads cannot be built for it
@@ -1024,13 +1029,15 @@ def add_tasks_to_task_group(
         if num_task_batches > 1:
             print_info(f"Uploading {num_task_batches} Task batches sequentially")
         for batch_number in range(num_task_batches):
-            if ARGS_PARSER.pause_between_batches is not None and num_task_batches > 1:
+            if ctx.args.pause_between_batches is not None and num_task_batches > 1:
                 pause_between_batches(
+                    ctx,
                     task_batch_size=batch_size,
                     batch_number=batch_number,
                     num_tasks=num_tasks,
                 )
             tasks_list = generate_batch_of_tasks_for_task_group(
+                ctx,
                 (batch_size * batch_number),
                 min(batch_size * (batch_number + 1), num_tasks),
                 wr_data,
@@ -1045,6 +1052,7 @@ def add_tasks_to_task_group(
                 wr_tg_index=tg_number,
             )
             num_submitted_tasks += submit_batch_of_tasks_to_task_group(
+                ctx,
                 tasks_list,
                 work_requirement,
                 task_group,
@@ -1056,7 +1064,7 @@ def add_tasks_to_task_group(
 
     # Parallel batches
     else:
-        if ARGS_PARSER.pause_between_batches is not None:
+        if ctx.args.pause_between_batches is not None:
             print_warning(
                 "Option 'pause-between-batches/-P' is ignored for parallel batch uploads"
             )
@@ -1069,7 +1077,9 @@ def add_tasks_to_task_group(
             for batch_number in range(num_task_batches):
                 batches.submit(
                     submit_batch_of_tasks_to_task_group,
+                    ctx,
                     generate_batch_of_tasks_for_task_group(
+                        ctx,
                         (batch_size * batch_number),
                         min(batch_size * (batch_number + 1), num_tasks),
                         wr_data,
@@ -1092,7 +1102,7 @@ def add_tasks_to_task_group(
                 )
             num_submitted_tasks = batches.total()
 
-    if not ARGS_PARSER.dry_run:
+    if not ctx.args.dry_run:
         if num_submitted_tasks > 0:
             print_info(
                 f"Added a total of {num_submitted_tasks:,d} Task(s) to Task Group"
@@ -1145,18 +1155,19 @@ class _Batches:
         return total
 
 
-def _parallel_batches() -> int:
+def _parallel_batches(ctx: RunContext) -> int:
     """
     The number of Task batches to upload in parallel: the command line's,
     else the configuration's, else the default.
     """
-    for parallel_batches in (ARGS_PARSER.parallel_batches, CONFIG_WR.parallel_batches):
+    for parallel_batches in (ctx.args.parallel_batches, CONFIG_WR.parallel_batches):
         if parallel_batches is not None:
             return parallel_batches
     return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
 
 
 def generate_batch_of_tasks_for_task_group(
+    ctx: RunContext,
     start_task_number: int,
     end_task_number: int,
     wr_data: dict,
@@ -1343,7 +1354,7 @@ def generate_batch_of_tasks_for_task_group(
                 add_yd_env_vars=add_yd_env_vars,
                 task_data_inputs_and_outputs=task_data_inputs_and_outputs,
                 wr_name=ID,
-                namespace=CONFIG_COMMON.namespace,
+                namespace=ctx.config.namespace,
                 total_num_task_groups=num_task_groups,
                 total_num_tasks=display_num_tasks,
             )
@@ -1384,6 +1395,7 @@ def _task_type_of(
 
 
 def submit_batch_of_tasks_to_task_group(
+    ctx: RunContext,
     tasks_list: list[Task],
     work_requirement: WorkRequirement,
     task_group: TaskGroup,
@@ -1396,7 +1408,7 @@ def submit_batch_of_tasks_to_task_group(
     Submit a batch of tasks to a task group. Return the number of tasks
     submitted.
     """
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         WR_SNAPSHOT.add_tasks(task_group.name, tasks_list)
         return len(tasks_list)
 
@@ -1420,8 +1432,8 @@ def submit_batch_of_tasks_to_task_group(
             )
 
     def attempt() -> None:
-        CLIENT.work_client.add_tasks_to_task_group_by_name(
-            CONFIG_COMMON.namespace,
+        ctx.client.work_client.add_tasks_to_task_group_by_name(
+            ctx.config.namespace,
             work_requirement.name,
             task_group.name,
             tasks_list,
@@ -1509,7 +1521,7 @@ def _is_permanent_failure(exception: Exception) -> bool:
     )
 
 
-def follow_progress(work_requirement: WorkRequirement) -> None:
+def follow_progress(ctx: RunContext, work_requirement: WorkRequirement) -> None:
     """
     Follow and report the progress of a Work Requirement.
 
@@ -1517,15 +1529,15 @@ def follow_progress(work_requirement: WorkRequirement) -> None:
     a failure state (FAILED/CANCELLED), so that a following submission reflects
     the outcome.
     """
-    if not ARGS_PARSER.dry_run:
+    if not ctx.args.dry_run:
         print_info("Following Work Requirement event stream")
         wr_id = cast(str, work_requirement.id)
-        follow_events(wr_id, YDIDType.WORK_REQUIREMENT)
-        if ARGS_PARSER.exit_on_failure and work_requirement_failed(wr_id):
+        follow_events(ctx, wr_id, YDIDType.WORK_REQUIREMENT)
+        if ctx.args.exit_on_failure and work_requirement_failed(ctx, wr_id):
             sys_exit(1)
 
 
-def follow_progress_bar(work_requirement: WorkRequirement) -> None:
+def follow_progress_bar(ctx: RunContext, work_requirement: WorkRequirement) -> None:
     """
     Follow a Work Requirement and display a live progress bar.
 
@@ -1533,26 +1545,26 @@ def follow_progress_bar(work_requirement: WorkRequirement) -> None:
     a failure state (FAILED/CANCELLED), so that a following submission reflects
     the outcome.
     """
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         return
     wr_id = cast(str, work_requirement.id)
-    follow_work_requirement_with_progress(wr_id)
-    if ARGS_PARSER.exit_on_failure and work_requirement_failed(wr_id):
+    follow_work_requirement_with_progress(ctx, wr_id)
+    if ctx.args.exit_on_failure and work_requirement_failed(ctx, wr_id):
         sys_exit(1)
 
 
-def cleanup_on_failure(work_requirement: WorkRequirement) -> None:
+def cleanup_on_failure(ctx: RunContext, work_requirement: WorkRequirement) -> None:
     """
     Clean up the Work Requirement and any uploaded Objects on failure. Each
     step's own failure is reported and the next step still made, so that the
     failure being cleaned up after, which the caller re-raises, is the one
     the command reports.
     """
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         return
 
     try:
-        CLIENT.work_client.cancel_work_requirement(work_requirement)
+        ctx.client.work_client.cancel_work_requirement(work_requirement)
         print_warning(f"Cancelled Work Requirement '{work_requirement.name}'")
     except Exception as e:
         print_error(f"Unable to cancel Work Requirement '{work_requirement.name}': {e}")
@@ -1564,6 +1576,7 @@ def cleanup_on_failure(work_requirement: WorkRequirement) -> None:
 
 
 def add_to_existing_work_requirement(
+    ctx: RunContext,
     files_directory: str,
     wr_data: dict | None = None,
     task_count: int | None = None,
@@ -1572,7 +1585,7 @@ def add_to_existing_work_requirement(
     Add task groups and/or tasks to an existing Work Requirement identified
     by the --add-to argument (name or YellowDog ID).
     """
-    work_requirement = _work_requirement_to_add_to(cast(str, ARGS_PARSER.add_to))
+    work_requirement = _work_requirement_to_add_to(ctx, cast(str, ctx.args.add_to))
     existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
 
     # Use the existing WR's name as the ID for substitutions
@@ -1583,7 +1596,7 @@ def add_to_existing_work_requirement(
 
     # Initialise rclone file uploads
     global RCLONE_UPLOADED_FILES
-    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(files_directory=files_directory)
+    RCLONE_UPLOADED_FILES = RcloneUploadedFiles(ctx, files_directory=files_directory)
 
     # Build spec data
     wr_data = {TASK_GROUPS: [{TASKS: [{}]}]} if wr_data is None else wr_data
@@ -1657,7 +1670,7 @@ def add_to_existing_work_requirement(
 
     all_task_groups = existing_tgs + [tg for _, tg in new_tgs]
 
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         # Seed the snapshot with every Task Group the Tasks below will attach
         # to, or the first batch has nothing to attach to. The existing Task
         # Groups' own Tasks can't be shown: the API's Task Group carries a
@@ -1680,18 +1693,20 @@ def add_to_existing_work_requirement(
     # If there are new TGs, update the Work Requirement with the full TG list
     elif new_tgs:
         work_requirement.taskGroups = all_task_groups
-        work_requirement = CLIENT.work_client.update_work_requirement(work_requirement)
+        work_requirement = ctx.client.work_client.update_work_requirement(
+            work_requirement
+        )
         print_info(
             f"Added {len(new_tgs)} new Task Group(s) to existing Work Requirement '{ID}'"
         )
 
-    if not ARGS_PARSER.dry_run:
+    if not ctx.args.dry_run:
         # The Work Requirement added to, as a creator's document names the
         # one it created
         record_entity(
             work_requirement.id,
             work_requirement.name,
-            CONFIG_COMMON.namespace,  # Where it was looked up
+            ctx.config.namespace,  # Where it was looked up
             ET_WORK_REQUIREMENTS,
         )
 
@@ -1700,6 +1715,7 @@ def add_to_existing_work_requirement(
         # appended
         for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs):
             add_tasks_to_task_group(
+                ctx,
                 tg_number=spec_idx,
                 task_group=spec_tg,
                 wr_data=cast(dict, wr_data),
@@ -1719,6 +1735,7 @@ def add_to_existing_work_requirement(
                 task_summary.taskCount if task_summary is not None else 0
             )
             add_tasks_to_task_group(
+                ctx,
                 tg_number=spec_idx,
                 task_group=existing_tg,
                 wr_data=cast(dict, wr_data),
@@ -1734,7 +1751,7 @@ def add_to_existing_work_requirement(
         # Unlike a new Work Requirement, this one is not cancelled, so the
         # Tasks already added to it stay live -- and may read the files
         # uploaded for them, which are therefore left in place too
-        if not ARGS_PARSER.dry_run:
+        if not ctx.args.dry_run:
             print_warning(
                 f"Adding to Work Requirement '{ID}' failed part-way: any Tasks"
                 " already added remain in it, and any files uploaded for them"
@@ -1742,10 +1759,10 @@ def add_to_existing_work_requirement(
             )
         raise
 
-    if ARGS_PARSER.progress:
-        follow_progress_bar(work_requirement)
-    elif ARGS_PARSER.follow:
-        follow_progress(work_requirement)
+    if ctx.args.progress:
+        follow_progress_bar(ctx, work_requirement)
+    elif ctx.args.follow:
+        follow_progress(ctx, work_requirement)
 
 
 # The states of a Work Requirement that can still take Tasks: a FINISHING one
@@ -1753,7 +1770,7 @@ def add_to_existing_work_requirement(
 _ADDABLE_STATUSES = (WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD)
 
 
-def _work_requirement_to_add_to(target: str) -> WorkRequirement:
+def _work_requirement_to_add_to(ctx: RunContext, target: str) -> WorkRequirement:
     """
     The Work Requirement '--add-to' names, fetched in full: by its YDID,
     whatever its namespace, or by its name, preferring the one that can still
@@ -1765,13 +1782,13 @@ def _work_requirement_to_add_to(target: str) -> WorkRequirement:
     else:
         try:
             summary = find_work_requirement_by_name(
-                CLIENT, target, CONFIG_COMMON.namespace, _ADDABLE_STATUSES
+                ctx.client, target, ctx.config.namespace, _ADDABLE_STATUSES
             )
         except AmbiguousNameError as e:
             raise ValueError(str(e)) from e
         work_requirement_id = cast(str, summary.id)
     try:
-        work_requirement = CLIENT.work_client.get_work_requirement_by_id(
+        work_requirement = ctx.client.work_client.get_work_requirement_by_id(
             work_requirement_id
         )
     except Exception as e:
@@ -1787,7 +1804,7 @@ def _work_requirement_to_add_to(target: str) -> WorkRequirement:
     return work_requirement
 
 
-def submit_json_raw(wr_file: str):
+def submit_json_raw(ctx: RunContext, wr_file: str):
     """
     Submit a 'raw' JSON Work Requirement, consisting of a combined Work
     Requirement definition and the constituent Tasks.
@@ -1814,9 +1831,9 @@ def submit_json_raw(wr_file: str):
     add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
     resolve_variables_insitu(wr_data)
 
-    if ARGS_PARSER.dry_run:
+    if ctx.args.dry_run:
         # This will show the results of any variable substitutions
-        if ARGS_PARSER.json_output:
+        if ctx.args.json_output:
             record_document(wr_data)
             return
         print_dry_run("Printing JSON Work Requirement specification:")
@@ -1842,8 +1859,8 @@ def submit_json_raw(wr_file: str):
 
     # Submit the Work Requirement and its Task Groups
     response = requests.post(
-        url=f"{CONFIG_COMMON.url}/work/requirements",
-        headers={"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"},
+        url=f"{ctx.config.url}/work/requirements",
+        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=wr_data,
         timeout=RAW_REQUEST_TIMEOUT,
     )
@@ -1859,26 +1876,32 @@ def submit_json_raw(wr_file: str):
     print_quiet_result(wr_id)
 
     try:
-        _submit_json_raw_tasks(wr_id, wr_name, namespace, task_lists)
+        _submit_json_raw_tasks(ctx, wr_id, wr_name, namespace, task_lists)
     except (Exception, KeyboardInterrupt):
         # As for a Work Requirement built from a specification: one left
         # with only some of its Tasks is cancelled, and a failure to cancel
         # it is reported without masking the failure that is re-raised
         try:
-            CLIENT.work_client.cancel_work_requirement_by_id(wr_id)
+            ctx.client.work_client.cancel_work_requirement_by_id(wr_id)
             print_warning(f"Cancelled Work Requirement '{wr_name}'")
         except Exception as e:
             print_error(f"Unable to cancel Work Requirement '{wr_name}': {e}")
         raise
 
-    if ARGS_PARSER.progress:
-        follow_progress_bar(CLIENT.work_client.get_work_requirement_by_id(wr_id))
-    elif ARGS_PARSER.follow:
-        follow_progress(CLIENT.work_client.get_work_requirement_by_id(wr_id))
+    if ctx.args.progress:
+        follow_progress_bar(
+            ctx, ctx.client.work_client.get_work_requirement_by_id(wr_id)
+        )
+    elif ctx.args.follow:
+        follow_progress(ctx, ctx.client.work_client.get_work_requirement_by_id(wr_id))
 
 
 def _submit_json_raw_tasks(
-    wr_id: str, wr_name: str, namespace: str, task_lists: dict[str, list]
+    ctx: RunContext,
+    wr_id: str,
+    wr_name: str,
+    namespace: str,
+    task_lists: dict[str, list],
 ) -> None:
     """
     Hold the newly created raw Work Requirement if asked, then submit each
@@ -1886,8 +1909,8 @@ def _submit_json_raw_tasks(
     batches already under way have finished; those not yet started are not.
     """
     batch_size = _task_batch_size()
-    if ARGS_PARSER.hold:
-        CLIENT.work_client.hold_work_requirement_by_id(wr_id)
+    if ctx.args.hold:
+        ctx.client.work_client.hold_work_requirement_by_id(wr_id)
         print_info("Work Requirement status set to 'HELD'")
 
     # Submit Tasks in batches
@@ -1896,7 +1919,7 @@ def _submit_json_raw_tasks(
             print_info(f"No Tasks to add to Task Group '{task_group_name}'")
             continue
         num_batches = ceil(len(task_list) / batch_size)
-        max_workers = min(num_batches, _parallel_batches())
+        max_workers = min(num_batches, _parallel_batches(ctx))
         print_info(
             f"Submitting task batches using {max_workers} parallel submission thread(s)"
         )
@@ -1910,6 +1933,7 @@ def _submit_json_raw_tasks(
                 ]
                 batches.submit(
                     submit_json_task_batch,
+                    ctx,
                     task_batch,
                     batch_number,
                     num_batches,
@@ -1924,6 +1948,7 @@ def _submit_json_raw_tasks(
 
 
 def submit_json_task_batch(
+    ctx: RunContext,
     task_batch: list[dict],
     batch_number: int,
     num_batches: int,
@@ -1941,11 +1966,11 @@ def submit_json_task_batch(
     def attempt() -> None:
         response = requests.post(
             url=(
-                f"{CONFIG_COMMON.url}/work/namespaces/{namespace}"
+                f"{ctx.config.url}/work/namespaces/{namespace}"
                 f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"
             ),
             headers={
-                "Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}",
+                "Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}",
                 "Content-Encoding": "gzip",
                 "Content-Type": "application/json",
             },

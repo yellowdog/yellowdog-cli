@@ -8,7 +8,7 @@ and to check for matches.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from functools import cache
+from typing import cast
 
 from tabulate import tabulate
 from yellowdog_client.model import (
@@ -24,6 +24,7 @@ from yellowdog_client.model import (
     WorkRequirement,
 )
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import get_task_group_by_id, get_worker_pool_by_id
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
@@ -35,7 +36,7 @@ from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import indent, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
 from yellowdog_cli.utils.tables import print_table_core
-from yellowdog_cli.utils.wrapper import ARGS_PARSER, CLIENT, main_wrapper
+from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
     get_ydid_type,
@@ -219,8 +220,12 @@ class WorkerPools:
     run, however many Task Groups are compared with it.
     """
 
-    def __init__(self, worker_pools: list[ProvisionedWorkerPool]):
+    def __init__(self, ctx: RunContext, worker_pools: list[ProvisionedWorkerPool]):
+        self._ctx = ctx
         self._worker_pools = worker_pools
+        # Each fetched once per run, by ID
+        self._compute_requirements: dict[str, ComputeRequirement] = {}
+        self._nodes: dict[str, list[Node]] = {}
 
     def check_task_group_for_matching_worker_pools(
         self, task_group: TaskGroup
@@ -310,10 +315,12 @@ class WorkerPools:
                     instance_types.add(override.instanceType)
         return instance_types
 
-    @staticmethod
-    @cache
-    def _get_compute_requirement(cr_id: str) -> ComputeRequirement:
-        return CLIENT.compute_client.get_compute_requirement_by_id(cr_id)
+    def _get_compute_requirement(self, cr_id: str) -> ComputeRequirement:
+        if cr_id not in self._compute_requirements:
+            self._compute_requirements[cr_id] = (
+                self._ctx.client.compute_client.get_compute_requirement_by_id(cr_id)
+            )
+        return self._compute_requirements[cr_id]
 
     @staticmethod
     def _get_provider_from_source(source: ComputeSource) -> str:
@@ -596,30 +603,34 @@ class WorkerPools:
         """
         Return all nodes in the worker pool. Optionally restrict to running nodes only.
         """
-        nodes = self._get_all_nodes_in_worker_pool_cached(worker_pool.id)
+        nodes = self._get_all_nodes_in_worker_pool_cached(cast(str, worker_pool.id))
         return (
             [node for node in nodes if node.status == NodeStatus.RUNNING]
-            if ARGS_PARSER.running_nodes_only
+            if self._ctx.args.running_nodes_only
             else nodes
         )
 
-    @staticmethod
-    @cache
-    def _get_all_nodes_in_worker_pool_cached(worker_pool_id: str) -> list[Node]:
+    def _get_all_nodes_in_worker_pool_cached(self, worker_pool_id: str) -> list[Node]:
         """
         Cached version of the above with hashable argument.
         """
-        try:
-            return CLIENT.worker_pool_client.get_nodes(
-                search=NodeSearch(worker_pool_id)
-            ).list_all()
-        except Exception as e:
-            raise RuntimeError(f"Unable to get details of nodes: {e}") from e
+        if worker_pool_id not in self._nodes:
+            try:
+                self._nodes[worker_pool_id] = (
+                    self._ctx.client.worker_pool_client.get_nodes(
+                        search=NodeSearch(worker_pool_id)
+                    ).list_all()
+                )
+            except Exception as e:
+                raise RuntimeError(f"Unable to get details of nodes: {e}") from e
+        return self._nodes[worker_pool_id]
 
 
-def _get_work_requirement_by_id(work_requirement_id: str) -> WorkRequirement:
+def _get_work_requirement_by_id(
+    ctx: RunContext, work_requirement_id: str
+) -> WorkRequirement:
     try:
-        return CLIENT.work_client.get_work_requirement_by_id(work_requirement_id)
+        return ctx.client.work_client.get_work_requirement_by_id(work_requirement_id)
     except Exception as e:
         if is_http_not_found(e):
             raise NotFoundError(
@@ -630,18 +641,20 @@ def _get_work_requirement_by_id(work_requirement_id: str) -> WorkRequirement:
         ) from e
 
 
-def _get_task_group_by_id(task_group_id: str) -> TaskGroup:
+def _get_task_group_by_id(ctx: RunContext, task_group_id: str) -> TaskGroup:
     try:
-        return get_task_group_by_id(CLIENT, task_group_id)
+        return get_task_group_by_id(ctx.client, task_group_id)
     except Exception as e:
         if is_http_not_found(e):
             raise NotFoundError(f"Task Group ID '{task_group_id}' not found") from e
         raise
 
 
-def _get_provisioned_worker_pool_by_id(worker_pool_id: str) -> ProvisionedWorkerPool:
+def _get_provisioned_worker_pool_by_id(
+    ctx: RunContext, worker_pool_id: str
+) -> ProvisionedWorkerPool:
     try:
-        worker_pool = get_worker_pool_by_id(CLIENT, worker_pool_id)
+        worker_pool = get_worker_pool_by_id(ctx.client, worker_pool_id)
     except Exception as e:
         if is_http_not_found(e):
             raise NotFoundError(f"Worker Pool ID '{worker_pool_id}' not found") from e
@@ -775,32 +788,33 @@ def _compare_task_group(
 
 
 @main_wrapper
-def main():
+def main(ctx: RunContext):
     # The IDs' types are checked as the command line is parsed
     # ('check_compare_ids' in the command registry)
-    worker_pool_ids: list[str] = ARGS_PARSER.worker_pool_ids or []
+    worker_pool_ids: list[str] = ctx.args.worker_pool_ids or []
     for wp_id in {i for i in worker_pool_ids if worker_pool_ids.count(i) > 1}:
         print_warning(f"Worker Pool ID '{wp_id}' was given more than once")
     worker_pools = WorkerPools(
+        ctx,
         [
-            _get_provisioned_worker_pool_by_id(wp_id)
+            _get_provisioned_worker_pool_by_id(ctx, wp_id)
             for wp_id in dict.fromkeys(worker_pool_ids)
-        ]
+        ],
     )
 
-    wr_or_tg_id: str = ARGS_PARSER.wr_or_tg_id or ""
+    wr_or_tg_id: str = ctx.args.wr_or_tg_id or ""
 
     failures: list[Exception] = []
 
     # Task group
     if (ydid_type := get_ydid_type(wr_or_tg_id)) == YDIDType.TASK_GROUP:
         failures += _compare_task_group(
-            _get_task_group_by_id(wr_or_tg_id), worker_pools
+            _get_task_group_by_id(ctx, wr_or_tg_id), worker_pools
         )
 
     # Work requirement
     elif ydid_type == YDIDType.WORK_REQUIREMENT:
-        work_requirement = _get_work_requirement_by_id(wr_or_tg_id)
+        work_requirement = _get_work_requirement_by_id(ctx, wr_or_tg_id)
         print_info(
             f"Comparing all Task Groups in Work Requirement '{work_requirement.name}' "
             f"({work_requirement.id})",

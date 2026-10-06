@@ -16,7 +16,7 @@ Covers:
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as RequestsConnectionError
@@ -239,7 +239,7 @@ class TestListing:
 
         act.side_effect = shutdown
         _run(platform, [], follow=True)
-        yd_shutdown.follow_ids.assert_called_once_with([WP_A], auto_cr=False)
+        yd_shutdown.follow_ids.assert_called_once_with(ANY, [WP_A], auto_cr=False)
 
 
 # ---------------------------------------------------------------------------

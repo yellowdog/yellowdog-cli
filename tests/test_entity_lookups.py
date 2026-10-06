@@ -13,8 +13,18 @@ import pytest
 import requests
 
 import yellowdog_cli.utils.resource_creation as yd_create
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import entity_utils
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper globals, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 CST_ID = "ydid:cst:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -133,15 +143,18 @@ def test_any_other_failure_naming_a_template_shows_the_id():
 def test_a_group_whose_name_cannot_be_fetched_is_shown_by_its_id(monkeypatch):
     client = MagicMock()
     client.account_client.get_group.side_effect = ValueError("gone")
-    monkeypatch.setattr(yd_create, "CLIENT", client)
-    assert yd_create._group_shown("ydid:grp:000000:x") == "ydid:grp:000000:x"
+    monkeypatch.setattr(wrapper_module, "CLIENT", client)
+    assert yd_create._group_shown(_ctx(), "ydid:grp:000000:x") == "ydid:grp:000000:x"
 
 
 def test_a_group_is_shown_by_name_and_id(monkeypatch):
     client = MagicMock()
     client.account_client.get_group.return_value = SimpleNamespace(name="admins")
-    monkeypatch.setattr(yd_create, "CLIENT", client)
-    assert yd_create._group_shown("ydid:grp:000000:y") == "'admins' (ydid:grp:000000:y)"
+    monkeypatch.setattr(wrapper_module, "CLIENT", client)
+    assert (
+        yd_create._group_shown(_ctx(), "ydid:grp:000000:y")
+        == "'admins' (ydid:grp:000000:y)"
+    )
 
 
 def test_split_namespace_and_name_strips_alike():

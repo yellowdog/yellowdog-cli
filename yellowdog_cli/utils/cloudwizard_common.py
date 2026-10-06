@@ -11,6 +11,7 @@ from yellowdog_client import PlatformClient
 
 from yellowdog_cli.utils import printing
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_KEYRING, RN_REQUIREMENT_TEMPLATE
 from yellowdog_cli.utils.entity_utils import (
     clear_compute_requirement_template_cache,
@@ -51,10 +52,12 @@ class CommonCloudConfig(ABC):
     Abstract base class for Cloud Wizard cloud provider configuration classes.
     """
 
-    def __init__(self, client: PlatformClient, cloud_provider: str = ""):
+    def __init__(self, ctx: RunContext, cloud_provider: str = ""):
         self._cloud_provider = cloud_provider
         self._namespace = f"{CLOUDWIZARD_NAMESPACE_PREFIX}-{cloud_provider.lower()}"
-        self._client = client
+        # The command's context, for the resource libraries, and its client
+        self._ctx = ctx
+        self._client = ctx.client
 
         self._instance_type: str | None = None
         self._source_names_spot: list[str] = []
@@ -101,7 +104,10 @@ class CommonCloudConfig(ABC):
             ):
                 counter += 1
                 try:
-                    remove_resource_by_id(compute_requirement_template_summary.id)  # type: ignore[arg-type]
+                    remove_resource_by_id(
+                        self._ctx,
+                        compute_requirement_template_summary.id,  # type: ignore[arg-type]
+                    )
                 except Exception as e:
                     print_error(f"Unable to remove Compute Requirement Template: {e}")
         if counter == 0:
@@ -119,7 +125,7 @@ class CommonCloudConfig(ABC):
             ):
                 counter += 1
                 try:
-                    remove_resource_by_id(compute_source_template_summary.id)  # type: ignore[arg-type]
+                    remove_resource_by_id(self._ctx, compute_source_template_summary.id)  # type: ignore[arg-type]
                 except Exception as e:
                     print_error(f"Unable to remove Compute Source Template: {e}")
         if counter == 0:
@@ -346,7 +352,7 @@ class CommonCloudConfig(ABC):
         print_info("Creating YellowDog Compute Requirement Templates")
         resources = deepcopy(self._requirement_template_resources)
         resolve_variables_insitu(resources)
-        create_resources(resources)
+        create_resources(self._ctx, resources)
 
     def _create_keyring(self, keyring_name: str):
         """

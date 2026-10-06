@@ -38,6 +38,7 @@ from yellowdog_client.model import (
 )
 from yellowdog_client.model.exceptions import InvalidRequestException
 
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,
@@ -140,7 +141,6 @@ from yellowdog_cli.utils.resource_processing import (
 )
 from yellowdog_cli.utils.results import record, record_resource
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
-from yellowdog_cli.utils.wrapper import CLIENT, CONFIG_COMMON
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 
@@ -162,6 +162,7 @@ _OPTIONS: CreateOptions = CreateOptions()
 
 
 def create_resources(
+    ctx: RunContext,
     resources: list[dict],
     options: CreateOptions | None = None,
     show_secrets: bool = False,
@@ -173,12 +174,12 @@ def create_resources(
     global _OPTIONS
     previous, _OPTIONS = _OPTIONS, options or CreateOptions()
     try:
-        _create_all(deepcopy(resources), show_secrets)
+        _create_all(ctx, deepcopy(resources), show_secrets)
     finally:
         _OPTIONS = previous
 
 
-def _create_all(resources: list[dict], show_secrets: bool) -> None:
+def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> None:
 
     if _OPTIONS.dry_run:
         print_dry_run(
@@ -199,7 +200,7 @@ def _create_all(resources: list[dict], show_secrets: bool) -> None:
         ]:
             _show_dry_run_specification(resource_type, resource)
             return
-        _create_resource(resource_type, resource, source_dir, show_secrets)
+        _create_resource(ctx, resource_type, resource, source_dir, show_secrets)
 
     # In a dry run, '--json' is the processed specifications, so failures
     # are reported on stderr and in the exit code instead
@@ -212,42 +213,46 @@ def _create_all(resources: list[dict], show_secrets: bool) -> None:
 
 
 def _create_resource(
-    resource_type: str, resource: dict, source_dir: str | None, show_secrets: bool
+    ctx: RunContext,
+    resource_type: str,
+    resource: dict,
+    source_dir: str | None,
+    show_secrets: bool,
 ) -> None:
     """
     Create or update one resource, by its type.
     """
     if resource_type == RN_SOURCE_TEMPLATE:
-        create_compute_source_template(resource, source_dir)
+        create_compute_source_template(ctx, resource, source_dir)
     elif resource_type == RN_REQUIREMENT_TEMPLATE:
-        create_compute_requirement_template(resource, source_dir)
+        create_compute_requirement_template(ctx, resource, source_dir)
     elif resource_type == RN_KEYRING:
-        create_keyring(resource, show_secrets)
+        create_keyring(ctx, resource, show_secrets)
     elif resource_type == RN_CREDENTIAL:
-        create_credential(resource)
+        create_credential(ctx, resource)
     elif resource_type == RN_IMAGE_FAMILY:
-        create_image_family(resource)
+        create_image_family(ctx, resource)
     elif resource_type == RN_CONFIGURED_POOL:
-        create_configured_worker_pool(resource)
+        create_configured_worker_pool(ctx, resource)
     elif resource_type == RN_ALLOWANCE:
-        create_allowance(resource)
+        create_allowance(ctx, resource)
     elif resource_type in [
         RN_STRING_ATTRIBUTE_DEFINITION,
         RN_NUMERIC_ATTRIBUTE_DEFINITION,
     ]:
-        create_attribute_definition(resource, resource_type)
+        create_attribute_definition(ctx, resource, resource_type)
     elif resource_type == RN_NAMESPACE_POLICY:
-        create_namespace_policy(resource)
+        create_namespace_policy(ctx, resource)
     elif resource_type == RN_GROUP:
-        create_group(resource)
+        create_group(ctx, resource)
     elif resource_type == RN_APPLICATION:
-        create_application(resource)
+        create_application(ctx, resource)
     elif resource_type == RN_INTERNAL_USER:
-        update_user(resource, internal_user=True)
+        update_user(ctx, resource, internal_user=True)
     elif resource_type == RN_EXTERNAL_USER:
-        update_user(resource, internal_user=False)
+        update_user(ctx, resource, internal_user=False)
     elif resource_type == RN_NAMESPACE:
-        create_namespace(resource)
+        create_namespace(ctx, resource)
     else:
         raise ValueError(f"Unknown resource type '{resource_type}'")
 
@@ -265,7 +270,9 @@ def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
         print_json(resource)
 
 
-def create_compute_source_template(resource: dict, source_dir: str | None = None):
+def create_compute_source_template(
+    ctx: RunContext, resource: dict, source_dir: str | None = None
+):
     """
     Create or update a Compute Source Template using a resource specification.
     Handles all Source types.
@@ -287,7 +294,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
     )
 
     image_id = get_image_name_or_id(
-        client=CLIENT,
+        client=ctx.client,
         image_name_or_id=source.get(image_property_name),
         always_return_ydid=False,
     )
@@ -315,9 +322,9 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
     # Check for an existing ID
-    source_id = get_compute_source_template_id_by_name(CLIENT, name, namespace)
+    source_id = get_compute_source_template_id_by_name(ctx.client, name, namespace)
     if source_id is None:
-        compute_source = CLIENT.compute_client.add_compute_source_template(
+        compute_source = ctx.client.compute_client.add_compute_source_template(
             compute_source_template
         )
         clear_compute_source_template_cache()
@@ -328,7 +335,7 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
             record_resource(RN_SOURCE_TEMPLATE, name, source_id, "skipped")
             return
         compute_source_template.id = source_id
-        compute_source = CLIENT.compute_client.update_compute_source_template(
+        compute_source = ctx.client.compute_client.update_compute_source_template(
             compute_source_template
         )
         clear_compute_source_template_cache()
@@ -341,7 +348,9 @@ def create_compute_source_template(resource: dict, source_dir: str | None = None
         print_quiet_result(compute_source.id)
 
 
-def create_compute_requirement_template(resource: dict, source_dir: str | None = None):
+def create_compute_requirement_template(
+    ctx: RunContext, resource: dict, source_dir: str | None = None
+):
     """
     Create or update a Compute Requirement Template. Handles all
     Compute Requirement types.
@@ -358,7 +367,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         Helper function to resolve an image ID.
         """
         images_id_ = get_image_name_or_id(
-            client=CLIENT,
+            client=ctx.client,
             image_name_or_id=image_str,
             always_return_ydid=False,
         )
@@ -375,7 +384,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
         template_name_or_id = source[PROP_CST_ID]
         if get_ydid_type(template_name_or_id) != YDIDType.COMPUTE_SOURCE_TEMPLATE:
             template_id = get_compute_source_template_id_by_name(
-                client=CLIENT, name=template_name_or_id, namespace=namespace
+                client=ctx.client, name=template_name_or_id, namespace=namespace
             )
             if template_id is None:
                 if _OPTIONS.dry_run:
@@ -423,10 +432,10 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     compute_template = _get_model_object(type, resource)
 
     # Check for an existing ID
-    template_id = get_compute_requirement_template_id_by_name(CLIENT, name)
+    template_id = get_compute_requirement_template_id_by_name(ctx.client, name)
 
     if template_id is None:  # Creation
-        template = CLIENT.compute_client.add_compute_requirement_template(
+        template = ctx.client.compute_client.add_compute_requirement_template(
             compute_template
         )
         clear_compute_requirement_template_cache()
@@ -442,7 +451,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     ):
         record_resource(RN_REQUIREMENT_TEMPLATE, name, template_id, "skipped")
         return
-    template = CLIENT.compute_client.update_compute_requirement_template(
+    template = ctx.client.compute_client.update_compute_requirement_template(
         compute_template
     )
     clear_compute_requirement_template_cache()
@@ -453,7 +462,7 @@ def create_compute_requirement_template(resource: dict, source_dir: str | None =
     print_quiet_result(template.id)
 
 
-def create_keyring(resource: dict, show_secrets: bool = False):
+def create_keyring(ctx: RunContext, resource: dict, show_secrets: bool = False):
     """
     Create a Keyring, or update the description of an existing one in place.
     The description is the only thing the Platform lets a Keyring change; the
@@ -466,12 +475,12 @@ def create_keyring(resource: dict, show_secrets: bool = False):
     except KeyError as e:
         raise missing_property(e) from e
 
-    existing = get_keyring_summary_by_name(CLIENT, name)
+    existing = get_keyring_summary_by_name(ctx.client, name)
     if existing is not None:
         if not confirmed(f"Keyring '{name}' already exists: update its description?"):
             record_resource(RN_KEYRING, name, existing.id, "skipped")
             return
-        keyring = CLIENT.keyring_client.update_keyring(
+        keyring = ctx.client.keyring_client.update_keyring(
             cast(str, existing.id), model.UpdateKeyringRequest(description=description)
         )
         clear_keyring_cache()  # the cached summary carries the old description
@@ -480,7 +489,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
         print_quiet_result(keyring.id)
         return
 
-    keyring_response = CLIENT.keyring_client.add_keyring(name, description)
+    keyring_response = ctx.client.keyring_client.add_keyring(name, description)
     clear_keyring_cache()
     keyring = keyring_response.keyring
     keyring_password = keyring_response.keyringPassword
@@ -500,7 +509,7 @@ def create_keyring(resource: dict, show_secrets: bool = False):
     print_quiet_result(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
 
 
-def create_credential(resource: dict):
+def create_credential(ctx: RunContext, resource: dict):
     """
     Create or update a Credential.
     """
@@ -516,7 +525,7 @@ def create_credential(resource: dict):
 
     credential = _get_model_object(credential_type, credential_data)
     try:
-        CLIENT.keyring_client.put_credential_by_name(keyring_name, credential)
+        ctx.client.keyring_client.put_credential_by_name(keyring_name, credential)
         print_info(f"Added Credential '{name}' to Keyring '{keyring_name}'")
         # A put: the Platform does not say whether it replaced one
         record_resource(RN_CREDENTIAL, name, None, "created", keyring=keyring_name)
@@ -532,7 +541,7 @@ def create_credential(resource: dict):
         raise
 
 
-def create_image_family(resource):
+def create_image_family(ctx: RunContext, resource):
     """
     Create or update an Image Family.
     """
@@ -559,7 +568,7 @@ def create_image_family(resource):
     # Check for existing Image Family
     try:
         existing_image_family: MachineImageFamily | None = (
-            CLIENT.images_client.get_image_family_by_name(
+            ctx.client.images_client.get_image_family_by_name(
                 namespace=namespace, family_name=family_name
             )
         )
@@ -571,7 +580,7 @@ def create_image_family(resource):
     if existing_image_family is None:
         # This will create the Image Family and all of its constituent
         # Image Group/Image resources
-        image_family = _create_image_family(image_family, fq_name)
+        image_family = _create_image_family(ctx, image_family, fq_name)
         print_info(f"Created Machine Image Family '{fq_name}' ({image_family.id})")
         print_quiet_result(image_family.id)
         return
@@ -582,7 +591,7 @@ def create_image_family(resource):
     image_family.id = existing_image_family.id
     # This will update the Image Family but not its constituent
     # Image Group/Image resources
-    CLIENT.images_client.update_image_family(image_family)
+    ctx.client.images_client.update_image_family(image_family)
     clear_image_caches()
     print_info(
         f"Updated existing Machine Image Family '{fq_name}' ('{image_family.id}')"
@@ -599,7 +608,7 @@ def create_image_family(resource):
     for existing_image_group in existing_image_family.imageGroups or []:
         if existing_image_group.name not in updated_image_group_names:
             if confirmed(f"Remove existing Image Group '{existing_image_group.name}'?"):
-                CLIENT.images_client.delete_image_group(existing_image_group)
+                ctx.client.images_client.delete_image_group(existing_image_group)
                 clear_image_caches()
                 print_info(f"Deleted Image Group '{existing_image_group.name}'")
                 record_resource(
@@ -611,11 +620,14 @@ def create_image_family(resource):
 
     # Update Image Groups
     for image_group in image_groups:
-        _create_image_group(namespace, image_family, image_group)
+        _create_image_group(ctx, namespace, image_family, image_group)
 
 
 def _create_image_group(
-    namespace: str, image_family: MachineImageFamily, image_group: MachineImageGroup
+    ctx: RunContext,
+    namespace: str,
+    image_family: MachineImageFamily,
+    image_group: MachineImageGroup,
 ):
     """
     Create or update a Machine Image Group.
@@ -623,7 +635,7 @@ def _create_image_group(
     # Check for existing Image Group
     try:
         existing_image_group: MachineImageGroup | None = (
-            CLIENT.images_client.get_image_group_by_name(
+            ctx.client.images_client.get_image_group_by_name(
                 namespace=namespace,
                 family_name=image_family.name,
                 group_name=image_group.name,
@@ -635,7 +647,9 @@ def _create_image_group(
         existing_image_group = None
 
     if existing_image_group is None:
-        image_group = CLIENT.images_client.add_image_group(image_family, image_group)
+        image_group = ctx.client.images_client.add_image_group(
+            image_family, image_group
+        )
         clear_image_caches()
         print_info(f"Created Machine Image Group '{image_group.name}'")
         _record_image_group_created(image_group)
@@ -648,7 +662,7 @@ def _create_image_group(
         )
         return
     image_group.id = existing_image_group.id
-    CLIENT.images_client.update_image_group(image_group)
+    ctx.client.images_client.update_image_group(image_group)
     clear_image_caches()
     print_info(f"Updated existing Machine Image Group '{image_group.name}'")
     record_resource(RN_IMAGE_GROUP, image_group.name, image_group.id, "updated")
@@ -663,7 +677,7 @@ def _create_image_group(
     for existing_image in existing_image_group.images or []:
         if existing_image.name not in updated_image_names:
             if confirmed(f"Remove existing Image '{existing_image.name}'?"):
-                CLIENT.images_client.delete_image(existing_image)
+                ctx.client.images_client.delete_image(existing_image)
                 clear_image_caches()
                 print_info(f"Deleted Image '{existing_image.name}'")
                 record_resource(
@@ -677,10 +691,10 @@ def _create_image_group(
     }
     for image in images:
         image.id = existing_image_ids.get(image.name)
-        _create_image(image, image_group)
+        _create_image(ctx, image, image_group)
 
 
-def _create_image(image: MachineImage, image_group: MachineImageGroup):
+def _create_image(ctx: RunContext, image: MachineImage, image_group: MachineImageGroup):
     """
     Create or update a Machine Image.
     """
@@ -689,12 +703,12 @@ def _create_image(image: MachineImage, image_group: MachineImageGroup):
             if not confirmed(f"Update existing Machine Image '{image.name}'?"):
                 record_resource(RN_IMAGE, image.name, image.id, "skipped")
                 return
-            image = CLIENT.images_client.update_image(image)
+            image = ctx.client.images_client.update_image(image)
             clear_image_caches()
             print_info(f"Updated existing Machine Image '{image.name}'")
             record_resource(RN_IMAGE, image.name, image.id, "updated")
         else:  # New Image
-            image = CLIENT.images_client.add_image(image_group, image)
+            image = ctx.client.images_client.add_image(image_group, image)
             clear_image_caches()
             print_info(f"Created Machine Image '{image.name}'")
             record_resource(RN_IMAGE, image.name, image.id, "created")
@@ -713,7 +727,7 @@ def _record_image_group_created(image_group: MachineImageGroup) -> None:
         record_resource(RN_IMAGE, image.name, image.id, "created")
 
 
-def create_configured_worker_pool(resource: dict):
+def create_configured_worker_pool(ctx: RunContext, resource: dict):
     """
     Create a Configured Worker Pool. There's no API support for update.
     """
@@ -727,7 +741,7 @@ def create_configured_worker_pool(resource: dict):
 
     cwp_request = _get_model_object("AddConfiguredWorkerPoolRequest", resource)
     cwp_response: AddConfiguredWorkerPoolResponse = (
-        CLIENT.worker_pool_client.add_configured_worker_pool(cwp_request)
+        ctx.client.worker_pool_client.add_configured_worker_pool(cwp_request)
     )
     print_info(
         f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
@@ -757,7 +771,7 @@ def create_configured_worker_pool(resource: dict):
     print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
 
-def create_allowance(resource: dict):
+def create_allowance(ctx: RunContext, resource: dict):
     """
     Create an allowance.
     """
@@ -769,6 +783,7 @@ def create_allowance(resource: dict):
 
     if type == "SourcesAllowance":
         _resolve_allowance_template(
+            ctx,
             resource,
             PROP_SOURCE_CREATED_FROM,
             YDIDType.COMPUTE_SOURCE_TEMPLATE,
@@ -777,6 +792,7 @@ def create_allowance(resource: dict):
         )
     elif type == "RequirementsAllowance":
         _resolve_allowance_template(
+            ctx,
             resource,
             PROP_REQUIREMENT_CREATED_FROM,
             YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
@@ -814,9 +830,9 @@ def create_allowance(resource: dict):
         print_info(
             f"Checking for existing Allowance(s) matching description '{description}'"
         )
-        to_replace = allowances_to_remove(CLIENT, description)
+        to_replace = allowances_to_remove(ctx.client, description)
 
-    allowance = CLIENT.allowances_client.add_allowance(
+    allowance = ctx.client.allowances_client.add_allowance(
         _get_model_object(type, resource)
     )
     if description is None:
@@ -827,21 +843,22 @@ def create_allowance(resource: dict):
     if allowance.id is not None:
         print_quiet_result(allowance.id)
 
-    for removed_id in remove_allowances(CLIENT, to_replace):
+    for removed_id in remove_allowances(ctx.client, to_replace):
         record_resource(RN_ALLOWANCE, description, removed_id, "removed")
 
 
-def _group_shown(group_id: str | None) -> str:
+def _group_shown(ctx: RunContext, group_id: str | None) -> str:
     """
     A Group as a message names it once its membership has changed: by name
     and ID, or by ID alone when the name cannot be fetched, the change
     having been made either way.
     """
-    name = get_group_name_by_id(CLIENT, cast(str, group_id))
+    name = get_group_name_by_id(ctx.client, cast(str, group_id))
     return str(group_id) if name is None else f"'{name}' ({group_id})"
 
 
 def _resolve_allowance_template(
+    ctx: RunContext,
     resource: dict,
     property_: str,
     ydid_type: YDIDType,
@@ -857,7 +874,7 @@ def _resolve_allowance_template(
     if template_name_or_id is None or get_ydid_type(template_name_or_id) == ydid_type:
         return
     template_id = lookup(
-        CLIENT, cast(str, template_name_or_id), CONFIG_COMMON.namespace
+        ctx.client, cast(str, template_name_or_id), ctx.config.namespace
     )
     if template_id is None:
         if _OPTIONS.dry_run:
@@ -895,7 +912,7 @@ def _display_datetime(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S %Z%z").rstrip()
 
 
-def create_attribute_definition(resource: dict, resource_type: str):
+def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: str):
     """
     Use the API to create/update user attribute definitions.
     """
@@ -908,8 +925,8 @@ def create_attribute_definition(resource: dict, resource_type: str):
     except KeyError as e:
         raise missing_property(e) from e
 
-    url = f"{CONFIG_COMMON.url}/compute/attributes/user"
-    headers = {"Authorization": f"yd-key {CONFIG_COMMON.key}:{CONFIG_COMMON.secret}"}
+    url = f"{ctx.config.url}/compute/attributes/user"
+    headers = {"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"}
     if resource_type == RN_STRING_ATTRIBUTE_DEFINITION:
         payload = {
             # Required
@@ -967,7 +984,7 @@ def _raise_for_response(response: Response) -> None:
     raise HTTPError(f"HTTP {response.status_code} ({response.text})", response=response)
 
 
-def create_namespace_policy(resource: dict):
+def create_namespace_policy(ctx: RunContext, resource: dict):
     """
     Create or update a namespace policy.
     """
@@ -981,7 +998,7 @@ def create_namespace_policy(resource: dict):
 
     # Test for existing policy
     try:
-        CLIENT.namespaces_client.get_namespace_policy(
+        ctx.client.namespaces_client.get_namespace_policy(
             namespace=namespace_policy.namespace
         )
         existing = True
@@ -997,7 +1014,7 @@ def create_namespace_policy(resource: dict):
         )
         return
 
-    CLIENT.namespaces_client.save_namespace_policy(namespace_policy)
+    ctx.client.namespaces_client.save_namespace_policy(namespace_policy)
 
     print_info(
         f"Created or updated Namespace Policy '{namespace_policy.namespace}' with "
@@ -1023,7 +1040,7 @@ class RoleSpecification:
     namespaces: set[str] | None
 
 
-def create_group(resource: dict):
+def create_group(ctx: RunContext, resource: dict):
     """
     Create or update a group, and the scoped roles it holds, specified by
     their names or IDs. Without 'roles' an existing group's roles are left
@@ -1038,17 +1055,19 @@ def create_group(resource: dict):
 
     roles_input = resource.get(PROP_ROLES)
     role_specifications = (
-        None if roles_input is None else _role_specifications(roles_input)
+        None if roles_input is None else _role_specifications(ctx, roles_input)
     )
 
-    group_id = get_group_id_by_name(CLIENT, name)
+    group_id = get_group_id_by_name(ctx.client, name)
     if group_id is None:  # New group
-        group: Group = CLIENT.account_client.add_group(
+        group: Group = ctx.client.account_client.add_group(
             AddGroupRequest(name=name, description=description)
         )
         clear_group_caches()
         print_info(f"Created Group '{group.name}' ({group.id})")
-        added = _add_or_update_roles(cast(str, group.id), role_specifications or [])
+        added = _add_or_update_roles(
+            ctx, cast(str, group.id), role_specifications or []
+        )
         record_resource(RN_GROUP, name, group.id, "created", rolesAdded=added)
         print_quiet_result(group.id)
         return
@@ -1056,7 +1075,7 @@ def create_group(resource: dict):
     if not confirmed(f"Update Group '{name}' ({group_id})?"):
         record_resource(RN_GROUP, name, group_id, "skipped")
         return
-    group = CLIENT.account_client.update_group(
+    group = ctx.client.account_client.update_group(
         group_id, UpdateGroupRequest(name=name, description=description)
     )
     clear_group_caches()
@@ -1064,9 +1083,9 @@ def create_group(resource: dict):
     if role_specifications is None:
         record_resource(RN_GROUP, name, group.id, "updated")
     else:
-        added = _add_or_update_roles(group_id, role_specifications)
+        added = _add_or_update_roles(ctx, group_id, role_specifications)
         removed = _remove_roles(
-            group_id, _roles_to_remove(group.roles or [], role_specifications)
+            ctx, group_id, _roles_to_remove(group.roles or [], role_specifications)
         )
         clear_group_caches()
         record_resource(
@@ -1080,7 +1099,9 @@ def create_group(resource: dict):
     print_quiet_result(group.id)
 
 
-def _role_specifications(roles_input: list[dict]) -> list[RoleSpecification]:
+def _role_specifications(
+    ctx: RunContext, roles_input: list[dict]
+) -> list[RoleSpecification]:
     """
     The role specifications of a Group's 'roles', each role resolved by its
     name or ID; a role that does not exist is an error.
@@ -1097,11 +1118,11 @@ def _role_specifications(roles_input: list[dict]) -> list[RoleSpecification]:
         if id_ is None:
             if name_ is None:
                 raise ValueError("Group role must have 'id' or 'name' specified")
-            id_ = get_role_id_by_name(CLIENT, name_)
+            id_ = get_role_id_by_name(ctx.client, name_)
             if id_ is None:
                 raise NotFoundError(f"Role '{name_}' not found")
         elif name_ is None:
-            name_ = get_role_name_by_id(CLIENT, id_)
+            name_ = get_role_name_by_id(ctx.client, id_)
             if name_ is None:
                 raise NotFoundError(f"Role ID '{id_}' not found")
 
@@ -1143,13 +1164,13 @@ def _role_specifications(roles_input: list[dict]) -> list[RoleSpecification]:
 
 
 def _add_or_update_roles(
-    group_id: str, role_specifications: list[RoleSpecification]
+    ctx: RunContext, group_id: str, role_specifications: list[RoleSpecification]
 ) -> list[str]:
     """
     Add or update a Group's roles; returns their names.
     """
     for role_spec in role_specifications:
-        CLIENT.account_client.add_role_to_group(
+        ctx.client.account_client.add_role_to_group(
             group_id,
             role_spec.id,
             RoleScope(cast(bool, role_spec.global_), role_spec.namespaces),
@@ -1166,13 +1187,13 @@ def _add_or_update_roles(
 
 
 def _remove_roles(
-    group_id: str, role_specifications: list[RoleSpecification]
+    ctx: RunContext, group_id: str, role_specifications: list[RoleSpecification]
 ) -> list[str]:
     """
     Remove roles from a Group; returns their names.
     """
     for role_spec in role_specifications:
-        CLIENT.account_client.remove_role_from_group(group_id, role_spec.id)
+        ctx.client.account_client.remove_role_from_group(group_id, role_spec.id)
         print_info(f"Removed role '{role_spec.name}'")
     return [role_spec.name for role_spec in role_specifications]
 
@@ -1200,21 +1221,21 @@ def _roles_to_remove(
     ]
 
 
-def _group_ids(group_names: list[str]) -> set[str]:
+def _group_ids(ctx: RunContext, group_names: list[str]) -> set[str]:
     """
     The IDs of Groups named by name or ID; a Group that does not exist is an
     error, before anything is changed, since memberships are made to match.
     """
     group_ids = set()
     for group_name in group_names:
-        group_id = get_group_id_by_name(CLIENT, group_name)
+        group_id = get_group_id_by_name(ctx.client, group_name)
         if group_id is None:
             raise NotFoundError(f"Group '{group_name}' not found")
         group_ids.add(group_id)
     return group_ids
 
 
-def create_application(resource: dict):
+def create_application(ctx: RunContext, resource: dict):
     """
     Create or update an application, the groups it belongs to (by their
     names or IDs) and the Keyrings it may access. Without 'groups' an
@@ -1229,7 +1250,7 @@ def create_application(resource: dict):
     groups: list[str] | None = resource.pop(PROP_GROUPS, None)
     keyrings: list[str] = resource.pop(PROP_KEYRINGS, None) or []
     # Every Group is resolved before anything is changed
-    new_group_ids = None if groups is None else _group_ids(groups)
+    new_group_ids = None if groups is None else _group_ids(ctx, groups)
 
     def grant_keyrings(app_id: str, api_key: ApiKey, outcome: str):
         """
@@ -1239,7 +1260,7 @@ def create_application(resource: dict):
         failures: list[tuple[str, Exception]] = []
         for keyring_name in keyrings:
             try:
-                CLIENT.keyring_client.grant_application_access_to_keyring(
+                ctx.client.keyring_client.grant_application_access_to_keyring(
                     keyring_name, app_id, api_key
                 )
                 print_info(f"Granted Application access to Keyring '{keyring_name}'")
@@ -1260,7 +1281,7 @@ def create_application(resource: dict):
             return
         current_group_ids = {
             group.id
-            for group in get_application_group_summaries(CLIENT, cast(str, app.id))
+            for group in get_application_group_summaries(ctx.client, cast(str, app.id))
         }
 
         if current_group_ids == new_group_ids:
@@ -1269,15 +1290,15 @@ def create_application(resource: dict):
 
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
-            CLIENT.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
+            ctx.client.account_client.remove_application_from_group(group_id, app.id)  # type: ignore[arg-type]
             clear_application_caches()
-            print_info(f"Removed Group {_group_shown(group_id)} from Application")
+            print_info(f"Removed Group {_group_shown(ctx, group_id)} from Application")
 
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
-            CLIENT.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
+            ctx.client.account_client.add_application_to_group(group_id, app.id)  # type: ignore[arg-type]
             clear_application_caches()
-            print_info(f"Added Group {_group_shown(group_id)} to Application")
+            print_info(f"Added Group {_group_shown(ctx, group_id)} to Application")
 
     def show_key_and_secret(api_key: ApiKey):
         """
@@ -1302,8 +1323,10 @@ def create_application(resource: dict):
         """
         Helper function to add a new application and its groups.
         """
-        app_response: AddApplicationResponse = CLIENT.account_client.add_application(
-            _get_model_object(RN_ADD_APPLICATION_REQUEST, resource)
+        app_response: AddApplicationResponse = (
+            ctx.client.account_client.add_application(
+                _get_model_object(RN_ADD_APPLICATION_REQUEST, resource)
+            )
         )
         app = cast(Application, app_response.application)
         print_info(f"Created Application '{app.name}' ({app.id})")
@@ -1342,7 +1365,7 @@ def create_application(resource: dict):
             record_resource(RN_APPLICATION, name, app_id, "skipped")
             return
 
-        app: Application = CLIENT.account_client.update_application(
+        app: Application = ctx.client.account_client.update_application(
             app_id, _get_model_object(RN_UPDATE_APPLICATION_REQUEST, resource)
         )
         clear_application_caches()
@@ -1352,7 +1375,7 @@ def create_application(resource: dict):
         api_key: ApiKey | None = None
         if _OPTIONS.regenerate_app_keys:
             print_info("Regenerating Application key and secret")
-            api_key = CLIENT.account_client.regenerate_application_api_key(app_id)
+            api_key = ctx.client.account_client.regenerate_application_api_key(app_id)
             clear_application_caches()
             if api_key is not None:
                 show_key_and_secret(api_key)
@@ -1367,14 +1390,14 @@ def create_application(resource: dict):
             grant_keyrings(app_id, cast(ApiKey, api_key), "updated")
 
     # Main logic
-    app_id = get_application_id_by_name(CLIENT, name)
+    app_id = get_application_id_by_name(ctx.client, name)
     if app_id is None:
         add_application()
     else:
         update_application(app_id)
 
 
-def update_user(resource: dict, internal_user: bool):
+def update_user(ctx: RunContext, resource: dict, internal_user: bool):
     """
     Update the groups of a user specified by name, username or ID; the
     groups are named by their names or IDs. Without 'groups' the user's
@@ -1401,13 +1424,13 @@ def update_user(resource: dict, internal_user: bool):
 
     groups: list[str] | None = resource.pop(PROP_GROUPS, None)
     # Every Group is resolved before anything is changed
-    new_group_ids = None if groups is None else _group_ids(groups)
+    new_group_ids = None if groups is None else _group_ids(ctx, groups)
 
     # Every identifier given must find the same User, if it finds one
     identifiers = [i for i in (name, username, id) if i is not None]
     users = {}
     for identifier in identifiers:
-        found = get_user_by_name_or_id(CLIENT, cast(str, identifier))
+        found = get_user_by_name_or_id(ctx.client, cast(str, identifier))
         if found is not None:
             users[found.id] = found
     if not users:
@@ -1433,7 +1456,7 @@ def update_user(resource: dict, internal_user: bool):
             print_info("No Groups specified: the User's Groups are left unchanged")
             return True
 
-        current_group_ids = {group.id for group in get_user_groups(CLIENT, user.id)}  # type: ignore[arg-type]
+        current_group_ids = {group.id for group in get_user_groups(ctx.client, user.id)}  # type: ignore[arg-type]
 
         if current_group_ids == new_group_ids:
             print_info("No Group additions or deletions required")
@@ -1444,13 +1467,13 @@ def update_user(resource: dict, internal_user: bool):
 
         group_ids_to_remove = current_group_ids - new_group_ids
         for group_id in group_ids_to_remove:
-            CLIENT.account_client.remove_user_from_group(group_id, user.id)  # type: ignore[arg-type]
-            print_info(f"Removed Group {_group_shown(group_id)}")
+            ctx.client.account_client.remove_user_from_group(group_id, user.id)  # type: ignore[arg-type]
+            print_info(f"Removed Group {_group_shown(ctx, group_id)}")
 
         group_ids_to_add = new_group_ids - current_group_ids
         for group_id in group_ids_to_add:
-            CLIENT.account_client.add_user_to_group(group_id, user.id)  # type: ignore[arg-type]
-            print_info(f"Added Group {_group_shown(group_id)}")
+            ctx.client.account_client.add_user_to_group(group_id, user.id)  # type: ignore[arg-type]
+            print_info(f"Added Group {_group_shown(ctx, group_id)}")
         return True
 
     updated = update_groups()
@@ -1460,7 +1483,7 @@ def update_user(resource: dict, internal_user: bool):
     )
 
 
-def create_namespace(resource: dict):
+def create_namespace(ctx: RunContext, resource: dict):
     """
     Create a namespace.
     """
@@ -1470,7 +1493,7 @@ def create_namespace(resource: dict):
         raise missing_property(e) from e
 
     try:
-        namespace_id = CLIENT.namespaces_client.create_namespace(
+        namespace_id = ctx.client.namespaces_client.create_namespace(
             CreateNamespaceRequest(namespace=name)
         )
     except Exception as e:
@@ -1537,7 +1560,7 @@ def _get_model_class(class_name: str) -> Any:
 
 
 def _create_image_family(
-    image_family: MachineImageFamily, fq_name: str
+    ctx: RunContext, image_family: MachineImageFamily, fq_name: str
 ) -> MachineImageFamily:
     """
     Creates a new image family, recording it and the Image Groups and Images
@@ -1553,7 +1576,7 @@ def _create_image_family(
 
     # Create the image family
     try:
-        image_family = CLIENT.images_client.add_image_family(image_family)
+        image_family = ctx.client.images_client.add_image_family(image_family)
         clear_image_caches()
     except Exception as e:
         raise RuntimeError(
@@ -1566,7 +1589,7 @@ def _create_image_family(
     # Create any additional image groups
     for image_group in image_groups or []:
         try:
-            image_group = CLIENT.images_client.add_image_group(
+            image_group = ctx.client.images_client.add_image_group(
                 image_family, image_group
             )
             clear_image_caches()

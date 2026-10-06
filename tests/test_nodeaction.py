@@ -27,13 +27,23 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.nodeaction as na_module
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import (
     ExitCode,
     NotFoundError,
     ReportedFailure,
     classify,
 )
+
+
+def _ctx() -> RunContext:
+    """The context a command is given: the wrapper's values, as patched."""
+    return RunContext(
+        wrapper_module.ARGS_PARSER, wrapper_module.CONFIG_COMMON, wrapper_module.CLIENT
+    )
+
 
 WP_A = "ydid:wrkrpool:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 WP_B = "ydid:wrkrpool:000000:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -109,9 +119,9 @@ def platform(monkeypatch, tmp_path):
     spec = tmp_path / "actions.json"
     spec.write_text(json.dumps({"actions": [{"type": "runCommand", "path": "ls"}]}))
     fake.spec = str(spec)
-    monkeypatch.setattr(na_module, "CLIENT", fake.client)
+    monkeypatch.setattr(wrapper_module, "CLIENT", fake.client)
     monkeypatch.setattr(
-        na_module,
+        wrapper_module,
         "CONFIG_COMMON",
         SimpleNamespace(namespace="ns", name_tag=None, url="https://api.x"),
     )
@@ -136,8 +146,8 @@ def _submit(monkeypatch, platform, nodes=None, worker_pool=None, **extra):
         json_output=False,
     )
     args.update(extra)
-    monkeypatch.setattr(na_module, "ARGS_PARSER", SimpleNamespace(**args))
-    na_module._submit_actions()
+    monkeypatch.setattr(wrapper_module, "ARGS_PARSER", SimpleNamespace(**args))
+    na_module._submit_actions(_ctx())
 
 
 class TestSpecification:
@@ -173,7 +183,7 @@ class TestSpecification:
 
 class TestWorkerPool:
     def test_by_name(self, platform, monkeypatch):
-        monkeypatch.setattr(na_module, "_choose_nodes", lambda pool: [NODE_1])
+        monkeypatch.setattr(na_module, "_choose_nodes", lambda _ctx, pool: [NODE_1])
         _submit(monkeypatch, platform, worker_pool="wp-a")
         assert platform.submissions == [(WP_A, NODE_1)]
 
@@ -275,7 +285,7 @@ class TestFollow:
 class TestStatus:
     def _status(self, monkeypatch, nodes):
         monkeypatch.setattr(
-            na_module,
+            wrapper_module,
             "ARGS_PARSER",
             SimpleNamespace(
                 node_ids=nodes,
@@ -289,7 +299,7 @@ class TestStatus:
             ),
         )
         monkeypatch.setattr(na_module, "json_requested", lambda: True)
-        na_module._show_status()
+        na_module._show_status(_ctx())
 
     def test_a_queue_that_cannot_be_fetched_fails_the_run(self, platform, monkeypatch):
         get = platform.client.worker_pool_client.get_node_actions_by_id

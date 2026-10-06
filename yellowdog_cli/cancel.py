@@ -340,7 +340,7 @@ def _carry_out(ctx: RunContext, items: list[Item]):
         if tasks_cancelled:
             print_info(f"Cancelled {tasks_cancelled} Task(s)")
         if ctx.args.follow and cancelled_ids:
-            follow_ids(cancelled_ids)
+            follow_ids(ctx, cancelled_ids)
     else:
         print_info("No Work Requirements or Tasks cancelled")
 
