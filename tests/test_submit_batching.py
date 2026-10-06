@@ -37,6 +37,7 @@ from yellowdog_cli.utils.limits import (
 )
 from yellowdog_cli.utils.printing import WorkRequirementSnapshot
 from yellowdog_cli.utils.property_names import TASK_GROUPS, TASKS
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 
 
 def _ctx() -> RunContext:
@@ -149,7 +150,7 @@ def _run_add_tasks(
     ):
         submit_module.add_tasks_to_task_group(
             _submission(task_batch_size=batch_size),
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             task_group=_make_tg(),
             wr_data=wr_data,
             task_count=task_count,
@@ -228,7 +229,7 @@ def _run_add_tasks_tracking_tpe(
     ):
         submit_module.add_tasks_to_task_group(
             _submission(task_batch_size=batch_size),
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             task_group=_make_tg(),
             wr_data=_make_wr_data(num_tasks),
             task_count=None,
@@ -431,7 +432,7 @@ class TestTaskCountExpansion:
         ):
             submit_module.add_tasks_to_task_group(
                 _submission(),
-                tg_number=0,
+                position=TaskGroupPosition(0, 0, 1),
                 task_group=_make_tg(),
                 wr_data=wr_data,
                 task_count=None,

@@ -146,6 +146,7 @@ from yellowdog_cli.utils.task_batches import (
     run_batches,
     submit_with_retries,
 )
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.type_check import (
     check_bool,
     check_dict,
@@ -161,10 +162,6 @@ from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import (
-    L_TASK_COUNT,
-    L_TASK_GROUP_COUNT,
-    L_TASK_GROUP_NAME,
-    L_TASK_GROUP_NUMBER,
     L_TASK_NAME,
     L_TASK_NUMBER,
     L_WR_NAME,
@@ -417,7 +414,9 @@ def submit_work_requirement(
         run,
         work_requirement,
         [
-            _Addition(tg_number, task_group)
+            _Addition(
+                TaskGroupPosition(tg_number, tg_number, len(task_groups)), task_group
+            )
             for tg_number, task_group in enumerate(task_groups)
         ],
         wr_data,
@@ -501,19 +500,13 @@ def _task_groups(
     run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
     expand_task_groups(run, wr_data)
     offset = existing_task_groups or 0
-    total = (
-        None
-        if existing_task_groups is None
-        else existing_task_groups + len(wr_data[TASK_GROUPS])
-    )
+    count = offset + len(wr_data[TASK_GROUPS])
     return [
         create_task_group(
             run,
-            tg_number,
+            TaskGroupPosition(tg_number, offset + tg_number, count),
             wr_data,
             task_group_data,
-            tg_number_offset=offset,
-            total_num_task_groups=total,
             files_directory=files_directory,
         )
         for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS])
@@ -523,17 +516,12 @@ def _task_groups(
 @dataclass
 class _Addition:
     """
-    Tasks to add to one Task Group: the specification's Task Group
-    'tg_number', into 'task_group', which is at 'wr_tg_number' of
-    'total_num_task_groups' in the Work Requirement and already holds
-    'task_number_offset' Tasks. The defaults are a new Work Requirement's.
+    Tasks to add to one Task Group: those of the specification's Task Group
+    at 'position', into 'task_group'.
     """
 
-    tg_number: int
+    position: TaskGroupPosition
     task_group: TaskGroup
-    wr_tg_number: int | None = None
-    total_num_task_groups: int | None = None
-    task_number_offset: int = 0
 
 
 def _create_work_requirement(
@@ -684,18 +672,20 @@ def _extend_work_requirement(
     # matched (existing) TGs are numbered by their own position, their task
     # numbers following those already there
     additions = [
-        _Addition(spec_idx, spec_tg, n_existing + new_idx, total_tgs)
+        _Addition(TaskGroupPosition(spec_idx, n_existing + new_idx, total_tgs), spec_tg)
         for new_idx, (spec_idx, spec_tg) in enumerate(new_tgs)
     ]
     for spec_idx, _, existing_idx, existing_tg in matched:
         task_summary = existing_tg.taskSummary
         additions.append(
             _Addition(
-                spec_idx,
+                TaskGroupPosition(
+                    spec_idx,
+                    existing_idx,
+                    total_tgs,
+                    task_summary.taskCount if task_summary is not None else 0,
+                ),
                 existing_tg,
-                existing_idx,
-                total_tgs,
-                task_summary.taskCount if task_summary is not None else 0,
             )
         )
     return work_requirement, additions
@@ -728,15 +718,12 @@ def _add_tasks(
         for addition in additions:
             add_tasks_to_task_group(
                 run,
-                tg_number=addition.tg_number,
+                addition.position,
                 task_group=addition.task_group,
                 wr_data=wr_data,
                 task_count=task_count,
                 work_requirement=work_requirement,
                 files_directory=files_directory,
-                wr_tg_number=addition.wr_tg_number,
-                total_num_task_groups=addition.total_num_task_groups,
-                task_number_offset=addition.task_number_offset,
             )
 
     # An interrupt too: Ctrl-C part-way through would otherwise leave a new
@@ -852,20 +839,14 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
 
 def create_task_group(
     run: _Submission,
-    tg_number: int,
+    position: TaskGroupPosition,
     wr_data: dict,
     task_group_data: dict,
-    tg_number_offset: int = 0,
-    total_num_task_groups: int | None = None,
     files_directory: str = "",
 ) -> TaskGroup:
     """
-    Create a TaskGroup object.
-
-    tg_number_offset: added to tg_number for display/naming purposes when
-      adding to an existing Work Requirement.
-    total_num_task_groups: total TG count across the WR (existing + new) for
-      formatting; defaults to len(wr_data[TASK_GROUPS]).
+    Create a TaskGroup object from 'task_group_data', numbered and named by
+    its 'position' in the Work Requirement.
     """
 
     promote_task_type(task_group_data)
@@ -879,12 +860,6 @@ def create_task_group(
     ]
 
     # Name the Task Group
-    num_task_groups = (
-        total_num_task_groups
-        if total_num_task_groups is not None
-        else len(wr_data[TASK_GROUPS])
-    )
-    effective_tg_number = tg_number + tg_number_offset
     num_tasks = len(task_group_data[TASKS])
     if num_tasks == 1:  # Account for Task expansion
         _task_count = levels.checked(TASK_COUNT, check_int, run.config_wr.task_count)
@@ -900,19 +875,14 @@ def create_task_group(
     task_group_name = format_yd_name(
         get_task_group_name(
             check_str(task_group_data.get(NAME, run.config_wr.task_group_name), NAME),
-            effective_tg_number,
-            num_task_groups,
+            position.number,
+            position.count,
             num_tasks,
         )
     )
 
     # Add lazy substitutions for use in any Task Group property
-    add_or_update_substitution(L_TASK_COUNT, str(num_tasks))
-    add_or_update_substitution(L_TASK_GROUP_NAME, task_group_name)
-    add_or_update_substitution(
-        L_TASK_GROUP_NUMBER, formatted_number_str(effective_tg_number, num_task_groups)
-    )
-    add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
+    position.substitute(task_group_name, num_tasks)
     resolve_variables_insitu(task_group_data)
     # Copy the run's configuration and apply the lazy substitutions to it
     config_wr = update_config_work_requirement_object(deepcopy(run.config_wr))
@@ -1086,34 +1056,25 @@ def create_task_group(
 
 def add_tasks_to_task_group(
     run: _Submission,
-    tg_number: int,
+    position: TaskGroupPosition,
     task_group: TaskGroup,
     wr_data: dict,
     task_count: int | None,
     work_requirement: WorkRequirement,
     files_directory: str = "",
-    wr_tg_number: int | None = None,
-    total_num_task_groups: int | None = None,
-    task_number_offset: int = 0,
 ) -> None:
     """
-    Add all the constituent Tasks to the Task Group.
-
-    tg_number: the Task Group's index in wr_data[TASK_GROUPS].
-    wr_tg_number: the Task Group's (zero-based) position in the Work
-      Requirement, for display and naming, when that differs from tg_number
-      because Tasks are being added to an existing Work Requirement.
-    total_num_task_groups: total TG count (existing + new) for formatting.
-    task_number_offset: starting task number within the TG (for adding to an
-      existing Task Group that already contains tasks).
+    Add the Tasks of the specification's Task Group at 'position' to
+    'task_group', numbered on from any it already holds.
     """
     batch_size = run.batch_size
+    task_group_data = wr_data[TASK_GROUPS][position.spec_index]
 
-    num_tasks = len(wr_data[TASK_GROUPS][tg_number][TASKS])
+    num_tasks = len(task_group_data[TASKS])
 
     # If the 'taskCount' property is set, and there is only one Task
     # in the Task Group, create 'taskCount' duplicates of the Task.
-    task_group_task_count = Cascade(wr_data, wr_data[TASK_GROUPS][tg_number]).checked(
+    task_group_task_count = Cascade(wr_data, task_group_data).checked(
         TASK_COUNT, check_int, run.config_wr.task_count
     )
     if task_group_task_count is not None:
@@ -1127,9 +1088,7 @@ def add_tasks_to_task_group(
             # so the copies would only be built to go unread
             if task_count is None:
                 for _ in range(1, task_group_task_count):
-                    wr_data[TASK_GROUPS][tg_number][TASKS].append(
-                        deepcopy(wr_data[TASK_GROUPS][tg_number][TASKS][0])
-                    )
+                    task_group_data[TASKS].append(deepcopy(task_group_data[TASKS][0]))
         elif task_group_task_count > 1:
             print_warning(
                 f"Note: Task Group '{task_group.name}' already contains"
@@ -1137,15 +1096,8 @@ def add_tasks_to_task_group(
                 f" {int(task_group_task_count)}'"
             )
 
-    num_task_groups = (
-        total_num_task_groups
-        if total_num_task_groups is not None
-        else len(wr_data[TASK_GROUPS])
-    )
-    effective_tg_number = tg_number if wr_tg_number is None else wr_tg_number
-
     # Determine Task batching
-    tasks = wr_data[TASK_GROUPS][tg_number][TASKS]
+    tasks = task_group_data[TASKS]
     num_tasks = len(tasks) if task_count is None else task_count
     num_task_batches: int = ceil(num_tasks / batch_size)
     if num_task_batches > 1 and not run.ctx.args.dry_run:
@@ -1155,12 +1107,7 @@ def add_tasks_to_task_group(
         )
 
     # Add lazy substitutions for use in any Task property
-    add_or_update_substitution(L_TASK_COUNT, str(num_tasks))
-    add_or_update_substitution(L_TASK_GROUP_NAME, task_group.name)
-    add_or_update_substitution(
-        L_TASK_GROUP_NUMBER, formatted_number_str(effective_tg_number, num_task_groups)
-    )
-    add_or_update_substitution(L_TASK_GROUP_COUNT, str(num_task_groups))
+    position.substitute(cast(str, task_group.name), num_tasks)
 
     num_submitted_tasks = run_batches(
         run.ctx,
@@ -1174,13 +1121,10 @@ def add_tasks_to_task_group(
             wr_data,
             files_directory,
             task_group,
-            effective_tg_number,
+            position,
             tasks,
             task_count,
             num_tasks,
-            num_task_groups,
-            task_number_offset=task_number_offset,
-            wr_tg_index=tg_number,
         ),
         send_batch=lambda tasks_list, batch_number, num_batches: (
             submit_batch_of_tasks_to_task_group(
@@ -1227,27 +1171,19 @@ def generate_batch_of_tasks_for_task_group(
     wr_data: dict,
     files_directory: str,
     task_group: TaskGroup,
-    tg_number: int,
+    position: TaskGroupPosition,
     tasks: list,
     task_count: int | None,
     num_tasks: int,
-    num_task_groups: int,
-    task_number_offset: int = 0,
-    wr_tg_index: int | None = None,
 ) -> list[Task]:
     """
-    Generate a batch of tasks for subsequent addition to a task group.
-
-    tg_number: WR-relative display number (already includes any offset).
-    task_number_offset: added to task_number for naming when adding to an
-      existing Task Group that already contains tasks.
-    wr_tg_index: spec-relative index for accessing wr_data[TASK_GROUPS];
-      defaults to tg_number when not provided.
+    Generate a batch of Tasks for the specification's Task Group at
+    'position', for subsequent addition to 'task_group', numbered on from
+    the Tasks it already holds.
     """
-    spec_tg_index = wr_tg_index if wr_tg_index is not None else tg_number
+    task_group_data = wr_data[TASK_GROUPS][position.spec_index]
     tasks_list: list[Task] = []
     for task_number in range(start_task_number, end_task_number):
-        task_group_data = wr_data[TASK_GROUPS][spec_tg_index]
         task = tasks[task_number] if task_count is None else tasks[0]
         # The Task's properties, from itself, its Task Group or the Work
         # Requirement; the configuration's are the defaults
@@ -1258,8 +1194,8 @@ def generate_batch_of_tasks_for_task_group(
             or False
         )
 
-        display_task_number = task_number + task_number_offset
-        display_num_tasks = task_number_offset + num_tasks
+        display_task_number = task_number + position.existing_tasks
+        display_num_tasks = position.existing_tasks + num_tasks
 
         # The run's configuration, not a per-Task copy: get_task_name() makes the
         # Task-level lazy substitutions in the name itself, and the per-Task
@@ -1271,8 +1207,8 @@ def generate_batch_of_tasks_for_task_group(
             set_task_names,
             display_task_number,
             display_num_tasks,
-            tg_number,
-            num_task_groups,
+            position.number,
+            position.count,
             task_group.name,
         )
 
@@ -1342,7 +1278,7 @@ def generate_batch_of_tasks_for_task_group(
                 task_name=task_name,
                 task_number=display_task_number + 1,
                 tg_name=task_group.name,
-                tg_number=tg_number + 1,
+                tg_number=position.number + 1,
                 task_type=cast(str, task_type),
                 args=cast(list, arguments_list),
                 task_data_property=get_task_data_property(
@@ -1359,7 +1295,7 @@ def generate_batch_of_tasks_for_task_group(
                 task_data_inputs_and_outputs=task_data_inputs_and_outputs,
                 wr_name=run.name,
                 namespace=run.ctx.config.namespace,
-                total_num_task_groups=num_task_groups,
+                total_num_task_groups=position.count,
                 total_num_tasks=display_num_tasks,
             )
         )

@@ -46,6 +46,7 @@ from yellowdog_cli.utils.property_names import (
     TASKS_PER_WORKER,
     VCPUS,
 )
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 
 
 def _ctx() -> RunContext:
@@ -120,7 +121,7 @@ def _call_create_task_group(
     ):
         return submit_module.create_task_group(
             _submission(),
-            tg_number=tg_number,
+            TaskGroupPosition(tg_number, tg_number, len(wr_data[TASK_GROUPS])),
             wr_data=wr_data,
             task_group_data=task_group_data,
         )
@@ -441,8 +442,8 @@ def _run_submit_wr(
     Call submit_work_requirement with all external calls mocked out.
 
     Returns:
-      create_tg_calls:   list of (tg_number, task_group_data) pairs
-      add_tasks_calls:   list of tg_number values
+      create_tg_calls:   list of (Task Group number, task_group_data) pairs
+      add_tasks_calls:   list of Task Group numbers
       add_wr_mock:       the mock for CLIENT.work_client.add_work_requirement
 
     Set 'real_task_groups' to let the genuine create_task_group() run, which
@@ -459,8 +460,8 @@ def _run_submit_wr(
     create_tg_calls: list[tuple] = []
     add_tasks_calls: list[int] = []
 
-    def fake_create_tg(_run, tg_number, wr_data, task_group_data, **kwargs):
-        create_tg_calls.append((tg_number, task_group_data))
+    def fake_create_tg(_run, position, wr_data, task_group_data, **kwargs):
+        create_tg_calls.append((position.number, task_group_data))
         return mock_tg
 
     # Captured before the patch below replaces the module attribute
@@ -471,8 +472,8 @@ def _run_submit_wr(
             return real_create_tg(*args, **kwargs)
         return fake_create_tg(*args, **kwargs)
 
-    def fake_add_tasks(_run, tg_number, *args, **kwargs):
-        add_tasks_calls.append(tg_number)
+    def fake_add_tasks(_run, position, *args, **kwargs):
+        add_tasks_calls.append(position.number)
 
     mock_config_common = MagicMock()
     mock_config_common.namespace = "test-ns"
@@ -909,11 +910,10 @@ def _generate_one_task(wr_data: dict) -> Task:
             wr_data=wr_data,
             files_directory=".",
             task_group=task_group,
-            tg_number=0,
+            position=TaskGroupPosition(0, 0, 1),
             tasks=wr_data[TASK_GROUPS][0][TASKS],
             task_count=None,
             num_tasks=1,
-            num_task_groups=1,
         )
     return task
 
