@@ -38,6 +38,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Output
 
+- **`yd-create`** reports a failed specification as "Failed to create or update …" and ends with "N resource(s) failed to create or update", since the specification may have been updating an existing resource; it said "create" either way.
 - **`yd-create`** now shows a new Configured Worker Pool's token expiry with its time zone (`2026-10-07 14:02:42+00:00`), since the Platform gives it in UTC and the log timestamps beside it are local, and shows `never` for a token without an expiry rather than `None`.
 
 ## 13.2.0 — 2026-10-07

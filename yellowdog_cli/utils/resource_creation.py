@@ -211,11 +211,13 @@ def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> N
         _create_resource(ctx, resource_type, resource, source_dir, show_secrets)
 
     # In a dry run, '--json' is the processed specifications, so failures
-    # are reported on stderr and in the exit code instead
+    # are reported on stderr and in the exit code instead. Whether a
+    # specification creates or updates is decided by its creator, after
+    # this wording is chosen, so the wording covers both
     process_resources(
         cast(list[dict], resources),
         _process,
-        "create",
+        "create or update",
         record_outcomes=not _OPTIONS.dry_run,
     )
 

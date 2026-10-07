@@ -147,8 +147,25 @@ def test_a_failure_is_printed_once_naming_the_resource(env, capsys):
     output = capsys.readouterr()
     text = " ".join((output.out + output.err).split())  # Rich wraps lines
     assert text.count("Keyring 'kr' not found") == 1
-    assert "Failed to create resource" not in text
+    assert "Failed to create or update resource" not in text
     assert classify(raised.value) == ExitCode.NOT_FOUND
+
+
+def test_a_failure_is_worded_for_a_create_or_an_update(env, capsys):
+    # The run's wording is chosen before a creator knows which it does: a
+    # Group's role that does not exist failed an update as "Failed to
+    # create Group", although the Group existed
+    group = {
+        "resource": "Group",
+        "name": "g",
+        "roles": [{"role": {"name": "no-such-role"}, "scope": {"global": True}}],
+    }
+    with pytest.raises(ReportedFailure):
+        yd_create.create_resources(_ctx(), [group])
+    output = capsys.readouterr()
+    text = " ".join((output.out + output.err).split())  # Rich wraps lines
+    assert "Failed to create or update Group 'g'" in text
+    assert "1 resource(s) failed to create or update" in text
 
 
 def test_an_unknown_resource_type_fails(env):
