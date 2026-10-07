@@ -32,6 +32,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Fixes
 
+- **`yd-instantiate --report` works with a JSON Compute Requirement specification**, as it already did with one defined in the configuration file; it was refused before.
+- **`yd-provision` and `yd-instantiate` send a JSON specification through the YellowDog SDK**, as they already did a TOML-defined one, rather than posting it to the REST API directly. What is provisioned is unchanged; a property the installed SDK does not know is now ignored with a warning rather than passed on.
 - **Role IDs are accepted.** The Platform gives a Role a YellowDog ID with no account segment (`ydid:role:<uuid>`), which the CLI rejected as invalid: `yd-show` reported it as an invalid ID, and a Group specification naming a role by its ID failed as if the role did not exist.
 
 ### Output

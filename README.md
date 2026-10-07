@@ -2271,7 +2271,7 @@ It's also possible to capture a Worker Pool definition as a JSON document. The J
 
 The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types.
 
-When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning.
+When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning. The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is, so a property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd-instantiate`.
 
 ### Worker Pool JSON Examples
 
@@ -3972,7 +3972,7 @@ When `--quiet` (`-q`) is used, only the YDID of the instantiated Compute Require
 
 #### Test-Running a Dynamic Template
 
-When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with TOML-defined Compute Requirement specifications, but not those that are JSON-defined.
+When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications.
 
 No instances will be provisioned during the test run.
 

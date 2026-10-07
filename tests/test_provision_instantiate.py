@@ -3,19 +3,24 @@ yd-provision and yd-instantiate: '--target' overrides the specification
 file as well as the configuration, yd-provision's node counts are made
 consistent in the specification as it will be sent (not in the TOML values
 before they are merged), a missing 'templateId' is a failure, and a failed
-Platform call keeps the exit code its kind of failure has.
+Platform call keeps the exit code its kind of failure has. A JSON
+specification is sent through the SDK, as the TOML path is: its parts become
+the SDK models unchanged, a property the model lacks is warned of and left
+out, and yd-instantiate's '--report' works with one.
 
 Each test drives the command's real main() through main_wrapper, with the
-client (or the raw HTTP call) mocked.
+client mocked.
 """
 
 from json import dumps as json_dumps
 from json import loads as json_loads
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 import requests
 from requests import HTTPError, Response
+from yellowdog_client.common.json import Json
 
 import yellowdog_cli.instantiate as yd_instantiate
 import yellowdog_cli.provision as yd_provision
@@ -29,6 +34,8 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
 
 CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
+CR_ID = "ydid:compreq:000000:11111111-2222-3333-4444-555555555555"
+WP_ID = "ydid:wrkrpool:000000:11111111-2222-3333-4444-555555555555"
 
 _DEFAULTS = {
     "json_output": False,
@@ -277,15 +284,15 @@ class TestProvisionFailures:
             (500, ExitCode.PLATFORM),
         ],
     )
-    def test_json_path_keeps_the_exit_code(
-        self, run, wp_file, monkeypatch, status, code
-    ):
-        monkeypatch.setattr(
-            yd_provision.requests, "post", lambda **k: _response(status)
+    def test_json_path_keeps_the_exit_code(self, run, wp_file, status, code):
+        client = MagicMock()
+        client.worker_pool_client.provision_worker_pool.side_effect = HTTPError(
+            "nope", response=_response(status)
         )
         run(
             yd_provision,
             ConfigWorkerPool(),
+            client=client,
             worker_pool_file_positional=wp_file({"targetInstanceCount": 1}, {}),
         )
         assert run.exit_code == code
@@ -335,14 +342,120 @@ class TestInstantiate:
         )
         assert run.exit_code == code
 
-    def test_json_path_keeps_the_exit_code(self, run, cr_file, monkeypatch):
-        monkeypatch.setattr(yd_instantiate.requests, "post", lambda **k: _response(503))
+    def test_json_path_keeps_the_exit_code(self, run, cr_file):
+        client = MagicMock()
+        client.compute_client.provision_compute_requirement_template.side_effect = (
+            HTTPError("nope", response=_response(503))
+        )
         run(
             yd_instantiate,
             ConfigWorkerPool(),
+            client=client,
             compute_requirement_file_positional=cr_file({"targetInstanceCount": 1}),
         )
         assert run.exit_code == ExitCode.PLATFORM
+
+
+# ---------------------------------------------------------------------------
+# A JSON specification, sent through the SDK
+# ---------------------------------------------------------------------------
+
+_USAGE = {
+    "targetInstanceCount": 2,
+    "instanceTags": {"purpose": "test"},
+    "userData": "#!/bin/bash\necho hi\n",
+}
+_PROPERTIES = {
+    "minNodes": 0,
+    "maxNodes": 2,
+    "workerTag": "wt",
+    "nodeBootTimeout": "PT12M",
+    "idleNodeShutdown": {"enabled": True, "timeout": "PT7M"},
+    "idlePoolShutdown": {"enabled": False},
+    "createNodeWorkers": {"targetType": "PER_VCPU", "targetCount": 2.0},
+    "metricsEnabled": False,
+}
+
+
+class TestJsonSpecificationsThroughTheSdk:
+    def test_a_worker_pool_is_provisioned_as_specified(self, run, wp_file):
+        client = MagicMock()
+        client.worker_pool_client.provision_worker_pool.return_value = SimpleNamespace(
+            id=WP_ID
+        )
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(),
+            client=client,
+            json_output=True,
+            worker_pool_file_positional=wp_file(_USAGE, _PROPERTIES),
+        )
+        assert run.exit_code == 0
+        (usage, properties), _ = (
+            client.worker_pool_client.provision_worker_pool.call_args
+        )
+        assert Json.dump(usage).items() >= {**_USAGE, "templateId": CRT_ID}.items()
+        assert Json.dump(usage)["requirementNamespace"] == "ns"
+        assert Json.dump(properties) == _PROPERTIES
+        assert json_loads(out)["id"] == WP_ID
+
+    def test_a_compute_requirement_is_provisioned_as_specified(self, run, cr_file):
+        client = MagicMock()
+        client.compute_client.provision_compute_requirement_template.return_value = (
+            SimpleNamespace(id=CR_ID)
+        )
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(),
+            client=client,
+            json_output=True,
+            compute_requirement_file_positional=cr_file(_USAGE),
+        )
+        assert run.exit_code == 0
+        (usage,), _ = (
+            client.compute_client.provision_compute_requirement_template.call_args
+        )
+        assert Json.dump(usage).items() >= {**_USAGE, "templateId": CRT_ID}.items()
+        assert json_loads(out)["id"] == CR_ID
+
+    def test_a_property_the_model_lacks_is_warned_of_and_left_out(self, run, cr_file):
+        client = MagicMock()
+        client.compute_client.provision_compute_requirement_template.return_value = (
+            SimpleNamespace(id=CR_ID)
+        )
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(),
+            client=client,
+            compute_requirement_file_positional=cr_file(
+                {"targetInstanceCount": 1, "notAProperty": 7}
+            ),
+        )
+        assert run.exit_code == 0
+        (usage,), _ = (
+            client.compute_client.provision_compute_requirement_template.call_args
+        )
+        assert "notAProperty" not in Json.dump(usage)
+        assert "Ignoring unexpected property 'notAProperty'" in out + run.err
+
+    def test_report_works_with_a_json_specification(self, run, cr_file, monkeypatch):
+        printed = MagicMock()
+        monkeypatch.setattr(
+            yd_instantiate, "print_compute_template_test_result", printed
+        )
+        client = MagicMock()
+        run(
+            yd_instantiate,
+            ConfigWorkerPool(),
+            client=client,
+            report=True,
+            compute_requirement_file_positional=cr_file({"targetInstanceCount": 1}),
+        )
+        assert run.exit_code == 0
+        (usage,), _ = client.compute_client.test_compute_requirement_template.call_args
+        assert usage.templateId == CRT_ID
+        printed.assert_called_once()
+        client.compute_client.provision_compute_requirement_template.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

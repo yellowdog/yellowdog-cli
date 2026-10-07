@@ -9,7 +9,6 @@ from datetime import timedelta
 from math import ceil, floor
 from typing import cast
 
-import requests
 from yellowdog_client.common.iso_datetime import iso_timedelta_format
 from yellowdog_client.model import (
     AutoShutdown,
@@ -24,7 +23,6 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.lazy import lazy
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
@@ -59,6 +57,7 @@ from yellowdog_cli.utils.provision_utils import (
     requirement_name,
     requirement_tag,
     shown_value,
+    specification_model,
     user_data_source,
 )
 from yellowdog_cli.utils.results import (
@@ -180,7 +179,8 @@ def _warn_maintain_instance_count() -> None:
 
 def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) -> None:
     """
-    Directly create the Worker Pool using the YellowDog REST API.
+    Create the Worker Pool a JSON specification describes, through the SDK
+    as the TOML path does.
     """
     wp_data = load_specification(
         wp_json_file,
@@ -238,6 +238,14 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) 
             " specification is provisioned as a single Worker Pool"
         )
 
+    # Built before the dry run, so that it too warns of what would be left out
+    usage: ComputeRequirementTemplateUsage = specification_model(
+        "ComputeRequirementTemplateUsage", reqt_template_usage
+    )
+    properties: ProvisionedWorkerPoolProperties = specification_model(
+        "ProvisionedWorkerPoolProperties", provisioned_properties
+    )
+
     if ctx.args.dry_run:
         if ctx.args.json_output:
             record_document(wp_data)
@@ -247,7 +255,7 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) 
         print_dry_run("Complete")
         return
 
-    _post_worker_pool(ctx, wp_data)
+    _provision_from_specification(ctx, usage, properties)
 
 
 def _merge_into_template_usage(
@@ -340,30 +348,28 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
             provisioned_properties[key] = value
 
 
-def _post_worker_pool(ctx: RunContext, wp_data: dict) -> None:
+def _provision_from_specification(
+    ctx: RunContext,
+    usage: ComputeRequirementTemplateUsage,
+    properties: ProvisionedWorkerPoolProperties,
+) -> None:
     """
-    Provision the Worker Pool a specification describes, through the REST API.
+    Provision the Worker Pool a specification describes, through the SDK.
     """
-    reqt_template_usage = wp_data["requirementTemplateUsage"]
-    response = requests.post(
-        url=f"{ctx.config.url}/workerPools/provisioned/template",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        json=wp_data,
-        timeout=RAW_REQUEST_TIMEOUT,
-    )
-    name = reqt_template_usage["requirementName"]
-    if response.status_code != 200:
+    name = usage.requirementName
+    namespace = usage.requirementNamespace
+    try:
+        worker_pool = ctx.client.worker_pool_client.provision_worker_pool(
+            usage, properties
+        )
+    except Exception:
+        # Re-raised as it is, so that the wrapper's exit code reflects it
         print_error(f"Failed to provision Worker Pool '{name}'")
-        # An HTTPError, so that the wrapper's exit code reflects the status
-        raise requests.HTTPError(response.text, response=response)
+        raise
 
-    id = response.json()["id"]
-    print_info(
-        f"Provisioned Worker Pool '{reqt_template_usage['requirementNamespace']}/{name}' ({id})"
-    )
-    record_entity(
-        id, name, reqt_template_usage["requirementNamespace"], ET_WORKER_POOLS
-    )
+    id = cast(str, worker_pool.id)
+    print_info(f"Provisioned Worker Pool '{namespace}/{name}' ({id})")
+    record_entity(id, name, namespace, ET_WORKER_POOLS)
     print_quiet_result(id)
     if ctx.args.follow:
         print_info("Following Worker Pool event stream")

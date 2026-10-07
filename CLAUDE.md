@@ -100,7 +100,7 @@ yellowdog_cli/
     ├── resource_creation.py     # yd-create as a library: create_resources(ctx, ..., CreateOptions); also the Cloud Wizard's
     ├── resource_removal.py      # yd-remove as a library: remove_resources(), remove_resources_by_id(), _removable_by_id()
     ├── load_resources.py        # Resource spec loading, substitution, dependency ordering (RESOURCE_CREATION_ORDER, test-held to sdk_models)
-    ├── provision_utils.py       # User Data reading, template/image lookup, shown_value(); requirement_name()/requirement_tag(), shared by yd-provision and yd-instantiate
+    ├── provision_utils.py       # User Data reading, template/image lookup, shown_value(); requirement_name()/requirement_tag(), shared by yd-provision and yd-instantiate; specification_model(): a JSON specification's part as its SDK model (yd-create's _get_model_object), so both paths provision through the SDK
     ├── follow_utils.py          # follow_ids(ctx, ...): SSE streams in threads, reconnection with backoff, timeout, follow_exit_code()
     ├── cloud_info.py            # yd-cloud-info as a library: CloudInfoQuery, the four Cloud Info searches filtered exactly here (the service's text filters match substrings), the --prices join (PricedInstanceType), local sorting; ctx first, never the command line
     ├── action_runner.py         # The action commands' shared rules: resolve_targets(), confirm_items(), carry_out()

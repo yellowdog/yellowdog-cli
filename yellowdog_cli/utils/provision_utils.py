@@ -4,6 +4,7 @@ Utility functions for provisioning and instantiating.
 
 from json import dumps as json_dumps
 from os.path import join
+from typing import Any
 
 from yellowdog_client import PlatformClient
 
@@ -231,3 +232,17 @@ def get_image_id(client: PlatformClient, image_name_or_id: str) -> str | None:
     return get_image_name_or_id(
         client=client, image_name_or_id=image_name_or_id, always_return_ydid=True
     )
+
+
+def specification_model(class_name: str, data: dict) -> Any:
+    """
+    A JSON specification's part as the SDK model it describes (a
+    ComputeRequirementTemplateUsage or ProvisionedWorkerPoolProperties), so
+    that yd-provision and yd-instantiate send it through the SDK, as the
+    TOML path does. Built as yd-create builds its resources: a property the
+    model lacks is warned of and left out, and the specification itself is
+    not changed.
+    """
+    from yellowdog_cli.utils.resource_creation import _get_model_object
+
+    return _get_model_object(class_name, dict(data))
