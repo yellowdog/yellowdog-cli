@@ -234,6 +234,51 @@ class TestProgressCounts:
         assert progress.tasks[0].start_time == 1000.0 - 300
 
 
+class TestExitOnFailureCode:
+    """
+    yd-submit -E's exit code once the Work Requirement has been followed:
+    its failure, or, if it has not finished because following it failed,
+    that failure's code, its outcome never having been seen.
+    """
+
+    def _code(self, status, follow_failure=None):
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
+            status=status
+        )
+        if follow_failure is not None:
+            fu._record_follow_failure(follow_failure)
+        with (
+            patch.object(wrapper_module, "CLIENT", client),
+            patch.object(fu, "print_error") as error,
+            patch.object(fu, "print_warning"),
+        ):
+            code = fu.work_requirement_exit_code(_ctx(), "ydid:workreq:000000:aaa:bbb")
+        return code, error
+
+    @pytest.mark.parametrize(
+        "status", [WorkRequirementStatus.FAILED, WorkRequirementStatus.CANCELLED]
+    )
+    def test_a_failed_work_requirement_exits_1(self, status):
+        assert self._code(status)[0] == ExitCode.FAILURE
+
+    def test_a_completed_one_exits_0(self):
+        assert self._code(WorkRequirementStatus.COMPLETED)[0] == ExitCode.SUCCESS
+
+    def test_one_not_followed_to_its_end_exits_with_the_follow_failure(self):
+        code, error = self._code(WorkRequirementStatus.RUNNING, ExitCode.CONNECTION)
+        assert code == ExitCode.CONNECTION
+        assert "could not be followed to its end" in error.call_args.args[0]
+
+    def test_one_that_finished_though_the_stream_failed_exits_0(self):
+        # Its outcome is known after all
+        code, _ = self._code(WorkRequirementStatus.COMPLETED, ExitCode.CONNECTION)
+        assert code == ExitCode.SUCCESS
+
+    def test_one_still_running_without_a_follow_failure_exits_0(self):
+        assert self._code(WorkRequirementStatus.RUNNING)[0] == ExitCode.SUCCESS
+
+
 class TestSessionFailuresAfterTheStream:
     """
     An authentication or connection failure once a stream has ended exits
@@ -253,7 +298,7 @@ class TestSessionFailuresAfterTheStream:
             patch.object(fu, "print_error"),
             pytest.raises(ReportedFailure) as raised,
         ):
-            fu.work_requirement_failed(_ctx(), "ydid:workreq:000000:aaa:bbb")
+            fu.work_requirement_exit_code(_ctx(), "ydid:workreq:000000:aaa:bbb")
         assert classify(raised.value) == ExitCode.CONNECTION
 
     def test_the_final_status_check_takes_another_failure_as_failed(self):
@@ -262,7 +307,8 @@ class TestSessionFailuresAfterTheStream:
             patch.object(wrapper_module, "CLIENT", self._client(error)),
             patch.object(fu, "print_error"),
         ):
-            assert fu.work_requirement_failed(_ctx(), "ydid:workreq:000000:aaa:bbb")
+            code = fu.work_requirement_exit_code(_ctx(), "ydid:workreq:000000:aaa:bbb")
+        assert code == ExitCode.FAILURE
 
     def test_a_session_failure_checking_a_closed_stream_is_recorded(self):
         response = requests.Response()

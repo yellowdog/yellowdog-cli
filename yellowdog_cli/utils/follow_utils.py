@@ -96,30 +96,40 @@ def reset_follow_errors() -> None:
         _FOLLOW_FAILURES.clear()
 
 
-def work_requirement_failed(ctx: RunContext, wr_id: str) -> bool:
+def work_requirement_exit_code(ctx: RunContext, wr_id: str) -> ExitCode:
     """
-    Fetch a Work Requirement and report whether it ended in a failure state
-    (FAILED or CANCELLED). A fetch error is treated as failure, except that
-    an authentication or connection failure is raised as ReportedFailure, to
-    exit with its own code. Prints a warning (or error) describing the
-    outcome; success is left to the caller.
+    The exit code of yd-submit's --exit-on-failure, once a Work Requirement
+    has been followed: FAILURE if it ended in a failure state (FAILED or
+    CANCELLED) or its status cannot be fetched; if it has not finished
+    because following it failed, that failure's own code, since its outcome
+    was never seen; otherwise SUCCESS. An authentication or connection
+    failure fetching the status is raised as ReportedFailure, to exit with
+    its own code. Prints a warning (or error) describing a failure; success
+    is left to the caller.
     """
     try:
         wr = ctx.client.work_client.get_work_requirement_by_id(wr_id)
-        status = wr.status.value if wr.status else "UNKNOWN"
     except Exception as e:
         print_error(f"Could not fetch final status for '{wr_id}': {e}")
         if classify(e) in SESSION_FAILURES:
             # Exits with the failure's own code, not as a failed Work Requirement
             raise ReportedFailure(e)
-        return True
+        return ExitCode.FAILURE
+    status = wr.status.value if wr.status else "UNKNOWN"
     if status in WR_FAILURE_STATUS_VALUES:
         print_warning(
             f"Work Requirement '{wr_id}' ended with status '{status}'",
             override_quiet=True,
         )
-        return True
-    return False
+        return ExitCode.FAILURE
+    finished = wr.status is not None and wr.status.finished
+    if not finished and (code := follow_exit_code()) != ExitCode.SUCCESS:
+        print_error(
+            f"Work Requirement '{wr_id}' could not be followed to its end, so its"
+            f" outcome is not known (its status is '{status}')"
+        )
+        return code
+    return ExitCode.SUCCESS
 
 
 class _WRNameColumn(ProgressColumn):

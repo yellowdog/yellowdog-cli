@@ -1084,3 +1084,46 @@ class TestCreateTaskGroupTag:
             _call_create_task_group(
                 {TASK_TYPES: ["bash"], TASK_GROUP_TAG: 7, TASKS: [{}]}
             )
+
+
+class TestExitOnFailure:
+    """
+    yd-submit's --exit-on-failure after following: the code of a Work
+    Requirement that failed or could not be followed to its end; without
+    the option, nothing, the exit code reflecting the submission alone.
+    """
+
+    @staticmethod
+    def _run(exit_on_failure: bool):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            ctx=SimpleNamespace(args=SimpleNamespace(exit_on_failure=exit_on_failure))
+        )
+
+    def test_the_outcomes_code_is_the_exit_code(self):
+        from yellowdog_cli.utils.exit_codes import ExitCode
+
+        with (
+            patch.object(
+                submit_module,
+                "work_requirement_exit_code",
+                return_value=ExitCode.CONNECTION,
+            ),
+            pytest.raises(SystemExit) as exited,
+        ):
+            submit_module._exit_on_failure(self._run(True), "wr-id")  # type: ignore[arg-type]
+        assert exited.value.code == ExitCode.CONNECTION
+
+    def test_a_successful_outcome_does_not_exit(self):
+        from yellowdog_cli.utils.exit_codes import ExitCode
+
+        with patch.object(
+            submit_module, "work_requirement_exit_code", return_value=ExitCode.SUCCESS
+        ):
+            submit_module._exit_on_failure(self._run(True), "wr-id")  # type: ignore[arg-type]
+
+    def test_without_the_option_the_outcome_is_not_fetched(self):
+        with patch.object(submit_module, "work_requirement_exit_code") as outcome:
+            submit_module._exit_on_failure(self._run(False), "wr-id")  # type: ignore[arg-type]
+        outcome.assert_not_called()

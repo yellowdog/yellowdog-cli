@@ -35,7 +35,7 @@ from yellowdog_cli.utils.exit_codes import (
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
     follow_work_requirement_with_progress,
-    work_requirement_failed,
+    work_requirement_exit_code,
 )
 from yellowdog_cli.utils.json_raw import submit_json_raw
 from yellowdog_cli.utils.lazy import lazy, value
@@ -906,32 +906,41 @@ def follow_progress(run: _Submission, work_requirement: WorkRequirement) -> None
     """
     Follow and report the progress of a Work Requirement.
 
-    With --exit-on-failure, exits with code 1 if the Work Requirement ends in
-    a failure state (FAILED/CANCELLED), so that a following submission reflects
+    With --exit-on-failure, exits non-zero if the outcome is not a success
+    (work_requirement_exit_code()), so that a following submission reflects
     the outcome.
     """
     if not run.ctx.args.dry_run:
         print_info("Following Work Requirement event stream")
         wr_id = cast(str, work_requirement.id)
         follow_events(run.ctx, wr_id, YDIDType.WORK_REQUIREMENT)
-        if run.ctx.args.exit_on_failure and work_requirement_failed(run.ctx, wr_id):
-            sys_exit(1)
+        _exit_on_failure(run, wr_id)
 
 
 def follow_progress_bar(run: _Submission, work_requirement: WorkRequirement) -> None:
     """
     Follow a Work Requirement and display a live progress bar.
 
-    With --exit-on-failure, exits with code 1 if the Work Requirement ends in
-    a failure state (FAILED/CANCELLED), so that a following submission reflects
-    the outcome.
+    With --exit-on-failure, exits non-zero if the outcome is not a success,
+    as follow_progress() does.
     """
     if run.ctx.args.dry_run:
         return
     wr_id = cast(str, work_requirement.id)
     follow_work_requirement_with_progress(run.ctx, wr_id)
-    if run.ctx.args.exit_on_failure and work_requirement_failed(run.ctx, wr_id):
-        sys_exit(1)
+    _exit_on_failure(run, wr_id)
+
+
+def _exit_on_failure(run: _Submission, wr_id: str) -> None:
+    """
+    With --exit-on-failure, exit with the code of a Work Requirement that
+    failed, or that could not be followed to its end; without it, the exit
+    code reflects the submission alone.
+    """
+    if run.ctx.args.exit_on_failure and (
+        code := work_requirement_exit_code(run.ctx, wr_id)
+    ):
+        sys_exit(code)
 
 
 def cleanup_on_failure(run: _Submission, work_requirement: WorkRequirement) -> None:

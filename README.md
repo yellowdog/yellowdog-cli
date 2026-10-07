@@ -3574,7 +3574,7 @@ Once submitted, the Work Requirement will appear in the **Work** tab in the Yell
 Key options:
 - `--follow`/`-f` — report on Tasks as they conclude, and don't return until the Work Requirement has finished
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
-- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state; needs `--follow` or `--progress`
+- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state, or, if it could not be followed to its end (its event stream lost, say) and has not finished, with the code of that failure, since its outcome is not known; needs `--follow` or `--progress`
 - `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
