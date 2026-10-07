@@ -21,6 +21,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd-show --show-members`** follows a Group with its Users and Applications, and a Role with the Groups that hold it, so that "who is in this Group?" and "which Groups have this Role?" can be answered from the CLI.
 - **`yd-show`** now shows a User with `groups`, the names of the Groups it belongs to, as it already did for an Application.
 
+### Dependencies
+
+- **`yellowdog-sdk` 15.7.0 or later is required.** It adds `serviceAccountEmail` to the GCE Compute Source types (`GceInstancesComputeSource`, `GceInstanceGroupComputeSource`), which a Compute Requirement Template specification can now set.
+
 ### Fixes
 
 - **Role IDs are accepted.** The Platform gives a Role a YellowDog ID with no account segment (`ydid:role:<uuid>`), which the CLI rejected as invalid: `yd-show` reported it as an invalid ID, and a Group specification naming a role by its ID failed as if the role did not exist.

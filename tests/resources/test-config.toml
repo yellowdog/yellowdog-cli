@@ -57,6 +57,7 @@
     gcp_subnetwork = "yd-dummy-subnetwork"
     gcp_accelerator_type = "nvidia-tesla-t4"
     gcp_ssh_keys = "yd-dummy:ssh-ed25519 AAAADUMMY yd-dummy"
+    gcp_service_account_email = "yd-dummy@yd-dummy-project.iam.gserviceaccount.com"
     # OCI
     oci_credential = "yd-test-keyring/oci-dummy"
     oci_region = "uk-london-1"
