@@ -75,9 +75,9 @@ class CommonCloudConfig(ABC):
         self._keyring_name: str | None = None
         self._keyring_password: str | None = None
 
-        # The authentication or connection failure that stopped a teardown's
-        # YellowDog removals, if one did: the cloud provider's removals still
-        # run, and the run then exits with this failure's code
+        # The authentication or connection failure that stopped a setup's or
+        # a teardown's YellowDog steps, if one did: what does not need the
+        # Platform still runs, and the run then exits with this failure's code
         self.platform_failure: BaseException | None = None
 
     @abstractmethod

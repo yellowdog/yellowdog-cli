@@ -388,3 +388,65 @@ class TestRemoveResourceById:
         with pytest.raises(ReportedFailure) as raised:
             self._remove(monkeypatch, ConnectionError("gone"))
         assert classify(raised.value) == ExitCode.CONNECTION
+
+
+class TestSetupAfterAPlatformFailure:
+    """
+    Azure setup's YellowDog credential, its last Platform call: a lost
+    connection there is kept rather than counted, the resource file is still
+    saved, and the run exits with the failure's code, saying a second setup
+    creates what is missing. Any other failure is counted, as before.
+    """
+
+    def _config(self, monkeypatch, error):
+        from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        def create(ctx, resources):
+            if resources and resources[0].get("resource") == "credential":
+                raise ReportedFailure(error) if error is not None else RuntimeError()
+            return None
+
+        monkeypatch.setattr(cloudwizard_azure, "create_resources", create)
+        config = object.__new__(cloudwizard_azure.AzureConfig)
+        cloudwizard_common.CommonCloudConfig.__init__(
+            config, ctx=SimpleNamespace(client=MagicMock()), cloud_provider="Azure"
+        )
+        config._created_regions = ["uksouth"]
+        config._generate_azure_compute_source_template = lambda region, name, spot: {
+            "name": name
+        }
+        config._create_compute_requirement_templates = lambda resource_prefix: None
+        config._generate_yd_azure_credential = lambda keyring, credential: {
+            "resource": "credential"
+        }
+        config.saved = False
+
+        def save(resources, filename):
+            config.saved = True
+            return True
+
+        config._save_resource_list = save
+        config.setup = config._create_yellowdog_resources  # The step under test
+        return config
+
+    def test_a_lost_connection_exits_with_its_code(self, monkeypatch, printed):
+        from requests import ConnectionError
+
+        from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+
+        config = self._config(monkeypatch, ConnectionError("gone"))
+        with pytest.raises(ReportedFailure) as raised:
+            cloudwizard.run_operation(config, "setup", None)
+        assert classify(raised.value) == ExitCode.CONNECTION
+        assert config.saved  # The resource file, though the credential failed
+        assert cloudwizard_common.errors_reported() == 0
+        assert any("run setup again" in line for line in printed)
+
+    def test_another_failure_is_counted_as_before(self, monkeypatch, printed):
+        config = self._config(monkeypatch, None)
+        with pytest.raises(SystemExit) as exited:
+            cloudwizard.run_operation(config, "setup", None)
+        assert exited.value.code == 1
+        assert config.saved
+        assert cloudwizard_common.errors_reported() == 1

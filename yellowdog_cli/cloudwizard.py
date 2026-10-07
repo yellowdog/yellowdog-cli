@@ -83,6 +83,12 @@ def run_operation(
             # The Keyring's password is shown only this once: however setup
             # ends, a Keyring it created is not left unclaimable
             config.print_keyring_details()
+        if config.platform_failure is not None:
+            print_error(
+                "The YellowDog resources were not all created; run setup again"
+                " to create what is missing"
+            )
+            raise ReportedFailure(config.platform_failure)
 
     elif operation == "teardown":
         config.teardown()

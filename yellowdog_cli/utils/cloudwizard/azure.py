@@ -13,6 +13,7 @@ from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
@@ -449,7 +450,12 @@ class AzureConfig(CommonCloudConfig):
             )
             create_resources(self._ctx, [credential_resource])
         except Exception as e:
-            print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
+            if classify(e) in SESSION_FAILURES:
+                # Reported by create_resources(): the resource file is still
+                # saved, and the run then exits with this failure's code
+                self.platform_failure = e
+            else:
+                print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
 
         # Save the list of resources
         # Sequence the Compute Requirement Templates before the Compute Source
