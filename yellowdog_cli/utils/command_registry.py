@@ -1984,17 +1984,52 @@ SHOW_TOKEN = option(
         "configured worker pool"
     ),
 )
+SHOW_SOURCE_REPORT = option(
+    "--show-source-report",
+    action="store_true",
+    required=False,
+    help=(
+        "also display the report of how a compute requirement's sources were"
+        " chosen (for a compute requirement, or a provisioned worker pool's,"
+        " provisioned from a dynamic template)"
+    ),
+)
+SHOW_EXHAUSTION = option(
+    "--show-exhaustion",
+    action="store_true",
+    required=False,
+    help=(
+        "also display the allowances exhausted for a compute requirement (or"
+        " a provisioned worker pool's)"
+    ),
+)
 
 
 def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-show's '--substitute-ids', refused when none of the IDs is of a kind
     whose details it substitutes names into (Compute Source and Requirement
-    Templates, Allowances), rather than ignored. '--show-token' is left
-    alone: whether a Worker Pool is a Configured one is known only once it
-    has been fetched.
+    Templates, Allowances), rather than ignored; '--show-source-report' and
+    '--show-exhaustion' likewise without a Compute Requirement or Worker
+    Pool ID. '--show-token' is left alone: whether a Worker Pool is a
+    Configured one is known only once it has been fetched, as whether it is
+    a Provisioned one is for the other two.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    with_compute_requirement = (YDIDType.COMPUTE_REQUIREMENT, YDIDType.WORKER_POOL)
+    for flag, given in (
+        ("--show-source-report", args.show_source_report),
+        ("--show-exhaustion", args.show_exhaustion),
+    ):
+        if given and not any(
+            get_ydid_type(ydid) in with_compute_requirement
+            for ydid in args.yellowdog_ids
+        ):
+            parser.error(
+                f"{flag} applies only to Compute Requirement and Worker Pool"
+                " IDs, and none was given"
+            )
 
     substitutable = (
         YDIDType.COMPUTE_SOURCE_TEMPLATE,
@@ -2028,6 +2063,8 @@ COMMANDS["yd-show"] = Command(
             ),
         ),
         SHOW_TOKEN,
+        SHOW_SOURCE_REPORT,
+        SHOW_EXHAUSTION,
         SUBSTITUTE_IDS,
         STRIP_IDS,
         HIDE_USER_DATA,

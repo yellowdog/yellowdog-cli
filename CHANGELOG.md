@@ -8,6 +8,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **`yd-token`** refreshes the token of one or more Configured Worker Pools, keeping it and setting its expiry afresh, or with `--regenerate` issues a new one, invalidating the old. Either is confirmed first, the prompt saying what the expiry will be. `--ttl-hours` sets the token's time to live from now; without it, the token does not expire. Pools are named by ID, name or glob pattern; the new token and its expiry are printed, or recorded with `--json`. It is also available to MCP clients as the `yd_token` tool.
 
+### Diagnosing a Compute Requirement
+
+- **`yd-show --show-source-report`** follows a Compute Requirement with the Platform's report of how its sources were chosen (considered, selected and rejected Compute Source Templates, ranks, scores, constraints and preferences), for one provisioned from a dynamic template.
+- **`yd-show --show-exhaustion`** follows it with the Allowances exhausted for it, so that you can see which to boost with `yd-boost`.
+- Both also take a Provisioned Worker Pool's ID, reporting on its Compute Requirement.
+
 ### Output
 
 - **`yd-create`** now shows a new Configured Worker Pool's token expiry with its time zone (`2026-10-07 14:02:42+00:00`), since the Platform gives it in UTC and the log timestamps beside it are local, and shows `never` for a token without an expiry rather than `None`.

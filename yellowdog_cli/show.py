@@ -7,9 +7,13 @@ Command to show the JSON details of YellowDog entities via their IDs.
 from collections.abc import Callable
 from dataclasses import dataclass
 from sys import exit as sys_exit
-from typing import Any
+from typing import Any, cast
 
-from yellowdog_client.model import ConfiguredWorkerPool
+from yellowdog_client.model import (
+    ComputeRequirement,
+    ConfiguredWorkerPool,
+    ProvisionedWorkerPool,
+)
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
@@ -61,7 +65,9 @@ from yellowdog_cli.utils.ydid_utils import (
 
 # An object to be shown, paired with any additional fields to add to its JSON
 # representation. A single YellowDog ID can yield more than one: a Configured
-# Worker Pool shown with '--show-token' yields the pool and its token.
+# Worker Pool shown with '--show-token' yields the pool and its token, and a
+# Compute Requirement (or a Provisioned Worker Pool) shown with
+# '--show-source-report' or '--show-exhaustion' yields those reports after it.
 ShowItem = tuple[Any, dict | None]
 
 
@@ -108,8 +114,9 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     # Whenever more than one object is to be printed, it's printed as a JSON
     # array. More than one ID asked for is enough on its own, so that the shape
     # of the output follows the request rather than how much of it succeeded;
-    # a single ID can also yield more than one object, a Configured Worker Pool
-    # shown with '--show-token' being the only case.
+    # a single ID can also yield more than one object: a Configured Worker
+    # Pool with '--show-token', or a Compute Requirement or Provisioned Worker
+    # Pool with '--show-source-report' or '--show-exhaustion'.
     as_json_array = len(ydids) > 1
     for index, ydid in enumerate(ydids):
         try:
@@ -297,6 +304,77 @@ def _worker_pool(ctx: RunContext, ydid: str) -> list[ShowItem]:
                 None,
             )
         )
+    if _diagnostics_requested(ctx):
+        if isinstance(worker_pool, ProvisionedWorkerPool):
+            items += _diagnostics(
+                ctx,
+                ctx.client.compute_client.get_compute_requirement_by_id(
+                    cast(str, worker_pool.computeRequirementId)
+                ),
+            )
+        else:
+            print_warning(
+                f"Worker Pool '{ydid}' is not a Provisioned Worker Pool, so has"
+                " no Compute Requirement to report on"
+            )
+    return items
+
+
+def _compute_requirement(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    compute_requirement = ctx.client.compute_client.get_compute_requirement_by_id(ydid)
+    return [(compute_requirement, None), *_diagnostics(ctx, compute_requirement)]
+
+
+def _diagnostics_requested(ctx: RunContext) -> bool:
+    return bool(ctx.args.show_source_report or ctx.args.show_exhaustion)
+
+
+def _diagnostics(
+    ctx: RunContext, compute_requirement: ComputeRequirement
+) -> list[ShowItem]:
+    """
+    The reports asked for on a Compute Requirement: how its sources were
+    chosen ('--show-source-report'), and the Allowances exhausted for it
+    ('--show-exhaustion'). A report the Platform does not have is warned of
+    and left out, so that the Compute Requirement is still shown; any other
+    failure is raised, failing the ID.
+    """
+    items: list[ShowItem] = []
+    cr_id = cast(str, compute_requirement.id)
+    if ctx.args.show_source_report:
+        print_info(f"Showing source report for '{cr_id}'")
+        try:
+            items.append(
+                (
+                    ctx.client.compute_client.get_best_compute_source_report_by_compute_requirement(
+                        cr_id
+                    ),
+                    None,
+                )
+            )
+        except Exception as e:
+            if not is_http_not_found(e):
+                raise
+            print_warning(
+                f"No source report for '{cr_id}': only a Compute"
+                " Requirement provisioned from a dynamic template has one"
+            )
+    if ctx.args.show_exhaustion:
+        print_info(f"Checking Allowance exhaustion for '{cr_id}'")
+        notifications = (
+            ctx.client.allowances_client.check_compute_requirement_exhaustion(
+                compute_requirement
+            )
+        )
+        items.append(
+            (
+                {
+                    "computeRequirementId": cr_id,
+                    "exhaustedAllowances": notifications or [],
+                },
+                None,
+            )
+        )
     return items
 
 
@@ -341,8 +419,7 @@ _RESOLVERS: dict[YDIDType, _Resolver] = {
         "Compute Requirement Template", _compute_requirement_template
     ),
     YDIDType.COMPUTE_REQUIREMENT: _Resolver(
-        "Compute Requirement",
-        _fetched(lambda c, ydid: c.compute_client.get_compute_requirement_by_id(ydid)),
+        "Compute Requirement", _compute_requirement
     ),
     YDIDType.COMPUTE_SOURCE: _Resolver(
         "Compute Source",

@@ -762,6 +762,16 @@ class CLIParser:
     def show_token(self) -> bool | None:
         return self.args.show_token
 
+    @property
+    @allow_missing_attribute
+    def show_source_report(self) -> bool | None:
+        return self.args.show_source_report
+
+    @property
+    @allow_missing_attribute
+    def show_exhaustion(self) -> bool | None:
+        return self.args.show_exhaustion
+
     # -----------------------------------------------------------------------
     # yd-variables
     # -----------------------------------------------------------------------

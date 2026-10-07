@@ -9,6 +9,9 @@ Requirements, Task Groups, Tasks, Image Groups and Images. Nothing caught it,
 because the tests asserted the arguments handed to print_yd_object() rather
 than what came out.
 
+Also '--show-source-report' and '--show-exhaustion', the reports on a Compute
+Requirement (or a Provisioned Worker Pool's) that follow it in the array.
+
 These tests therefore parse the output. Resolution and printing are now
 separate, so the framing is applied in one place and cannot be forgotten in a
 branch -- but the guard is 'json.loads() succeeds', which holds however the
@@ -51,7 +54,14 @@ class _Obj:
 class _StubJson:
     @staticmethod
     def dump(yd_object):
-        return yd_object.payload
+        # '--show-exhaustion' shows a dict holding SDK objects
+        if isinstance(yd_object, dict):
+            return {key: _StubJson.dump(value) for key, value in yd_object.items()}
+        if isinstance(yd_object, list):
+            return [_StubJson.dump(item) for item in yd_object]
+        if isinstance(yd_object, _Obj):
+            return yd_object.payload
+        return yd_object
 
 
 class _FakeConfiguredWorkerPool(_Obj):
@@ -60,12 +70,24 @@ class _FakeConfiguredWorkerPool(_Obj):
     """
 
 
+class _FakeProvisionedWorkerPool(_Obj):
+    """
+    Stands in for ProvisionedWorkerPool, likewise.
+    """
+
+    def __init__(self, name: str, compute_requirement_id: str):
+        super().__init__(name)
+        self.computeRequirementId = compute_requirement_id
+
+
 def _args(**overrides) -> MagicMock:
     args = MagicMock()
     args.strip_ids = False
     args.hide_user_data = False
     args.substitute_ids = False
     args.show_token = False
+    args.show_source_report = False
+    args.show_exhaustion = False
     args.output_file = None
     args.quiet = True  # Keep the status messages out of the parsed output
     args.json_output = False
@@ -192,12 +214,19 @@ def _names(parsed) -> list[str]:
     return [item["name"] for item in (parsed if isinstance(parsed, list) else [parsed])]
 
 
+# The warnings the last _run() printed
+_WARNINGS: list[str] = []
+
+
 def _run(
     ydids: list[str], client: MagicMock, args: MagicMock, capsys
 ) -> tuple[int, str]:
+    _WARNINGS.clear()
     ctx = RunContext(args=args, config=MagicMock(), client=client)
     with (
         patch.object(show_module, "ConfiguredWorkerPool", _FakeConfiguredWorkerPool),
+        patch.object(show_module, "ProvisionedWorkerPool", _FakeProvisionedWorkerPool),
+        patch.object(show_module, "print_warning", _WARNINGS.append),
         output_settings.configured(args),
         # printing.py imports Json where it uses it, from the SDK's module
         patch("yellowdog_client.common.json.Json", _StubJson),
@@ -273,6 +302,145 @@ def test_show_token_yields_an_array_from_a_single_id(capsys):
 
     assert failures == 0
     assert _names(loads(output)) == [pool.payload["name"], token.payload["name"]]
+
+
+# ---------------------------------------------------------------------------
+# '--show-source-report' and '--show-exhaustion'
+# ---------------------------------------------------------------------------
+
+
+def _diagnosable(client: MagicMock) -> tuple[str, _Obj, _Obj, _Obj]:
+    """
+    A Compute Requirement with a source report and one exhausted Allowance.
+    """
+    cr_id = _ydid("compreq")
+    compute_requirement = _Obj("compute-requirement", id=cr_id)
+    report = _Obj("source-report")
+    notification = _Obj("allowance-a")
+    client.compute_client.get_compute_requirement_by_id.return_value = (
+        compute_requirement
+    )
+    compute = client.compute_client
+    compute.get_best_compute_source_report_by_compute_requirement.return_value = report
+    client.allowances_client.check_compute_requirement_exhaustion.return_value = [
+        notification
+    ]
+    return cr_id, compute_requirement, report, notification
+
+
+class TestDiagnostics:
+    def test_the_source_report_follows_the_compute_requirement(self, capsys):
+        client = MagicMock()
+        cr_id, cr, report, _ = _diagnosable(client)
+        failures, output = _run([cr_id], client, _args(show_source_report=True), capsys)
+        assert failures == 0
+        assert loads(output) == [cr.payload, report.payload]
+        client.compute_client.get_best_compute_source_report_by_compute_requirement.assert_called_once_with(
+            cr_id
+        )
+        client.allowances_client.check_compute_requirement_exhaustion.assert_not_called()
+
+    def test_exhaustion_is_shown_as_one_object_naming_the_requirement(self, capsys):
+        client = MagicMock()
+        cr_id, cr, _, notification = _diagnosable(client)
+        failures, output = _run([cr_id], client, _args(show_exhaustion=True), capsys)
+        assert failures == 0
+        assert loads(output) == [
+            cr.payload,
+            {
+                "computeRequirementId": cr_id,
+                "exhaustedAllowances": [notification.payload],
+            },
+        ]
+        client.allowances_client.check_compute_requirement_exhaustion.assert_called_once_with(
+            cr
+        )
+
+    def test_nothing_exhausted_is_an_empty_list(self, capsys):
+        client = MagicMock()
+        cr_id, _, _, _ = _diagnosable(client)
+        client.allowances_client.check_compute_requirement_exhaustion.return_value = []
+        _, output = _run([cr_id], client, _args(show_exhaustion=True), capsys)
+        assert loads(output)[1]["exhaustedAllowances"] == []
+
+    def test_both_in_order(self, capsys):
+        client = MagicMock()
+        cr_id, cr, report, _ = _diagnosable(client)
+        _, output = _run(
+            [cr_id],
+            client,
+            _args(show_source_report=True, show_exhaustion=True),
+            capsys,
+        )
+        parsed = loads(output)
+        assert parsed[:2] == [cr.payload, report.payload]
+        assert parsed[2]["computeRequirementId"] == cr_id
+
+    def test_a_provisioned_worker_pool_reports_on_its_compute_requirement(self, capsys):
+        client = MagicMock()
+        cr_id, _, report, _ = _diagnosable(client)
+        pool = _FakeProvisionedWorkerPool("provisioned-pool", cr_id)
+        client.worker_pool_client.get_worker_pool_by_id.return_value = pool
+        failures, output = _run(
+            [_ydid("wrkrpool")], client, _args(show_source_report=True), capsys
+        )
+        assert failures == 0
+        assert loads(output) == [pool.payload, report.payload]
+        client.compute_client.get_compute_requirement_by_id.assert_called_once_with(
+            cr_id
+        )
+
+    def test_a_configured_worker_pool_is_warned_of(self, capsys):
+        client = MagicMock()
+        pool = _FakeConfiguredWorkerPool("configured-pool")
+        client.worker_pool_client.get_worker_pool_by_id.return_value = pool
+        failures, output = _run(
+            [_ydid("wrkrpool")], client, _args(show_exhaustion=True), capsys
+        )
+        assert failures == 0
+        assert loads(output)["name"] == "configured-pool"  # Alone: no reports
+        assert "not a Provisioned Worker Pool" in _WARNINGS[0]
+        client.allowances_client.check_compute_requirement_exhaustion.assert_not_called()
+
+    def test_a_missing_report_is_warned_of_and_the_rest_shown(self, capsys):
+        client = MagicMock()
+        cr_id, cr, _, notification = _diagnosable(client)
+        compute = client.compute_client
+        compute.get_best_compute_source_report_by_compute_requirement.side_effect = (
+            _http_error(404)
+        )
+        failures, output = _run(
+            [cr_id],
+            client,
+            _args(show_source_report=True, show_exhaustion=True),
+            capsys,
+        )
+        assert failures == 0
+        assert loads(output)[0] == cr.payload
+        assert loads(output)[1]["exhaustedAllowances"] == [notification.payload]
+        assert "No source report" in _WARNINGS[0]
+
+    def test_another_report_failure_fails_the_id(self, capsys):
+        client = MagicMock()
+        cr_id, _, _, _ = _diagnosable(client)
+        compute = client.compute_client
+        compute.get_best_compute_source_report_by_compute_requirement.side_effect = (
+            _http_error(500)
+        )
+        exit_code, _ = _run([cr_id], client, _args(show_source_report=True), capsys)
+        assert exit_code == ExitCode.FAILURE
+
+    def test_a_session_failure_stops_the_run(self, capsys):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
+
+        client = MagicMock()
+        cr_id, _, _, _ = _diagnosable(client)
+        client.allowances_client.check_compute_requirement_exhaustion.side_effect = (
+            _http_error(401)
+        )
+        with pytest.raises(ReportedFailure) as raised:
+            _run([cr_id, cr_id], client, _args(show_exhaustion=True), capsys)
+        assert classify(raised.value) == ExitCode.AUTHENTICATION
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +553,17 @@ class TestCommandLine:
         assert raised.value.code == 2
         assert "--substitute-ids applies only to" in capsys.readouterr().err
         CLIParser(command="yd-show", argv=["-U", _ydid("task"), _ydid("allow")])
+
+    @pytest.mark.parametrize("flag", ["--show-source-report", "--show-exhaustion"])
+    def test_a_diagnostic_needs_an_id_it_applies_to(self, flag, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-show", argv=[flag, _ydid("task")])
+        assert raised.value.code == 2
+        assert f"{flag} applies only to" in capsys.readouterr().err
+        CLIParser(command="yd-show", argv=[flag, _ydid("task"), _ydid("compreq")])
+        CLIParser(command="yd-show", argv=[flag, _ydid("wrkrpool")])
 
     def test_namespace_and_tag_are_not_options(self, capsys):
         from yellowdog_cli.utils.args import CLIParser
