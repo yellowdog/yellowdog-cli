@@ -161,6 +161,10 @@
     show_missing = true
 
 [tool.pytest.ini_options]
+    # Under pytest-xdist ('-n'), tests marked with one xdist_group run on one
+    # worker: those sharing state no test can isolate (see
+    # test_commander_file_preview.py); ignored without '-n'
+    addopts = "--dist=loadgroup"
     filterwarnings = [
       "ignore::DeprecationWarning:pydispatch",
     ]

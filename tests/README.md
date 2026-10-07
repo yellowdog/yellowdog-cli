@@ -302,3 +302,5 @@ pytest -v -n 4 --run-demos tests/test_demos.py -k 'bash or primes'
 ```
 
 > Targeting the test file directly avoids unit tests consuming all workers before the slower tests are scheduled.
+
+Tests sharing state that no worker can isolate are kept on one worker with `@pytest.mark.xdist_group`, which `--dist loadgroup` in `pyproject.toml`'s `addopts` honours (and ignores without `-n`): `test_commander_file_preview.py`, whose real Qt file dialogs share the sidebar width Qt keeps in the user's own settings, is one group.
