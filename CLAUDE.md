@@ -33,6 +33,9 @@ tox -e py315          # Python 3.15 pre-release: opt-in, kept out of env_list (s
 # Type checking
 make pyright
 
+# Code complexity: McCabe worst first, ruff's function-structure counts, lengths (a report, never a failure)
+make complexity
+
 # Update dependencies
 make update           # uv pip install -U -e ".[dev,commander,jsonnet,cloudwizard]"
 ```

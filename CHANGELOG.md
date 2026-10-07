@@ -39,6 +39,7 @@ Several commands that hid a failure, or reported it under the wrong exit code, n
 ### Development
 
 - **`make coverage`**: line and branch coverage of the unit tests, with `pytest-cov` added to the `dev` extra. It prints a summary per file and writes the detail to `htmlcov/index.html`; see `DEVELOPMENT.md`.
+- **`make complexity`**: a report of the package's code complexity — McCabe complexity worst first, ruff's counts of functions with too many branches, statements, returns or arguments, and function lengths; see `DEVELOPMENT.md`.
 - **A test holds every broad exception handler** (`except Exception`, `except BaseException`, a bare `except:`) to either letting its failure reach the exit code, or being listed with the reason it need not (`tests/test_broad_excepts.py`).
 - **Test runs**:
   - On macOS, the test that deliberately crashes a child interpreter is skipped unless `--run-crash-tests` is given, since each crash put up the system's "quit unexpectedly" dialog.

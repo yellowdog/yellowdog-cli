@@ -57,6 +57,12 @@ test:
 pyright:
 	pyright $(SRC)
 
+# The package's code complexity: McCabe complexity worst first, ruff's
+# function-structure counts, and function lengths. A report, never a failure;
+# 'make complexity ARGS="--threshold 20 --top 20"' to change what it lists
+complexity:
+	python scripts/complexity_report.py $(ARGS)
+
 # Line and branch coverage of the unit tests: a summary per file, and the
 # detail in htmlcov/index.html. Code run only in a subprocess is not counted
 coverage:

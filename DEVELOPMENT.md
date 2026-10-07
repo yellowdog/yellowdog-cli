@@ -92,6 +92,17 @@ make coverage
 
 It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd-schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks, the demo dry runs) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
 
+### Complexity
+
+A report of the package's code complexity:
+
+```bash
+make complexity
+make complexity ARGS="--threshold 20 --top 20"   # what it lists: complexity over 20, and 20 of each
+```
+
+It lists the functions whose McCabe complexity is over the threshold (15 by default), worst first; counts the functions ruff finds with too many branches, statements, returns or arguments; and gives the median and 90th-percentile function length with the longest functions. It is a report, never a failure: the checks it runs are enabled for it alone, not in `pyproject.toml`'s ruff configuration, so `make format` and the pre-commit hook are unaffected. The script is `scripts/complexity_report.py`.
+
 ### Commander GUI Tests
 
 Around 290 of the unit tests exercise the Commander GUI. They run offscreen with no display, so a headless node is fine, but they do need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against. Where either is missing, those test modules skip and the rest of the suite runs normally — installing them is only necessary to test Commander itself.
@@ -214,7 +225,7 @@ scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 CHANGELOG.md              # the release notes: each release's user-visible changes, and those not yet released under '## Unreleased'
-Makefile                  # format, test, coverage, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
+Makefile                  # format, test, coverage, complexity, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials
