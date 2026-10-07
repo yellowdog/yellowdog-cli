@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 13.2.0 — 2026-10-07
+
 ### New command
 
 - **`yd-cloud-info`** lists the cloud providers' regions, sub-regions, instance types and prices as the YellowDog Platform knows them, filtered by provider, region, name, vCPUs, RAM and processor architecture. `yd-cloud-info instance-types --region <region> --prices` adds each instance type's on-demand price and lowest spot price in the region, so `--sort spot` finds the cheapest. It is also available to MCP clients as the `yd_cloud_info` tool.
