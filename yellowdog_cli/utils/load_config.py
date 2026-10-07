@@ -1070,10 +1070,6 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             wr_tag=wr_section.get(WR_TAG),
         )
 
-    except KeyError as e:
-        print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(ExitCode.CONFIGURATION)
-
     except Exception as e:
         # A configuration error, as a rule; under '--debug', its traceback,
         # in case it is a fault in this loader instead
@@ -1336,14 +1332,10 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             workers_per_node=cast(int, _number(wp_section, WORKERS_PER_NODE, int, 1)),
         )
 
-    except KeyError as e:
-        print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(ExitCode.CONFIGURATION)
-
-    except TypeError as e:
+    except Exception as e:
+        # A configuration error (a property of the wrong type), as a rule;
+        # under '--debug', its traceback, in case it is a fault in this loader
+        if OUTPUT.debug:
+            raise
         print_error(f"{e}")
-        exit(ExitCode.CONFIGURATION)
-
-    except ValueError as e:
-        print_error(f"Invalid type for configuration: {e}")
         exit(ExitCode.CONFIGURATION)

@@ -171,6 +171,7 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/utils/load_config.py::_load_config_file#0": _LOADER,
     "yellowdog_cli/utils/load_config.py::_load_config_file#1": _LOADER,
     "yellowdog_cli/utils/load_config.py::load_config_work_requirement#0": _LOADER,
+    "yellowdog_cli/utils/load_config.py::load_config_worker_pool#0": _LOADER,
     "yellowdog_cli/utils/resource_creation.py::_grant_keyrings#0": (
         "Collected, the other grants tried, then raised from the first failure,"
         " whose code classify() follows"
