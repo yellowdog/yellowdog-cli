@@ -271,6 +271,7 @@ Documentation here is spread across several files, each with its own audience, a
 | `.claude/rules/*.md` | The subsystem a rule file covers changes (Commander, the MCP server, variable substitution, the specification schemas). Subsystem detail goes there, not in `CLAUDE.md`, which must stay under Claude Code's 150k-character limit; a new rule file needs `paths:` frontmatter, or it loads in every session |
 | `config-template.toml` | A new or changed TOML configuration property — it is the annotated reference for all of them |
 | `pyproject.toml` | A new entry point, extra, package-data file or subpackage (`include-package-data` is `false`, so an unlisted asset ships broken, and the packages are listed by name, which `tests/test_packaging.py` holds to the directories; the `Makefile`'s `SRC`, which `make format`, `make pyright` and `make build` use, reaches one level of subpackage under `utils/`) |
+| `CHANGELOG.md` | A user-visible change: a line under `## Unreleased`, in the same commit as the change, saying what users will notice (behaviour and exit codes, not the implementation). `release.sh` stamps the section with the version and date at release, and makes it the tag's message |
 | `RELEASING.md` | The release process, branch model or PyPI arrangements change |
 
 Two traps worth naming, both of which have bitten:

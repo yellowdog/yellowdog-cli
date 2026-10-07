@@ -16,6 +16,10 @@ next-version  ──────────────────────
 feature/xyz   ───────────────●───────────────────────────────────●
 ```
 
+## Release Notes
+
+The release notes are kept in `CHANGELOG.md`, written as the changes land rather than on the day: a user-visible change adds its line under `## Unreleased`, in the same commit as the change. At release, `## Unreleased` becomes `## X.Y.Z — YYYY-MM-DD` and a fresh, empty `## Unreleased` takes its place; that version's notes are the release tag's message, and are pasted into the release ticket. `release.sh` does all of this, and refuses to release with nothing under `## Unreleased`.
+
 ## Quick Release (Automated)
 
 Run `release.sh` from the `next-version` branch with a clean working tree:
@@ -25,7 +29,7 @@ Run `release.sh` from the `next-version` branch with a clean working tree:
 ./release.sh --release  # execute the release for real
 ```
 
-The script handles everything: version bump, format, tests, merge, tag, push, PyPI upload.
+The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, stopping if it has not: its own test run uses the current venv alone, which can hide a failure on another Python version or without the optional extras. At the end it prints the release notes, for the release ticket.
 
 ## Manual Release Steps
 
@@ -37,7 +41,10 @@ If you need to release without the script, or want to understand what it does:
 git checkout next-version
 git status              # must be clean
 git pull origin next-version
+make tox                # every supported Python version
 ```
+
+Check that `CHANGELOG.md` has this release's notes under `## Unreleased`.
 
 ### 2. Bump the version
 
@@ -45,6 +52,8 @@ Edit `yellowdog_cli/_version.py`:
 ```python
 __version__ = "X.Y.Z"
 ```
+
+In `CHANGELOG.md`, add `## X.Y.Z — YYYY-MM-DD` under `## Unreleased`, so that the notes become this version's and `## Unreleased` is left empty.
 
 ### 3. Format, check, and test
 
@@ -57,7 +66,7 @@ pytest -v
 ### 4. Commit the version bump
 
 ```shell
-git add yellowdog_cli/_version.py
+git add yellowdog_cli/_version.py CHANGELOG.md
 git commit -m "Bump version to X.Y.Z"
 ```
 
@@ -66,7 +75,7 @@ git commit -m "Bump version to X.Y.Z"
 ```shell
 git checkout main
 git merge --no-ff next-version -m "Release vX.Y.Z"
-git tag -a vX.Y.Z -m "Version X.Y.Z"
+git tag -a vX.Y.Z      # the message: 'Version X.Y.Z', a blank line, then the version's notes
 ```
 
 ### 6. Push `main` and tags
