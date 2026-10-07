@@ -57,6 +57,11 @@ test:
 pyright:
 	pyright $(SRC)
 
+# Line and branch coverage of the unit tests: a summary per file, and the
+# detail in htmlcov/index.html. Code run only in a subprocess is not counted
+coverage:
+	pytest -n auto --cov --cov-report=term --cov-report=html
+
 tox:
 	tox
 

@@ -60,6 +60,7 @@
         "cli-test-helpers",
         "pre-commit",
         "pytest",
+        "pytest-cov",
         "pytest-xdist",
         "python-dispatch",
         "ruff",
@@ -148,6 +149,16 @@
     "tests/test_gui_harness.py" = ["E402"]
     "tests/gui_harness.py" = ["E402"]
     "tests/commander_dialogs.py" = ["E402"]
+
+[tool.coverage.run]
+    # Branches as well as lines: the untested paths worth finding are mostly
+    # failure branches, which a line taken on the way past hides
+    branch = true
+    source = ["yellowdog_cli"]
+
+[tool.coverage.report]
+    skip_covered = true
+    show_missing = true
 
 [tool.pytest.ini_options]
     filterwarnings = [

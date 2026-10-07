@@ -82,6 +82,16 @@ pytest -v
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, compute, and demo test categories, credentials setup, and parallel execution options.
 
+### Coverage
+
+Line and branch coverage of the unit tests, from `pytest-cov` (in the `dev` extra):
+
+```bash
+make coverage
+```
+
+It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd-schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks, the demo dry runs) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
+
 ### Commander GUI Tests
 
 Around 290 of the unit tests exercise the Commander GUI. They run offscreen with no display, so a headless node is fine, but they do need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against. Where either is missing, those test modules skip and the rest of the suite runs normally — installing them is only necessary to test Commander itself.
@@ -203,7 +213,7 @@ yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descript
 scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
-Makefile                  # format, test, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
+Makefile                  # format, test, coverage, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials
