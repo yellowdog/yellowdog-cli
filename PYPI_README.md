@@ -26,6 +26,7 @@ The commands support:
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Listing** remote data store contents with the **`yd-ls`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
+- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
 - **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
 - **Showing** the details of the current Application with the **`yd-application`** command

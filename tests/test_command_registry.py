@@ -391,6 +391,7 @@ class TestToolKinds:
             "yd-compute-start",
             "yd-compute-restart",
             "yd-nodeaction",
+            "yd-token",
         }
 
     def test_the_acting_commands(self):

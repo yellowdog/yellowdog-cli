@@ -3143,6 +3143,54 @@ COMMANDS["yd-terminate"] = Command(
     tool=ToolKind.DESTRUCTIVE,
 )
 
+# --- yd-token ------------------------------------------------------------
+
+TOKEN_WORKER_POOLS = option(
+    "worker_pools",
+    nargs="+",
+    metavar="<worker-pool-name-or-ID>",
+    type=str,
+    help="the name(s) or YellowDog ID(s) of the configured worker pool(s);"
+    " a name may be a glob pattern (e.g. 'wp-*')",
+)
+REGENERATE = option(
+    "--regenerate",
+    "-R",
+    action="store_true",
+    required=False,
+    help=(
+        "issue a new token, invalidating the current one, rather than"
+        " setting the current token's expiry afresh"
+    ),
+)
+TTL_HOURS = option(
+    "--ttl-hours",
+    "-H",
+    type=positive_int,
+    required=False,
+    help="the token's time to live in hours, from now; without it, the token does not expire",
+    metavar="<hours>",
+)
+
+COMMANDS["yd-token"] = Command(
+    name="yd-token",
+    purpose="refreshing or regenerating the tokens of Configured Worker Pools",
+    summary="Refresh or regenerate the tokens of Configured Worker Pools",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        DRY_RUN,
+        YES,
+        ACTIONS_JSON,
+        TOKEN_WORKER_POOLS,
+        REGENERATE,
+        TTL_HOURS,
+    ),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+)
+
 # --- yd-upload -----------------------------------------------------------
 
 LOCAL_PATHS = Option(

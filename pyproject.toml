@@ -108,6 +108,7 @@
     yd-start = "yellowdog_cli.start:main"
     yd-submit = "yellowdog_cli.submit:main"
     yd-terminate = "yellowdog_cli.terminate:main"
+    yd-token = "yellowdog_cli.token:main"
     yd-upload = "yellowdog_cli.upload:main"
     yd-variables = "yellowdog_cli.variables:main"
     yd-version = "yellowdog_cli.version:main"

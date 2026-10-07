@@ -102,6 +102,17 @@ entities: dict[str, str] = {
 }
 
 
+def shown_expiry(expiry: datetime | None) -> str:
+    """
+    A Worker Pool token's expiry time as printed: to the second, with its
+    time zone, since the Platform gives it in UTC and the log timestamps
+    beside it are local; 'never' for a token the Platform gave none.
+    """
+    if expiry is None:
+        return "never"
+    return expiry.isoformat(sep=" ", timespec="seconds")
+
+
 def link_entity(base_url: str, entity: _EntityType) -> str:
     entity_type_name = type(entity).__name__
     return link(

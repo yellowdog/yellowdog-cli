@@ -94,7 +94,7 @@ from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
 )
-from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.misc_utils import is_http_not_found, shown_expiry
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import (
     print_dry_run,
@@ -759,7 +759,7 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
     )
     print_info(
         "                   Worker Pool Expiry Time = "
-        f"{str(cwp_response.token.expiryTime).split('.')[0]}"  # type: ignore[union-attr]
+        f"{shown_expiry(cwp_response.token.expiryTime)}"  # type: ignore[union-attr]
     )
     # The token too, which '--json' otherwise silences with the prints
     # above, and which is how a Configured Worker Pool is used

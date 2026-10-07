@@ -114,6 +114,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_start` | destructive | `yd-start` | Start held (paused) Work Requirements |
 | `yd_submit` | acting | `yd-submit` | Submit a Work Requirement |
 | `yd_terminate` | destructive | `yd-terminate` | Terminate Compute Requirements, Instances or Nodes |
+| `yd_token` | destructive | `yd-token` | Refresh or regenerate the tokens of Configured Worker Pools |
 | `yd_upload` | acting | `yd-upload` | Upload files to a remote data client |
 | `yd_variables` | read-only | `yd-variables` | Report the processed values of variable substitutions |
 | `yd_version` | read-only | `yd-version` | Report version information |

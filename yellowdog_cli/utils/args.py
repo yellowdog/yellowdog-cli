@@ -544,6 +544,25 @@ class CLIParser:
         return self.args.terminate
 
     # -----------------------------------------------------------------------
+    # yd-token
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def worker_pools(self) -> list[str]:
+        return self.args.worker_pools
+
+    @property
+    @allow_missing_attribute
+    def regenerate(self) -> bool | None:
+        return self.args.regenerate
+
+    @property
+    @allow_missing_attribute
+    def ttl_hours(self) -> float | None:
+        return self.args.ttl_hours
+
+    # -----------------------------------------------------------------------
     # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
     # -----------------------------------------------------------------------
 

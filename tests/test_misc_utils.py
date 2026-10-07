@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,6 +36,7 @@ from yellowdog_cli.utils.misc_utils import (
     load_dotenv_file,
     pathname_relative_to_config_file,
     random_base36,
+    shown_expiry,
     split_delimited_string,
 )
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
@@ -479,3 +481,16 @@ class TestLoadDotenvFile:
         ):
             load_dotenv_file(None)
         load_dotenv_mock.assert_not_called()
+
+
+class TestShownExpiry:
+    def test_no_expiry_is_never(self):
+        assert shown_expiry(None) == "never"
+
+    def test_to_the_second_with_its_time_zone(self):
+        expiry = datetime(2026, 10, 7, 14, 2, 42, 362795, tzinfo=timezone.utc)
+        assert shown_expiry(expiry) == "2026-10-07 14:02:42+00:00"
+
+    def test_another_time_zone_is_kept(self):
+        expiry = datetime(2026, 10, 7, 15, 2, 42, tzinfo=timezone(timedelta(hours=1)))
+        assert shown_expiry(expiry) == "2026-10-07 15:02:42+01:00"

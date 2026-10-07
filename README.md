@@ -169,6 +169,7 @@
    * [Worker Pool and Compute Commands](#worker-pool-and-compute-commands)
       * [yd-provision](#yd-provision)
       * [yd-shutdown](#yd-shutdown)
+      * [yd-token](#yd-token)
       * [yd-resize](#yd-resize)
       * [yd-nodeaction](#yd-nodeaction)
       * [yd-instantiate](#yd-instantiate)
@@ -205,7 +206,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 12:13:07 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 13:47:25 BST 2026 -->
 
 <!--te-->
 
@@ -227,6 +228,7 @@ The commands provide the following capabilities:
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
+- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
 - **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
 - **Showing** the details of the current Application with the **`yd-application`** command
@@ -516,7 +518,7 @@ The documents, by command:
 | Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
-| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
 | Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`; a Group whose roles were set adds `"rolesAdded"` and, when updated, `"rolesRemoved"` (the roles' names); and Allowances removed by description, by `yd-remove -M` or replaced by `yd-create -M`, are each recorded as `removed` with their `id`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Either command exits with its failures' shared code, or 1 if they had different causes |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
@@ -3095,8 +3097,7 @@ Example:
       "nodeTypes": [
         {
           "name": "example",
-          "count": 0,
-          "min": 0,
+          "min": 1,
           "sourceNames": ["example"],
           "slotNumbering": "REUSABLE"
         }
@@ -3110,7 +3111,7 @@ Example:
 }
 ```
 
-A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
+Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1. A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. Its token, which `yd-create` reports when it creates the pool and `yd-show --show-token` shows, can be refreshed or regenerated with [`yd-token`](#yd-token). A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
 
 ## Allowances
 
@@ -3785,6 +3786,29 @@ Key options:
 
 ```shell
 yd-shutdown 'wp-*' --dry-run
+```
+
+### yd-token
+
+The `yd-token` command refreshes or regenerates the token of one or more Configured Worker Pools: the token that the YellowDog Agents on a pool's nodes use to register with it. Refreshing keeps the current token and sets its expiry afresh: `--ttl-hours` from now, or, without it, no expiry at all. Regenerating, with `--regenerate`, issues a new token instead, and Agents still holding the old one can no longer use it to register. Either is confirmed before anything is changed, the prompt saying what the tokens' expiry will be; `--yes` skips the confirmation.
+
+```shell
+yd-token [options] <worker-pool-name-or-ID> [<worker-pool-name-or-ID> ...]
+```
+
+Each argument is a Worker Pool's YDID or name (a bare name is looked up in the configured `namespace`, or give it as `namespace/name`), or a glob pattern (`*`, `?`, `[...]`) matched against Worker Pool names in the namespace, which takes only the Configured Worker Pools it matches that have not been shut down. Arguments are handled in the order given, each pool once. A Worker Pool that does not exist, or is not a Configured Worker Pool, is reported as failed, and one that has already been shut down is skipped with a warning; the others go ahead. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining pools are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+
+Each pool's token and its expiry time (in UTC, or `never`) are printed; with `--quiet`, the token alone, one per pool. Under `--json`, a token that does not expire has an `expiryTime` of `null`.
+
+Key options:
+- `--regenerate`/`-R` — issue a new token, invalidating the current one, rather than setting the current token's expiry afresh
+- `--ttl-hours`/`-H` — the token's time to live, in whole hours from now; **without it, the refreshed or regenerated token never expires**
+- `--dry-run`/`-D` — report the pools whose tokens would be refreshed or regenerated, without changing anything
+- `--json` — emit the actions taken, each with the new `token` and its `expiryTime`, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-token my-namespace/my-configured-pool --ttl-hours 720
+yd-token 'cwp-*' --regenerate
 ```
 
 ### yd-resize

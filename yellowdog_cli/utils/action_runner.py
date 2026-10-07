@@ -1,8 +1,8 @@
 """
 The rules the action commands share for acting on targets, in one place:
 yd-start, yd-hold and yd-finish (start_hold_common.py), yd-compute-stop,
--start and -restart and yd-terminate (compute_action_common.py), yd-cancel
-and yd-shutdown.
+-start and -restart and yd-terminate (compute_action_common.py), yd-cancel,
+yd-shutdown and yd-token.
 
 An action takes its explicit targets in two passes. resolve_targets() turns
 each argument, in the order given and each once, into an Item: what it
