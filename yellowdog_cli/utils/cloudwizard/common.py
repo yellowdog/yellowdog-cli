@@ -6,6 +6,7 @@ import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from os.path import exists
+from typing import cast
 
 from yellowdog_client import PlatformClient
 
@@ -19,10 +20,14 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_templates,
     get_compute_source_templates,
 )
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
-from yellowdog_cli.utils.resource_removal import remove_resource_by_id
+from yellowdog_cli.utils.resource_removal import (
+    record_not_attempted,
+    remove_resource_by_id,
+)
 from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 
 CLOUDWIZARD_NAMESPACE_PREFIX = "cloudwizard"
@@ -70,6 +75,11 @@ class CommonCloudConfig(ABC):
         self._keyring_name: str | None = None
         self._keyring_password: str | None = None
 
+        # The authentication or connection failure that stopped a teardown's
+        # YellowDog removals, if one did: the cloud provider's removals still
+        # run, and the run then exits with this failure's code
+        self.platform_failure: BaseException | None = None
+
     @abstractmethod
     def setup(self):
         pass
@@ -87,55 +97,74 @@ class CommonCloudConfig(ABC):
     def _remove_yd_templates_by_prefix(self, client: PlatformClient, name_prefix: str):
         """
         Remove YellowDog Compute Source & Requirement Templates based on a prefix.
+        An authentication or connection failure stops them, the rest recorded
+        as not attempted, and is kept in 'platform_failure': a later teardown
+        removes what is left.
         """
         if not confirmed(
             f"Remove all Compute Requirement and Compute Source Templates in "
             f"namespace '{self._namespace}' with names starting with '{name_prefix}'?"
         ):
             return
+        try:
+            self._remove_templates_by_prefix(client, name_prefix)
+        except ReportedFailure as e:  # Reported and recorded, as the rest are
+            self.platform_failure = e.__cause__
+        except Exception as e:  # The listings' own failure
+            if classify(e) not in SESSION_FAILURES:
+                raise
+            print_error(f"Unable to list the templates to remove: {e}")
+            self.platform_failure = e
 
+    def _remove_templates_by_prefix(self, client: PlatformClient, name_prefix: str):
         # Compute Requirement Templates
         # Cleared before the lookup, deliberately, as well as by the mutations
         # (entity_utils): what was created or removed outside this run must be seen
         clear_compute_requirement_template_cache()
-        counter = 0
-        for compute_requirement_template_summary in get_compute_requirement_templates(
-            client, self._namespace, partial_name_matches=True
-        ):
-            if (
-                compute_requirement_template_summary.name.startswith(name_prefix)  # type: ignore[union-attr]
-                and compute_requirement_template_summary.namespace == self._namespace
-            ):
-                counter += 1
-                try:
-                    remove_resource_by_id(
-                        self._ctx,
-                        compute_requirement_template_summary.id,  # type: ignore[arg-type]
-                    )
-                except Exception as e:
-                    print_error(f"Unable to remove Compute Requirement Template: {e}")
-        if counter == 0:
+        requirement_template_ids = [
+            cast(str, summary.id)
+            for summary in get_compute_requirement_templates(
+                client, self._namespace, partial_name_matches=True
+            )
+            if cast(str, summary.name).startswith(name_prefix)
+            and summary.namespace == self._namespace
+        ]
+        if not requirement_template_ids:
             print_warning("No Compute Requirement Templates to remove")
+        self._remove_each(requirement_template_ids, "Compute Requirement Template")
 
         # Remove Compute Source Templates
         # Cleared before the lookup, deliberately, as well as by the mutations
         # (entity_utils): what was created or removed outside this run must be seen
         clear_compute_source_template_cache()
-        counter = 0
-        for compute_source_template_summary in get_compute_source_templates(
-            client, self._namespace
-        ):
-            if (
-                compute_source_template_summary.name.startswith(name_prefix)  # type: ignore[union-attr]
-                and compute_source_template_summary.namespace == self._namespace
-            ):
-                counter += 1
-                try:
-                    remove_resource_by_id(self._ctx, compute_source_template_summary.id)  # type: ignore[arg-type]
-                except Exception as e:
-                    print_error(f"Unable to remove Compute Source Template: {e}")
-        if counter == 0:
+        source_template_ids = [
+            cast(str, summary.id)
+            for summary in get_compute_source_templates(client, self._namespace)
+            if cast(str, summary.name).startswith(name_prefix)
+            and summary.namespace == self._namespace
+        ]
+        if not source_template_ids:
             print_warning("No Compute Source Templates to remove")
+        self._remove_each(source_template_ids, "Compute Source Template")
+
+    def _remove_each(self, resource_ids: list[str], what: str) -> None:
+        """
+        Remove each resource, carrying on past a failure; a session failure
+        is raised, as ReportedFailure, once the rest are recorded as not
+        attempted.
+        """
+        for index, resource_id in enumerate(resource_ids):
+            try:
+                remove_resource_by_id(self._ctx, resource_id)
+            except ReportedFailure as e:
+                record_not_attempted(
+                    self._ctx,
+                    resource_ids[index + 1 :],
+                    cast(BaseException, e.__cause__),
+                )
+                raise
+            except Exception as e:
+                print_error(f"Unable to remove {what}: {e}")
 
     def _generate_static_compute_requirement_template(
         self,
@@ -291,8 +320,15 @@ class CommonCloudConfig(ABC):
 
     def _remove_keyring(self, keyring_name: str):
         """
-        Remove a Keyring by its name.
+        Remove a Keyring by its name; not attempted after an authentication
+        or connection failure, which a failure here is kept as.
         """
+        if self.platform_failure is not None:
+            print_warning(
+                f"Not removing Keyring '{keyring_name}', since the YellowDog"
+                f" Platform failed: {self.platform_failure}"
+            )
+            return
         if confirmed(f"Remove Keyring '{keyring_name}'?"):
             try:
                 self._client.keyring_client.delete_keyring_by_name(keyring_name)
@@ -302,6 +338,8 @@ class CommonCloudConfig(ABC):
                     print_warning(f"No Keyring '{keyring_name}' to remove")
                 else:
                     print_error(f"Unable to remove Keyring '{keyring_name}': {e}")
+                    if classify(e) in SESSION_FAILURES:
+                        self.platform_failure = e
 
     def _create_compute_requirement_templates(self, resource_prefix: str):
         """

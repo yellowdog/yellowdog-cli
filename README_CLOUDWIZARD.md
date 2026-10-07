@@ -54,7 +54,7 @@ YellowDog Cloud Wizard is an **experimental** utility that automates the process
 
 Cloud Wizard currently supports Amazon AWS, Google GCP and Microsoft Azure: `--cloud-provider` takes `aws` (or `amazon`), `gcp` (`gce`, `google`) or `azure` (`microsoft`), in any case, and any other name is refused as the command line is read, as is GCP without `--credentials-file`, `add-ssh`/`remove-ssh` for GCP, and Azure's `add-ssh`/`remove-ssh` without `--region-name`.
 
-Each step of a setup or teardown carries on past a step that fails, so that, for example, a teardown removes everything it can; the errors are reported as they happen, and a run that reported any ends with `Cloud Wizard finished with N error(s)` and exit code 1.
+Each step of a setup or teardown carries on past a step that fails, so that, for example, a teardown removes everything it can; the errors are reported as they happen, and a run that reported any ends with `Cloud Wizard finished with N error(s)` and exit code 1. The exception is a teardown whose connection to the YellowDog Platform is lost, or whose YellowDog credentials are refused, part-way: the YellowDog removals left are not attempted, since each would fail the same way, but the cloud provider's removals still run, and the run ends by saying so with the failure's own exit code (8 for the connection, 4 for the credentials). Running the teardown again removes the YellowDog resources that were left.
 
 # YellowDog Prerequisites
 
