@@ -201,6 +201,12 @@ class TestAzureResourceGroupFailures:
     an error, so the run cannot exit 0 having made nothing or left one behind.
     """
 
+    @pytest.fixture(autouse=True)
+    def _azure_sdk(self):
+        # The cloudwizard extra's Azure SDK, which an environment with boto3
+        # by another route (tox's, without the extra) may still lack
+        pytest.importorskip("azure.mgmt.resource")
+
     def _config(self, resource_groups):
         from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
 
@@ -397,6 +403,12 @@ class TestSetupAfterAPlatformFailure:
     saved, and the run exits with the failure's code, saying a second setup
     creates what is missing. Any other failure is counted, as before.
     """
+
+    @pytest.fixture(autouse=True)
+    def _azure_sdk(self):
+        # The cloudwizard extra's Azure SDK, which an environment with boto3
+        # by another route (tox's, without the extra) may still lack
+        pytest.importorskip("azure.mgmt.resource")
 
     def _config(self, monkeypatch, error):
         from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
