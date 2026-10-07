@@ -1,6 +1,6 @@
 """
-Unit tests for compute_action_common.py: yd-compute-stop, yd-compute-start
-and yd-compute-restart, against a fake Platform.
+Unit tests for compute_action_common.py: yd-compute-stop, yd-compute-start,
+yd-compute-restart and yd-compute-deprovision, against a fake Platform.
 
 Covers:
   - the tag-based listing, and glob patterns expanded to Compute Requirements
@@ -12,6 +12,8 @@ Covers:
     session failure (authentication, connection) stops the run, recording
     the rest as not attempted
   - '--follow', given only the Compute Requirements actioned, once each
+  - deprovisioning, like restarting, taking Instances and Nodes only, and
+    skipping an Instance already terminating
 """
 
 from types import SimpleNamespace
@@ -33,6 +35,7 @@ import yellowdog_cli.utils.compute_action_common as cac_module
 from yellowdog_cli.utils import action_runner, entity_utils
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
+    COMPUTE_DEPROVISION,
     COMPUTE_RESTART,
     COMPUTE_START,
     COMPUTE_STOP,
@@ -116,6 +119,7 @@ class FakePlatform:
             "stop_instances",
             "start_instances",
             "restart_instances",
+            "deprovision_instances",
             "terminate_compute_requirement_by_id",
             "terminate_instances",
         ):
@@ -335,11 +339,15 @@ class TestComputeRequirements:
         _run(platform, COMPUTE_STOP, ["my.cr"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
+    @pytest.mark.parametrize("action", [COMPUTE_RESTART, COMPUTE_DEPROVISION])
     @pytest.mark.parametrize("target", [CR_ID, "cr-a"])
-    def test_restart_refuses_compute_requirements(self, platform, monkeypatch, target):
-        _run(platform, COMPUTE_RESTART, [target])
+    def test_instance_only_actions_refuse_compute_requirements(
+        self, platform, monkeypatch, target, action
+    ):
+        _run(platform, action, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
+        assert "please supply Instance or Node IDs" in platform.records[0]["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +361,7 @@ class TestInstances:
         [
             (COMPUTE_STOP, "stop_instances"),
             (COMPUTE_RESTART, "restart_instances"),
+            (COMPUTE_DEPROVISION, "deprovision_instances"),
         ],
     )
     def test_an_instance(self, platform, monkeypatch, action, method):
@@ -415,6 +424,30 @@ class TestInstances:
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
 
+    @pytest.mark.parametrize(
+        "status", [InstanceStatus.TERMINATING, InstanceStatus.TERMINATED]
+    )
+    def test_deprovision_skips_an_instance_already_going(
+        self, platform, monkeypatch, status
+    ):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(INSTANCE_ID, status)
+        _run(platform, COMPUTE_DEPROVISION, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == []
+        assert platform.outcomes() == [
+            (f"{CR_ID}.{INSTANCE_ID}", "instances", "skipped")
+        ]
+
+    def test_deprovision_confirms_with_what_it_does(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(platform, COMPUTE_DEPROVISION, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert prompts == [
+            "Deprovision (terminate, reducing the target count of)"
+            f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
+        ]
+
     def test_an_unknown_instance_fails(self, platform, monkeypatch):
         _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
         assert platform.outcomes() == [(f"{CR_ID}.i-unknown", "instances", "failed")]
@@ -469,10 +502,19 @@ class TestNodes:
         )
         platform.pools[WP_ID] = pool if pool is not None else _provisioned_pool()
 
-    def test_a_node_stands_for_its_instance(self, platform, monkeypatch):
+    @pytest.mark.parametrize(
+        "action, method",
+        [
+            (COMPUTE_STOP, "stop_instances"),
+            (COMPUTE_DEPROVISION, "deprovision_instances"),
+        ],
+    )
+    def test_a_node_stands_for_its_instance(
+        self, platform, monkeypatch, action, method
+    ):
         self._node(platform)
-        _run(platform, COMPUTE_STOP, [NODE_ID])
-        assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
+        _run(platform, action, [NODE_ID])
+        assert platform.calls == [(method, CR_ID, [INSTANCE_ID])]
 
     def test_a_node_and_its_instance_are_one_target(self, platform, monkeypatch):
         self._node(platform)
@@ -632,14 +674,16 @@ class TestTerminate:
 
 
 class TestCommandLine:
-    def test_restart_requires_a_target(self, capsys):
-        parser = build_parser(COMMANDS["yd-compute-restart"], prog="yd-compute-restart")
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_require_a_target(self, capsys, name):
+        parser = build_parser(COMMANDS[name], prog=name)
         with pytest.raises(SystemExit) as raised:
             parser.parse_args([])
         assert raised.value.code == 2
 
-    def test_restart_takes_no_listing_options(self):
-        command = COMMANDS["yd-compute-restart"]
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_take_no_listing_options(self, name):
+        command = COMMANDS[name]
         flags = {
             flag
             for option in command.all_options()

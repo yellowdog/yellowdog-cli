@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Core functionality for stopping, starting, restarting and terminating
-Compute Requirements and Instances: yd-compute-stop, yd-compute-start,
-yd-compute-restart and yd-terminate.
+Core functionality for stopping, starting, restarting, terminating and
+deprovisioning Compute Requirements and Instances: yd-compute-stop,
+yd-compute-start, yd-compute-restart, yd-terminate and yd-compute-deprovision.
 
 Explicit targets are handled in two passes. Each argument is first resolved,
 in the order given, to a Compute Requirement or to an Instance (a Node
@@ -167,6 +167,20 @@ COMPUTE_TERMINATE = ComputeAction(
     confirmation_verb="Immediately terminate",
 )
 
+COMPUTE_DEPROVISION = ComputeAction(
+    name="Deprovision",
+    gerund="Deprovisioning",
+    past_tense="Deprovisioned",
+    # Instance-level only: deprovisioning terminates the Instances and
+    # reduces their Compute Requirement's target count to match, so that
+    # they are not replaced
+    cr_method_name=None,
+    instance_method_name="deprovision_instances",
+    valid_cr_statuses=[],
+    valid_instance_statuses=COMPUTE_TERMINATE.valid_instance_statuses,
+    confirmation_verb="Deprovision (terminate, reducing the target count of)",
+)
+
 
 # A Compute Requirement to act on: fetched by its ID, or found by its name
 _ComputeRequirementTarget: TypeAlias = ComputeRequirement | ComputeRequirementSummary
@@ -243,10 +257,10 @@ def _groups(items: list[Item]) -> list[list[_Instance]]:
 
 def apply_compute_action(ctx: RunContext, action: ComputeAction):
     """
-    Entry point for the yd-compute-stop/start/restart commands and
-    yd-terminate. The command registry ensures that yd-compute-restart has
-    explicit targets, and that glob patterns are not mixed with explicit
-    names or IDs.
+    Entry point for the yd-compute-stop/start/restart/deprovision commands
+    and yd-terminate. The command registry ensures that yd-compute-restart
+    and yd-compute-deprovision have explicit targets, and that glob patterns
+    are not mixed with explicit names or IDs.
     """
     names_or_ids: list[str] = ctx.args.compute_requirements_instances_or_nodes or []
     globs = [name for name in names_or_ids if contains_glob_chars(name)]

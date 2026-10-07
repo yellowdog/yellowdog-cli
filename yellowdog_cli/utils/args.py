@@ -563,7 +563,8 @@ class CLIParser:
         return self.args.ttl_hours
 
     # -----------------------------------------------------------------------
-    # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
+    # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart /
+    # yd-compute-deprovision
     # -----------------------------------------------------------------------
 
     @property

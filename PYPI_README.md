@@ -33,6 +33,7 @@ The commands support:
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
 - **Submitting** Work Requirements with the **`yd-submit`** command
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command

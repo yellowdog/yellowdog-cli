@@ -4,8 +4,9 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
-### New command
+### New commands
 
+- **`yd-compute-deprovision`** terminates Instances and reduces their Compute Requirement's target instance count to match, so that they are not replaced, as they would be after `yd-terminate` in a Compute Requirement that maintains its instance count. Instances are named as `yd-compute-restart` takes them (`cr_id.instance_id` or a Node ID), confirmed together, with `--json` and `--follow`. It is also available to MCP clients as the `yd_compute_deprovision` tool.
 - **`yd-token`** refreshes the token of one or more Configured Worker Pools, keeping it and setting its expiry afresh, or with `--regenerate` issues a new one, invalidating the old. Either is confirmed first, the prompt saying what the expiry will be. `--ttl-hours` sets the token's time to live from now; without it, the token does not expire. Pools are named by ID, name or glob pattern; the new token and its expiry are printed, or recorded with `--json`. It is also available to MCP clients as the `yd_token` tool.
 
 ### Diagnosing a Compute Requirement

@@ -390,6 +390,7 @@ class TestToolKinds:
             "yd-compute-stop",
             "yd-compute-start",
             "yd-compute-restart",
+            "yd-compute-deprovision",
             "yd-nodeaction",
             "yd-token",
         }

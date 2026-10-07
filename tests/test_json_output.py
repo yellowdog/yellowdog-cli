@@ -33,6 +33,7 @@ from yellowdog_client.model import (
 import yellowdog_cli.abort as yd_abort
 import yellowdog_cli.boost as yd_boost
 import yellowdog_cli.cancel as yd_cancel
+import yellowdog_cli.compute_deprovision as yd_compute_deprovision
 import yellowdog_cli.compute_restart as yd_compute_restart
 import yellowdog_cli.compute_stop as yd_compute_stop
 import yellowdog_cli.finish as yd_finish
@@ -1293,7 +1294,7 @@ class TestStartHold:
 
 
 # ---------------------------------------------------------------------------
-# yd-compute-stop / -start / -restart
+# yd-compute-stop / -start / -restart / -deprovision
 # ---------------------------------------------------------------------------
 
 
@@ -1326,6 +1327,24 @@ class TestComputeActions:
                 "instances",
                 "restart",
                 "restarted",
+            )
+        ]
+
+    def test_deprovision_an_instance(self, run, monkeypatch):
+        instance = MagicMock(status=InstanceStatus.RUNNING)
+        monkeypatch.setattr(cac_module, "get_instance_by_id", lambda *a, **k: instance)
+        out, _, _ = run(
+            cac_module,
+            yd_compute_deprovision,
+            compute_requirements_instances_or_nodes=[f"{CR_ID}.{INSTANCE_ID}"],
+        )
+        assert out == [
+            _action(
+                f"{CR_ID}.{INSTANCE_ID}",
+                INSTANCE_ID,
+                "instances",
+                "deprovision",
+                "deprovisioned",
             )
         ]
 

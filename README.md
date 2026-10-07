@@ -178,6 +178,7 @@
       * [yd-compute-stop](#yd-compute-stop)
       * [yd-compute-start](#yd-compute-start)
       * [yd-compute-restart](#yd-compute-restart)
+      * [yd-compute-deprovision](#yd-compute-deprovision)
    * [Monitoring and Inspection Commands](#monitoring-and-inspection-commands)
       * [yd-list](#yd-list)
       * [yd-show](#yd-show)
@@ -206,7 +207,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 14:16:02 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 14:35:35 BST 2026 -->
 
 <!--te-->
 
@@ -235,6 +236,7 @@ The commands provide the following capabilities:
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
 - **Submitting** Work Requirements with the **`yd-submit`** command
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
@@ -518,7 +520,7 @@ The documents, by command:
 | Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
-| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-compute-deprovision`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `deprovision`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `deprovisioned`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
 | Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`; a Group whose roles were set adds `"rolesAdded"` and, when updated, `"rolesRemoved"` (the roles' names); and Allowances removed by description, by `yd-remove -M` or replaced by `yd-create -M`, are each recorded as `removed` with their `id`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Either command exits with its failures' shared code, or 1 if they had different causes |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
@@ -3962,7 +3964,7 @@ For example:
 
 ### yd-terminate
 
-The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated, as can an Instance.
+The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated, as can an Instance; to terminate Instances without their being replaced, use [`yd-compute-deprovision`](#yd-compute-deprovision).
 
 ```shell
 yd-terminate [options] [<name-or-ID> ...]
@@ -4050,6 +4052,26 @@ Key options:
 
 ```shell
 yd-compute-restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+```
+
+### yd-compute-deprovision
+
+The `yd-compute-deprovision` command deprovisions Instances: it terminates them and reduces their Compute Requirement's target instance count by the same number, so that they are not replaced. Terminating an Instance with `yd-terminate` leaves the target count as it was, so a Compute Requirement that maintains its instance count replaces it. Deprovisioning applies to Instances only; to remove a whole Compute Requirement, use `yd-terminate`.
+
+An Instance of a Provisioned Worker Pool can be deprovisioned too, by its `cr_id.instance_id` or its Node's YDID. The pool's expected node count follows its Compute Requirement's reduced target, so the pool does not ask for a replacement either. A pool left with no nodes stays up until its idle pool shutdown, if it has one, takes effect; use `yd-shutdown` to shut it down at once.
+
+```shell
+yd-compute-deprovision [options] <instance-or-node-ID> ...
+```
+
+Instances to deprovision are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs; at least one is required, and a Compute Requirement name or ID is reported as failed. They are handled as `yd-compute-stop` handles them: in the order given, confirmed together, one request per Compute Requirement, and an Instance that is already `TERMINATING` or `TERMINATED` is skipped with a warning. The command returns once the Platform has accepted the request: the target count drops at once, and the Instances are terminated shortly afterwards, which `--follow` shows.
+
+Key options:
+- `--follow`/`-f` — follow the Compute Requirements' events as the Instances are terminated
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-compute-deprovision ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
 ```
 
 ## Monitoring and Inspection Commands

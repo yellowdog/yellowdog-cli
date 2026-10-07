@@ -1503,6 +1503,28 @@ COMMANDS["yd-compute-restart"] = Command(
     ),
     tool=ToolKind.DESTRUCTIVE,
 )
+COMMANDS["yd-compute-deprovision"] = Command(
+    name="yd-compute-deprovision",
+    purpose=(
+        "deprovisioning Instances: terminating them and reducing their"
+        " Compute Requirements' target counts to match"
+    ),
+    summary="Deprovision Instances, reducing their Compute Requirements' target counts",
+    kind=CommandKind.API,
+    # Instance-level only, as for yd-compute-restart
+    options=(
+        VARIABLE,
+        YES,
+        ACTIONS_JSON,
+        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+            nargs="+",
+            metavar="<instance-or-node-ID>",
+            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+        ),
+        FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
+    ),
+    tool=ToolKind.DESTRUCTIVE,
+)
 COMMANDS["yd-compute-start"] = Command(
     name="yd-compute-start",
     purpose="starting stopped Compute Requirements and Instances",
