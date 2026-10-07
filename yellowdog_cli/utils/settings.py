@@ -62,3 +62,10 @@ SCHEMA_FAMILIES: tuple[str, ...] = (
     "node-actions",
     "config",
 )
+
+# The Cloud Info service's RAM is in MiB; yd-cloud-info's '--ram' and tables
+# are in GiB
+MIB_PER_GIB = 1024
+# The sub-region the Cloud Info service gives a price that applies to the
+# whole region, as every on-demand price does
+CLOUD_INFO_NO_SUB_REGION = "N/A"

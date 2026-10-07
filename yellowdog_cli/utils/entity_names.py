@@ -49,3 +49,11 @@ ET_USERS = "users"
 ET_WORK_REQUIREMENTS = "work-requirements"
 ET_WORKER_POOLS = "worker-pools"
 ET_WORKERS = "workers"
+
+# yd-cloud-info's types: what the Platform's Cloud Info service lists, which
+# are not entities and have no YellowDog IDs
+CI_REGIONS = "regions"
+CI_SUB_REGIONS = "sub-regions"
+CI_INSTANCE_TYPES = "instance-types"
+CI_PRICES = "prices"
+CLOUD_INFO_TYPES = (CI_REGIONS, CI_SUB_REGIONS, CI_INSTANCE_TYPES, CI_PRICES)

@@ -11,6 +11,7 @@ from yellowdog_cli.utils.command_registry import (
     Command,
     build_parser,
     command_from_argv0,
+    parse_range,
 )
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.version_info import DOCS_URL
@@ -400,6 +401,62 @@ class CLIParser:
     @allow_missing_attribute
     def auto_select_all(self) -> bool | None:
         return self.args.auto_select_all
+
+    # -----------------------------------------------------------------------
+    # yd-cloud-info
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def cloud_info_type(self) -> str | None:
+        return self.args.cloud_info_type
+
+    @property
+    @allow_missing_attribute
+    def providers(self) -> list[str] | None:
+        return self.args.providers
+
+    @property
+    @allow_missing_attribute
+    def region(self) -> str | None:
+        return self.args.region
+
+    @property
+    @allow_missing_attribute
+    def sub_region(self) -> str | None:
+        return self.args.sub_region
+
+    @property
+    @allow_missing_attribute
+    def vcpus_range(self) -> tuple[float | None, float | None] | None:
+        # The validator has refused a malformed one
+        return None if self.args.vcpus is None else parse_range(self.args.vcpus)
+
+    @property
+    @allow_missing_attribute
+    def ram_range(self) -> tuple[float | None, float | None] | None:
+        # The validator has refused a malformed one
+        return None if self.args.ram is None else parse_range(self.args.ram)
+
+    @property
+    @allow_missing_attribute
+    def arch(self) -> str | None:
+        return self.args.arch
+
+    @property
+    @allow_missing_attribute
+    def usage(self) -> str | None:
+        return self.args.usage
+
+    @property
+    @allow_missing_attribute
+    def os_licence(self) -> str | None:
+        return self.args.os_licence
+
+    @property
+    @allow_missing_attribute
+    def prices(self) -> bool | None:
+        return self.args.prices
 
     # -----------------------------------------------------------------------
     # yd-submit / yd-provision / yd-instantiate / yd-create

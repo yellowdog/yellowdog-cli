@@ -185,6 +185,7 @@
       * [yd-compare](#yd-compare)
       * [yd-application](#yd-application)
       * [yd-variables](#yd-variables)
+      * [yd-cloud-info](#yd-cloud-info)
    * [Resource Commands](#resource-commands)
       * [yd-create](#yd-create)
       * [yd-remove](#yd-remove)
@@ -204,7 +205,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct  6 18:40:52 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 12:13:07 BST 2026 -->
 
 <!--te-->
 
@@ -512,6 +513,7 @@ The documents, by command:
 | Family | Commands | Document |
 |---|---|---|
 | Listings | `yd-list` | an array of the listed objects |
+| Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
 | Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
@@ -4335,6 +4337,38 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 **A variable of your own holding an inline rclone connection string is shown as the data client remotes are.** Whatever it is called, a variable whose value is an inline connection string — `NAME,type=...` or rclone's own `:backend,...` form, with or without a leading `rclone:` and a trailing `:path` — is shown with its prefix, name, type and provider, every other parameter's value (and a trailing path) withheld as `<N parameters redacted>`, so `remote_with_keys = "rclone:S3,type=s3,provider=AWS,access_key_id=...,secret_access_key=...,region=eu-west-2"` is reported as `rclone:S3,type=s3,provider=AWS,<3 parameters redacted>`. A value with a comma in it that has neither form, such as `a,b` or `x,y=z`, is shown in full. When this withholds anything the command says so ahead of the JSON: `Withheld the parameters of N variable(s) holding an inline rclone connection string, keeping its name, type and provider. --show-secrets reports all.` `--show-secrets` reports it in full.
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
+
+### yd-cloud-info
+
+The `yd-cloud-info` command lists what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. It answers questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, and which of them is cheapest on spot.
+
+```shell
+yd-cloud-info [options] <regions|sub-regions|instance-types|prices>
+```
+
+The type may be shortened to any unambiguous prefix (e.g. `inst`). Region and sub-region names are matched exactly, so `--region eu-west-2` does not include the Wavelength Zone `eu-west-2-wl1-lon1`; `--name` takes a glob pattern, and a value without wildcards matches the name exactly. Each option applies only to the types listed against it below, and is refused with any other.
+
+Key options:
+- `--provider`/`-p <aws|azure|google|oci>` — list only this provider's items; may be repeated (every type)
+- `--region <region>` — the region (sub-regions, instance-types, prices); prices need `--region` or `--name`, since every region's prices together are far too many to fetch
+- `--sub-region <sub-region>` — the sub-region, which needs `--region` (instance-types, prices); prices for a sub-region include the region's on-demand prices, which apply to every sub-region
+- `--name <glob>` — the item's name; for prices, the instance type's (every type)
+- `--vcpus <n|n-m>`, `--ram <GiB|GiB-GiB>` — the number of vCPUs, and the RAM in GiB: `n` exactly, `n-m` inclusive, `n-` at least, `-m` at most (instance-types)
+- `--arch <x86_64|arm64>` — the processor architecture (instance-types)
+- `--usage <spot|on-demand>` — one kind of price only (prices)
+- `--os <none|windows>` — prices for this operating system licence, `none` by default (prices, and instance-types with `--prices`)
+- `--prices` — add each instance type's on-demand price and lowest spot price in the region, and the sub-region the spot price is found in; needs `--region` (instance-types)
+- `--sort <name|vcpus|ram|price|spot|on-demand>` — `name` (the default) for every type, `vcpus` and `ram` for instance types, `price` for prices, `spot` and `on-demand` for instance types with `--prices`; items without a value come last, with `--reverse` too
+- `--count` — print only the number of items
+- `--json` — emit the items as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-cloud-info instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd-cloud-info prices --region eu-west-2 --name 't3.*' --usage spot
+yd-cloud-info sub-regions --provider aws --region us-east-1
+```
+
+Prices are per hour, as the Platform reports them, in the currency it gives them in.
 
 ## Resource Commands
 

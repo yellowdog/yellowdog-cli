@@ -14,6 +14,7 @@ The commands support:
 - **Boosting** Allowances with the **`yd-boost`** command
 - **Cancelling** Work Requirements with the **`yd-cancel`** command
 - **Cloud provider setup** (AWS, Azure, GCP) with the **`yd-cloudwizard`** command
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
 - **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
 - **Copying** files between remote data stores with the **`yd-copy`** command
 - **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands

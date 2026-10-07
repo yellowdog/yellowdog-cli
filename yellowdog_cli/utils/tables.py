@@ -22,18 +22,22 @@ from yellowdog_cli.utils.output_style import (
     MAX_TABLE_DESCRIPTION,
 )
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, indent, print_info
+from yellowdog_cli.utils.settings import CLOUD_INFO_NO_SUB_REGION, MIB_PER_GIB
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import (
         Allowance,
         Application,
+        CloudProvider,
         ComputeRequirementSummary,
         ComputeRequirementTemplateSummary,
         ComputeRequirementTemplateTestResult,
         ComputeSourceTemplateSummary,
         Group,
         Instance,
+        InstanceType,
+        InstanceTypePrice,
         KeyringSummary,
         MachineImageFamilySummary,
         Namespace,
@@ -42,7 +46,10 @@ if TYPE_CHECKING:
         NodeAction,
         NodeActionQueueSnapshot,
         PermissionDetail,
+        Price,
+        Region,
         Role,
+        SubRegion,
         Task,
         TaskGroup,
         User,
@@ -51,6 +58,7 @@ if TYPE_CHECKING:
         WorkRequirementSummary,
     )
 
+    from yellowdog_cli.utils.cloud_info import PricedInstanceType
     from yellowdog_cli.utils.items import Item
 
 _T = TypeVar("_T")
@@ -708,6 +716,180 @@ def permissions_table(
             ]
         )
     return headers, table
+
+
+def print_table(headers: list[str], rows: list[list]) -> None:
+    """
+    Print an unnumbered table, framed as the numbered listings are. Cells are
+    printed as given: the builders format their numbers, which tabulate would
+    otherwise reformat column by column ('0.3450' as '0.345').
+    """
+    print_table_core(
+        indent(
+            tabulate(
+                rows,
+                headers=headers,
+                tablefmt="simple_outline",
+                disable_numparse=True,
+            ),
+            indent_width=4,
+        )
+    )
+
+
+def cloud_regions_table(regions: list[Region]) -> tuple[list[str], list[list]]:
+    return ["Provider", "Region"], [
+        [_provider_text(region.provider), region.name] for region in regions
+    ]
+
+
+def cloud_sub_regions_table(
+    sub_regions: list[SubRegion],
+) -> tuple[list[str], list[list]]:
+    return ["Provider", "Region", "Sub-region"], [
+        [_provider_text(sub_region.provider), sub_region.region, sub_region.name]
+        for sub_region in sub_regions
+    ]
+
+
+_INSTANCE_TYPE_HEADERS = ["Provider", "Name", "Arch", "vCPUs", "RAM (GiB)", "GPUs"]
+
+
+def instance_types_table(
+    instance_types: list[InstanceType], region: str | None
+) -> tuple[list[str], list[list]]:
+    """
+    Instance types, with the number of regions each is offered in, or, for
+    a listing in one region, its sub-regions there.
+    """
+    headers = [*_INSTANCE_TYPE_HEADERS, "Regions" if region is None else "Sub-regions"]
+    return headers, [_instance_type_row(t, region) for t in instance_types]
+
+
+def priced_instance_types_table(
+    priced: list[PricedInstanceType], region: str | None
+) -> tuple[list[str], list[list]]:
+    """
+    Instance types in a region with their on-demand and lowest spot prices.
+    """
+    headers = [
+        *_INSTANCE_TYPE_HEADERS,
+        "Sub-regions",
+        "On-demand",
+        "Spot (lowest)",
+        "Spot Zone",
+        "Currency",
+    ]
+    rows = [
+        [
+            *_instance_type_row(p.instance_type, region),
+            _price_text(p.on_demand),
+            _price_text(p.spot),
+            _sub_region_text(p.spot_sub_region),
+            _currency_text(p.on_demand or p.spot),
+        ]
+        for p in priced
+    ]
+    return headers, rows
+
+
+def instance_type_prices_table(
+    prices: list[InstanceTypePrice],
+) -> tuple[list[str], list[list]]:
+    headers = [
+        "Provider",
+        "Region",
+        "Sub-region",
+        "Instance Type",
+        "Usage",
+        "OS Licence",
+        "Price",
+        "Currency",
+    ]
+    rows = [
+        [
+            _provider_text(price.provider),
+            price.region,
+            _sub_region_text(price.subRegion),
+            price.instanceType,
+            _display_name(price.usageType),
+            _os_licence_text(price.operatingSystemLicence),
+            _price_text(price.price),
+            _currency_text(price.price),
+        ]
+        for price in prices
+    ]
+    return headers, rows
+
+
+def _instance_type_row(instance_type: InstanceType, region: str | None) -> list:
+    ram_mib = instance_type.ramInMib
+    return [
+        _provider_text(instance_type.provider),
+        instance_type.name,
+        "-"
+        if instance_type.processorArchitecture is None
+        else instance_type.processorArchitecture.name,
+        _number_text(instance_type.defaultVcpus),
+        _number_text(None if ram_mib is None else ram_mib / MIB_PER_GIB),
+        _gpus_text(instance_type.defaultGpus),
+        _regions_text(instance_type, region),
+    ]
+
+
+def _provider_text(provider: CloudProvider | None) -> str:
+    return "-" if provider is None else provider.display_name
+
+
+def _display_name(value: Any) -> str:
+    return "-" if value is None else getattr(value, "display_name", value.name)
+
+
+def _sub_region_text(sub_region: str | None) -> str:
+    """
+    A price's sub-region; '-' for one the service gives for the whole region.
+    """
+    return "-" if sub_region in (None, CLOUD_INFO_NO_SUB_REGION) else sub_region
+
+
+def _os_licence_text(licence: Any) -> str:
+    """
+    The SDK's display name for no licence is 'None', which reads as a value
+    the service did not give.
+    """
+    if licence is not None and licence.name == "NONE":
+        return "No licence"
+    return _display_name(licence)
+
+
+def _number_text(value: float | None) -> str:
+    return "-" if value is None else f"{value:g}"
+
+
+def _price_text(price: Price | None) -> str:
+    return "-" if price is None or price.value is None else f"{price.value:.4f}"
+
+
+def _currency_text(price: Price | None) -> str:
+    return "-" if price is None or price.currency is None else price.currency.name
+
+
+def _gpus_text(gpus: dict[str, int] | None) -> str:
+    """
+    The GPU count and models, '1 (T4)'; '-' for none.
+    """
+    if not gpus:
+        return "-"
+    return f"{sum(gpus.values())} ({', '.join(sorted(gpus))})"
+
+
+def _regions_text(instance_type: InstanceType, region: str | None) -> str:
+    if region is None:
+        return str(len(instance_type.regions or []))
+    for entry in instance_type.regions or []:
+        if entry.name == region:
+            return ", ".join(entry.subRegions or []) or "-"
+    return "-"
 
 
 def print_numbered_object_list(
