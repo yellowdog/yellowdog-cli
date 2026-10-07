@@ -1010,14 +1010,28 @@ class TestResize:
             parser.parse_args(["wp", "-1"])
         assert exit_info.value.code == 2
 
-    def test_a_401_looking_up_the_name_reaches_the_wrapper(self, run):
-        # Not a 'not found': the lookup's failure is classified by the
-        # wrapper (exit 4), with nothing recorded before it
+    def test_a_401_looking_up_the_name_is_recorded_and_reaches_the_wrapper(self, run):
+        # Not a 'not found': recorded as the target's failure, as every other
+        # action command records one, and classified by the wrapper (exit 4)
         client = MagicMock()
         client.worker_pool_client.get_worker_pool_by_name.side_effect = _http_error(401)
         out, _, _ = run(yd_resize, client=client, **self._args(worker_pool_name="wp-a"))
-        assert out == []
+        assert [(r["name"], r["outcome"]) for r in out] == [("wp-a", "failed")]
+        assert "401" in out[0]["error"]
         assert run.exit_code == 4
+
+    def test_a_connection_failure_fetching_a_compute_requirement_is_recorded(self, run):
+        client = MagicMock()
+        client.compute_client.get_compute_requirement_by_id.side_effect = (
+            ConnectionError_("gone")
+        )
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(worker_pool_name=CR_ID, compute_req_resize=True),
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [(CR_ID, "failed")]
+        assert run.exit_code == ExitCode.CONNECTION
 
 
 def _http_error(status: int) -> HTTPError:

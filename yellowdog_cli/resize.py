@@ -13,7 +13,8 @@ lookup that fails for any other reason reaches the wrapper, which reports
 and classifies it.
 """
 
-from typing import cast
+from collections.abc import Callable
+from typing import TypeVar, cast
 
 from yellowdog_client.model import (
     ComputeRequirement,
@@ -26,7 +27,6 @@ from yellowdog_client.model import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
-    AmbiguousNameError,
     find_compute_requirement_by_name,
     get_worker_pool_id_by_name,
 )
@@ -69,12 +69,21 @@ def _count(count: int | None) -> str:
     return "unknown" if count is None else f"{count:,d}"
 
 
-def _not_found(ctx: RunContext, message: str, target: str, entity_type: str) -> None:
+_T = TypeVar("_T")
+
+
+def _found(
+    ctx: RunContext, target: str, entity_type: str, find: Callable[[], _T]
+) -> _T:
     """
-    Record the target as not found, and raise NotFoundError (exit 6).
+    What 'find' finds, any failure to find it (not found, ambiguous, or the
+    lookup's own failure) recorded as the target's, and raised.
     """
-    _record(ctx, target, entity_type, "failed", message)
-    raise NotFoundError(message)
+    try:
+        return find()
+    except Exception as e:
+        _record(ctx, target, entity_type, "failed", str(e))
+        raise
 
 
 def _cannot(ctx: RunContext, entity: object, entity_type: str, message: str) -> None:
@@ -103,7 +112,9 @@ def main(ctx: RunContext):
 
 def _resize_worker_pool(ctx: RunContext, target: str):
     size: int = cast(int, ctx.args.worker_pool_size)
-    worker_pool = _find_worker_pool(ctx, target)
+    worker_pool = _found(
+        ctx, target, ET_WORKER_POOLS, lambda: _find_worker_pool(ctx, target)
+    )
     label = f"'{worker_pool.namespace}/{worker_pool.name}'"
 
     if not isinstance(worker_pool, ProvisionedWorkerPool):
@@ -181,8 +192,8 @@ def _resize_worker_pool(ctx: RunContext, target: str):
 
 def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
     """
-    The Worker Pool a YDID or name names, recording and raising NotFoundError
-    if there is none.
+    The Worker Pool a YDID or name names, raising NotFoundError (exit 6) if
+    there is none.
     """
     if get_ydid_type(target) == YDIDType.WORKER_POOL:
         worker_pool_id: str | None = target
@@ -191,24 +202,25 @@ def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
             ctx.client, target, namespace=ctx.config.namespace
         )
         if worker_pool_id is None:
-            _not_found(
-                ctx, f"Cannot find Worker Pool '{target}'", target, ET_WORKER_POOLS
-            )
+            raise NotFoundError(f"Cannot find Worker Pool '{target}'")
     try:
         return ctx.client.worker_pool_client.get_worker_pool_by_id(
             worker_pool_id=cast(str, worker_pool_id)
         )
     except Exception as e:
         if is_http_not_found(e):
-            _not_found(
-                ctx, f"Cannot find Worker Pool {target}", target, ET_WORKER_POOLS
-            )
+            raise NotFoundError(f"Cannot find Worker Pool {target}") from e
         raise
 
 
 def _resize_compute_requirement(ctx: RunContext, target: str):
     size: int = cast(int, ctx.args.worker_pool_size)
-    compute_requirement = _find_compute_requirement(ctx, target)
+    compute_requirement = _found(
+        ctx,
+        target,
+        ET_COMPUTE_REQUIREMENTS,
+        lambda: _find_compute_requirement(ctx, target),
+    )
     label = f"'{compute_requirement.namespace}/{compute_requirement.name}'"
 
     if compute_requirement.status not in _RESIZABLE_CR_STATUSES:
@@ -276,32 +288,20 @@ def _find_compute_requirement(
     target: str,
 ) -> ComputeRequirement | ComputeRequirementSummary:
     """
-    The Compute Requirement a YDID or name names, recording and raising
-    NotFoundError if there is none. Of two RUNNING ones of the same name,
-    neither is guessed at: the failure is recorded and raised.
+    The Compute Requirement a YDID or name names, raising NotFoundError
+    (exit 6) if there is none. Of two RUNNING ones of the same name, neither
+    is guessed at: AmbiguousNameError is raised.
     """
     if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
         try:
             return ctx.client.compute_client.get_compute_requirement_by_id(target)
         except Exception as e:
             if is_http_not_found(e):
-                _not_found(
-                    ctx,
-                    f"Cannot find Compute Requirement {target}",
-                    target,
-                    ET_COMPUTE_REQUIREMENTS,
-                )
+                raise NotFoundError(f"Cannot find Compute Requirement {target}") from e
             raise
-    try:
-        return find_compute_requirement_by_name(
-            ctx.client, target, ctx.config.namespace, _RESIZABLE_CR_STATUSES
-        )
-    except NotFoundError as e:
-        _not_found(ctx, str(e), target, ET_COMPUTE_REQUIREMENTS)
-        raise  # Not reached: _not_found(ctx, ) raises
-    except AmbiguousNameError as e:
-        _record(ctx, target, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
-        raise
+    return find_compute_requirement_by_name(
+        ctx.client, target, ctx.config.namespace, _RESIZABLE_CR_STATUSES
+    )
 
 
 # Entry point
