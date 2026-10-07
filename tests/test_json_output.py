@@ -34,6 +34,7 @@ import yellowdog_cli.abort as yd_abort
 import yellowdog_cli.boost as yd_boost
 import yellowdog_cli.cancel as yd_cancel
 import yellowdog_cli.compute_deprovision as yd_compute_deprovision
+import yellowdog_cli.compute_reprovision as yd_compute_reprovision
 import yellowdog_cli.compute_restart as yd_compute_restart
 import yellowdog_cli.compute_stop as yd_compute_stop
 import yellowdog_cli.finish as yd_finish
@@ -1297,7 +1298,7 @@ class TestStartHold:
 
 
 # ---------------------------------------------------------------------------
-# yd-compute-stop / -start / -restart / -deprovision
+# yd-compute-stop / -start / -restart / -deprovision / -reprovision
 # ---------------------------------------------------------------------------
 
 
@@ -1348,6 +1349,23 @@ class TestComputeActions:
                 "instances",
                 "deprovision",
                 "deprovisioned",
+            )
+        ]
+
+    def test_reprovision_tag_path(self, run, monkeypatch):
+        monkeypatch.setattr(
+            cac_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a")],
+        )
+        out, _, _ = run(
+            cac_module,
+            yd_compute_reprovision,
+            compute_requirements_instances_or_nodes=[],
+        )
+        assert out == [
+            _action(
+                CR_ID, "cr-a", "compute-requirements", "reprovision", "reprovisioned"
             )
         ]
 

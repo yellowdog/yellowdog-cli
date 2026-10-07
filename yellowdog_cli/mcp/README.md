@@ -92,6 +92,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_cloud_info` | read-only | `yd-cloud-info` | List cloud regions, instance types and prices |
 | `yd_compare` | read-only | `yd-compare` | Compare a Work Requirement or Task Group against Worker Pool(s) |
 | `yd_compute_deprovision` | destructive | `yd-compute-deprovision` | Deprovision Instances, reducing their Compute Requirements' target counts |
+| `yd_compute_reprovision` | destructive | `yd-compute-reprovision` | Reprovision Compute Requirements, restoring their target instance counts |
 | `yd_compute_restart` | destructive | `yd-compute-restart` | Restart Instances |
 | `yd_compute_start` | destructive | `yd-compute-start` | Start stopped Compute Requirements and Instances |
 | `yd_compute_stop` | destructive | `yd-compute-stop` | Stop Compute Requirements and Instances |

@@ -82,6 +82,7 @@
     yd-commander = "yellowdog_cli.commander.launcher:main"
     yd-compare = "yellowdog_cli.compare:main"
     yd-compute-deprovision = "yellowdog_cli.compute_deprovision:main"
+    yd-compute-reprovision = "yellowdog_cli.compute_reprovision:main"
     yd-compute-restart = "yellowdog_cli.compute_restart:main"
     yd-compute-start = "yellowdog_cli.compute_start:main"
     yd-compute-stop = "yellowdog_cli.compute_stop:main"

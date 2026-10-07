@@ -578,7 +578,7 @@ class CLIParser:
 
     # -----------------------------------------------------------------------
     # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart /
-    # yd-compute-deprovision
+    # yd-compute-deprovision / yd-compute-reprovision
     # -----------------------------------------------------------------------
 
     @property

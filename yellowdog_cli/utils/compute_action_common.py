@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Core functionality for stopping, starting, restarting, terminating and
-deprovisioning Compute Requirements and Instances: yd-compute-stop,
-yd-compute-start, yd-compute-restart, yd-terminate and yd-compute-deprovision.
+Core functionality for stopping, starting, restarting, terminating,
+deprovisioning and reprovisioning Compute Requirements and Instances:
+yd-compute-stop, yd-compute-start, yd-compute-restart, yd-terminate,
+yd-compute-deprovision and yd-compute-reprovision.
 
 Explicit targets are handled in two passes. Each argument is first resolved,
 in the order given, to a Compute Requirement or to an Instance (a Node
@@ -72,7 +73,7 @@ class ComputeAction:
     gerund: str  # E.g.: "Stopping"
     past_tense: str  # E.g.: "Stopped"
     cr_method_name: str | None  # ComputeClient method for CRs (None if N/A)
-    instance_method_name: str  # ComputeClient method for instances
+    instance_method_name: str | None  # ComputeClient method for instances (None if N/A)
     valid_cr_statuses: list[ComputeRequirementStatus]
     valid_instance_statuses: list[InstanceStatus]
     # How a confirmation names the action, where its name alone undersells it
@@ -181,6 +182,19 @@ COMPUTE_DEPROVISION = ComputeAction(
     confirmation_verb="Deprovision (terminate, reducing the target count of)",
 )
 
+COMPUTE_REPROVISION = ComputeAction(
+    name="Reprovision",
+    gerund="Reprovisioning",
+    past_tense="Reprovisioned",
+    # Compute Requirement-level only: reprovisioning provisions Instances
+    # until as many are running as the target count asks for
+    cr_method_name="reprovision_compute_requirement_by_id",
+    instance_method_name=None,
+    valid_cr_statuses=[ComputeRequirementStatus.RUNNING],
+    valid_instance_statuses=[],
+    confirmation_verb="Reprovision (restore to their target instance counts)",
+)
+
 
 # A Compute Requirement to act on: fetched by its ID, or found by its name
 _ComputeRequirementTarget: TypeAlias = ComputeRequirement | ComputeRequirementSummary
@@ -257,8 +271,8 @@ def _groups(items: list[Item]) -> list[list[_Instance]]:
 
 def apply_compute_action(ctx: RunContext, action: ComputeAction):
     """
-    Entry point for the yd-compute-stop/start/restart/deprovision commands
-    and yd-terminate. The command registry ensures that yd-compute-restart
+    Entry point for the yd-compute-stop/start/restart/deprovision/reprovision
+    commands and yd-terminate. The command registry ensures that yd-compute-restart
     and yd-compute-deprovision have explicit targets, and that glob patterns
     are not mixed with explicit names or IDs.
     """
@@ -482,7 +496,7 @@ def _act_on_instances(ctx: RunContext, action: ComputeAction, group: list[_Insta
     Apply the action to a Compute Requirement's Instances in one call,
     recording and reporting each. Raises on failure, for the caller to record.
     """
-    getattr(ctx.client.compute_client, action.instance_method_name)(
+    getattr(ctx.client.compute_client, cast(str, action.instance_method_name))(
         group[0].compute_requirement, [instance.instance for instance in group]
     )
     for instance in group:
@@ -498,13 +512,23 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
     What a target names, raising Unresolved if it cannot be acted on.
     Anything else raised is a failure of the lookup itself.
     """
-    if (spec := split_instance_specification(target)) is not None:
+    ydid_type = get_ydid_type(target)
+    spec = split_instance_specification(target)
+    if action.instance_method_name is None and (
+        spec is not None or ydid_type == YDIDType.NODE
+    ):
+        raise Unresolved(
+            f"Instances cannot be {action.past_tense.lower()}; "
+            "please supply Compute Requirement names or IDs"
+        )
+
+    if spec is not None:
         compute_requirement, instance = _resolve_instance(ctx, action, spec[0], spec[1])
         return _instance_item(
             _Instance(spec[0], compute_requirement, instance, spec[1], None)
         )
 
-    if (ydid_type := get_ydid_type(target)) == YDIDType.NODE:
+    if ydid_type == YDIDType.NODE:
         cr_id, compute_requirement, instance, instance_id = _resolve_node(
             ctx, action, target
         )

@@ -1478,7 +1478,7 @@ COMMANDS["yd-compare"] = Command(
     tool=ToolKind.READ_ONLY,
 )
 
-# --- yd-compute-restart / yd-compute-start / yd-compute-stop --------------
+# --- yd-compute-restart / -deprovision / -reprovision / -start / -stop -----
 
 
 def _compute_action_options(
@@ -1538,6 +1538,27 @@ COMMANDS["yd-compute-deprovision"] = Command(
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
+    tool=ToolKind.DESTRUCTIVE,
+)
+COMMANDS["yd-compute-reprovision"] = Command(
+    name="yd-compute-reprovision",
+    purpose=(
+        "reprovisioning Compute Requirements: provisioning Instances until"
+        " their target counts are met"
+    ),
+    summary="Reprovision Compute Requirements, restoring their target instance counts",
+    kind=CommandKind.API,
+    # Compute Requirement-level only: no Instance or Node IDs
+    options=_compute_action_options(
+        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+            help=(
+                "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                " a name may be a glob pattern (e.g. 'cr-*')"
+            ),
+        )
+    ),
+    validators=(check_glob_and_literal_names,),
+    requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-start"] = Command(

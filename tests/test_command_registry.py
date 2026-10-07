@@ -391,6 +391,7 @@ class TestToolKinds:
             "yd-compute-start",
             "yd-compute-restart",
             "yd-compute-deprovision",
+            "yd-compute-reprovision",
             "yd-nodeaction",
             "yd-priority",
             "yd-token",
