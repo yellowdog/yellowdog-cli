@@ -3,7 +3,9 @@ Utility function to follow event streams.
 """
 
 import signal
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from json import loads as json_loads
 from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
@@ -13,6 +15,7 @@ from rich.progress import (
     BarColumn,
     Progress,
     ProgressColumn,
+    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -21,12 +24,19 @@ from rich.text import Text
 from yellowdog_client.model import (
     ComputeRequirementStatus,
     ProvisionedWorkerPool,
+    TaskGroup,
     TaskStatus,
+    WorkRequirement,
 )
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.event_printing import print_event
-from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.limits import (
     EVENT_STREAM_CONNECT_TIMEOUT,
     EVENT_STREAM_MAX_OUTAGE,
@@ -86,25 +96,40 @@ def reset_follow_errors() -> None:
         _FOLLOW_FAILURES.clear()
 
 
-def work_requirement_failed(ctx: RunContext, wr_id: str) -> bool:
+def work_requirement_exit_code(ctx: RunContext, wr_id: str) -> ExitCode:
     """
-    Fetch a Work Requirement and report whether it ended in a failure state
-    (FAILED or CANCELLED). A fetch error is treated as failure. Prints a
-    warning (or error) describing the outcome; success is left to the caller.
+    The exit code of yd-submit's --exit-on-failure, once a Work Requirement
+    has been followed: FAILURE if it ended in a failure state (FAILED or
+    CANCELLED) or its status cannot be fetched; if it has not finished
+    because following it failed, that failure's own code, since its outcome
+    was never seen; otherwise SUCCESS. An authentication or connection
+    failure fetching the status is raised as ReportedFailure, to exit with
+    its own code. Prints a warning (or error) describing a failure; success
+    is left to the caller.
     """
     try:
         wr = ctx.client.work_client.get_work_requirement_by_id(wr_id)
-        status = wr.status.value if wr.status else "UNKNOWN"
     except Exception as e:
         print_error(f"Could not fetch final status for '{wr_id}': {e}")
-        return True
+        if classify(e) in SESSION_FAILURES:
+            # Exits with the failure's own code, not as a failed Work Requirement
+            raise ReportedFailure(e)
+        return ExitCode.FAILURE
+    status = wr.status.value if wr.status else "UNKNOWN"
     if status in WR_FAILURE_STATUS_VALUES:
         print_warning(
             f"Work Requirement '{wr_id}' ended with status '{status}'",
             override_quiet=True,
         )
-        return True
-    return False
+        return ExitCode.FAILURE
+    finished = wr.status is not None and wr.status.finished
+    if not finished and (code := follow_exit_code()) != ExitCode.SUCCESS:
+        print_error(
+            f"Work Requirement '{wr_id}' could not be followed to its end, so its"
+            f" outcome is not known (its status is '{status}')"
+        )
+        return code
+    return ExitCode.SUCCESS
 
 
 class _WRNameColumn(ProgressColumn):
@@ -152,6 +177,121 @@ def _progress_desc(
     return desc
 
 
+@dataclass
+class _TaskCounts:
+    """
+    A Work Requirement's Task counts, as its progress bar shows them.
+    """
+
+    total: int = 0
+    completed: int = 0
+    failed: int = 0
+    aborted: int = 0
+    cancelled: int = 0
+    resubmitted: int = 0
+
+    def add_task_groups(self, task_groups: list[TaskGroup] | None) -> None:
+        """
+        Add a fetched Work Requirement's Task Groups' counts.
+        """
+        for task_group in task_groups or []:
+            summary = task_group.taskSummary
+            if summary:
+                self.total += summary.taskCount or 0
+                counts = summary.statusCounts or {}
+                self.completed += counts.get(TaskStatus.COMPLETED, 0)
+                self.failed += counts.get(TaskStatus.FAILED, 0)
+                self.aborted += counts.get(TaskStatus.ABORTED, 0)
+                self.cancelled += counts.get(TaskStatus.CANCELLED, 0)
+                self.resubmitted += counts.get(TaskStatus.RESUBMITTED, 0)
+
+    @staticmethod
+    def of_event(event_data: dict) -> "_TaskCounts":
+        """
+        The counts in a Work Requirement event's Task Groups.
+        """
+        counts = _TaskCounts()
+        for task_group in event_data.get("taskGroups", []):
+            summary = task_group.get("taskSummary", {})
+            counts.total += summary.get("taskCount", 0)
+            status_counts = summary.get("statusCounts", {})
+            counts.completed += status_counts.get("COMPLETED", 0)
+            counts.failed += status_counts.get("FAILED", 0)
+            counts.aborted += status_counts.get("ABORTED", 0)
+            counts.cancelled += status_counts.get("CANCELLED", 0)
+            counts.resubmitted += status_counts.get("RESUBMITTED", 0)
+        return counts
+
+    def show(self, progress: Progress, bar_task: TaskID, wr_status: str) -> None:
+        progress.update(
+            bar_task,
+            total=self.total if self.total > 0 else None,
+            completed=self.completed,
+            description=_progress_desc(
+                wr_status,
+                self.total,
+                self.completed,
+                self.failed,
+                self.aborted,
+                self.cancelled,
+                self.resubmitted,
+            ),
+        )
+
+    def failures(self) -> str | None:
+        """
+        The Tasks that did not succeed, as the closing warning gives them, or
+        None if there were none.
+        """
+        parts = []
+        if self.failed:
+            parts.append(f"{self.failed:,} failed")
+        if self.aborted:
+            parts.append(f"{self.aborted:,} aborted")
+        if self.cancelled:
+            parts.append(f"{self.cancelled:,} cancelled")
+        return " · ".join(parts) if parts else None
+
+
+@dataclass(frozen=True)
+class _FetchedWorkRequirement:
+    """
+    What the progress bar starts from: the Work Requirement, if it could be
+    fetched, how long it has run (or ran) and whether it has finished.
+    """
+
+    wr: WorkRequirement | None = None
+    age_seconds: float = 0.0
+    finished: bool = False
+
+
+def _fetch_for_progress(ctx: RunContext, ydid: str) -> _FetchedWorkRequirement | None:
+    """
+    The Work Requirement to follow, or None if it does not exist, having
+    reported that.
+    """
+    try:
+        wr = ctx.client.work_client.get_work_requirement_by_id(ydid)
+    except Exception as e:
+        if is_http_not_found(e):
+            # Fail fast with a plain error rather than starting the live
+            # progress display around an event stream that will just 404
+            print_error(f"Work Requirement '{ydid}' not found")
+            _record_follow_failure(ExitCode.NOT_FOUND)
+            return None
+        # Other fetch errors may be transient; leave them to the event stream
+        return _FetchedWorkRequirement()
+
+    finished = wr.status is not None and wr.status.finished
+    age_seconds = 0.0
+    if finished and wr.createdTime is not None and wr.statusChangedTime is not None:
+        # Show how long the WR actually ran, not how long ago we fetched it
+        age_seconds = max(0.0, (wr.statusChangedTime - wr.createdTime).total_seconds())
+    elif wr.createdTime is not None:
+        age_seconds = max(0.0, time() - wr.createdTime.timestamp())
+    return _FetchedWorkRequirement(wr, age_seconds, finished)
+
+
 def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     """
     Follow a Work Requirement event stream, displaying a live Rich progress bar.
@@ -159,38 +299,9 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     Safe to call from either the main thread or a daemon thread; signal
     handling is skipped automatically when not in the main thread.
     """
-    total_tasks = completed_tasks = failed_tasks = aborted_tasks = cancelled_tasks = (
-        resubmitted_tasks
-    ) = 0
-
-    wr = None
-    wr_name = ""
-    wr_age_seconds = 0.0
-    wr_is_terminal = False
-    try:
-        wr = ctx.client.work_client.get_work_requirement_by_id(ydid)
-        wr_name = wr.name or ""
-        wr_is_terminal = wr.status is not None and wr.status.finished
-        if (
-            wr_is_terminal
-            and wr.createdTime is not None
-            and wr.statusChangedTime is not None
-        ):
-            # Show how long the WR actually ran, not how long ago we fetched it
-            wr_age_seconds = max(
-                0.0,
-                (wr.statusChangedTime - wr.createdTime).total_seconds(),
-            )
-        elif wr.createdTime is not None:
-            wr_age_seconds = max(0.0, time() - wr.createdTime.timestamp())
-    except Exception as e:
-        if is_http_not_found(e):
-            # Fail fast with a plain error rather than starting the live
-            # progress display around an event stream that will just 404
-            print_error(f"Work Requirement '{ydid}' not found")
-            _record_follow_failure(ExitCode.NOT_FOUND)
-            return
-        # Other fetch errors may be transient; leave them to the event stream
+    fetched = _fetch_for_progress(ctx, ydid)
+    if fetched is None:
+        return
 
     progress = Progress(
         TextColumn("{task.description}"),
@@ -205,52 +316,26 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
         console=CONSOLE,
         transient=False,
     )
+    wr_name = (fetched.wr.name or "") if fetched.wr is not None else ""
     bar_task = progress.add_task("Starting\u2026", total=None, wr_name=wr_name)
-    if wr_age_seconds > 0:
-        progress.tasks[0].start_time = monotonic() - wr_age_seconds
-    if wr_is_terminal:
+    if fetched.age_seconds > 0:
+        progress.tasks[0].start_time = monotonic() - fetched.age_seconds
+    if fetched.finished:
         progress.stop_task(bar_task)
 
+    counts = _TaskCounts()
     # Pre-populate from the fetched WR so the bar shows a meaningful state
     # even if no events arrive (e.g. the WR is already in a terminal state).
-    if wr is not None:
+    if fetched.wr is not None:
         try:
-            for tg in wr.taskGroups or []:
-                summary = tg.taskSummary
-                if summary:
-                    total_tasks += summary.taskCount or 0
-                    counts = summary.statusCounts or {}
-                    completed_tasks += counts.get(TaskStatus.COMPLETED, 0)
-                    failed_tasks += counts.get(TaskStatus.FAILED, 0)
-                    aborted_tasks += counts.get(TaskStatus.ABORTED, 0)
-                    cancelled_tasks += counts.get(TaskStatus.CANCELLED, 0)
-                    resubmitted_tasks += counts.get(TaskStatus.RESUBMITTED, 0)
-            wr_status = wr.status.value if wr.status else ""
-            progress.update(
-                bar_task,
-                total=total_tasks if total_tasks > 0 else None,
-                completed=completed_tasks,
-                description=_progress_desc(
-                    wr_status,
-                    total_tasks,
-                    completed_tasks,
-                    failed_tasks,
-                    aborted_tasks,
-                    cancelled_tasks,
-                    resubmitted_tasks,
-                ),
-            )
+            counts.add_task_groups(fetched.wr.taskGroups)
+            wr_status = fetched.wr.status.value if fetched.wr.status else ""
+            counts.show(progress, bar_task, wr_status)
         except Exception:
             pass
 
     def on_event(event: str, ydid_type: YDIDType) -> None:
-        nonlocal \
-            total_tasks, \
-            completed_tasks, \
-            failed_tasks, \
-            aborted_tasks, \
-            cancelled_tasks, \
-            resubmitted_tasks
+        nonlocal counts
         if not event.startswith("data:"):
             return
         try:
@@ -259,82 +344,52 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
             return
         if ydid_type is not YDIDType.WORK_REQUIREMENT:
             return
+        counts = _TaskCounts.of_event(event_data)
+        counts.show(progress, bar_task, event_data.get("status", ""))
 
-        new_total = new_completed = new_failed = new_aborted = new_cancelled = (
-            new_resubmitted
-        ) = 0
-        for tg in event_data.get("taskGroups", []):
-            summary = tg.get("taskSummary", {})
-            new_total += summary.get("taskCount", 0)
-            counts = summary.get("statusCounts", {})
-            new_completed += counts.get("COMPLETED", 0)
-            new_failed += counts.get("FAILED", 0)
-            new_aborted += counts.get("ABORTED", 0)
-            new_cancelled += counts.get("CANCELLED", 0)
-            new_resubmitted += counts.get("RESUBMITTED", 0)
+    print_info(f"Tracking progress for Work Requirement '{ydid}'")
+    with _cursor_restored_on_interrupt(), progress:
+        follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
 
-        total_tasks = new_total
-        completed_tasks = new_completed
-        failed_tasks = new_failed
-        aborted_tasks = new_aborted
-        cancelled_tasks = new_cancelled
-        resubmitted_tasks = new_resubmitted
+    if (failures := counts.failures()) is not None:
+        print_warning(f"Work Requirement finished with {failures} task(s)")
 
-        wr_status = event_data.get("status", "")
-        progress.update(
-            bar_task,
-            total=total_tasks if total_tasks > 0 else None,
-            completed=completed_tasks,
-            description=_progress_desc(
-                wr_status,
-                total_tasks,
-                completed_tasks,
-                failed_tasks,
-                aborted_tasks,
-                cancelled_tasks,
-                resubmitted_tasks,
-            ),
-        )
 
-    def _restore_cursor() -> None:
-        try:
-            CONSOLE.file.write("\033[?25h")
-            CONSOLE.file.flush()
-        except Exception:
-            pass
+def _restore_cursor() -> None:
+    try:
+        CONSOLE.file.write("\033[?25h")
+        CONSOLE.file.flush()
+    except Exception:
+        pass
 
-    _original_sigint = signal.getsignal(signal.SIGINT)
 
-    def _on_sigint(sig: int, frame) -> None:
+@contextmanager
+def _cursor_restored_on_interrupt() -> Iterator[None]:
+    """
+    Restore the terminal's cursor, which the progress bar hides, when the
+    block ends and on a keyboard interrupt, which is then raised as usual.
+    The interrupt is caught only in the main thread, the only one signal
+    handlers can be set in.
+    """
+    original_sigint = signal.getsignal(signal.SIGINT)
+
+    def on_sigint(sig: int, frame) -> None:
         _restore_cursor()
-        signal.signal(signal.SIGINT, _original_sigint)
+        signal.signal(signal.SIGINT, original_sigint)
         signal.default_int_handler(sig, frame)
 
     try:
-        signal.signal(signal.SIGINT, _on_sigint)
+        signal.signal(signal.SIGINT, on_sigint)
         in_main_thread = True
     except ValueError:
         in_main_thread = False  # Signal handlers only work in the main thread
 
-    print_info(f"Tracking progress for Work Requirement '{ydid}'")
     try:
-        with progress:
-            follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
+        yield
     finally:
         if in_main_thread:
-            signal.signal(signal.SIGINT, _original_sigint)
+            signal.signal(signal.SIGINT, original_sigint)
         _restore_cursor()
-
-    terminal_failures = failed_tasks + aborted_tasks + cancelled_tasks
-    if terminal_failures:
-        parts = []
-        if failed_tasks:
-            parts.append(f"{failed_tasks:,} failed")
-        if aborted_tasks:
-            parts.append(f"{aborted_tasks:,} aborted")
-        if cancelled_tasks:
-            parts.append(f"{cancelled_tasks:,} cancelled")
-        print_warning(f"Work Requirement finished with {' · '.join(parts)} task(s)")
 
 
 _FOLLOWABLE = frozenset(
@@ -497,13 +552,15 @@ def _compute_requirement_of_worker_pool(
     return None
 
 
-def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool:
+def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | None:
     """
     Whether the entity whose event stream has closed has finished, as the
     Platform closes a stream when it does. A stream closed for any other
     reason (a proxy dropping an idle connection, say) is reconnected. An
     entity whose status cannot be fetched is taken as finished, with a
-    warning, rather than reconnected for ever.
+    warning, rather than reconnected for ever; but an authentication or
+    connection failure is reported and recorded, and None returned, for the
+    following to stop without the stream counting as concluded.
     """
     try:
         if ydid_type == YDIDType.WORK_REQUIREMENT:
@@ -515,6 +572,13 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool:
         status = ctx.client.compute_client.get_compute_requirement_by_id(ydid).status
         return status is None or status == ComputeRequirementStatus.TERMINATED
     except Exception as e:
+        if classify(e) in SESSION_FAILURES:
+            print_error(
+                f"The event stream for '{ydid}' closed, and its status could not be"
+                f" checked: {e}"
+            )
+            _record_follow_failure(e)
+            return None
         print_warning(
             f"The event stream for '{ydid}' closed, and its status could not be"
             f" checked ({e}): taking it to have finished"
@@ -571,8 +635,10 @@ def follow_events(
 
     A stream that drops is reconnected (see _Outage), as is one that closes
     while its entity is still live (_entity_finished()). A first connection
-    that fails is reported at once. Each failure is recorded for the exit
-    code (follow_exit_code()).
+    that fails is reported at once. An outage ends only once a stream
+    delivers an event, so a connection that keeps dropping before any is
+    given up on too. Each failure is recorded for the exit code
+    (follow_exit_code()).
     """
     outage = _Outage()
     connected = False
@@ -611,7 +677,6 @@ def follow_events(
                 break
 
             connected = True
-            outage.end()
             if response.encoding is None:
                 response.encoding = "utf-8"
 
@@ -620,6 +685,10 @@ def follow_events(
                     if _STOP_FOLLOWING.is_set():
                         return
                     if event and isinstance(event, str):
+                        # Only a stream that delivers ends an outage: one that
+                        # is accepted and drops before any event, over and over,
+                        # is still the one outage, and is given up on
+                        outage.end()
                         if on_event is not None:
                             on_event(event, ydid_type)
                         else:
@@ -651,7 +720,10 @@ def follow_events(
         # something in between, in which case it is reconnected
         if _STOP_FOLLOWING.is_set():
             return
-        if _entity_finished(ctx, ydid, ydid_type):
+        finished = _entity_finished(ctx, ydid, ydid_type)
+        if finished is None:  # Reported and recorded
+            break
+        if finished:
             concluded = True
             break
         sleep(EVENT_STREAM_RECONNECT_DELAY)

@@ -1084,6 +1084,402 @@
       "type": "str"
     }
   ],
+  "yd-cloud-info": [
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "docs",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--docs"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "config",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--config",
+        "-c"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "key",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--key",
+        "-k"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "secret",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--secret",
+        "-s"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "url",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--url",
+        "-u"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "debug",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--debug"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "pac",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--pac"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_format",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-format",
+        "--nf"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "quiet",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--quiet",
+        "-q"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "env_override",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--env-override"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "print_pid",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--print-pid",
+        "--pp"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_config",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-config",
+        "--nc"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "property",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--property"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": [
+        "name",
+        "vcpus",
+        "ram",
+        "price",
+        "spot",
+        "on-demand"
+      ],
+      "const": null,
+      "default": "name",
+      "dest": "sort",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--sort"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "reverse",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--reverse"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "count",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--count",
+        "-C"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "cloud_info_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [],
+      "required": null,
+      "type": "resolve_cloud_info_type"
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "providers",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider",
+        "-p"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "region",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--region"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "sub_region",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--sub-region"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "name_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--name"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "vcpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--vcpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "ram",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--ram"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": [
+        "x86_64",
+        "arm64"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "arch",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--arch"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "spot",
+        "on-demand"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "usage",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--usage"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "none",
+        "windows"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "os_licence",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--os"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "prices",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--prices"
+      ],
+      "required": false,
+      "type": null
+    }
+  ],
   "yd-cloudwizard": [
     {
       "choices": null,

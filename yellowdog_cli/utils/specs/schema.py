@@ -266,30 +266,9 @@ def annotation_schema(
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)
     if origin in (types.UnionType, typing.Union):
-        members = [a for a in args if a is not type(None)]
-        if len(members) == 1:
-            schema = annotation_schema(members[0], defs, owner=owner)
-        else:
-            schema = {
-                "anyOf": [annotation_schema(a, defs, owner=owner) for a in members]
-            }
-        return _nullable(schema) if len(members) < len(args) else schema
-    if annotation is str:
-        return {"type": "string"}
-    if annotation is bool:
-        return {"type": "boolean"}
-    if annotation is int:
-        return {"type": "integer"}
-    if annotation is float:
-        return {"type": "number"}
-    if annotation is timedelta:
-        return {
-            "type": "string",
-            "pattern": DURATION_PATTERN,
-            "description": "an ISO 8601 duration, e.g. PT10M",
-        }
-    if annotation is datetime:
-        return {"type": "string", "format": "date-time"}
+        return _union_schema(args, defs, owner=owner)
+    if isinstance(annotation, type) and annotation in _SCALAR_SCHEMAS:
+        return dict(_SCALAR_SCHEMAS[annotation])
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return {"enum": [member.value for member in annotation]}
     if origin in (list, set, frozenset):
@@ -297,36 +276,93 @@ def annotation_schema(
             raise SchemaGenerationError(f"{owner}: an unparameterised {annotation!r}")
         return {"type": "array", "items": annotation_schema(args[0], defs, owner=owner)}
     if origin is dict:
-        if len(args) != 2:
-            raise SchemaGenerationError(f"{owner}: an unparameterised {annotation!r}")
-        key, value = args
-        schema: dict[str, Any] = {
-            "type": "object",
-            "additionalProperties": annotation_schema(value, defs, owner=owner),
-        }
-        if isinstance(key, type) and issubclass(key, Enum):
-            schema["propertyNames"] = {"enum": [member.value for member in key]}
-        elif key is not str:
-            raise SchemaGenerationError(f"{owner}: a mapping keyed by {key!r}")
-        return schema
+        return _mapping_schema(annotation, args, defs, owner=owner)
     if isinstance(annotation, typing.TypeVar):
         raise SchemaGenerationError(f"{owner}: an unbound type variable {annotation}")
-    base = origin if isinstance(origin, type) else annotation
-    if isinstance(base, type) and base.__module__.startswith("yellowdog_client"):
-        members = polymorphic_members(base)
-        if members:
-            # A polymorphic base (an ABC, possibly generic, as AttributeValue[Any]
-            # is): each member binds its own type parameters. Dispatched on the
-            # discriminator, as a resource is, rather than a 'oneOf', so a
-            # violation inside the member keeps its path
-            return _polymorphic_dispatch(base, members, defs)
-        if origin is not None and sdk_models.as_dataclass_type(origin) is not None:
-            # A generic dataclass (Selection[TaskErrorSelector]): expanded inline
-            # with its type parameter substituted, since a $def cannot carry it
-            return _generic_model_schema(origin, args, defs, owner=owner)
-        if sdk_models.as_dataclass_type(annotation) is not None:
-            return _ref(annotation, defs)
+    if (
+        schema := _sdk_type_schema(annotation, origin, args, defs, owner=owner)
+    ) is not None:
+        return schema
     raise SchemaGenerationError(f"{owner}: no JSON Schema mapping for {annotation!r}")
+
+
+# The schema of each scalar type a field may have
+_SCALAR_SCHEMAS: dict[type, dict[str, Any]] = {
+    str: {"type": "string"},
+    bool: {"type": "boolean"},
+    int: {"type": "integer"},
+    float: {"type": "number"},
+    timedelta: {
+        "type": "string",
+        "pattern": DURATION_PATTERN,
+        "description": "an ISO 8601 duration, e.g. PT10M",
+    },
+    datetime: {"type": "string", "format": "date-time"},
+}
+
+
+def _union_schema(
+    args: tuple[Any, ...], defs: dict[str, Any], *, owner: str
+) -> dict[str, Any]:
+    """
+    A union's members, any of them, admitting null if None is one.
+    """
+    members = [a for a in args if a is not type(None)]
+    if len(members) == 1:
+        schema = annotation_schema(members[0], defs, owner=owner)
+    else:
+        schema = {"anyOf": [annotation_schema(a, defs, owner=owner) for a in members]}
+    return _nullable(schema) if len(members) < len(args) else schema
+
+
+def _mapping_schema(
+    annotation: Any, args: tuple[Any, ...], defs: dict[str, Any], *, owner: str
+) -> dict[str, Any]:
+    """
+    A dict keyed by strings, or by an Enum's values.
+    """
+    if len(args) != 2:
+        raise SchemaGenerationError(f"{owner}: an unparameterised {annotation!r}")
+    key, value = args
+    schema: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": annotation_schema(value, defs, owner=owner),
+    }
+    if isinstance(key, type) and issubclass(key, Enum):
+        schema["propertyNames"] = {"enum": [member.value for member in key]}
+    elif key is not str:
+        raise SchemaGenerationError(f"{owner}: a mapping keyed by {key!r}")
+    return schema
+
+
+def _sdk_type_schema(
+    annotation: Any,
+    origin: Any,
+    args: tuple[Any, ...],
+    defs: dict[str, Any],
+    *,
+    owner: str,
+) -> dict[str, Any] | None:
+    """
+    An SDK model's schema, or None if the annotation is not one.
+    """
+    base = origin if isinstance(origin, type) else annotation
+    if not (isinstance(base, type) and base.__module__.startswith("yellowdog_client")):
+        return None
+    members = polymorphic_members(base)
+    if members:
+        # A polymorphic base (an ABC, possibly generic, as AttributeValue[Any]
+        # is): each member binds its own type parameters. Dispatched on the
+        # discriminator, as a resource is, rather than a 'oneOf', so a
+        # violation inside the member keeps its path
+        return _polymorphic_dispatch(base, members, defs)
+    if origin is not None and sdk_models.as_dataclass_type(origin) is not None:
+        # A generic dataclass (Selection[TaskErrorSelector]): expanded inline
+        # with its type parameter substituted, since a $def cannot carry it
+        return _generic_model_schema(origin, args, defs, owner=owner)
+    if sdk_models.as_dataclass_type(annotation) is not None:
+        return _ref(annotation, defs)
+    return None
 
 
 def _polymorphic_dispatch(

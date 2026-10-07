@@ -7,6 +7,7 @@ reported an error exiting 1, while carrying on past it.
 
 from argparse import ArgumentParser, Namespace
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -191,3 +192,273 @@ def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
     config.set_ssh_ingress_rule("add-ssh")
     assert asked and "all 2 opted-in regions" in asked[0]
     assert "0.0.0.0/0" in asked[0]
+
+
+class TestAzureResourceGroupFailures:
+    """
+    Azure setup: a region whose resource group cannot be checked, and a
+    rollback that cannot delete the group just created, are each counted as
+    an error, so the run cannot exit 0 having made nothing or left one behind.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _azure_sdk(self):
+        # The cloudwizard extra's Azure SDK, which an environment with boto3
+        # by another route (tox's, without the extra) may still lack
+        pytest.importorskip("azure.mgmt.resource")
+
+    def _config(self, resource_groups):
+        from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+
+        config = object.__new__(cloudwizard_azure.AzureConfig)
+        config._resource_client = SimpleNamespace(resource_groups=resource_groups)
+        config._selected_regions = ["uksouth"]
+        config._created_regions = []
+        config._generate_resource_group_name = lambda region: f"yd-{region}"
+        return config
+
+    def test_a_failed_existence_check_is_counted(self, printed):
+        groups = SimpleNamespace(
+            check_existence=lambda name: (_ for _ in ()).throw(RuntimeError("denied"))
+        )
+        config = self._config(groups)
+        config._create_resource_groups_and_network_resources()
+        assert config._created_regions == []
+        assert cloudwizard_common.errors_reported() == 1
+        assert any("denied" in line for line in printed)
+
+    def test_a_failed_rollback_is_counted_with_its_reason(self, printed):
+        groups = SimpleNamespace(
+            begin_delete=lambda name: (_ for _ in ()).throw(RuntimeError("locked"))
+        )
+        config = self._config(groups)
+        config._remove_resource_group_by_name("yd-uksouth")
+        assert cloudwizard_common.errors_reported() == 1
+        assert any("yd-uksouth" in line and "locked" in line for line in printed)
+
+
+class TestTeardownAfterAPlatformFailure:
+    """
+    A teardown whose YellowDog removals hit an authentication or connection
+    failure: those stop, the rest recorded as not attempted and the Keyring
+    left, but the cloud provider's removals still run, and the run exits
+    with the failure's code, saying a second teardown removes what is left.
+    """
+
+    class _Teardown(cloudwizard_common.CommonCloudConfig):
+        def __init__(self):
+            super().__init__(
+                ctx=SimpleNamespace(client=MagicMock()), cloud_provider="Test"
+            )  # type: ignore[arg-type]
+            self.cloud_removed = False
+
+        def setup(self):
+            pass
+
+        def teardown(self):
+            self._remove_yd_templates_by_prefix(self._client, "yd-")
+            self._remove_keyring("kr")
+            self.cloud_removed = True  # The cloud provider's removals, after
+
+    @staticmethod
+    def _summary(id: str, name: str):
+        namespace = f"{cloudwizard_common.CLOUDWIZARD_NAMESPACE_PREFIX}-test"
+        return SimpleNamespace(id=id, name=name, namespace=namespace)
+
+    @pytest.fixture
+    def platform(self, monkeypatch, printed):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        state = SimpleNamespace(removed=[], not_attempted=[], fail_on=None, error=None)
+
+        def remove(ctx, resource_id):
+            if resource_id == state.fail_on:
+                raise ReportedFailure(state.error)
+            state.removed.append(resource_id)
+            return True
+
+        monkeypatch.setattr(cloudwizard_common, "confirmed", lambda question: True)
+        monkeypatch.setattr(cloudwizard_common, "remove_resource_by_id", remove)
+        monkeypatch.setattr(
+            cloudwizard_common,
+            "record_not_attempted",
+            lambda ctx, ids, cause: state.not_attempted.extend(ids),
+        )
+        monkeypatch.setattr(
+            cloudwizard_common,
+            "get_compute_requirement_templates",
+            lambda client, namespace, partial_name_matches: [
+                self._summary("crt-1", "yd-a"),
+                self._summary("crt-2", "yd-b"),
+                self._summary("crt-3", "yd-c"),
+                self._summary("crt-x", "other"),
+            ],
+        )
+        monkeypatch.setattr(
+            cloudwizard_common,
+            "get_compute_source_templates",
+            lambda client, namespace: [self._summary("cst-1", "yd-s")],
+        )
+        return state
+
+    def test_the_platform_side_stops_and_the_cloud_side_runs(self, platform, printed):
+        from requests import ConnectionError
+
+        from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+
+        platform.fail_on, platform.error = "crt-2", ConnectionError("gone")
+        config = self._Teardown()
+        with pytest.raises(ReportedFailure) as raised:
+            cloudwizard.run_operation(config, "teardown", None)
+
+        assert platform.removed == ["crt-1"]
+        assert platform.not_attempted == ["crt-3"]  # Its source templates not listed
+        config._client.keyring_client.delete_keyring_by_name.assert_not_called()
+        assert config.cloud_removed
+        assert classify(raised.value) == ExitCode.CONNECTION
+        assert any("run teardown again" in line for line in printed)
+
+    def test_a_listing_that_fails_stops_the_platform_side_too(
+        self, platform, printed, monkeypatch
+    ):
+        from requests import ConnectionError
+
+        from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+
+        def listing(client, namespace, partial_name_matches):
+            raise ConnectionError("gone")
+
+        monkeypatch.setattr(
+            cloudwizard_common, "get_compute_requirement_templates", listing
+        )
+        config = self._Teardown()
+        with pytest.raises(ReportedFailure) as raised:
+            cloudwizard.run_operation(config, "teardown", None)
+        assert platform.removed == []
+        assert config.cloud_removed
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+    def test_an_ordinary_failure_still_carries_on(self, platform, printed, monkeypatch):
+        def remove(ctx, resource_id):
+            if resource_id == "crt-2":
+                raise RuntimeError("odd")  # Not a session failure
+            platform.removed.append(resource_id)
+            return True
+
+        monkeypatch.setattr(cloudwizard_common, "remove_resource_by_id", remove)
+        config = self._Teardown()
+        with pytest.raises(SystemExit) as exited:
+            cloudwizard.run_operation(config, "teardown", None)
+        assert exited.value.code == 1  # The counted error, as before
+        assert platform.removed == ["crt-1", "crt-3", "cst-1"]
+        config._client.keyring_client.delete_keyring_by_name.assert_called_once()
+
+
+class TestRemoveResourceById:
+    """
+    resource_removal.remove_resource_by_id(), the Cloud Wizard's removal: a
+    failure is recorded and returns False, but a session failure is raised,
+    recorded, as ReportedFailure.
+    """
+
+    def _remove(self, monkeypatch, error):
+        from yellowdog_cli.utils import resource_removal
+
+        records: list[tuple] = []
+        monkeypatch.setattr(resource_removal, "print_error", lambda message: None)
+        monkeypatch.setattr(
+            resource_removal,
+            "_remove_and_record_by_id",
+            lambda ctx, resource_id: (_ for _ in ()).throw(error),
+        )
+        monkeypatch.setattr(
+            resource_removal,
+            "_record_by_id",
+            lambda ctx, resource_id, action, message: records.append(
+                (resource_id, action)
+            ),
+        )
+        return resource_removal.remove_resource_by_id(MagicMock(), "id-1"), records
+
+    def test_an_ordinary_failure_returns_false(self, monkeypatch):
+        assert self._remove(monkeypatch, RuntimeError("odd")) == (
+            False,
+            [("id-1", "failed")],
+        )
+
+    def test_a_session_failure_is_raised_once_recorded(self, monkeypatch):
+        from requests import ConnectionError
+
+        from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+
+        with pytest.raises(ReportedFailure) as raised:
+            self._remove(monkeypatch, ConnectionError("gone"))
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+
+class TestSetupAfterAPlatformFailure:
+    """
+    Azure setup's YellowDog credential, its last Platform call: a lost
+    connection there is kept rather than counted, the resource file is still
+    saved, and the run exits with the failure's code, saying a second setup
+    creates what is missing. Any other failure is counted, as before.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _azure_sdk(self):
+        # The cloudwizard extra's Azure SDK, which an environment with boto3
+        # by another route (tox's, without the extra) may still lack
+        pytest.importorskip("azure.mgmt.resource")
+
+    def _config(self, monkeypatch, error):
+        from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+        def create(ctx, resources):
+            if resources and resources[0].get("resource") == "credential":
+                raise ReportedFailure(error) if error is not None else RuntimeError()
+            return None
+
+        monkeypatch.setattr(cloudwizard_azure, "create_resources", create)
+        config = object.__new__(cloudwizard_azure.AzureConfig)
+        cloudwizard_common.CommonCloudConfig.__init__(
+            config, ctx=SimpleNamespace(client=MagicMock()), cloud_provider="Azure"
+        )
+        config._created_regions = ["uksouth"]
+        config._generate_azure_compute_source_template = lambda region, name, spot: {
+            "name": name
+        }
+        config._create_compute_requirement_templates = lambda resource_prefix: None
+        config._generate_yd_azure_credential = lambda keyring, credential: {
+            "resource": "credential"
+        }
+        config.saved = False
+
+        def save(resources, filename):
+            config.saved = True
+            return True
+
+        config._save_resource_list = save
+        config.setup = config._create_yellowdog_resources  # The step under test
+        return config
+
+    def test_a_lost_connection_exits_with_its_code(self, monkeypatch, printed):
+        from requests import ConnectionError
+
+        from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+
+        config = self._config(monkeypatch, ConnectionError("gone"))
+        with pytest.raises(ReportedFailure) as raised:
+            cloudwizard.run_operation(config, "setup", None)
+        assert classify(raised.value) == ExitCode.CONNECTION
+        assert config.saved  # The resource file, though the credential failed
+        assert cloudwizard_common.errors_reported() == 0
+        assert any("run setup again" in line for line in printed)
+
+    def test_another_failure_is_counted_as_before(self, monkeypatch, printed):
+        config = self._config(monkeypatch, None)
+        with pytest.raises(SystemExit) as exited:
+            cloudwizard.run_operation(config, "setup", None)
+        assert exited.value.code == 1
+        assert config.saved
+        assert cloudwizard_common.errors_reported() == 1

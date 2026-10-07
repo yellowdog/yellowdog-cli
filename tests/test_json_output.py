@@ -1010,14 +1010,28 @@ class TestResize:
             parser.parse_args(["wp", "-1"])
         assert exit_info.value.code == 2
 
-    def test_a_401_looking_up_the_name_reaches_the_wrapper(self, run):
-        # Not a 'not found': the lookup's failure is classified by the
-        # wrapper (exit 4), with nothing recorded before it
+    def test_a_401_looking_up_the_name_is_recorded_and_reaches_the_wrapper(self, run):
+        # Not a 'not found': recorded as the target's failure, as every other
+        # action command records one, and classified by the wrapper (exit 4)
         client = MagicMock()
         client.worker_pool_client.get_worker_pool_by_name.side_effect = _http_error(401)
         out, _, _ = run(yd_resize, client=client, **self._args(worker_pool_name="wp-a"))
-        assert out == []
+        assert [(r["name"], r["outcome"]) for r in out] == [("wp-a", "failed")]
+        assert "401" in out[0]["error"]
         assert run.exit_code == 4
+
+    def test_a_connection_failure_fetching_a_compute_requirement_is_recorded(self, run):
+        client = MagicMock()
+        client.compute_client.get_compute_requirement_by_id.side_effect = (
+            ConnectionError_("gone")
+        )
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(worker_pool_name=CR_ID, compute_req_resize=True),
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [(CR_ID, "failed")]
+        assert run.exit_code == ExitCode.CONNECTION
 
 
 def _http_error(status: int) -> HTTPError:
@@ -2814,6 +2828,38 @@ class TestDownload:
         assert "would both be synced to 'out'" in " ".join(err.split())
         assert not (remote / "out").exists()
 
+    def test_a_wildcard_the_check_cannot_list_is_failed_not_synced(
+        self, remote, run_dc, monkeypatch
+    ):
+        # The check's listing fails though the download's would succeed, as
+        # a transient failure might: the wildcard is never synced unchecked,
+        # and the other argument still is
+        def unlisted(config, remote_path, allow_empty=False):
+            raise RuntimeError("Cannot access 'loc:remote': network blip")
+
+        monkeypatch.setattr(yd_download, "config_glob_matches", unlisted)
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/su*", "loc:remote/a.txt"],
+            destination="out",
+            sync=True,
+        )
+        assert code == 1
+        failed = [r for r in out if r["action"] == "failed"]
+        assert [r["source"] for r in failed] == ["loc:remote/su*"]
+        assert "could not be checked for a safe --sync" in failed[0]["error"]
+        assert "network blip" in failed[0]["error"]
+        assert not (remote / "out" / "sub").exists()
+        assert (remote / "out" / "a.txt").exists()
+
+    def test_a_wildcard_matching_nothing_still_fails_as_such(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:remote/zz*"], destination="out", sync=True
+        )
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"]
+        assert "No matches" in out[0]["error"]
+
     def test_a_sync_into_the_current_directory_is_refused(self, remote, run_dc):
         _, err, code = run_dc(yd_download, remote_paths=["/"], sync=True)
         assert code == 2
@@ -3034,6 +3080,28 @@ class TestDelete:
         assert [r["path"] for r in out] == ["loc:remote/a.txt"]
         assert (remote / "remote" / "late.txt").exists()
         assert code == 0
+
+    def test_an_unanswerable_prompt_stops_without_a_failed_record(
+        self, remote, run_dc, monkeypatch
+    ):
+        # Reported once, by the wrapper, rather than recorded as each path's
+        # failed deletion and asked again for the next
+        from yellowdog_cli.utils.interactive import NoAnswerToPrompt
+
+        asked: list[str] = []
+
+        def confirm(question):
+            asked.append(question)
+            raise NoAnswerToPrompt()
+
+        monkeypatch.setattr(yd_delete, "confirmed", confirm)
+        out, _, code = run_dc(
+            yd_delete, remote_paths=["loc:remote/a.txt", "loc:remote/sub/b.txt"]
+        )
+        assert code == 1
+        assert len(asked) == 1
+        assert not any(r.get("action") == "failed" for r in out)
+        assert (remote / "remote" / "a.txt").exists()
 
     def test_a_path_already_gone_is_skipped(self, remote, run_dc):
         out, _, code = run_dc(

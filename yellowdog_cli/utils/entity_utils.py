@@ -4,6 +4,7 @@ Various utility functions for finding objects, etc.
 
 import fnmatch
 from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import cast
 
@@ -542,134 +543,155 @@ def get_image_name_or_id(
     ]:
         return image_name_or_id
 
-    original_image_name_or_id = image_name_or_id
+    original = image_name_or_id
+    # A leading 'yd/' is reinstated in a name returned, and '/latest' is
+    # redundant (implied) for YD image groups
+    name = image_name_or_id.removeprefix("yd/").removesuffix("/latest")
+    parts = name.split("/")
 
-    # Remove a leading 'yd/' prefix; will be reinstated later if required
-    image_name_or_id = (
-        image_name_or_id[3:] if image_name_or_id.startswith("yd/") else image_name_or_id
-    )
-
-    # Remove "/latest"; this is redundant/implied for YD image groups
-    image_name_or_id = (
-        image_name_or_id[:-7]
-        if image_name_or_id.endswith("/latest")
-        else image_name_or_id
-    )
-
-    def _replaced(return_val: str, is_ydid: bool = False):
-        """
-        Helper function to report the replacement.
-        """
-        if return_val != original_image_name_or_id:
-            msg = f"{return_val}" if is_ydid else f"'{return_val}'"
-            print_info(f"Images ID '{original_image_name_or_id}' -> {msg}")
-        return return_val
-
-    split_name = image_name_or_id.split("/")
     image_family_summaries = get_image_family_summaries(client)  # All namespaces
+    # This will be tidied up when the Application can query its properties
+    if len(parts) in (2, 3) and not image_family_summaries:  # Global search didn't work
+        image_family_summaries = get_image_family_summaries(client, parts[0])
 
-    # Search for image name (only) matches
-    if len(split_name) == 1:
-        matching_image_families = [
-            ifs for ifs in image_family_summaries if ifs.name == split_name[0]
-        ]
-        if len(matching_image_families) > 1:
-            namespaces = [ifs.namespace or "" for ifs in matching_image_families]
-            raise ValueError(
-                f"Ambiguous Images ID '{original_image_name_or_id}': please "
-                f"specify a namespace from: {', '.join(namespaces)}"
+    match = _image_match(client, image_family_summaries, parts, original)
+    if match is None:
+        # Probably a provider-specific image ID
+        print_info(f"No Images ID substitution possible for '{original}'")
+        return original
+
+    if match.family.access == ImageAccess.PUBLIC or always_return_ydid:
+        if match.ydid != original:
+            print_info(f"Images ID '{original}' -> {match.ydid}")
+        return match.ydid
+    if match.name != original:
+        print_info(f"Images ID '{original}' -> '{match.name}'")
+    return match.name
+
+
+@dataclass(frozen=True)
+class _ImageMatch:
+    """
+    The Image Family or Group an Images ID names: its YDID, and its full name,
+    'yd/namespace/family-name[/group-name]'.
+    """
+
+    family: MachineImageFamilySummary
+    ydid: str
+    name: str
+
+
+def _image_match(
+    client: PlatformClient,
+    families: list[MachineImageFamilySummary],
+    parts: list[str],
+    original: str,
+) -> _ImageMatch | None:
+    """
+    The Image Family or Group a name's parts name, in the forms 'family',
+    'namespace/family' (tried before 'family/group') and
+    'namespace/family/group', or None if they name none.
+    """
+    match parts:
+        case [family_name]:
+            return _family_match(families, family_name, original)
+        case [first, second]:
+            return _namespace_family_match(families, first, second) or (
+                _family_group_match(client, families, first, second, original)
             )
-        elif len(matching_image_families) == 1:
-            if (
-                matching_image_families[0].access == ImageAccess.PUBLIC
-                or always_return_ydid
-            ):
-                return _replaced(matching_image_families[0].id, True)  # type: ignore[arg-type]
-            else:
-                return _replaced(
-                    f"yd/{matching_image_families[0].namespace}/"
-                    f"{matching_image_families[0].name}"
-                )
-
-    # Search for namespace/family_name matches, *or* family_name/group_name matches
-    if len(split_name) == 2:
-        # namespace/family-name match
-
-        # This will be tidied up when the Application can
-        # query its properties
-        if not image_family_summaries:  # Global search didn't work
-            image_family_summaries = get_image_family_summaries(client, split_name[0])
-
-        matching_image_families = [
-            ifs
-            for ifs in image_family_summaries
-            if ifs.namespace == split_name[0] and ifs.name == split_name[1]
-        ]
-        if len(matching_image_families) == 1:
-            if (
-                matching_image_families[0].access == ImageAccess.PUBLIC
-                or always_return_ydid
-            ):
-                return _replaced(matching_image_families[0].id, True)  # type: ignore[arg-type]
-            return _replaced(
-                f"yd/{matching_image_families[0].namespace}/"
-                f"{matching_image_families[0].name}"
+        case [namespace, family_name, group_name]:
+            return _namespace_family_group_match(
+                client, families, namespace, family_name, group_name, original
             )
+    return None
 
-        # family-name/group-name match
-        matching_image_families = [
-            ifs for ifs in image_family_summaries if ifs.name == split_name[0]
-        ]
-        if_group_matches: list[tuple[MachineImageFamilySummary, MachineImageGroup]] = []
-        for ifs in matching_image_families:
-            for if_group in get_image_family_groups(client, ifs.id):
-                if if_group.name == split_name[1]:
-                    if_group_matches.append((ifs, if_group))
-                    break
-        if len(if_group_matches) == 1:
-            if (
-                if_group_matches[0][0].access == ImageAccess.PUBLIC
-                or always_return_ydid
-            ):
-                return _replaced(if_group_matches[0][1].id, True)  # type: ignore[arg-type]
-            else:
-                return _replaced(
-                    f"yd/{if_group_matches[0][0].namespace}/"
-                    f"{if_group_matches[0][0].name}/"
-                    f"{if_group_matches[0][1].name}"
-                )
-        if len(if_group_matches) > 1:
-            namespaces = [match[0].namespace or "" for match in if_group_matches]
-            raise ValueError(
-                f"Ambiguous image-family/image-group '{original_image_name_or_id}': "
-                f"please specify a namespace from: {', '.join(namespaces)}"
-            )
 
-    # Search for names of form 'namespace/image-family-name/image-group-name'
-    # (the platform prevents duplicates)
-    if len(split_name) == 3:
-        # This will be tidied up when the Application can
-        # query its properties
-        if not image_family_summaries:  # Global search didn't work
-            image_family_summaries = get_image_family_summaries(client, split_name[0])
+def _family_name(family: MachineImageFamilySummary) -> str:
+    return f"yd/{family.namespace}/{family.name}"
 
-        for ifs in image_family_summaries:
-            if ifs.namespace == split_name[0] and ifs.name == split_name[1]:
-                for ig in get_image_family_groups(client, ifs.id):
-                    if ig.name == split_name[2]:
-                        if ifs.access == ImageAccess.PUBLIC or always_return_ydid:
-                            return _replaced(ig.id, True)  # type: ignore[arg-type]
-                        else:
-                            return _replaced(f"yd/{image_name_or_id}")
-                else:
-                    raise ValueError(
-                        "Image family found, but no matching image "
-                        f"group for '{original_image_name_or_id}'"
+
+def _family_match(
+    families: list[MachineImageFamilySummary], family_name: str, original: str
+) -> _ImageMatch | None:
+    matches = [family for family in families if family.name == family_name]
+    if len(matches) > 1:
+        namespaces = [family.namespace or "" for family in matches]
+        raise ValueError(
+            f"Ambiguous Images ID '{original}': please "
+            f"specify a namespace from: {', '.join(namespaces)}"
+        )
+    if not matches:
+        return None
+    return _ImageMatch(matches[0], cast(str, matches[0].id), _family_name(matches[0]))
+
+
+def _namespace_family_match(
+    families: list[MachineImageFamilySummary], namespace: str, family_name: str
+) -> _ImageMatch | None:
+    matches = [
+        family
+        for family in families
+        if family.namespace == namespace and family.name == family_name
+    ]
+    if len(matches) != 1:
+        return None
+    return _ImageMatch(matches[0], cast(str, matches[0].id), _family_name(matches[0]))
+
+
+def _family_group_match(
+    client: PlatformClient,
+    families: list[MachineImageFamilySummary],
+    family_name: str,
+    group_name: str,
+    original: str,
+) -> _ImageMatch | None:
+    matches: list[_ImageMatch] = []
+    for family in families:
+        if family.name != family_name:
+            continue
+        for group in get_image_family_groups(client, cast(str, family.id)):
+            if group.name == group_name:
+                matches.append(
+                    _ImageMatch(
+                        family,
+                        cast(str, group.id),
+                        f"{_family_name(family)}/{group.name}",
                     )
+                )
+                break  # The first in each family
+    if len(matches) > 1:
+        namespaces = [match.family.namespace or "" for match in matches]
+        raise ValueError(
+            f"Ambiguous image-family/image-group '{original}': "
+            f"please specify a namespace from: {', '.join(namespaces)}"
+        )
+    return matches[0] if matches else None
 
-    # Finally, fall through and return the unchanged, original ID string
-    print_info(f"No Images ID substitution possible for '{original_image_name_or_id}'")
-    return original_image_name_or_id
+
+def _namespace_family_group_match(
+    client: PlatformClient,
+    families: list[MachineImageFamilySummary],
+    namespace: str,
+    family_name: str,
+    group_name: str,
+    original: str,
+) -> _ImageMatch | None:
+    """
+    The platform prevents duplicates, so the first match is the only one.
+    """
+    for family in families:
+        if family.namespace == namespace and family.name == family_name:
+            for group in get_image_family_groups(client, cast(str, family.id)):
+                if group.name == group_name:
+                    return _ImageMatch(
+                        family,
+                        cast(str, group.id),
+                        f"yd/{namespace}/{family_name}/{group_name}",
+                    )
+            raise ValueError(
+                f"Image family found, but no matching image group for '{original}'"
+            )
+    return None
 
 
 def allowances_to_remove(client: PlatformClient, description: str) -> list:
@@ -852,7 +874,7 @@ def substitute_ids_for_names_in_crt(
     # Image family
     try:
         crt.imagesId = _get_image_family_or_group_name_from_id(client, crt.imagesId)
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     # Source templates
@@ -864,7 +886,7 @@ def substitute_ids_for_names_in_crt(
             source.imageId = _get_image_family_or_group_name_from_id(
                 client, source.imageId
             )
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     return crt
@@ -885,7 +907,7 @@ def substitute_image_family_id_for_name_in_cst(
             client, cst.source.imageId
         )
         return cst
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     try:
@@ -895,7 +917,7 @@ def substitute_image_family_id_for_name_in_cst(
             cst.source.image,  # type: ignore[attr-defined]
         )
         return cst
-    except Exception:
+    except (AttributeError, TypeError):  # No such property, or no sources
         pass
 
     return cst

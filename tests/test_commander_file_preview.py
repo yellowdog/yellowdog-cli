@@ -19,6 +19,14 @@ import qt_guard
 
 qt_guard.require_qt()
 
+# Every test here shows a Qt file dialog, which reads and writes the width
+# Qt remembers for its sidebar in the user's own settings (a plist on macOS),
+# which no test can redirect: on several pytest-xdist workers at once, one
+# test's dialog changed the width another had just cleared to measure a
+# stock dialog against. One worker for the whole file ('--dist loadgroup',
+# set in pyproject.toml's addopts) keeps them from overlapping.
+pytestmark = pytest.mark.xdist_group("qt_file_dialog_settings")
+
 from os.path import realpath
 from pathlib import Path
 from time import monotonic

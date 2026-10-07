@@ -75,6 +75,7 @@ from yellowdog_cli.commander.output_model import COMMANDER_RUN
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
+from yellowdog_cli.commander.stderr_filter import install_stderr_filter
 from yellowdog_cli.commander.window_base import (
     CWD,
     UNDECORATED_YD_COMMANDS,
@@ -914,8 +915,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             command_and_args = self._split_text(command_text, "command")
             if command_and_args is None:
                 return
-            # The standalone ones are given nothing (UNDECORATED_YD_COMMANDS),
-            # so the Properties field has nothing to do with them
+            # The standalone ones are given at most '--nf'
+            # (UNDECORATED_YD_COMMANDS), so the Properties field has nothing
+            # to do with them
             if (
                 command_and_args[0] not in UNDECORATED_YD_COMMANDS
                 and not self._properties_are_usable()
@@ -991,6 +993,8 @@ def run_app(settings: StartupSettings | None = None):
         if MACOS:
             # Silence macOS / Qt platform plugin system warnings
             os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
+            # And the Text Services Manager's, which bypass Qt's logging
+            install_stderr_filter()
         app = QApplication(sys.argv)
         icon = QIcon(ICON_IMAGE)
         app.setWindowIcon(icon)

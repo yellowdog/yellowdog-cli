@@ -122,11 +122,27 @@ def main(ctx: DataClientContext):
         )
         for remote_path_str in dict.fromkeys(ctx.args.remote_paths)
     ]
-    if sync:
-        _refuse_unsafe_syncs(downloads, explicit_destination)
+    unchecked = _refuse_unsafe_syncs(downloads, explicit_destination) if sync else {}
 
     failed = 0
     for download in downloads:
+        if (error := unchecked.get(download.argument)) is not None:
+            # Never synced unchecked: its listing could succeed the second time
+            message = (
+                f"'{download.argument}' could not be checked for a safe --sync,"
+                f" so was not synced: {error}"
+            )
+            print_error(message)
+            record_transfer(
+                download.remote_path,
+                str(download.destination),
+                None,
+                "failed",
+                error=message,
+                match=download.remote_path.rstrip("/"),
+            )
+            failed += 1
+            continue
         try:
             succeeded = download_files(
                 CONFIG_DATA_CLIENT,
@@ -160,7 +176,7 @@ def main(ctx: DataClientContext):
 
 def _refuse_unsafe_syncs(
     downloads: list[_Download], explicit_destination: str | None
-) -> None:
+) -> dict[str, Exception]:
     """
     Refuse, before anything is downloaded, a --sync that would delete what
     it should not: two arguments syncing into one local path, where the
@@ -168,10 +184,13 @@ def _refuse_unsafe_syncs(
     current directory itself (a remote path naming the prefix, '/'), which
     would delete every local file not in the remote, unless the current
     directory was named explicitly with '-d .'. A wildcard's matches are
-    listed for this, since each is synced to a path of its own.
+    listed for this, since each is synced to a path of its own. Returns the
+    wildcards whose listing failed, other than by matching nothing, and why,
+    for the caller to fail rather than sync unchecked.
     """
     owners: dict[Path, str] = {}
     problems: list[str] = []
+    unchecked: dict[str, Exception] = {}
     cwd = Path.cwd().resolve()
     for download in downloads:
         if is_glob(download.remote_path):
@@ -179,8 +198,13 @@ def _refuse_unsafe_syncs(
                 _, matches = config_glob_matches(
                     CONFIG_DATA_CLIENT, download.remote_path
                 )
-            except Exception:
-                continue  # Reported as that argument's failure when it is tried
+            except FileNotFoundError:
+                # Nothing matches, so nothing to overlap: the argument fails
+                # as matching nothing when it is tried
+                continue
+            except Exception as e:
+                unchecked[download.argument] = e
+                continue
             targets = [download.destination / entry["Name"] for entry in matches]
         else:
             targets = [download.destination]
@@ -204,6 +228,7 @@ def _refuse_unsafe_syncs(
             print_error(problem)
         print_error("Nothing was downloaded")
         raise SystemExit(ExitCode.USAGE)
+    return unchecked
 
 
 if __name__ == "__main__":

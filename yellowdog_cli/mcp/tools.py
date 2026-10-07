@@ -27,8 +27,10 @@ from yellowdog_cli.utils.command_registry import (
     ToolKind,
     non_negative_int,
     positive_int,
+    resolve_cloud_info_type,
     resolve_entity_type,
 )
+from yellowdog_cli.utils.entity_names import CLOUD_INFO_TYPES
 from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
     MCP_TOOL_TIMEOUT_SECONDS,
@@ -157,6 +159,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
     elif kind is resolve_entity_type:
         schema["type"] = "string"
         schema["enum"] = list(ENTITY_TYPES)
+    elif kind is resolve_cloud_info_type:
+        schema["type"] = "string"
+        schema["enum"] = list(CLOUD_INFO_TYPES)
     elif kind in (None, str):
         schema["type"] = "string"
     else:

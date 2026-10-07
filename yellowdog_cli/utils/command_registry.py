@@ -27,6 +27,11 @@ from importlib.util import find_spec
 from typing import Any
 
 from yellowdog_cli.utils.entity_names import (
+    CI_INSTANCE_TYPES,
+    CI_PRICES,
+    CI_REGIONS,
+    CI_SUB_REGIONS,
+    CLOUD_INFO_TYPES,
     ET_ALLOWANCES,
     ET_APPLICATIONS,
     ET_ATTRIBUTE_DEFINITIONS,
@@ -2312,6 +2317,268 @@ COMMANDS["yd-list"] = Command(
         " (work-requirements, worker-pools, compute-requirements, tasks,"
         " task-groups, nodes, workers, images, ...). Returns an array of"
         " summary objects; details adds each entity's full object."
+    ),
+)
+
+# --- yd-cloud-info -------------------------------------------------------
+
+CLOUD_INFO_PROVIDERS = ("aws", "azure", "google", "oci")
+
+# The sort keys each type offers, and an instance-types listing with
+# '--prices'; utils/cloud_info.py's SORT_KEYS and PRICED_SORT_KEYS must match
+# (tests/test_cloud_info_command.py)
+CLOUD_INFO_SORT_KEYS: dict[str, tuple[str, ...]] = {
+    CI_REGIONS: ("name",),
+    CI_SUB_REGIONS: ("name",),
+    CI_INSTANCE_TYPES: ("name", "vcpus", "ram"),
+    CI_PRICES: ("name", "price"),
+}
+CLOUD_INFO_PRICED_SORT_KEYS: tuple[str, ...] = (
+    "name",
+    "vcpus",
+    "ram",
+    "spot",
+    "on-demand",
+)
+_CLOUD_INFO_SORT_CHOICES = ("name", "vcpus", "ram", "price", "spot", "on-demand")
+
+# The types each filter applies to, as (dest, flag, types); '--provider' and
+# '--name' apply to all
+CLOUD_INFO_OPTION_TYPES: tuple[tuple[str, str, frozenset[str]], ...] = (
+    ("region", "--region", frozenset({CI_SUB_REGIONS, CI_INSTANCE_TYPES, CI_PRICES})),
+    ("sub_region", "--sub-region", frozenset({CI_INSTANCE_TYPES, CI_PRICES})),
+    ("vcpus", "--vcpus", frozenset({CI_INSTANCE_TYPES})),
+    ("ram", "--ram", frozenset({CI_INSTANCE_TYPES})),
+    ("arch", "--arch", frozenset({CI_INSTANCE_TYPES})),
+    ("usage", "--usage", frozenset({CI_PRICES})),
+    ("os_licence", "--os", frozenset({CI_INSTANCE_TYPES, CI_PRICES})),
+    ("prices", "--prices", frozenset({CI_INSTANCE_TYPES})),
+)
+
+_RANGE = re.compile(r"(?P<low>\d+(?:\.\d+)?)?(?P<dash>-)?(?P<high>\d+(?:\.\d+)?)?")
+
+
+def parse_range(text: str) -> tuple[float | None, float | None]:
+    """
+    A '--vcpus' or '--ram' value: 'n' (exactly n), 'n-m' (n to m inclusive),
+    'n-' (at least n) or '-m' (at most m).
+    """
+    match = _RANGE.fullmatch(text.strip())
+    if match is None or (match["low"] is None and match["high"] is None):
+        raise ValueError(
+            f"'{text}' is not a number or a range ('4', '4-8', '4-' or '-8')"
+        )
+    low = None if match["low"] is None else float(match["low"])
+    high = None if match["high"] is None else float(match["high"])
+    if match["dash"] is None:
+        return low, low
+    if low is not None and high is not None and low > high:
+        raise ValueError(f"'{text}' has its lower bound above its upper bound")
+    return low, high
+
+
+def resolve_cloud_info_type(value: str) -> str:
+    """
+    A yd-cloud-info TYPE: its full name or an unambiguous prefix.
+    """
+    matches = [t for t in CLOUD_INFO_TYPES if value and t.startswith(value)]
+    if len(matches) == 1:
+        return matches[0]
+    raise ArgumentTypeError(
+        f"unknown type '{value}'; valid types: {', '.join(CLOUD_INFO_TYPES)}"
+    )
+
+
+CLOUD_INFO_TYPE = option(
+    "cloud_info_type",
+    type=resolve_cloud_info_type,
+    metavar="TYPE",
+    help=(
+        "what to list: "
+        + ", ".join(CLOUD_INFO_TYPES)
+        + "; an unambiguous prefix (e.g. 'inst') is accepted"
+    ),
+)
+PROVIDER = option(
+    "--provider",
+    "-p",
+    dest="providers",
+    action="append",
+    choices=CLOUD_INFO_PROVIDERS,
+    required=False,
+    metavar="<aws|azure|google|oci>",
+    help="list only this cloud provider's items; may be repeated",
+)
+REGION = option(
+    "--region",
+    type=str,
+    required=False,
+    metavar="<region>",
+    help="the region, matched exactly (e.g. 'eu-west-2')",
+)
+SUB_REGION = option(
+    "--sub-region",
+    dest="sub_region",
+    type=str,
+    required=False,
+    metavar="<sub-region>",
+    help="the sub-region (availability zone), matched exactly; needs --region",
+)
+CLOUD_INFO_NAME = NAME.variant(
+    help=(
+        "list only items whose name matches the given glob pattern (for"
+        " prices, the instance type's name); a value without wildcards"
+        " matches the name exactly"
+    )
+)
+VCPUS = option(
+    "--vcpus",
+    type=str,
+    required=False,
+    metavar="<n|n-m>",
+    help=(
+        "instance types with this many vCPUs: 'n', 'n-m', 'n-' (at least n)"
+        " or '-m' (at most m)"
+    ),
+)
+RAM = option(
+    "--ram",
+    type=str,
+    required=False,
+    metavar="<GiB|GiB-GiB>",
+    help="instance types with this much RAM in GiB, in the forms --vcpus takes",
+)
+ARCH = option(
+    "--arch",
+    choices=("x86_64", "arm64"),
+    required=False,
+    metavar="<x86_64|arm64>",
+    help="instance types with this processor architecture",
+)
+USAGE = option(
+    "--usage",
+    choices=("spot", "on-demand"),
+    required=False,
+    metavar="<spot|on-demand>",
+    help="prices of this kind only; both if omitted",
+)
+OS_LICENCE = option(
+    "--os",
+    dest="os_licence",
+    choices=("none", "windows"),
+    required=False,
+    metavar="<none|windows>",
+    help="prices for this operating system licence: 'none' (the default) or 'windows'",
+)
+PRICES = option(
+    "--prices",
+    action="store_true",
+    required=False,
+    help=(
+        "add each instance type's on-demand price and lowest spot price in"
+        " the region; needs --region"
+    ),
+)
+CLOUD_INFO_SORT = SORT.variant(
+    choices=list(_CLOUD_INFO_SORT_CHOICES),
+    metavar="<name|vcpus|ram|price|spot|on-demand>",
+    help=(
+        "order of the listing: 'name' (default), 'vcpus' and 'ram' for"
+        " instance types, 'price' for prices, 'spot' and 'on-demand' for"
+        " instance types with --prices; items without a value come last,"
+        " with --reverse too"
+    ),
+)
+
+
+def check_cloud_info_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-cloud-info's filters, refused for a type they do not apply to rather
+    than ignored, as yd-list's are; and its ranges checked, so that a
+    malformed one is a usage error (CLIParser's 'vcpus_range' and
+    'ram_range' parse them again for the command).
+    """
+    info_type = args.cloud_info_type
+    for dest, flag, types in CLOUD_INFO_OPTION_TYPES:
+        if getattr(args, dest, None) and info_type not in types:
+            parser.error(
+                f"{flag} does not apply to {info_type}; it applies to "
+                + ", ".join(sorted(types))
+            )
+    if args.prices and args.region is None:
+        parser.error(
+            "--prices needs --region: every region's prices are far too many to fetch"
+        )
+    if args.sub_region is not None and args.region is None:
+        parser.error("--sub-region needs --region")
+    if info_type == CI_PRICES and args.region is None and args.name_glob is None:
+        parser.error(
+            "prices needs --region or --name: every region's prices are far too"
+            " many to fetch"
+        )
+    if (
+        args.os_licence is not None
+        and info_type == CI_INSTANCE_TYPES
+        and not args.prices
+    ):
+        parser.error("--os applies to instance-types only with --prices")
+    sort_keys = (
+        CLOUD_INFO_PRICED_SORT_KEYS if args.prices else CLOUD_INFO_SORT_KEYS[info_type]
+    )
+    if args.sort not in sort_keys:
+        parser.error(
+            f"--sort {args.sort} does not apply to {info_type}"
+            + (" with --prices" if args.prices else "")
+            + "; choose from "
+            + ", ".join(sort_keys)
+        )
+    for dest, flag in (("vcpus", "--vcpus"), ("ram", "--ram")):
+        text = getattr(args, dest)
+        try:
+            if text is not None:
+                parse_range(text)
+        except ValueError as error:
+            parser.error(f"{flag}: {error}")
+
+
+COMMANDS["yd-cloud-info"] = Command(
+    name="yd-cloud-info",
+    purpose="listing cloud regions, instance types and prices",
+    summary="List cloud regions, instance types and prices",
+    kind=CommandKind.API,
+    options=(
+        CLOUD_INFO_SORT,
+        REVERSE,
+        JSON,
+        COUNT.variant(
+            help="print only the number of matching items (overrides '--json')"
+        ),
+        CLOUD_INFO_TYPE,
+        PROVIDER,
+        REGION,
+        SUB_REGION,
+        CLOUD_INFO_NAME,
+        VCPUS,
+        RAM,
+        ARCH,
+        USAGE,
+        OS_LICENCE,
+        PRICES,
+    ),
+    validators=(check_cloud_info_options,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "List what the YellowDog Platform knows of the cloud providers."
+        " cloud_info_type is regions, sub-regions, instance-types or prices."
+        " Filters: providers (aws, azure, google, oci), region and sub_region"
+        " (exact names; sub_region needs region), name_glob (a glob; for"
+        " prices, the instance type), and for instance-types vcpus and ram"
+        " (GiB) as 'n', 'n-m', 'n-' or '-m', and arch; for prices usage"
+        " (spot, on-demand) and os_licence (none, windows). prices needs"
+        " region or name_glob. instance-types with prices=true"
+        " and a region adds each type's onDemandPrice, its lowest spotPrice"
+        " and spotSubRegion; sort by spot or on-demand to find the cheapest."
+        " Returns an array of the listed items."
     ),
 )
 

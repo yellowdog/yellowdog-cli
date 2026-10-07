@@ -296,3 +296,22 @@ def test_a_namespace_not_found_is_not_a_failure(env, monkeypatch):
     monkeypatch.setattr(yd_remove, "get_namespace_id_by_name", lambda *a: None)
     yd_remove.remove_namespace(_ctx(), {"name": "ns"})
     assert env.records[0]["action"] == "skipped"
+
+
+def test_an_image_family_not_found_is_skipped_with_a_warning(env, monkeypatch):
+    warnings: list[str] = []
+    monkeypatch.setattr(yd_remove, "print_warning", warnings.append)
+    env.client.images_client.get_image_family_by_name.side_effect = _http_error(404)
+    yd_remove.remove_image_family(_ctx(), {"name": "f", "namespace": "ns"})
+    assert warnings == ["Cannot find Machine Image Family 'ns/f'"]
+    assert [(r["name"], r["action"]) for r in env.records] == [("ns/f", "skipped")]
+    env.client.images_client.delete_image_family.assert_not_called()
+    assert env.asked == []  # Nothing to confirm
+
+
+def test_an_image_family_lookup_failing_other_than_404_is_raised(env):
+    env.client.images_client.get_image_family_by_name.side_effect = _http_error(401)
+    with pytest.raises(HTTPError):
+        yd_remove.remove_image_family(_ctx(), {"name": "f", "namespace": "ns"})
+    assert env.records == []
+    env.client.images_client.delete_image_family.assert_not_called()

@@ -6,7 +6,10 @@
 #   ./release.sh --release  # execute the release for real
 #
 # Must be run from the root of the repository on the 'next-version' branch
-# with a clean working tree.
+# with a clean working tree, and with this release's notes under
+# '## Unreleased' in CHANGELOG.md, which the version bump stamps with the
+# version and date; they are the release tag's message, and are printed at
+# the end for the release ticket.
 
 set -euo pipefail
 
@@ -47,6 +50,17 @@ _die() {
     exit 1
 }
 
+CHANGELOG="CHANGELOG.md"
+
+# The body of one '## <heading>' section of the changelog: the lines after it,
+# up to the next '## ' heading ('### ' subsections included)
+_changelog_section() {
+    awk -v heading="$1" '
+        /^## / { if (found) exit; if ($0 == "## " heading) { found = 1; next } }
+        found
+    ' "$CHANGELOG"
+}
+
 # ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
@@ -71,6 +85,28 @@ fi
 # Pull latest
 echo "Pulling latest 'next-version' from origin..."
 _run git pull origin next-version
+
+# The release notes: written as the changes landed, under '## Unreleased'
+[[ -f "$CHANGELOG" ]] || _die "No $CHANGELOG."
+if [[ -z "$(_changelog_section Unreleased | tr -d '[:space:]')" ]]; then
+    if $DRY_RUN; then
+        echo "[dry-run] WARNING: Nothing under '## Unreleased' in $CHANGELOG (ignored in dry-run)"
+    else
+        _die "Nothing under '## Unreleased' in $CHANGELOG: add this release's notes first."
+    fi
+fi
+echo
+echo "--- Release notes (## Unreleased in $CHANGELOG) ---"
+_changelog_section Unreleased
+
+# The tests below run in this venv alone, with every extra installed, which
+# can hide a failure: 'make tox' runs them on every supported Python version,
+# with only the dev, commander and mcp extras
+echo
+echo "REMINDER: run 'make tox' on this commit before releasing. The tests this"
+echo "script runs use this venv only, which can hide failures on other Python"
+echo "versions or without the optional extras."
+_confirm "Has 'make tox' passed on this commit?"
 
 # ---------------------------------------------------------------------------
 # Determine new version
@@ -111,6 +147,32 @@ if ! $DRY_RUN; then
     grep "__version__" "$VERSION_FILE"
 fi
 
+# The notes under '## Unreleased' become this version's, and a fresh,
+# empty '## Unreleased' takes their place
+RELEASE_HEADING="$NEW_VERSION — $(date +%Y-%m-%d)"
+echo
+echo "--- Stamping $CHANGELOG: '## $RELEASE_HEADING' ---"
+if ! $DRY_RUN; then
+    awk -v heading="## $RELEASE_HEADING" '
+        !done && $0 == "## Unreleased" { print; print ""; print heading; done = 1; next }
+        { print }
+    ' "$CHANGELOG" > "$CHANGELOG.new"
+    mv "$CHANGELOG.new" "$CHANGELOG"
+fi
+
+# This version's notes, for the tag's message and the release ticket
+NOTES_FILE=$(mktemp)
+trap 'rm -f "$NOTES_FILE"' EXIT
+{
+    echo "Version $NEW_VERSION"
+    echo
+    if $DRY_RUN; then
+        _changelog_section Unreleased
+    else
+        _changelog_section "$RELEASE_HEADING"
+    fi
+} > "$NOTES_FILE"
+
 # ---------------------------------------------------------------------------
 # Format, check, test
 # ---------------------------------------------------------------------------
@@ -133,7 +195,7 @@ _run pytest -v -n 8
 
 echo
 echo "--- Committing version bump ---"
-_run git add "$VERSION_FILE"
+_run git add "$VERSION_FILE" "$CHANGELOG"
 _run git commit -m "Bump version to v$NEW_VERSION"
 
 # ---------------------------------------------------------------------------
@@ -145,7 +207,7 @@ echo "--- Merging to main ---"
 _run git checkout main
 _run git pull origin main
 _run git merge --no-ff next-version -m "Release v$NEW_VERSION"
-_run git tag -a "v$NEW_VERSION" -m "Version $NEW_VERSION"
+_run git tag -a "v$NEW_VERSION" -F "$NOTES_FILE"
 
 # ---------------------------------------------------------------------------
 # Push main + tags (with confirmation)
@@ -180,3 +242,6 @@ _run git push origin next-version
 
 echo
 echo "=== Release v$NEW_VERSION complete ==="
+echo
+echo "--- Release notes, for the release ticket ---"
+cat "$NOTES_FILE"

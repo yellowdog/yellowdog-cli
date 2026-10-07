@@ -52,7 +52,12 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_summaries,
     remove_allowances_matching_description,
 )
-from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
@@ -620,16 +625,31 @@ def _remove_and_record_by_id(ctx: RunContext, resource_id: str) -> None:
 def remove_resource_by_id(ctx: RunContext, resource_id: str) -> bool:
     """
     Remove a resource by its YDID, and record the outcome. Returns False on
-    failure, which is reported. For callers other than yd-remove itself
-    (the Cloud Wizard).
+    failure, which is reported and recorded; an authentication or connection
+    failure, which every later request would repeat, is raised as
+    ReportedFailure once recorded, for the caller to stop. For callers other
+    than yd-remove itself (the Cloud Wizard).
     """
     try:
         _remove_and_record_by_id(ctx, resource_id)
     except Exception as e:
         print_error(f"Failed to remove {resource_id}: {e}")
         _record_by_id(ctx, resource_id, "failed", str(e))
+        if classify(e) in SESSION_FAILURES:
+            raise ReportedFailure(e)
         return False
     return True
+
+
+def record_not_attempted(
+    ctx: RunContext, resource_ids: list[str], cause: BaseException
+) -> None:
+    """
+    Record the removals by ID that a session failure stopped before they
+    were attempted.
+    """
+    for resource_id in resource_ids:
+        _record_by_id(ctx, resource_id, "skipped", f"not attempted: {cause}")
 
 
 # ---------------------------------------------------------------------------

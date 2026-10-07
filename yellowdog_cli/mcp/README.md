@@ -16,7 +16,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 15:20:43 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 12:13:11 BST 2026 -->
 
 <!--te-->
 
@@ -89,6 +89,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_application` | read-only | `yd-application` | Report details of the current Application |
 | `yd_boost` | destructive | `yd-boost` | Boost Allowances |
 | `yd_cancel` | destructive | `yd-cancel` | Cancel Work Requirements |
+| `yd_cloud_info` | read-only | `yd-cloud-info` | List cloud regions, instance types and prices |
 | `yd_compare` | read-only | `yd-compare` | Compare a Work Requirement or Task Group against Worker Pool(s) |
 | `yd_compute_restart` | destructive | `yd-compute-restart` | Restart Instances |
 | `yd_compute_start` | destructive | `yd-compute-start` | Start stopped Compute Requirements and Instances |

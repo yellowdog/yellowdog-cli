@@ -185,6 +185,7 @@
       * [yd-compare](#yd-compare)
       * [yd-application](#yd-application)
       * [yd-variables](#yd-variables)
+      * [yd-cloud-info](#yd-cloud-info)
    * [Resource Commands](#resource-commands)
       * [yd-create](#yd-create)
       * [yd-remove](#yd-remove)
@@ -204,7 +205,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct  6 18:40:52 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 12:13:07 BST 2026 -->
 
 <!--te-->
 
@@ -512,6 +513,7 @@ The documents, by command:
 | Family | Commands | Document |
 |---|---|---|
 | Listings | `yd-list` | an array of the listed objects |
+| Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
 | Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
@@ -3574,7 +3576,7 @@ Once submitted, the Work Requirement will appear in the **Work** tab in the Yell
 Key options:
 - `--follow`/`-f` — report on Tasks as they conclude, and don't return until the Work Requirement has finished
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
-- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state; needs `--follow` or `--progress`
+- `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state, or, if it could not be followed to its end (its event stream lost, say) and has not finished, with the code of that failure, since its outcome is not known; needs `--follow` or `--progress`
 - `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
@@ -4146,7 +4148,7 @@ yd-follow [options] <yellowdog-id> [<yellowdog-id> ...]
 
 At least one ID is required, and each must be a Work Requirement's, Worker Pool's or Compute Requirement's: anything else is refused before anything is followed (exit code 2). The IDs are followed in the order given, each once.
 
-The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
+The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage, which ends only once a stream delivers an event, so a connection that is accepted and then drops before any, over and over, is given up on as well; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
 
 It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd-follow` takes its exit code from them.
 
@@ -4336,6 +4338,38 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
+### yd-cloud-info
+
+The `yd-cloud-info` command lists what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. It answers questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, and which of them is cheapest on spot.
+
+```shell
+yd-cloud-info [options] <regions|sub-regions|instance-types|prices>
+```
+
+The type may be shortened to any unambiguous prefix (e.g. `inst`). Region and sub-region names are matched exactly, so `--region eu-west-2` does not include the Wavelength Zone `eu-west-2-wl1-lon1`; `--name` takes a glob pattern, and a value without wildcards matches the name exactly. Each option applies only to the types listed against it below, and is refused with any other.
+
+Key options:
+- `--provider`/`-p <aws|azure|google|oci>` — list only this provider's items; may be repeated (every type)
+- `--region <region>` — the region (sub-regions, instance-types, prices); prices need `--region` or `--name`, since every region's prices together are far too many to fetch
+- `--sub-region <sub-region>` — the sub-region, which needs `--region` (instance-types, prices); prices for a sub-region include the region's on-demand prices, which apply to every sub-region
+- `--name <glob>` — the item's name; for prices, the instance type's (every type)
+- `--vcpus <n|n-m>`, `--ram <GiB|GiB-GiB>` — the number of vCPUs, and the RAM in GiB: `n` exactly, `n-m` inclusive, `n-` at least, `-m` at most (instance-types)
+- `--arch <x86_64|arm64>` — the processor architecture (instance-types)
+- `--usage <spot|on-demand>` — one kind of price only (prices)
+- `--os <none|windows>` — prices for this operating system licence, `none` by default (prices, and instance-types with `--prices`)
+- `--prices` — add each instance type's on-demand price and lowest spot price in the region, and the sub-region the spot price is found in; needs `--region` (instance-types)
+- `--sort <name|vcpus|ram|price|spot|on-demand>` — `name` (the default) for every type, `vcpus` and `ram` for instance types, `price` for prices, `spot` and `on-demand` for instance types with `--prices`; items without a value come last, with `--reverse` too
+- `--count` — print only the number of items
+- `--json` — emit the items as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-cloud-info instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd-cloud-info prices --region eu-west-2 --name 't3.*' --usage spot
+yd-cloud-info sub-regions --provider aws --region us-east-1
+```
+
+Prices are per hour, as the Platform reports them, in the currency it gives them in.
+
 ## Resource Commands
 
 ### yd-create
@@ -4456,7 +4490,7 @@ Key options:
 
 `--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. A single file is given its own path the same way: `yd-download --into out a.txt` writes the file `out/a.txt`, and `yd-download a.txt` writes `./a.txt`, while `yd-download -d out a.txt` puts it inside `out`, as `out/a.txt`. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
 
-With `--sync`, which deletes local files not in the remote, two remote paths that would be synced into the same local path are refused before anything is downloaded (exit 2), since the second would delete what the first fetched, and so is a sync into the current directory itself (a remote path naming the configured prefix, `/`) unless the current directory is named explicitly with `-d .`.
+With `--sync`, which deletes local files not in the remote, two remote paths that would be synced into the same local path are refused before anything is downloaded (exit 2), since the second would delete what the first fetched, and so is a sync into the current directory itself (a remote path naming the configured prefix, `/`) unless the current directory is named explicitly with `-d .`. A wildcard is checked by listing its matches, each of which is synced to a path of its own; a wildcard whose matches cannot be listed for the check is never synced unchecked, but reported and recorded as failed while the other remote paths still are.
 
 With `--flatten`, each directory's files are placed directly in the destination, the directory's own name and those of its subdirectories being dropped, so `yd-download --flatten -d flat 'my*'` puts every file of every matched directory in `flat`; a file whose name another flattened file already has is reported with a warning naming both, and the later of the two is the one kept.
 

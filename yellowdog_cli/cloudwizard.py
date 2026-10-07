@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from yellowdog_cli.utils.check_imports import check_cloudwizard_imports
 from yellowdog_cli.utils.command_registry import cloud_provider_of
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.exit_codes import ExitCode
+from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure
 from yellowdog_cli.utils.printing import print_error, print_info
 from yellowdog_cli.utils.wrapper import main_wrapper
 
@@ -83,9 +83,22 @@ def run_operation(
             # The Keyring's password is shown only this once: however setup
             # ends, a Keyring it created is not left unclaimable
             config.print_keyring_details()
+        if config.platform_failure is not None:
+            print_error(
+                "The YellowDog resources were not all created; run setup again"
+                " to create what is missing"
+            )
+            raise ReportedFailure(config.platform_failure)
 
     elif operation == "teardown":
         config.teardown()
+        if config.platform_failure is not None:
+            # The YellowDog removals stopped, and the cloud provider's ran
+            print_error(
+                "The YellowDog resources were not all removed; run teardown"
+                " again to remove what is left"
+            )
+            raise ReportedFailure(config.platform_failure)
 
     elif operation in ["add-ssh", "remove-ssh"]:
         config.set_ssh_ingress_rule(operation, region_name)

@@ -13,6 +13,7 @@ from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
@@ -147,27 +148,29 @@ class AzureConfig(CommonCloudConfig):
         for region in self._selected_regions:
             rg_name = self._generate_resource_group_name(region)
 
-            # Does the resource group already exist?
+            # Does the resource group already exist? A region that cannot be
+            # checked is skipped, and counted as an error for the exit code
             try:
-                if self._resource_client.resource_groups.check_existence(rg_name):
-                    print_warning(f"Azure resource group '{rg_name}' already exists")
-                    if self._create_network_resources(
-                        resource_group_name=rg_name, region=region
-                    ):
-                        self._created_regions.append(region)
-                    else:
-                        # Never auto-delete a pre-existing resource group:
-                        # it (and its contents) wasn't created by this run
-                        print_warning(
-                            f"Network resource creation failed; pre-existing"
-                            f" resource group '{rg_name}' has been left in place"
-                        )
-                    continue
+                exists = self._resource_client.resource_groups.check_existence(rg_name)
             except Exception as e:
-                print_warning(
+                print_error(
                     "Unable to check existence of Azure resource group"
                     f" '{rg_name}': {e}"
                 )
+                continue
+            if exists:
+                print_warning(f"Azure resource group '{rg_name}' already exists")
+                if self._create_network_resources(
+                    resource_group_name=rg_name, region=region
+                ):
+                    self._created_regions.append(region)
+                else:
+                    # Never auto-delete a pre-existing resource group:
+                    # it (and its contents) wasn't created by this run
+                    print_warning(
+                        f"Network resource creation failed; pre-existing"
+                        f" resource group '{rg_name}' has been left in place"
+                    )
                 continue
 
             # Create the resource group
@@ -260,8 +263,9 @@ class AzureConfig(CommonCloudConfig):
         try:
             self._resource_client.resource_groups.begin_delete(rg_name)
             print_info(f"Requested deletion of Azure resource group '{rg_name}'")
-        except Exception:
-            print_warning(f"Unable to delete Azure resource group '{rg_name}'")
+        except Exception as e:
+            # Counted as an error: a resource group this run made is left behind
+            print_error(f"Unable to delete Azure resource group '{rg_name}': {e}")
 
     def _create_network_resources(self, resource_group_name: str, region: str):
         """
@@ -446,7 +450,12 @@ class AzureConfig(CommonCloudConfig):
             )
             create_resources(self._ctx, [credential_resource])
         except Exception as e:
-            print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
+            if classify(e) in SESSION_FAILURES:
+                # Reported by create_resources(): the resource file is still
+                # saved, and the run then exits with this failure's code
+                self.platform_failure = e
+            else:
+                print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
 
         # Save the list of resources
         # Sequence the Compute Requirement Templates before the Compute Source

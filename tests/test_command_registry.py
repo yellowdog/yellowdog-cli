@@ -363,6 +363,7 @@ class TestToolKinds:
     def test_the_read_only_commands(self):
         assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.READ_ONLY} == {
             "yd-list",
+            "yd-cloud-info",
             "yd-show",
             "yd-variables",
             "yd-doctor",

@@ -38,12 +38,20 @@ from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import path_would_be_globbed
 from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
 
-# The 'yd-' commands that take none of the options Commander adds to the others
-# (the config source, namespace, tag, variables, properties, '--nf', '--pp'),
-# so a typed one is run as it was typed
+# The 'yd-' commands that take none of the configuration options Commander adds
+# to the others (the config source, namespace, tag, variables, properties,
+# '--pp'), so a typed one is run as it was typed, bar '--nf' (below)
 UNDECORATED_YD_COMMANDS = frozenset(
     name for name, command in COMMANDS.items() if command.kind is CommandKind.STANDALONE
 )
+# Those of them that take '--nf', which Commander adds as it does to the rest,
+# since the output window shows no colour. Kept by hand because three of them
+# parse their own arguments outside the registry; a test holds it to each
+# command's '--help'
+NO_FORMAT_UNDECORATED_YD_COMMANDS = frozenset(
+    {"yd-help", "yd-jsonnet2json", "yd-schema", "yd-version"}
+)
+NO_FORMAT_FLAGS = ("--nf", "--no-format")
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
@@ -448,8 +456,9 @@ class WindowBase(QMainWindow):
         """
         Decorate a command's arguments for execution. For 'yd-' commands this
         injects the config source ('-c <file>' or '--nc'), the namespace / tag /
-        user variables, and the '--nf'/'--pp' flags. Non-yd commands, and the
-        standalone ones in UNDECORATED_YD_COMMANDS, are returned unchanged.
+        user variables, and the '--nf'/'--pp' flags. Non-yd commands are
+        returned unchanged, and the standalone ones in UNDECORATED_YD_COMMANDS
+        given only '--nf', where they take it and it was not typed.
         """
         if yd_command:
             return [
@@ -471,6 +480,10 @@ class WindowBase(QMainWindow):
             for index, var in enumerate(self._namespace_tag_and_user_vars()):
                 args.insert(index, var)
             args += ["--nf", "--pp"]
+        elif command in NO_FORMAT_UNDECORATED_YD_COMMANDS and not (
+            set(NO_FORMAT_FLAGS) & set(args)
+        ):
+            args = [*args, "--nf"]
 
         return args
 

@@ -396,7 +396,7 @@ def _resolve_pac_proxy(url: str, timeout: float) -> str | Result | None:
     try:
         outcome = with_timeout(resolve, timeout)
     except Exception as e:  # a PAC file that cannot be fetched or run
-        return Result(Status.FAIL, f"PAC: {e or type(e).__name__}", _PAC_REMEDY)
+        return Result(Status.FAIL, f"PAC: {str(e) or type(e).__name__}", _PAC_REMEDY)
     if isinstance(outcome, Result):  # fetching the PAC file is a network call
         return Result(Status.FAIL, f"PAC: {outcome.detail}", _PAC_REMEDY)
     if outcome is not None:

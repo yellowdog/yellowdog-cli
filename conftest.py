@@ -40,6 +40,12 @@ def pytest_addoption(parser):
         help="Run system tests that provision real cloud compute (implies --run-system)",
     )
     parser.addoption(
+        "--run-crash-tests",
+        action="store_true",
+        default=False,
+        help="On macOS, run the tests that crash a child interpreter on purpose",
+    )
+    parser.addoption(
         "--update-parser-snapshots",
         action="store_true",
         default=False,
@@ -79,6 +85,16 @@ def pytest_collection_modifyitems(config, items):
         )
         for item in items:
             if item.get_closest_marker("system_compute"):
+                item.add_marker(skipper)
+
+    # A deliberate crash puts up macOS's 'quit unexpectedly' dialog, since
+    # Homebrew's Python runs as Python.app; elsewhere such tests always run
+    if sys.platform == "darwin" and not config.getoption("--run-crash-tests"):
+        skipper = pytest.mark.skip(
+            reason="On macOS, only run when '--run-crash-tests' is given"
+        )
+        for item in items:
+            if item.get_closest_marker("crashes"):
                 item.add_marker(skipper)
 
 
@@ -649,6 +665,11 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "system_compute: mark test to run only when '--run-system-compute' is specified",
+    )
+    config.addinivalue_line(
+        "markers",
+        "crashes: crashes a child interpreter on purpose; on macOS, run only when"
+        " '--run-crash-tests' is specified",
     )
     config.addinivalue_line(
         "markers",

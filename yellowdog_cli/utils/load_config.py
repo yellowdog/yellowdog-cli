@@ -5,6 +5,7 @@ Common utility functions, mostly related to loading configuration data.
 import copy
 import json
 import os
+from collections.abc import Callable
 from os.path import abspath, dirname, join
 from pathlib import Path
 from sys import exit
@@ -455,6 +456,10 @@ def _load_config_file() -> None:
                 validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
                 _validate_data_client_profiles(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
             except Exception as e:
+                # A configuration error, as a rule; under '--debug', its
+                # traceback, in case it is a fault in the loader instead
+                if OUTPUT.debug:
+                    raise
                 print_error(e)
                 exit(ExitCode.CONFIGURATION)
             if _ARGS.property_overrides:
@@ -481,6 +486,8 @@ def _load_config_file() -> None:
             exit(ExitCode.CONFIGURATION)
 
         except Exception as e:
+            if OUTPUT.debug:
+                raise  # As above
             print_error(e)
             exit(ExitCode.CONFIGURATION)
 
@@ -494,142 +501,37 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
     """
     ensure_config_loaded()
     try:
-        common_section = CONFIG_TOML.get(COMMON_SECTION, {})
+        common_section, file_source = _common_section()
+        _apply_common_overrides(common_section, file_source)
+        _apply_common_defaults(common_section)
 
-        # Check for IMPORT directive ('common' section in a separate file)
-        common_section_import_file = common_section.pop(IMPORT_COMMON, None)
-        imported_keys: set[str] = set()
-        if common_section_import_file is not None:
-            common_section_imported = import_toml(common_section_import_file)
-            # Local properties supersede imported properties
-            imported_keys = set(common_section_imported) - set(common_section)
-            common_section_imported.update(common_section)
-            common_section = common_section_imported
-
-        def file_source(key_name: str) -> str:
-            """
-            The file a [common] value was read from, for CONFIG_SOURCES.
-            """
-            if common_section_import_file is not None and key_name in imported_keys:
-                return (
-                    f"config file ({_imported_file_name(common_section_import_file)})"
-                )
-            return f"config file ({CONFIG_FILE})"
-
-        # Replace common section properties with command line or
-        # environment variable overrides. Precedence is:
-        # command line > environment variable > config file
-        # ... unless the config file was explicitly selected using
-        # '--config'/'-c', in which case its contents take precedence
-        # over the environment:
-        # command line > config file > environment variable
-        for key_name, args_parser_value, env_var_name in [
-            (KEY, _ARGS.key, YD_KEY),
-            (SECRET, _ARGS.secret, YD_SECRET),
-            (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
-            (NAME_TAG, _ARGS.tag, YD_TAG),
-            (URL, _ARGS.url, YD_URL),
-        ]:
-            if args_parser_value is not None:
-                common_section[key_name] = args_parser_value
-                CONFIG_SOURCES[key_name] = "command line"
-                print_debug(
-                    f"Using '{key_name}' provided on command line "
-                    "(or automatically set)"
-                )
-            elif config_file_explicitly_selected() and (
-                common_section.get(key_name) is not None
-            ):
-                # Retain the value from the explicitly selected config file
-                CONFIG_SOURCES[key_name] = file_source(key_name)
-            elif os.environ.get(env_var_name) is not None:
-                common_section[key_name] = os.environ[env_var_name]
-                CONFIG_SOURCES[key_name] = f"environment ({env_var_name})"
-                print_debug(f"Using '{key_name}' provided via the environment")
-            elif common_section.get(key_name) is not None:
-                CONFIG_SOURCES[key_name] = file_source(key_name)
-            else:
-                CONFIG_SOURCES[key_name] = "not set"
-
-        # Provide default values for namespace and tag
-        if common_section.get(NAMESPACE) is None:
-            common_section[NAMESPACE] = "default"
-            CONFIG_SOURCES[NAMESPACE] = "default"
-            if _ARGS.namespace_required:
-                print_debug(
-                    "Using default value for 'namespace': "
-                    f"'{common_section[NAMESPACE]}'"
-                )
-        if common_section.get(NAME_TAG) is None:
-            common_section[NAME_TAG] = "{{username}}"
-            CONFIG_SOURCES[NAME_TAG] = "default"
-            if _ARGS.tag_required:
-                print_debug(
-                    "Using default value for 'tag/prefix/name' = "
-                    f"'{VARIABLE_SUBSTITUTIONS['username']}'"
-                )
-
-        if common_section.get(URL) is None:
-            CONFIG_SOURCES[URL] = "default"
-        url = cast(
-            str,
-            _resolve_value(
-                common_section.get(URL, DEFAULT_URL), f"{COMMON_SECTION}.{URL}"
-            ),
-        )
-        if url != DEFAULT_URL:
-            print_debug(f"Using the YellowDog API at: {url}")
-
+        url = _resolved_url(common_section)
         # Exhaustive variable processing for common section variables
         # Note that add_substitutions() will perform all possible
         # substitutions for the items in its dictionary each time it's
         # called
         add_substitutions_without_overwriting(subs={URL: url})
+
+        # Both are read, then both resolved, before either is substituted
         if strict:
             key_raw, secret_raw = common_section[KEY], common_section[SECRET]
         else:
             key_raw, secret_raw = common_section.get(KEY), common_section.get(SECRET)
-        key = (
-            None
-            if key_raw is None
-            else cast(str, _resolve_value(key_raw, f"{COMMON_SECTION}.{KEY}"))
-        )
+        key = None if key_raw is None else _resolved_common_value(KEY, key_raw)
         secret = (
-            None
-            if secret_raw is None
-            else cast(str, _resolve_value(secret_raw, f"{COMMON_SECTION}.{SECRET}"))
+            None if secret_raw is None else _resolved_common_value(SECRET, secret_raw)
         )
         if key is not None:
             add_substitutions_without_overwriting(subs={KEY: key})
         if secret is not None:
             add_substitutions_without_overwriting(subs={SECRET: secret})
-        namespace = cast(
-            str,
-            _resolve_value(common_section[NAMESPACE], f"{COMMON_SECTION}.{NAMESPACE}"),
-        )
+
+        namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE])
         add_substitutions_without_overwriting(subs={NAMESPACE: namespace})
-        name_tag = cast(
-            str,
-            _resolve_value(common_section[NAME_TAG], f"{COMMON_SECTION}.{NAME_TAG}"),
-        )
+        name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG])
         add_substitutions_without_overwriting(subs={NAME_TAG: name_tag})
 
-        # Specify a certificates bundle directly by setting the requests
-        # environment variable; this will override the default certificates
-        certificates = cast(
-            str | None,
-            _resolve_value(
-                common_section.get(CERTIFICATES), f"{COMMON_SECTION}.{CERTIFICATES}"
-            ),
-        )
-        if certificates is not None:
-            certificates = abspath(certificates)
-            requests_ca_bundle = "REQUESTS_CA_BUNDLE"
-            print_debug(
-                f"Setting environment variable '{requests_ca_bundle}' to '{certificates}'"
-            )
-            os.environ[requests_ca_bundle] = certificates
-
+        _set_certificates_bundle(common_section)
         register_dc_substitutions()
 
         return ConfigCommon(
@@ -646,6 +548,134 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
     except KeyError as e:
         print_error(f"{MISSING_CONFIG_DATA}: {e}")
         exit(ExitCode.CONFIGURATION)
+
+
+def _common_section() -> tuple[dict, Callable[[str], str]]:
+    """
+    The [common] section, merged over an 'importCommon' file's if it names
+    one, and the source each of its values is recorded as coming from.
+    """
+    common_section = CONFIG_TOML.get(COMMON_SECTION, {})
+
+    # Check for IMPORT directive ('common' section in a separate file)
+    common_section_import_file = common_section.pop(IMPORT_COMMON, None)
+    imported_keys: set[str] = set()
+    if common_section_import_file is not None:
+        common_section_imported = import_toml(common_section_import_file)
+        # Local properties supersede imported properties
+        imported_keys = set(common_section_imported) - set(common_section)
+        common_section_imported.update(common_section)
+        common_section = common_section_imported
+
+    def file_source(key_name: str) -> str:
+        """
+        The file a [common] value was read from, for CONFIG_SOURCES.
+        """
+        if common_section_import_file is not None and key_name in imported_keys:
+            return f"config file ({_imported_file_name(common_section_import_file)})"
+        return f"config file ({CONFIG_FILE})"
+
+    return common_section, file_source
+
+
+def _apply_common_overrides(
+    common_section: dict, file_source: Callable[[str], str]
+) -> None:
+    """
+    Replace common section properties with command line or environment
+    variable overrides, recording each value's source. Precedence is:
+    command line > environment variable > config file
+    ... unless the config file was explicitly selected using '--config'/'-c',
+    in which case its contents take precedence over the environment:
+    command line > config file > environment variable
+    """
+    for key_name, args_parser_value, env_var_name in [
+        (KEY, _ARGS.key, YD_KEY),
+        (SECRET, _ARGS.secret, YD_SECRET),
+        (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
+        (NAME_TAG, _ARGS.tag, YD_TAG),
+        (URL, _ARGS.url, YD_URL),
+    ]:
+        if args_parser_value is not None:
+            common_section[key_name] = args_parser_value
+            CONFIG_SOURCES[key_name] = "command line"
+            print_debug(
+                f"Using '{key_name}' provided on command line (or automatically set)"
+            )
+        elif config_file_explicitly_selected() and (
+            common_section.get(key_name) is not None
+        ):
+            # Retain the value from the explicitly selected config file
+            CONFIG_SOURCES[key_name] = file_source(key_name)
+        elif os.environ.get(env_var_name) is not None:
+            common_section[key_name] = os.environ[env_var_name]
+            CONFIG_SOURCES[key_name] = f"environment ({env_var_name})"
+            print_debug(f"Using '{key_name}' provided via the environment")
+        elif common_section.get(key_name) is not None:
+            CONFIG_SOURCES[key_name] = file_source(key_name)
+        else:
+            CONFIG_SOURCES[key_name] = "not set"
+
+
+def _apply_common_defaults(common_section: dict) -> None:
+    """
+    Provide default values for namespace and tag, and record the URL's
+    default, which is applied as it is resolved.
+    """
+    if common_section.get(NAMESPACE) is None:
+        common_section[NAMESPACE] = "default"
+        CONFIG_SOURCES[NAMESPACE] = "default"
+        if _ARGS.namespace_required:
+            print_debug(
+                f"Using default value for 'namespace': '{common_section[NAMESPACE]}'"
+            )
+    if common_section.get(NAME_TAG) is None:
+        common_section[NAME_TAG] = "{{username}}"
+        CONFIG_SOURCES[NAME_TAG] = "default"
+        if _ARGS.tag_required:
+            print_debug(
+                "Using default value for 'tag/prefix/name' = "
+                f"'{VARIABLE_SUBSTITUTIONS['username']}'"
+            )
+    if common_section.get(URL) is None:
+        CONFIG_SOURCES[URL] = "default"
+
+
+def _resolved_url(common_section: dict) -> str:
+    url = cast(
+        str,
+        _resolve_value(common_section.get(URL, DEFAULT_URL), f"{COMMON_SECTION}.{URL}"),
+    )
+    if url != DEFAULT_URL:
+        print_debug(f"Using the YellowDog API at: {url}")
+    return url
+
+
+def _resolved_common_value(key_name: str, value: object) -> str:
+    """
+    A [common] value with its variables substituted.
+    """
+    return cast(str, _resolve_value(value, f"{COMMON_SECTION}.{key_name}"))
+
+
+def _set_certificates_bundle(common_section: dict) -> None:
+    """
+    Specify a certificates bundle directly by setting the requests
+    environment variable; this will override the default certificates.
+    """
+    certificates = cast(
+        str | None,
+        _resolve_value(
+            common_section.get(CERTIFICATES), f"{COMMON_SECTION}.{CERTIFICATES}"
+        ),
+    )
+    if certificates is not None:
+        certificates = abspath(certificates)
+        requests_ca_bundle = "REQUESTS_CA_BUNDLE"
+        print_debug(
+            f"Setting environment variable '{requests_ca_bundle}' to '{certificates}'"
+        )
+        os.environ[requests_ca_bundle] = certificates
 
 
 def _imported_file_name(filename: str) -> str:
@@ -970,58 +1000,12 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
     _resolve_section_variables(wr_section)
 
     try:
-        # Allow WORKER_TAG if WORKER_TAGS is empty
-        worker_tags = wr_section.get(WORKER_TAGS)
-        if worker_tags is None:
-            try:
-                worker_tags = [wr_section[WORKER_TAG]]
-            except KeyError:
-                pass
-        if worker_tags is not None:
-            check_list(worker_tags, WORKER_TAGS)
-            for index, worker_tag in enumerate(worker_tags):
-                worker_tags[index] = cast(str, _resolve_value(worker_tag))
-
-        wr_data_file = wr_section.get(WR_DATA)
-        if wr_data_file is not None:
-            check_str(wr_data_file, WR_DATA)
-            wr_data_file = cast(str, _resolve_value(wr_data_file))
-            wr_data_file = pathname_relative_to_config_file(
-                CONFIG_FILE_DIR, wr_data_file
-            )
-
-        # Check for properties set on the command line
-        task_type = (
-            wr_section.get(TASK_TYPE) if _ARGS.task_type is None else _ARGS.task_type
-        )
-        if task_type is not None:
-            check_str(task_type, TASK_TYPE)
-            task_type = cast(str | None, _resolve_value(task_type))
-
-        csv_file = wr_section.get(CSV_FILE)
-        csv_files = wr_section.get(CSV_FILES)
-        if csv_file and csv_files:
-            print_error("Only one of 'csvFile' and 'csvFiles' should be set")
-            exit(ExitCode.CONFIGURATION)
-        if csv_file:
-            csv_files = [csv_file]
-
-        task_batch_size = (
-            wr_section.get(TASK_BATCH_SIZE, TASK_BATCH_SIZE_DEFAULT)
-            if _ARGS.task_batch_size is None
-            else _ARGS.task_batch_size
-        )
-        # The Platform takes at most 10,000 Tasks in one request
-        if (
-            not isinstance(task_batch_size, int)
-            or isinstance(task_batch_size, bool)
-            or not 1 <= task_batch_size <= 10_000
-        ):
-            print_error(
-                f"'{TASK_BATCH_SIZE}' must be a whole number from 1 to 10,000"
-                f" (it is {task_batch_size!r})"
-            )
-            exit(ExitCode.CONFIGURATION)
+        # In the order their faults are reported
+        worker_tags = _wr_worker_tags(wr_section)
+        wr_data_file = _wr_data_file(wr_section)
+        task_type = _wr_task_type(wr_section)
+        csv_files = _wr_csv_files(wr_section)
+        task_batch_size = _wr_task_batch_size(wr_section)
 
         task_count = (
             _ARGS.task_count
@@ -1042,7 +1026,7 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             args_postfix=wr_section.get(ARGS_POSTFIX),
             args_prefix=wr_section.get(ARGS_PREFIX),
             completed_task_ttl=wr_section.get(COMPLETED_TASK_TTL),
-            csv_files=cast(list[str] | None, csv_files),
+            csv_files=csv_files,
             disable_preallocation=wr_section.get(DISABLE_PREALLOCATION),
             env=wr_section.get(ENV, {}),
             finish_if_all_tasks_finished=wr_section.get(
@@ -1086,10 +1070,6 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             wr_tag=wr_section.get(WR_TAG),
         )
 
-    except KeyError as e:
-        print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(ExitCode.CONFIGURATION)
-
     except Exception as e:
         # A configuration error, as a rule; under '--debug', its traceback,
         # in case it is a fault in this loader instead
@@ -1097,6 +1077,82 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
             raise
         print_error(f"{e}")
         exit(ExitCode.CONFIGURATION)
+
+
+def _wr_worker_tags(wr_section: dict) -> list[str] | None:
+    """
+    The Worker tags, resolved: 'workerTags', else 'workerTag' as a list of one.
+    """
+    worker_tags = wr_section.get(WORKER_TAGS)
+    if worker_tags is None and WORKER_TAG in wr_section:
+        worker_tags = [wr_section[WORKER_TAG]]
+    if worker_tags is not None:
+        check_list(worker_tags, WORKER_TAGS)
+        for index, worker_tag in enumerate(worker_tags):
+            worker_tags[index] = cast(str, _resolve_value(worker_tag))
+    return worker_tags
+
+
+def _wr_data_file(wr_section: dict) -> str | None:
+    """
+    The Work Requirement specification file, named from the current directory.
+    """
+    wr_data_file = wr_section.get(WR_DATA)
+    if wr_data_file is None:
+        return None
+    check_str(wr_data_file, WR_DATA)
+    wr_data_file = cast(str, _resolve_value(wr_data_file))
+    return pathname_relative_to_config_file(CONFIG_FILE_DIR, wr_data_file)
+
+
+def _wr_task_type(wr_section: dict) -> str | None:
+    """
+    The task type: '--task-type', else the configuration's.
+    """
+    task_type = (
+        wr_section.get(TASK_TYPE) if _ARGS.task_type is None else _ARGS.task_type
+    )
+    if task_type is None:
+        return None
+    check_str(task_type, TASK_TYPE)
+    return cast(str | None, _resolve_value(task_type))
+
+
+def _wr_csv_files(wr_section: dict) -> list[str] | None:
+    """
+    The CSV files: 'csvFiles', or 'csvFile' as a list of one; not both.
+    """
+    csv_file = wr_section.get(CSV_FILE)
+    csv_files = wr_section.get(CSV_FILES)
+    if csv_file and csv_files:
+        print_error("Only one of 'csvFile' and 'csvFiles' should be set")
+        exit(ExitCode.CONFIGURATION)
+    if csv_file:
+        return [csv_file]
+    return cast(list[str] | None, csv_files)
+
+
+def _wr_task_batch_size(wr_section: dict) -> int:
+    """
+    The Task batch size: '--task-batch-size', else the configuration's, else
+    the default. The Platform takes at most 10,000 Tasks in one request.
+    """
+    task_batch_size = (
+        wr_section.get(TASK_BATCH_SIZE, TASK_BATCH_SIZE_DEFAULT)
+        if _ARGS.task_batch_size is None
+        else _ARGS.task_batch_size
+    )
+    if (
+        not isinstance(task_batch_size, int)
+        or isinstance(task_batch_size, bool)
+        or not 1 <= task_batch_size <= 10_000
+    ):
+        print_error(
+            f"'{TASK_BATCH_SIZE}' must be a whole number from 1 to 10,000"
+            f" (it is {task_batch_size!r})"
+        )
+        exit(ExitCode.CONFIGURATION)
+    return task_batch_size
 
 
 def _number(
@@ -1119,19 +1175,15 @@ def _number(
         exit(ExitCode.CONFIGURATION)
 
 
-def load_config_worker_pool() -> ConfigWorkerPool:
+def _worker_pool_section() -> dict:
     """
-    Load the configuration data for a Worker Pool or a Compute Requirement.
+    The 'workerPool' section with the 'computeRequirement' section, its
+    configuration synonym, merged in, each with its variables resolved now
+    the common configuration has been; a key in both exits.
     """
-    ensure_config_loaded()
-
-    # Allow the use of values in a 'computeRequirement' section, which acts
-    # as a configuration synonym for 'workerPool'. Check for duplicates.
     wp_section = CONFIG_TOML.get(WORKER_POOL_SECTION, {})
     cr_section = CONFIG_TOML.get(COMPUTE_REQUIREMENT_SECTION, {})
 
-    # Process any new substitutions after the common config
-    # has been processed
     _resolve_section_variables(wp_section)
     _resolve_section_variables(cr_section)
     _WORKER_POOL_SECTIONS_AS_LOADED.clear()
@@ -1155,56 +1207,78 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         )
         exit(ExitCode.CONFIGURATION)
     wp_section.update(cr_section)
+    return wp_section
 
+
+def _wp_data_files(wp_section: dict) -> tuple[str | None, str | None]:
+    """
+    The Worker Pool and Compute Requirement specification files, named from
+    the current directory; not both.
+    """
+    worker_pool_data_file = cast(
+        str | None, _resolve_value(wp_section.get(WORKER_POOL_DATA_FILE))
+    )
+    compute_requirement_data_file = cast(
+        str | None, _resolve_value(wp_section.get(COMPUTE_REQUIREMENT_DATA_FILE))
+    )
+    if worker_pool_data_file is not None and compute_requirement_data_file is not None:
+        print_error(
+            f"Only one of '{WORKER_POOL_DATA_FILE}' or"
+            f" '{COMPUTE_REQUIREMENT_DATA_FILE}' should be set"
+        )
+        exit(ExitCode.CONFIGURATION)
+    if worker_pool_data_file is not None:
+        worker_pool_data_file = pathname_relative_to_config_file(
+            CONFIG_FILE_DIR, worker_pool_data_file
+        )
+    if compute_requirement_data_file is not None:
+        compute_requirement_data_file = pathname_relative_to_config_file(
+            CONFIG_FILE_DIR, compute_requirement_data_file
+        )
+    return worker_pool_data_file, compute_requirement_data_file
+
+
+def _wp_batch_size(wp_section: dict) -> int:
+    """
+    'computeRequirementBatchSize': at least 1, and clamped, with a warning,
+    to the platform's maximum.
+    """
+    cr_batch_size = cast(
+        int, _number(wp_section, COMPUTE_REQUIREMENT_BATCH_SIZE, int, CR_MAX_INSTANCES)
+    )
+    if cr_batch_size < 1:
+        print_error(
+            f"'{COMPUTE_REQUIREMENT_BATCH_SIZE}' must be at least 1"
+            f" (it is {cr_batch_size:,d})"
+        )
+        exit(ExitCode.CONFIGURATION)
+    if cr_batch_size > CR_MAX_INSTANCES:
+        print_warning(
+            f"'computeRequirementBatchSize' ({cr_batch_size:,d}) exceeds the"
+            f" platform maximum ({CR_MAX_INSTANCES:,d}); clamping to"
+            f" {CR_MAX_INSTANCES:,d}"
+        )
+        cr_batch_size = CR_MAX_INSTANCES
+    return cr_batch_size
+
+
+def load_config_worker_pool() -> ConfigWorkerPool:
+    """
+    Load the configuration data for a Worker Pool or a Compute Requirement.
+    """
+    ensure_config_loaded()
+    wp_section = _worker_pool_section()
     if not wp_section:
         return ConfigWorkerPool()
 
     try:
+        # In the order their faults are reported
         worker_tag = cast(str | None, _resolve_value(wp_section.get(WORKER_TAG)))
-        worker_pool_data_file = cast(
-            str | None,
-            _resolve_value(wp_section.get(WORKER_POOL_DATA_FILE)),
+        worker_pool_data_file, compute_requirement_data_file = _wp_data_files(
+            wp_section
         )
-        compute_requirement_data_file = cast(
-            str | None,
-            _resolve_value(wp_section.get(COMPUTE_REQUIREMENT_DATA_FILE)),
-        )
-        if (
-            worker_pool_data_file is not None
-            and compute_requirement_data_file is not None
-        ):
-            print_error(
-                f"Only one of '{WORKER_POOL_DATA_FILE}' or"
-                f" '{COMPUTE_REQUIREMENT_DATA_FILE}' should be set"
-            )
-            exit(ExitCode.CONFIGURATION)
-        if worker_pool_data_file is not None:
-            worker_pool_data_file = pathname_relative_to_config_file(
-                CONFIG_FILE_DIR, worker_pool_data_file
-            )
-        if compute_requirement_data_file is not None:
-            compute_requirement_data_file = pathname_relative_to_config_file(
-                CONFIG_FILE_DIR, compute_requirement_data_file
-            )
         workers_per_vcpu = cast(int | None, _number(wp_section, WORKERS_PER_VCPU, int))
-
-        cr_batch_size = cast(
-            int,
-            _number(wp_section, COMPUTE_REQUIREMENT_BATCH_SIZE, int, CR_MAX_INSTANCES),
-        )
-        if cr_batch_size < 1:
-            print_error(
-                f"'{COMPUTE_REQUIREMENT_BATCH_SIZE}' must be at least 1"
-                f" (it is {cr_batch_size:,d})"
-            )
-            exit(ExitCode.CONFIGURATION)
-        if cr_batch_size > CR_MAX_INSTANCES:
-            print_warning(
-                f"'computeRequirementBatchSize' ({cr_batch_size:,d}) exceeds the"
-                f" platform maximum ({CR_MAX_INSTANCES:,d}); clamping to"
-                f" {CR_MAX_INSTANCES:,d}"
-            )
-            cr_batch_size = CR_MAX_INSTANCES
+        cr_batch_size = _wp_batch_size(wp_section)
 
         return ConfigWorkerPool(
             compute_requirement_batch_size=cr_batch_size,
@@ -1258,14 +1332,10 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             workers_per_node=cast(int, _number(wp_section, WORKERS_PER_NODE, int, 1)),
         )
 
-    except KeyError as e:
-        print_error(f"{MISSING_CONFIG_DATA}: {e}")
-        exit(ExitCode.CONFIGURATION)
-
-    except TypeError as e:
+    except Exception as e:
+        # A configuration error (a property of the wrong type), as a rule;
+        # under '--debug', its traceback, in case it is a fault in this loader
+        if OUTPUT.debug:
+            raise
         print_error(f"{e}")
-        exit(ExitCode.CONFIGURATION)
-
-    except ValueError as e:
-        print_error(f"Invalid type for configuration: {e}")
         exit(ExitCode.CONFIGURATION)
