@@ -2016,6 +2016,14 @@ SHOW_SOURCE_REPORT = option(
         " provisioned from a dynamic template)"
     ),
 )
+SHOW_MEMBERS = option(
+    "--show-members",
+    action="store_true",
+    required=False,
+    help=(
+        "also display a group's users and applications, or the groups that hold a role"
+    ),
+)
 SHOW_EXHAUSTION = option(
     "--show-exhaustion",
     action="store_true",
@@ -2033,7 +2041,7 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     whose details it substitutes names into (Compute Source and Requirement
     Templates, Allowances), rather than ignored; '--show-source-report' and
     '--show-exhaustion' likewise without a Compute Requirement or Worker
-    Pool ID. '--show-token' is left alone: whether a Worker Pool is a
+    Pool ID, and '--show-members' without a Group or Role ID. '--show-token' is left alone: whether a Worker Pool is a
     Configured one is known only once it has been fetched, as whether it is
     a Provisioned one is for the other two.
     """
@@ -2052,6 +2060,13 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
                 f"{flag} applies only to Compute Requirement and Worker Pool"
                 " IDs, and none was given"
             )
+    if args.show_members and not any(
+        get_ydid_type(ydid) in (YDIDType.GROUP, YDIDType.ROLE)
+        for ydid in args.yellowdog_ids
+    ):
+        parser.error(
+            "--show-members applies only to Group and Role IDs, and none was given"
+        )
 
     substitutable = (
         YDIDType.COMPUTE_SOURCE_TEMPLATE,
@@ -2087,6 +2102,7 @@ COMMANDS["yd-show"] = Command(
         SHOW_TOKEN,
         SHOW_SOURCE_REPORT,
         SHOW_EXHAUSTION,
+        SHOW_MEMBERS,
         SUBSTITUTE_IDS,
         STRIP_IDS,
         HIDE_USER_DATA,

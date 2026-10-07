@@ -1234,6 +1234,28 @@ def get_user_groups(client: PlatformClient, user_id: str) -> list[GroupSummary]:
     return client.account_client.get_user_groups(user_id).list_all()
 
 
+def get_group_users(client: PlatformClient, group_id: str) -> list[User]:
+    """
+    Get the users who belong to a group. Not cached, as the group lookups are
+    not: memberships are what yd-create changes.
+    """
+    return client.account_client.get_group_users(group_id).list_all()
+
+
+def get_group_applications(client: PlatformClient, group_id: str) -> list[Application]:
+    """
+    Get the applications that belong to a group.
+    """
+    return client.account_client.get_group_applications(group_id).list_all()
+
+
+def get_role_groups(client: PlatformClient, role_id: str) -> list[GroupSummary]:
+    """
+    Get the groups that hold a role.
+    """
+    return client.account_client.get_role_groups(role_id).list_all()
+
+
 @lru_cache
 def get_user_by_name_or_id(client: PlatformClient, user_name_or_id: str) -> User | None:
     """

@@ -88,6 +88,7 @@ def _args(**overrides) -> MagicMock:
     args.show_token = False
     args.show_source_report = False
     args.show_exhaustion = False
+    args.show_members = False
     args.output_file = None
     args.quiet = True  # Keep the status messages out of the parsed output
     args.json_output = False
@@ -444,6 +445,95 @@ class TestDiagnostics:
 
 
 # ---------------------------------------------------------------------------
+# '--show-members', and a User's groups
+# ---------------------------------------------------------------------------
+
+ROLE_ID = "ydid:role:6357e440-eb8d-44f4-8c0c-0b58fb535312"  # As the Platform gives it
+
+
+def _member(id_: str, name: str, **extra) -> SimpleNamespace:
+    return SimpleNamespace(id=id_, name=name, **extra)
+
+
+class TestMembers:
+    def test_a_groups_users_and_applications_follow_it(self, capsys):
+        client = MagicMock()
+        group_id = _ydid("group")
+        group = _Obj("my-group")
+        client.account_client.get_group.return_value = group
+        client.account_client.get_group_users.return_value.list_all.return_value = [
+            _member("ydid:user:1", "Alan Parry", username="alan"),
+            _member("ydid:user:2", "Alan Parry"),  # External: no username
+        ]
+        applications = client.account_client.get_group_applications.return_value
+        applications.list_all.return_value = [_member("ydid:app:1", "yd-demo")]
+
+        failures, output = _run([group_id], client, _args(show_members=True), capsys)
+
+        assert failures == 0
+        parsed = loads(output)
+        assert parsed[0]["name"] == "my-group"
+        assert parsed[1] == {
+            "groupId": group_id,
+            "users": [
+                {"id": "ydid:user:1", "username": "alan", "name": "Alan Parry"},
+                {"id": "ydid:user:2", "username": None, "name": "Alan Parry"},
+            ],
+            "applications": [{"id": "ydid:app:1", "name": "yd-demo"}],
+        }
+
+    def test_a_group_with_no_members(self, capsys):
+        client = MagicMock()
+        client.account_client.get_group.return_value = _Obj("empty")
+        client.account_client.get_group_users.return_value.list_all.return_value = []
+        applications = client.account_client.get_group_applications.return_value
+        applications.list_all.return_value = []
+        _, output = _run([_ydid("group")], client, _args(show_members=True), capsys)
+        assert loads(output)[1]["users"] == []
+        assert loads(output)[1]["applications"] == []
+
+    def test_the_groups_holding_a_role_follow_it(self, capsys):
+        client = MagicMock()
+        client.account_client.get_role.return_value = _Obj("work-manager")
+        groups = client.account_client.get_role_groups.return_value
+        groups.list_all.return_value = [_member("ydid:group:1", "raydog")]
+
+        failures, output = _run([ROLE_ID], client, _args(show_members=True), capsys)
+
+        assert failures == 0
+        assert loads(output)[1] == {
+            "roleId": ROLE_ID,
+            "groups": [{"id": "ydid:group:1", "name": "raydog"}],
+        }
+
+    def test_without_the_option_nothing_is_looked_up(self, capsys):
+        client = MagicMock()
+        client.account_client.get_group.return_value = _Obj("my-group")
+        _, output = _run([_ydid("group")], client, _args(), capsys)
+        assert loads(output)["name"] == "my-group"
+        client.account_client.get_group_users.assert_not_called()
+
+    def test_a_session_failure_stops_the_run(self, capsys):
+        from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
+
+        client = MagicMock()
+        client.account_client.get_role.return_value = _Obj("work-manager")
+        client.account_client.get_role_groups.side_effect = _http_error(401)
+        with pytest.raises(ReportedFailure) as raised:
+            _run([ROLE_ID, ROLE_ID], client, _args(show_members=True), capsys)
+        assert classify(raised.value) == ExitCode.AUTHENTICATION
+
+    def test_a_user_is_shown_with_its_groups(self, capsys):
+        client = MagicMock()
+        client.account_client.get_user.return_value = _Obj("pwt")
+        client.account_client.get_user_groups.return_value.list_all.return_value = [
+            _member("ydid:group:1", "administrators")
+        ]
+        _, output = _run([_ydid("user")], client, _args(), capsys)
+        assert loads(output)["groups"] == ["administrators"]
+
+
+# ---------------------------------------------------------------------------
 # Failures
 # ---------------------------------------------------------------------------
 
@@ -564,6 +654,16 @@ class TestCommandLine:
         assert f"{flag} applies only to" in capsys.readouterr().err
         CLIParser(command="yd-show", argv=[flag, _ydid("task"), _ydid("compreq")])
         CLIParser(command="yd-show", argv=[flag, _ydid("wrkrpool")])
+
+    def test_show_members_needs_a_group_or_role_id(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-show", argv=["--show-members", _ydid("task")])
+        assert raised.value.code == 2
+        assert "--show-members applies only to" in capsys.readouterr().err
+        CLIParser(command="yd-show", argv=["--show-members", ROLE_ID])
+        CLIParser(command="yd-show", argv=["--show-members", _ydid("group")])
 
     def test_namespace_and_tag_are_not_options(self, capsys):
         from yellowdog_cli.utils.args import CLIParser

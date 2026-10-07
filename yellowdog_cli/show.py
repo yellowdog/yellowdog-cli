@@ -30,7 +30,11 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
+    get_group_applications,
+    get_group_users,
     get_instance_by_id,
+    get_role_groups,
+    get_user_groups,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -67,7 +71,8 @@ from yellowdog_cli.utils.ydid_utils import (
 # representation. A single YellowDog ID can yield more than one: a Configured
 # Worker Pool shown with '--show-token' yields the pool and its token, and a
 # Compute Requirement (or a Provisioned Worker Pool) shown with
-# '--show-source-report' or '--show-exhaustion' yields those reports after it.
+# '--show-source-report' or '--show-exhaustion' yields those reports after it,
+# and a Group or Role with '--show-members' its members.
 ShowItem = tuple[Any, dict | None]
 
 
@@ -406,8 +411,72 @@ def _application(ctx: RunContext, ydid: str) -> list[ShowItem]:
 
 
 def _user(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    # Its groups by name, as for an Application and 'yd-list users
+    # --details': a User specification takes them, so the JSON can still be
+    # given to yd-create
     user = ctx.client.account_client.get_user(ydid)
-    return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
+    group_names = [group.name for group in get_user_groups(ctx.client, ydid)]
+    return [
+        (
+            user,
+            {PROP_GROUPS: group_names, RESOURCE_PROPERTY_NAME: user.__class__.__name__},
+        )
+    ]
+
+
+def _group(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    items: list[ShowItem] = [
+        (ctx.client.account_client.get_group(ydid), {RESOURCE_PROPERTY_NAME: RN_GROUP})
+    ]
+    if ctx.args.show_members:
+        print_info(f"Showing members of Group '{ydid}'")
+        items.append(
+            (
+                {
+                    "groupId": ydid,
+                    "users": [
+                        {
+                            "id": user.id,
+                            # An external User has no username
+                            "username": getattr(user, "username", None),
+                            "name": user.name,
+                        }
+                        for user in get_group_users(ctx.client, ydid)
+                    ],
+                    "applications": [
+                        _named(application.id, application.name)
+                        for application in get_group_applications(ctx.client, ydid)
+                    ],
+                },
+                None,
+            )
+        )
+    return items
+
+
+def _role(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    items: list[ShowItem] = [
+        (ctx.client.account_client.get_role(ydid), {RESOURCE_PROPERTY_NAME: RN_ROLE})
+    ]
+    if ctx.args.show_members:
+        print_info(f"Showing Groups holding Role '{ydid}'")
+        items.append(
+            (
+                {
+                    "roleId": ydid,
+                    "groups": [
+                        _named(group.id, group.name)
+                        for group in get_role_groups(ctx.client, ydid)
+                    ],
+                },
+                None,
+            )
+        )
+    return items
+
+
+def _named(id_: str | None, name: str | None) -> dict:
+    return {"id": id_, "name": name}
 
 
 # Every YDIDType, held to that by tests/test_show_output.py
@@ -481,12 +550,8 @@ _RESOLVERS: dict[YDIDType, _Resolver] = {
     YDIDType.ALLOWANCE: _Resolver("Allowance", _allowance),
     YDIDType.APPLICATION: _Resolver("Application", _application),
     YDIDType.USER: _Resolver("User", _user),
-    YDIDType.GROUP: _Resolver(
-        "Group", _fetched(lambda c, ydid: c.account_client.get_group(ydid), RN_GROUP)
-    ),
-    YDIDType.ROLE: _Resolver(
-        "Role", _fetched(lambda c, ydid: c.account_client.get_role(ydid), RN_ROLE)
-    ),
+    YDIDType.GROUP: _Resolver("Group", _group),
+    YDIDType.ROLE: _Resolver("Role", _role),
 }
 
 

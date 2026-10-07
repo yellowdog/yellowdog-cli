@@ -773,6 +773,11 @@ class CLIParser:
     def show_exhaustion(self) -> bool | None:
         return self.args.show_exhaustion
 
+    @property
+    @allow_missing_attribute
+    def show_members(self) -> bool | None:
+        return self.args.show_members
+
     # -----------------------------------------------------------------------
     # yd-variables
     # -----------------------------------------------------------------------

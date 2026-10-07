@@ -113,10 +113,12 @@ def work_requirement_id_of_task_group(task_group_id: str) -> str:
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _HEX = r"[0-9a-fA-F]+"
 
+# Between the type and the UUID, up to two hex segments: none for a Role,
+# which is global ('ydid:role:<uuid>'), one or two for everything else
+_SEGMENTS = rf"(?::{_HEX}){{0,2}}"
+
 # Pre-compiled pattern for highlighting YDIDs embedded in output text.
-YDID_HIGHLIGHT_RE = re.compile(
-    rf"(?P<ydid>{YDID}:[a-z]+:{_HEX}(?::{_HEX})?:{_UUID}(?::\d+)*)"
-)
+YDID_HIGHLIGHT_RE = re.compile(rf"(?P<ydid>{YDID}:[a-z]+{_SEGMENTS}:{_UUID}(?::\d+)*)")
 
 # Each YDID type token and the type it names: the only tokens a valid YDID
 # can have, held to every YDIDType by tests/test_ydid_utils.py
@@ -142,7 +144,7 @@ _TYPE_TOKENS: dict[str, YDIDType] = {
     TYPE_ROLE: YDIDType.ROLE,
 }
 _YDID_RE = re.compile(
-    rf"^{YDID}:(?:{'|'.join(_TYPE_TOKENS)}):{_HEX}(?::{_HEX})?:{_UUID}(?::\d+)*$"
+    rf"^{YDID}:(?:{'|'.join(_TYPE_TOKENS)}){_SEGMENTS}:{_UUID}(?::\d+)*$"
 )
 
 
