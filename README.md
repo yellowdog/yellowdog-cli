@@ -3103,7 +3103,9 @@ Example:
         }
       ],
       "nodeEvents": {
-        "STARTUP_NODES_ADDED": []
+        "STARTUP_NODES_ADDED": [
+          {"actions": [{"action": "CREATE_WORKERS", "totalWorkers": 1}]}
+        ]
       }
     },
     "targetNodeCount": 0
@@ -3111,7 +3113,7 @@ Example:
 }
 ```
 
-Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1. A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. Its token, which `yd-create` reports when it creates the pool and `yd-show --show-token` shows, can be refreshed or regenerated with [`yd-token`](#yd-token). A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
+Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1; an event in `nodeEvents`, if given, must have at least one action group. The pool's token never expires unless `tokenTtl` is given, as an ISO 8601 duration alongside `name` and `namespace` (`"tokenTtl": "PT720H"` for 30 days). A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. Its token, which `yd-create` reports when it creates the pool and `yd-show --show-token` shows, can be refreshed or regenerated with [`yd-token`](#yd-token). A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
 
 ## Allowances
 
