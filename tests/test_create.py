@@ -601,6 +601,97 @@ def test_a_new_image_family_records_its_groups_and_images(env, monkeypatch):
     ]
 
 
+@pytest.fixture
+def new_image_family(env, monkeypatch):
+    """
+    An Image Family that does not exist yet, of two Image Groups: the first
+    created with the family, the second added after it.
+    """
+    monkeypatch.setattr(
+        yd_create,
+        "_get_model_object",
+        lambda *a, **k: SimpleNamespace(
+            name="f",
+            imageGroups=[SimpleNamespace(name="g1"), SimpleNamespace(name="g2")],
+        ),
+    )
+    images = env.client.images_client
+    images.get_image_family_by_name.side_effect = _http_error(404)
+    images.add_image_family.return_value = SimpleNamespace(
+        id="fam", imageGroups=[SimpleNamespace(id="g1", name="g1", images=[])]
+    )
+    return env
+
+
+def _create_image_family():
+    yd_create.create_image_family(
+        _ctx(), {"name": "f", "namespace": "ns", "osType": "LINUX"}
+    )
+
+
+def test_an_image_family_that_cannot_be_created_keeps_its_exit_code(
+    new_image_family,
+):
+    new_image_family.client.images_client.add_image_family.side_effect = _http_error(
+        401
+    )
+    with pytest.raises(
+        RuntimeError, match="Failed to create Machine Image Family"
+    ) as raised:
+        _create_image_family()
+    assert classify(raised.value) == ExitCode.AUTHENTICATION
+    assert new_image_family.records == []
+
+
+def test_an_image_group_failing_after_the_family_leaves_it_recorded(
+    new_image_family,
+):
+    # The family exists by then: it, and the group created with it, are
+    # recorded before the second group's failure is raised, with its code
+    new_image_family.client.images_client.add_image_group.side_effect = _http_error(503)
+    with pytest.raises(
+        RuntimeError, match="Failed to add Machine Image Group 'g2'"
+    ) as raised:
+        _create_image_family()
+    assert classify(raised.value) == classify(_http_error(503))
+    assert [(r["resource"], r["action"]) for r in new_image_family.records] == [
+        ("MachineImageFamily", "created"),
+        ("MachineImageGroup", "created"),
+    ]
+
+
+def test_an_image_group_lookup_failing_other_than_404_is_raised(env):
+    env.client.images_client.get_image_group_by_name.side_effect = _http_error(401)
+    with pytest.raises(HTTPError):
+        yd_create._create_image_group(
+            _ctx(), "ns", SimpleNamespace(name="f"), SimpleNamespace(name="g")
+        )
+    env.client.images_client.add_image_group.assert_not_called()
+
+
+def test_an_image_group_not_found_is_added(env, monkeypatch):
+    env.client.images_client.get_image_group_by_name.side_effect = _http_error(404)
+    env.client.images_client.add_image_group.return_value = SimpleNamespace(
+        id="g", name="g", images=[]
+    )
+    yd_create._create_image_group(
+        _ctx(), "ns", SimpleNamespace(name="f"), SimpleNamespace(name="g", images=[])
+    )
+    env.client.images_client.add_image_group.assert_called_once()
+
+
+def test_an_image_the_platform_refuses_keeps_its_cause(env):
+    refused = yd_create.InvalidRequestException(message="bad image")
+    env.client.images_client.add_image.side_effect = refused
+    with pytest.raises(
+        RuntimeError, match="Unable to create/update Image 'i'"
+    ) as raised:
+        yd_create._create_image(
+            _ctx(), SimpleNamespace(id=None, name="i"), SimpleNamespace()
+        )
+    assert raised.value.__cause__ is refused
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
