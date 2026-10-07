@@ -392,6 +392,7 @@ class TestToolKinds:
             "yd-compute-restart",
             "yd-compute-deprovision",
             "yd-nodeaction",
+            "yd-priority",
             "yd-token",
         }
 

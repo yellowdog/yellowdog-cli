@@ -25,6 +25,7 @@ The commands support:
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
 - **Listing** YellowDog items using the **`yd-list`** command
 - **Listing** remote data store contents with the **`yd-ls`** command
+- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command

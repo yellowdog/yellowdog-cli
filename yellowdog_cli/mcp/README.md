@@ -107,6 +107,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_list` | read-only | `yd-list` | List YellowDog items |
 | `yd_ls` | read-only | `yd-ls` | List remote data client files and directories |
 | `yd_nodeaction` | destructive | `yd-nodeaction` | Submit Node Actions to Worker Pool nodes |
+| `yd_priority` | destructive | `yd-priority` | Change the priority of Work Requirements and Task Groups |
 | `yd_provision` | acting | `yd-provision` | Provision a Worker Pool |
 | `yd_remove` | destructive | `yd-remove` | Remove resources |
 | `yd_resize` | destructive | `yd-resize` | Resize Worker Pools and Compute Requirements |

@@ -50,6 +50,7 @@ import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
+import yellowdog_cli.utils.work_targets as work_targets
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.entity_names import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
@@ -561,12 +562,14 @@ class TestAbort:
             lookups.append((namespace, name))
             return known.get((namespace, name))
 
+        # Named targets are read by utils/work_targets.py
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
-        monkeypatch.setattr(
-            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
-        )
+        for module in (yd_abort, work_targets):
+            monkeypatch.setattr(
+                module, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
+            )
         return lookups
 
     def _client(self, tasks=(), by_id=None):
@@ -620,7 +623,7 @@ class TestAbort:
             return None
 
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
         client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["a/b"])
@@ -635,7 +638,7 @@ class TestAbort:
             return None
 
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
         out, _, _ = run(yd_abort, client=self._client(), task_id_list=["a/b", "a"])
         assert [(r["name"], r["outcome"], r["error"]) for r in out] == [

@@ -166,6 +166,7 @@
       * [yd-start](#yd-start)
       * [yd-hold](#yd-hold)
       * [yd-finish](#yd-finish)
+      * [yd-priority](#yd-priority)
    * [Worker Pool and Compute Commands](#worker-pool-and-compute-commands)
       * [yd-provision](#yd-provision)
       * [yd-shutdown](#yd-shutdown)
@@ -207,7 +208,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 15:03:21 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 15:13:23 BST 2026 -->
 
 <!--te-->
 
@@ -228,6 +229,7 @@ The commands provide the following capabilities:
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
 - **Listing** YellowDog items using the **`yd-list`** command
+- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
 - **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
@@ -520,7 +522,7 @@ The documents, by command:
 | Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
-| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-compute-deprovision`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `deprovision`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `deprovisioned`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-compute-deprovision`, `yd-priority`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `task-groups`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `deprovision`, `prioritise`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `deprovisioned`, `prioritised`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-priority` adds `"previousPriority"` and `"priority"`, and records a Task Group as `task-groups`; `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
 | Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`; a Group whose roles were set adds `"rolesAdded"` and, when updated, `"rolesRemoved"` (the roles' names); and Allowances removed by description, by `yd-remove -M` or replaced by `yd-create -M`, are each recorded as `removed` with their `id`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Either command exits with its failures' shared code, or 1 if they had different causes |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
@@ -3733,6 +3735,31 @@ Key options:
 
 ```shell
 yd-finish my-analysis-run
+```
+
+### yd-priority
+
+The `yd-priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](#work-requirement-property-dictionary)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
+
+```shell
+yd-priority [options] <priority> <target> [<target> ...]
+```
+
+The new priority, any finite number (negative ones included), comes first, followed by one or more targets, read as [`yd-abort`](#yd-abort) reads them:
+
+- a Work Requirement name, `<namespace>/<wr-name>` or YDID
+- a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`
+
+Targets are handled in the order given, each once, and confirmed together, the confirmation showing each one's current and new priority. A target that does not exist, or whose name is ambiguous, is reported as failed; one in a Work Requirement that has finished (`COMPLETED`, `CANCELLED` or `FAILED`), or already at the priority, is skipped with a warning. The Platform takes a Work Requirement whole, so the targets in one Work Requirement are changed together, in one update to a copy fetched just before it is sent: a change made to the Work Requirement since the targets were found is kept. An authentication or connection failure stops the command, with that failure's [exit code](#machine-readable-output-and-exit-codes), and the targets not yet attempted are reported as skipped.
+
+Key options:
+- `--dry-run`/`-D` — report each target's current and new priority without changing anything
+- `--json` — emit the actions taken as a JSON array, each with its `previousPriority` and `priority` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-priority 10 my-analysis-run
+yd-priority 5 my-analysis-run/render my-analysis-run/encode
+yd-priority -1 ydid:workreq:000000:...
 ```
 
 ## Worker Pool and Compute Commands

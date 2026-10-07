@@ -100,6 +100,7 @@
     yd-nodeaction = "yellowdog_cli.nodeaction:main"
     yd-ls = "yellowdog_cli.ls:main"
     yd-mcp = "yellowdog_cli.mcp.launcher:main"
+    yd-priority = "yellowdog_cli.priority:main"
     yd-provision = "yellowdog_cli.provision:main"
     yd-remove = "yellowdog_cli.remove:main"
     yd-resize = "yellowdog_cli.resize:main"

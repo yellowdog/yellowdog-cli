@@ -9,6 +9,7 @@ nothing from args.py; args.py imports it.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from argparse import (
@@ -366,6 +367,20 @@ def positive_int(value: str) -> int:
         raise ArgumentTypeError(f"invalid int value: '{value}'") from None
     if number < 1:
         raise ArgumentTypeError(f"must be a positive integer, not {number}")
+    return number
+
+
+def finite_float(value: str) -> float:
+    """
+    An argparse type for a number such as a priority: any float but NaN and
+    the infinities, which Python's float() accepts and no Platform value is.
+    """
+    try:
+        number = float(value)
+    except ValueError:
+        raise ArgumentTypeError(f"invalid number: '{value}'") from None
+    if not math.isfinite(number):
+        raise ArgumentTypeError(f"must be a finite number, not {value}")
     return number
 
 
@@ -3214,6 +3229,45 @@ COMMANDS["yd-terminate"] = Command(
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
     validators=(check_glob_and_literal_names,),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+)
+
+# --- yd-priority ---------------------------------------------------------
+
+PRIORITY = option(
+    "priority",
+    metavar="<priority>",
+    type=finite_float,
+    help=(
+        "the new priority, a number; higher priority acquires workers ahead of lower"
+    ),
+)
+PRIORITY_TARGETS = option(
+    "priority_targets",
+    nargs="+",
+    metavar="<work-requirement-or-task-group>",
+    type=str,
+    help=(
+        "the work requirement(s) or task group(s): IDs, or names as 'wr',"
+        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'"
+    ),
+)
+
+COMMANDS["yd-priority"] = Command(
+    name="yd-priority",
+    purpose="changing the priority of Work Requirements and Task Groups",
+    summary="Change the priority of Work Requirements and Task Groups",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        DRY_RUN,
+        YES,
+        ACTIONS_JSON,
+        PRIORITY,
+        PRIORITY_TARGETS,
+    ),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

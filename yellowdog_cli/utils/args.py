@@ -544,6 +544,20 @@ class CLIParser:
         return self.args.terminate
 
     # -----------------------------------------------------------------------
+    # yd-priority
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def priority(self) -> float:
+        return self.args.priority
+
+    @property
+    @allow_missing_attribute
+    def priority_targets(self) -> list[str]:
+        return self.args.priority_targets
+
+    # -----------------------------------------------------------------------
     # yd-token
     # -----------------------------------------------------------------------
 
