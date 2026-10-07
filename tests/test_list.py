@@ -228,3 +228,118 @@ def test_every_entity_type_has_a_lister():
     from yellowdog_cli.utils.command_registry import ENTITY_TYPES
 
     assert set(yd_list._LISTERS) == set(ENTITY_TYPES)
+
+
+class TestOutputOptions:
+    """
+    main()'s settling of the output options the others imply, before any
+    listing: '--count' quiet and alone, interactive selection unless the
+    output is JSON or a count, '--details' implied by the options that need
+    it, and OUTPUT configured from the result.
+    """
+
+    @staticmethod
+    def _args(**values):
+        options = dict(
+            count_only=False,
+            quiet=False,
+            json_output=False,
+            details=False,
+            ids_only=False,
+            interactive=False,
+            auto_select_all=False,
+            strip_ids=False,
+            substitute_ids=False,
+            output_file=None,
+        )
+        options.update(values)
+        return SimpleNamespace(**options)
+
+    def _adjust(self, monkeypatch, **values):
+        import yellowdog_cli.list as yd_list
+
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        args = self._args(**values)
+        yd_list._adjust_output_options(SimpleNamespace(args=args))
+        return args, infos
+
+    def test_count_is_quiet_and_overrides_the_other_outputs(self, monkeypatch):
+        from yellowdog_cli.utils.output_settings import OUTPUT
+
+        args, _ = self._adjust(
+            monkeypatch, count_only=True, json_output=True, details=True, ids_only=True
+        )
+        assert (args.quiet, args.json_output, args.details, args.ids_only) == (
+            True,
+            False,
+            False,
+            False,
+        )
+        assert args.interactive is False
+        assert OUTPUT.quiet is True and OUTPUT.count_only is True
+
+    def test_a_table_is_chosen_from_interactively(self, monkeypatch):
+        args, _ = self._adjust(monkeypatch)
+        assert args.interactive is True
+
+    def test_json_output_is_not_interactive(self, monkeypatch):
+        args, _ = self._adjust(monkeypatch, json_output=True)
+        assert args.interactive is False
+
+    @pytest.mark.parametrize(
+        "option, value",
+        [
+            ("auto_select_all", True),
+            ("strip_ids", True),
+            ("substitute_ids", True),
+            ("output_file", "out.json"),
+        ],
+    )
+    def test_an_option_needing_the_details_implies_them(
+        self, monkeypatch, option, value
+    ):
+        from yellowdog_cli.utils.output_settings import OUTPUT
+
+        args, infos = self._adjust(monkeypatch, **{option: value})
+        assert args.details is True
+        assert "Automatically setting the '--details' option" in infos
+        assert OUTPUT.details is True  # Configured again, after the change
+
+    def test_count_does_not_imply_the_details(self, monkeypatch):
+        args, infos = self._adjust(monkeypatch, count_only=True, strip_ids=True)
+        assert args.details is False
+        assert infos == []
+
+    def test_stripping_the_ids_from_the_details_is_said(self, monkeypatch):
+        _, infos = self._adjust(monkeypatch, details=True, strip_ids=True)
+        assert "Stripping YellowDog IDs (etc.) from detailed JSON objects" in infos
+
+
+class TestUnknownStatuses:
+    def _warnings(self, monkeypatch, entity_type, statuses):
+        import yellowdog_cli.list as yd_list
+
+        warnings: list[str] = []
+        monkeypatch.setattr(yd_list, "print_warning", warnings.append)
+        yd_list._warn_of_unknown_statuses(
+            SimpleNamespace(
+                args=SimpleNamespace(entity_type=entity_type, status_filter=statuses)
+            )
+        )
+        return warnings
+
+    def test_an_unknown_status_is_warned_of_with_the_known_ones(self, monkeypatch):
+        warnings = self._warnings(
+            monkeypatch, "work-requirements", ["running", "BOGUS"]
+        )
+        assert len(warnings) == 1
+        assert "'BOGUS'" in warnings[0]
+        assert "'running'" not in warnings[0]  # Matched without regard to case
+        assert "RUNNING" in warnings[0]
+
+    def test_known_statuses_are_not_warned_of(self, monkeypatch):
+        assert self._warnings(monkeypatch, "worker-pools", ["RUNNING", "idle"]) == []
+
+    def test_no_status_filter_is_no_warning(self, monkeypatch):
+        assert self._warnings(monkeypatch, "work-requirements", None) == []
