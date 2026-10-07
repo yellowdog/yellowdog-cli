@@ -1478,6 +1478,44 @@ COMMANDS["yd-compare"] = Command(
     tool=ToolKind.READ_ONLY,
 )
 
+# --- '--wait' for yd-resize and yd-compute-reprovision ------------------
+
+WAIT_FOR_CAPACITY = option(
+    "--wait",
+    "-w",
+    action="store_true",
+    required=False,
+    help=(
+        "wait until each compute requirement acted on has its target number of"
+        " instances running, and none starting or terminating"
+    ),
+)
+WAIT_TIMEOUT = TIMEOUT.variant(
+    default=None,
+    help=(
+        "with --wait, stop waiting after this many seconds and fail (default: no limit)"
+    ),
+)
+
+
+def check_wait_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    '--wait' waits for Compute Requirements (on yd-resize, only with
+    '--compute-requirement'), and not alongside '--follow', which streams
+    events until the end itself; '--timeout' limits '--wait' alone.
+    """
+    wait = getattr(args, "wait", False)
+    if wait and getattr(args, "follow", False):
+        parser.error("--wait cannot be combined with --follow")
+    if wait and hasattr(args, "compute_requirement") and not args.compute_requirement:
+        parser.error(
+            "--wait applies to Compute Requirements only: use it with"
+            " --compute-requirement/-C"
+        )
+    if getattr(args, "timeout", None) is not None and not wait:
+        parser.error("--timeout applies only with --wait")
+
+
 # --- yd-compute-restart / -deprovision / -reprovision / -start / -stop -----
 
 
@@ -1549,15 +1587,19 @@ COMMANDS["yd-compute-reprovision"] = Command(
     summary="Reprovision Compute Requirements, restoring their target instance counts",
     kind=CommandKind.API,
     # Compute Requirement-level only: no Instance or Node IDs
-    options=_compute_action_options(
-        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
-            help=(
-                "the name(s) or YellowDog ID(s) of the compute requirement(s);"
-                " a name may be a glob pattern (e.g. 'cr-*')"
-            ),
-        )
+    options=(
+        *_compute_action_options(
+            COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+                help=(
+                    "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                    " a name may be a glob pattern (e.g. 'cr-*')"
+                ),
+            )
+        ),
+        WAIT_FOR_CAPACITY,
+        WAIT_TIMEOUT,
     ),
-    validators=(check_glob_and_literal_names,),
+    validators=(check_glob_and_literal_names, check_wait_options),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2884,7 +2926,10 @@ COMMANDS["yd-resize"] = Command(
         RESIZE_COMPUTE_REQUIREMENT,
         FOLLOW.variant(help="follow progress after resizing"),
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
+        WAIT_FOR_CAPACITY,
+        WAIT_TIMEOUT,
     ),
+    validators=(check_wait_options,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

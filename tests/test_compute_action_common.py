@@ -175,6 +175,7 @@ def platform(monkeypatch):
     monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(cac_module, "select", lambda client, objects: objects)
     monkeypatch.setattr(cac_module, "follow_ids", MagicMock())
+    monkeypatch.setattr(cac_module, "wait_for_capacity", MagicMock())
 
     def get_summaries(client, namespace, tag=None, statuses=None, name=None):
         return [
@@ -217,6 +218,8 @@ def _run(
     targets: list[str],
     follow: bool = False,
     dry_run: bool | None = None,
+    wait: bool | None = None,
+    timeout: int | None = None,
 ):
     apply_compute_action(
         RunContext(
@@ -225,6 +228,8 @@ def _run(
                 follow=follow,
                 dry_run=dry_run,
                 json_output=False,
+                wait=wait,
+                timeout=timeout,
             ),
             config=platform.config,
             client=platform.client,
@@ -727,6 +732,23 @@ class TestReprovision:
             "Reprovision (restore to their target instance counts)"
             " 1 Compute Requirement(s) ('cr-a')?"
         ]
+
+    @pytest.mark.parametrize("targets", [[CR_ID], []])
+    def test_wait_waits_for_what_was_reprovisioned(
+        self, platform, monkeypatch, targets
+    ):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)  # skipped
+        _run(platform, COMPUTE_REPROVISION, targets, wait=True, timeout=60)
+        cac_module.wait_for_capacity.assert_called_once_with(ANY, [CR_ID], 60)
+
+    def test_no_wait_without_the_option(self, platform, monkeypatch):
+        _run(platform, COMPUTE_REPROVISION, [CR_ID])
+        cac_module.wait_for_capacity.assert_not_called()
+
+    def test_no_wait_when_nothing_was_reprovisioned(self, platform, monkeypatch):
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_REPROVISION, [CR_ID], wait=True)
+        cac_module.wait_for_capacity.assert_not_called()
 
     def test_the_command_is_the_action(self, monkeypatch):
         import yellowdog_cli.compute_reprovision as yd_compute_reprovision

@@ -209,7 +209,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 17:31:55 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct  7 18:02:30 BST 2026 -->
 
 <!--te-->
 
@@ -3861,13 +3861,18 @@ Only a `RUNNING` Compute Requirement is resized: one in any other state is skipp
 Key options:
 - `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--wait`/`-w` — with `--compute-requirement`, wait until the Compute Requirement has its new target of Instances running (see below)
+- `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+With `--wait`, the command returns only once the resized Compute Requirement has settled: it is `RUNNING`, as many of its Instances are `RUNNING` as its new target asks for, and none is still starting, stopping or terminating. Scaling up therefore waits for the new Instances to start, and scaling down for the surplus Instances to finish terminating, which can take a minute or more. Progress is printed whenever it changes. A Compute Requirement that cannot reach its target, because the cloud provider has no more capacity of the kind it asks for (on-demand as well as spot) or an Allowance or quota stands in the way, never settles, so give a `--timeout` when that is possible: if it passes first, the command reports what is still missing and exits 1, though the resize itself has been made and is recorded as `resized`. `--wait` cannot be combined with `--follow`, and does not apply to Worker Pools.
 
 ```shell
 yd-resize pyex-slurm-pwt_230711-1243561-0d 10
 yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 yd-resize --compute-requirement pyex-slurm-pwt_230712-1102264-4c 5
 yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+yd-resize -C pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
 ```
 
 ### yd-nodeaction
@@ -4115,10 +4120,13 @@ It selects Compute Requirements as `yd-compute-stop` does: if no arguments are s
 
 Key options:
 - `--follow`/`-f` — follow the Compute Requirements' events as Instances are provisioned
+- `--wait`/`-w` — wait until each Compute Requirement reprovisioned has its target number of Instances running, as for `yd-resize --wait`
+- `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-compute-reprovision my-compute-requirement --follow
+yd-compute-reprovision my-compute-requirement --wait --timeout 600
 ```
 
 ## Monitoring and Inspection Commands

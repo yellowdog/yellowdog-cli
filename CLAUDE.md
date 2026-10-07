@@ -104,6 +104,7 @@ yellowdog_cli/
     ├── follow_utils.py          # follow_ids(ctx, ...): SSE streams in threads, reconnection with backoff, timeout, follow_exit_code()
     ├── cloud_info.py            # yd-cloud-info as a library: CloudInfoQuery, the four Cloud Info searches filtered exactly here (the service's text filters match substrings), the --prices join (PricedInstanceType), local sorting; ctx first, never the command line
     ├── action_runner.py         # The action commands' shared rules: resolve_targets(), confirm_items(), carry_out()
+    ├── capacity_wait.py         # wait_for_capacity(): '--wait' on yd-resize -C and yd-compute-reprovision; settled = RUNNING, target Instances RUNNING, none PENDING/STOPPING/TERMINATING (the SDK's is_compute_requirement_updating() clears within ~2s, so is not used)
     ├── work_targets.py          # resolve_named_target(): 'wr', 'wr/tg', 'namespace/wr', 'namespace/wr/tg' as yd-abort and yd-priority read them ('a/b' a Task Group first)
     ├── start_hold_common.py     # yd-start/hold/finish over action_runner
     ├── compute_action_common.py # yd-compute-stop/start/restart/deprovision/reprovision and yd-terminate over action_runner

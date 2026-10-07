@@ -12,7 +12,7 @@ import warnings
 from json import loads as json_loads
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as ConnectionError_
@@ -82,6 +82,8 @@ _DEFAULTS = {
     "interactive": False,
     "auto_select_all": False,
     "follow": False,
+    "wait": False,
+    "timeout": None,
     "abort": False,
     "terminate": False,
     "yes": True,
@@ -1005,6 +1007,38 @@ class TestResize:
         )
         assert out[0]["outcome"] == "skipped"
         assert "is STOPPED" in out[0]["error"]
+
+    @pytest.fixture
+    def by_name(self, monkeypatch):
+        """
+        The arguments resizing Compute Requirement 'cr-a', which the
+        listing finds RUNNING; the wait itself replaced by a mock.
+        """
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a")],
+        )
+        monkeypatch.setattr(yd_resize, "wait_for_capacity", MagicMock())
+        return self._args(compute_req_resize=True, worker_pool_name="cr-a")
+
+    def test_wait_waits_for_the_resized_compute_requirement(self, run, by_name):
+        out, _, _ = run(yd_resize, **by_name, wait=True, timeout=60)
+        assert out[0]["outcome"] == "resized"
+        yd_resize.wait_for_capacity.assert_called_once_with(ANY, [CR_ID], 60)
+
+    @pytest.mark.parametrize("values", [{}, {"dry_run": True}])
+    def test_no_wait_without_the_option_or_under_dry_run(self, run, by_name, values):
+        run(yd_resize, **by_name, wait=bool(values), **values)
+        yd_resize.wait_for_capacity.assert_not_called()
+
+    def test_a_timed_out_wait_keeps_the_record_and_exits_1(self, run, by_name):
+        from yellowdog_cli.utils.capacity_wait import CapacityWaitTimeout
+
+        yd_resize.wait_for_capacity.side_effect = CapacityWaitTimeout("timed out")
+        out, _, _ = run(yd_resize, **by_name, wait=True, timeout=5)
+        assert [r["outcome"] for r in out] == ["resized"]
+        assert run.exit_code == 1
 
     def test_a_negative_size_is_a_usage_error(self, capsys):
         from yellowdog_cli.utils.command_registry import COMMANDS, build_parser

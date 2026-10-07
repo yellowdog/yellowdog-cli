@@ -11,6 +11,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd-compute-reprovision`** asks the Platform to provision Instances until a `RUNNING` Compute Requirement has as many as its target instance count, restoring one left short (by `yd-terminate`, say, or a reclaimed spot Instance) without changing the target. It selects Compute Requirements as `yd-compute-stop` does: by name, glob pattern or ID, or by `namespace` and `tag`.
 - **`yd-token`** refreshes the token of one or more Configured Worker Pools, keeping it and setting its expiry afresh, or with `--regenerate` issues a new one, invalidating the old. Either is confirmed first, the prompt saying what the expiry will be. `--ttl-hours` sets the token's time to live from now; without it, the token does not expire. Pools are named by ID, name or glob pattern; the new token and its expiry are printed, or recorded with `--json`. It is also available to MCP clients as the `yd_token` tool.
 
+### Waiting for capacity
+
+- **`yd-resize --compute-requirement --wait`** and **`yd-compute-reprovision --wait`** return only once each Compute Requirement acted on has its target number of Instances running and none starting or terminating, printing progress as it changes. `--timeout <seconds>` limits the wait, exiting 1 if it passes first (the change itself is still made and recorded); without it there is no limit, so a Compute Requirement left short, because the provider has run out of capacity of the kind it asks for (on-demand as well as spot) or a limit stands in the way, waits indefinitely.
+
 ### Diagnosing a Compute Requirement
 
 - **`yd-show --show-source-report`** follows a Compute Requirement with the Platform's report of how its sources were chosen (considered, selected and rejected Compute Source Templates, ranks, scores, constraints and preferences), for one provisioned from a dynamic template.

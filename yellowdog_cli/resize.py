@@ -10,7 +10,8 @@ asked: a target that does not exist fails (exit 6), as does a Worker Pool
 that is Configured, awaiting nodes, or would go outside its node limits; a
 target that has finished, or is already the size asked for, is skipped. A
 lookup that fails for any other reason reaches the wrapper, which reports
-and classifies it.
+and classifies it. With '--wait', a resized Compute Requirement is waited for
+until it has its new target of Instances running (capacity_wait.py).
 """
 
 from collections.abc import Callable
@@ -24,6 +25,7 @@ from yellowdog_client.model import (
     WorkerPool,
 )
 
+from yellowdog_cli.utils.capacity_wait import wait_for_capacity
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
@@ -270,6 +272,9 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
         raise
     _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "resized")
     print_info(f"Resized Compute Requirement {label} {change}")
+
+    if ctx.args.wait:
+        wait_for_capacity(ctx, [cast(str, compute_requirement.id)], ctx.args.timeout)
 
     if ctx.args.follow:
         if ctx.args.auto_cr:

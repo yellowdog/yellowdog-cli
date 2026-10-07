@@ -38,6 +38,7 @@ from yellowdog_cli.utils.action_runner import (
     confirm_items,
     resolve_targets,
 )
+from yellowdog_cli.utils.capacity_wait import wait_for_capacity
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.dryrun_utils import report_dry_run
 from yellowdog_cli.utils.entity_names import (
@@ -363,8 +364,7 @@ def _apply_action_to_summaries(
 
     if actioned_ids:
         print_info(f"{action.past_tense} {len(actioned_ids)} Compute Requirement(s)")
-        if ctx.args.follow:
-            follow_ids(ctx, actioned_ids)
+        _after(ctx, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
 
@@ -476,8 +476,19 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
         if cr_id not in actioned_ids:
             actioned_ids.append(cr_id)
 
-    if actioned_ids and ctx.args.follow:
+    if actioned_ids:
+        _after(ctx, actioned_ids)
+
+
+def _after(ctx: RunContext, actioned_ids: list[str]):
+    """
+    Follow (--follow) or wait for (--wait, yd-compute-reprovision's) the
+    Compute Requirements acted on; the registry refuses the two together.
+    """
+    if ctx.args.follow:
         follow_ids(ctx, actioned_ids)
+    elif ctx.args.wait:
+        wait_for_capacity(ctx, actioned_ids, ctx.args.timeout)
 
 
 def _instances_failure(action: ComputeAction, group: list[_Instance], e: Exception):

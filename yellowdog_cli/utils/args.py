@@ -660,6 +660,15 @@ class CLIParser:
         return self.args.auto_follow_compute_requirements
 
     # -----------------------------------------------------------------------
+    # yd-resize / yd-compute-reprovision
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def wait(self) -> bool | None:
+        return self.args.wait
+
+    # -----------------------------------------------------------------------
     # yd-follow / yd-provision / yd-instantiate / yd-resize / yd-shutdown /
     # yd-terminate / yd-submit / yd-cancel / yd-start / yd-hold / yd-finish
     # -----------------------------------------------------------------------

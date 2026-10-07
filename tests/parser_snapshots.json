@@ -2558,6 +2558,33 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "wait",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--wait",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
     }
   ],
   "yd-compute-restart": [
@@ -8833,6 +8860,33 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "wait",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--wait",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "timeout",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--timeout"
+      ],
+      "required": false,
+      "type": "positive_int"
     }
   ],
   "yd-schema": [
