@@ -635,8 +635,10 @@ def follow_events(
 
     A stream that drops is reconnected (see _Outage), as is one that closes
     while its entity is still live (_entity_finished()). A first connection
-    that fails is reported at once. Each failure is recorded for the exit
-    code (follow_exit_code()).
+    that fails is reported at once. An outage ends only once a stream
+    delivers an event, so a connection that keeps dropping before any is
+    given up on too. Each failure is recorded for the exit code
+    (follow_exit_code()).
     """
     outage = _Outage()
     connected = False
@@ -675,7 +677,6 @@ def follow_events(
                 break
 
             connected = True
-            outage.end()
             if response.encoding is None:
                 response.encoding = "utf-8"
 
@@ -684,6 +685,10 @@ def follow_events(
                     if _STOP_FOLLOWING.is_set():
                         return
                     if event and isinstance(event, str):
+                        # Only a stream that delivers ends an outage: one that
+                        # is accepted and drops before any event, over and over,
+                        # is still the one outage, and is given up on
+                        outage.end()
                         if on_event is not None:
                             on_event(event, ydid_type)
                         else:
