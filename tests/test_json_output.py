@@ -2828,6 +2828,38 @@ class TestDownload:
         assert "would both be synced to 'out'" in " ".join(err.split())
         assert not (remote / "out").exists()
 
+    def test_a_wildcard_the_check_cannot_list_is_failed_not_synced(
+        self, remote, run_dc, monkeypatch
+    ):
+        # The check's listing fails though the download's would succeed, as
+        # a transient failure might: the wildcard is never synced unchecked,
+        # and the other argument still is
+        def unlisted(config, remote_path, allow_empty=False):
+            raise RuntimeError("Cannot access 'loc:remote': network blip")
+
+        monkeypatch.setattr(yd_download, "config_glob_matches", unlisted)
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/su*", "loc:remote/a.txt"],
+            destination="out",
+            sync=True,
+        )
+        assert code == 1
+        failed = [r for r in out if r["action"] == "failed"]
+        assert [r["source"] for r in failed] == ["loc:remote/su*"]
+        assert "could not be checked for a safe --sync" in failed[0]["error"]
+        assert "network blip" in failed[0]["error"]
+        assert not (remote / "out" / "sub").exists()
+        assert (remote / "out" / "a.txt").exists()
+
+    def test_a_wildcard_matching_nothing_still_fails_as_such(self, remote, run_dc):
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:remote/zz*"], destination="out", sync=True
+        )
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"]
+        assert "No matches" in out[0]["error"]
+
     def test_a_sync_into_the_current_directory_is_refused(self, remote, run_dc):
         _, err, code = run_dc(yd_download, remote_paths=["/"], sync=True)
         assert code == 2
