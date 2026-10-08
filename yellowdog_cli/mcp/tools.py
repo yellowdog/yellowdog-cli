@@ -25,6 +25,7 @@ from yellowdog_cli.utils.command_registry import (
     Exclusive,
     Option,
     ToolKind,
+    finite_float,
     non_negative_int,
     positive_int,
     resolve_cloud_info_type,
@@ -156,6 +157,8 @@ def _item_schema(option: Option) -> dict[str, Any]:
     elif kind is non_negative_int:
         schema["type"] = "integer"
         schema["minimum"] = 0
+    elif kind is finite_float:
+        schema["type"] = "number"
     elif kind is resolve_entity_type:
         schema["type"] = "string"
         schema["enum"] = list(ENTITY_TYPES)

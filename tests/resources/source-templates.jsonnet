@@ -251,6 +251,7 @@ local gceInstanceGroupMax = gceInstanceGroupMin {
   acceleratorType: '{{gcp_accelerator_type}}',
   acceleratorCount: 1,
   hostMaintenanceBehaviour: 'MIGRATE',
+  serviceAccountEmail: '{{gcp_service_account_email}}',
   targetDistributionShape: 'BALANCED',
 };
 
@@ -287,6 +288,7 @@ local gceInstancesMax = gceInstancesMin {
   acceleratorType: '{{gcp_accelerator_type}}',
   acceleratorCount: 1,
   hostMaintenanceBehaviour: 'MIGRATE',
+  serviceAccountEmail: '{{gcp_service_account_email}}',
 };
 
 // ---------------------------------------------------------------------------

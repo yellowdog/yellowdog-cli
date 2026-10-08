@@ -12,7 +12,7 @@ import warnings
 from json import loads as json_loads
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from requests import ConnectionError as ConnectionError_
@@ -33,6 +33,8 @@ from yellowdog_client.model import (
 import yellowdog_cli.abort as yd_abort
 import yellowdog_cli.boost as yd_boost
 import yellowdog_cli.cancel as yd_cancel
+import yellowdog_cli.compute_deprovision as yd_compute_deprovision
+import yellowdog_cli.compute_reprovision as yd_compute_reprovision
 import yellowdog_cli.compute_restart as yd_compute_restart
 import yellowdog_cli.compute_stop as yd_compute_stop
 import yellowdog_cli.finish as yd_finish
@@ -49,6 +51,7 @@ import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.start_hold_common as shc_module
+import yellowdog_cli.utils.work_targets as work_targets
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.entity_names import RN_REQUIREMENT_TEMPLATE, RN_SOURCE_TEMPLATE
@@ -79,6 +82,8 @@ _DEFAULTS = {
     "interactive": False,
     "auto_select_all": False,
     "follow": False,
+    "wait": False,
+    "timeout": None,
     "abort": False,
     "terminate": False,
     "yes": True,
@@ -560,12 +565,14 @@ class TestAbort:
             lookups.append((namespace, name))
             return known.get((namespace, name))
 
+        # Named targets are read by utils/work_targets.py
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
-        monkeypatch.setattr(
-            yd_abort, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
-        )
+        for module in (yd_abort, work_targets):
+            monkeypatch.setattr(
+                module, "get_task_groups_from_wr_by_id", lambda client, wr_id: [_tg()]
+            )
         return lookups
 
     def _client(self, tasks=(), by_id=None):
@@ -619,7 +626,7 @@ class TestAbort:
             return None
 
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
         client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["a/b"])
@@ -634,7 +641,7 @@ class TestAbort:
             return None
 
         monkeypatch.setattr(
-            yd_abort, "get_work_requirement_summary_by_name_or_id", lookup
+            work_targets, "get_work_requirement_summary_by_name_or_id", lookup
         )
         out, _, _ = run(yd_abort, client=self._client(), task_id_list=["a/b", "a"])
         assert [(r["name"], r["outcome"], r["error"]) for r in out] == [
@@ -1001,6 +1008,38 @@ class TestResize:
         assert out[0]["outcome"] == "skipped"
         assert "is STOPPED" in out[0]["error"]
 
+    @pytest.fixture
+    def by_name(self, monkeypatch):
+        """
+        The arguments resizing Compute Requirement 'cr-a', which the
+        listing finds RUNNING; the wait itself replaced by a mock.
+        """
+        monkeypatch.setattr(
+            entity_utils_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a")],
+        )
+        monkeypatch.setattr(yd_resize, "wait_for_capacity", MagicMock())
+        return self._args(compute_req_resize=True, worker_pool_name="cr-a")
+
+    def test_wait_waits_for_the_resized_compute_requirement(self, run, by_name):
+        out, _, _ = run(yd_resize, **by_name, wait=True, timeout=60)
+        assert out[0]["outcome"] == "resized"
+        yd_resize.wait_for_capacity.assert_called_once_with(ANY, [CR_ID], 60)
+
+    @pytest.mark.parametrize("values", [{}, {"dry_run": True}])
+    def test_no_wait_without_the_option_or_under_dry_run(self, run, by_name, values):
+        run(yd_resize, **by_name, wait=bool(values), **values)
+        yd_resize.wait_for_capacity.assert_not_called()
+
+    def test_a_timed_out_wait_keeps_the_record_and_exits_1(self, run, by_name):
+        from yellowdog_cli.utils.capacity_wait import CapacityWaitTimeout
+
+        yd_resize.wait_for_capacity.side_effect = CapacityWaitTimeout("timed out")
+        out, _, _ = run(yd_resize, **by_name, wait=True, timeout=5)
+        assert [r["outcome"] for r in out] == ["resized"]
+        assert run.exit_code == 1
+
     def test_a_negative_size_is_a_usage_error(self, capsys):
         from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 
@@ -1293,7 +1332,7 @@ class TestStartHold:
 
 
 # ---------------------------------------------------------------------------
-# yd-compute-stop / -start / -restart
+# yd-compute-stop / -start / -restart / -deprovision / -reprovision
 # ---------------------------------------------------------------------------
 
 
@@ -1326,6 +1365,41 @@ class TestComputeActions:
                 "instances",
                 "restart",
                 "restarted",
+            )
+        ]
+
+    def test_deprovision_an_instance(self, run, monkeypatch):
+        instance = MagicMock(status=InstanceStatus.RUNNING)
+        monkeypatch.setattr(cac_module, "get_instance_by_id", lambda *a, **k: instance)
+        out, _, _ = run(
+            cac_module,
+            yd_compute_deprovision,
+            compute_requirements_instances_or_nodes=[f"{CR_ID}.{INSTANCE_ID}"],
+        )
+        assert out == [
+            _action(
+                f"{CR_ID}.{INSTANCE_ID}",
+                INSTANCE_ID,
+                "instances",
+                "deprovision",
+                "deprovisioned",
+            )
+        ]
+
+    def test_reprovision_tag_path(self, run, monkeypatch):
+        monkeypatch.setattr(
+            cac_module,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [_cr(CR_ID, "cr-a")],
+        )
+        out, _, _ = run(
+            cac_module,
+            yd_compute_reprovision,
+            compute_requirements_instances_or_nodes=[],
+        )
+        assert out == [
+            _action(
+                CR_ID, "cr-a", "compute-requirements", "reprovision", "reprovisioned"
             )
         ]
 
@@ -1812,6 +1886,7 @@ class TestProvision:
                     "worker_pool_file": None,
                     "worker_pool_file_positional": None,
                     "content_path": None,
+                    "report": False,
                     **values,
                 },
             )

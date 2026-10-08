@@ -52,7 +52,7 @@ schema_descriptions: README.md
 	python3 scripts/extract_schema_descriptions.py > yellowdog_cli/spec_data/descriptions.json
 
 test:
-	pytest -v
+	pytest -v -n 8
 
 pyright:
 	pyright $(SRC)

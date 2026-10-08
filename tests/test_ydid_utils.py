@@ -26,6 +26,7 @@ from yellowdog_cli.utils.ydid_utils import (
     TYPE_WRKR,
     TYPE_WRKRPOOL,
     YDID,
+    YDID_HIGHLIGHT_RE,
     YDIDType,
     get_ydid_type,
     split_instance_specification,
@@ -66,6 +67,25 @@ class TestGetYdidType:
     )
     def test_known_prefix_returns_correct_type(self, ydid, expected):
         assert get_ydid_type(ydid) == expected
+
+    def test_a_role_id_as_the_platform_gives_it(self):
+        # A Role is global: its YDID has no hex segment before the UUID, and
+        # was refused as invalid while the pattern demanded one
+        role_id = "ydid:role:6357e440-eb8d-44f4-8c0c-0b58fb535312"
+        assert get_ydid_type(role_id) == YDIDType.ROLE
+        assert YDID_HIGHLIGHT_RE.search(f"Role {role_id} shown").group("ydid") == (
+            role_id
+        )
+
+    @pytest.mark.parametrize(
+        "ydid",
+        [
+            f"{YDID}:{TYPE_ROLE}:nothex:{_UUID}",
+            f"{YDID}:{TYPE_COMPREQ}:{_HEX}:{_HEX}:{_HEX}:{_UUID}",
+        ],
+    )
+    def test_segments_must_be_hex_and_at_most_two(self, ydid):
+        assert get_ydid_type(ydid) is None
 
     def test_every_type_has_exactly_one_token(self):
         assert sorted(_TYPE_TOKENS.values(), key=str) == sorted(YDIDType, key=str)

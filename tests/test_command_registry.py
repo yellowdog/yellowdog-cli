@@ -390,7 +390,11 @@ class TestToolKinds:
             "yd-compute-stop",
             "yd-compute-start",
             "yd-compute-restart",
+            "yd-compute-deprovision",
+            "yd-compute-reprovision",
             "yd-nodeaction",
+            "yd-priority",
+            "yd-token",
         }
 
     def test_the_acting_commands(self):
@@ -462,6 +466,34 @@ class TestCompareIds:
             self._check(*ids)
         assert raised.value.code == 2
         assert "not a YellowDog" in capsys.readouterr().err
+
+
+class TestResizeTarget:
+    CR = "ydid:compreq:000000:11111111-1111-1111-1111-111111111111"
+    WP = "ydid:wrkrpool:000000:11111111-1111-1111-1111-111111111111"
+
+    @pytest.mark.parametrize(
+        "argv, compute_requirement",
+        [
+            (["wp-a", "2"], False),
+            (["-C", "cr-a", "2"], True),
+            ([CR, "2"], True),  # the ID says what it is
+            (["-C", CR, "2"], True),
+            ([WP, "2"], False),
+        ],
+    )
+    def test_a_compute_requirement_by_option_or_id(self, argv, compute_requirement):
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert CLIParser("yd-resize", argv).compute_req_resize is compute_requirement
+
+    def test_the_option_with_a_worker_pool_id_is_refused(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser("yd-resize", ["-C", self.WP, "2"])
+        assert raised.value.code == 2
+        assert "cannot be used with a Worker Pool ID" in capsys.readouterr().err
 
 
 class TestArgsProperties:

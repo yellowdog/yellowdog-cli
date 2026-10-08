@@ -3,11 +3,19 @@ Utility functions for provisioning and instantiating.
 """
 
 from json import dumps as json_dumps
+from json import loads as json_loads
 from os.path import join
+from typing import Any
 
+import requests
 from yellowdog_client import PlatformClient
+from yellowdog_client.model import (
+    ComputeRequirementTemplateTestResult,
+    ComputeRequirementTemplateUsage,
+)
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
+from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import (
     get_compute_requirement_template_id_by_name,
     get_image_name_or_id,
@@ -20,6 +28,7 @@ from yellowdog_cli.utils.load_config import config_file_dir
 from yellowdog_cli.utils.misc_utils import generate_id
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
+from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.variable_substitution import warn_of_undefined_variables
 from yellowdog_cli.utils.variable_syntax import (
@@ -231,3 +240,51 @@ def get_image_id(client: PlatformClient, image_name_or_id: str) -> str | None:
     return get_image_name_or_id(
         client=client, image_name_or_id=image_name_or_id, always_return_ydid=True
     )
+
+
+def specification_model(class_name: str, data: dict) -> Any:
+    """
+    A JSON specification's part as the SDK model it describes (a
+    ComputeRequirementTemplateUsage or ProvisionedWorkerPoolProperties), so
+    that yd-provision and yd-instantiate send it through the SDK, as the
+    TOML path does. Built as yd-create builds its resources: a property the
+    model lacks is warned of and left out, and the specification itself is
+    not changed.
+    """
+    from yellowdog_cli.utils.resource_creation import _get_model_object
+
+    return _get_model_object(class_name, dict(data))
+
+
+def report_on_usage(ctx: RunContext, usage: ComputeRequirementTemplateUsage) -> None:
+    """
+    Print the Platform's test of provisioning a Compute Requirement from a
+    template, for the '--report' of yd-provision and yd-instantiate: nothing
+    is provisioned. A template that does not exist is NotFoundError (exit 6).
+    """
+    print_info("Generating provisioning report only")
+    try:
+        test_result: ComputeRequirementTemplateTestResult = (
+            ctx.client.compute_client.test_compute_requirement_template(usage)
+        )
+        print_compute_template_test_result(test_result)
+    except requests.HTTPError as http_error:
+        resp = http_error.response
+        if resp is not None and resp.status_code == 404:
+            raise NotFoundError(_message_of(resp.text)) from http_error
+        if resp is not None and "No sources" in resp.text:
+            print_info("No Compute Sources match the Template's constraints")
+        else:
+            raise http_error
+
+
+def _message_of(response_text: str) -> str:
+    """
+    A Platform error response's 'message', or a default if it has none or
+    is not JSON.
+    """
+    try:
+        message = json_loads(response_text).get("message")
+    except (ValueError, AttributeError):
+        message = None
+    return message or "Compute Requirement Template not found"

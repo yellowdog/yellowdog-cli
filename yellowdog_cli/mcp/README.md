@@ -91,6 +91,8 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_cancel` | destructive | `yd-cancel` | Cancel Work Requirements |
 | `yd_cloud_info` | read-only | `yd-cloud-info` | List cloud regions, instance types and prices |
 | `yd_compare` | read-only | `yd-compare` | Compare a Work Requirement or Task Group against Worker Pool(s) |
+| `yd_compute_deprovision` | destructive | `yd-compute-deprovision` | Deprovision Instances, reducing their Compute Requirements' target counts |
+| `yd_compute_reprovision` | destructive | `yd-compute-reprovision` | Reprovision Compute Requirements, restoring their target instance counts |
 | `yd_compute_restart` | destructive | `yd-compute-restart` | Restart Instances |
 | `yd_compute_start` | destructive | `yd-compute-start` | Start stopped Compute Requirements and Instances |
 | `yd_compute_stop` | destructive | `yd-compute-stop` | Stop Compute Requirements and Instances |
@@ -106,6 +108,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_list` | read-only | `yd-list` | List YellowDog items |
 | `yd_ls` | read-only | `yd-ls` | List remote data client files and directories |
 | `yd_nodeaction` | destructive | `yd-nodeaction` | Submit Node Actions to Worker Pool nodes |
+| `yd_priority` | destructive | `yd-priority` | Change the priority of Work Requirements and Task Groups |
 | `yd_provision` | acting | `yd-provision` | Provision a Worker Pool |
 | `yd_remove` | destructive | `yd-remove` | Remove resources |
 | `yd_resize` | destructive | `yd-resize` | Resize Worker Pools and Compute Requirements |
@@ -114,6 +117,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_start` | destructive | `yd-start` | Start held (paused) Work Requirements |
 | `yd_submit` | acting | `yd-submit` | Submit a Work Requirement |
 | `yd_terminate` | destructive | `yd-terminate` | Terminate Compute Requirements, Instances or Nodes |
+| `yd_token` | destructive | `yd-token` | Refresh or regenerate the tokens of Configured Worker Pools |
 | `yd_upload` | acting | `yd-upload` | Upload files to a remote data client |
 | `yd_variables` | read-only | `yd-variables` | Report the processed values of variable substitutions |
 | `yd_version` | read-only | `yd-version` | Report version information |

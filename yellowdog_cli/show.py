@@ -7,9 +7,13 @@ Command to show the JSON details of YellowDog entities via their IDs.
 from collections.abc import Callable
 from dataclasses import dataclass
 from sys import exit as sys_exit
-from typing import Any
+from typing import Any, cast
 
-from yellowdog_client.model import ConfiguredWorkerPool
+from yellowdog_client.model import (
+    ComputeRequirement,
+    ConfiguredWorkerPool,
+    ProvisionedWorkerPool,
+)
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
@@ -26,7 +30,11 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
+    get_group_applications,
+    get_group_users,
     get_instance_by_id,
+    get_role_groups,
+    get_user_groups,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -61,7 +69,10 @@ from yellowdog_cli.utils.ydid_utils import (
 
 # An object to be shown, paired with any additional fields to add to its JSON
 # representation. A single YellowDog ID can yield more than one: a Configured
-# Worker Pool shown with '--show-token' yields the pool and its token.
+# Worker Pool shown with '--show-token' yields the pool and its token, and a
+# Compute Requirement (or a Provisioned Worker Pool) shown with
+# '--show-source-report' or '--show-exhaustion' yields those reports after it,
+# and a Group or Role with '--show-members' its members.
 ShowItem = tuple[Any, dict | None]
 
 
@@ -108,8 +119,9 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     # Whenever more than one object is to be printed, it's printed as a JSON
     # array. More than one ID asked for is enough on its own, so that the shape
     # of the output follows the request rather than how much of it succeeded;
-    # a single ID can also yield more than one object, a Configured Worker Pool
-    # shown with '--show-token' being the only case.
+    # a single ID can also yield more than one object: a Configured Worker
+    # Pool with '--show-token', or a Compute Requirement or Provisioned Worker
+    # Pool with '--show-source-report' or '--show-exhaustion'.
     as_json_array = len(ydids) > 1
     for index, ydid in enumerate(ydids):
         try:
@@ -297,6 +309,77 @@ def _worker_pool(ctx: RunContext, ydid: str) -> list[ShowItem]:
                 None,
             )
         )
+    if _diagnostics_requested(ctx):
+        if isinstance(worker_pool, ProvisionedWorkerPool):
+            items += _diagnostics(
+                ctx,
+                ctx.client.compute_client.get_compute_requirement_by_id(
+                    cast(str, worker_pool.computeRequirementId)
+                ),
+            )
+        else:
+            print_warning(
+                f"Worker Pool '{ydid}' is not a Provisioned Worker Pool, so has"
+                " no Compute Requirement to report on"
+            )
+    return items
+
+
+def _compute_requirement(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    compute_requirement = ctx.client.compute_client.get_compute_requirement_by_id(ydid)
+    return [(compute_requirement, None), *_diagnostics(ctx, compute_requirement)]
+
+
+def _diagnostics_requested(ctx: RunContext) -> bool:
+    return bool(ctx.args.show_source_report or ctx.args.show_exhaustion)
+
+
+def _diagnostics(
+    ctx: RunContext, compute_requirement: ComputeRequirement
+) -> list[ShowItem]:
+    """
+    The reports asked for on a Compute Requirement: how its sources were
+    chosen ('--show-source-report'), and the Allowances exhausted for it
+    ('--show-exhaustion'). A report the Platform does not have is warned of
+    and left out, so that the Compute Requirement is still shown; any other
+    failure is raised, failing the ID.
+    """
+    items: list[ShowItem] = []
+    cr_id = cast(str, compute_requirement.id)
+    if ctx.args.show_source_report:
+        print_info(f"Showing source report for '{cr_id}'")
+        try:
+            items.append(
+                (
+                    ctx.client.compute_client.get_best_compute_source_report_by_compute_requirement(
+                        cr_id
+                    ),
+                    None,
+                )
+            )
+        except Exception as e:
+            if not is_http_not_found(e):
+                raise
+            print_warning(
+                f"No source report for '{cr_id}': only a Compute"
+                " Requirement provisioned from a dynamic template has one"
+            )
+    if ctx.args.show_exhaustion:
+        print_info(f"Checking Allowance exhaustion for '{cr_id}'")
+        notifications = (
+            ctx.client.allowances_client.check_compute_requirement_exhaustion(
+                compute_requirement
+            )
+        )
+        items.append(
+            (
+                {
+                    "computeRequirementId": cr_id,
+                    "exhaustedAllowances": notifications or [],
+                },
+                None,
+            )
+        )
     return items
 
 
@@ -328,8 +411,72 @@ def _application(ctx: RunContext, ydid: str) -> list[ShowItem]:
 
 
 def _user(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    # Its groups by name, as for an Application and 'yd-list users
+    # --details': a User specification takes them, so the JSON can still be
+    # given to yd-create
     user = ctx.client.account_client.get_user(ydid)
-    return [(user, {RESOURCE_PROPERTY_NAME: user.__class__.__name__})]
+    group_names = [group.name for group in get_user_groups(ctx.client, ydid)]
+    return [
+        (
+            user,
+            {PROP_GROUPS: group_names, RESOURCE_PROPERTY_NAME: user.__class__.__name__},
+        )
+    ]
+
+
+def _group(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    items: list[ShowItem] = [
+        (ctx.client.account_client.get_group(ydid), {RESOURCE_PROPERTY_NAME: RN_GROUP})
+    ]
+    if ctx.args.show_members:
+        print_info(f"Showing members of Group '{ydid}'")
+        items.append(
+            (
+                {
+                    "groupId": ydid,
+                    "users": [
+                        {
+                            "id": user.id,
+                            # An external User has no username
+                            "username": getattr(user, "username", None),
+                            "name": user.name,
+                        }
+                        for user in get_group_users(ctx.client, ydid)
+                    ],
+                    "applications": [
+                        _named(application.id, application.name)
+                        for application in get_group_applications(ctx.client, ydid)
+                    ],
+                },
+                None,
+            )
+        )
+    return items
+
+
+def _role(ctx: RunContext, ydid: str) -> list[ShowItem]:
+    items: list[ShowItem] = [
+        (ctx.client.account_client.get_role(ydid), {RESOURCE_PROPERTY_NAME: RN_ROLE})
+    ]
+    if ctx.args.show_members:
+        print_info(f"Showing Groups holding Role '{ydid}'")
+        items.append(
+            (
+                {
+                    "roleId": ydid,
+                    "groups": [
+                        _named(group.id, group.name)
+                        for group in get_role_groups(ctx.client, ydid)
+                    ],
+                },
+                None,
+            )
+        )
+    return items
+
+
+def _named(id_: str | None, name: str | None) -> dict:
+    return {"id": id_, "name": name}
 
 
 # Every YDIDType, held to that by tests/test_show_output.py
@@ -341,8 +488,7 @@ _RESOLVERS: dict[YDIDType, _Resolver] = {
         "Compute Requirement Template", _compute_requirement_template
     ),
     YDIDType.COMPUTE_REQUIREMENT: _Resolver(
-        "Compute Requirement",
-        _fetched(lambda c, ydid: c.compute_client.get_compute_requirement_by_id(ydid)),
+        "Compute Requirement", _compute_requirement
     ),
     YDIDType.COMPUTE_SOURCE: _Resolver(
         "Compute Source",
@@ -404,12 +550,8 @@ _RESOLVERS: dict[YDIDType, _Resolver] = {
     YDIDType.ALLOWANCE: _Resolver("Allowance", _allowance),
     YDIDType.APPLICATION: _Resolver("Application", _application),
     YDIDType.USER: _Resolver("User", _user),
-    YDIDType.GROUP: _Resolver(
-        "Group", _fetched(lambda c, ydid: c.account_client.get_group(ydid), RN_GROUP)
-    ),
-    YDIDType.ROLE: _Resolver(
-        "Role", _fetched(lambda c, ydid: c.account_client.get_role(ydid), RN_ROLE)
-    ),
+    YDIDType.GROUP: _Resolver("Group", _group),
+    YDIDType.ROLE: _Resolver("Role", _role),
 }
 
 

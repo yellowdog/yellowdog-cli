@@ -94,7 +94,7 @@ from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
 )
-from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.misc_utils import is_http_not_found, shown_expiry
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import (
     print_dry_run,
@@ -211,11 +211,13 @@ def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> N
         _create_resource(ctx, resource_type, resource, source_dir, show_secrets)
 
     # In a dry run, '--json' is the processed specifications, so failures
-    # are reported on stderr and in the exit code instead
+    # are reported on stderr and in the exit code instead. Whether a
+    # specification creates or updates is decided by its creator, after
+    # this wording is chosen, so the wording covers both
     process_resources(
         cast(list[dict], resources),
         _process,
-        "create",
+        "create or update",
         record_outcomes=not _OPTIONS.dry_run,
     )
 
@@ -759,7 +761,7 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
     )
     print_info(
         "                   Worker Pool Expiry Time = "
-        f"{str(cwp_response.token.expiryTime).split('.')[0]}"  # type: ignore[union-attr]
+        f"{shown_expiry(cwp_response.token.expiryTime)}"  # type: ignore[union-attr]
     )
     # The token too, which '--json' otherwise silences with the prints
     # above, and which is how a Configured Worker Pool is used

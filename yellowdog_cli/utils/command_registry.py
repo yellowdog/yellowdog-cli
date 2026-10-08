@@ -9,6 +9,7 @@ nothing from args.py; args.py imports it.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from argparse import (
@@ -366,6 +367,20 @@ def positive_int(value: str) -> int:
         raise ArgumentTypeError(f"invalid int value: '{value}'") from None
     if number < 1:
         raise ArgumentTypeError(f"must be a positive integer, not {number}")
+    return number
+
+
+def finite_float(value: str) -> float:
+    """
+    An argparse type for a number such as a priority: any float but NaN and
+    the infinities, which Python's float() accepts and no Platform value is.
+    """
+    try:
+        number = float(value)
+    except ValueError:
+        raise ArgumentTypeError(f"invalid number: '{value}'") from None
+    if not math.isfinite(number):
+        raise ArgumentTypeError(f"must be a finite number, not {value}")
     return number
 
 
@@ -1094,6 +1109,24 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
         parser.error("--dry-run is not supported with explicit names/IDs")
 
 
+def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-compute-restart and yd-compute-deprovision act on Instances alone: a
+    glob pattern would select Compute Requirements, which they cannot act on.
+    """
+    globs = [
+        target
+        for target in args.compute_reqs_instances_or_nodes or []
+        if contains_glob_chars(target)
+    ]
+    if globs:
+        parser.error(
+            "glob patterns are not supported, since they select Compute"
+            " Requirements: supply node IDs, or instances in"
+            f" 'cr_id.instance_id' format ({', '.join(globs)})"
+        )
+
+
 # The options that write their own output to stdout, which '--json' cannot
 # share with its document
 _STREAMING_OPTIONS = (
@@ -1463,7 +1496,49 @@ COMMANDS["yd-compare"] = Command(
     tool=ToolKind.READ_ONLY,
 )
 
-# --- yd-compute-restart / yd-compute-start / yd-compute-stop --------------
+# --- '--wait' for yd-resize and yd-compute-reprovision ------------------
+
+WAIT_FOR_CAPACITY = option(
+    "--wait",
+    "-w",
+    action="store_true",
+    required=False,
+    help=(
+        "wait until each compute requirement acted on has its target number of"
+        " instances running, and none starting or terminating"
+    ),
+)
+WAIT_TIMEOUT = TIMEOUT.variant(
+    default=None,
+    help=(
+        "with --wait, stop waiting after this many seconds and fail (default: no limit)"
+    ),
+)
+
+
+def check_wait_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    '--wait' waits for Compute Requirements (on yd-resize, only when the
+    target is one), and not alongside '--follow', which streams events until
+    the end itself; '--timeout' limits '--wait' alone.
+    """
+    wait = getattr(args, "wait", False)
+    if wait and getattr(args, "follow", False):
+        parser.error("--wait cannot be combined with --follow")
+    if (
+        wait
+        and hasattr(args, "compute_requirement")
+        and not resize_targets_compute_requirement(args)
+    ):
+        parser.error(
+            "--wait applies to Compute Requirements only: use it with"
+            " --compute-requirement/-C, or a Compute Requirement ID"
+        )
+    if getattr(args, "timeout", None) is not None and not wait:
+        parser.error("--timeout applies only with --wait")
+
+
+# --- yd-compute-restart / -deprovision / -reprovision / -start / -stop -----
 
 
 def _compute_action_options(
@@ -1501,6 +1576,55 @@ COMMANDS["yd-compute-restart"] = Command(
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
+    validators=(check_no_glob_targets,),
+    tool=ToolKind.DESTRUCTIVE,
+)
+COMMANDS["yd-compute-deprovision"] = Command(
+    name="yd-compute-deprovision",
+    purpose=(
+        "deprovisioning Instances: terminating them and reducing their"
+        " Compute Requirements' target counts to match"
+    ),
+    summary="Deprovision Instances, reducing their Compute Requirements' target counts",
+    kind=CommandKind.API,
+    # Instance-level only, as for yd-compute-restart
+    options=(
+        VARIABLE,
+        YES,
+        ACTIONS_JSON,
+        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+            nargs="+",
+            metavar="<instance-or-node-ID>",
+            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+        ),
+        FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
+    ),
+    validators=(check_no_glob_targets,),
+    tool=ToolKind.DESTRUCTIVE,
+)
+COMMANDS["yd-compute-reprovision"] = Command(
+    name="yd-compute-reprovision",
+    purpose=(
+        "reprovisioning Compute Requirements: provisioning Instances until"
+        " their target counts are met"
+    ),
+    summary="Reprovision Compute Requirements, restoring their target instance counts",
+    kind=CommandKind.API,
+    # Compute Requirement-level only: no Instance or Node IDs
+    options=(
+        *_compute_action_options(
+            COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+                help=(
+                    "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                    " a name may be a glob pattern (e.g. 'cr-*')"
+                ),
+            )
+        ),
+        WAIT_FOR_CAPACITY,
+        WAIT_TIMEOUT,
+    ),
+    validators=(check_glob_and_literal_names, check_wait_options),
+    requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-start"] = Command(
@@ -1984,17 +2108,67 @@ SHOW_TOKEN = option(
         "configured worker pool"
     ),
 )
+SHOW_SOURCE_REPORT = option(
+    "--show-source-report",
+    action="store_true",
+    required=False,
+    help=(
+        "also display the report of how a compute requirement's sources were"
+        " chosen (for a compute requirement, or a provisioned worker pool's,"
+        " provisioned from a dynamic template)"
+    ),
+)
+SHOW_MEMBERS = option(
+    "--show-members",
+    action="store_true",
+    required=False,
+    help=(
+        "also display a group's users and applications, or the groups that hold a role"
+    ),
+)
+SHOW_EXHAUSTION = option(
+    "--show-exhaustion",
+    action="store_true",
+    required=False,
+    help=(
+        "also display the allowances exhausted for a compute requirement (or"
+        " a provisioned worker pool's)"
+    ),
+)
 
 
 def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-show's '--substitute-ids', refused when none of the IDs is of a kind
     whose details it substitutes names into (Compute Source and Requirement
-    Templates, Allowances), rather than ignored. '--show-token' is left
-    alone: whether a Worker Pool is a Configured one is known only once it
-    has been fetched.
+    Templates, Allowances), rather than ignored; '--show-source-report' and
+    '--show-exhaustion' likewise without a Compute Requirement or Worker
+    Pool ID, and '--show-members' without a Group or Role ID. '--show-token' is left alone: whether a Worker Pool is a
+    Configured one is known only once it has been fetched, as whether it is
+    a Provisioned one is for the other two.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    with_compute_requirement = (YDIDType.COMPUTE_REQUIREMENT, YDIDType.WORKER_POOL)
+    for flag, given in (
+        ("--show-source-report", args.show_source_report),
+        ("--show-exhaustion", args.show_exhaustion),
+    ):
+        if given and not any(
+            get_ydid_type(ydid) in with_compute_requirement
+            for ydid in args.yellowdog_ids
+        ):
+            parser.error(
+                f"{flag} applies only to Compute Requirement and Worker Pool"
+                " IDs, and none was given"
+            )
+    if args.show_members and not any(
+        get_ydid_type(ydid) in (YDIDType.GROUP, YDIDType.ROLE)
+        for ydid in args.yellowdog_ids
+    ):
+        parser.error(
+            "--show-members applies only to Group and Role IDs, and none was given"
+        )
 
     substitutable = (
         YDIDType.COMPUTE_SOURCE_TEMPLATE,
@@ -2028,6 +2202,9 @@ COMMANDS["yd-show"] = Command(
             ),
         ),
         SHOW_TOKEN,
+        SHOW_SOURCE_REPORT,
+        SHOW_EXHAUSTION,
+        SHOW_MEMBERS,
         SUBSTITUTE_IDS,
         STRIP_IDS,
         HIDE_USER_DATA,
@@ -2081,7 +2258,9 @@ REPORT = option(
     "-r",
     action="store_true",
     required=False,
-    help="report on a dynamic template test run",
+    help=(
+        "report on a test run of the compute requirement template, provisioning nothing"
+    ),
 )
 COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     "compute_requirement_file_positional",
@@ -2149,6 +2328,7 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL,
         DRY_RUN_ACTION,
         HIDE_USER_DATA,
+        REPORT,
         JSONNET_DRY_RUN,
         VALIDATE,
         ENTITY_JSON,
@@ -2753,8 +2933,40 @@ RESIZE_COMPUTE_REQUIREMENT = option(
     "-C",
     action="store_true",
     required=False,
-    help="resize a compute requirement instead of a worker pool",
+    help=(
+        "resize the compute requirement of this name instead of the worker"
+        " pool; not needed with a compute requirement ID"
+    ),
 )
+
+
+def resize_targets_compute_requirement(args: Namespace) -> bool:
+    """
+    Whether yd-resize resizes a Compute Requirement: asked for with
+    '--compute-requirement', or given one's ID. A name needs the option,
+    since a Worker Pool and its Compute Requirement share their name.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    return bool(args.compute_requirement) or (
+        get_ydid_type(args.worker_pool) == YDIDType.COMPUTE_REQUIREMENT
+    )
+
+
+def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    '--compute-requirement' with a Worker Pool's ID contradicts itself.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if args.compute_requirement and (
+        get_ydid_type(args.worker_pool) == YDIDType.WORKER_POOL
+    ):
+        parser.error(
+            f"--compute-requirement/-C cannot be used with a Worker Pool ID"
+            f" ({args.worker_pool})"
+        )
+
 
 COMMANDS["yd-resize"] = Command(
     name="yd-resize",
@@ -2773,7 +2985,10 @@ COMMANDS["yd-resize"] = Command(
         RESIZE_COMPUTE_REQUIREMENT,
         FOLLOW.variant(help="follow progress after resizing"),
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
+        WAIT_FOR_CAPACITY,
+        WAIT_TIMEOUT,
     ),
+    validators=(check_resize_target, check_wait_options),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3139,6 +3354,93 @@ COMMANDS["yd-terminate"] = Command(
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
     validators=(check_glob_and_literal_names,),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+)
+
+# --- yd-priority ---------------------------------------------------------
+
+PRIORITY = option(
+    "priority",
+    metavar="<priority>",
+    type=finite_float,
+    help=(
+        "the new priority, a number; higher priority acquires workers ahead of lower"
+    ),
+)
+PRIORITY_TARGETS = option(
+    "priority_targets",
+    nargs="+",
+    metavar="<work-requirement-or-task-group>",
+    type=str,
+    help=(
+        "the work requirement(s) or task group(s): IDs, or names as 'wr',"
+        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'"
+    ),
+)
+
+COMMANDS["yd-priority"] = Command(
+    name="yd-priority",
+    purpose="changing the priority of Work Requirements and Task Groups",
+    summary="Change the priority of Work Requirements and Task Groups",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        DRY_RUN,
+        YES,
+        ACTIONS_JSON,
+        PRIORITY,
+        PRIORITY_TARGETS,
+    ),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+)
+
+# --- yd-token ------------------------------------------------------------
+
+TOKEN_WORKER_POOLS = option(
+    "worker_pools",
+    nargs="+",
+    metavar="<worker-pool-name-or-ID>",
+    type=str,
+    help="the name(s) or YellowDog ID(s) of the configured worker pool(s);"
+    " a name may be a glob pattern (e.g. 'wp-*')",
+)
+REGENERATE = option(
+    "--regenerate",
+    "-R",
+    action="store_true",
+    required=False,
+    help=(
+        "issue a new token, invalidating the current one, rather than"
+        " setting the current token's expiry afresh"
+    ),
+)
+TTL_HOURS = option(
+    "--ttl-hours",
+    "-H",
+    type=positive_int,
+    required=False,
+    help="the token's time to live in hours, from now; without it, the token does not expire",
+    metavar="<hours>",
+)
+
+COMMANDS["yd-token"] = Command(
+    name="yd-token",
+    purpose="refreshing or regenerating the tokens of Configured Worker Pools",
+    summary="Refresh or regenerate the tokens of Configured Worker Pools",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        DRY_RUN,
+        YES,
+        ACTIONS_JSON,
+        TOKEN_WORKER_POOLS,
+        REGENERATE,
+        TTL_HOURS,
+    ),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

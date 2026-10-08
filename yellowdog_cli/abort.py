@@ -23,10 +23,8 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
 )
 from yellowdog_cli.utils.entity_utils import (
-    AmbiguousNameError,
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
-    get_work_requirement_summary_by_name_or_id,
 )
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
@@ -34,6 +32,12 @@ from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record_action
+from yellowdog_cli.utils.work_targets import (
+    MalformedTarget,
+    TargetNotFound,
+    named_target_entity_type,
+    resolve_named_target,
+)
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -208,7 +212,7 @@ def _target_units(targets: list[str], run: _Run) -> list[_Unit]:
         elif ydid_type is None:
             units.append(
                 (
-                    [(target, _named_target_type(target))],
+                    [(target, named_target_entity_type(target))],
                     lambda t=target: _abort_named_target(t, run),
                 )
             )
@@ -237,13 +241,6 @@ def _ydid_entity_type(ydid_type: YDIDType) -> str:
     yd-list spells types ('Worker Pool' as 'worker-pools').
     """
     return f"{ydid_type.value.lower().replace(' ', '-')}s"
-
-
-def _named_target_type(target: str) -> str:
-    """
-    The type a named target is recorded as: a Task Group if it names one.
-    """
-    return ET_WORK_REQUIREMENTS if "/" not in target else ET_TASK_GROUPS
 
 
 def _interactive_units(run: _Run) -> list[_Unit]:
@@ -403,116 +400,32 @@ def _not_found(what: str, entity: object, entity_type: str) -> None:
     _record(entity, "failed", "not found", entity_type)
 
 
-def _work_requirement_named(
-    run: _Run, name: str, namespace: str | None
-) -> WorkRequirementSummary | None:
+def _abort_named_target(target: str, run: _Run) -> None:
     """
-    A Work Requirement by its name, which holds no '/', in a namespace.
+    A target by name: 'wr', 'wr/tg', 'namespace/wr' or 'namespace/wr/tg', read
+    as utils/work_targets.py reads it.
     """
-    return get_work_requirement_summary_by_name_or_id(
-        run.ctx.client, name, namespace=namespace
-    )
-
-
-def _abort_in_named_task_group(
-    work_requirement: WorkRequirementSummary, task_group_name: str, run: _Run
-) -> bool:
-    """
-    Abort the executing Tasks in the Work Requirement's Task Group of that
-    name, returning False, having done nothing, if it has none.
-    """
-    task_groups = get_task_groups_from_wr_by_id(run.ctx.client, work_requirement.id)  # type: ignore[arg-type]
-    task_group = next((g for g in task_groups if g.name == task_group_name), None)
+    try:
+        resolved = resolve_named_target(
+            run.ctx.client, target, run.ctx.config.namespace
+        )
+    except TargetNotFound as e:
+        _not_found(e.what, target, e.entity_type)
+        return
+    except MalformedTarget as e:
+        print_error(str(e))
+        _record(target, "failed", str(e), ET_TASK_GROUPS)
+        return
+    work_requirement, task_group = resolved.work_requirement, resolved.task_group
     if task_group is None:
-        return False
+        _abort_in_work_requirement(work_requirement.id, work_requirement.name, run)
+        return
     _abort_in_task_group(
         task_group.id,
         task_group.name,
         f"Task Group '{task_group.name}' in Work Requirement '{work_requirement.name}'",
         run,
     )
-    return True
-
-
-def _abort_named_target(target: str, run: _Run) -> None:
-    """
-    A target by name: 'wr', 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'.
-    Of the two readings of 'a/b', the Task Group is tried first, being the
-    form documented for this command.
-    """
-    namespace = run.ctx.config.namespace
-    parts = target.split("/")
-    if parts[0] == "" and len(parts) > 1:  # a leading '/' names no namespace
-        parts = parts[1:]
-
-    if len(parts) == 1:
-        work_requirement = _work_requirement_named(run, parts[0], namespace)
-        if work_requirement is None:
-            _not_found(f"Work Requirement '{target}'", target, ET_WORK_REQUIREMENTS)
-            return
-        _abort_in_work_requirement(work_requirement.id, work_requirement.name, run)
-        return
-
-    if len(parts) == 2:
-        first, second = parts
-        # An ambiguous Work Requirement name rules out only this reading
-        ambiguous: AmbiguousNameError | None = None
-        try:
-            work_requirement = _work_requirement_named(run, first, namespace)
-        except AmbiguousNameError as e:
-            work_requirement, ambiguous = None, e
-        if work_requirement is not None and _abort_in_named_task_group(
-            work_requirement, second, run
-        ):
-            return
-        namespaced = _work_requirement_named(run, second, first)
-        if namespaced is not None:
-            _abort_in_work_requirement(namespaced.id, namespaced.name, run)
-            return
-        if ambiguous is not None:
-            raise ambiguous
-        if work_requirement is not None:
-            _not_found(
-                f"Task Group '{second}' in Work Requirement '{first}'",
-                target,
-                ET_TASK_GROUPS,
-            )
-        else:
-            _not_found(
-                f"Work Requirement '{first}' (or '{second}' in namespace '{first}')",
-                target,
-                ET_WORK_REQUIREMENTS,
-            )
-        return
-
-    if len(parts) == 3:
-        target_namespace, work_requirement_name, task_group_name = parts
-        work_requirement = _work_requirement_named(
-            run, work_requirement_name, target_namespace
-        )
-        if work_requirement is None:
-            _not_found(
-                f"Work Requirement '{work_requirement_name}' in namespace"
-                f" '{target_namespace}'",
-                target,
-                ET_TASK_GROUPS,
-            )
-            return
-        if not _abort_in_named_task_group(work_requirement, task_group_name, run):
-            _not_found(
-                f"Task Group '{task_group_name}' in Work Requirement"
-                f" '{work_requirement_name}'",
-                target,
-                ET_TASK_GROUPS,
-            )
-        return
-
-    message = (
-        f"'{target}' is not of the form 'wr', 'wr/tg', 'namespace/wr' or"
-        " 'namespace/wr/tg'"
-    )
-    print_error(message)
-    _record(target, "failed", message, ET_TASK_GROUPS)
 
 
 def _abort_tasks_by_id(task_ids: list[str], run: _Run) -> None:

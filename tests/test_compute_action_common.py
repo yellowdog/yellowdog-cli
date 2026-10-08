@@ -1,6 +1,7 @@
 """
-Unit tests for compute_action_common.py: yd-compute-stop, yd-compute-start
-and yd-compute-restart, against a fake Platform.
+Unit tests for compute_action_common.py: yd-compute-stop, yd-compute-start,
+yd-compute-restart, yd-compute-deprovision and yd-compute-reprovision,
+against a fake Platform.
 
 Covers:
   - the tag-based listing, and glob patterns expanded to Compute Requirements
@@ -12,6 +13,10 @@ Covers:
     session failure (authentication, connection) stops the run, recording
     the rest as not attempted
   - '--follow', given only the Compute Requirements actioned, once each
+  - deprovisioning, like restarting, taking Instances and Nodes only (a
+    glob pattern refused as parsed), and skipping an Instance already
+    terminating
+  - reprovisioning taking Compute Requirements only, and RUNNING ones
 """
 
 from types import SimpleNamespace
@@ -31,8 +36,11 @@ from yellowdog_client.model import (
 
 import yellowdog_cli.utils.compute_action_common as cac_module
 from yellowdog_cli.utils import action_runner, entity_utils
+from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
+    COMPUTE_DEPROVISION,
+    COMPUTE_REPROVISION,
     COMPUTE_RESTART,
     COMPUTE_START,
     COMPUTE_STOP,
@@ -116,8 +124,10 @@ class FakePlatform:
             "stop_instances",
             "start_instances",
             "restart_instances",
+            "deprovision_instances",
             "terminate_compute_requirement_by_id",
             "terminate_instances",
+            "reprovision_compute_requirement_by_id",
         ):
             getattr(compute, method).side_effect = self._action(method)
         client.worker_pool_client.get_node_by_id.side_effect = self._lookup(self.nodes)
@@ -167,6 +177,7 @@ def platform(monkeypatch):
     monkeypatch.setattr(action_runner, "confirmed", lambda message: True)
     monkeypatch.setattr(cac_module, "select", lambda client, objects: objects)
     monkeypatch.setattr(cac_module, "follow_ids", MagicMock())
+    monkeypatch.setattr(cac_module, "wait_for_capacity", MagicMock())
 
     def get_summaries(client, namespace, tag=None, statuses=None, name=None):
         return [
@@ -209,6 +220,8 @@ def _run(
     targets: list[str],
     follow: bool = False,
     dry_run: bool | None = None,
+    wait: bool | None = None,
+    timeout: int | None = None,
 ):
     apply_compute_action(
         RunContext(
@@ -217,6 +230,8 @@ def _run(
                 follow=follow,
                 dry_run=dry_run,
                 json_output=False,
+                wait=wait,
+                timeout=timeout,
             ),
             config=platform.config,
             client=platform.client,
@@ -335,11 +350,15 @@ class TestComputeRequirements:
         _run(platform, COMPUTE_STOP, ["my.cr"])
         assert platform.calls == [("stop_compute_requirement_by_id", CR_ID)]
 
+    @pytest.mark.parametrize("action", [COMPUTE_RESTART, COMPUTE_DEPROVISION])
     @pytest.mark.parametrize("target", [CR_ID, "cr-a"])
-    def test_restart_refuses_compute_requirements(self, platform, monkeypatch, target):
-        _run(platform, COMPUTE_RESTART, [target])
+    def test_instance_only_actions_refuse_compute_requirements(
+        self, platform, monkeypatch, target, action
+    ):
+        _run(platform, action, [target])
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
+        assert "please supply Instance or Node IDs" in platform.records[0]["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +372,7 @@ class TestInstances:
         [
             (COMPUTE_STOP, "stop_instances"),
             (COMPUTE_RESTART, "restart_instances"),
+            (COMPUTE_DEPROVISION, "deprovision_instances"),
         ],
     )
     def test_an_instance(self, platform, monkeypatch, action, method):
@@ -415,6 +435,30 @@ class TestInstances:
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "skipped"
 
+    @pytest.mark.parametrize(
+        "status", [InstanceStatus.TERMINATING, InstanceStatus.TERMINATED]
+    )
+    def test_deprovision_skips_an_instance_already_going(
+        self, platform, monkeypatch, status
+    ):
+        platform.instances[(CR_ID, INSTANCE_ID)] = _instance(INSTANCE_ID, status)
+        _run(platform, COMPUTE_DEPROVISION, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert platform.calls == []
+        assert platform.outcomes() == [
+            (f"{CR_ID}.{INSTANCE_ID}", "instances", "skipped")
+        ]
+
+    def test_deprovision_confirms_with_what_it_does(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(platform, COMPUTE_DEPROVISION, [f"{CR_ID}.{INSTANCE_ID}"])
+        assert prompts == [
+            "Deprovision (terminate, reducing the target count of)"
+            f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
+        ]
+
     def test_an_unknown_instance_fails(self, platform, monkeypatch):
         _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
         assert platform.outcomes() == [(f"{CR_ID}.i-unknown", "instances", "failed")]
@@ -469,10 +513,19 @@ class TestNodes:
         )
         platform.pools[WP_ID] = pool if pool is not None else _provisioned_pool()
 
-    def test_a_node_stands_for_its_instance(self, platform, monkeypatch):
+    @pytest.mark.parametrize(
+        "action, method",
+        [
+            (COMPUTE_STOP, "stop_instances"),
+            (COMPUTE_DEPROVISION, "deprovision_instances"),
+        ],
+    )
+    def test_a_node_stands_for_its_instance(
+        self, platform, monkeypatch, action, method
+    ):
         self._node(platform)
-        _run(platform, COMPUTE_STOP, [NODE_ID])
-        assert platform.calls == [("stop_instances", CR_ID, [INSTANCE_ID])]
+        _run(platform, action, [NODE_ID])
+        assert platform.calls == [(method, CR_ID, [INSTANCE_ID])]
 
     def test_a_node_and_its_instance_are_one_target(self, platform, monkeypatch):
         self._node(platform)
@@ -627,19 +680,116 @@ class TestTerminate:
 
 
 # ---------------------------------------------------------------------------
+# yd-compute-reprovision
+# ---------------------------------------------------------------------------
+
+
+class TestReprovision:
+    def test_the_tag_path_reprovisions_running_crs_only(self, platform, monkeypatch):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)
+        _run(platform, COMPUTE_REPROVISION, [])
+        assert platform.calls == [("reprovision_compute_requirement_by_id", CR_ID)]
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "reprovisioned")]
+
+    @pytest.mark.parametrize("target", [CR_ID, "cr-a", "cr-*"])
+    def test_by_id_name_or_glob(self, platform, monkeypatch, target):
+        _run(platform, COMPUTE_REPROVISION, [target])
+        assert platform.calls == [("reprovision_compute_requirement_by_id", CR_ID)]
+
+    @pytest.mark.parametrize("status", [STOPPED, ComputeRequirementStatus.PROVISIONING])
+    def test_a_cr_not_running_is_skipped(self, platform, monkeypatch, status):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", status)
+        _run(platform, COMPUTE_REPROVISION, [CR_ID])
+        assert platform.calls == []
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "skipped")]
+
+    @pytest.mark.parametrize(
+        "target, entity_type",
+        [(f"{CR_ID}.{INSTANCE_ID}", "instances"), (NODE_ID, "nodes")],
+    )
+    def test_instances_and_nodes_are_refused(
+        self, platform, monkeypatch, target, entity_type
+    ):
+        _run(platform, COMPUTE_REPROVISION, [target])
+        assert platform.calls == []
+        assert platform.records[0]["type"] == entity_type
+        assert platform.records[0]["outcome"] == "failed"
+        assert (
+            "please supply Compute Requirement names or IDs"
+            in platform.records[0]["error"]
+        )
+
+    def test_the_rest_are_still_reprovisioned(self, platform, monkeypatch):
+        _run(platform, COMPUTE_REPROVISION, [f"{CR_ID}.{INSTANCE_ID}", CR_ID])
+        assert platform.calls == [("reprovision_compute_requirement_by_id", CR_ID)]
+        assert [r["outcome"] for r in platform.records] == ["failed", "reprovisioned"]
+
+    def test_the_confirmation_says_what_it_does(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(platform, COMPUTE_REPROVISION, [CR_ID])
+        assert prompts == [
+            "Reprovision (restore to their target instance counts)"
+            " 1 Compute Requirement(s) ('cr-a')?"
+        ]
+
+    @pytest.mark.parametrize("targets", [[CR_ID], []])
+    def test_wait_waits_for_what_was_reprovisioned(
+        self, platform, monkeypatch, targets
+    ):
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b", STOPPED)  # skipped
+        _run(platform, COMPUTE_REPROVISION, targets, wait=True, timeout=60)
+        cac_module.wait_for_capacity.assert_called_once_with(ANY, [CR_ID], 60)
+
+    def test_no_wait_without_the_option(self, platform, monkeypatch):
+        _run(platform, COMPUTE_REPROVISION, [CR_ID])
+        cac_module.wait_for_capacity.assert_not_called()
+
+    def test_no_wait_when_nothing_was_reprovisioned(self, platform, monkeypatch):
+        monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
+        _run(platform, COMPUTE_REPROVISION, [CR_ID], wait=True)
+        cac_module.wait_for_capacity.assert_not_called()
+
+    def test_the_command_is_the_action(self, monkeypatch):
+        import yellowdog_cli.compute_reprovision as yd_compute_reprovision
+
+        apply = MagicMock()
+        monkeypatch.setattr(yd_compute_reprovision, "apply_compute_action", apply)
+        monkeypatch.setattr(
+            "yellowdog_cli.utils.wrapper.ARGS_PARSER",
+            MagicMock(debug=True, print_pid=True),
+        )
+        with pytest.raises(SystemExit):
+            yd_compute_reprovision.main()
+        (ctx, action), _ = apply.call_args
+        assert isinstance(ctx, RunContext) and action == COMPUTE_REPROVISION
+
+
+# ---------------------------------------------------------------------------
 # The command line
 # ---------------------------------------------------------------------------
 
 
 class TestCommandLine:
-    def test_restart_requires_a_target(self, capsys):
-        parser = build_parser(COMMANDS["yd-compute-restart"], prog="yd-compute-restart")
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_require_a_target(self, capsys, name):
+        parser = build_parser(COMMANDS[name], prog=name)
         with pytest.raises(SystemExit) as raised:
             parser.parse_args([])
         assert raised.value.code == 2
 
-    def test_restart_takes_no_listing_options(self):
-        command = COMMANDS["yd-compute-restart"]
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_refuse_a_glob(self, capsys, name):
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(name, ["cr-*"])
+        assert raised.value.code == 2
+        assert "glob patterns are not supported" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_take_no_listing_options(self, name):
+        command = COMMANDS[name]
         flags = {
             flag
             for option in command.all_options()
@@ -648,8 +798,16 @@ class TestCommandLine:
         }
         assert not {"--sort", "--interactive", "--namespace", "--tag"} & flags
 
-    @pytest.mark.parametrize("command", ["yd-compute-stop", "yd-compute-start"])
+    @pytest.mark.parametrize(
+        "command", ["yd-compute-stop", "yd-compute-start", "yd-compute-reprovision"]
+    )
     def test_globs_and_explicit_names_do_not_mix(self, command):
         from yellowdog_cli.utils.command_registry import check_glob_and_literal_names
 
         assert check_glob_and_literal_names in COMMANDS[command].validators
+
+    def test_reprovision_runs_without_a_target(self):
+        parser = build_parser(
+            COMMANDS["yd-compute-reprovision"], prog="yd-compute-reprovision"
+        )
+        assert parser.parse_args([]).compute_reqs_instances_or_nodes == []

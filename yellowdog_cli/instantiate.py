@@ -5,24 +5,19 @@ A script to provision a Compute Requirement.
 """
 
 from dataclasses import dataclass
-from json import loads as json_loads
 from math import ceil, floor
 from typing import cast
 
-import requests
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
-    ComputeRequirementTemplateTestResult,
     ComputeRequirementTemplateUsage,
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS
-from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.lazy import lazy
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
@@ -43,9 +38,11 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    report_on_usage,
     requirement_name,
     requirement_tag,
     shown_value,
+    specification_model,
     user_data_source,
 )
 from yellowdog_cli.utils.results import (
@@ -55,7 +52,6 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
 from yellowdog_cli.utils.specs.schema import Family
-from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -218,7 +214,6 @@ def _report_on(
     """
     Report what provisioning the first batch's Compute Requirement would do.
     """
-    print_info("Generating provisioning report only")
     if len(batches) > 1:
         # The Platform tests one Compute Requirement at a time
         print_warning(
@@ -227,21 +222,7 @@ def _report_on(
             " instance(s): 'computeRequirementBatchSize' divides the"
             f" {CONFIG_WP.target_instance_count:,d} requested"
         )
-    try:
-        test_result: ComputeRequirementTemplateTestResult = (
-            ctx.client.compute_client.test_compute_requirement_template(
-                compute_requirement_template_usage
-            )
-        )
-        print_compute_template_test_result(test_result)
-    except requests.HTTPError as http_error:
-        resp = http_error.response
-        if resp is not None and resp.status_code == 404:
-            raise NotFoundError(_message_of(resp.text)) from http_error
-        if resp is not None and "No sources" in resp.text:
-            print_info("No Compute Sources match the Template's constraints")
-        else:
-            raise http_error
+    report_on_usage(ctx, compute_requirement_template_usage)
 
 
 def _provision_batch(
@@ -279,18 +260,6 @@ def _provision_batch(
     print_quiet_result(compute_requirement.id)
     print_info(f"Provisioned {link_entity(ctx.config.url, compute_requirement)}")
     print_info(f"YellowDog ID is '{compute_requirement.id}'")
-
-
-def _message_of(response_text: str) -> str:
-    """
-    A Platform error response's 'message', or a default if it has none or
-    is not JSON.
-    """
-    try:
-        message = json_loads(response_text).get("message")
-    except (ValueError, AttributeError):
-        message = None
-    return message or "Compute Requirement Template not found"
 
 
 def _allocate_nodes_to_batches(
@@ -334,15 +303,9 @@ def _create_compute_requirement_from_json(
     postfix: str = "",
 ) -> None:
     """
-    Directly create the Compute Requirement using the YellowDog REST API.
+    Create the Compute Requirement a JSON specification describes, or with
+    '--report' report on a test of it, through the SDK as the TOML path does.
     """
-
-    if ctx.args.report:
-        raise ValueError(
-            "Compute Template reports aren't available when using JSON "
-            "Compute Requirement / Worker Pool specifications"
-        )
-
     # Validated before 'requirementTemplateUsage' is unwrapped
     cr_data = load_specification(
         cr_json_file,
@@ -420,6 +383,14 @@ def _create_compute_requirement_from_json(
             client=ctx.client, image_name_or_id=cr_data["imagesId"]
         )
 
+    compute_requirement_template_usage: ComputeRequirementTemplateUsage = (
+        specification_model("ComputeRequirementTemplateUsage", cr_data)
+    )
+
+    if ctx.args.report:
+        report_on_usage(ctx, compute_requirement_template_usage)
+        return
+
     if ctx.args.dry_run:
         if ctx.args.json_output:
             record_document(cr_data)
@@ -429,29 +400,26 @@ def _create_compute_requirement_from_json(
         print_dry_run("Complete")
         return
 
-    response = requests.post(
-        url=f"{ctx.config.url}/compute/templates/provision",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        json=cr_data,
-        timeout=RAW_REQUEST_TIMEOUT,
-    )
     name = cr_data["requirementName"]
-    if response.status_code == 200:
-        id = response.json()["id"]
-        print_info(
-            f"Provisioned Compute Requirement '{cr_data['requirementNamespace']}/{name}' ({id})"
+    try:
+        compute_requirement = (
+            ctx.client.compute_client.provision_compute_requirement_template(
+                compute_requirement_template_usage
+            )
         )
-        record_entity(
-            id, name, cr_data["requirementNamespace"], ET_COMPUTE_REQUIREMENTS
-        )
-        print_quiet_result(id)
-        if ctx.args.follow:
-            print_info("Following Compute Requirement event stream")
-            follow_events(ctx, id, YDIDType.COMPUTE_REQUIREMENT)
-    else:
+    except Exception:
+        # Re-raised as it is, so that the wrapper's exit code reflects it
         print_error(f"Failed to provision Compute Requirement '{name}'")
-        # An HTTPError, so that the wrapper's exit code reflects the status
-        raise requests.HTTPError(response.text, response=response)
+        raise
+    id = cast(str, compute_requirement.id)
+    print_info(
+        f"Provisioned Compute Requirement '{cr_data['requirementNamespace']}/{name}' ({id})"
+    )
+    record_entity(id, name, cr_data["requirementNamespace"], ET_COMPUTE_REQUIREMENTS)
+    print_quiet_result(id)
+    if ctx.args.follow:
+        print_info("Following Compute Requirement event stream")
+        follow_events(ctx, id, YDIDType.COMPUTE_REQUIREMENT)
 
 
 # Entry point

@@ -166,9 +166,11 @@
       * [yd-start](#yd-start)
       * [yd-hold](#yd-hold)
       * [yd-finish](#yd-finish)
+      * [yd-priority](#yd-priority)
    * [Worker Pool and Compute Commands](#worker-pool-and-compute-commands)
       * [yd-provision](#yd-provision)
       * [yd-shutdown](#yd-shutdown)
+      * [yd-token](#yd-token)
       * [yd-resize](#yd-resize)
       * [yd-nodeaction](#yd-nodeaction)
       * [yd-instantiate](#yd-instantiate)
@@ -177,6 +179,8 @@
       * [yd-compute-stop](#yd-compute-stop)
       * [yd-compute-start](#yd-compute-start)
       * [yd-compute-restart](#yd-compute-restart)
+      * [yd-compute-deprovision](#yd-compute-deprovision)
+      * [yd-compute-reprovision](#yd-compute-reprovision)
    * [Monitoring and Inspection Commands](#monitoring-and-inspection-commands)
       * [yd-list](#yd-list)
       * [yd-show](#yd-show)
@@ -205,7 +209,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 12:13:07 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct  8 09:42:30 BST 2026 -->
 
 <!--te-->
 
@@ -226,13 +230,17 @@ The commands provide the following capabilities:
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
 - **Listing** YellowDog items using the **`yd-list`** command
+- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
 - **Provisioning** Worker Pools with the **`yd-provision`** command
+- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
 - **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
 - **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
 - **Showing** the details of the current Application with the **`yd-application`** command
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
+- **Reprovisioning** Compute Requirements, restoring their target instance counts, with the **`yd-compute-reprovision`** command
 - **Submitting** Work Requirements with the **`yd-submit`** command
 - **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
 - **Terminating** Compute Requirements with the **`yd-terminate`** command
@@ -503,7 +511,7 @@ For scripting, every command family below follows one rule: with `--json`, stdou
 5. `--quiet` is unchanged and independent: the bare ID printed under `--quiet` stays, and `--quiet --json` emits only the JSON.
 6. `--strip-ids` and `--hide-user-data`, where a command has them, apply to the JSON.
 7. On a failure part-way through, whatever was done is still emitted before the process exits non-zero, so a script sees what happened.
-8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and `yd-instantiate --report`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
+8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and the `--report` of `yd-provision` and `yd-instantiate`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
 9. The option is spelled `--json` with no short form, except on `yd-list` and `yd-application`, which also accept `-J` (on the specification commands `-J` means `--jsonnet-dry-run`).
 
 The `yd-mcp` server is a consumer of this contract: each tool call runs a command with `--json` and returns its document.
@@ -516,7 +524,7 @@ The documents, by command:
 | Cloud information | `yd-cloud-info` | an array of the listed items: `{"provider", "name"}` for regions; `{"provider", "region", "name"}` for sub-regions; for instance types, `provider`, `name`, `processorArchitecture`, `defaultVcpus`, `defaultGpus`, `ramInMib` and `regions` (each `{"name", "subRegions"}`), and with `--prices` also `onDemandPrice` and `spotPrice` (each `{"currency", "value"}`, or `null`) and `spotSubRegion`; for prices, `{"provider", "region", "subRegion", "instanceType", "usageType", "operatingSystemLicence", "price"}`. A field the Platform does not give is omitted. `--count` prints the number alone |
 | Always JSON | `yd-show`, `yd-variables` | as each command documents |
 | Reports | `yd-doctor`, `yd-application` | one object, as each command documents, in place of the readable report |
-| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
+| Action commands | `yd-cancel`, `yd-shutdown`, `yd-terminate`, `yd-start`, `yd-hold`, `yd-finish`, `yd-abort`, `yd-resize`, `yd-boost`, `yd-compute-stop`, `yd-compute-start`, `yd-compute-restart`, `yd-compute-deprovision`, `yd-compute-reprovision`, `yd-priority`, `yd-token` | an array of `{"id", "name", "type", "action", "outcome"}`: `type` is the entity type as `yd-list` spells it (`work-requirements`, `task-groups`, `worker-pools`, `compute-requirements`, `instances`, `nodes`, `tasks`, `allowances`); `action` is the verb (`cancel`, `abort`, `shutdown`, `terminate`, `start`, `hold`, `finish`, `resize`, `boost`, `stop`, `restart`, `deprovision`, `prioritise`, `refresh`, `regenerate`); `outcome` is the action's past tense (`cancelled`, `shut down`, `terminated`, `started`, `held`, `finished`, `aborted`, `resized`, `boosted`, `stopped`, `restarted`, `deprovisioned`, `prioritised`, `refreshed`, `regenerated`), `skipped` (declined or filtered out), `failed` (with the error text in an extra `"error"` field), or `would <action>` under `--dry-run`. `yd-resize` adds `"targetInstanceCount"` and `yd-boost` adds `"hours"` and, once the Allowance has been found, its `"description"` (and, once boosted, `"remainingHours"`, null if the Platform gave none); `yd-priority` adds `"previousPriority"` and `"priority"`, and records a Task Group as `task-groups`; `yd-token` adds the pool's new `"token"` and its `"expiryTime"` to each pool refreshed or regenerated; `yd-cancel --abort` adds `"abortedTasks": true` for a Work Requirement that was already `CANCELLING`, cancelled again to abort its executing Tasks; `yd-shutdown --terminate` adds a `compute-requirements` record with `action` `terminate` for each Compute Requirement it terminates (`terminated`, `failed`, or `would terminate` under `--dry-run`), carrying the `"workerPoolId"` of the Worker Pool it belongs to (its `id` is `null` if it could not be found); under `--dry-run`, `yd-cancel`, `yd-shutdown` and `yd-terminate` add `"status"`, each entity's status as `yd-list` shows it. Any `failed` entry exits the command 1, even where the command otherwise completes normally, except that an authentication or connection failure stops the command and exits 4 or 8 |
 | Creators | `yd-create`, `yd-remove` | an array of `{"resource", "name", "id", "action"}`, one per resource (the Image Groups and Images of an Image Family included), `resource` as the specification names it (`Keyring`), `action` one of `created`, `updated`, `removed`, `skipped` (declined, not found, or left as it is), or `failed` (plus `"error"`); `id` is `null` when unknown (a removal by name that found nothing, or a resource the Platform identifies by name). A Keyring's `"password"` is present only with `--show-keyring-passwords`; a created Application, or one whose key was regenerated, adds `"apiKeyId"` and `"apiKeySecret"`; a Configured Worker Pool adds `"token"` and `"expiryTime"`; a Credential adds `"keyring"`; a Group whose roles were set adds `"rolesAdded"` and, when updated, `"rolesRemoved"` (the roles' names); and Allowances removed by description, by `yd-remove -M` or replaced by `yd-create -M`, are each recorded as `removed` with their `id`. `yd-create --dry-run --json` emits the array of processed resource specifications instead, as the dry run displays them but each keeping its `resource` (the first key), so a file mixing types gives a typed array, and `--jsonnet-dry-run --json` the array of converted Jsonnet files. Either command exits with its failures' shared code, or 1 if they had different causes |
 | Creators | `yd-submit`, `yd-provision`, `yd-instantiate` | one object, `{"id", "name", "namespace", "type"}`, for the entity created (for `yd-submit --add-to`, the Work Requirement added to), `type` as `yd-list` spells it; an array of them when batching creates more than one. Under `--dry-run`, the processed specification (an array of them when batched). `--json` is refused with `--progress` and `--report`, which write their own output to stdout; `--follow` alone is allowed |
 | Waiting | `yd-wait` | an array of `{"id", "name", "status", "succeeded"}`, one per ID in the order given, `succeeded` being `false` for a failed Work Requirement, a non-terminal state at exit, or a status that could not be fetched (whose `name` and `status` are `null`) |
@@ -2263,7 +2271,7 @@ It's also possible to capture a Worker Pool definition as a JSON document. The J
 
 The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types.
 
-When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning.
+When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning. The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is, so a property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd-instantiate`.
 
 ### Worker Pool JSON Examples
 
@@ -3095,14 +3103,15 @@ Example:
       "nodeTypes": [
         {
           "name": "example",
-          "count": 0,
-          "min": 0,
+          "min": 1,
           "sourceNames": ["example"],
           "slotNumbering": "REUSABLE"
         }
       ],
       "nodeEvents": {
-        "STARTUP_NODES_ADDED": []
+        "STARTUP_NODES_ADDED": [
+          {"actions": [{"action": "CREATE_WORKERS", "totalWorkers": 1}]}
+        ]
       }
     },
     "targetNodeCount": 0
@@ -3110,7 +3119,7 @@ Example:
 }
 ```
 
-A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
+Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1; an event in `nodeEvents`, if given, must have at least one action group. The pool's token never expires unless `tokenTtl` is given, as an ISO 8601 duration alongside `name` and `namespace` (`"tokenTtl": "PT720H"` for 30 days). A Configured Worker Pool cannot be updated, and `yd-remove` shuts it down rather than deleting it. Its token, which `yd-create` reports when it creates the pool and `yd-show --show-token` shows, can be refreshed or regenerated with [`yd-token`](#yd-token). A pool that has been shut down stays listed under its name, so a name can match several pools: `yd-remove` shuts down those that have not finished, and leaves the rest.
 
 ## Allowances
 
@@ -3730,6 +3739,31 @@ Key options:
 yd-finish my-analysis-run
 ```
 
+### yd-priority
+
+The `yd-priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](#work-requirement-property-dictionary)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
+
+```shell
+yd-priority [options] <priority> <target> [<target> ...]
+```
+
+The new priority, any finite number (negative ones included), comes first, followed by one or more targets, read as [`yd-abort`](#yd-abort) reads them:
+
+- a Work Requirement name, `<namespace>/<wr-name>` or YDID
+- a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`
+
+Targets are handled in the order given, each once, and confirmed together, the confirmation showing each one's current and new priority. A target that does not exist, or whose name is ambiguous, is reported as failed; one in a Work Requirement that has finished (`COMPLETED`, `CANCELLED` or `FAILED`), or already at the priority, is skipped with a warning. The Platform takes a Work Requirement whole, so the targets in one Work Requirement are changed together, in one update to a copy fetched just before it is sent: a change made to the Work Requirement since the targets were found is kept. An authentication or connection failure stops the command, with that failure's [exit code](#machine-readable-output-and-exit-codes), and the targets not yet attempted are reported as skipped.
+
+Key options:
+- `--dry-run`/`-D` — report each target's current and new priority without changing anything
+- `--json` — emit the actions taken as a JSON array, each with its `previousPriority` and `priority` (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-priority 10 my-analysis-run
+yd-priority 5 my-analysis-run/render my-analysis-run/encode
+yd-priority -1 ydid:workreq:000000:...
+```
+
 ## Worker Pool and Compute Commands
 
 ### yd-provision
@@ -3748,8 +3782,9 @@ Key options:
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
+- `--report`/`-r` — report on a test run of the Worker Pool's Compute Requirement Template, without provisioning (see [Test-Running a Dynamic Template](#test-running-a-dynamic-template))
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Specification Schemas](#specification-schemas))
-- `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+- `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-provision my_worker_pool.json --target 10 --follow
@@ -3757,7 +3792,7 @@ yd-provision my_worker_pool.json --target 10 --follow
 
 When `--quiet` (`-q`) is used, only the YDID of the provisioned Worker Pool is printed to stdout.
 
-A Worker Pool defined in the configuration whose `maxNodes` exceeds `computeRequirementBatchSize` is provisioned as several Worker Pools; if one of them fails, those already provisioned are listed, since they are still running. A Worker Pool specification is always provisioned as a single Worker Pool, with a warning if its `maxNodes` exceeds the batch size, and its `maintainInstanceCount` is set to `false`, as a Worker Pool requires. User Data merged in from the configuration is reported by its source and size, never printed.
+A Worker Pool defined in the configuration whose `maxNodes` exceeds `computeRequirementBatchSize` is provisioned as several Worker Pools; if one of them fails, those already provisioned are listed, since they are still running, and `--report` reports on the first of them alone, saying so. A Worker Pool specification is always provisioned as a single Worker Pool, with a warning if its `maxNodes` exceeds the batch size, and its `maintainInstanceCount` is set to `false`, as a Worker Pool requires. User Data merged in from the configuration is reported by its source and size, never printed.
 
 The specification file may also be supplied using the deprecated `--worker-pool`/`-p` option; the positional argument is preferred.
 
@@ -3787,9 +3822,32 @@ Key options:
 yd-shutdown 'wp-*' --dry-run
 ```
 
+### yd-token
+
+The `yd-token` command refreshes or regenerates the token of one or more Configured Worker Pools: the token that the YellowDog Agents on a pool's nodes use to register with it. Refreshing keeps the current token and sets its expiry afresh: `--ttl-hours` from now, or, without it, no expiry at all. Regenerating, with `--regenerate`, issues a new token instead, and Agents still holding the old one can no longer use it to register. Either is confirmed before anything is changed, the prompt saying what the tokens' expiry will be; `--yes` skips the confirmation.
+
+```shell
+yd-token [options] <worker-pool-name-or-ID> [<worker-pool-name-or-ID> ...]
+```
+
+Each argument is a Worker Pool's YDID or name (a bare name is looked up in the configured `namespace`, or give it as `namespace/name`), or a glob pattern (`*`, `?`, `[...]`) matched against Worker Pool names in the namespace, which takes only the Configured Worker Pools it matches that have not been shut down. Arguments are handled in the order given, each pool once. A Worker Pool that does not exist, or is not a Configured Worker Pool, is reported as failed, and one that has already been shut down is skipped with a warning; the others go ahead. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining pools are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)).
+
+Each pool's token and its expiry time (in UTC, or `never`) are printed; with `--quiet`, the token alone, one per pool. Under `--json`, a token that does not expire has an `expiryTime` of `null`.
+
+Key options:
+- `--regenerate`/`-R` — issue a new token, invalidating the current one, rather than setting the current token's expiry afresh
+- `--ttl-hours`/`-H` — the token's time to live, in whole hours from now; **without it, the refreshed or regenerated token never expires**
+- `--dry-run`/`-D` — report the pools whose tokens would be refreshed or regenerated, without changing anything
+- `--json` — emit the actions taken, each with the new `token` and its `expiryTime`, as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-token my-namespace/my-configured-pool --ttl-hours 720
+yd-token 'cwp-*' --regenerate
+```
+
 ### yd-resize
 
-The `yd-resize` command resizes Worker Pools, and also Compute Requirements when used with the `--compute-requirement`/`-C` option.
+The `yd-resize` command resizes Worker Pools and Compute Requirements. A Compute Requirement is resized when it is given by its ID, or by name with the `--compute-requirement`/`-C` option: a Worker Pool and its Compute Requirement share their name, so a name alone means the Worker Pool.
 
 ```shell
 yd-resize [options] <worker-pool-or-compute-requirement-name-or-ID> <new-node/instance-count>
@@ -3802,15 +3860,20 @@ What cannot be resized is reported before anything is asked. A Worker Pool or Co
 Only a `RUNNING` Compute Requirement is resized: one in any other state is skipped, as is one whose target is already the number of instances asked for, and a name shared by two `RUNNING` Compute Requirements is ambiguous, so the YDID must be given instead. The confirmation shows the current and new sizes.
 
 Key options:
-- `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool
+- `--compute-requirement`/`-C` — resize the Compute Requirement of this name instead of the Worker Pool; not needed with a Compute Requirement ID, and refused with a Worker Pool ID
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--wait`/`-w` — when resizing a Compute Requirement, wait until the Compute Requirement has its new target of Instances running (see below)
+- `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+With `--wait`, the command returns only once the resized Compute Requirement has settled: it is `RUNNING`, as many of its Instances are `RUNNING` as its new target asks for, and none is still starting, stopping or terminating. Scaling up therefore waits for the new Instances to start, and scaling down for the surplus Instances to finish terminating, which can take a minute or more. Progress is printed whenever it changes. A Compute Requirement that cannot reach its target, because the cloud provider has no more capacity of the kind it asks for (on-demand as well as spot) or an Allowance or quota stands in the way, never settles, so give a `--timeout` when that is possible: if it passes first, the command reports what is still missing and exits 1, though the resize itself has been made and is recorded as `resized`. `--wait` cannot be combined with `--follow`, and does not apply to Worker Pools.
 
 ```shell
 yd-resize pyex-slurm-pwt_230711-1243561-0d 10
 yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 yd-resize --compute-requirement pyex-slurm-pwt_230712-1102264-4c 5
-yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+yd-resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+yd-resize -C pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
 ```
 
 ### yd-nodeaction
@@ -3910,7 +3973,7 @@ When `--quiet` (`-q`) is used, only the YDID of the instantiated Compute Require
 
 #### Test-Running a Dynamic Template
 
-When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with TOML-defined Compute Requirement specifications, but not those that are JSON-defined.
+When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications. `yd-provision --report` does the same for a Worker Pool, testing the Compute Requirement it would be provisioned with.
 
 No instances will be provisioned during the test run.
 
@@ -3936,7 +3999,7 @@ For example:
 
 ### yd-terminate
 
-The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated, as can an Instance.
+The `yd-terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated, as can an Instance; to terminate Instances without their being replaced, use [`yd-compute-deprovision`](#yd-compute-deprovision).
 
 ```shell
 yd-terminate [options] [<name-or-ID> ...]
@@ -4024,6 +4087,47 @@ Key options:
 
 ```shell
 yd-compute-restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+```
+
+### yd-compute-deprovision
+
+The `yd-compute-deprovision` command deprovisions Instances: it terminates them and reduces their Compute Requirement's target instance count by the same number, so that they are not replaced. Terminating an Instance with `yd-terminate` leaves the target count as it was, so a Compute Requirement that maintains its instance count replaces it. Deprovisioning applies to Instances only; to remove a whole Compute Requirement, use `yd-terminate`.
+
+An Instance of a Provisioned Worker Pool can be deprovisioned too, by its `cr_id.instance_id` or its Node's YDID. The pool's expected node count follows its Compute Requirement's reduced target, so the pool does not ask for a replacement either. A pool left with no nodes stays up until its idle pool shutdown, if it has one, takes effect; use `yd-shutdown` to shut it down at once.
+
+```shell
+yd-compute-deprovision [options] <instance-or-node-ID> ...
+```
+
+Instances to deprovision are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs; at least one is required, and a Compute Requirement name or ID is reported as failed. They are handled as `yd-compute-stop` handles them: in the order given, confirmed together, one request per Compute Requirement, and an Instance that is already `TERMINATING` or `TERMINATED` is skipped with a warning. The command returns once the Platform has accepted the request: the target count drops at once, and the Instances are terminated shortly afterwards, which `--follow` shows.
+
+Key options:
+- `--follow`/`-f` — follow the Compute Requirements' events as the Instances are terminated
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-compute-deprovision ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+```
+
+### yd-compute-reprovision
+
+The `yd-compute-reprovision` command reprovisions `RUNNING` Compute Requirements: it asks the Platform to provision Instances until as many are running as each Compute Requirement's target instance count asks for. This restores a Compute Requirement that has fewer Instances than its target, for example after Instances were terminated with `yd-terminate` or reclaimed by the cloud provider, without changing the target. It is the counterpart of `yd-compute-deprovision`, which reduces the target; to change the target itself, use `yd-resize`. Reprovisioning applies to Compute Requirements only; Instance and Node IDs are reported as failed.
+
+```shell
+yd-compute-reprovision [options] [<name-or-ID> ...]
+```
+
+It selects Compute Requirements as `yd-compute-stop` does: if no arguments are supplied, `RUNNING` Compute Requirements that match the `namespace` and `tag` are candidates for reprovisioning; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is not `RUNNING` is skipped with a warning, including one still `PROVISIONING`, which is already provisioning towards its target. Reprovisioning a Compute Requirement that already has as many Instances running as its target count changes nothing. The command returns once the Platform has accepted the request: the Compute Requirement moves to `PROVISIONING` while the new Instances start, and `--follow` shows them being provisioned.
+
+Key options:
+- `--follow`/`-f` — follow the Compute Requirements' events as Instances are provisioned
+- `--wait`/`-w` — wait until each Compute Requirement reprovisioned has its target number of Instances running, as for `yd-resize --wait`
+- `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+
+```shell
+yd-compute-reprovision my-compute-requirement --follow
+yd-compute-reprovision my-compute-requirement --wait --timeout 600
 ```
 
 ## Monitoring and Inspection Commands
@@ -4124,16 +4228,26 @@ Instances have no YellowDog ID of their own: they're identified by the combinati
 
 Key options:
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
+- `--show-source-report` — follow a Compute Requirement with the Platform's report of how its sources were chosen: the Compute Source Templates considered, selected and rejected, each source's rank and score, and the constraints and preferences applied. Only a Compute Requirement provisioned from a dynamic template has one, and it is kept after the Compute Requirement has been terminated; for any other, a warning says so and the Compute Requirement is still shown
+- `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd-boost`](#yd-boost))
+
+- `--show-members` — follow a Group with `{"groupId", "users", "applications"}`, its Users (each `{"id", "username", "name"}`, `username` being `null` for an external User) and its Applications (each `{"id", "name"}`), or a Role with `{"roleId", "groups"}`, the Groups that hold it (each `{"id", "name"}`); a Group's own roles are already in its details. It is refused unless at least one of the IDs is a Group's or a Role's
+
+A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd-list users --details` shows them.
+
+`--show-source-report` and `--show-exhaustion` also apply to a Provisioned Worker Pool's ID, reporting on its Compute Requirement after the pool; a Configured Worker Pool, which has no Compute Requirement, is shown with a warning and no reports. Each is refused unless at least one of the IDs is a Compute Requirement's or a Worker Pool's.
+
 - `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd-list`, `--output-file` included
 - `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
 
 At least one ID is required. A YDID names its entity in whatever namespace it is in, so `yd-show` takes no `--namespace` or `--tag`.
 
-Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
+Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token, `--show-source-report` or `--show-exhaustion` add their reports after a Compute Requirement or Provisioned Worker Pool, or `--show-members` adds a Group's or a Role's members. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
 
 It exits with code 0 if every ID was shown; 6 if those that were not all name entities that do not exist; and 1 if any could not be shown for another reason (an invalid ID, or an API error). The IDs that could be shown are still emitted. If a lookup fails because the Application's credentials are not accepted, or the platform cannot be reached, the remaining IDs are not attempted, what was shown is still emitted, and the command exits with that failure's code (4 or 8).
 
 ```shell
+yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16 --show-source-report --show-exhaustion
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
 yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
 ```

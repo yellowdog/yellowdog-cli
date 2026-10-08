@@ -9,7 +9,6 @@ from datetime import timedelta
 from math import ceil, floor
 from typing import cast
 
-import requests
 from yellowdog_client.common.iso_datetime import iso_timedelta_format
 from yellowdog_client.model import (
     AutoShutdown,
@@ -24,7 +23,6 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORKER_POOLS
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.lazy import lazy
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
@@ -56,9 +54,11 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    report_on_usage,
     requirement_name,
     requirement_tag,
     shown_value,
+    specification_model,
     user_data_source,
 )
 from yellowdog_cli.utils.results import (
@@ -180,7 +180,8 @@ def _warn_maintain_instance_count() -> None:
 
 def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) -> None:
     """
-    Directly create the Worker Pool using the YellowDog REST API.
+    Create the Worker Pool a JSON specification describes, through the SDK
+    as the TOML path does.
     """
     wp_data = load_specification(
         wp_json_file,
@@ -238,6 +239,18 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) 
             " specification is provisioned as a single Worker Pool"
         )
 
+    # Built before the dry run, so that it too warns of what would be left out
+    usage: ComputeRequirementTemplateUsage = specification_model(
+        "ComputeRequirementTemplateUsage", reqt_template_usage
+    )
+    properties: ProvisionedWorkerPoolProperties = specification_model(
+        "ProvisionedWorkerPoolProperties", provisioned_properties
+    )
+
+    if ctx.args.report:
+        report_on_usage(ctx, usage)
+        return
+
     if ctx.args.dry_run:
         if ctx.args.json_output:
             record_document(wp_data)
@@ -247,7 +260,7 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) 
         print_dry_run("Complete")
         return
 
-    _post_worker_pool(ctx, wp_data)
+    _provision_from_specification(ctx, usage, properties)
 
 
 def _merge_into_template_usage(
@@ -340,30 +353,28 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
             provisioned_properties[key] = value
 
 
-def _post_worker_pool(ctx: RunContext, wp_data: dict) -> None:
+def _provision_from_specification(
+    ctx: RunContext,
+    usage: ComputeRequirementTemplateUsage,
+    properties: ProvisionedWorkerPoolProperties,
+) -> None:
     """
-    Provision the Worker Pool a specification describes, through the REST API.
+    Provision the Worker Pool a specification describes, through the SDK.
     """
-    reqt_template_usage = wp_data["requirementTemplateUsage"]
-    response = requests.post(
-        url=f"{ctx.config.url}/workerPools/provisioned/template",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        json=wp_data,
-        timeout=RAW_REQUEST_TIMEOUT,
-    )
-    name = reqt_template_usage["requirementName"]
-    if response.status_code != 200:
+    name = usage.requirementName
+    namespace = usage.requirementNamespace
+    try:
+        worker_pool = ctx.client.worker_pool_client.provision_worker_pool(
+            usage, properties
+        )
+    except Exception:
+        # Re-raised as it is, so that the wrapper's exit code reflects it
         print_error(f"Failed to provision Worker Pool '{name}'")
-        # An HTTPError, so that the wrapper's exit code reflects the status
-        raise requests.HTTPError(response.text, response=response)
+        raise
 
-    id = response.json()["id"]
-    print_info(
-        f"Provisioned Worker Pool '{reqt_template_usage['requirementNamespace']}/{name}' ({id})"
-    )
-    record_entity(
-        id, name, reqt_template_usage["requirementNamespace"], ET_WORKER_POOLS
-    )
+    id = cast(str, worker_pool.id)
+    print_info(f"Provisioned Worker Pool '{namespace}/{name}' ({id})")
+    record_entity(id, name, namespace, ET_WORKER_POOLS)
     print_quiet_result(id)
     if ctx.args.follow:
         print_info("Following Worker Pool event stream")
@@ -373,7 +384,7 @@ def _post_worker_pool(ctx: RunContext, wp_data: dict) -> None:
 def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
     """
     Create the Worker Pool, in batches if 'computeRequirementBatchSize'
-    requires them.
+    requires them, or with '--report' report on the first.
     """
     _update_node_counts()
 
@@ -393,7 +404,6 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
     if CONFIG_WP.maintain_instance_count:
         _warn_maintain_instance_count()
 
-    _print_provisioning(node_workers)
     batches: list[WPBatch] = _allocate_nodes_to_batches(
         CONFIG_WP.compute_requirement_batch_size,
         CONFIG_WP.target_instance_count,
@@ -401,11 +411,17 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
         CONFIG_WP.max_nodes,
     )
     num_batches = len(batches)
-    if num_batches > 1:
-        print_info(f"Batching into {num_batches} Compute Requirements")
 
     # Read once: every batch has the same user data
     user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
+
+    if ctx.args.report:
+        _report_on_first_batch(ctx, name, batches, user_data)
+        return
+
+    _print_provisioning(node_workers)
+    if num_batches > 1:
+        print_info(f"Batching into {num_batches} Compute Requirements")
 
     worker_pool_ids: list[str] = []
     for batch_number, batch in enumerate(batches):
@@ -464,6 +480,51 @@ def _print_provisioning(node_workers: NodeWorkerTarget) -> None:
     )
 
 
+def _report_on_first_batch(
+    ctx: RunContext, name: str, batches: list[WPBatch], user_data: str | None
+) -> None:
+    """
+    Report what provisioning the first batch's Compute Requirement would do:
+    the Platform tests one at a time.
+    """
+    if len(batches) > 1:
+        print_warning(
+            f"The report is for the first of {len(batches)} Worker Pools, of"
+            f" {batches[0].initial_nodes:,d} node(s): 'computeRequirementBatchSize'"
+            f" divides the {CONFIG_WP.target_instance_count:,d} requested"
+        )
+    batch_name = add_batch_number_postfix(
+        name=name, batch_number=0, num_batches=len(batches)
+    )
+    try:
+        report_on_usage(ctx, _template_usage(ctx, batch_name, batches[0], user_data))
+    except Exception:
+        # Re-raised as it is, so that the wrapper's exit code reflects it
+        print_error(
+            f"Unable to report on Worker Pool '{ctx.config.namespace}/{batch_name}'"
+        )
+        raise
+
+
+def _template_usage(
+    ctx: RunContext, batch_name: str, batch: WPBatch, user_data: str | None
+) -> ComputeRequirementTemplateUsage:
+    """
+    The Compute Requirement a batch's Worker Pool is provisioned with.
+    """
+    return ComputeRequirementTemplateUsage(
+        templateId=cast(str, CONFIG_WP.template_id),
+        requirementNamespace=ctx.config.namespace,
+        requirementName=batch_name,
+        targetInstanceCount=batch.initial_nodes,
+        requirementTag=requirement_tag(CONFIG_WP, ctx.config.name_tag),
+        userData=user_data,
+        imagesId=CONFIG_WP.images_id,
+        instanceTags=CONFIG_WP.instance_tags,
+        maintainInstanceCount=False,  # Must be false for Worker Pools
+    )
+
+
 def _provision_batch(
     ctx: RunContext,
     batch_name: str,
@@ -476,16 +537,8 @@ def _provision_batch(
     Provision one batch's Worker Pool, adding its ID to those provisioned as
     soon as it exists, or under '--dry-run' show it.
     """
-    compute_requirement_template_usage = ComputeRequirementTemplateUsage(
-        templateId=cast(str, CONFIG_WP.template_id),
-        requirementNamespace=ctx.config.namespace,
-        requirementName=batch_name,
-        targetInstanceCount=batch.initial_nodes,
-        requirementTag=requirement_tag(CONFIG_WP, ctx.config.name_tag),
-        userData=user_data,
-        imagesId=CONFIG_WP.images_id,
-        instanceTags=CONFIG_WP.instance_tags,
-        maintainInstanceCount=False,  # Must be false for Worker Pools
+    compute_requirement_template_usage = _template_usage(
+        ctx, batch_name, batch, user_data
     )
     provisioned_worker_pool_properties = ProvisionedWorkerPoolProperties(
         createNodeWorkers=node_workers,

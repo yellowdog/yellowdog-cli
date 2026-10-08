@@ -4,6 +4,52 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 13.3.0 — 2026-10-08
+
+### New commands
+
+- **`yd-priority`** changes the priority of Work Requirements and Task Groups after submission: `yd-priority 10 my-run` or `yd-priority 5 my-run/render`. Targets are named as for `yd-abort`, confirmed together showing each one's current and new priority, with `--dry-run` and `--json` (recording `previousPriority` and `priority`). It is also available to MCP clients as the `yd_priority` tool.
+- **`yd-compute-deprovision`** terminates Instances and reduces their Compute Requirement's target instance count to match, so that they are not replaced, as they would be after `yd-terminate` in a Compute Requirement that maintains its instance count. Instances are named as `yd-compute-restart` takes them (`cr_id.instance_id` or a Node ID), confirmed together, with `--json` and `--follow`. It is also available to MCP clients as the `yd_compute_deprovision` tool.
+- **`yd-compute-reprovision`** asks the Platform to provision Instances until a `RUNNING` Compute Requirement has as many as its target instance count, restoring one left short (by `yd-terminate`, say, or a reclaimed spot Instance) without changing the target. It selects Compute Requirements as `yd-compute-stop` does: by name, glob pattern or ID, or by `namespace` and `tag`.
+- **`yd-token`** refreshes the token of one or more Configured Worker Pools, keeping it and setting its expiry afresh, or with `--regenerate` issues a new one, invalidating the old. Either is confirmed first, the prompt saying what the expiry will be. `--ttl-hours` sets the token's time to live from now; without it, the token does not expire. Pools are named by ID, name or glob pattern; the new token and its expiry are printed, or recorded with `--json`. It is also available to MCP clients as the `yd_token` tool.
+
+### Waiting for capacity
+
+- **`yd-resize --wait`** (resizing a Compute Requirement) and **`yd-compute-reprovision --wait`** return only once each Compute Requirement acted on has its target number of Instances running and none starting or terminating, printing progress as it changes. `--timeout <seconds>` limits the wait, exiting 1 if it passes first (the change itself is still made and recorded); without it there is no limit, so a Compute Requirement left short, because the provider has run out of capacity of the kind it asks for (on-demand as well as spot) or a limit stands in the way, waits indefinitely.
+
+### Resizing
+
+- **`yd-resize` takes a Compute Requirement's ID without `--compute-requirement`/`-C`**, since the ID says what it names. The option is still needed with a name, which a Worker Pool and its Compute Requirement share, and is refused with a Worker Pool's ID.
+
+### Diagnosing a Compute Requirement
+
+- **`yd-provision --report`** reports on a test run of the Worker Pool's Compute Requirement Template, provisioning nothing, as `yd-instantiate --report` does for a Compute Requirement. It works with a Worker Pool defined in the configuration or in a JSON specification; when `computeRequirementBatchSize` would divide the pool, the report is for the first of them, and says so.
+
+- **`yd-show --show-source-report`** follows a Compute Requirement with the Platform's report of how its sources were chosen (considered, selected and rejected Compute Source Templates, ranks, scores, constraints and preferences), for one provisioned from a dynamic template.
+- **`yd-show --show-exhaustion`** follows it with the Allowances exhausted for it, so that you can see which to boost with `yd-boost`.
+- Both also take a Provisioned Worker Pool's ID, reporting on its Compute Requirement.
+
+### Group and Role membership
+
+- **`yd-show --show-members`** follows a Group with its Users and Applications, and a Role with the Groups that hold it, so that "who is in this Group?" and "which Groups have this Role?" can be answered from the CLI.
+- **`yd-show`** now shows a User with `groups`, the names of the Groups it belongs to, as it already did for an Application.
+
+### Dependencies
+
+- **`yellowdog-sdk` 15.7.0 or later is required.** It adds `serviceAccountEmail` to the GCE Compute Source types (`GceInstancesComputeSource`, `GceInstanceGroupComputeSource`), which a Compute Requirement Template specification can now set.
+
+### Fixes
+
+- **`yd-instantiate --report` works with a JSON Compute Requirement specification**, as it already did with one defined in the configuration file; it was refused before.
+- **`yd-provision` and `yd-instantiate` send a JSON specification through the YellowDog SDK**, as they already did a TOML-defined one, rather than posting it to the REST API directly. What is provisioned is unchanged; a property the installed SDK does not know is now ignored with a warning rather than passed on.
+- **`yd-compute-restart` refuses a glob pattern** as it is parsed, since a pattern selects Compute Requirements and the command restarts only Instances. A pattern was accepted, and any Compute Requirement it matched was confirmed and then failed with an internal error. `yd-compute-deprovision` refuses one likewise.
+- **Role IDs are accepted.** The Platform gives a Role a YellowDog ID with no account segment (`ydid:role:<uuid>`), which the CLI rejected as invalid: `yd-show` reported it as an invalid ID, and a Group specification naming a role by its ID failed as if the role did not exist.
+
+### Output
+
+- **`yd-create`** reports a failed specification as "Failed to create or update …" and ends with "N resource(s) failed to create or update", since the specification may have been updating an existing resource; it said "create" either way.
+- **`yd-create`** now shows a new Configured Worker Pool's token expiry with its time zone (`2026-10-07 14:02:42+00:00`), since the Platform gives it in UTC and the log timestamps beside it are local, and shows `never` for a token without an expiry rather than `None`.
+
 ## 13.2.0 — 2026-10-07
 
 ### New command

@@ -12,6 +12,7 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
     parse_range,
+    resize_targets_compute_requirement,
 )
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.version_info import DOCS_URL
@@ -513,7 +514,7 @@ class CLIParser:
     @property
     @allow_missing_attribute
     def compute_req_resize(self) -> bool | None:
-        return self.args.compute_requirement
+        return resize_targets_compute_requirement(self.args)
 
     # -----------------------------------------------------------------------
     # yd-boost
@@ -544,7 +545,41 @@ class CLIParser:
         return self.args.terminate
 
     # -----------------------------------------------------------------------
-    # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart
+    # yd-priority
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def priority(self) -> float:
+        return self.args.priority
+
+    @property
+    @allow_missing_attribute
+    def priority_targets(self) -> list[str]:
+        return self.args.priority_targets
+
+    # -----------------------------------------------------------------------
+    # yd-token
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def worker_pools(self) -> list[str]:
+        return self.args.worker_pools
+
+    @property
+    @allow_missing_attribute
+    def regenerate(self) -> bool | None:
+        return self.args.regenerate
+
+    @property
+    @allow_missing_attribute
+    def ttl_hours(self) -> float | None:
+        return self.args.ttl_hours
+
+    # -----------------------------------------------------------------------
+    # yd-terminate / yd-compute-stop / yd-compute-start / yd-compute-restart /
+    # yd-compute-deprovision / yd-compute-reprovision
     # -----------------------------------------------------------------------
 
     @property
@@ -624,6 +659,15 @@ class CLIParser:
     @allow_missing_attribute
     def auto_cr(self) -> bool:
         return self.args.auto_follow_compute_requirements
+
+    # -----------------------------------------------------------------------
+    # yd-resize / yd-compute-reprovision
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def wait(self) -> bool | None:
+        return self.args.wait
 
     # -----------------------------------------------------------------------
     # yd-follow / yd-provision / yd-instantiate / yd-resize / yd-shutdown /
@@ -742,6 +786,21 @@ class CLIParser:
     @allow_missing_attribute
     def show_token(self) -> bool | None:
         return self.args.show_token
+
+    @property
+    @allow_missing_attribute
+    def show_source_report(self) -> bool | None:
+        return self.args.show_source_report
+
+    @property
+    @allow_missing_attribute
+    def show_exhaustion(self) -> bool | None:
+        return self.args.show_exhaustion
+
+    @property
+    @allow_missing_attribute
+    def show_members(self) -> bool | None:
+        return self.args.show_members
 
     # -----------------------------------------------------------------------
     # yd-variables

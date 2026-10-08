@@ -42,6 +42,8 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+# '--wait' on yd-resize and yd-compute-reprovision
+CAPACITY_POLL_INTERVAL = 5.0  # Seconds
 DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
 
 # The most in-situ substitution passes a specification is given to settle; a
