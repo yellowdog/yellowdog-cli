@@ -44,7 +44,7 @@
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  5 14:58:43 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct  8 10:55:50 BST 2026 -->
 
 <!--te-->
 
@@ -232,6 +232,8 @@ The rule can be removed using:
 # Cloud Wizard for GCP
 
 ## GCP Prerequisites
+
+Use Python 3.11 or later for GCP. On Python 3.10, Google's libraries print a `FutureWarning` as Cloud Wizard starts, and have stopped receiving updates for that version; the setup itself still works.
 
 Ensure you have credentials (keys) for a **GCP Service Account** in a GCP project with the **Compute Engine API** enabled. The credentials should be in the form of a locally downloaded JSON file, of the form:
 

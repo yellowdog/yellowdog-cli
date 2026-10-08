@@ -72,8 +72,11 @@ class TestLazy:
 # (conftest.py), as the tests expect
 _IMPORT_EVERYTHING = textwrap.dedent(
     """
-    import importlib, pkgutil, sys
+    import importlib, pkgutil, sys, warnings
     sys.argv = ["yd-submit", "--no-such-option", "-c", "no-such-config.toml"]
+    # google.api_core warns on importing it under a Python version Google no
+    # longer supports (3.10 since 2026-10-04): its output, not the CLI's
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"google\\.")
     import yellowdog_cli
     skipped = ("yellowdog_cli.commander", "yellowdog_cli.mcp.server")
     for module in pkgutil.walk_packages(yellowdog_cli.__path__, "yellowdog_cli."):
@@ -83,7 +86,7 @@ _IMPORT_EVERYTHING = textwrap.dedent(
             importlib.import_module(module.name)
         except ModuleNotFoundError as e:
             # The Cloud Wizard's modules import its extra's cloud SDKs at the
-            # top, and tox's environments install them only in part
+            # top, and an environment without the extra may have them in part
             if not module.name.startswith("yellowdog_cli.utils.cloudwizard.") or (
                 e.name or ""
             ).startswith("yellowdog_cli"):

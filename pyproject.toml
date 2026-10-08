@@ -184,7 +184,7 @@
 
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
-    extras = ["dev", "commander", "mcp"]
+    extras = ["dev", "commander", "mcp", "jsonnet", "cloudwizard"]
     # Eight pytest-xdist workers, as 'make test' uses; a later '-n' given
     # after 'tox --' wins
     commands = [["pytest", "-n", "8", { replace = "posargs", extend = true }]]

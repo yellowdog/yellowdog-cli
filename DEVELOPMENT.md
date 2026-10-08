@@ -123,7 +123,7 @@ To run the unit tests against all supported Python versions (3.10–3.14), use [
 make tox
 ```
 
-tox is configured in `pyproject.toml` under `[tool.tox]` and uses `tox-uv` as its backend. uv will automatically download any Python version that isn't already installed — no manual setup required, and this works consistently on macOS, Linux, and Windows. Each environment runs pytest with eight [pytest-xdist](https://pytest-xdist.readthedocs.io/) workers (`-n 8`, as `make test` does); the environments themselves run one after another.
+tox is configured in `pyproject.toml` under `[tool.tox]` and uses `tox-uv` as its backend. uv will automatically download any Python version that isn't already installed — no manual setup required, and this works consistently on macOS, Linux, and Windows. Each environment installs every extra (`dev`, `commander`, `mcp`, `jsonnet` and `cloudwizard`), so no test skips for want of one, and runs pytest with eight [pytest-xdist](https://pytest-xdist.readthedocs.io/) workers (`-n 8`, as `make test` does); the environments themselves run one after another.
 
 To target a specific version or subset:
 
