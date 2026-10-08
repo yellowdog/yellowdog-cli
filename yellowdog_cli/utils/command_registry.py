@@ -1109,6 +1109,24 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
         parser.error("--dry-run is not supported with explicit names/IDs")
 
 
+def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-compute-restart and yd-compute-deprovision act on Instances alone: a
+    glob pattern would select Compute Requirements, which they cannot act on.
+    """
+    globs = [
+        target
+        for target in args.compute_reqs_instances_or_nodes or []
+        if contains_glob_chars(target)
+    ]
+    if globs:
+        parser.error(
+            "glob patterns are not supported, since they select Compute"
+            " Requirements: supply node IDs, or instances in"
+            f" 'cr_id.instance_id' format ({', '.join(globs)})"
+        )
+
+
 # The options that write their own output to stdout, which '--json' cannot
 # share with its document
 _STREAMING_OPTIONS = (
@@ -1554,6 +1572,7 @@ COMMANDS["yd-compute-restart"] = Command(
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
+    validators=(check_no_glob_targets,),
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-deprovision"] = Command(
@@ -1576,6 +1595,7 @@ COMMANDS["yd-compute-deprovision"] = Command(
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
+    validators=(check_no_glob_targets,),
     tool=ToolKind.DESTRUCTIVE,
 )
 COMMANDS["yd-compute-reprovision"] = Command(

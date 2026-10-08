@@ -13,8 +13,9 @@ Covers:
     session failure (authentication, connection) stops the run, recording
     the rest as not attempted
   - '--follow', given only the Compute Requirements actioned, once each
-  - deprovisioning, like restarting, taking Instances and Nodes only, and
-    skipping an Instance already terminating
+  - deprovisioning, like restarting, taking Instances and Nodes only (a
+    glob pattern refused as parsed), and skipping an Instance already
+    terminating
   - reprovisioning taking Compute Requirements only, and RUNNING ones
 """
 
@@ -35,6 +36,7 @@ from yellowdog_client.model import (
 
 import yellowdog_cli.utils.compute_action_common as cac_module
 from yellowdog_cli.utils import action_runner, entity_utils
+from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_DEPROVISION,
@@ -777,6 +779,13 @@ class TestCommandLine:
         with pytest.raises(SystemExit) as raised:
             parser.parse_args([])
         assert raised.value.code == 2
+
+    @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
+    def test_instance_only_commands_refuse_a_glob(self, capsys, name):
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(name, ["cr-*"])
+        assert raised.value.code == 2
+        assert "glob patterns are not supported" in capsys.readouterr().err
 
     @pytest.mark.parametrize("name", ["yd-compute-restart", "yd-compute-deprovision"])
     def test_instance_only_commands_take_no_listing_options(self, name):
