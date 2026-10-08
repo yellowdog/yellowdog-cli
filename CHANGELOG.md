@@ -13,7 +13,11 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Waiting for capacity
 
-- **`yd-resize --compute-requirement --wait`** and **`yd-compute-reprovision --wait`** return only once each Compute Requirement acted on has its target number of Instances running and none starting or terminating, printing progress as it changes. `--timeout <seconds>` limits the wait, exiting 1 if it passes first (the change itself is still made and recorded); without it there is no limit, so a Compute Requirement left short, because the provider has run out of capacity of the kind it asks for (on-demand as well as spot) or a limit stands in the way, waits indefinitely.
+- **`yd-resize --wait`** (resizing a Compute Requirement) and **`yd-compute-reprovision --wait`** return only once each Compute Requirement acted on has its target number of Instances running and none starting or terminating, printing progress as it changes. `--timeout <seconds>` limits the wait, exiting 1 if it passes first (the change itself is still made and recorded); without it there is no limit, so a Compute Requirement left short, because the provider has run out of capacity of the kind it asks for (on-demand as well as spot) or a limit stands in the way, waits indefinitely.
+
+### Resizing
+
+- **`yd-resize` takes a Compute Requirement's ID without `--compute-requirement`/`-C`**, since the ID says what it names. The option is still needed with a name, which a Worker Pool and its Compute Requirement share, and is refused with a Worker Pool's ID.
 
 ### Diagnosing a Compute Requirement
 

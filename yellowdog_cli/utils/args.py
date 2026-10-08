@@ -12,6 +12,7 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     command_from_argv0,
     parse_range,
+    resize_targets_compute_requirement,
 )
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.version_info import DOCS_URL
@@ -513,7 +514,7 @@ class CLIParser:
     @property
     @allow_missing_attribute
     def compute_req_resize(self) -> bool | None:
-        return self.args.compute_requirement
+        return resize_targets_compute_requirement(self.args)
 
     # -----------------------------------------------------------------------
     # yd-boost

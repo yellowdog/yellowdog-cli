@@ -468,6 +468,34 @@ class TestCompareIds:
         assert "not a YellowDog" in capsys.readouterr().err
 
 
+class TestResizeTarget:
+    CR = "ydid:compreq:000000:11111111-1111-1111-1111-111111111111"
+    WP = "ydid:wrkrpool:000000:11111111-1111-1111-1111-111111111111"
+
+    @pytest.mark.parametrize(
+        "argv, compute_requirement",
+        [
+            (["wp-a", "2"], False),
+            (["-C", "cr-a", "2"], True),
+            ([CR, "2"], True),  # the ID says what it is
+            (["-C", CR, "2"], True),
+            ([WP, "2"], False),
+        ],
+    )
+    def test_a_compute_requirement_by_option_or_id(self, argv, compute_requirement):
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert CLIParser("yd-resize", argv).compute_req_resize is compute_requirement
+
+    def test_the_option_with_a_worker_pool_id_is_refused(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser("yd-resize", ["-C", self.WP, "2"])
+        assert raised.value.code == 2
+        assert "cannot be used with a Worker Pool ID" in capsys.readouterr().err
+
+
 class TestArgsProperties:
     def test_every_property_reads_an_option_some_command_registers(self):
         # A property reading a destination no option has would return None

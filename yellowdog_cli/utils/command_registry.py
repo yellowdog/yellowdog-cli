@@ -1518,17 +1518,21 @@ WAIT_TIMEOUT = TIMEOUT.variant(
 
 def check_wait_options(args: Namespace, parser: ArgumentParser) -> None:
     """
-    '--wait' waits for Compute Requirements (on yd-resize, only with
-    '--compute-requirement'), and not alongside '--follow', which streams
-    events until the end itself; '--timeout' limits '--wait' alone.
+    '--wait' waits for Compute Requirements (on yd-resize, only when the
+    target is one), and not alongside '--follow', which streams events until
+    the end itself; '--timeout' limits '--wait' alone.
     """
     wait = getattr(args, "wait", False)
     if wait and getattr(args, "follow", False):
         parser.error("--wait cannot be combined with --follow")
-    if wait and hasattr(args, "compute_requirement") and not args.compute_requirement:
+    if (
+        wait
+        and hasattr(args, "compute_requirement")
+        and not resize_targets_compute_requirement(args)
+    ):
         parser.error(
             "--wait applies to Compute Requirements only: use it with"
-            " --compute-requirement/-C"
+            " --compute-requirement/-C, or a Compute Requirement ID"
         )
     if getattr(args, "timeout", None) is not None and not wait:
         parser.error("--timeout applies only with --wait")
@@ -2926,8 +2930,40 @@ RESIZE_COMPUTE_REQUIREMENT = option(
     "-C",
     action="store_true",
     required=False,
-    help="resize a compute requirement instead of a worker pool",
+    help=(
+        "resize the compute requirement of this name instead of the worker"
+        " pool; not needed with a compute requirement ID"
+    ),
 )
+
+
+def resize_targets_compute_requirement(args: Namespace) -> bool:
+    """
+    Whether yd-resize resizes a Compute Requirement: asked for with
+    '--compute-requirement', or given one's ID. A name needs the option,
+    since a Worker Pool and its Compute Requirement share their name.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    return bool(args.compute_requirement) or (
+        get_ydid_type(args.worker_pool) == YDIDType.COMPUTE_REQUIREMENT
+    )
+
+
+def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    '--compute-requirement' with a Worker Pool's ID contradicts itself.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if args.compute_requirement and (
+        get_ydid_type(args.worker_pool) == YDIDType.WORKER_POOL
+    ):
+        parser.error(
+            f"--compute-requirement/-C cannot be used with a Worker Pool ID"
+            f" ({args.worker_pool})"
+        )
+
 
 COMMANDS["yd-resize"] = Command(
     name="yd-resize",
@@ -2949,7 +2985,7 @@ COMMANDS["yd-resize"] = Command(
         WAIT_FOR_CAPACITY,
         WAIT_TIMEOUT,
     ),
-    validators=(check_wait_options,),
+    validators=(check_resize_target, check_wait_options),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

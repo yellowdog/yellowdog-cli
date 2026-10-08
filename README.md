@@ -209,7 +209,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct  7 18:02:30 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct  8 09:38:16 BST 2026 -->
 
 <!--te-->
 
@@ -3846,7 +3846,7 @@ yd-token 'cwp-*' --regenerate
 
 ### yd-resize
 
-The `yd-resize` command resizes Worker Pools, and also Compute Requirements when used with the `--compute-requirement`/`-C` option.
+The `yd-resize` command resizes Worker Pools and Compute Requirements. A Compute Requirement is resized when it is given by its ID, or by name with the `--compute-requirement`/`-C` option: a Worker Pool and its Compute Requirement share their name, so a name alone means the Worker Pool.
 
 ```shell
 yd-resize [options] <worker-pool-or-compute-requirement-name-or-ID> <new-node/instance-count>
@@ -3859,9 +3859,9 @@ What cannot be resized is reported before anything is asked. A Worker Pool or Co
 Only a `RUNNING` Compute Requirement is resized: one in any other state is skipped, as is one whose target is already the number of instances asked for, and a name shared by two `RUNNING` Compute Requirements is ambiguous, so the YDID must be given instead. The confirmation shows the current and new sizes.
 
 Key options:
-- `--compute-requirement`/`-C` — resize a Compute Requirement instead of a Worker Pool
+- `--compute-requirement`/`-C` — resize the Compute Requirement of this name instead of the Worker Pool; not needed with a Compute Requirement ID, and refused with a Worker Pool ID
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
-- `--wait`/`-w` — with `--compute-requirement`, wait until the Compute Requirement has its new target of Instances running (see below)
+- `--wait`/`-w` — when resizing a Compute Requirement, wait until the Compute Requirement has its new target of Instances running (see below)
 - `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
@@ -3871,7 +3871,7 @@ With `--wait`, the command returns only once the resized Compute Requirement has
 yd-resize pyex-slurm-pwt_230711-1243561-0d 10
 yd-resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 yd-resize --compute-requirement pyex-slurm-pwt_230712-1102264-4c 5
-yd-resize -C ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+yd-resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
 yd-resize -C pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
 ```
 

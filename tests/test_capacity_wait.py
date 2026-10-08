@@ -11,8 +11,8 @@ Covers:
   - several Compute Requirements waited for together, each read afresh
   - the timeout, raised with what is still missing; no limit by default
   - a failure reading a Compute Requirement raised as it is
-  - '--wait' refused with '--follow', on yd-resize without '-C', and
-    '--timeout' without '--wait'
+  - '--wait' refused with '--follow', on yd-resize for a Worker Pool (no
+    '-C', nor a Compute Requirement ID), and '--timeout' without '--wait'
 """
 
 from types import SimpleNamespace
@@ -33,6 +33,7 @@ from yellowdog_cli.utils.capacity_wait import (
 from yellowdog_cli.utils.context import RunContext
 
 CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
+WP_ID = "ydid:wrkrpool:d9c548:1f020696-ae9a-4786-bed2-c31b484b1d4f"
 CR_ID_2 = "ydid:compreq:d9c548:11111111-2222-3333-4444-555555555555"
 
 RUNNING = ComputeRequirementStatus.RUNNING
@@ -286,6 +287,7 @@ class TestCommandLine:
         "name, argv",
         [
             ("yd-resize", ["-C", "cr-a", "2", "--wait", "--timeout", "60"]),
+            ("yd-resize", [CR_ID, "2", "--wait"]),
             ("yd-compute-reprovision", ["cr-a", "-w"]),
         ],
     )
@@ -296,6 +298,7 @@ class TestCommandLine:
         "name, argv, words",
         [
             ("yd-resize", ["wp-a", "2", "--wait"], "--compute-requirement"),
+            ("yd-resize", [WP_ID, "2", "--wait"], "--compute-requirement"),
             ("yd-resize", ["-C", "cr-a", "2", "-w", "-f"], "--follow"),
             ("yd-compute-reprovision", ["-w", "-f"], "--follow"),
             ("yd-resize", ["-C", "cr-a", "2", "--timeout", "60"], "only with --wait"),
