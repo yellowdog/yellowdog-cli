@@ -21,6 +21,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Diagnosing a Compute Requirement
 
+- **`yd-provision --report`** reports on a test run of the Worker Pool's Compute Requirement Template, provisioning nothing, as `yd-instantiate --report` does for a Compute Requirement. It works with a Worker Pool defined in the configuration or in a JSON specification; when `computeRequirementBatchSize` would divide the pool, the report is for the first of them, and says so.
+
 - **`yd-show --show-source-report`** follows a Compute Requirement with the Platform's report of how its sources were chosen (considered, selected and rejected Compute Source Templates, ranks, scores, constraints and preferences), for one provisioned from a dynamic template.
 - **`yd-show --show-exhaustion`** follows it with the Allowances exhausted for it, so that you can see which to boost with `yd-boost`.
 - Both also take a Provisioned Worker Pool's ID, reporting on its Compute Requirement.

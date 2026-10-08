@@ -2258,7 +2258,9 @@ REPORT = option(
     "-r",
     action="store_true",
     required=False,
-    help="report on a dynamic template test run",
+    help=(
+        "report on a test run of the compute requirement template, provisioning nothing"
+    ),
 )
 COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     "compute_requirement_file_positional",
@@ -2326,6 +2328,7 @@ COMMANDS["yd-provision"] = Command(
         WORKER_POOL,
         DRY_RUN_ACTION,
         HIDE_USER_DATA,
+        REPORT,
         JSONNET_DRY_RUN,
         VALIDATE,
         ENTITY_JSON,

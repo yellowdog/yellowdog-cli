@@ -209,7 +209,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct  8 09:38:16 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct  8 09:42:30 BST 2026 -->
 
 <!--te-->
 
@@ -511,7 +511,7 @@ For scripting, every command family below follows one rule: with `--json`, stdou
 5. `--quiet` is unchanged and independent: the bare ID printed under `--quiet` stays, and `--quiet --json` emits only the JSON.
 6. `--strip-ids` and `--hide-user-data`, where a command has them, apply to the JSON.
 7. On a failure part-way through, whatever was done is still emitted before the process exits non-zero, so a script sees what happened.
-8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and `yd-instantiate --report`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
+8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and the `--report` of `yd-provision` and `yd-instantiate`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd-follow --json`.
 9. The option is spelled `--json` with no short form, except on `yd-list` and `yd-application`, which also accept `-J` (on the specification commands `-J` means `--jsonnet-dry-run`).
 
 The `yd-mcp` server is a consumer of this contract: each tool call runs a command with `--json` and returns its document.
@@ -3782,8 +3782,9 @@ Key options:
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
+- `--report`/`-r` — report on a test run of the Worker Pool's Compute Requirement Template, without provisioning (see [Test-Running a Dynamic Template](#test-running-a-dynamic-template))
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Specification Schemas](#specification-schemas))
-- `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
+- `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes))
 
 ```shell
 yd-provision my_worker_pool.json --target 10 --follow
@@ -3791,7 +3792,7 @@ yd-provision my_worker_pool.json --target 10 --follow
 
 When `--quiet` (`-q`) is used, only the YDID of the provisioned Worker Pool is printed to stdout.
 
-A Worker Pool defined in the configuration whose `maxNodes` exceeds `computeRequirementBatchSize` is provisioned as several Worker Pools; if one of them fails, those already provisioned are listed, since they are still running. A Worker Pool specification is always provisioned as a single Worker Pool, with a warning if its `maxNodes` exceeds the batch size, and its `maintainInstanceCount` is set to `false`, as a Worker Pool requires. User Data merged in from the configuration is reported by its source and size, never printed.
+A Worker Pool defined in the configuration whose `maxNodes` exceeds `computeRequirementBatchSize` is provisioned as several Worker Pools; if one of them fails, those already provisioned are listed, since they are still running, and `--report` reports on the first of them alone, saying so. A Worker Pool specification is always provisioned as a single Worker Pool, with a warning if its `maxNodes` exceeds the batch size, and its `maintainInstanceCount` is set to `false`, as a Worker Pool requires. User Data merged in from the configuration is reported by its source and size, never printed.
 
 The specification file may also be supplied using the deprecated `--worker-pool`/`-p` option; the positional argument is preferred.
 
@@ -3972,7 +3973,7 @@ When `--quiet` (`-q`) is used, only the YDID of the instantiated Compute Require
 
 #### Test-Running a Dynamic Template
 
-When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications.
+When the `templateId` of a Dynamic Requirement is used, the `yd-instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications. `yd-provision --report` does the same for a Worker Pool, testing the Compute Requirement it would be provisioned with.
 
 No instances will be provisioned during the test run.
 

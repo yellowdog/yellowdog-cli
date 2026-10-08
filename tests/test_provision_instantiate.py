@@ -6,7 +6,9 @@ before they are merged), a missing 'templateId' is a failure, and a failed
 Platform call keeps the exit code its kind of failure has. A JSON
 specification is sent through the SDK, as the TOML path is: its parts become
 the SDK models unchanged, a property the model lacks is warned of and left
-out, and yd-instantiate's '--report' works with one.
+out, and '--report' works with one. yd-provision's '--report', like
+yd-instantiate's, tests the first batch's Compute Requirement and
+provisions nothing.
 
 Each test drives the command's real main() through main_wrapper, with the
 client mocked.
@@ -26,6 +28,7 @@ import yellowdog_cli.instantiate as yd_instantiate
 import yellowdog_cli.provision as yd_provision
 import yellowdog_cli.utils.interactive as interactive_module
 import yellowdog_cli.utils.printing as printing_module
+import yellowdog_cli.utils.provision_utils as provision_utils_module
 import yellowdog_cli.utils.results as results_module
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import output_settings
@@ -441,7 +444,7 @@ class TestJsonSpecificationsThroughTheSdk:
     def test_report_works_with_a_json_specification(self, run, cr_file, monkeypatch):
         printed = MagicMock()
         monkeypatch.setattr(
-            yd_instantiate, "print_compute_template_test_result", printed
+            provision_utils_module, "print_compute_template_test_result", printed
         )
         client = MagicMock()
         run(
@@ -808,6 +811,82 @@ class TestProvisionReporting:
         ) in out + run.err
 
 
+class TestProvisionReport:
+    @pytest.fixture(autouse=True)
+    def printed(self, monkeypatch):
+        printed = MagicMock()
+        monkeypatch.setattr(
+            provision_utils_module, "print_compute_template_test_result", printed
+        )
+        return printed
+
+    def test_a_toml_pool_is_tested_not_provisioned(self, run, printed):
+        client = MagicMock()
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(template_id=CRT_ID, target_instance_count=2, max_nodes=2),
+            client=client,
+            report=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        (usage,), _ = client.compute_client.test_compute_requirement_template.call_args
+        assert (usage.templateId, usage.targetInstanceCount) == (CRT_ID, 2)
+        assert usage.maintainInstanceCount is False
+        printed.assert_called_once()
+        client.worker_pool_client.provision_worker_pool.assert_not_called()
+        assert "Provisioning" not in out
+
+    def test_a_json_specification_is_tested_not_provisioned(
+        self, run, wp_file, printed
+    ):
+        client = MagicMock()
+        run(
+            yd_provision,
+            ConfigWorkerPool(),
+            client=client,
+            report=True,
+            worker_pool_file_positional=wp_file({"targetInstanceCount": 3}, {}),
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        (usage,), _ = client.compute_client.test_compute_requirement_template.call_args
+        assert (usage.templateId, usage.targetInstanceCount) == (CRT_ID, 3)
+        printed.assert_called_once()
+        client.worker_pool_client.provision_worker_pool.assert_not_called()
+
+    def test_a_batched_report_says_it_is_for_the_first_batch(self, run):
+        client = MagicMock()
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(
+                template_id=CRT_ID,
+                target_instance_count=50,
+                max_nodes=50,
+                compute_requirement_batch_size=20,
+            ),
+            client=client,
+            report=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        assert client.compute_client.test_compute_requirement_template.call_count == 1
+        assert (
+            "The report is for the first of 3 Worker Pools, of 17 node(s)"
+        ) in out + run.err
+
+    def test_a_report_on_a_missing_template_exits_6(self, run):
+        client = MagicMock()
+        client.compute_client.test_compute_requirement_template.side_effect = HTTPError(
+            "404", response=_response(404, '{"message": "Template gone"}')
+        )
+        run(
+            yd_provision,
+            ConfigWorkerPool(template_id=CRT_ID, target_instance_count=1, max_nodes=1),
+            client=client,
+            report=True,
+        )
+        assert run.exit_code == ExitCode.NOT_FOUND
+        assert "Template gone" in run.err
+
+
 # ---------------------------------------------------------------------------
 # yd-instantiate: what is merged and reported
 # ---------------------------------------------------------------------------
@@ -905,7 +984,7 @@ class TestInstantiateReporting:
 
     def test_a_batched_report_says_it_is_for_the_first_batch(self, run, monkeypatch):
         monkeypatch.setattr(
-            yd_instantiate, "print_compute_template_test_result", lambda r: None
+            provision_utils_module, "print_compute_template_test_result", lambda r: None
         )
         out, _ = run(
             yd_instantiate,

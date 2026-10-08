@@ -5,21 +5,17 @@ A script to provision a Compute Requirement.
 """
 
 from dataclasses import dataclass
-from json import loads as json_loads
 from math import ceil, floor
 from typing import cast
 
-import requests
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
-    ComputeRequirementTemplateTestResult,
     ComputeRequirementTemplateUsage,
 )
 
 from yellowdog_cli.utils.config_types import ConfigWorkerPool
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS
-from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import (
@@ -42,6 +38,7 @@ from yellowdog_cli.utils.provision_utils import (
     get_image_id,
     get_template_id,
     get_user_data_property,
+    report_on_usage,
     requirement_name,
     requirement_tag,
     shown_value,
@@ -55,7 +52,6 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
 from yellowdog_cli.utils.specs.schema import Family
-from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -218,7 +214,6 @@ def _report_on(
     """
     Report what provisioning the first batch's Compute Requirement would do.
     """
-    print_info("Generating provisioning report only")
     if len(batches) > 1:
         # The Platform tests one Compute Requirement at a time
         print_warning(
@@ -227,31 +222,7 @@ def _report_on(
             " instance(s): 'computeRequirementBatchSize' divides the"
             f" {CONFIG_WP.target_instance_count:,d} requested"
         )
-    _report(ctx, compute_requirement_template_usage)
-
-
-def _report(
-    ctx: RunContext,
-    compute_requirement_template_usage: ComputeRequirementTemplateUsage,
-) -> None:
-    """
-    Print the Platform's test of provisioning a Compute Requirement.
-    """
-    try:
-        test_result: ComputeRequirementTemplateTestResult = (
-            ctx.client.compute_client.test_compute_requirement_template(
-                compute_requirement_template_usage
-            )
-        )
-        print_compute_template_test_result(test_result)
-    except requests.HTTPError as http_error:
-        resp = http_error.response
-        if resp is not None and resp.status_code == 404:
-            raise NotFoundError(_message_of(resp.text)) from http_error
-        if resp is not None and "No sources" in resp.text:
-            print_info("No Compute Sources match the Template's constraints")
-        else:
-            raise http_error
+    report_on_usage(ctx, compute_requirement_template_usage)
 
 
 def _provision_batch(
@@ -289,18 +260,6 @@ def _provision_batch(
     print_quiet_result(compute_requirement.id)
     print_info(f"Provisioned {link_entity(ctx.config.url, compute_requirement)}")
     print_info(f"YellowDog ID is '{compute_requirement.id}'")
-
-
-def _message_of(response_text: str) -> str:
-    """
-    A Platform error response's 'message', or a default if it has none or
-    is not JSON.
-    """
-    try:
-        message = json_loads(response_text).get("message")
-    except (ValueError, AttributeError):
-        message = None
-    return message or "Compute Requirement Template not found"
 
 
 def _allocate_nodes_to_batches(
@@ -429,8 +388,7 @@ def _create_compute_requirement_from_json(
     )
 
     if ctx.args.report:
-        print_info("Generating provisioning report only")
-        _report(ctx, compute_requirement_template_usage)
+        report_on_usage(ctx, compute_requirement_template_usage)
         return
 
     if ctx.args.dry_run:

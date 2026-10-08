@@ -8132,6 +8132,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "report",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--report",
+        "-r"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "jsonnet_dry_run",
       "kind": "_StoreTrueAction",
       "nargs": 0,

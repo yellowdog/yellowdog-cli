@@ -1886,6 +1886,7 @@ class TestProvision:
                     "worker_pool_file": None,
                     "worker_pool_file_positional": None,
                     "content_path": None,
+                    "report": False,
                     **values,
                 },
             )
