@@ -185,7 +185,9 @@
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
     extras = ["dev", "commander", "mcp"]
-    commands = [["pytest", "{posargs}"]]
+    # Eight pytest-xdist workers, as 'make test' uses; a later '-n' given
+    # after 'tox --' wins
+    commands = [["pytest", "-n", "8", { replace = "posargs", extend = true }]]
 
 [tool.tox.env.py315]
     description = "pre-release; excluded from the default run, see DEVELOPMENT.md"

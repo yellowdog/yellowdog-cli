@@ -123,7 +123,7 @@ To run the unit tests against all supported Python versions (3.10–3.14), use [
 make tox
 ```
 
-tox is configured in `pyproject.toml` under `[tool.tox]` and uses `tox-uv` as its backend. uv will automatically download any Python version that isn't already installed — no manual setup required, and this works consistently on macOS, Linux, and Windows.
+tox is configured in `pyproject.toml` under `[tool.tox]` and uses `tox-uv` as its backend. uv will automatically download any Python version that isn't already installed — no manual setup required, and this works consistently on macOS, Linux, and Windows. Each environment runs pytest with eight [pytest-xdist](https://pytest-xdist.readthedocs.io/) workers (`-n 8`, as `make test` does); the environments themselves run one after another.
 
 To target a specific version or subset:
 
@@ -132,7 +132,7 @@ tox -e py310            # single version
 tox -e py310,py314      # just the bounds
 ```
 
-To pass extra pytest arguments (e.g. to run demos or system tests), call `tox` directly using `--` as a separator — `make tox` cannot forward arguments this way:
+To pass extra pytest arguments (e.g. to run demos or system tests), call `tox` directly using `--` as a separator — `make tox` cannot forward arguments this way. A `-n` given there overrides the default of eight workers, and `-n 0` runs without xdist:
 
 ```shell
 tox -- --run-demos
