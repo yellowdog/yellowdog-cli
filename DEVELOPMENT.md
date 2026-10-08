@@ -148,7 +148,17 @@ Python 3.15 has a `py315` environment, deliberately kept out of `env_list` so th
 tox -e py315
 ```
 
-The interpreter itself is no obstacle — uv downloads pre-release CPython like any other version — but as of August 2026 the environment cannot be created, because two dependencies publish no cp315 wheel. `rclone-api` requires `psycopg2-binary`, so uv falls back to building it from source and fails on the missing `pg_config`; and `PyQt6_sip`, pulled in by the `commander` extra, is missing a wheel too. Once both ship for cp315, `tox -e py315` should pass, at which point `py315` belongs in `env_list` and `3.15` in the classifiers in `pyproject.toml`.
+The interpreter itself is no obstacle — uv downloads pre-release CPython like any other version — but as of October 2026 (3.15.0rc3) the environment cannot be created, because `pre-commit`, in the `dev` extra, requires `pyyaml`, which publishes no cp315 wheel and whose source build fails under 3.15 in Cython. The runtime extras all install, `rclone-api`'s `psycopg2-binary` (a blocker in August) included, but PyQt6 6.11 crashes the interpreter as `PyQt6.QtCore` is imported, in `PyQt6-sip`'s `createContainerType`, so Commander cannot run on 3.15 yet. Use rc3 or later: on 3.15.0a8, `anyio`, which the `mcp` extra pulls in, fails as pytest loads its plugin, needing the builtin `sentinel` that later pre-releases provide.
+
+Until then, the rest of the suite can be run in a throwaway venv without `pre-commit` and PyQt6, the Commander tests skipping as Qt is missing; in October 2026 it passed there:
+
+```shell
+uv venv --python cpython-3.15.0rc3 /tmp/py315  # or a later 3.15 release; a bare 3.15 takes whichever is installed
+VIRTUAL_ENV=/tmp/py315 uv pip install -e ".[mcp,jsonnet,cloudwizard]" pytest pytest-xdist cli-test-helpers python-dispatch
+/tmp/py315/bin/python -m pytest -n 8
+```
+
+Once `pyyaml` and PyQt6 work on 3.15, `tox -e py315` should pass, at which point `py315` belongs in `env_list` and `3.15` in the classifiers in `pyproject.toml`.
 
 ## Type Checking
 
