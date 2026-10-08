@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 13.3.0 — 2026-10-08
+
 ### New commands
 
 - **`yd-priority`** changes the priority of Work Requirements and Task Groups after submission: `yd-priority 10 my-run` or `yd-priority 5 my-run/render`. Targets are named as for `yd-abort`, confirmed together showing each one's current and new priority, with `--dry-run` and `--json` (recording `previousPriority` and `priority`). It is also available to MCP clients as the `yd_priority` tool.
