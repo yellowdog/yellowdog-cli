@@ -20,6 +20,12 @@ import resource_models
 
 resource_corpus.require_jsonnet()
 
+# One worker under 'pytest -n', shared with test_create_remove.py: a
+# lifecycle test compares every resource of its type in the account before
+# and after, so another's creations read as its own left behind; and the
+# read gate reads what this process's lifecycle tests recorded
+pytestmark = pytest.mark.xdist_group("live_resources")
+
 # Resource type (a corpus specification's own 'resource' property) -> the
 # yd-list/yd-remove entity type it becomes. One entry per resource type the live
 # corpus can create (resource_corpus.OFFLINE_ONLY's two files -- credentials and

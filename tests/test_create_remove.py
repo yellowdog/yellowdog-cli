@@ -3,6 +3,13 @@ import uuid
 import pytest
 from cli_test_helpers import shell
 
+# One worker under 'pytest -n' for this file and test_system_resources.py:
+# both create and remove resources in one account, this file the examples'
+# fixed names (the group and application tests share Group 'aaa'), and that
+# one compares every resource of a type before and after, so in parallel
+# they see, and remove, each other's
+pytestmark = pytest.mark.xdist_group("live_resources")
+
 R = "tests/resource-examples"
 
 

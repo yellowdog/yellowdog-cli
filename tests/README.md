@@ -236,6 +236,7 @@ These are supported by four non-test modules and by fixtures in the root `confte
 | File | What it tests |
 |---|---|
 | `test_entrypoints.py` | All `yd-*` CLI entry points are present and respond to `--help` |
+| `test_system_tags.py` | `conftest.py`'s `_session_tag()`, the tag `system_tag` gives the live system tests: each session's its own, none containing another, since under `-n` every worker is a session and the tag filters match by containment |
 
 ### System Tests (`--run-system`, credentials required)
 
@@ -312,4 +313,4 @@ pytest -v -n 4 --run-demos tests/test_demos.py -k 'bash or primes'
 
 > Targeting the test file directly avoids unit tests consuming all workers before the slower tests are scheduled.
 
-Tests sharing state that no worker can isolate are kept on one worker with `@pytest.mark.xdist_group`, which `--dist loadgroup` in `pyproject.toml`'s `addopts` honours (and ignores without `-n`): `test_commander_file_preview.py`, whose real Qt file dialogs share the sidebar width Qt keeps in the user's own settings, is one group.
+Tests sharing state that no worker can isolate are kept on one worker with `@pytest.mark.xdist_group`, which `--dist loadgroup` in `pyproject.toml`'s `addopts` honours (and ignores without `-n`): `test_commander_file_preview.py`, whose real Qt file dialogs share the sidebar width Qt keeps in the user's own settings, is one group. `test_system_resources.py` and `test_create_remove.py` are another, `live_resources`: both create and remove resources in one account, the first comparing every resource of a type before and after, and its read gate reading what its own lifecycle tests recorded in that process. The live system tests otherwise run in parallel too, each session under its own tag (`conftest.py`'s `_session_tag()`).
