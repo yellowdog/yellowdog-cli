@@ -3,7 +3,7 @@ The typed registry of the CLI's own specification properties -- the ones no
 SDK dataclass describes: the Work Requirement dictionary, and the shells the
 Worker Pool, Compute Requirement, resource and Node Action files put around
 their SDK models. utils/specs/schema.py builds the schemas from it; tests/
-test_spec_properties.py holds it to README.md's dictionary table. A new
+test_spec_properties.py holds it to docs/property-dictionary.md's table. A new
 Work Requirement property is added here and given a dictionary row, or the
 tests fail; its description is the row's, extracted by `make
 schema_descriptions` into spec_data/descriptions.json.
@@ -257,6 +257,7 @@ WORK_REQUIREMENT_PROPERTIES: tuple[Property, ...] = (
     Property("timeout", NUM, _levels(T, K)),
     Property("vcpus", RANGE, _levels(T, W, G)),
     Property("workRequirementData", STR, _levels(T)),
+    Property("workerTag", STR, _levels(T)),
     Property("workerTags", STRS, _levels(T, W, G)),
 )
 
@@ -638,7 +639,8 @@ DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"}
 
 def load_descriptions() -> dict[str, str]:
     """
-    The dictionary properties' descriptions, extracted from the README at build time.
+    The dictionary properties' descriptions, extracted from
+    docs/property-dictionary.md at build time.
     """
     text = (
         files("yellowdog_cli.spec_data")

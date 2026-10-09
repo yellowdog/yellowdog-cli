@@ -104,6 +104,30 @@ def test_a_session_failure_stops_the_run(env, monkeypatch):
     ]
 
 
+def test_a_prompt_with_no_answer_stops_the_run(env, monkeypatch):
+    # Stdin at its end (a script without --yes): every later prompt would
+    # find the same, so the run stops there, as yd-delete's does, rather
+    # than prompting, failing and recording each resource in turn
+    from yellowdog_cli.utils.interactive import NoAnswerToPrompt
+
+    def unanswered(question):
+        env.asked.append(question)
+        raise NoAnswerToPrompt()
+
+    monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
+    monkeypatch.setattr(yd_remove, "confirmed", unanswered)
+    groups = [{"resource": "Group", "name": name} for name in ("a", "b", "c")]
+    with pytest.raises(NoAnswerToPrompt):
+        yd_remove.remove_resources(_ctx(), groups)
+    assert len(env.asked) == 1
+    env.client.account_client.delete_group.assert_not_called()
+    assert [(r["name"], r["action"]) for r in env.records] == [
+        ("a", "failed"),
+        ("b", "skipped"),
+        ("c", "skipped"),
+    ]
+
+
 def test_a_failure_is_printed_once_naming_the_resource(env, monkeypatch, capsys):
     monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
     env.client.account_client.delete_group.side_effect = _http_error(403)

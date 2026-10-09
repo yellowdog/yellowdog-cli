@@ -1,5 +1,6 @@
 """
-The README's Command List agrees with the command registry: the Universal
+The Command List (docs/commands.md, which the README points to) agrees
+with the command registry: the Universal
 and Shared option tables list real options with the right short forms and
 the right reach, and every option bullet (or option-table row) in a command's
 section names an option that command takes. Wording is never checked.
@@ -12,7 +13,7 @@ import pytest
 
 from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
 
-README = Path(__file__).parent.parent / "README.md"
+COMMAND_LIST = Path(__file__).parent.parent / "docs" / "commands.md"
 
 FLAG = re.compile(r"`(-{1,2}[A-Za-z][\w-]*)")  # the flag inside a backticked form
 # A table row's first cell; `\|` is an escaped pipe inside it, as in `--sort`'s.
@@ -38,8 +39,7 @@ def _outside_fences(text: str) -> str:
 
 
 def _command_list() -> str:
-    text = README.read_text()
-    return text[_outside_fences(text).index("\n# Command List\n") :]
+    return COMMAND_LIST.read_text(encoding="utf-8")
 
 
 def _heading(text: str, heading: str) -> re.Match[str] | None:

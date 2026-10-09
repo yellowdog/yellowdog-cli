@@ -523,3 +523,123 @@ class TestArgsProperties:
             CLIParser(command=command, argv=["--docs"])
         assert raised.value.code == 0
         assert "Online documentation" in capsys.readouterr().out
+
+
+class TestRemotePathsWithParentSegments:
+    """
+    A '..' segment in a remote path climbs out of the prefix (or the bucket)
+    past the checks that refuse deleting or syncing over the remote's root or
+    the bucket, so the commands that delete or write remotely refuse it as
+    parsed. yd-ls only reads, and a local path may climb as it likes.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-delete", ["-R", ".."]),
+            ("yd-delete", ["a/../../b"]),
+            ("yd-delete", ["myremote:bucket/.."]),
+            ("yd-download", [".."]),
+            ("yd-download", ["--sync", "x/.."]),
+            ("yd-copy", ["../a", "b"]),
+            ("yd-copy", ["a", "b/../.."]),
+            ("yd-upload", ["f.txt", "-d", "../x"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+        assert "'..'" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-ls", [".."]),
+            ("yd-download", ["a..b"]),
+            ("yd-download", ["x", "-d", "../out"]),
+            ("yd-download", ["x", "--into", "../out"]),
+            ("yd-upload", ["../f.txt"]),
+        ],
+    )
+    def test_accepted(self, command, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command, argv)
+
+
+class TestCountsAreRangeChecked:
+    """
+    yd-submit's counts and yd-provision/yd-instantiate's --target took any
+    integer: '-C 0' quietly became 1, and '-l 0' crashed once the Work
+    Requirement existed. Each is now refused as parsed.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-C", "0", "wr.json"]),
+            ("yd-submit", ["-G", "-2", "wr.json"]),
+            ("yd-submit", ["-b", "0", "wr.json"]),
+            ("yd-submit", ["-l", "0", "wr.json"]),
+            ("yd-submit", ["-P", "-5", "wr.json"]),
+            ("yd-provision", ["--target", "-1"]),
+            ("yd-instantiate", ["--target", "-1"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-C", "1", "-G", "1", "-b", "1", "-l", "1", "wr.json"]),
+            ("yd-submit", ["-P", "0", "wr.json"]),  # Waits for Enter
+            ("yd-submit", ["wr.json", "-P"]),
+            ("yd-provision", ["--target", "0"]),
+        ],
+    )
+    def test_accepted(self, command, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command, argv)
+
+
+class TestANamespaceOrTagThatIsAFileName:
+    """
+    -n and -t take an optional value, so 'yd-submit -t wr.json' made the
+    tag 'wr.json' and submitted no specification, failing with a message
+    about Task Types. A namespace or tag naming a specification or
+    configuration file is refused as parsed.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-t", "wr.json"]),
+            ("yd-provision", ["-n", "wp.jsonnet"]),
+            ("yd-list", ["work-requirements", "--tag", "config.toml"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+        assert "looks like a file" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "argv",
+        [["wr.json", "-t", "my-tag"], ["wr.json", "-t"], ["-n", "ns", "wr.json"]],
+    )
+    def test_accepted(self, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser("yd-submit", argv)

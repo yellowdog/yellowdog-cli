@@ -7,12 +7,16 @@ Shared rclone utilities: instantiation, config parsing, and binary management.
 # other helpers (e.g. parse_rclone_config, find_rclone) don't pay that cost.
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import platform
 import re
+import signal
 import sys
-from contextlib import contextmanager, nullcontext
+import tempfile
+import threading
+from contextlib import contextmanager, redirect_stdout
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,8 +39,8 @@ def _suppress_rclone_download_output():
     Silence rclone-api's binary-download output.
 
     rclone_api/install.py calls logging.basicConfig(level=DEBUG) and writes
-    to the root logger, and the 'download' package it uses emits a tqdm
-    progress bar to stderr. Neither can be quieted via the Rclone() API, so
+    to the root logger, and the 'download' package it uses prints its
+    progress to stdout. Neither can be quieted via the Rclone() API, so
     we suppress them here by temporarily replacing the root logger's handlers
     with a NullHandler and redirecting sys.stdout/sys.stderr to /dev/null.
     """
@@ -52,6 +56,18 @@ def _suppress_rclone_download_output():
         sys.stdout, sys.stderr = old_stdout, old_stderr
         devnull.close()
         root.handlers = old_handlers
+
+
+def _download_output_kept_off_stdout():
+    """
+    Where rclone_api's binary download writes, while it may run: nowhere
+    under '--quiet' (see _suppress_rclone_download_output()); otherwise
+    stderr, since the 'download' package prints its progress to stdout,
+    which under '--json' holds only the result document.
+    """
+    if OUTPUT.quiet:
+        return _suppress_rclone_download_output()
+    return redirect_stdout(sys.stderr)
 
 
 def _keep_logging_off_stdout() -> None:
@@ -167,18 +183,76 @@ def make_rclone_for_copy(
     return src_name, dst_name, make_rclone(Config("\n\n".join(sections)))
 
 
+# The private configuration files written for inline remotes, removed at exit
+_PRIVATE_CONFIG_FILES: list[Path] = []
+
+
+def _remove_private_config_files() -> None:
+    for path in _PRIVATE_CONFIG_FILES:
+        path.unlink(missing_ok=True)
+    _PRIVATE_CONFIG_FILES.clear()
+
+
+atexit.register(_remove_private_config_files)
+
+
+def _private_config_file(text: str) -> Path:
+    """
+    An inline remote's configuration, which carries its credentials, written
+    to a file only its owner can read (mkstemp's 0600), in the system's
+    temporary directory, and removed at exit. rclone_api, given the Config
+    itself, writes it to '.rclone/tmp_config' under the current directory,
+    readable by all, where an upload of the directory would send it.
+    """
+    descriptor, name = tempfile.mkstemp(prefix="yd-rclone-", suffix=".conf")
+    path = Path(name)
+    _PRIVATE_CONFIG_FILES.append(path)
+    # Also on rclone_api's own list, which it removes at exit and in its
+    # SIGTERM handler (which, like the SIGINT one _python_handles_ctrl_c()
+    # replaces, ends the process without running atexit)
+    from rclone_api import util as rclone_api_util
+
+    getattr(rclone_api_util, "_RCLONE_CONFIGS_LIST", []).append(path)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        file.write(text)
+    return path
+
+
+def _python_handles_ctrl_c() -> None:
+    """
+    Put Python's own SIGINT handler back where rclone_api, as it is
+    imported, replaced it with one that removes its configuration files and
+    kills the process at once: a data client command interrupted (Ctrl-C,
+    or an MCP call stopped) then never reached its wrapper's flush, and its
+    --json records were lost. rclone_api's clean-up is also registered at
+    exit, which a KeyboardInterrupt reaches. Only rclone_api's handler is
+    replaced, and only from the main thread, the one that can set it.
+    """
+    from rclone_api import util as rclone_api_util
+
+    if threading.current_thread() is not threading.main_thread():
+        return
+    if signal.getsignal(signal.SIGINT) is getattr(
+        rclone_api_util, "_clean_configs", None
+    ):
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
 def make_rclone(config: Config | None) -> Rclone:
     """
     Instantiate Rclone, suppressing download output when --quiet is active.
     Passing None causes rclone to use the system rclone.conf (for locally
-    configured remotes).
+    configured remotes); a Config (an inline remote's) is passed as a
+    private file of its own (see _private_config_file()).
     """
     from rclone_api import Rclone
 
+    _python_handles_ctrl_c()
     _keep_logging_off_stdout()
-    rclone_conf: Config | Path = _find_rclone_conf() if config is None else config
-    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
-    with ctx:
+    rclone_conf: Path = (
+        _find_rclone_conf() if config is None else _private_config_file(config.text)
+    )
+    with _download_output_kept_off_stdout():
         return Rclone(rclone_conf)
 
 
@@ -281,10 +355,10 @@ def upgrade_rclone():
     """
     from rclone_api import Rclone
 
+    _python_handles_ctrl_c()
     _keep_logging_off_stdout()
     print_info("Downloading / upgrading the rclone binary")
-    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
-    with ctx:
+    with _download_output_kept_off_stdout():
         Rclone.upgrade_rclone()
 
 

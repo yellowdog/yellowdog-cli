@@ -1,5 +1,38 @@
 # Development Guide
 
+<!--ts-->
+   * [Prerequisites](#prerequisites)
+   * [Getting Started](#getting-started)
+   * [Code Formatting](#code-formatting)
+      * [Pre-commit Hook](#pre-commit-hook)
+   * [Testing](#testing)
+      * [Coverage](#coverage)
+      * [Complexity](#complexity)
+      * [Commander GUI Tests](#commander-gui-tests)
+      * [Testing Across Python Versions](#testing-across-python-versions)
+         * [Python Pre-Releases](#python-pre-releases)
+   * [Type Checking](#type-checking)
+   * [Building](#building)
+   * [Commander](#commander)
+   * [MCP Server](#mcp-server)
+   * [Architecture](#architecture)
+      * [One set of commands, three front ends](#one-set-of-commands-three-front-ends)
+      * [The life of a command](#the-life-of-a-command)
+      * [The command registry](#the-command-registry)
+      * [Laziness: importing does nothing](#laziness-importing-does-nothing)
+      * [Passing context rather than reading globals](#passing-context-rather-than-reading-globals)
+      * [Thin commands over libraries](#thin-commands-over-libraries)
+      * [From specification to Platform object](#from-specification-to-platform-object)
+      * [Output and failure](#output-and-failure)
+      * [Rules held by tests](#rules-held-by-tests)
+   * [Project Structure](#project-structure)
+   * [Branching](#branching)
+
+<!-- Created by https://github.com/ekalinin/github-markdown-toc -->
+<!-- Added by: pwt, at: Fri Oct  9 09:37:25 BST 2026 -->
+
+<!--te-->
+
 ## Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) — install via `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`; on Windows use `winget install --id=astral-sh.uv` or `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
@@ -181,7 +214,7 @@ make build        # builds the distribution into dist/
 make pypi_check   # checks the distribution with twine
 ```
 
-The specification schemas' property descriptions are extracted from `README.md`'s Work Requirement Property Dictionary into `yellowdog_cli/spec_data/descriptions.json`, which ships with the package. Regenerate it after editing the dictionary, as the `toc` targets regenerate the tables of contents; `tests/test_spec_properties.py` fails while the shipped file is stale:
+The specification schemas' property descriptions are extracted from the Work Requirement Property Dictionary (`docs/property-dictionary.md`) into `yellowdog_cli/spec_data/descriptions.json`, which ships with the package. Regenerate it after editing the dictionary, as the `toc` targets regenerate the tables of contents; `tests/test_spec_properties.py` fails while the shipped file is stale:
 
 ```shell
 make schema_descriptions
@@ -250,7 +283,7 @@ A handful of commands sit outside this. `yd-help`, `yd-version`, `yd-format-json
 
 ### The command registry
 
-Every command and every option is declared once, as data, in `utils/command_registry.py`. The registry is the source for argparse (`CLIParser` in `utils/args.py` builds each command's parser from it), for `yd-help`'s listing, for the MCP server's tool catalogue and its JSON Schemas, and for the tests that hold the README's Command List and `pyproject.toml`'s entry points to the commands that exist. A command declares its kind there: `API` (gets the full set of common options, including the credentials), `DATA_CLIENT` (no `--key`, `--secret`, `--url` or `--pac`, since it never contacts the Platform) or `STANDALONE`. Adding an option is therefore an edit to the registry, after which the parser, the help, the MCP tool and the checks all follow.
+Every command and every option is declared once, as data, in `utils/command_registry.py`. The registry is the source for argparse (`CLIParser` in `utils/args.py` builds each command's parser from it), for `yd-help`'s listing, for the MCP server's tool catalogue and its JSON Schemas, and for the tests that hold the Command List (`docs/commands.md`) and `pyproject.toml`'s entry points to the commands that exist. A command declares its kind there: `API` (gets the full set of common options, including the credentials), `DATA_CLIENT` (no `--key`, `--secret`, `--url` or `--pac`, since it never contacts the Platform) or `STANDALONE`. Adding an option is therefore an edit to the registry, after which the parser, the help, the MCP tool and the checks all follow.
 
 ### Laziness: importing does nothing
 
@@ -274,7 +307,7 @@ Command modules are mostly thin: the work lives in libraries under `utils/`, whi
 
 ### From specification to Platform object
 
-Most of what users write is specifications: Work Requirements, Worker Pools, Compute Requirements, resources and Node Actions, as TOML, JSON or Jsonnet. Each passes through the same stages. It is loaded (`utils/specs/loading.py`, or `load_resources.py` for `yd-create` and `yd-remove`), with Jsonnet converted to JSON first; its `{{variables}}` are substituted (`variable_substitution.py`, with CSV expansion in `csv_data.py`), from the configuration, the environment, the command line and the CLI's own defaults; it is checked against a JSON Schema (`utils/specs/`), built at run time from the CLI's own property registry and from the installed SDK's model classes, so a newer SDK is described as soon as it is installed; and it is turned into the SDK's model objects and sent to the Platform. Properties the CLI defines itself, such as the Work Requirement properties settable at several levels, are recorded as data in `utils/specs/properties.py`, and their descriptions come from the README's property dictionary, so the user documentation is their single source.
+Most of what users write is specifications: Work Requirements, Worker Pools, Compute Requirements, resources and Node Actions, as TOML, JSON or Jsonnet. Each passes through the same stages. It is loaded (`utils/specs/loading.py`, or `load_resources.py` for `yd-create` and `yd-remove`), with Jsonnet converted to JSON first; its `{{variables}}` are substituted (`variable_substitution.py`, with CSV expansion in `csv_data.py`), from the configuration, the environment, the command line and the CLI's own defaults; it is checked against a JSON Schema (`utils/specs/`), built at run time from the CLI's own property registry and from the installed SDK's model classes, so a newer SDK is described as soon as it is installed; and it is turned into the SDK's model objects and sent to the Platform. Properties the CLI defines itself, such as the Work Requirement properties settable at several levels, are recorded as data in `utils/specs/properties.py`, and their descriptions come from the Work Requirement Property Dictionary in `docs/`, so the user documentation is their single source.
 
 ### Output and failure
 
@@ -295,6 +328,7 @@ yellowdog_cli/utils/specs/        # Specification properties, schemas, validatio
 yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
 yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
+docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config

@@ -27,7 +27,7 @@
   "ram": "Range constraint on GB of RAM that are required to execute Tasks. E.g. [2.5, 4.0]. Either bound may be left unset for a one-sided limit, e.g. [2.5, null] (no upper limit) or [null, 4.0] (no lower limit); in TOML use the string \"none\" or \"null\" instead of null.",
   "regions": "Constrains the YellowDog Scheduler only to execute Tasks from the associated Task Group in the specified regions. E.g. [\"eu-west-2\"].",
   "retryPolicy": "A policy controlling Task retries on error. See Task Retries and Failure Policies.",
-  "retryableErrors": "(Deprecated \u2014 see retryPolicy.) A list of error condition combinations under which Tasks will be retried (up to maximumTaskRetries). Retries will always be attempted if the list is empty (the default). See the TOML/JSON section for examples.",
+  "retryableErrors": "(Deprecated \u2014 see retryPolicy.) A list of error condition combinations under which Tasks will be retried (up to maximumTaskRetries). Retries will always be attempted if the list is empty (the default).",
   "setTaskNames": "Set this to false to suppress automatic generation of Task names. Defaults to true. Task names that are set by the user will still be observed. Note that Task names must be set if any outputs are specified.",
   "tag": "A tag that can be associated with a Work Requirement, Task Group or Task. Note there is no property inheritance for these tags.",
   "taskBatchSize": "Determines the batch size used to add Tasks to Task Groups, from 1 to 10,000. Default is 1,000.",
@@ -50,5 +50,6 @@
   "timeout": "The timeout in minutes after which an individual executing Task will be terminated and reported as FAILED. Overrides the Task Group's taskTimeout (if present). E.g. 120.0.",
   "vcpus": "Range constraint on number of vCPUs that are required to execute Tasks E.g. [2.0, 4.0]. Either bound may be left unset for a one-sided limit, e.g. [2.0, null] (no upper limit) or [null, 4.0] (no lower limit); in TOML use the string \"none\" or \"null\" instead of null.",
   "workRequirementData": "The name of the file containing the JSON document in which the Work Requirement is defined. E.g. \"test_workreq.json\".",
+  "workerTag": "A single Worker Tag, used as a one-item workerTags when workerTags is not set. E.g. \"tag_x\".",
   "workerTags": "The list of Worker Tags that will be used to match against the Worker Tag of a candidate Worker. E.g. [\"tag_x\", \"tag_y\"]."
 }

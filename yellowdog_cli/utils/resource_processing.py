@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from typing import TypeVar
 
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.interactive import NoAnswerToPrompt
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
     resource_display_name,
@@ -41,13 +42,20 @@ def process_each(
     Apply 'act' to each item. A failure is printed once, as 'Failed to
     <verb> <describe(item)>: <error>', and recorded by record(item,
     'failed', error); a session failure records every item after it with
-    record(item, 'skipped', 'not attempted: ...') and stops the run. Raises
-    ReportedFailure at the end if anything failed.
+    record(item, 'skipped', 'not attempted: ...') and stops the run, as does
+    a prompt that finds stdin at its end (NoAnswerToPrompt, re-raised for the
+    wrapper to report once), since every later prompt would find the same.
+    Raises ReportedFailure at the end if anything failed.
     """
     failures: list[Exception] = []
     for index, item in enumerate(items):
         try:
             act(item)
+        except NoAnswerToPrompt as e:
+            record(item, "failed", str(e))
+            for rest in items[index + 1 :]:
+                record(rest, "skipped", f"not attempted: {e}")
+            raise
         except Exception as e:
             print_error(f"Failed to {verb} {describe(item)}: {e}")
             record(item, "failed", str(e))

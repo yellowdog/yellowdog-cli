@@ -28,6 +28,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_ROLES,
     ET_TASKS,
     ET_WORKER_POOLS,
+    ET_WORKERS,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
@@ -258,3 +259,115 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
     monkeypatch.setattr(yd_list, "get_worker_pool_summaries", lambda *a, **k: pools)
     yd_list.list_worker_pools(_ctx())
     assert [p.id for p in listing.printed[0]] == ["a"]
+
+
+class TestActiveInstancesAndWorkers:
+    """
+    '--active-only' filtered Instances' Compute Requirements but not the
+    Instances themselves, so terminated ones were listed; and a Worker on a
+    Node without details was dropped, its append indented under the details.
+    """
+
+    @staticmethod
+    def _instances(listing, monkeypatch, **args):
+        monkeypatch.setattr(
+            wrapper_module, "ARGS_PARSER", _args(ET_INSTANCES, active_only=True, **args)
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [SimpleNamespace(id=CR_ID, name="cr", status=None)],
+        )
+        listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+            SimpleNamespace(id=SimpleNamespace(instanceId="i-up"), status="RUNNING"),
+            SimpleNamespace(
+                id=SimpleNamespace(instanceId="i-gone"), status="TERMINATED"
+            ),
+        ]
+
+    def test_terminated_instances_are_not_active(self, listing, monkeypatch):
+        self._instances(listing, monkeypatch, json_output=True)
+        yd_list.list_compute_requirements(_ctx())
+        assert [i.id.instanceId for i in listing.printed[0]] == ["i-up"]
+
+    def test_nor_in_the_listing_of_one_compute_requirement(self, listing, monkeypatch):
+        self._instances(listing, monkeypatch)
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda _c, objects: shown.extend(objects),
+        )
+        yd_list.list_instances(_ctx(), CR_ID)
+        assert [i.id.instanceId for i in shown] == ["i-up"]
+
+    def test_a_worker_on_a_node_without_details_is_listed(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module, "ARGS_PARSER", _args(ET_WORKERS, json_output=True)
+        )
+        worker = SimpleNamespace(status="SLEEPING")
+        node = SimpleNamespace(details=None, workers=[worker], workerPoolName="wp")
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_workers(_ctx(), [node])
+        assert printed == [[worker]]
+
+
+@pytest.mark.parametrize(
+    "lister, entity_type, fetcher",
+    [
+        ("list_users", "users", "get_all_users"),
+        ("list_applications", "applications", "get_all_applications"),
+        ("list_groups", "groups", "get_all_groups"),
+        ("list_roles", "roles", "get_all_roles"),
+    ],
+)
+def test_sort_and_reverse_apply_to_every_listing(
+    listing, monkeypatch, lister, entity_type, fetcher
+):
+    # These sorted by name whatever --sort or --reverse said (and Namespaces
+    # and Namespace Policies not at all), outside the interactive selection
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(entity_type, json_output=True)
+    )
+    entities = [SimpleNamespace(name=n, id=n) for n in ("a", "b", "c")]
+    monkeypatch.setattr(yd_list, fetcher, lambda *a, **k: list(entities))
+    # Groups and Roles are fetched in full for '--json', by their IDs
+    for call in ("get_group", "get_role"):
+        getattr(listing.client.account_client, call).side_effect = lambda id_: (
+            SimpleNamespace(name=id_, permissions=[])
+        )
+    monkeypatch.setattr(
+        yd_list, "sorted_objects", lambda objects: list(reversed(objects))
+    )
+    getattr(yd_list, lister)(_ctx())
+    assert [e.name for e in listing.printed[0]] == ["c", "b", "a"]
+
+
+@pytest.mark.parametrize(
+    "lister, entity_type, client_call",
+    [
+        ("list_namespaces", "namespaces", "get_namespaces"),
+        ("list_namespace_policies", "namespace-policies", "get_namespace_policies"),
+    ],
+)
+def test_namespaces_and_policies_are_sorted(
+    listing, monkeypatch, lister, entity_type, client_call
+):
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(entity_type, json_output=True)
+    )
+    monkeypatch.setattr(
+        yd_list, "search_namespaces", lambda *a, **k: None, raising=False
+    )
+    entities = [SimpleNamespace(name=n, id=n, namespace=n) for n in ("a", "b")]
+    getattr(
+        listing.client.namespaces_client, client_call
+    ).return_value.list_all.return_value = list(entities)
+    monkeypatch.setattr(
+        yd_list, "sorted_objects", lambda objects: list(reversed(objects))
+    )
+    getattr(yd_list, lister)(_ctx())
+    assert [e.name for e in listing.printed[0]] == ["b", "a"]

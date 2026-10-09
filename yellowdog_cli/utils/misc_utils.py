@@ -17,6 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
+from yellowdog_cli.utils.limits import YD_NAME_MAX_LENGTH
 from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
@@ -387,13 +388,33 @@ def split_delimited_string(
     ]
 
 
+# The kinds of name change already warned of in this run (see
+# _warn_of_name_change_once())
+_NAME_CHANGES_WARNED: set[str] = set()
+
+
+def _warn_of_name_change_once(kind: str, message: str) -> None:
+    """
+    Warn of a kind of name change the first time it is made in the run: Task
+    names are formatted one per Task, and a warning for each would bury the
+    rest of the output.
+    """
+    if kind in _NAME_CHANGES_WARNED:
+        return
+    _NAME_CHANGES_WARNED.add(kind)
+    print_warning(f"{message} (later names changed so are not reported)")
+
+
 def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     """
     Format a string to be consistent with YellowDog naming requirements:
     prefixed with NAME_START_PREFIX, with a warning, where it would not
-    start with a letter. A caller formatting a name *component* rather than
+    start with a letter; and, with a warning once per run, stripped of
+    characters a name cannot hold and cut to YD_NAME_MAX_LENGTH. The
+    documented substitutions (lower case, ' ' and '.' to '_', '/' to '-')
+    are made without one. A caller formatting a name *component* rather than
     a whole name -- the 'format_name:' type tag -- passes add_prefix=False
-    and gets neither the prefix nor the warning.
+    and gets neither the prefix nor the warnings.
     """
     # A name that isn't a String -- 'name = 123' in a configuration or
     # specification file -- is a configuration error, and is reported as one
@@ -401,10 +422,11 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     check_str(yd_name)
 
     # Make obvious substitutions
-    new_yd_name = yd_name.replace("/", "-").replace(" ", "_").replace(".", "_").lower()
+    substituted = yd_name.replace("/", "-").replace(" ", "_").replace(".", "_").lower()
 
     # Enforce acceptable regex
-    new_yd_name = re.sub("[^a-z0-9_-]", "", new_yd_name)
+    new_yd_name = re.sub("[^a-z0-9_-]", "", substituted)
+    characters_dropped = new_yd_name != substituted
 
     if new_yd_name == "":
         raise ValueError(
@@ -416,11 +438,23 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
     if prefix_added:
         new_yd_name = NAME_START_PREFIX + new_yd_name
 
-    # Mustn't exceed 60 chars
-    new_yd_name = new_yd_name[:60]
+    cut_short = len(new_yd_name) > YD_NAME_MAX_LENGTH
+    new_yd_name = new_yd_name[:YD_NAME_MAX_LENGTH]
 
     # Warned about after truncation, so that the reported name is the one that
     # will actually be used
+    if add_prefix and characters_dropped:
+        _warn_of_name_change_once(
+            "characters dropped",
+            f"Name '{yd_name}' has characters a YellowDog name cannot hold:"
+            f" using '{new_yd_name}' instead",
+        )
+    if add_prefix and cut_short:
+        _warn_of_name_change_once(
+            "cut short",
+            f"Name '{yd_name}' is longer than {YD_NAME_MAX_LENGTH} characters:"
+            f" using '{new_yd_name}' instead",
+        )
     if prefix_added:
         print_warning(
             f"Name '{yd_name}' doesn't start with a letter: "

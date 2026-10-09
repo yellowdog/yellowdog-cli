@@ -35,12 +35,13 @@ def test_dry_run_flag_in_help(cmd):
         "yd-terminate -D some-cr-name",
     ],
 )
-def test_dry_run_with_explicit_names_errors(cmd):
-    # Guard: --dry-run + explicit names/IDs must error at parse time (exit 2),
-    # never falling through to the acting path.
+def test_dry_run_with_explicit_names_is_accepted(cmd):
+    # It was refused at parse time, leaving the most destructive commands the
+    # only ones unable to preview a named target; it now reports what it would
+    # do (tests/test_cancel.py, test_shutdown.py, test_compute_action_common.py)
     result = shell(cmd)
-    assert result.exit_code == 2
-    assert "not supported with explicit names" in (result.stderr + result.stdout)
+    assert result.exit_code != 2
+    assert "not supported with explicit names" not in (result.stderr + result.stdout)
 
 
 @pytest.mark.parametrize(

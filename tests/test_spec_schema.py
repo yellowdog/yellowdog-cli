@@ -2,7 +2,7 @@
 utils/specs/schema.py: the five families' schemas, built from the registry and
 the installed SDK, compile under fastjsonschema; the SDK type mapping follows
 the spec's table row by row on real SDK fields; anything unmapped raises; the
-corpus and the README's examples validate.
+corpus and the documentation's examples (README.md and docs/) validate.
 """
 
 import dataclasses
@@ -734,12 +734,15 @@ class TestCorpusAndExamples:
         assert count > 20
         assert exempted == sum(map(len, MISSING_NAMESPACE_FAILURE_NAMES.values()))
 
-    def _json_blocks(self, start: str, end: str) -> list:
+    def _json_blocks(
+        self, page: str, start: str, end: str, required: bool = True
+    ) -> list:
         """
-        The README's parseable JSON blocks from the line starting 'start' to
-        the one starting 'end', or to the end of the file if none does.
+        The parseable JSON blocks in 'page' (relative to the repository) from
+        the line starting 'start' to the one starting 'end', or to the end of
+        the file if none does; at least one unless not 'required'.
         """
-        lines = (REPO / "README.md").read_text().splitlines()
+        lines = (REPO / page).read_text(encoding="utf-8").splitlines()
         s = next(i for i, line in enumerate(lines) if line.startswith(start))
         e = next(
             (i for i, line in enumerate(lines) if line.startswith(end)), len(lines)
@@ -756,7 +759,7 @@ class TestCorpusAndExamples:
                     pass  # an elided example
                 i = j
             i += 1
-        assert blocks
+        assert blocks or not required
         return blocks
 
     def test_the_readme_work_requirement_examples_validate(self):
@@ -773,6 +776,7 @@ class TestCorpusAndExamples:
         # Up to the dry-run section, whose example is the processed output
         # sent to the Platform, not a specification
         for block in self._json_blocks(
+            "docs/work-requirements.md",
             "## Work Requirement JSON File Structure",
             "## Dry-Running Work Requirement Submissions",
         ):
@@ -787,6 +791,7 @@ class TestCorpusAndExamples:
     def test_the_readme_worker_pool_examples_validate(self):
         validate = compile_schema(Family.WORKER_POOL)
         for block in self._json_blocks(
+            "docs/worker-pools.md",
             "## Worker Pool Specification Using JSON Documents",
             "## Variable Substitutions in Worker Pool Properties",
         ):
@@ -794,9 +799,17 @@ class TestCorpusAndExamples:
 
     def test_the_readme_resource_examples_validate(self):
         validate = compile_schema(Family.RESOURCES)
-        lines = (REPO / "README.md").read_text().splitlines()
+        pages = [
+            "README.md",
+            *(f"docs/{p.name}" for p in (REPO / "docs").glob("*.md")),
+        ]
+        blocks = [
+            block
+            for page in sorted(pages)
+            for block in self._json_blocks(page, "", "\x00", required=False)
+        ]
         count, failures = 0, []
-        for block in self._json_blocks(lines[0], "\x00"):
+        for block in blocks:
             items = block if isinstance(block, list) else [block]
             if not any(isinstance(i, dict) and "resource" in i for i in items):
                 continue
@@ -814,7 +827,7 @@ class TestCorpusAndExamples:
             validate(json.loads((REPO / "tests" / "spec_examples" / name).read_text()))
         count = 0
         for block in self._json_blocks(
-            "## Node Actions", "## Worker Pool and Compute Commands"
+            "docs/worker-pools.md", "## Node Actions", "\x00"
         ):
             if isinstance(block, dict) and (
                 "actions" in block or "actionGroups" in block

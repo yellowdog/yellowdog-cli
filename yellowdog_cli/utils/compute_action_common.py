@@ -38,9 +38,16 @@ from yellowdog_cli.utils.action_runner import (
     confirm_items,
     resolve_targets,
 )
-from yellowdog_cli.utils.capacity_wait import wait_for_capacity
+from yellowdog_cli.utils.capacity_wait import (
+    DoneWhen,
+    capacity_reached,
+    until_settled,
+    until_settled_again,
+    until_stopped,
+    wait_for_capacity,
+)
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.dryrun_utils import report_dry_run, report_dry_run_items
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_INSTANCES,
@@ -79,6 +86,9 @@ class ComputeAction:
     valid_instance_statuses: list[InstanceStatus]
     # How a confirmation names the action, where its name alone undersells it
     confirmation_verb: str | None = None
+    # When '--follow' is done, the Compute Requirement being left alive (its
+    # stream never closes); None to follow it to its end, as a terminate does
+    done_when: DoneWhen | None = None
 
     @property
     def prompt(self) -> str:
@@ -120,6 +130,7 @@ COMPUTE_STOP = ComputeAction(
     instance_method_name="stop_instances",
     valid_cr_statuses=[ComputeRequirementStatus.RUNNING],
     valid_instance_statuses=[InstanceStatus.RUNNING],
+    done_when=until_stopped,
 )
 
 COMPUTE_START = ComputeAction(
@@ -130,6 +141,7 @@ COMPUTE_START = ComputeAction(
     instance_method_name="start_instances",
     valid_cr_statuses=[ComputeRequirementStatus.STOPPED],
     valid_instance_statuses=[InstanceStatus.STOPPED],
+    done_when=until_settled,
 )
 
 COMPUTE_RESTART = ComputeAction(
@@ -140,6 +152,7 @@ COMPUTE_RESTART = ComputeAction(
     instance_method_name="restart_instances",
     valid_cr_statuses=[],
     valid_instance_statuses=[InstanceStatus.RUNNING],
+    done_when=until_settled_again,
 )
 
 
@@ -181,6 +194,7 @@ COMPUTE_DEPROVISION = ComputeAction(
     valid_cr_statuses=[],
     valid_instance_statuses=COMPUTE_TERMINATE.valid_instance_statuses,
     confirmation_verb="Deprovision (terminate, reducing the target count of)",
+    done_when=until_settled,
 )
 
 COMPUTE_REPROVISION = ComputeAction(
@@ -194,6 +208,7 @@ COMPUTE_REPROVISION = ComputeAction(
     valid_cr_statuses=[ComputeRequirementStatus.RUNNING],
     valid_instance_statuses=[],
     confirmation_verb="Reprovision (restore to their target instance counts)",
+    done_when=until_settled,
 )
 
 
@@ -364,7 +379,7 @@ def _apply_action_to_summaries(
 
     if actioned_ids:
         print_info(f"{action.past_tense} {len(actioned_ids)} Compute Requirement(s)")
-        _after(ctx, actioned_ids)
+        _after(ctx, action, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
 
@@ -417,6 +432,17 @@ def _apply_action_by_name_or_id(
 
     if not items:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
+        return
+
+    if ctx.args.dry_run:  # yd-terminate's, the only one to take --dry-run
+        verb = action.name.lower()
+        report_dry_run_items(
+            items,
+            verb,
+            lambda item, status: record_action(
+                item.entity, item.entity_type, verb, f"would {verb}", status=status
+            ),
+        )
         return
 
     if not confirm_items(_confirmation(action, items), items, action.recorder()):
@@ -477,16 +503,24 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
             actioned_ids.append(cr_id)
 
     if actioned_ids:
-        _after(ctx, actioned_ids)
+        _after(ctx, action, actioned_ids)
 
 
-def _after(ctx: RunContext, actioned_ids: list[str]):
+def _after(ctx: RunContext, action: ComputeAction, actioned_ids: list[str]):
     """
     Follow (--follow) or wait for (--wait, yd-compute-reprovision's) the
     Compute Requirements acted on; the registry refuses the two together.
     """
     if ctx.args.follow:
-        follow_ids(ctx, actioned_ids)
+        follow_ids(
+            ctx,
+            actioned_ids,
+            settled=(
+                None
+                if action.done_when is None
+                else capacity_reached(ctx, action.done_when)
+            ),
+        )
     elif ctx.args.wait:
         wait_for_capacity(ctx, actioned_ids, ctx.args.timeout)
 

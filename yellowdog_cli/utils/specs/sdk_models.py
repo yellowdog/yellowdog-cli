@@ -322,7 +322,7 @@ POLYMORPHIC_FAMILIES: dict[str, frozenset[str]] = {
 }
 
 # The resource types yd-create accepts (create_resources()'s dispatch), in the
-# order the README's Resource Specification Definitions section lists them
+# order docs/resources.md's Resource Specification Definitions section lists them
 RESOURCE_TYPES: tuple[str, ...] = (
     "ComputeSourceTemplate",
     "ComputeRequirementTemplate",

@@ -42,7 +42,7 @@ class OutputSettings:
     interactive: bool | None = False
     auto_select_all: bool | None = False
     details: bool | None = False
-    sort: str | None = None
+    sort: tuple[str, ...] | None = None
     reverse: bool | None = None
 
 

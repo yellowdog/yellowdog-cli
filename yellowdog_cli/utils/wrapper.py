@@ -19,6 +19,7 @@ from __future__ import annotations
 import functools
 import inspect
 import os
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -136,7 +137,25 @@ def _describe(error: Exception) -> str:
         )
     if code == ExitCode.AUTHENTICATION:
         return f"Your Application Key ID and SECRET are not recognised: {error}"
+    if code == ExitCode.CONNECTION:
+        return (
+            # Loaded: a connection is attempted only once it has been
+            f"Cannot reach the YellowDog Platform at '{CONFIG_COMMON.url}': check the URL,"
+            f" the network and any proxy ({_connection_cause(error)})"
+        )
     return describe_error(error)
+
+
+def _connection_cause(error: Exception) -> str:
+    """
+    The cause of a connection failure, without urllib3's wrapping of it in
+    the connection pool and the retries ('[Errno 61] Connection refused'),
+    or the error's own text when it has no such part.
+    """
+    text = str(error)
+    if (cause := re.search(r"\[Errno -?\d+\][^'\")]*", text)) is not None:
+        return cause.group(0).strip()
+    return text or type(error).__name__
 
 
 def main_wrapper(func: Callable[..., Any]) -> Callable[[], None]:

@@ -34,21 +34,28 @@ pypi_test_upload: clean build
 pypi_check: build
 	twine check dist/*
 
-toc_all: toc toc_cloudwizard toc_commander toc_mcp
+toc_all: toc toc_docs toc_cloudwizard toc_commander toc_mcp toc_development
 
 toc: README.md
-	./gh-md-toc --insert --skip-header README.md
+	./gh-md-toc --insert --no-backup --skip-header README.md
+
+# Each docs/ page with the table of contents markers (a one-table page has none)
+toc_docs: docs/*.md
+	for f in $$(grep -l '^<!--ts-->' docs/*.md); do ./gh-md-toc --insert --no-backup --skip-header $$f; done
 
 toc_cloudwizard: README_CLOUDWIZARD.md
-	./gh-md-toc --insert --skip-header README_CLOUDWIZARD.md
+	./gh-md-toc --insert --no-backup --skip-header README_CLOUDWIZARD.md
 
 toc_commander: yellowdog_cli/commander/README.md
-	./gh-md-toc --insert --skip-header yellowdog_cli/commander/README.md
+	./gh-md-toc --insert --no-backup --skip-header yellowdog_cli/commander/README.md
 
 toc_mcp: yellowdog_cli/mcp/README.md
-	./gh-md-toc --insert --skip-header yellowdog_cli/mcp/README.md
+	./gh-md-toc --insert --no-backup --skip-header yellowdog_cli/mcp/README.md
 
-schema_descriptions: README.md
+toc_development: DEVELOPMENT.md
+	./gh-md-toc --insert --no-backup --skip-header DEVELOPMENT.md
+
+schema_descriptions: docs/property-dictionary.md
 	python3 scripts/extract_schema_descriptions.py > yellowdog_cli/spec_data/descriptions.json
 
 test:

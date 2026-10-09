@@ -7,6 +7,7 @@ instead of spawning a process, so no yd-* command is actually run.
 
 import os
 import subprocess
+import sys
 from os.path import abspath, dirname, join, realpath
 
 import pytest
@@ -14,6 +15,7 @@ import qt_guard
 
 qt_guard.require_qt()
 
+import yellowdog_cli.commander.command_running as command_running_module
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.results_panel import NO_OBJECT_PATH, RESULTS_DIR
@@ -22,6 +24,13 @@ from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.commander.window_base import (
     NO_FORMAT_UNDECORATED_YD_COMMANDS,
     UNDECORATED_YD_COMMANDS,
+)
+from yellowdog_cli.utils.command_registry import (
+    COMMANDS,
+    NAMESPACE,
+    PROPERTY,
+    TAG,
+    VARIABLE,
 )
 
 
@@ -305,6 +314,29 @@ def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
     window._cancel_work_requirements_action()
     assert seen == [[]]
     assert captured == [("yd-cancel", ["-y", "ydid:x:1"])]
+
+
+@pytest.mark.parametrize(
+    "method, listed_with",
+    [
+        ("_cancel_work_requirements_action", []),
+        # Its listing asked 'yd-cancel -D' without '--abort', which leaves out
+        # a Work Requirement already CANCELLING, the very kind Cancel & Abort
+        # is for once Cancel has run: it found nothing to abort
+        ("_cancel_work_requirements_and_abort_action", ["--abort"]),
+    ],
+)
+def test_the_listing_asks_what_the_action_will_do(
+    window, captured, monkeypatch, method, listed_with
+):
+    seen: list = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_summaries",
+        lambda command, extra_args=None: seen.append(extra_args) or [],
+    )
+    getattr(window, method)()
+    assert seen == [listed_with]
 
 
 def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
@@ -936,3 +968,99 @@ def test_build_args_shell_command_unchanged(window):
     window._config_file = None
     args = window._build_command_args("sh", ["-c", "ls"], yd_command=False)
     assert args == ["-c", "ls"]
+
+
+class TestConfigDataFile:
+    """
+    Show WR/WP with no definition file selected reads the configuration's
+    workRequirementData/workerPoolData, resolving a {{variable}} in it with
+    yd-variables, run as every child is: under Commander's own interpreter
+    (cli_program()), with CHILD_ENVIRONMENT, '-q' so a warning cannot spoil
+    the JSON, and a failure falling back to the variable's default.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _started(self, window, qapp):
+        # The window's deferred start-up (_set_config_file, by singleShot(0))
+        # would otherwise run in the child's nested event loop and deselect
+        # the configuration file a test selected
+        qapp.processEvents()
+
+    @staticmethod
+    def _config(tmp_path) -> str:
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[workRequirement]\nworkRequirementData = "{{wr_file:=default.json}}"\n',
+            encoding="utf-8",
+        )
+        return str(config)
+
+    @staticmethod
+    def _children(monkeypatch, script: str) -> list[tuple[str, list[str]]]:
+        """
+        Run 'script' as Python in place of each child, recording what each
+        would have been.
+        """
+        started: list[tuple[str, list[str]]] = []
+
+        def program(command, args):
+            started.append((command, args))
+            return sys.executable, ["-c", script]
+
+        monkeypatch.setattr(command_running_module, "cli_program", program)
+        return started
+
+    def test_a_variable_is_resolved_by_yd_variables(
+        self, window, monkeypatch, tmp_path
+    ):
+        window._config_file = self._config(tmp_path)
+        started = self._children(
+            monkeypatch, "import json; print(json.dumps({'wr_file': 'real.json'}))"
+        )
+        path = window._get_config_data_file("workRequirementData")
+        assert path == join(str(tmp_path), "real.json")
+        [(command, args)] = started
+        assert command == "yd-variables"
+        assert args[:2] == ["-c", "config.toml"]
+        assert "-q" in args and "wr_file" in args
+
+    def test_a_failure_falls_back_to_the_default(self, window, monkeypatch, tmp_path):
+        window._config_file = self._config(tmp_path)
+        self._children(monkeypatch, "import sys; sys.exit(3)")
+        path = window._get_config_data_file("workRequirementData")
+        assert path == join(str(tmp_path), "default.json")
+
+    def test_the_child_is_given_commanders_environment(
+        self, window, monkeypatch, tmp_path
+    ):
+        # It was subprocess.run() with the inherited environment, decoding
+        # strictly in the locale's encoding
+        window._config_file = self._config(tmp_path)
+        self._children(
+            monkeypatch,
+            "import json, os;"
+            " print(json.dumps({'wr_file': os.environ.get('PYTHONIOENCODING', 'unset')}))",
+        )
+        path = window._get_config_data_file("workRequirementData")
+        assert path == join(str(tmp_path), "utf-8")
+
+
+@pytest.mark.parametrize(
+    "command",
+    sorted(name for name in COMMANDS if name not in UNDECORATED_YD_COMMANDS),
+)
+def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
+    # The Namespace, Tag, User-Defined Variables and Properties fields were
+    # added to every typed command, so 'yd-show <id>' failed with
+    # "unrecognized arguments: -n", and 'yd-cloud-info instance-types' read
+    # the namespace as its type
+    window._config_file = None
+    window.namespace_override.setPlainText("ns")
+    window.tag_override.setPlainText("tg")
+    window.user_variables.setPlainText("a=1")
+    window.properties.setPlainText("common.x=1")
+    args = window._build_command_args(command, [], yd_command=False)
+    registered = COMMANDS[command]
+    for flag, option in (("-n", NAMESPACE), ("-t", TAG), ("-v", VARIABLE)):
+        assert (flag in args) == registered.has(option), (command, flag)
+    assert any(a.startswith("--property=") for a in args) == registered.has(PROPERTY)

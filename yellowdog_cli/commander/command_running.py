@@ -2,8 +2,11 @@
 Running commands for YellowDogApp (see commander.py).
 """
 
+import re
 from functools import partial as functools_partial
 from json import loads
+from os.path import exists, join
+from typing import Any
 
 from PyQt6.QtCore import (
     QEventLoop,
@@ -81,6 +84,22 @@ class CommandRunning(WindowBase):
         command (yd-download) that records what failed -- a path that matched
         nothing -- in it, for the caller to read.
         """
+        parsed = self._capture_json_document(
+            command, flags, extra_args, failures_recorded
+        )
+        return parsed if isinstance(parsed, list) else None
+
+    def _capture_json_document(
+        self,
+        command: str,
+        flags: list[str],
+        extra_args: list[str] | None = None,
+        failures_recorded: bool = False,
+    ) -> Any:
+        """
+        _capture_json(), returning the parsed JSON document whatever its shape
+        (yd-variables prints an object); None on any failure.
+        """
         yd_process = QProcess()
         event_loop = QEventLoop()
 
@@ -115,10 +134,57 @@ class CommandRunning(WindowBase):
             yd_process.readAllStandardOutput().data().decode(errors="replace").strip()
         )
         try:
-            parsed = loads(output)
+            return loads(output)
         except Exception:
             return None
-        return parsed if isinstance(parsed, list) else None
+
+    def _get_config_data_file(self, key: str) -> str | None:
+        """
+        Extract the value of workRequirementData or workerPoolData directly
+        from the config TOML text, resolving template variable defaults and
+        checking user_variables overrides. Each variable is resolved by
+        yd-variables, run as every child is (_capture_json_document()); one it
+        cannot resolve takes its default.
+        """
+        if self._config_file is None or not exists(self._config_file):
+            return None
+        try:
+            with open(self._config_file, encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            return None
+
+        m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)
+        if not m:
+            return None
+
+        value = m.group(1)
+
+        # Resolve template variables iteratively, innermost first, to support up
+        # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
+        # Each pass finds the deepest {{...}} with no further {{ inside it,
+        # resolves that single variable via yd-variables, and substitutes the result.
+        for _ in range(3):
+            if "{{" not in value:
+                break
+            inner = re.search(r"\{\{([^{}]+)}}", value)
+            if not inner:
+                break
+            fragment = inner.group(1)
+            var_name, default = (
+                fragment.split(":=", 1) if ":=" in fragment else (fragment, "")
+            )
+            variables = self._capture_json_document("yd-variables", [var_name])
+            if self._shutting_down:
+                return None
+            resolved = variables.get(var_name) if isinstance(variables, dict) else None
+            substitution = resolved if isinstance(resolved, str) else default
+            value = value[: inner.start()] + substitution + value[inner.end() :]
+
+        if not value:
+            return None
+
+        return str(join(self._config_dir(), value))
 
     def _capture_dry_run_summaries(
         self, command: str, extra_args: list[str] | None = None

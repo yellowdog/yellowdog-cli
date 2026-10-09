@@ -1,7 +1,8 @@
 """
-utils/specs/properties.py against README.md: the Work Requirement dictionary's
-rows, levels and descriptions are the registry's, and the shipped
-descriptions.json is a fresh extraction. Needs no SDK call and no network.
+utils/specs/properties.py against docs/property-dictionary.md: the Work
+Requirement dictionary's rows, levels and descriptions are the registry's,
+and the shipped descriptions.json is a fresh extraction. Needs no SDK call
+and no network.
 """
 
 import json
@@ -19,15 +20,15 @@ from yellowdog_cli.utils.specs.properties import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
-README = REPO / "README.md"
+DICTIONARY = REPO / "docs" / "property-dictionary.md"
 DESCRIPTIONS = REPO / "yellowdog_cli" / "spec_data" / "descriptions.json"
 
 
 def _dictionary_rows() -> dict[str, tuple[set[Level], str]]:
     """
-    {property: (levels marked, description)} from the README's dictionary table.
+    {property: (levels marked, description)} from the dictionary table.
     """
-    lines = README.read_text().splitlines()
+    lines = DICTIONARY.read_text(encoding="utf-8").splitlines()
     start = next(
         i for i, line in enumerate(lines) if line.startswith("| Property Name")
     )
@@ -68,9 +69,8 @@ class TestDictionaryAgreesWithRegistry:
             assert prop.inherited is not says_not, prop.name
 
     def test_no_row_is_duplicated(self):
-        # Other README tables share names ('name', 'tag'): only the
-        # dictionary's own rows are counted
-        lines = README.read_text().splitlines()
+        # Only the dictionary table's own rows are counted
+        lines = DICTIONARY.read_text(encoding="utf-8").splitlines()
         start = next(
             i for i, line in enumerate(lines) if line.startswith("| Property Name")
         )

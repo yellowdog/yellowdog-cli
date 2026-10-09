@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from urllib3.exceptions import ReadTimeoutError
 from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 
 import yellowdog_cli.utils.follow_utils as fu
@@ -764,8 +765,21 @@ class TestStreamFailures:
     for during or after a stream.
     """
 
-    def test_a_read_timeout_reconnects_without_a_warning(self, clock, monkeypatch):
-        quiet = _stream(["data: 1"], raises=requests.exceptions.ReadTimeout("quiet"))
+    @pytest.mark.parametrize(
+        "timeout",
+        [
+            requests.exceptions.ReadTimeout("quiet"),
+            # As requests raises it while a streamed response is read:
+            # urllib3's read timeout, wrapped as a ConnectionError
+            requests.exceptions.ConnectionError(
+                ReadTimeoutError(None, "/updates", "Read timed out.")  # type: ignore[arg-type]
+            ),
+        ],
+    )
+    def test_a_read_timeout_reconnects_without_a_warning(
+        self, clock, monkeypatch, timeout
+    ):
+        quiet = _stream(["data: 1"], raises=timeout)
         quiet.encoding = None  # Set to UTF-8 when a stream names none
         get = MagicMock(side_effect=[quiet, _stream(["data: 2"])])
         monkeypatch.setattr(fu.requests, "get", get)
@@ -777,6 +791,37 @@ class TestStreamFailures:
         assert quiet.encoding == "utf-8"
         assert warnings == []
         assert clock.sleeps == []  # Straight back, not as an outage
+        assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
+
+    def test_quiet_spells_never_add_up_to_an_outage(self, clock, monkeypatch):
+        # Silence is no failure, however long: a stream quiet for many read
+        # timeouts in a row is reconnected each time and never given up on
+        warnings: list[str] = []
+
+        def quiet():
+            # Each read timeout takes the read timeout's length to arrive
+            response = _stream([])
+
+            def iter_lines(decode_unicode=True):
+                clock.sleep(fu.EVENT_STREAM_READ_TIMEOUT)
+                # As requests raises it while a streamed response is read
+                raise requests.exceptions.ConnectionError(
+                    ReadTimeoutError(None, "/updates", "Read timed out.")  # type: ignore[arg-type]
+                )
+                yield  # A generator, as iter_lines() is
+
+            response.iter_lines.side_effect = iter_lines
+            return response
+
+        get = MagicMock(
+            side_effect=[quiet() for _ in range(10)] + [_stream(["data: 1"])]
+        )
+        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu, "print_warning", lambda m, **k: warnings.append(m))
+        _finished(monkeypatch, True)
+        fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
+        assert get.call_count == 11
+        assert warnings == []
         assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
 
     def test_an_unexpected_error_stops_the_stream_with_its_code(
@@ -953,3 +998,39 @@ class TestFollowIdsChoices:
         )
         client.worker_pool_client.get_worker_pool_by_id.return_value = configured
         assert fu._compute_requirement_of_worker_pool(_ctx(), "pool") is None
+
+
+class TestFollowingEndsOnceSettled:
+    """
+    An action that leaves its entity alive (a hold, a stop, a resize) never
+    closes its stream, so '--follow' after it ran until Ctrl-C. Given a
+    'settled' test, following ends at the first event after which it holds.
+    """
+
+    def test_it_ends_at_the_event_that_settles_it(self, clock, monkeypatch):
+        stream = _stream(['data: {"status": "RUNNING"}', 'data: {"status": "HELD"}'])
+        get = MagicMock(side_effect=[stream])
+        monkeypatch.setattr(fu.requests, "get", get)
+        finished = _finished(monkeypatch)  # Never asked: the stream never closed
+        seen: list[dict] = []
+
+        def held(data: dict) -> bool:
+            seen.append(data)
+            return data["status"] == "HELD"
+
+        fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT, settled=held)
+        assert [d["status"] for d in seen] == ["RUNNING", "HELD"]
+        assert get.call_count == 1
+        finished.assert_not_called()
+        assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
+
+    def test_follow_ids_gives_each_stream_its_own_test(self, monkeypatch):
+        calls: list = []
+        monkeypatch.setattr(
+            fu,
+            "follow_events",
+            lambda ctx, ydid, ydid_type, settled=None: calls.append((ydid, settled)),
+        )
+        tests = {WR: lambda data: True}
+        fu.follow_ids(_ctx(), [WR], settled=tests.get)
+        assert calls == [(WR, tests[WR])]

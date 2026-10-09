@@ -57,6 +57,10 @@ CHILD_ENVIRONMENT = {"PYTHONIOENCODING": "utf-8"}
 # has been killed: a process that escaped the group may hold the pipes open
 DRAIN_SECONDS = 5
 
+# How long a stopped command is given to go once interrupted, before its
+# process group is killed: time for its wrapper to flush the --json result
+INTERRUPT_SECONDS = 5
+
 
 def run(
     argv: list[str], working_dir: str, environment: dict[str, str], timeout_seconds: int
@@ -90,12 +94,16 @@ def run(
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
-        _stop_group(process)
-        try:
-            stdout, stderr = process.communicate(timeout=DRAIN_SECONDS)
-        except subprocess.TimeoutExpired as still:
-            process.kill()
-            stdout, stderr = still.stdout, still.stderr
+        stdout, stderr = _interrupted(process)
+        if stdout is None:
+            _stop_group(process)
+            try:
+                stdout, stderr = process.communicate(timeout=DRAIN_SECONDS)
+            except subprocess.TimeoutExpired as still:
+                process.kill()
+                stdout, stderr = still.stdout, still.stderr
+        else:
+            _stop_group(process)  # Whatever it started, still running
         return Run(
             exit_code=-9, stdout=_text(stdout), stderr=_text(stderr), stopped=True
         )
@@ -111,6 +119,30 @@ def _own_process_group() -> dict:
     if sys.platform == "win32":
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
     return {"start_new_session": True}
+
+
+def _interrupted(
+    process: subprocess.Popen,
+) -> tuple[str | bytes | None, str | bytes | None]:
+    """
+    Interrupt the command's process group, as a Ctrl-C at a terminal does,
+    and return its output if the command has gone within INTERRUPT_SECONDS,
+    or (None, None): the wrappers flush the --json result on an interrupt,
+    so the records of what it did before the stop come back, where a kill
+    alone lost them all. The whole group, so that what it started (rclone)
+    stops too rather than running on through the grace period. Not on
+    Windows, whose CTRL_BREAK_EVENT Python does not turn into a
+    KeyboardInterrupt.
+    """
+    if sys.platform == "win32":
+        return None, None
+    try:
+        os.killpg(process.pid, signal.SIGINT)
+        return process.communicate(timeout=INTERRUPT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None, None
+    except OSError:
+        return None, None  # Gone already: the kill finds nothing
 
 
 def _stop_group(process: subprocess.Popen) -> None:

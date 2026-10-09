@@ -2,9 +2,10 @@
 The registry of yd-* commands and their options.
 
 Every command's options are defined here once, as data: argparse is built
-from it (build_parser()), yd-help lists from it, and the README's Command
-List is checked against it (tests/test_readme_command_list.py). It imports
-nothing from args.py; args.py imports it.
+from it (build_parser()), yd-help lists from it, and the Command List
+(docs/commands.md) is checked against it
+(tests/test_docs_command_list.py). It imports nothing from args.py; args.py
+imports it.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from functools import cache
@@ -384,6 +385,37 @@ def finite_float(value: str) -> float:
     return number
 
 
+def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
+    """
+    A '--sort' value: one sort key, or several separated by commas, the most
+    significant first, each one of 'valid' and none given twice.
+    """
+    keys = tuple(key.strip() for key in value.split(","))
+    for key in keys:
+        if not key:
+            raise ArgumentTypeError(f"empty sort key in '{value}'")
+        if key not in valid:
+            raise ArgumentTypeError(
+                f"invalid sort key '{key}' (choose from {', '.join(valid)})"
+            )
+    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated:
+        raise ArgumentTypeError(f"sort key given more than once: {', '.join(repeated)}")
+    return keys
+
+
+# The sort keys of the entity listings and interactive selection
+# (tables.sorted_objects())
+ENTITY_SORT_KEYS: tuple[str, ...] = ("name", "created", "status", "namespace")
+
+
+def entity_sort_keys(value: str) -> tuple[str, ...]:
+    """
+    An argparse type for the entity listings' '--sort'.
+    """
+    return parse_sort_keys(value, ENTITY_SORT_KEYS)
+
+
 def non_negative_int(value: str) -> int:
     """
     An argparse type for a size that may be zero, as a Worker Pool or
@@ -552,9 +584,10 @@ COMMON_OPTIONS[CommandKind.DATA_CLIENT] = (
 COMMON_OPTIONS[CommandKind.STANDALONE] = ()
 
 # The options no MCP tool exposes, by option name (Option.name: the first
-# long flag, or a positional's name), compared as Command.has() compares.
+# long flag, or a positional's name), compared as Command.has() compares,
+# with MCP_EXCLUDED_SPECIFICATION_FILES below (see mcp_excluded()).
 # tests/test_mcp_tools.py holds every option of every tool command to being
-# either in a schema or here, so a new option is placed on purpose.
+# either in a schema or excluded, so a new option is placed on purpose.
 MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
     {
         # The common set: the server owns the configuration, the credentials
@@ -587,10 +620,9 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         "--show-keyring-passwords",
         "--show-secrets",
         # The specification files, replaced by the tools' 'specification(s)'
-        # argument (yellowdog_cli/mcp/tools.py)
-        "--work-requirement",
-        "--worker-pool",
-        "--compute-requirement",
+        # argument (yellowdog_cli/mcp/tools.py); the flag forms are
+        # MCP_EXCLUDED_SPECIFICATION_FILES', their names being other
+        # commands' options too
         "work_requirement_file_positional",
         "worker_pool_file_positional",
         "compute_requirement_file_positional",
@@ -599,30 +631,52 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
 )
 
 
+# The specification-file options given as flags, excluded only from the
+# commands they are files on: by name alone they also hid yd-resize's
+# '--compute-requirement' (a flag) and yd-nodeaction's '--worker-pool' (a
+# name), as their names are those options' names too
+MCP_EXCLUDED_SPECIFICATION_FILES: dict[str, frozenset[str]] = {
+    "yd-submit": frozenset({"--work-requirement"}),
+    "yd-provision": frozenset({"--worker-pool"}),
+    "yd-instantiate": frozenset({"--worker-pool", "--compute-requirement"}),
+}
+
+
+def mcp_excluded(command: Command, option: Option) -> bool:
+    """
+    Whether no MCP tool for 'command' exposes 'option': it is in
+    MCP_EXCLUDED_OPTIONS, or is one of the command's own specification-file
+    options.
+    """
+    return option.name in MCP_EXCLUDED_OPTIONS or option.name in (
+        MCP_EXCLUDED_SPECIFICATION_FILES.get(command.name, frozenset())
+    )
+
+
 # --- Shared options ------------------------------------------------------
 # Each is shared by several commands; a command registering the same flag
 # with different keyword arguments uses a variant.
 
 SORT = option(
     "--sort",
-    type=str,
+    type=entity_sort_keys,
     required=False,
-    choices=["name", "created", "status", "namespace"],
     default="name",
     help=(
         "order in which listed and interactively-selected entities "
         "are sorted: 'name' (default), 'created' (creation time, "
-        "earliest first), 'status' (status name, then name), or "
-        "'namespace' (namespace, then name); combine with --reverse "
-        "to invert the order"
+        "earliest first), 'status' (status name), or 'namespace'; give "
+        "several, separated by commas, to sort by each in turn (e.g. "
+        "'status,created'), the name always breaking any tie; combine "
+        "with --reverse to invert the whole order"
     ),
-    metavar="<name|created|status|namespace>",
+    metavar="<name|created|status|namespace>[,...]",
 )
 REVERSE = option(
     "--reverse",
     action="store_true",
     required=False,
-    help="reverse (descending) order of the active --sort key",
+    help="reverse (descending) the whole order --sort gives",
 )
 VARIABLE = option(
     "--variable",
@@ -727,7 +781,7 @@ ACTIONS_JSON = option(
 )
 TRANSFERS_JSON = ACTIONS_JSON.variant(help="emit the files uploaded as a JSON array")
 RESOURCES_JSON = ACTIONS_JSON.variant(
-    help="emit the resources created, updated, removed or skipped as a JSON array"
+    help="emit the resources removed or skipped as a JSON array"
 )
 CREATE_JSON = ACTIONS_JSON.variant(
     help=(
@@ -738,7 +792,7 @@ CREATE_JSON = ACTIONS_JSON.variant(
 ENTITY_JSON = ACTIONS_JSON.variant(
     help=(
         "emit the created entity as JSON; with --dry-run, the processed"
-        " specification; not with --progress or --report"
+        " specification; not with --report"
     )
 )
 FOLLOW_WORK_REQUIREMENT_EVENTS = FOLLOW.variant(
@@ -862,7 +916,7 @@ FOLLOW_PROVISIONING = FOLLOW.variant(help="follow progress after provisioning")
 TARGET = option(
     "--target",
     "-T",
-    type=int,
+    type=non_negative_int,
     required=False,
     help="override targetInstanceCount from the spec or config",
     metavar="<n>",
@@ -891,7 +945,8 @@ SUBSTITUTE_IDS = option(
     help=(
         "substitute compute source template IDs and image family IDs "
         "for names in detailed compute requirement templates, "
-        "and image family IDs in compute source templates "
+        "image family IDs in compute source templates, "
+        "and template IDs in allowances "
         "(implies '--details')"
     ),
 )
@@ -995,6 +1050,28 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
 )
 
 
+# The file extensions a namespace or tag never has, but a specification or
+# configuration file does
+_FILE_EXTENSIONS = (".json", ".jsonnet", ".toml", ".yaml", ".yml", ".csv")
+
+
+def check_namespace_and_tag_are_no_files(
+    args: Namespace, parser: ArgumentParser
+) -> None:
+    """
+    Every command with -n or -t: neither names a file. Each takes an optional
+    value, so a file named straight after one ('yd-submit -t wr.json') was
+    taken as its value, and the command ran without the file.
+    """
+    for name, flag in (("namespace", "--namespace"), ("tag", "--tag")):
+        value = getattr(args, name, None)
+        if isinstance(value, str) and value.lower().endswith(_FILE_EXTENSIONS):
+            parser.error(
+                f"{flag} '{value}' looks like a file name: give {flag} a value,"
+                f" or put it after the file (e.g. '{value} {flag} <value>')"
+            )
+
+
 def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
     """
     The paths a data client command needs, unless it is only asked for
@@ -1011,13 +1088,37 @@ def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
             parser.error(f"the following arguments are required: {metavar}")
 
 
+def refuse_parent_segments(
+    parser: ArgumentParser, remote_paths: Iterable[str | None]
+) -> None:
+    """
+    Refuse a remote path with a '..' segment: it climbs out of the prefix,
+    or the bucket, past the checks that refuse deleting or syncing over the
+    remote's root or the bucket itself, and object stores do not resolve it
+    as a local disk does.
+    """
+    for remote_path in remote_paths:
+        if remote_path is None:
+            continue
+        if ".." in remote_path.split(":", 1)[-1].split("/"):
+            parser.error(
+                f"'{remote_path}': a remote path cannot contain '..'; name it"
+                " from the remote's root with --no-prefix (or --bucket) instead"
+            )
+
+
 def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-upload and yd-download: their paths (see check_paths_given()); and
-    not --sync with --flatten, which would transfer without the deletion
-    --sync promises.
+    yd-upload and yd-download: their paths (see check_paths_given()), the
+    remote ones without '..' (see refuse_parent_segments()); and not --sync
+    with --flatten, which would transfer without the deletion --sync
+    promises.
     """
     check_paths_given(args, parser)
+    if hasattr(args, "remote_paths"):  # yd-download: its destination is local
+        refuse_parent_segments(parser, args.remote_paths or [])
+    else:  # yd-upload: its destination is remote
+        refuse_parent_segments(parser, [args.destination])
     if args.sync and args.flatten:
         parser.error("--sync cannot be used with --flatten")
 
@@ -1025,8 +1126,10 @@ def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
 def check_delete_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-delete: a path, unless --recursive asks for the entire default
-    prefix (or it is only asked for --which-rclone or --upgrade-rclone).
+    prefix (or it is only asked for --which-rclone or --upgrade-rclone);
+    none with '..' (see refuse_parent_segments()).
     """
+    refuse_parent_segments(parser, args.remote_paths or [])
     if args.remote_paths or args.recursive or args.which_rclone or args.upgrade_rclone:
         return
     parser.error(
@@ -1089,8 +1192,8 @@ REMOTE_PATHS = option(
 def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> None:
     """
     Positional names/IDs on the destructive commands. A name may be a glob
-    pattern; globs route through the summary-based dry-run and are allowed
-    with --dry-run, but must not be mixed with literal names/IDs.
+    pattern, but must not be mixed with literal names/IDs. Either may be
+    given with --dry-run.
     """
     explicit_names: list[str] = []
     for attr in (
@@ -1105,8 +1208,6 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
     literals = [n for n in explicit_names if not contains_glob_chars(n)]
     if globs and literals:
         parser.error("cannot mix name glob patterns with explicit names/IDs")
-    if getattr(args, "dry_run", False) and literals:
-        parser.error("--dry-run is not supported with explicit names/IDs")
 
 
 def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
@@ -1217,8 +1318,9 @@ TASK_ID_LIST = option(
         " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
         " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
         " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
-        " group. Without arguments, selects interactively by namespace and"
-        " tag."
+        " group. Without arguments, the executing tasks of the work"
+        " requirements matching the namespace and tag, selected interactively"
+        " unless --yes is given."
     ),
 )
 
@@ -1324,7 +1426,7 @@ COMMANDS["yd-cancel"] = Command(
 
 OPERATION = option(
     "operation",
-    metavar="'setup', 'teardown', 'add-ssh' or 'remove-ssh'",
+    metavar="<operation>",
     type=str,
     choices=["setup", "teardown", "add-ssh", "remove-ssh"],
     help=(
@@ -1678,8 +1780,10 @@ DST_PATH = Option(
 def check_copy_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-copy: both paths, unless it is only asked for --which-rclone or
-    --upgrade-rclone, which is why argparse takes them as optional.
+    --upgrade-rclone, which is why argparse takes them as optional; neither
+    with '..' (see refuse_parent_segments()).
     """
+    refuse_parent_segments(parser, [args.src_path, args.dst_path])
     if args.which_rclone or args.upgrade_rclone:
         return
     missing = [
@@ -1840,7 +1944,7 @@ COMMANDS["yd-remove"] = Command(
         JSONNET_DRY_RUN,
         RESOURCES_JSON,
         RESOURCE_SPECIFICATIONS,
-        YES_ALLOW_UPDATES,
+        YES.variant(help="remove without user confirmation"),
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
@@ -2270,7 +2374,7 @@ COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     help=(
         "the JSON or Jsonnet specification of the compute requirement"
         " to provision; alternative to using the"
-        "'--compute-requirement/-C' option"
+        " '--compute-requirement/-C' option"
     ),
 )
 
@@ -2357,7 +2461,14 @@ COMMANDS["yd-provision"] = Command(
 
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
 # Tag attribute is defaulted to "" when using 'yd-list'
-LIST_TAG = TAG.variant(default="", help="the tag to search when listing entities")
+LIST_TAG = TAG.variant(
+    default="",
+    help=(
+        "the tag to search when listing entities; unlike other commands,"
+        " the configured tag is not used, so without this the whole"
+        " namespace is listed"
+    ),
+)
 IDS_ONLY = option(
     "--ids-only",
     "-D",
@@ -2390,7 +2501,10 @@ ACTIVE_ONLY = option(
     "-l",
     action="store_true",
     required=False,
-    help=("list only active compute requirements / worker pools / work requirements"),
+    help=(
+        "list only active entities: work requirements, task groups, tasks,"
+        " worker pools, nodes, workers, compute requirements and instances"
+    ),
 )
 NAME = option(
     "--name",
@@ -2521,6 +2635,22 @@ CLOUD_INFO_PRICED_SORT_KEYS: tuple[str, ...] = (
     "on-demand",
 )
 _CLOUD_INFO_SORT_CHOICES = ("name", "vcpus", "ram", "price", "spot", "on-demand")
+
+
+def cloud_info_sort_keys(value: str) -> tuple[str, ...]:
+    """
+    An argparse type for yd-cloud-info's '--sort': any of its keys, which
+    check_cloud_info_options() then holds to the ones the type offers.
+    """
+    return parse_sort_keys(value, _CLOUD_INFO_SORT_CHOICES)
+
+
+# Each '--sort' type and the keys it accepts, which the MCP catalogue offers
+# as a list of them (mcp/tools.py)
+SORT_KEY_TYPES: dict[Callable[[str], tuple[str, ...]], tuple[str, ...]] = {
+    entity_sort_keys: ENTITY_SORT_KEYS,
+    cloud_info_sort_keys: _CLOUD_INFO_SORT_CHOICES,
+}
 
 # The types each filter applies to, as (dest, flag, types); '--provider' and
 # '--name' apply to all
@@ -2660,13 +2790,14 @@ PRICES = option(
     ),
 )
 CLOUD_INFO_SORT = SORT.variant(
-    choices=list(_CLOUD_INFO_SORT_CHOICES),
-    metavar="<name|vcpus|ram|price|spot|on-demand>",
+    type=cloud_info_sort_keys,
+    metavar="<name|vcpus|ram|price|spot|on-demand>[,...]",
     help=(
         "order of the listing: 'name' (default), 'vcpus' and 'ram' for"
         " instance types, 'price' for prices, 'spot' and 'on-demand' for"
-        " instance types with --prices; items without a value come last,"
-        " with --reverse too"
+        " instance types with --prices; give several, separated by commas,"
+        " to sort by each in turn (e.g. 'spot,vcpus'); items without a"
+        " value for a key come after those with one, with --reverse too"
     ),
 )
 
@@ -2705,13 +2836,14 @@ def check_cloud_info_options(args: Namespace, parser: ArgumentParser) -> None:
     sort_keys = (
         CLOUD_INFO_PRICED_SORT_KEYS if args.prices else CLOUD_INFO_SORT_KEYS[info_type]
     )
-    if args.sort not in sort_keys:
-        parser.error(
-            f"--sort {args.sort} does not apply to {info_type}"
-            + (" with --prices" if args.prices else "")
-            + "; choose from "
-            + ", ".join(sort_keys)
-        )
+    for key in args.sort:
+        if key not in sort_keys:
+            parser.error(
+                f"--sort {key} does not apply to {info_type}"
+                + (" with --prices" if args.prices else "")
+                + "; choose from "
+                + ", ".join(sort_keys)
+            )
     for dest, flag in (("vcpus", "--vcpus"), ("ram", "--ram")):
         text = getattr(args, dest)
         try:
@@ -3131,7 +3263,7 @@ TASK_TYPE = option(
 TASK_COUNT = option(
     "--task-count",
     "-C",
-    type=int,
+    type=positive_int,
     required=False,
     help="the number of tasks to submit (copies of a single task)",
     metavar="<task_count>",
@@ -3139,7 +3271,7 @@ TASK_COUNT = option(
 TASK_GROUP_COUNT = option(
     "--task-group-count",
     "-G",
-    type=int,
+    type=positive_int,
     required=False,
     help="the number of task groups to submit (copies of a single task group)",
     metavar="<task_group_count>",
@@ -3147,7 +3279,7 @@ TASK_GROUP_COUNT = option(
 TASK_BATCH_SIZE = option(
     "--task-batch-size",
     "-b",
-    type=int,
+    type=positive_int,
     required=False,
     help="the batch size for task submission; must be between 1 and 10,000",
     metavar="<batch_size>",
@@ -3156,7 +3288,7 @@ PAUSE_BETWEEN_BATCHES = option(
     "--pause-between-batches",
     "-P",
     nargs="?",
-    type=int,
+    type=non_negative_int,
     const=0,
     required=False,
     metavar="<interval_between_batches_in_seconds>",
@@ -3195,7 +3327,7 @@ HOLD = option(
 PARALLEL_BATCHES = option(
     "--parallel-batches",
     "-l",
-    type=int,
+    type=positive_int,
     required=False,
     help=(
         "the maximum number of parallel task batch "
@@ -3307,7 +3439,12 @@ COMMANDS["yd-submit"] = Command(
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
         VALIDATE,
-        ENTITY_JSON,
+        ENTITY_JSON.variant(
+            help=(
+                "emit the created entity as JSON; with --dry-run, the processed"
+                " specification; not with --progress"
+            )
+        ),
         CONTENT_PATH,
         WORK_REQUIREMENT_FILE_POSITIONAL,
         UPGRADE_RCLONE,

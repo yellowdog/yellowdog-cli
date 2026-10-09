@@ -2,6 +2,7 @@
 Unit tests for yellowdog_cli.utils.dataclient.rclone
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from yellowdog_cli.utils.dataclient.rclone import (
     parse_rclone_config,
     shown_remote,
 )
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
 
 class TestParseRcloneConfig:
@@ -331,3 +333,98 @@ def test_rclone_api_logging_is_kept_off_stdout():
     )
     assert result.stdout == ""
     assert "Downloading rclone" in result.stderr
+
+
+@pytest.mark.skipif(find_rclone() is None, reason="needs an rclone binary")
+class TestInlineConfigIsKeptPrivate:
+    """
+    An inline remote's configuration carries its credentials. rclone_api
+    writes a Config it is given to '.rclone/tmp_config' under the current
+    directory, readable by all, where 'yd-upload -R .' would upload it; so
+    make_rclone() writes it itself, to a private file in the system's
+    temporary directory, removed at exit.
+    """
+
+    INLINE = "[inl]\ntype = local\ndescription = NOT_A_REAL_SECRET\n"
+
+    def test_nothing_is_written_to_the_current_directory(self, tmp_path, monkeypatch):
+        from rclone_api import Config
+
+        from yellowdog_cli.utils.dataclient.rclone import make_rclone
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "f.txt").write_text("x", encoding="utf-8")
+        rclone = make_rclone(Config(self.INLINE))
+        assert rclone.exists(f"inl:{tmp_path}/f.txt")
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["f.txt"]
+
+    def test_the_file_written_is_private(self, tmp_path, monkeypatch):
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        monkeypatch.chdir(tmp_path)
+        path = rclone_module._private_config_file(self.INLINE)
+        try:
+            assert path.read_text(encoding="utf-8") == self.INLINE
+            assert path.stat().st_mode & 0o777 == 0o600
+            assert tmp_path not in path.parents
+        finally:
+            path.unlink()
+
+
+class TestTheFirstRunDownloadKeepsOffStdout:
+    """
+    Instantiating Rclone downloads the binary on first use, and the
+    'download' package that does it prints its progress to stdout, which
+    under '--json' holds only the result document. make_rclone() sends it
+    to stderr (and under '--quiet' nowhere).
+    """
+
+    def test_it_goes_to_stderr(self, monkeypatch, capsys):
+        import rclone_api
+
+        from yellowdog_cli.utils import output_settings
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        class _Downloading:
+            def __init__(self, _conf):
+                print("Downloading data from https://downloads.rclone.org/...")
+
+        monkeypatch.setattr(rclone_api, "Rclone", _Downloading)
+        monkeypatch.setattr(output_settings.OUTPUT, "quiet", False)
+        monkeypatch.setattr(
+            rclone_module, "_private_config_file", lambda text: Path("unused")
+        )
+        rclone_module.make_rclone(MagicMock(text=""))
+        out, err = capsys.readouterr()
+        assert out == ""
+        assert "Downloading data from" in err
+
+
+class TestCtrlCIsPythonsOwn:
+    """
+    Importing rclone_api replaces Python's SIGINT handler with one that
+    kills the process at once, so a data client command interrupted (Ctrl-C,
+    or an MCP call stopped) never reached the wrapper's flush, and its --json
+    records were lost. make_rclone() puts Python's back; rclone_api's clean-up
+    is also registered at exit, which an interrupted command still reaches.
+    """
+
+    def test_restored(self, monkeypatch):
+        import signal
+
+        import rclone_api
+        from rclone_api import util as rclone_api_util
+
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        previous = signal.getsignal(signal.SIGINT)
+        try:
+            signal.signal(signal.SIGINT, rclone_api_util._clean_configs)
+            monkeypatch.setattr(rclone_api, "Rclone", lambda _conf: None)
+            monkeypatch.setattr(
+                rclone_module, "_private_config_file", lambda text: Path("unused")
+            )
+            rclone_module.make_rclone(MagicMock(text=""))
+            assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        finally:
+            signal.signal(signal.SIGINT, previous)

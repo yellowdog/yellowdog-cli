@@ -1,6 +1,8 @@
 """
 Waiting for Compute Requirements to reach their target capacity, for the
-'--wait' of yd-resize and yd-compute-reprovision.
+'--wait' of yd-resize and yd-compute-reprovision; and telling when an action
+followed with '--follow' is done (capacity_reached()), for those whose
+Compute Requirement stays alive, so that its event stream never closes.
 
 A Compute Requirement has settled when it is RUNNING with no next status, as
 many of its Instances are RUNNING as its target asks for, and none is still
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -59,6 +62,21 @@ class Capacity:
             self.status == "RUNNING"
             and self.next_status is None
             and self.count("RUNNING") == self.target
+            and not any(
+                self.count(status) for status in _TRANSITIONAL_INSTANCE_STATUSES
+            )
+        )
+
+    @property
+    def quiet(self) -> bool:
+        """
+        Nothing is changing: RUNNING or STOPPED with no next status, and no
+        Instance starting, stopping or terminating. Not necessarily at its
+        target, as a stopped one, or one with Instances stopped, is not.
+        """
+        return (
+            self.status in ("RUNNING", "STOPPED")
+            and self.next_status is None
             and not any(
                 self.count(status) for status in _TRANSITIONAL_INSTANCE_STATUSES
             )
@@ -158,3 +176,54 @@ def wait_for_capacity(ctx: RunContext, cr_ids: list[str], timeout: int | None):
             if deadline is None
             else max(0.0, min(CAPACITY_POLL_INTERVAL, deadline - time.monotonic()))
         )
+
+
+# When an action followed is done, given the Compute Requirement's capacity
+# and whether it has been seen unsettled since the action ('changed')
+DoneWhen = Callable[[Capacity, bool], bool]
+
+
+def until_settled(capacity: Capacity, changed: bool) -> bool:
+    """
+    At its target, running: a start, a deprovision, a reprovision, a resize.
+    """
+    return capacity.settled
+
+
+def until_settled_again(capacity: Capacity, changed: bool) -> bool:
+    """
+    At its target again, having left it: a restart, which begins settled.
+    """
+    return changed and capacity.settled
+
+
+def until_stopped(capacity: Capacity, changed: bool) -> bool:
+    """
+    Nothing changing, having changed: a stop, of the Compute Requirement or
+    of some of its Instances, after which it is not at its target.
+    """
+    return changed and capacity.quiet
+
+
+def capacity_reached(
+    ctx: RunContext, done: DoneWhen
+) -> Callable[[str], Callable[[dict], bool]]:
+    """
+    For follow_ids()'s 'settled': for each Compute Requirement followed, a
+    test, made after each of its events, of whether the action is done,
+    reading its capacity afresh (an event's own counts are per source and
+    may lag), and remembering whether it has been seen unsettled.
+    """
+
+    def for_stream(cr_id: str) -> Callable[[dict], bool]:
+        changed = False
+
+        def settled(_event: dict) -> bool:
+            nonlocal changed
+            capacity = _current_capacity(ctx, cr_id)
+            changed = changed or not capacity.settled
+            return done(capacity, changed)
+
+        return settled
+
+    return for_stream

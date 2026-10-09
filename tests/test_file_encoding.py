@@ -82,3 +82,57 @@ def test_a_specification_with_non_ascii_text_loads(tmp_path):
     spec = tmp_path / "wr.json"
     spec.write_bytes('{"name": "café ✓"}'.encode())
     assert load_json_file_with_variable_substitutions(str(spec)) == {"name": "café ✓"}
+
+
+BOM = b"\xef\xbb\xbf"
+
+
+def test_a_json_specification_saved_with_a_byte_order_mark_loads(tmp_path):
+    # Windows Notepad saves UTF-8 with one; it was refused, 'Unexpected UTF-8
+    # BOM'
+    from yellowdog_cli.utils.file_substitution import (
+        load_json_file_with_variable_substitutions,
+    )
+
+    spec = tmp_path / "wr.json"
+    spec.write_bytes(BOM + b'{"name": "x"}')
+    assert load_json_file_with_variable_substitutions(str(spec)) == {"name": "x"}
+
+
+def test_a_toml_file_saved_with_a_byte_order_mark_loads(tmp_path):
+    from yellowdog_cli.utils.file_substitution import (
+        load_toml_file_with_variable_substitutions,
+    )
+
+    config = tmp_path / "config.toml"
+    config.write_bytes(BOM + b'[common]\nnamespace = "ns"\n')
+    assert load_toml_file_with_variable_substitutions(str(config)) == {
+        "common": {"namespace": "ns"}
+    }
+
+
+def test_a_jsonnet_file_saved_with_a_byte_order_mark_loads(tmp_path):
+    import pytest
+
+    pytest.importorskip("_jsonnet")
+    from yellowdog_cli.utils.file_substitution import (
+        load_jsonnet_file_with_variable_substitutions,
+    )
+
+    spec = tmp_path / "wr.jsonnet"
+    spec.write_bytes(BOM + b'{name: "x"}')
+    assert load_jsonnet_file_with_variable_substitutions(str(spec)) == {"name": "x"}
+
+
+def test_a_file_that_is_not_utf_8_is_named(tmp_path):
+    # The error was the codec's alone, naming no file
+    import pytest
+
+    from yellowdog_cli.utils.file_substitution import (
+        load_json_file_with_variable_substitutions,
+    )
+
+    spec = tmp_path / "wr.json"
+    spec.write_bytes(b'{"name": "caf\xe9"}')  # Latin-1
+    with pytest.raises(ValueError, match=r"wr\.json.*not UTF-8"):
+        load_json_file_with_variable_substitutions(str(spec))

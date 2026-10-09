@@ -258,12 +258,14 @@ def resolve_remote_path(
     if filename is not None:
         filename = cast(str, resolve_variables_in_string(filename))
 
-    # Absolute rclone path — use verbatim
+    # Absolute rclone path — used as given, bar its '.' segments
     if relative_path is not None and relative_path.startswith(f"{remote_name}:"):
-        return relative_path
+        path_part = relative_path[len(remote_name) + 1 :]
+        return f"{remote_name}:{_without_current_directory_segments(path_part)}"
 
     parts = _configured_parts(config)
     if relative_path:
+        relative_path = _without_current_directory_segments(relative_path)
         stripped = relative_path.strip("/")
         if stripped:
             # Preserve a trailing '/' — it denotes directory-destination intent
@@ -273,6 +275,41 @@ def resolve_remote_path(
         parts.append(filename)
 
     return f"{remote_name}:{_rooted(config)}{'/'.join(parts)}"
+
+
+def _without_current_directory_segments(path: str) -> str:
+    """
+    'path' without its '.' segments, which name the directory they are in:
+    the root, bucket and current-directory refusals compare paths as text,
+    so 'bucket/.' would otherwise get past the one for 'bucket'. A leading
+    '/' is kept, a trailing '.' is a trailing '/' ('a/.' names the
+    directory 'a'), and '.' alone becomes ''.
+    """
+    segments = path.split("/")
+    result = "/".join(segment for segment in segments if segment != ".")
+    if path.startswith("/") and not result.startswith("/"):
+        result = f"/{result}"
+    if segments[-1] == "." and result and not result.endswith("/"):
+        result += "/"
+    return result
+
+
+def sync_destination_problem(config: ConfigDataClient, remote_path: str) -> str | None:
+    """
+    Why a --sync to 'remote_path' would be refused, or None: it deletes
+    every file there not in the source, so a remote's root or the configured
+    bucket itself, whose every other file it would delete, is never a sync
+    destination. Shared by yd-upload and yd-copy.
+    """
+    path_part = remote_path.split(":", 1)[-1].strip("/")
+    bucket = (config.bucket or "").strip("/")
+    if path_part == "":
+        return f"--sync to '{remote_path}' would delete from the remote's root itself"
+    if bucket and path_part == bucket:
+        return (
+            f"--sync to '{remote_path}' would delete from the bucket '{bucket}' itself"
+        )
+    return None
 
 
 def _configured_parts(config: ConfigDataClient, prefix: bool = True) -> list[str]:
@@ -678,11 +715,13 @@ def glob_matches(
     rclone: Rclone, remote_path: str, allow_empty: bool = False
 ) -> tuple[str, list[dict]]:
     """
-    (parent directory, matching entries) for a wildcard remote path. The
-    parent not existing, or nothing matching, raises FileNotFoundError --
-    unless 'allow_empty', for a listing, to which 'nothing matches' is an
-    answer -- and any other failure to list the parent raises with rclone's
-    message.
+    (parent directory, matching entries) for a wildcard remote path. An
+    entry named exactly as the pattern is the one match: the wildcard
+    characters are then part of a real name ('data[1].csv'), which as a
+    pattern would match something else, or nothing. The parent not
+    existing, or nothing matching, raises FileNotFoundError -- unless
+    'allow_empty', for a listing, to which 'nothing matches' is an answer --
+    and any other failure to list the parent raises with rclone's message.
     """
     remote_dir, pattern = split_glob_remote_path(remote_path)
     check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
@@ -693,7 +732,9 @@ def glob_matches(
             f"Cannot access '{remote_dir}': {_rclone_error_detail(check)}"
         )
     entries = json.loads(check.stdout or "[]")
-    matches = [e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)]
+    matches = [e for e in entries if e["Name"] == pattern] or [
+        e for e in entries if fnmatch.fnmatchcase(e["Name"], pattern)
+    ]
     if not matches and not allow_empty:
         raise FileNotFoundError(f"No matches for wildcard '{remote_path}'")
     return remote_dir, matches
@@ -1190,12 +1231,17 @@ def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
     Returns False, having reported and recorded it, if it failed.
     """
     _, rclone = _rclone_for_config(config)
+    # 'rclone deletefile', not rclone_api's delete_files(), which lists the
+    # file in a '--files-from' file: rclone reads a name there beginning with
+    # '#' or ';' as a comment, trims leading spaces, and drops an absolute
+    # path's leading '/', so the file was left, or the deletion failed. Both
+    # are run unchecked, so that a failure is recorded rather than raised
     if is_dir:
         print_info(f"Deleting directory '{path}'")
-        result = _without_rclone_api_warnings(lambda: rclone.purge(path))
+        result = _run_quietly(rclone, ["purge", path])
     else:
         print_info(f"Deleting '{path}'")
-        result = _without_rclone_api_warnings(lambda: rclone.delete_files(path))
+        result = _run_quietly(rclone, ["deletefile", path])
     if result.returncode != 0:
         error = f"Deletion of '{path}' failed: {_rclone_error_detail(result)}"
         print_error(error)

@@ -1556,8 +1556,10 @@ class TestEntryPoint:
         )
         assert "nonesuch-config.toml" in line
 
-    def test_readme_documents_it(self):
-        text = (Path(__file__).parent.parent / "README.md").read_text()
+    def test_the_command_list_documents_it(self):
+        text = (Path(__file__).parent.parent / "docs" / "commands.md").read_text(
+            encoding="utf-8"
+        )
         assert "\n### yd-doctor\n" in text
         assert "--offline" in text.split("### yd-doctor")[1].split("### yd-help")[0]
 

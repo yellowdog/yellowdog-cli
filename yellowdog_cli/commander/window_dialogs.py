@@ -580,7 +580,12 @@ class WindowDialogs(CommandRunning):
 
         self._output.log(f"Checking which {plural} would be affected...")
         self.log_output.repaint()
-        entities = self._capture_dry_run_summaries(command, extra_args=name_args)
+        # Listed as the action will select them: '--abort' also takes the
+        # Work Requirements already CANCELLING, whose Tasks it aborts
+        abort_args = ["--abort"] if and_abort else []
+        entities = self._capture_dry_run_summaries(
+            command, extra_args=[*abort_args, *name_args]
+        )
 
         if entities is not None and not entities:
             self._output.log(f"No matching {plural}{scope}")

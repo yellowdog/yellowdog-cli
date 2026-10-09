@@ -49,7 +49,9 @@ def _wr_status(tag: str) -> str:
 @pytest.mark.system
 class TestWRControlCommands:
     def test_hold_start_cancel(self, system_tag, cleanup):
-        tag = system_tag
+        # Its own: yd-hold, yd-start and yd-cancel act on every Work
+        # Requirement with the tag, test_finish's included
+        tag = f"{system_tag}-hold"
 
         # Register upfront cleanup
         cleanup(f"cd {SYSTEM_DIR} && yd-cancel -y -t={tag} -n={NAMESPACE}")
@@ -90,7 +92,7 @@ class TestWRControlCommands:
         ), f"Expected CANCELLING or CANCELLED, got: {status}"
 
     def test_finish(self, system_tag, cleanup):
-        tag = system_tag
+        tag = f"{system_tag}-finish"  # Its own, as test_hold_start_cancel's
 
         # Register upfront cleanup
         cleanup(f"cd {SYSTEM_DIR} && yd-cancel -y -t={tag} -n={NAMESPACE}")

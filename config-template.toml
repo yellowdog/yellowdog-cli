@@ -3,12 +3,13 @@
 # TOML key names are case-sensitive.
 #
 # Some properties can be overridden by a command-line flag or an environment
-# variable; see the README for details.  Others are only settable here or via
+# variable; see docs/configuration.md for details.  Others are only settable here or via
 # {{variable}} substitution backed by a YD_VAR_<NAME> environment variable.
 #
 # Variable substitution is supported throughout using {{variable_name}}.
 # Built-in variables include: namespace, tag, username, date, time,
-# config_dir_abs, config_dir_name.  User-defined variables are set in the
+# datetime, random, random6, pid, pid2, config_dir_abs, config_dir_name.
+# See docs/variables.md for the full list.  User-defined variables are set in the
 # [common.variables] table or via YD_VAR_<NAME> environment variables.
 #
 # Each command checks this file against a schema as it starts, and warns of
@@ -25,13 +26,13 @@
     secret = "<INSERT-SECRET-HERE>"
 
     # Namespace groups YellowDog objects (e.g. the name of a project).
-    # Can be set via YD_NAMESPACE.  Defaults to "default" if not supplied.
-    # Required
+    # Can be set via YD_NAMESPACE.
+    # Optional — default: "default"
     namespace = "my_namespace"
 
     # Tag subdivides objects within a namespace (e.g. a feature or run label).
-    # Can be set via YD_TAG.  Defaults to {{username}} if not supplied.
-    # Required
+    # Can be set via YD_TAG.
+    # Optional — default: "{{username}}"
     tag = "{{username}}"
 
     # YellowDog API endpoint.
@@ -108,7 +109,8 @@
     # Optional
     # addEnvironment = {EXTRA_VAR = "extra_value", ANOTHER = "override"}
 
-    # Inject YellowDog environment variables into the task (YDA_*, etc.).
+    # Inject YellowDog environment variables into the task (YD_TASK_NAME,
+    # YD_WORK_REQUIREMENT_NAME, etc.; see docs/work-requirements.md).
     # Optional — default: false
     # addYDEnvironment = false
 
@@ -130,7 +132,7 @@
 
     # Work requirement name.  Supports {{variable}} substitution.
     # Optional — default: auto-generated
-    # name = "my-work-req-{{date}}T{{time}}"
+    # name = "my-work-req-{{datetime}}"
 
     # Work requirement tag (additional label, separate from the common tag).
     # Optional
@@ -153,6 +155,7 @@
     # --------------------------------------------------------------------------
 
     # Number of times a failed task is retried.
+    # Deprecated: use retryPolicy (below) instead.
     # Optional — default: 0
     # maximumTaskRetries = 0
 
@@ -160,7 +163,8 @@
     # Optional
     # taskTimeout = 60.0
 
-    # Task-group-level timeout in minutes (overrides taskTimeout for the group).
+    # Per-Task timeout in minutes, set on an individual Task in a
+    # specification file; overrides the Task Group's taskTimeout.
     # Optional
     # timeout = 30.0
 
@@ -169,9 +173,10 @@
     # completedTaskTtl = 60.0
 
     # Errors that trigger an automatic retry (list of {errorTypes, ...} dicts).
+    # Deprecated: use retryPolicy (below) instead.
     # Optional
     # retryableErrors = [
-    #     {errorTypes = ["TIMEOUT"], required = true}
+    #     {errorTypes = ["TIMED_OUT"]}
     # ]
 
     # Retry policy for errored tasks, in place of maximumTaskRetries and
@@ -223,11 +228,13 @@
     # Optional
     # maxWorkers = 10
 
-    # Minimum number of workers required before tasks are dispatched.
+    # Minimum number of workers the task group retains, even if this exceeds
+    # the number of tasks remaining.
     # Optional
     # minWorkers = 1
 
-    # Maximum tasks dispatched to a single worker at a time.
+    # Determines the number of worker claims, by splitting the unfinished
+    # tasks across workers.
     # Optional
     # tasksPerWorker = 1
 
@@ -245,7 +252,8 @@
 
     # Accepted cloud providers.
     # Optional
-    # providers = ["AWS", "GCP"]
+    # One or more of: AWS, GOOGLE, AZURE, OCI, ON_PREMISE
+    # providers = ["AWS", "GOOGLE"]
 
     # Accepted cloud regions.
     # Optional
@@ -305,16 +313,19 @@
     # Optional
     # taskDataFiles = ["header.txt", "body.txt"]
 
-    # Data client inputs: files to upload before task execution.
+    # Data client inputs: files the Agent fetches from 'source' to the local
+    # 'destination' before the task runs. Add 'localPath' to have yd-submit
+    # upload a local file to 'source' first.
     # Optional
     # taskDataInputs = [
-    #     {source = "rclone:remote:bucket/path/input.txt", localPath = "input.txt"}
+    #     {source = "rclone:remote:bucket/path/input.txt", destination = "local:input.txt", localPath = "input.txt"}
     # ]
 
-    # Data client outputs: remote paths to retrieve after task execution.
+    # Data client outputs: files the Agent sends from the local 'source' to
+    # 'destination' after the task runs.
     # Optional
     # taskDataOutputs = [
-    #     {source = "rclone:remote:bucket/path/output.txt", destination = "output/"}
+    #     {source = "local:output.txt", destination = "rclone:remote:bucket/path/output.txt"}
     # ]
 
     # --------------------------------------------------------------------------
@@ -329,7 +340,7 @@
 [dataClient]  #################################################################
 #
 # Settings for the rclone-backed data client commands:
-# yd-upload, yd-download, yd-delete, yd-ls.
+# yd-upload, yd-download, yd-delete, yd-ls, yd-copy.
 #
 # 'remote' can be a plain rclone remote name (looked up in rclone.conf),
 # an optional 'rclone:' prefix followed by a plain name, or a full inline
@@ -418,7 +429,8 @@
     # Optional — default: 1
     # workersPerNode = 1
 
-    # Number of workers per vCPU (overrides workersPerNode when set).
+    # Number of workers per vCPU.
+    # Mutually exclusive with workersPerNode and workersCustomCommand.
     # Optional
     # workersPerVCPU = 1
 
@@ -426,7 +438,8 @@
     # Optional
     # workerTag = "my-worker-tag"
 
-    # Custom startup command for worker processes.
+    # A command run on the node to determine the number of workers.
+    # Mutually exclusive with workersPerNode and workersPerVCPU.
     # Optional
     # workersCustomCommand = "/opt/my-agent/start.sh"
 
@@ -480,7 +493,7 @@
 
     # Worker pool name.  Supports {{variable}} substitution.
     # Optional — default: auto-generated
-    # name = "my-pool-{{date}}T{{time}}"
+    # name = "my-pool-{{datetime}}"
 
     # Compute requirement tag.
     # Optional

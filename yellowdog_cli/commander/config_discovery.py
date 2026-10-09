@@ -93,9 +93,11 @@ class ConfigDiscovery:
         self._discovery_retry_timer.setSingleShot(True)
         self._discovery_retry_timer.timeout.connect(self._retry_discovery)
 
-        # Invalidate the config parse cache when inputs that affect it change
+        # Mark the config parse stale when inputs that affect it change; not
+        # invalidate(), which also forgets the failure said last and would
+        # defeat its suppression for the boxes that reparse after every edit
         for ui_object in [namespace_field, tag_field, user_variables, properties]:
-            ui_object.textChanged.connect(self.invalidate)
+            ui_object.textChanged.connect(self._mark_stale)
 
         # Re-evaluate namespace/tag placeholders after a short delay when
         # user-defined variables or properties change (debounced to avoid
@@ -136,12 +138,20 @@ class ConfigDiscovery:
         box that reparses after every edit — but a configuration file being
         deselected and selected again is not a repeat, and its failure is worth
         saying again. Only the three configuration-file paths reach here; an
-        edit to the user variables does not, which is what keeps that
+        edit to a field reaches _mark_stale() instead, which is what keeps that
         suppression doing its job.
+        """
+        self._mark_stale()
+        self._last_discovery_failure = None
+
+    def _mark_stale(self):
+        """
+        Mark the discovered namespace/tag stale, with a fresh retry, for an
+        edit to a field discovery reads: what invalidate() does but forgetting
+        the failure said last.
         """
         self._config_parse_invalid = True
         self._config_parse_retried = False
-        self._last_discovery_failure = None
 
     def reparse_placeholders(self, timeout_ms: int | None = None):
         """

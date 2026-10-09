@@ -10,6 +10,7 @@ from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     Command,
     build_parser,
+    check_namespace_and_tag_are_no_files,
     command_from_argv0,
     parse_range,
     resize_targets_compute_requirement,
@@ -70,6 +71,7 @@ class CLIParser:
         self.args = self.parser.parse_args(argv)
 
         if self.command is not None:
+            check_namespace_and_tag_are_no_files(self.args, self.parser)
             for validator in self.command.validators:
                 validator(self.args, self.parser)
 
@@ -361,7 +363,7 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
-    def sort(self) -> str | None:
+    def sort(self) -> tuple[str, ...] | None:
         return self.args.sort
 
     @property

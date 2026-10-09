@@ -3,10 +3,7 @@ The base of YellowDogApp's class hierarchy (see commander.py).
 """
 
 import os
-import re
-import subprocess
-from json import loads
-from os.path import abspath, basename, dirname, exists, join
+from os.path import abspath, basename, dirname, exists
 from typing import cast
 
 from PyQt6.QtCore import (
@@ -36,7 +33,14 @@ from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import path_would_be_globbed
-from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
+from yellowdog_cli.utils.command_registry import (
+    COMMANDS,
+    NAMESPACE,
+    PROPERTY,
+    TAG,
+    VARIABLE,
+    CommandKind,
+)
 
 # The 'yd-' commands that take none of the configuration options Commander adds
 # to the others (the config source, namespace, tag, variables, properties,
@@ -386,34 +390,47 @@ class WindowBase(QMainWindow):
             return None
         return [*run_args, f"<{len(handles)} {plural}>"]
 
-    def _namespace_tag_and_user_vars(self) -> list[str]:
+    def _namespace_tag_and_user_vars(self, command: str | None = None) -> list[str]:
         """
         The arguments every 'yd-' command is given from the top of the window:
         '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
-        variable and '--property' for each property override.
+        variable and '--property' for each property override. Given the
+        'command', only those it takes: typed into the command box, a
+        command without '-n' (yd-show) failed on it, and one without '-v'
+        (yd-cloud-info) read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',
         so a value that begins with '-' is never taken for an option. Raises
         QuotingError when the Properties field cannot be split, which every
         action refuses on beforehand (_properties_are_usable).
         """
+        registered = None if command is None else COMMANDS.get(command)
+
+        def takes(option) -> bool:
+            # A command the registry does not know is given everything
+            return registered is None or registered.has(option)
+
         # Split out a list of variables of the form "x=y",
         # and prefix each with "-v" -> ["-v', "x=y"], etc.
         # Apply a namespace override if it exists.
         # Apply a tag override if it exists.
         namespace_tag_user_vars = [
-            x for y in self.user_variables.toPlainText().split() for x in ["-v", y]
+            x
+            for y in self.user_variables.toPlainText().split()
+            for x in ["-v", y]
+            if takes(VARIABLE)
         ] + [
             f"--property={override}"
             for override in split_arguments(self.properties.toPlainText())
+            if takes(PROPERTY)
         ]
 
         tag_override = self.tag_override.toPlainText().strip()
-        if tag_override:
+        if tag_override and takes(TAG):
             namespace_tag_user_vars = ["-t", tag_override, *namespace_tag_user_vars]
 
         namespace_override = self.namespace_override.toPlainText().strip()
-        if namespace_override:
+        if namespace_override and takes(NAMESPACE):
             namespace_tag_user_vars = [
                 "-n",
                 namespace_override,
@@ -477,7 +494,7 @@ class WindowBase(QMainWindow):
                 args = self._config_source_args() + args
             # Ensure user-defined variables can be overridden by commands
             # by specifying them first.
-            for index, var in enumerate(self._namespace_tag_and_user_vars()):
+            for index, var in enumerate(self._namespace_tag_and_user_vars(command)):
                 args.insert(index, var)
             args += ["--nf", "--pp"]
         elif command in NO_FORMAT_UNDECORATED_YD_COMMANDS and not (
@@ -500,62 +517,3 @@ class WindowBase(QMainWindow):
         file_name = self._file_dialogs.browse(f"Browse '{directory}'", directory)
         if file_name is not None:
             self._file_dialogs.open_with_default_application(file_name)
-
-    def _get_config_data_file(self, key: str) -> str | None:
-        """
-        Extract the value of workRequirementData or workerPoolData directly
-        from the config TOML text, resolving template variable defaults and
-        checking user_variables overrides.
-        """
-        if self._config_file is None or not exists(self._config_file):
-            return None
-        try:
-            with open(self._config_file, encoding="utf-8") as f:
-                content = f.read()
-        except OSError:
-            return None
-
-        m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)
-        if not m:
-            return None
-
-        value = m.group(1)
-
-        # Resolve template variables iteratively, innermost first, to support up
-        # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
-        # Each pass finds the deepest {{...}} with no further {{ inside it,
-        # resolves that single variable via yd-variables, and substitutes the result.
-        for _ in range(3):
-            if "{{" not in value:
-                break
-            inner = re.search(r"\{\{([^{}]+)}}", value)
-            if not inner:
-                break
-            fragment = inner.group(1)
-            var_name, default = (
-                fragment.split(":=", 1) if ":=" in fragment else (fragment, "")
-            )
-            try:
-                result = subprocess.run(
-                    [
-                        "yd-variables",
-                        "-c",
-                        self._config_basename(),
-                        var_name,
-                        *self._namespace_tag_and_user_vars(),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    cwd=self._config_dir(),
-                )
-                resolved = loads(result.stdout.strip()).get(var_name)
-                substitution = resolved if resolved is not None else default
-            except Exception:
-                substitution = default
-            value = value[: inner.start()] + substitution + value[inner.end() :]
-
-        if not value:
-            return None
-
-        return str(join(self._config_dir(), value))

@@ -1015,83 +1015,75 @@ def _model_table_builders() -> tuple[tuple[type, _TableBuilder], ...]:
 
 def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
     """
-    Sort objects by their 'name' property, or 'instanceType' in the case of
-    Instances, etc.
+    Sort objects by the '--sort' keys, the first the most significant, then
+    by their type's own order ('name' for most, 'instanceType' for Instances,
+    etc.), which breaks any tie; '--reverse' inverts the whole order.
     """
-    from yellowdog_client.model import Allowance, Instance, Node, Task, Worker
-
     if not objects:
         return objects
 
     if OUTPUT.reverse is not None:
         reverse = OUTPUT.reverse
 
-    # '--sort created' orders any entity exposing a 'createdTime' (e.g. Work
-    # Requirement / Compute Requirement / Worker Pool summaries) by creation
-    # time, earliest first (latest first with --reverse). Entities without a
-    # 'createdTime', or a None value that breaks comparison, fall through to
-    # the name-based sorting below.
-    if OUTPUT.sort == "created" and hasattr(objects[0], "createdTime"):
-        try:
-            return sorted(objects, key=lambda x: x.createdTime, reverse=reverse)  # type: ignore[union-attr]
-        except TypeError:
-            pass
+    names = OUTPUT.sort or ("name",)
+    by_type = _type_sort_key(objects[0])
+    keys = [
+        by_type if name == "name" else _attribute_sort_key(name)
+        for name in names
+        # A key the objects lack ('createdTime' on an Instance) is passed over
+        if name == "name" or hasattr(objects[0], _SORT_ATTRIBUTES[name])
+    ]
+    if "name" not in names:
+        keys.append(by_type)
+    return sorted(objects, key=lambda x: tuple(key(x) for key in keys), reverse=reverse)
 
-    # '--sort status' orders any entity exposing a 'status' by its status name
-    # (statuses are enums, so sort on their string form), with the entity name
-    # as a secondary key so same-status entities stay name-ordered.
-    if OUTPUT.sort == "status" and hasattr(objects[0], "status"):
-        try:
-            return sorted(
-                objects,
-                key=lambda x: (str(x.status), str(getattr(x, "name", "") or "")),  # type: ignore[union-attr]
-                reverse=reverse,
-            )
-        except TypeError:
-            pass
 
-    # '--sort namespace' groups entities by namespace, with the entity name as
-    # a secondary key so same-namespace entities stay name-ordered.
-    if OUTPUT.sort == "namespace" and hasattr(objects[0], "namespace"):
-        try:
-            return sorted(
-                objects,
-                key=lambda x: (str(x.namespace), str(getattr(x, "name", "") or "")),  # type: ignore[union-attr]
-                reverse=reverse,
-            )
-        except TypeError:
-            pass
+# The '--sort' keys read from an attribute of the object, by sort key name
+_SORT_ATTRIBUTES: dict[str, str] = {
+    "created": "createdTime",
+    "status": "status",
+    "namespace": "namespace",
+}
 
-    if isinstance(objects[0], str):
-        return sorted(objects, reverse=reverse)  # type: ignore[type-var]
 
-    if isinstance(objects[0], Instance):
-        return sorted(objects, key=lambda x: x.instanceType, reverse=reverse)  # type: ignore[union-attr]
+def _attribute_sort_key(name: str) -> Callable[[Any], tuple[bool, Any]]:
+    """
+    The sort key named 'name': an object without a value is placed before
+    those with one (after them with '--reverse'), never compared with them.
+    A status is an enum, so is sorted on its name; a creation time on its
+    value.
+    """
+    attribute = _SORT_ATTRIBUTES[name]
 
-    if isinstance(objects[0], Node):
+    def key(x: Any) -> tuple[bool, Any]:
+        value = getattr(x, attribute, None)
+        if value is None:
+            return (False, "")
+        return (True, value if name == "created" else str(value))
+
+    return key
+
+
+def _type_sort_key(sample: object) -> Callable[[Any], Any]:
+    """
+    The order of objects like 'sample' when no '--sort' key separates them.
+    """
+    from yellowdog_client.model import Allowance, Instance, Node, Task, Worker
+
+    if isinstance(sample, (str, AWSAvailabilityZone)):
+        return lambda x: x
+    if isinstance(sample, Instance):
+        return lambda x: _text(x.instanceType)
+    if isinstance(sample, (Node, Worker)):
         # Note: worker_pool_name property is added dynamically in yd_list
-        return sorted(objects, key=lambda x: str(x.workerPoolName), reverse=reverse)  # type: ignore[attr-defined]
-
-    if isinstance(objects[0], Worker):
-        # Note: worker_pool_name property is added dynamically in yd_list
-        return sorted(objects, key=lambda x: str(x.workerPoolName), reverse=reverse)  # type: ignore[attr-defined]
-
-    if isinstance(objects[0], AWSAvailabilityZone):
-        return sorted(objects, reverse=reverse)  # type: ignore[type-var]
-
-    if isinstance(objects[0], Allowance):
-        return sorted(objects, key=lambda x: _text(x.description), reverse=reverse)  # type: ignore[union-attr]
-
-    if isinstance(objects[0], Task):  # Sort tasks by their task number
-        return sorted(objects, key=lambda x: int(x.id.split(":")[-1]), reverse=reverse)  # type: ignore[union-attr]
-
-    if hasattr(objects[0], "name"):
-        return sorted(objects, key=lambda x: _text(x.name), reverse=reverse)  # type: ignore[union-attr]
-    return sorted(
-        objects,
-        key=lambda x: _text(getattr(x, "namespace", None)),
-        reverse=reverse,
-    )
+        return lambda x: str(x.workerPoolName)
+    if isinstance(sample, Allowance):
+        return lambda x: _text(x.description)
+    if isinstance(sample, Task):  # Sort tasks by their task number
+        return lambda x: int(x.id.split(":")[-1])
+    if hasattr(sample, "name"):
+        return lambda x: _text(x.name)
+    return lambda x: _text(getattr(x, "namespace", None))
 
 
 def _text(value: object) -> str:

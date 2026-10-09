@@ -893,6 +893,37 @@ class TestResize:
             **extra,
         )
 
+    def test_a_followed_pool_is_followed_until_resized(self, run, monkeypatch):
+        # A resized pool stays alive, so '--follow' ran until Ctrl-C: each
+        # stream (the pool's, and with -a its Compute Requirement's) now ends
+        # once that Compute Requirement is at its target again
+        from yellowdog_cli.utils import capacity_wait
+
+        pool = self._pool()
+        pool.computeRequirementId = CR_ID
+        reached: list = []
+        monkeypatch.setattr(
+            yd_resize,
+            "capacity_reached",
+            lambda ctx, done: reached.append(done) or (lambda cr: f"test of {cr}"),
+        )
+        monkeypatch.setattr(yd_resize, "follow_ids", MagicMock())
+        run(yd_resize, client=self._client(pool), **self._args(), follow=True)
+        settled = yd_resize.follow_ids.call_args.kwargs["settled"]
+        assert reached == [capacity_wait.until_settled_again]
+        assert settled(WP_ID) == settled(CR_ID) == f"test of {CR_ID}"
+
+    def test_a_followed_configured_pool_has_nothing_to_settle(self, run, monkeypatch):
+        monkeypatch.setattr(yd_resize, "follow_ids", MagicMock())
+        run(
+            yd_resize,
+            client=self._client(self._pool(configured=True)),
+            **self._args(),
+            follow=True,
+        )
+        if yd_resize.follow_ids.called:
+            assert yd_resize.follow_ids.call_args.kwargs["settled"] is None
+
     def test_a_worker_pool(self, run):
         out, _, client = run(yd_resize, client=self._client(), **self._args())
         assert out == [self._resized()]
@@ -1022,6 +1053,21 @@ class TestResize:
         )
         monkeypatch.setattr(yd_resize, "wait_for_capacity", MagicMock())
         return self._args(compute_req_resize=True, worker_pool_name="cr-a")
+
+    def test_follow_ends_once_resized(self, run, by_name, monkeypatch):
+        from yellowdog_cli.utils import capacity_wait
+
+        monkeypatch.setattr(
+            yd_resize,
+            "capacity_reached",
+            lambda ctx, done: lambda cr: (done, cr),
+        )
+        monkeypatch.setattr(yd_resize, "follow_events", MagicMock())
+        run(yd_resize, **by_name, follow=True)
+        assert yd_resize.follow_events.call_args.kwargs["settled"] == (
+            capacity_wait.until_settled,
+            CR_ID,
+        )
 
     def test_wait_waits_for_the_resized_compute_requirement(self, run, by_name):
         out, _, _ = run(yd_resize, **by_name, wait=True, timeout=60)
@@ -2700,12 +2746,14 @@ class TestUpload:
         assert exit_code == code
 
     def test_a_sync_dry_run_reports_what_it_would_delete(self, remote, run_dc):
+        # Into a directory within the bucket: a sync into the bucket itself
+        # is refused
         (remote / "d").mkdir()
-        (remote / "d" / "a.txt").write_text("hello")
+        (remote / "d" / "c.txt").write_text("hello")
         out, _, code = run_dc(
             yd_upload,
             local_paths=["d"],
-            destination="loc:remote",
+            destination="loc:remote/sub",
             sync=True,
             dry_run=True,
         )
@@ -3125,6 +3173,27 @@ class TestDelete:
                 "isDir": False,
             }
         ]
+        assert not (remote / "remote" / "a.txt").exists()
+
+    @pytest.mark.parametrize("name", ["#notes.txt", ";semi.txt", " lead.txt"])
+    def test_a_file_whose_name_a_files_from_list_would_misread(
+        self, remote, run_dc, name
+    ):
+        # rclone reads a '--files-from' list's '#' and ';' lines as comments,
+        # and trims leading spaces: a file so named was recorded as deleted
+        # and left in place
+        (remote / "remote" / name).write_text("x", encoding="utf-8")
+        out, _, code = run_dc(yd_delete, remote_paths=[f"loc:remote/{name}"])
+        assert [r["action"] for r in out] == ["deleted"]
+        assert code == 0
+        assert not (remote / "remote" / name).exists()
+
+    def test_a_file_by_its_absolute_path(self, remote, run_dc):
+        # As on a local or SFTP remote whose bucket is an absolute path
+        path = f"loc:{remote / 'remote' / 'a.txt'}"
+        out, _, code = run_dc(yd_delete, remote_paths=[path])
+        assert [(r["path"], r["action"]) for r in out] == [(path, "deleted")]
+        assert code == 0
         assert not (remote / "remote" / "a.txt").exists()
 
     def test_a_glob_with_recursive(self, remote, run_dc):
@@ -3711,3 +3780,44 @@ class TestRemainingParsers:
         assert CLIParser(command=command, argv=["--json", *argv]).json_output
         with pytest.raises(SystemExit):
             CLIParser(command=command, argv=["-J", *argv])
+
+
+@needs_rclone
+class TestNamesWithWildcardCharacters:
+    """
+    A name that holds a wildcard character ('data[1].csv') is a path in its
+    own right: an entry named exactly as the pattern is what it names, ahead
+    of whatever the pattern would match, so it can be listed, downloaded and
+    deleted, and deleting it deletes nothing else.
+    """
+
+    def test_it_is_listed(self, remote, run_dc):
+        (remote / "remote" / "data[1].csv").write_text("x", encoding="utf-8")
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote/data[1].csv"])
+        assert code == 0
+        assert [entry["Name"] for entry in out] == ["data[1].csv"]
+
+    def test_it_is_downloaded(self, remote, run_dc):
+        (remote / "remote" / "data[1].csv").write_text("x", encoding="utf-8")
+        _, _, code = run_dc(
+            yd_download, remote_paths=["loc:remote/data[1].csv"], into="out"
+        )
+        assert code == 0
+        assert (remote / "out" / "data[1].csv").read_text(encoding="utf-8") == "x"
+
+    def test_deleting_it_deletes_nothing_else(self, remote, run_dc):
+        for name in ("file[ab].txt", "filea.txt", "fileb.txt"):
+            (remote / "remote" / name).write_text("x", encoding="utf-8")
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/file[ab].txt"])
+        assert code == 0
+        assert [(r["name"], r["action"]) for r in out] == [("file[ab].txt", "deleted")]
+        assert not (remote / "remote" / "file[ab].txt").exists()
+        assert (remote / "remote" / "filea.txt").exists()
+        assert (remote / "remote" / "fileb.txt").exists()
+
+    def test_a_pattern_with_no_such_entry_still_matches(self, remote, run_dc):
+        for name in ("filea.txt", "fileb.txt"):
+            (remote / "remote" / name).write_text("x", encoding="utf-8")
+        out, _, code = run_dc(yd_ls, remote_paths=["loc:remote/file[ab].txt"])
+        assert code == 0
+        assert sorted(entry["Name"] for entry in out) == ["filea.txt", "fileb.txt"]

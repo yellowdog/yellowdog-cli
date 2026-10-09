@@ -33,7 +33,13 @@ def loading(monkeypatch, tmp_path):
     prints are returned. The working directory is the test's own.
     """
     monkeypatch.chdir(tmp_path)
-    for name in ("CONFIG_FILE", "CONFIG_FILE_DIR", "CONFIG_TOML", "_CONFIG_AS_WRITTEN"):
+    for name in (
+        "CONFIG_FILE",
+        "CONFIG_FILE_DIR",
+        "CONFIG_TOML",
+        "_CONFIG_AS_WRITTEN",
+        "_NO_FILE_REASON",
+    ):
         monkeypatch.setattr(load_config, name, getattr(load_config, name))
     substitutions = dict(variable_substitution_module.VARIABLE_SUBSTITUTIONS)
     errors: list[str] = []
@@ -215,3 +221,78 @@ class TestSectionsOfTheWrongShape:
         monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
         with pytest.raises(TypeError):
             load_config.load_config_worker_pool()
+
+
+class TestTheCommandLineWithoutTheFileOrSection:
+    """
+    The command line is applied whatever the file holds: '--property' with
+    no configuration file at all, and yd-submit's -C, -G, -T and -b with no
+    [workRequirement] section in it, were ignored without a word.
+    """
+
+    def test_a_property_override_applies_with_no_file(self, loading, monkeypatch):
+        _load(
+            monkeypatch,
+            property_overrides=["workRequirement.taskCount=3", "common.namespace=ns"],
+        )
+        assert load_config.CONFIG_TOML == {
+            "common": {"namespace": "ns"},
+            "workRequirement": {"taskCount": 3},
+        }
+
+    def test_the_task_options_apply_with_no_section(self, loading, monkeypatch):
+        args = _args()
+        args.task_count = 5
+        args.task_group_count = 3
+        args.task_type = "docker"
+        args.task_batch_size = 7
+        monkeypatch.setattr(load_config, "_ARGS", args)
+        monkeypatch.setattr(load_config, "CONFIG_TOML", {"common": {}})
+        config_wr = load_config.load_config_work_requirement()
+        assert (
+            config_wr.task_count,
+            config_wr.task_group_count,
+            config_wr.task_type,
+            config_wr.task_batch_size,
+        ) == (5, 3, "docker", 7)
+
+
+class TestAMissingCredentialSaysWhy:
+    """
+    "Missing configuration data: 'key'" left the user to discover, with
+    --debug, that no configuration file had been found at all.
+    """
+
+    @staticmethod
+    def _common_args(**values) -> MagicMock:
+        args = _args(**values)
+        for name in ("key", "secret", "namespace", "tag", "url"):
+            setattr(args, name, None)
+        args.use_pac = False
+        return args
+
+    def test_no_file_found_is_said_with_where_else_to_give_it(
+        self, loading, monkeypatch
+    ):
+        for name in ("YD_KEY", "YD_SECRET", "YD_API_KEY_ID", "YD_API_KEY_SECRET"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setattr(load_config, "_ARGS", self._common_args())
+        load_config._load_config_file()
+        _exits_3(load_config.load_config_common)
+        message = loading[-1]
+        assert "Missing configuration data: 'key'" in message
+        assert "no configuration file" in message and "config.toml" in message
+        assert "--key" in message and "YD_KEY" in message
+
+    @pytest.mark.parametrize("url", ["api.yellowdog.ai", "not a url", "ftp://x"])
+    def test_a_url_without_http_is_a_configuration_error(
+        self, loading, monkeypatch, url
+    ):
+        # It reached requests, which failed with 'No connection adapters were
+        # found' and exit 1
+        args = self._common_args()
+        args.key, args.secret, args.url = "k", "s", url
+        monkeypatch.setattr(load_config, "_ARGS", args)
+        load_config._load_config_file()
+        _exits_3(load_config.load_config_common)
+        assert f"'{url}'" in loading[-1] and "https://" in loading[-1]

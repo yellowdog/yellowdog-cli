@@ -459,7 +459,6 @@ def _run_submit_wr(
         config_wr = ConfigWorkRequirement()
 
     mock_wr = _make_mock_wr(wr_id)
-    mock_tg = _make_mock_tg()
     add_wr_mock = MagicMock(return_value=mock_wr)
 
     create_tg_calls: list[tuple] = []
@@ -467,7 +466,8 @@ def _run_submit_wr(
 
     def fake_create_tg(_config_wr, position, wr_data, task_group_data, **kwargs):
         create_tg_calls.append((position.number, task_group_data))
-        return mock_tg
+        # Each named by its number, as a real one is by default
+        return _make_mock_tg(f"task_group_{position.number + 1}")
 
     # Captured before the patch below replaces the module attribute
     real_create_tg = submit_module.create_task_group
@@ -1127,3 +1127,40 @@ class TestExitOnFailure:
         with patch.object(submit_module, "work_requirement_exit_code") as outcome:
             submit_module._exit_on_failure(self._run(False), "wr-id")  # type: ignore[arg-type]
         outcome.assert_not_called()
+
+
+class TestDuplicateTaskGroupNamesAreRefused:
+    """
+    Tasks are added to a Task Group by its name, so two Task Groups of one
+    name would share them, or the Platform refuse the second; refused once
+    the Task Groups are named, before the Work Requirement is created.
+    """
+
+    @pytest.mark.parametrize(
+        "wr_data",
+        [
+            # 'taskGroupCount' copies of a Task Group named without its number
+            {
+                TASK_GROUP_COUNT: 2,
+                TASK_GROUPS: [{NAME: "render", TASKS: [{}], TASK_TYPES: ["bash"]}],
+            },
+            {
+                TASK_GROUPS: [
+                    {NAME: "render", TASKS: [{}], TASK_TYPES: ["bash"]},
+                    {NAME: "render", TASKS: [{}], TASK_TYPES: ["bash"]},
+                ]
+            },
+        ],
+    )
+    def test_refused(self, wr_data):
+        with pytest.raises(ValueError, match="'render'") as raised:
+            _run_submit_wr(wr_data=wr_data, real_task_groups=True)
+        assert "more than one Task Group" in str(raised.value)
+
+    def test_numbered_copies_are_not_duplicates(self):
+        wr_data = {
+            TASK_GROUP_COUNT: 2,
+            TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}],
+        }
+        result = _run_submit_wr(wr_data=wr_data, real_task_groups=True)
+        result["add_wr_mock"].assert_called_once()

@@ -77,6 +77,7 @@ def _make_tg(name: str = "grp") -> TaskGroup:
 def _make_wr(name: str = "my-wr") -> WorkRequirement:
     wr = MagicMock(spec=WorkRequirement)
     wr.name = name
+    wr.namespace = "ns"
     return wr
 
 

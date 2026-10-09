@@ -35,7 +35,7 @@ from yellowdog_cli.utils.action_runner import (
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.dryrun_utils import report_dry_run, report_dry_run_items
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_NODES,
@@ -244,6 +244,25 @@ def shutdown_by_names_or_ids(ctx: RunContext, names_or_ids: list[str]):
 
     if not items:
         print_info("No Worker Pools or Nodes shut down")
+        return
+
+    if ctx.args.dry_run:
+        report_dry_run_items(
+            items,
+            _SHUTDOWN,
+            lambda item, status: record_action(
+                item.entity,
+                item.entity_type,
+                _SHUTDOWN,
+                f"would {_SHUTDOWN}",
+                status=status,
+            ),
+        )
+        if ctx.args.terminate:
+            _report_terminations_dry_run(
+                ctx,
+                [item.value for item in items if item.entity_type == ET_WORKER_POOLS],
+            )
         return
 
     if not confirm_items(_confirmation(ctx, items), items, _recorder):

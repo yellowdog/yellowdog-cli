@@ -768,3 +768,33 @@ class TestRemoteStatOnBucketStorage:
         monkeypatch.setattr(dcu_module, "_rclone_error_detail", lambda r: r.stderr)
         with pytest.raises(RuntimeError, match="Cannot tell what kind of storage"):
             dcu_module.remote_stat(MagicMock(), "x:y")
+
+
+class TestResolveRemotePathCurrentDirectorySegments:
+    """
+    A '.' segment names the directory it is in, so it is dropped: '.' alone is
+    the prefix itself, which the root and bucket refusals then see as such.
+    """
+
+    @staticmethod
+    def _config() -> ConfigDataClient:
+        return ConfigDataClient(remote="myremote", bucket="b", prefix="p")
+
+    def test_a_dot_alone_is_the_prefix(self):
+        assert resolve_remote_path(self._config(), relative_path=".") == "myremote:b/p"
+
+    def test_dots_within_a_path_are_dropped(self):
+        assert (
+            resolve_remote_path(self._config(), relative_path="./a/./b/")
+            == "myremote:b/p/a/b/"
+        )
+
+    def test_dots_in_a_full_remote_path_are_dropped(self):
+        assert (
+            resolve_remote_path(self._config(), relative_path="myremote:b/./c")
+            == "myremote:b/c"
+        )
+
+    def test_a_dot_with_no_prefix_is_the_bucket(self):
+        config = ConfigDataClient(remote="myremote", bucket="b")
+        assert resolve_remote_path(config, relative_path=".") == "myremote:b"

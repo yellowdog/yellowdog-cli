@@ -17,7 +17,7 @@ The commands support:
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
 - **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
 - **Copying** files between remote data stores with the **`yd-copy`** command
-- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands
+- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with the **`yd-create`** and **`yd-remove`** commands
 - **Deleting** files from a remote data store with the **`yd-delete`** command
 - **Downloading** files from a remote data store with the **`yd-download`** command
 - **Finishing** Work Requirements with the **`yd-finish`** command

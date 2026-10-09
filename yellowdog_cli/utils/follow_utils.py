@@ -53,6 +53,11 @@ from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 # and yd-submit so both agree on what constitutes an unsuccessful WR.
 WR_FAILURE_STATUS_VALUES = frozenset({"FAILED", "CANCELLED"})
 
+# A test of whether an action followed is done, given an event's data: for
+# an action that leaves its entity alive, whose stream never closes
+Settled = Callable[[dict], bool]
+_EVENT_DATA_PREFIX = "data:"
+
 # The exit code of each failure to follow an event stream (an invalid YDID,
 # an entity not found, a refused or broken connection), recorded from the
 # daemon threads that follow the streams. Consulted by yd-follow for its exit
@@ -408,11 +413,14 @@ def follow_ids(
     ydids: list[str],
     auto_cr: bool = False,
     timeout: float | None = None,
+    settled: Callable[[str], Settled | None] | None = None,
 ) -> list[str]:
     """
     Creates an event thread for each YDID passed on the command line. With
     'timeout', stops following once that many seconds have passed, whether
-    or not every stream has concluded.
+    or not every stream has concluded. With 'settled', each stream's own
+    test (None for none) of when the action followed is done, for an action
+    that leaves its entity alive (see follow_events()).
 
     Returns the deduplicated list of valid original IDs (WR/WP/CR only, before
     any auto-CR expansion) — callers that need to inspect final status after
@@ -477,11 +485,14 @@ def follow_ids(
             _record_follow_failure(ExitCode.FAILURE)
             continue
 
+        kwargs: dict = {}
         if use_progress and ydid_type == YDIDType.WORK_REQUIREMENT:
             target, args = follow_work_requirement_with_progress, (ctx, ydid)
         else:
             target, args = follow_events, (ctx, ydid, ydid_type)
-        thread = Thread(target=target, args=args, daemon=True)
+            if settled is not None and (stream_settled := settled(ydid)) is not None:
+                kwargs = {"settled": stream_settled}
+        thread = Thread(target=target, args=args, kwargs=kwargs, daemon=True)
         try:
             thread.start()
         except RuntimeError as e:
@@ -586,6 +597,43 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | 
         return True
 
 
+def _has_settled(ydid: str, event: str, settled: Settled) -> bool:
+    """
+    settled() on an event's data. A test that cannot be made (one reading
+    the entity afresh, whose lookup fails) is warned of, and following goes
+    on, but for an authentication or connection failure, which every later
+    test would repeat, and which is raised for the stream to stop on.
+    """
+    if not event.startswith(_EVENT_DATA_PREFIX):
+        return False
+    try:
+        data = json_loads(event[len(_EVENT_DATA_PREFIX) :])
+    except ValueError:
+        return False
+    try:
+        return settled(data)
+    except Exception as e:
+        if classify(e) in SESSION_FAILURES:
+            raise
+        print_warning(f"Unable to tell whether '{ydid}' has settled: {e}")
+        return False
+
+
+def _is_read_timeout(e: Exception) -> bool:
+    """
+    Whether 'e' is a read timeout: while a streamed response is read,
+    requests raises urllib3's ReadTimeoutError as a ConnectionError, never
+    as the Timeout it raises before the response arrives, so a quiet stream
+    would otherwise be taken for a dropped one, and enough quiet spells in a
+    row for an outage given up on.
+    """
+    from urllib3.exceptions import ReadTimeoutError
+
+    return isinstance(e, requests.exceptions.ConnectionError) and any(
+        isinstance(arg, ReadTimeoutError) for arg in e.args
+    )
+
+
 class _Outage:
     """
     The reconnection of a stream that has dropped: a wait that doubles from
@@ -625,9 +673,14 @@ def follow_events(
     ydid: str,
     ydid_type: YDIDType,
     on_event: Callable[[str, YDIDType], None] | None = None,
+    settled: Settled | None = None,
 ):
     """
-    Follow events for a single YDID.
+    Follow events for a single YDID: until its entity finishes, as the
+    Platform then closes the stream, or, given 'settled', until the first
+    event after which settled(<the event's data>) is true, for an action
+    that leaves its entity alive (a hold, a stop, a resize), whose stream
+    never closes of itself.
 
     If on_event is provided it is called for each raw SSE line instead of
     print_event(), allowing callers to handle events themselves (e.g. to
@@ -693,6 +746,12 @@ def follow_events(
                             on_event(event, ydid_type)
                         else:
                             print_event(event, ydid_type)
+                        if settled is not None and _has_settled(ydid, event, settled):
+                            print_info(
+                                f"'{ydid}' has done what was asked of it:"
+                                " stopped following"
+                            )
+                            return
 
             except requests.exceptions.Timeout:
                 # A read timeout just means a quiet (or silently dropped)
@@ -703,7 +762,9 @@ def follow_events(
                 requests.exceptions.ChunkedEncodingError,
                 requests.exceptions.ConnectionError,
                 ConnectionResetError,
-            ):
+            ) as e:
+                if _is_read_timeout(e):
+                    continue  # Quiet, as above, however long
                 print_warning(f"Event stream interruption for '{ydid}' (reconnecting)")
                 if outage.wait():
                     continue

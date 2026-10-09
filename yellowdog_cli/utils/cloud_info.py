@@ -70,7 +70,7 @@ class CloudInfoQuery:
     arch: str | None = None
     usage: str | None = None
     os_licence: str = "none"
-    sort: str = "name"
+    sort: tuple[str, ...] = ("name",)
     reverse: bool = False
 
 
@@ -184,18 +184,23 @@ def _price_tie(price: InstanceTypePrice) -> tuple[str, ...]:
 
 def _ordered(
     items: list[_T],
-    key: Callable[[_T], Any],
+    sorts: dict[str, _SortKey],
+    query: CloudInfoQuery,
     tie: Callable[[_T], Any],
-    reverse: bool,
 ) -> list[_T]:
     """
-    'items' sorted by 'key', those without a value last whichever the
-    direction, and ties broken by 'tie', ascending (both sorts are stable).
+    'items' sorted by each of the query's sort keys in turn, the first the
+    most significant, those without a value for a key after those with one
+    whichever the direction, and ties broken by 'tie', ascending: one stable
+    sort per key, from the least significant to the most.
     """
-    present = sorted((item for item in items if key(item) is not None), key=tie)
-    present.sort(key=key, reverse=reverse)
-    absent = sorted((item for item in items if key(item) is None), key=tie)
-    return present + absent
+    ordered = sorted(items, key=tie)
+    for name in reversed(query.sort):
+        key = sorts[name]
+        present = [item for item in ordered if key(item) is not None]
+        present.sort(key=key, reverse=query.reverse)
+        ordered = present + [item for item in ordered if key(item) is None]
+    return ordered
 
 
 def _providers(query: CloudInfoQuery) -> list[CloudProvider] | None:
@@ -278,7 +283,7 @@ def regions(ctx: RunContext, query: CloudInfoQuery) -> list[Region]:
         for region in found
         if _provider_kept(region, query) and _name_kept(region.name, query)
     ]
-    return _ordered(kept, _REGION_SORTS[query.sort], _region_tie, query.reverse)
+    return _ordered(kept, _REGION_SORTS, query, _region_tie)
 
 
 def sub_regions(ctx: RunContext, query: CloudInfoQuery) -> list[SubRegion]:
@@ -297,7 +302,7 @@ def sub_regions(ctx: RunContext, query: CloudInfoQuery) -> list[SubRegion]:
         and (query.region is None or sub_region.region == query.region)
         and _name_kept(sub_region.name, query)
     ]
-    return _ordered(kept, _SUB_REGION_SORTS[query.sort], _sub_region_tie, query.reverse)
+    return _ordered(kept, _SUB_REGION_SORTS, query, _sub_region_tie)
 
 
 def _instance_type_kept(
@@ -336,9 +341,7 @@ def instance_types(ctx: RunContext, query: CloudInfoQuery) -> list[InstanceType]
         )
     ).list_all()
     kept = [t for t in found if _instance_type_kept(t, query, arch)]
-    return _ordered(
-        kept, _INSTANCE_TYPE_SORTS[query.sort], _instance_type_tie, query.reverse
-    )
+    return _ordered(kept, _INSTANCE_TYPE_SORTS, query, _instance_type_tie)
 
 
 def _price_kept(
@@ -375,7 +378,7 @@ def prices(ctx: RunContext, query: CloudInfoQuery) -> list[InstanceTypePrice]:
         )
     ).list_all()
     kept = [price for price in found if _price_kept(price, query, usage)]
-    return _ordered(kept, _PRICE_SORTS[query.sort], _price_tie, query.reverse)
+    return _ordered(kept, _PRICE_SORTS, query, _price_tie)
 
 
 def _cheapest(
@@ -405,7 +408,7 @@ def instance_types_with_prices(
     sub-region), from one price search for them all. A type without a price
     of a kind has None for it, and is still listed.
     """
-    by_name = replace(query, sort="name", reverse=False)
+    by_name = replace(query, sort=("name",), reverse=False)
     types = instance_types(ctx, by_name)
     rows = prices(ctx, replace(by_name, usage=None))
     on_demand = _cheapest(rows, UsageType.ON_DEMAND)
@@ -424,4 +427,4 @@ def instance_types_with_prices(
                 spot_sub_region=None if spot_row is None else spot_row.subRegion,
             )
         )
-    return _ordered(priced, _PRICED_SORTS[query.sort], _priced_tie, query.reverse)
+    return _ordered(priced, _PRICED_SORTS, query, _priced_tie)

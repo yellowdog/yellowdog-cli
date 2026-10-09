@@ -79,7 +79,7 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/application.py::_groups_and_roles#0": (
         "Returns the failure, which the caller classifies for the exit code"
     ),
-    "yellowdog_cli/commander/command_running.py::CommandRunning._capture_json#0": (
+    "yellowdog_cli/commander/command_running.py::CommandRunning._capture_json_document#0": (
         "Commander: a child's output that is not JSON; None falls back to a"
         " confirmation of the whole scope"
     ),
@@ -90,10 +90,6 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/commander/config_discovery.py::ConfigDiscovery._parse_yd_config#0": (
         "Commander: a child's output that cannot be read is reported in the"
         " window, which stays up"
-    ),
-    "yellowdog_cli/commander/window_base.py::WindowBase._get_config_data_file#0": (
-        "Commander: best-effort resolution of a {{variable}} in a file's name,"
-        " falling back to its default"
     ),
     "yellowdog_cli/delete.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/download.py::main#0": _DATA_CLIENT,
