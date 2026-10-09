@@ -215,3 +215,37 @@ class TestSectionsOfTheWrongShape:
         monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
         with pytest.raises(TypeError):
             load_config.load_config_worker_pool()
+
+
+class TestTheCommandLineWithoutTheFileOrSection:
+    """
+    The command line is applied whatever the file holds: '--property' with
+    no configuration file at all, and yd-submit's -C, -G, -T and -b with no
+    [workRequirement] section in it, were ignored without a word.
+    """
+
+    def test_a_property_override_applies_with_no_file(self, loading, monkeypatch):
+        _load(
+            monkeypatch,
+            property_overrides=["workRequirement.taskCount=3", "common.namespace=ns"],
+        )
+        assert load_config.CONFIG_TOML == {
+            "common": {"namespace": "ns"},
+            "workRequirement": {"taskCount": 3},
+        }
+
+    def test_the_task_options_apply_with_no_section(self, loading, monkeypatch):
+        args = _args()
+        args.task_count = 5
+        args.task_group_count = 3
+        args.task_type = "docker"
+        args.task_batch_size = 7
+        monkeypatch.setattr(load_config, "_ARGS", args)
+        monkeypatch.setattr(load_config, "CONFIG_TOML", {"common": {}})
+        config_wr = load_config.load_config_work_requirement()
+        assert (
+            config_wr.task_count,
+            config_wr.task_group_count,
+            config_wr.task_type,
+            config_wr.task_batch_size,
+        ) == (5, 3, "docker", 7)

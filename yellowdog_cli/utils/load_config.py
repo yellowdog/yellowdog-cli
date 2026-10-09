@@ -478,6 +478,8 @@ def _load_config_file() -> None:
             )
             CONFIG_TOML = {COMMON_SECTION: {}}
             CONFIG_FILE_DIR = os.getcwd()
+            if _ARGS.property_overrides:
+                _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
 
         except (PermissionError, TOMLDecodeError) as e:
             print_error(
@@ -1002,10 +1004,9 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
     Load the configuration data for a Work Requirement
     """
     ensure_config_loaded()
-    try:
-        wr_section = CONFIG_TOML[WORK_REQUIREMENT_SECTION]
-    except KeyError:
-        return ConfigWorkRequirement()
+    # No section is an empty one: the command line's -C, -G, -T and -b, read
+    # below, still apply
+    wr_section = CONFIG_TOML.get(WORK_REQUIREMENT_SECTION, {})
 
     # Process any new substitutions after the common config
     # has been processed

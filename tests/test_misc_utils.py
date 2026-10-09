@@ -136,6 +136,49 @@ class TestFormatYdName:
             format_yd_name(s)
 
 
+class TestNameChangesAreWarnedOf:
+    """
+    A name cut to 60 characters, or stripped of characters a YellowDog name
+    cannot hold, was changed without a word, so that long Task names became
+    one name and 'Café' became 'caf'. Each kind of change is warned of once
+    per run, naming the first name so changed: Task names are formatted per
+    Task. The documented substitutions (case, ' ', '.', '/') are not.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_run(self, monkeypatch):
+        import yellowdog_cli.utils.misc_utils as misc_utils
+
+        monkeypatch.setattr(misc_utils, "_NAME_CHANGES_WARNED", set(), raising=False)
+
+    @staticmethod
+    def _warnings(*names: str, add_prefix: bool = True) -> list[str]:
+        with patch("yellowdog_cli.utils.misc_utils.print_warning") as warning:
+            for name in names:
+                format_yd_name(name, add_prefix=add_prefix)
+        return [call.args[0] for call in warning.call_args_list]
+
+    def test_a_name_cut_short_is_warned_of_once(self):
+        long_name = (
+            "render_scene_with_a_rather_descriptive_and_very_long_name_for_frame_"
+        )
+        warnings = self._warnings(long_name + "1", long_name + "2")
+        assert len(warnings) == 1
+        assert "60 characters" in warnings[0]
+        assert f"'{long_name}1'" in warnings[0]
+
+    def test_characters_dropped_are_warned_of_once(self):
+        warnings = self._warnings("Café", "naïve")
+        assert len(warnings) == 1
+        assert "'Café'" in warnings[0] and "'caf'" in warnings[0]
+
+    def test_the_documented_substitutions_are_not_warned_of(self):
+        assert self._warnings("My Job/2024.run") == []
+
+    def test_a_name_component_is_not_warned_of(self):
+        assert self._warnings("Café" + "x" * 70, add_prefix=False) == []
+
+
 class TestCamelCaseSplit:
     @pytest.mark.parametrize(
         "s,expected",

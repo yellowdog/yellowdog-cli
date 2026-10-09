@@ -14,7 +14,7 @@ import platform
 import re
 import sys
 import tempfile
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager, redirect_stdout
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,8 +37,8 @@ def _suppress_rclone_download_output():
     Silence rclone-api's binary-download output.
 
     rclone_api/install.py calls logging.basicConfig(level=DEBUG) and writes
-    to the root logger, and the 'download' package it uses emits a tqdm
-    progress bar to stderr. Neither can be quieted via the Rclone() API, so
+    to the root logger, and the 'download' package it uses prints its
+    progress to stdout. Neither can be quieted via the Rclone() API, so
     we suppress them here by temporarily replacing the root logger's handlers
     with a NullHandler and redirecting sys.stdout/sys.stderr to /dev/null.
     """
@@ -54,6 +54,18 @@ def _suppress_rclone_download_output():
         sys.stdout, sys.stderr = old_stdout, old_stderr
         devnull.close()
         root.handlers = old_handlers
+
+
+def _download_output_kept_off_stdout():
+    """
+    Where rclone_api's binary download writes, while it may run: nowhere
+    under '--quiet' (see _suppress_rclone_download_output()); otherwise
+    stderr, since the 'download' package prints its progress to stdout,
+    which under '--json' holds only the result document.
+    """
+    if OUTPUT.quiet:
+        return _suppress_rclone_download_output()
+    return redirect_stdout(sys.stderr)
 
 
 def _keep_logging_off_stdout() -> None:
@@ -216,8 +228,7 @@ def make_rclone(config: Config | None) -> Rclone:
     rclone_conf: Path = (
         _find_rclone_conf() if config is None else _private_config_file(config.text)
     )
-    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
-    with ctx:
+    with _download_output_kept_off_stdout():
         return Rclone(rclone_conf)
 
 
@@ -322,8 +333,7 @@ def upgrade_rclone():
 
     _keep_logging_off_stdout()
     print_info("Downloading / upgrading the rclone binary")
-    ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
-    with ctx:
+    with _download_output_kept_off_stdout():
         Rclone.upgrade_rclone()
 
 

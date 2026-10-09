@@ -2,6 +2,7 @@
 Unit tests for yellowdog_cli.utils.dataclient.rclone
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -368,3 +369,32 @@ class TestInlineConfigIsKeptPrivate:
             assert tmp_path not in path.parents
         finally:
             path.unlink()
+
+
+class TestTheFirstRunDownloadKeepsOffStdout:
+    """
+    Instantiating Rclone downloads the binary on first use, and the
+    'download' package that does it prints its progress to stdout, which
+    under '--json' holds only the result document. make_rclone() sends it
+    to stderr (and under '--quiet' nowhere).
+    """
+
+    def test_it_goes_to_stderr(self, monkeypatch, capsys):
+        import rclone_api
+
+        from yellowdog_cli.utils import output_settings
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        class _Downloading:
+            def __init__(self, _conf):
+                print("Downloading data from https://downloads.rclone.org/...")
+
+        monkeypatch.setattr(rclone_api, "Rclone", _Downloading)
+        monkeypatch.setattr(output_settings.OUTPUT, "quiet", False)
+        monkeypatch.setattr(
+            rclone_module, "_private_config_file", lambda text: Path("unused")
+        )
+        rclone_module.make_rclone(MagicMock(text=""))
+        out, err = capsys.readouterr()
+        assert out == ""
+        assert "Downloading data from" in err

@@ -586,6 +586,21 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | 
         return True
 
 
+def _is_read_timeout(e: Exception) -> bool:
+    """
+    Whether 'e' is a read timeout: while a streamed response is read,
+    requests raises urllib3's ReadTimeoutError as a ConnectionError, never
+    as the Timeout it raises before the response arrives, so a quiet stream
+    would otherwise be taken for a dropped one, and enough quiet spells in a
+    row for an outage given up on.
+    """
+    from urllib3.exceptions import ReadTimeoutError
+
+    return isinstance(e, requests.exceptions.ConnectionError) and any(
+        isinstance(arg, ReadTimeoutError) for arg in e.args
+    )
+
+
 class _Outage:
     """
     The reconnection of a stream that has dropped: a wait that doubles from
@@ -703,7 +718,9 @@ def follow_events(
                 requests.exceptions.ChunkedEncodingError,
                 requests.exceptions.ConnectionError,
                 ConnectionResetError,
-            ):
+            ) as e:
+                if _is_read_timeout(e):
+                    continue  # Quiet, as above, however long
                 print_warning(f"Event stream interruption for '{ydid}' (reconnecting)")
                 if outage.wait():
                     continue

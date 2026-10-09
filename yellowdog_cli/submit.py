@@ -446,7 +446,7 @@ def _task_groups(
     expand_task_groups(run.config_wr, wr_data)
     offset = existing_task_groups or 0
     count = offset + len(wr_data[TASK_GROUPS])
-    return [
+    task_groups = [
         create_task_group(
             run.config_wr,
             TaskGroupPosition(tg_number, offset + tg_number, count),
@@ -457,6 +457,27 @@ def _task_groups(
         )
         for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS])
     ]
+    _refuse_duplicate_names(task_groups)
+    return task_groups
+
+
+def _refuse_duplicate_names(task_groups: list[TaskGroup]) -> None:
+    """
+    Refuse Task Groups sharing a name: Tasks are added to a Task Group by
+    its name, so they would all go to one of them, or the Platform refuse
+    the second. 'taskGroupCount' copies of a Task Group named without
+    '{{task_group_number}}' are the usual way to get there.
+    """
+    names = [cast(str, task_group.name) for task_group in task_groups]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            "The name(s) "
+            + ", ".join(f"'{name}'" for name in duplicates)
+            + " would be given to more than one Task Group: Task Group names"
+            " must be unique (with 'taskGroupCount', include"
+            " '{{task_group_number}}' in the name)"
+        )
 
 
 @dataclass

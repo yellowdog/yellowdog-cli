@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from urllib3.exceptions import ReadTimeoutError
 from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 
 import yellowdog_cli.utils.follow_utils as fu
@@ -764,8 +765,21 @@ class TestStreamFailures:
     for during or after a stream.
     """
 
-    def test_a_read_timeout_reconnects_without_a_warning(self, clock, monkeypatch):
-        quiet = _stream(["data: 1"], raises=requests.exceptions.ReadTimeout("quiet"))
+    @pytest.mark.parametrize(
+        "timeout",
+        [
+            requests.exceptions.ReadTimeout("quiet"),
+            # As requests raises it while a streamed response is read:
+            # urllib3's read timeout, wrapped as a ConnectionError
+            requests.exceptions.ConnectionError(
+                ReadTimeoutError(None, "/updates", "Read timed out.")  # type: ignore[arg-type]
+            ),
+        ],
+    )
+    def test_a_read_timeout_reconnects_without_a_warning(
+        self, clock, monkeypatch, timeout
+    ):
+        quiet = _stream(["data: 1"], raises=timeout)
         quiet.encoding = None  # Set to UTF-8 when a stream names none
         get = MagicMock(side_effect=[quiet, _stream(["data: 2"])])
         monkeypatch.setattr(fu.requests, "get", get)
@@ -777,6 +791,37 @@ class TestStreamFailures:
         assert quiet.encoding == "utf-8"
         assert warnings == []
         assert clock.sleeps == []  # Straight back, not as an outage
+        assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
+
+    def test_quiet_spells_never_add_up_to_an_outage(self, clock, monkeypatch):
+        # Silence is no failure, however long: a stream quiet for many read
+        # timeouts in a row is reconnected each time and never given up on
+        warnings: list[str] = []
+
+        def quiet():
+            # Each read timeout takes the read timeout's length to arrive
+            response = _stream([])
+
+            def iter_lines(decode_unicode=True):
+                clock.sleep(fu.EVENT_STREAM_READ_TIMEOUT)
+                # As requests raises it while a streamed response is read
+                raise requests.exceptions.ConnectionError(
+                    ReadTimeoutError(None, "/updates", "Read timed out.")  # type: ignore[arg-type]
+                )
+                yield  # A generator, as iter_lines() is
+
+            response.iter_lines.side_effect = iter_lines
+            return response
+
+        get = MagicMock(
+            side_effect=[quiet() for _ in range(10)] + [_stream(["data: 1"])]
+        )
+        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu, "print_warning", lambda m, **k: warnings.append(m))
+        _finished(monkeypatch, True)
+        fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
+        assert get.call_count == 11
+        assert warnings == []
         assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
 
     def test_an_unexpected_error_stops_the_stream_with_its_code(

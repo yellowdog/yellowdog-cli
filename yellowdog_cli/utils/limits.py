@@ -14,6 +14,9 @@ DATA_CLIENT_LISTING_WORKERS = 8
 MCP_TOOL_TIMEOUT_SECONDS = 300
 MCP_FOLLOW_TIMEOUT_SECONDS = 60
 
+# The longest name the Platform accepts; format_yd_name() cuts one to it
+YD_NAME_MAX_LENGTH = 60
+
 # yd-submit's Task batches
 TASK_BATCH_SIZE_DEFAULT = 1_000
 DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS = 1
