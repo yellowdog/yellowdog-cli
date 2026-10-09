@@ -35,7 +35,7 @@ from yellowdog_client.model import (
 )
 
 import yellowdog_cli.utils.compute_action_common as cac_module
-from yellowdog_cli.utils import action_runner, entity_utils
+from yellowdog_cli.utils import action_runner, capacity_wait, entity_utils
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compute_action_common import (
@@ -296,7 +296,7 @@ class TestListing:
 
     def test_follow_is_given_only_what_was_actioned(self, platform, monkeypatch):
         _run(platform, COMPUTE_STOP, [], follow=True)
-        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID], settled=ANY)
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +504,7 @@ class TestInstances:
             [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
             follow=True,
         )
-        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID])
+        cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID], settled=ANY)
 
     def test_declining_skips_everything(self, platform, monkeypatch):
         monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
@@ -820,3 +820,26 @@ class TestCommandLine:
             COMMANDS["yd-compute-reprovision"], prog="yd-compute-reprovision"
         )
         assert parser.parse_args([]).compute_reqs_instances_or_nodes == []
+
+
+class TestFollowingEndsWhenDone:
+    """
+    Every action but terminate leaves its Compute Requirement alive, so
+    '--follow' after it ran until Ctrl-C; each now follows until its own
+    test of done (capacity_wait.capacity_reached()).
+    """
+
+    def test_a_stop_is_followed_until_stopped(self, platform, monkeypatch):
+        reached: list = []
+        monkeypatch.setattr(
+            cac_module,
+            "capacity_reached",
+            lambda ctx, done: reached.append(done) or "the test",
+        )
+        _run(platform, COMPUTE_STOP, [CR_ID], follow=True)
+        assert reached == [capacity_wait.until_stopped]
+        assert cac_module.follow_ids.call_args.kwargs["settled"] == "the test"
+
+    def test_a_terminate_follows_to_the_end(self, platform, monkeypatch):
+        _run(platform, COMPUTE_TERMINATE, [CR_ID], follow=True)
+        assert cac_module.follow_ids.call_args.kwargs["settled"] is None

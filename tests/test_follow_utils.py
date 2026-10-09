@@ -998,3 +998,39 @@ class TestFollowIdsChoices:
         )
         client.worker_pool_client.get_worker_pool_by_id.return_value = configured
         assert fu._compute_requirement_of_worker_pool(_ctx(), "pool") is None
+
+
+class TestFollowingEndsOnceSettled:
+    """
+    An action that leaves its entity alive (a hold, a stop, a resize) never
+    closes its stream, so '--follow' after it ran until Ctrl-C. Given a
+    'settled' test, following ends at the first event after which it holds.
+    """
+
+    def test_it_ends_at_the_event_that_settles_it(self, clock, monkeypatch):
+        stream = _stream(['data: {"status": "RUNNING"}', 'data: {"status": "HELD"}'])
+        get = MagicMock(side_effect=[stream])
+        monkeypatch.setattr(fu.requests, "get", get)
+        finished = _finished(monkeypatch)  # Never asked: the stream never closed
+        seen: list[dict] = []
+
+        def held(data: dict) -> bool:
+            seen.append(data)
+            return data["status"] == "HELD"
+
+        fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT, settled=held)
+        assert [d["status"] for d in seen] == ["RUNNING", "HELD"]
+        assert get.call_count == 1
+        finished.assert_not_called()
+        assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
+
+    def test_follow_ids_gives_each_stream_its_own_test(self, monkeypatch):
+        calls: list = []
+        monkeypatch.setattr(
+            fu,
+            "follow_events",
+            lambda ctx, ydid, ydid_type, settled=None: calls.append((ydid, settled)),
+        )
+        tests = {WR: lambda data: True}
+        fu.follow_ids(_ctx(), [WR], settled=tests.get)
+        assert calls == [(WR, tests[WR])]

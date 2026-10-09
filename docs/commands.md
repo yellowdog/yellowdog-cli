@@ -105,7 +105,7 @@ These options are accepted by many commands, but not by all. The command section
 | `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
-| `--follow`, `-f` | Follow the relevant event stream after the command has acted |
+| `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it — `yd-hold` until the Work Requirement is `HELD`; `yd-compute-stop` until nothing is changing, having stopped; `yd-compute-start`, `yd-compute-deprovision`, `yd-compute-reprovision` and `yd-resize -C` until the Compute Requirement is `RUNNING` at its target with no Instance starting, stopping or terminating; `yd-compute-restart` and `yd-resize` of a Provisioned Worker Pool until it is so again, having left it. A Configured Worker Pool resized is followed until Ctrl-C |
 | `--sort <name\|created\|status\|namespace>` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name) |
 | `--reverse` | Reverse (descending) order of the active `--sort` key |
 | `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
@@ -646,7 +646,7 @@ yd-compute-deprovision [options] <instance-or-node-ID> ...
 Instances to deprovision are supplied as a list of Instances in `<compute-requirement-ydid>.<instance-id>` form and/or Node YDIDs; at least one is required, and a Compute Requirement name or ID is reported as failed. They are handled as `yd-compute-stop` handles them: in the order given, confirmed together, one request per Compute Requirement, and an Instance that is already `TERMINATING` or `TERMINATED` is skipped with a warning. The command returns once the Platform has accepted the request: the target count drops at once, and the Instances are terminated shortly afterwards, which `--follow` shows.
 
 Key options:
-- `--follow`/`-f` — follow the Compute Requirements' events as the Instances are terminated
+- `--follow`/`-f` — follow the Compute Requirements' events as the Instances are terminated, until each is at its new target
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -664,7 +664,7 @@ yd-compute-reprovision [options] [<name-or-ID> ...]
 It selects Compute Requirements as `yd-compute-stop` does: if no arguments are supplied, `RUNNING` Compute Requirements that match the `namespace` and `tag` are candidates for reprovisioning; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is not `RUNNING` is skipped with a warning, including one still `PROVISIONING`, which is already provisioning towards its target. Reprovisioning a Compute Requirement that already has as many Instances running as its target count changes nothing. The command returns once the Platform has accepted the request: the Compute Requirement moves to `PROVISIONING` while the new Instances start, and `--follow` shows them being provisioned.
 
 Key options:
-- `--follow`/`-f` — follow the Compute Requirements' events as Instances are provisioned
+- `--follow`/`-f` — follow the Compute Requirements' events as Instances are provisioned, until each is at its target
 - `--wait`/`-w` — wait until each Compute Requirement reprovisioned has its target number of Instances running, as for `yd-resize --wait`
 - `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))

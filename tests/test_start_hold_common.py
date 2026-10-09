@@ -223,7 +223,7 @@ class TestListing:
 
         work.start_work_requirement_by_id.side_effect = start
         _run(platform, START, [], follow=True)
-        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A])
+        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A], settled=ANY)
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ class TestFinish:
         ]
         assert [r["outcome"] for r in platform.records] == ["finished", "finished"]
         # Only those this run finished are followed
-        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A, WR_B])
+        shc_module.follow_ids.assert_called_once_with(ANY, [WR_A, WR_B], settled=ANY)
 
     def test_a_glob(self, platform, monkeypatch):
         platform.wrs = {
@@ -412,3 +412,26 @@ class TestFinish:
 @pytest.mark.parametrize("command", ["yd-start", "yd-hold", "yd-finish"])
 def test_globs_and_explicit_names_do_not_mix(command):
     assert check_glob_and_literal_names in COMMANDS[command].validators
+
+
+class TestFollowingAHoldEnds:
+    """
+    A held Work Requirement stays alive, so its stream never closed and
+    'yd-hold --follow' ran until Ctrl-C: it now ends once HELD. Start and
+    Finish follow to the end, when the stream closes.
+    """
+
+    def test_a_hold_is_followed_until_held(self, platform, monkeypatch):
+        for wr in platform.wrs.values():
+            wr.status = HOLD.statuses[0]
+        _run(platform, HOLD, [], follow=True)
+        settled = shc_module.follow_ids.call_args.kwargs["settled"](WR_A)
+        assert settled({"status": "HELD"}) is True
+        assert settled({"status": "RUNNING"}) is False
+
+    @pytest.mark.parametrize("action", [START, FINISH])
+    def test_the_others_follow_to_the_end(self, platform, monkeypatch, action):
+        for wr in platform.wrs.values():
+            wr.status = action.statuses[0]
+        _run(platform, action, [], follow=True)
+        assert shc_module.follow_ids.call_args.kwargs["settled"] is None

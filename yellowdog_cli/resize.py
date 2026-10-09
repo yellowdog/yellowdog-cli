@@ -25,7 +25,12 @@ from yellowdog_client.model import (
     WorkerPool,
 )
 
-from yellowdog_cli.utils.capacity_wait import wait_for_capacity
+from yellowdog_cli.utils.capacity_wait import (
+    capacity_reached,
+    until_settled,
+    until_settled_again,
+    wait_for_capacity,
+)
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
@@ -189,7 +194,27 @@ def _resize_worker_pool(ctx: RunContext, target: str):
 
     if ctx.args.follow:
         print_info("Following event stream(s)")
-        follow_ids(ctx, [cast(str, worker_pool.id)], auto_cr=ctx.args.auto_cr)
+        follow_ids(
+            ctx,
+            [cast(str, worker_pool.id)],
+            auto_cr=ctx.args.auto_cr,
+            settled=_resized_pool_settled(ctx, worker_pool),
+        )
+
+
+def _resized_pool_settled(ctx: RunContext, worker_pool: WorkerPool):
+    """
+    For follow_ids(): each stream (the pool's, and with '-a' its Compute
+    Requirement's) ends once the pool's Compute Requirement is at its target
+    again, having left it, as a resized pool stays alive and its stream never
+    closes. A Configured Worker Pool has no Compute Requirement to tell by,
+    so is followed until stopped.
+    """
+    cr_id = getattr(worker_pool, "computeRequirementId", None)
+    if cr_id is None:
+        return None
+    reached = capacity_reached(ctx, until_settled_again)
+    return lambda _ydid: reached(cr_id)
 
 
 def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
@@ -283,8 +308,13 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
                 " ignored when resizing Compute Requirements"
             )
         print_info("Following event stream")
+        cr_id = cast(str, compute_requirement.id)
+        # Its target changed by the resize itself, so at it is done
         follow_events(
-            ctx, cast(str, compute_requirement.id), YDIDType.COMPUTE_REQUIREMENT
+            ctx,
+            cr_id,
+            YDIDType.COMPUTE_REQUIREMENT,
+            settled=capacity_reached(ctx, until_settled)(cr_id),
         )
 
 

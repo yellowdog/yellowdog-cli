@@ -14,6 +14,7 @@ be acted on, confirming and stopping on a session failure are
 action_runner.py's.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeAlias, cast
 
@@ -44,7 +45,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_filtered_work_requirement_summaries,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
-from yellowdog_cli.utils.follow_utils import follow_ids
+from yellowdog_cli.utils.follow_utils import Settled, follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
@@ -63,6 +64,19 @@ class WorkRequirementAction:
     past_tense: str  # E.g.: "Started"
     method_name: str  # WorkClient method, taking a Work Requirement ID
     statuses: tuple[WorkRequirementStatus, ...]  # Those it applies to
+    # The status '--follow' stops at, for an action leaving the Work
+    # Requirement alive (whose stream never closes); None to follow it to its
+    # end, as a started or finishing one has
+    settles_at: WorkRequirementStatus | None = None
+
+    def settled(self) -> Callable[[str], Settled] | None:
+        """
+        For follow_ids(): each stream's test of whether the action is done.
+        """
+        if self.settles_at is None:
+            return None
+        status = self.settles_at.value
+        return lambda _ydid: lambda event: event.get("status") == status
 
     @property
     def statuses_phrase(self) -> str:
@@ -115,6 +129,7 @@ HOLD = WorkRequirementAction(
     past_tense="Held",
     method_name="hold_work_requirement_by_id",
     statuses=(WorkRequirementStatus.RUNNING,),
+    settles_at=WorkRequirementStatus.HELD,
 )
 
 
@@ -292,7 +307,7 @@ def _carry_out(ctx: RunContext, action: WorkRequirementAction, items: list[Item]
     if actioned_ids:
         print_info(f"{action.past_tense} {len(actioned_ids)} Work Requirement(s)")
         if ctx.args.follow:
-            follow_ids(ctx, actioned_ids)
+            follow_ids(ctx, actioned_ids, settled=action.settled())
     else:
         print_info(f"No Work Requirements {action.past_tense.lower()}")
 

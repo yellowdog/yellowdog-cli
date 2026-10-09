@@ -893,6 +893,37 @@ class TestResize:
             **extra,
         )
 
+    def test_a_followed_pool_is_followed_until_resized(self, run, monkeypatch):
+        # A resized pool stays alive, so '--follow' ran until Ctrl-C: each
+        # stream (the pool's, and with -a its Compute Requirement's) now ends
+        # once that Compute Requirement is at its target again
+        from yellowdog_cli.utils import capacity_wait
+
+        pool = self._pool()
+        pool.computeRequirementId = CR_ID
+        reached: list = []
+        monkeypatch.setattr(
+            yd_resize,
+            "capacity_reached",
+            lambda ctx, done: reached.append(done) or (lambda cr: f"test of {cr}"),
+        )
+        monkeypatch.setattr(yd_resize, "follow_ids", MagicMock())
+        run(yd_resize, client=self._client(pool), **self._args(), follow=True)
+        settled = yd_resize.follow_ids.call_args.kwargs["settled"]
+        assert reached == [capacity_wait.until_settled_again]
+        assert settled(WP_ID) == settled(CR_ID) == f"test of {CR_ID}"
+
+    def test_a_followed_configured_pool_has_nothing_to_settle(self, run, monkeypatch):
+        monkeypatch.setattr(yd_resize, "follow_ids", MagicMock())
+        run(
+            yd_resize,
+            client=self._client(self._pool(configured=True)),
+            **self._args(),
+            follow=True,
+        )
+        if yd_resize.follow_ids.called:
+            assert yd_resize.follow_ids.call_args.kwargs["settled"] is None
+
     def test_a_worker_pool(self, run):
         out, _, client = run(yd_resize, client=self._client(), **self._args())
         assert out == [self._resized()]
@@ -1022,6 +1053,21 @@ class TestResize:
         )
         monkeypatch.setattr(yd_resize, "wait_for_capacity", MagicMock())
         return self._args(compute_req_resize=True, worker_pool_name="cr-a")
+
+    def test_follow_ends_once_resized(self, run, by_name, monkeypatch):
+        from yellowdog_cli.utils import capacity_wait
+
+        monkeypatch.setattr(
+            yd_resize,
+            "capacity_reached",
+            lambda ctx, done: lambda cr: (done, cr),
+        )
+        monkeypatch.setattr(yd_resize, "follow_events", MagicMock())
+        run(yd_resize, **by_name, follow=True)
+        assert yd_resize.follow_events.call_args.kwargs["settled"] == (
+            capacity_wait.until_settled,
+            CR_ID,
+        )
 
     def test_wait_waits_for_the_resized_compute_requirement(self, run, by_name):
         out, _, _ = run(yd_resize, **by_name, wait=True, timeout=60)

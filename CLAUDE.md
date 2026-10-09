@@ -102,10 +102,10 @@ yellowdog_cli/
     ├── resource_removal.py      # yd-remove as a library: remove_resources(), remove_resources_by_id(), _removable_by_id()
     ├── load_resources.py        # Resource spec loading, substitution, dependency ordering (RESOURCE_CREATION_ORDER, test-held to sdk_models)
     ├── provision_utils.py       # User Data reading, template/image lookup, shown_value(); requirement_name()/requirement_tag(), shared by yd-provision and yd-instantiate; specification_model(): a JSON specification's part as its SDK model (yd-create's _get_model_object), so both paths provision through the SDK; report_on_usage(), the '--report' of both
-    ├── follow_utils.py          # follow_ids(ctx, ...): SSE streams in threads, reconnection with backoff, timeout, follow_exit_code()
+    ├── follow_utils.py          # follow_ids(ctx, ...): SSE streams in threads, reconnection with backoff, timeout, a per-stream 'settled' test to end on, follow_exit_code()
     ├── cloud_info.py            # yd-cloud-info as a library: CloudInfoQuery, the four Cloud Info searches filtered exactly here (the service's text filters match substrings), the --prices join (PricedInstanceType), local sorting; ctx first, never the command line
     ├── action_runner.py         # The action commands' shared rules: resolve_targets(), confirm_items(), carry_out()
-    ├── capacity_wait.py         # wait_for_capacity(): '--wait' on yd-resize (a Compute Requirement: -C, or its ID) and yd-compute-reprovision; settled = RUNNING, target Instances RUNNING, none PENDING/STOPPING/TERMINATING (the SDK's is_compute_requirement_updating() clears within ~2s, so is not used)
+    ├── capacity_wait.py         # capacity_reached() and its until_*() rules: when '--follow' ends after an action that leaves its Compute Requirement alive (its stream never closes); wait_for_capacity(): '--wait' on yd-resize (a Compute Requirement: -C, or its ID) and yd-compute-reprovision; settled = RUNNING, target Instances RUNNING, none PENDING/STOPPING/TERMINATING (the SDK's is_compute_requirement_updating() clears within ~2s, so is not used)
     ├── work_targets.py          # resolve_named_target(): 'wr', 'wr/tg', 'namespace/wr', 'namespace/wr/tg' as yd-abort and yd-priority read them ('a/b' a Task Group first)
     ├── start_hold_common.py     # yd-start/hold/finish over action_runner
     ├── compute_action_common.py # yd-compute-stop/start/restart/deprovision/reprovision and yd-terminate over action_runner

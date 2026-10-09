@@ -26,6 +26,7 @@ from yellowdog_client.model import ComputeRequirementStatus, InstanceStatus
 from yellowdog_cli.utils import capacity_wait
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.capacity_wait import (
+    Capacity,
     CapacityWaitTimeout,
     capacity_of,
     wait_for_capacity,
@@ -310,3 +311,70 @@ class TestCommandLine:
             self._parse(name, argv)
         assert raised.value.code == 2
         assert words in capsys.readouterr().err
+
+
+class TestWhenAFollowedActionIsDone:
+    """
+    The tests '--follow' ends on after an action that leaves its Compute
+    Requirement alive, each read afresh after every event: 'changed' is
+    whether it has been seen unsettled since the action, which tells a
+    restart not yet begun from one done.
+    """
+
+    @staticmethod
+    def _follow(monkeypatch, rule, *capacities) -> list[bool]:
+        sequence = iter(capacities)
+        monkeypatch.setattr(
+            capacity_wait, "_current_capacity", lambda ctx, cr_id: next(sequence)
+        )
+        settled = capacity_wait.capacity_reached(None, rule)("cr")  # type: ignore[arg-type]
+        return [settled({}) for _ in capacities]
+
+    @staticmethod
+    def _capacity(status="RUNNING", running=1, target=1, **others) -> Capacity:
+        counts = {"RUNNING": running, **others}
+        return Capacity(
+            "'ns/cr'",
+            status,
+            None,
+            target,
+            tuple((s, n) for s, n in counts.items() if n),
+        )
+
+    def test_a_start_is_done_once_running_at_its_target(self, monkeypatch):
+        assert self._follow(
+            monkeypatch,
+            capacity_wait.until_settled,
+            self._capacity("STOPPED", running=0, STOPPED=1),
+            self._capacity("STARTING", running=0, PENDING=1),
+            self._capacity(),
+        ) == [False, False, True]
+
+    def test_a_restart_is_not_done_before_it_begins(self, monkeypatch):
+        assert self._follow(
+            monkeypatch,
+            capacity_wait.until_settled_again,
+            self._capacity(),  # Not yet begun
+            self._capacity(running=0, STOPPING=1),
+            self._capacity(running=0, PENDING=1),
+            self._capacity(),
+        ) == [False, False, False, True]
+
+    def test_a_stop_is_done_once_nothing_is_changing(self, monkeypatch):
+        assert self._follow(
+            monkeypatch,
+            capacity_wait.until_stopped,
+            self._capacity(),  # Not yet begun
+            self._capacity("STOPPING", running=0, STOPPING=1),
+            self._capacity("STOPPED", running=0, STOPPED=1),
+        ) == [False, False, True]
+
+    def test_an_instance_stop_is_done_with_its_requirement_still_running(
+        self, monkeypatch
+    ):
+        assert self._follow(
+            monkeypatch,
+            capacity_wait.until_stopped,
+            self._capacity(running=1, target=2, STOPPING=1),
+            self._capacity(running=1, target=2, STOPPED=1),
+        ) == [False, True]

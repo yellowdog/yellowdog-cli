@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`--follow` ends once an action that leaves its entity alive is done**, rather than running until Ctrl-C: `yd-hold` once the Work Requirement is held, `yd-compute-stop` once stopped, `yd-compute-start`, `-deprovision`, `-reprovision` and `yd-resize` once the Compute Requirement is running at its target, and `yd-compute-restart` once it is so again. The event stream of an entity that has not finished never closes, so these followed it indefinitely. A resized Configured Worker Pool, which has no Compute Requirement to tell by, is still followed until Ctrl-C.
 - **`yd-cancel`, `yd-shutdown` and `yd-terminate` take `--dry-run` with explicit names and IDs**, reporting what each would act on (and, for `yd-shutdown --terminate`, the Compute Requirements it would terminate); it was refused, so the most destructive commands were the only ones unable to preview a named target.
 - **`yd-submit -C`, `-G`, `-b` and `-l` must be at least 1, and `-P` and `yd-provision`/`yd-instantiate --target` at least 0** (exit 2): `-C 0` quietly became 1, and `-l 0` failed only once the Work Requirement existed.
 - **`yd-create` and `yd-remove` stop at a confirmation that cannot be answered** (stdin at its end, as from a script without `--yes`), recording the rest as not attempted, as `yd-delete` does; each resource was prompted for, failed and recorded in turn.
