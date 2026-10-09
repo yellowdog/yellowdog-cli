@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 13.4.0 — 2026-10-09
+
 - **`--sort` takes several keys, separated by commas**, sorting by each in turn: `yd-list workers --sort status,created`, `yd-cloud-info instance-types --region eu-west-2 --prices --sort spot,vcpus`. `--reverse` inverts the whole order. An unknown or repeated key is refused (exit 2). In the MCP tools, `sort` is now a list of keys rather than one.
 - **A missing Application key or secret says why**: that no configuration file was found (and where it was looked for), or that `--no-config` set it aside, and how else to give it; it said only "Missing configuration data: 'key'".
 - **An API URL not beginning `https://` (or `http://`) is a configuration error** (exit 3), named as such; it failed later with 'No connection adapters were found' and exit 1. **A connection failure names the Platform URL and what to check**, rather than printing urllib3's connection-pool text.
