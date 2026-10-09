@@ -29,7 +29,7 @@ Run `release.sh` from the `next-version` branch with a clean working tree:
 ./release.sh --release  # execute the release for real
 ```
 
-The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, stopping if it has not: its own test run uses the current venv alone, which can hide a failure on another Python version or without the optional extras. At the end it prints the release notes, for the release ticket.
+The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it checks that every commit to be released is signed (`main` requires it; see [Pre-push Hook](DEVELOPMENT.md#pre-push-hook)), stopping if one is not, shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, stopping if it has not. It then asks whether to run the tests itself, which it does unless told not to: that run uses the current venv alone, which can hide a failure on another Python version or without the optional extras, so it adds little once `make tox` has passed. At the end it prints the release notes, for the release ticket.
 
 ## Manual Release Steps
 
@@ -41,6 +41,8 @@ If you need to release without the script, or want to understand what it does:
 git checkout next-version
 git status              # must be clean
 git pull origin next-version
+git fetch origin main
+scripts/unsigned_commits.sh origin/main..HEAD   # must list nothing
 make tox                # every supported Python version
 ```
 
@@ -60,7 +62,7 @@ In `CHANGELOG.md`, add `## X.Y.Z — YYYY-MM-DD` under `## Unreleased`, so that 
 ```shell
 make format
 make pypi_check         # builds and checks the distribution
-pytest -v
+pytest -v               # optional once 'make tox' has passed
 ```
 
 ### 4. Commit the version bump

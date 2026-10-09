@@ -37,6 +37,9 @@ make pyright
 # Code complexity: McCabe worst first, ruff's function-structure counts, lengths (a report, never a failure)
 make complexity
 
+# Install scripts/pre-push, which refuses unsigned commits headed for main (main requires signed commits)
+make pre_push_hook
+
 # Update dependencies
 make update           # uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
 ```

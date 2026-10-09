@@ -9,7 +9,8 @@
 # with a clean working tree, and with this release's notes under
 # '## Unreleased' in CHANGELOG.md, which the version bump stamps with the
 # version and date; they are the release tag's message, and are printed at
-# the end for the release ticket.
+# the end for the release ticket. It asks whether to run the tests, and
+# refuses to release unsigned commits, which 'main' requires to be signed.
 
 set -euo pipefail
 
@@ -42,6 +43,21 @@ _confirm() {
     case "$answer" in
         [yY][eE][sS]|[yY]) return 0 ;;
         *) echo "Aborted."; exit 1 ;;
+    esac
+}
+
+# A yes/no question whose answer is the return status, yes by default; unlike
+# _confirm, 'no' carries on
+_ask() {
+    local prompt="$1"
+    if $DRY_RUN; then
+        echo "[dry-run] Would ask: $prompt → assuming yes"
+        return 0
+    fi
+    read -r -p "$prompt [Y/n] " answer
+    case "$answer" in
+        [nN][oO]|[nN]) return 1 ;;
+        *) return 0 ;;
     esac
 }
 
@@ -85,6 +101,22 @@ fi
 # Pull latest
 echo "Pulling latest 'next-version' from origin..."
 _run git pull origin next-version
+
+# Every commit being released must be signed: 'main' requires it, and an
+# account allowed to bypass that is only warned, once the push has happened
+# (the pre-push hook, scripts/pre-push, refuses too, but only after the
+# merge and the tag below)
+echo
+echo "Checking that every commit to be released is signed..."
+_run git fetch origin main
+if ! unsigned=$(scripts/unsigned_commits.sh origin/main..HEAD); then
+    echo "$unsigned"
+    if $DRY_RUN; then
+        echo "[dry-run] WARNING: Unsigned commits (ignored in dry-run)"
+    else
+        _die "Unsigned commits would go to 'main': re-sign them first (see scripts/unsigned_commits.sh)."
+    fi
+fi
 
 # The release notes: written as the changes landed, under '## Unreleased'
 [[ -f "$CHANGELOG" ]] || _die "No $CHANGELOG."
@@ -186,8 +218,12 @@ echo "--- Build and distribution check ---"
 _run make pypi_check
 
 echo
-echo "--- Running tests ---"
-_run pytest -v -n 8
+if _ask "Run the tests (pytest -v -n 8)?"; then
+    echo "--- Running tests ---"
+    _run pytest -v -n 8
+else
+    echo "--- Skipping the tests ---"
+fi
 
 # ---------------------------------------------------------------------------
 # Commit version bump

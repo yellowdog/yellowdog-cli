@@ -20,6 +20,11 @@ install: build
 uninstall:
 	uv pip uninstall yellowdog-cli
 
+# scripts/pre-push, which refuses unsigned commits headed for 'main', as this
+# clone's pre-push hook (pre-commit's own hook is 'pre-commit install')
+pre_push_hook:
+	ln -sf "$$(git rev-parse --show-toplevel)/scripts/pre-push" "$$(git rev-parse --git-path hooks)/pre-push"
+
 format: $(SRC) $(TESTS) $(SCRIPTS)
 	ruff check --fix $(SRC) $(TESTS) $(SCRIPTS)
 	ruff format $(SRC) $(TESTS) $(SCRIPTS)

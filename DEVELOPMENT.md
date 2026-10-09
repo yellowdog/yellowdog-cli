@@ -5,6 +5,7 @@
    * [Getting Started](#getting-started)
    * [Code Formatting](#code-formatting)
       * [Pre-commit Hook](#pre-commit-hook)
+      * [Pre-push Hook](#pre-push-hook)
    * [Testing](#testing)
       * [Coverage](#coverage)
       * [Complexity](#complexity)
@@ -29,7 +30,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:25 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 16:28:00 BST 2026 -->
 
 <!--te-->
 
@@ -102,6 +103,16 @@ This ensures formatting is always applied before a commit reaches the repository
 ```shell
 pre-commit run --all-files
 ```
+
+### Pre-push Hook
+
+`main` requires signed commits. Its GitHub ruleset lets an account with bypass rights push unsigned ones, with only a warning once the push has happened, so `scripts/pre-push` refuses a push that would add an unsigned (or badly signed) commit to `main` before it leaves. Pushes to other branches are not checked. To install it as this clone's pre-push hook:
+
+```shell
+make pre_push_hook
+```
+
+`git push --no-verify` skips it. `scripts/unsigned_commits.sh <range>` lists a range's unsigned commits, and `release.sh` runs it before it merges anything. Rewriting history with `git filter-branch` or `git filter-repo` drops signatures; `git rebase` re-signs under `commit.gpgsign`.
 
 ## Testing
 
@@ -329,11 +340,11 @@ yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images,
 yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
-scripts/                  # Build-time helpers run by make targets
+scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 CHANGELOG.md              # the release notes: each release's user-visible changes, and those not yet released under '## Unreleased'
-Makefile                  # format, test, coverage, complexity, pyright, tox, build, install, uninstall, update, clean, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
+Makefile                  # format, test, coverage, complexity, pyright, tox, build, install, uninstall, update, clean, pre_push_hook, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials
