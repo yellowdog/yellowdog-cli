@@ -25,7 +25,7 @@
       * [Following Progress](#following-progress)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:24 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:49 BST 2026 -->
 
 <!--te-->
 
@@ -47,7 +47,7 @@ It is worth clarifying the distinction between the two related concepts:
 
 - A **Compute Requirement** (created by `yd-instantiate`) is simply a set of cloud instances — there is no YellowDog Worker Pool associated with them. The instances are managed directly by the user. This is useful when you want to use YellowDog's provisioning capabilities but manage instances yourself.
 
-Both use the same `workerPool` / `computeRequirement` TOML section for configuration, and both are terminated using `yd-terminate`.
+Both use the same `workerPool` / `computeRequirement` TOML section for configuration. A Worker Pool is shut down using `yd-shutdown` (with `--terminate` to terminate its instances at once), and a Compute Requirement is terminated using `yd-terminate`.
 
 ## Worker Pool Properties
 
@@ -62,7 +62,7 @@ The following properties are available:
 | `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances.                                              |                         |
 | `instanceTags`          | The dictionary of instance tags to apply to the instances. Tag names must be lower case.                                                          |                         |
 | `maintainInstanceCount` | Only used when instantiating Compute Requirements; attempt to maintain the requested number of instances.                                         | `false`                 |
-| `maxNodes`              | The maximum number of nodes to which the Worker Pool can be scaled up.                                                                            | `1`                     |
+| `maxNodes`              | The maximum number of nodes to which the Worker Pool can be scaled up.                                                                            | `targetInstanceCount`, or `1` if that is `0` |
 | `metricsEnabled`        | Whether to enable performance metrics for nodes in the Worker Pool                                                                                | `false`                 |
 | `minNodes`              | The minimum number of nodes to which the Worker Pool can be scaled down.                                                                          | `0`                     |
 | `name`                  | The name of the Worker Pool.                                                                                                                      | Automatically Generated |
@@ -81,9 +81,9 @@ The following properties are available:
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families
 
-The `templateId` property can be directly populated with the YellowDog ID (YDID), or it can be populated with the textual name of the template, in the form `namespace/template_name`.
+The `templateId` property can be directly populated with the YellowDog ID (YDID), or it can be populated with the textual name of the template, optionally prefixed with its namespace (`namespace/template_name`). A name without a namespace is looked for in every namespace the Application can read.
 
-Similarly, the `imagesId` property can be populated with the YDID of an Image Family, Image Group, Image, or a string representing the native name of a cloud provider image (e.g. an AWS AMI). It can also be populated with an Image Family name in the form `namespace/image_family_name`, or an Image Group name in the form `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`. Optionally, a `yd/` prefix can be supplied. The CLI will aim to map the provided name into an Image Family or Group YDID.
+Similarly, the `imagesId` property can be populated with the YDID of an Image Family, Image Group, Image, or a string representing the native name of a cloud provider image (e.g. an AWS AMI). It can also be populated with an Image Family name, on its own or in the form `namespace/image_family_name`, or an Image Group name in the form `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`. Optionally, a `yd/` prefix can be supplied. The CLI will aim to map the provided name into an Image Family or Group YDID.
 
 ## Large-Scale Provisioning
 
@@ -279,7 +279,7 @@ Note that the `templateId` property can use either the YellowDog ID ('YDID') for
 
 ## Variable Substitutions in Worker Pool Properties
 
-Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files. See the description [above](variables.md#variable-substitutions) for more details on variable substitutions. This is a powerful feature that allows Worker Pools to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
+Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files. See [Variable Substitutions](variables.md) for more details. This is a powerful feature that allows Worker Pools to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
 
 An important distinction when using variable substitutions within Worker Pool (or Compute Requirement) JSON/Jsonnet documents is that each variable directive **must be prefixed and postfixed by a `__` (double underscore)** to disambiguate it from Mustache variable substitutions that must be passed directly to the API without client processing. For example, use: `__{{username}}__` to apply a substitution for the `username` default variable substitution.
 

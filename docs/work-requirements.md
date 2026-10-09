@@ -55,7 +55,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:24 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:48 BST 2026 -->
 
 <!--te-->
 
@@ -441,7 +441,7 @@ Also useful for testing, the `taskGroupCount` property or the command-line optio
 
 ### TOML Properties in the `workRequirement` Section
 
-Here's an example of the `workRequirement` section of a TOML configuration file, showing all the possible properties that can be set:
+Here's an example of the `workRequirement` section of a TOML configuration file, showing all the possible properties that can be set. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set at a given level, so the example uses `taskData`; likewise `csvFile` and `csvFiles`, and `workerTag` and `workerTags`. The deprecated `maximumTaskRetries` and `retryableErrors` (see [above](#deprecated-maximumtaskretries--retryableerrors)) cannot be combined with `retryPolicy` and are left out.
 
 ```toml
 [workRequirement]
@@ -451,16 +451,18 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     argumentsPostfix = ["--postfix-arg"]
     argumentsPrefix = ["--prefix-arg"]
     completedTaskTtl = 10
-    csvFile = "file1.csv"
+    disablePreallocation = false
     csvFiles = ["file1.csv", "file3.csv:3"]
     environment = {MY_VAR = "100"}
+    failurePolicy = {resubmissionDestinations = [
+      {destinationTaskGroup = "on-demand-tg", resubmitErrors = {includes = [{errorTypes = {includes = ["ALLOCATION_LOST"]}}]}},
+    ]}
     finishIfAllTasksFinished = true
     finishIfAnyTaskFailed = false
     instancePricingPreference = "SPOT_THEN_ON_DEMAND"
     instanceTypes = ["t3a.micro", "t3.micro"]
     namespaces = ["namespace_1", "namespace_2"]
     maxWorkers = 1
-    maximumTaskRetries = 0
     minWorkers = 1
     name = "my-work-requirement"
     parallelBatches = 5
@@ -468,16 +470,14 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     providers = ["AWS"]
     ram = [0.5, 2.0]
     regions = ["eu-west-2"]
-    retryableErrors = [
-      {processExitCodes = [143], statusesAtFailure = ["FAILED"], errorTypes = ["ALLOCATION_LOST"]},
-    ]
+    retryPolicy = {maxRetries = 3, retryErrors = {includes = [
+      {processExitCodes = {includes = [143]}, statusesAtFailure = {includes = ["FAILED"]}, errorTypes = {includes = ["ALLOCATION_LOST"]}},
+    ]}}
     setTaskNames = false
     tag = "my_tag"
     taskBatchSize = 1000
     taskCount = 100
     taskData = "my_data_string"
-    taskDataFile = "my_data_file.txt"
-    taskDataFiles = ["header.txt", "body.txt"]
     taskDataInputs = [
       {source = "in_src_path_1", destination = "dest_path_1"},
       {localPath = "local_file", uploadPath = "in_src_path_2", source = "in_src_path_2", destination = "dest_path_2"},
@@ -500,7 +500,7 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
 
 ### JSON Properties at the Work Requirement Level
 
-Showing all possible properties at the Work Requirement level:
+Showing all possible properties at the Work Requirement level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
 
 ```json
 {
@@ -510,13 +510,13 @@ Showing all possible properties at the Work Requirement level:
   "argumentsPostfix": ["--postfix-arg"],
   "argumentsPrefix": ["--prefix-arg"],
   "completedTaskTtl": 10,
+  "disablePreallocation": false,
   "environment": {"MY_VAR": "100"},
   "finishIfAllTasksFinished": true,
   "finishIfAnyTaskFailed": false,
   "instancePricingPreference": "SPOT_THEN_ON_DEMAND",
   "instanceTypes": ["t3a.micro", "t3.micro"],
   "maxWorkers": 1,
-  "maximumTaskRetries": 0,
   "minWorkers": 1,
   "name": "my-work-requirement",
   "namespaces": ["namespace_1", "namespace_2"],
@@ -524,19 +524,22 @@ Showing all possible properties at the Work Requirement level:
   "providers": ["AWS"],
   "ram": [0.5, 2],
   "regions": ["eu-west-2"],
-  "retryableErrors": [
-    {
-      "processExitCodes": [143],
-      "statusesAtFailure" : ["FAILED"],
-      "errorTypes": ["ALLOCATION_LOST"]
+  "retryPolicy": {
+    "maxRetries": 3,
+    "retryErrors": {
+      "includes": [
+        {
+          "processExitCodes": {"includes": [143]},
+          "statusesAtFailure": {"includes": ["FAILED"]},
+          "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+        }
+      ]
     }
-  ],
+  },
   "setTaskNames": false,
   "tag": "my_tag",
   "taskCount": 100,
   "taskData": "my_task_data_string",
-  "taskDataFile": "my_data_file.txt",
-  "taskDataFiles": ["header.txt", "body.txt"],
   "taskDataInputs": [
     {"destination": "dest_path_1", "source": "in_src_path_1"},
     {"localPath": "local_file", "uploadPath": "in_src_path_2", "destination": "dest_path_2", "source": "in_src_path_2"}
@@ -565,7 +568,7 @@ Showing all possible properties at the Work Requirement level:
 
 ### JSON Properties at the Task Group Level
 
-Showing all possible properties at the Task Group level:
+Showing all possible properties at the Task Group level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
 
 ```json
 {
@@ -577,12 +580,12 @@ Showing all possible properties at the Task Group level:
       "argumentsPostfix": ["--postfix-arg"],
       "argumentsPrefix": ["--prefix-arg"],
       "completedTaskTtl": 10,
+      "disablePreallocation": false,
       "environment": {"MY_VAR": "100"},
       "finishIfAllTasksFinished": true,
       "finishIfAnyTaskFailed": false,
       "instancePricingPreference": "SPOT_THEN_ON_DEMAND",
       "instanceTypes": ["t3a.micro", "t3.micro"],
-      "maximumTaskRetries": 0,
       "maxWorkers": 1,
       "minWorkers": 1,
       "name": "first-task-group",
@@ -591,19 +594,30 @@ Showing all possible properties at the Task Group level:
       "providers": ["AWS"],
       "ram": [0.5, 2],
       "regions": ["eu-west-2"],
-      "retryableErrors": [
-        {
-          "processExitCodes": [143],
-          "statusesAtFailure" : ["FAILED"],
-          "errorTypes": ["ALLOCATION_LOST"]
+      "failurePolicy": {
+        "resubmissionDestinations": [
+          {
+            "destinationTaskGroup": "second-task-group",
+            "resubmitErrors": {"includes": [{"errorTypes": {"includes": ["ALLOCATION_LOST"]}}]}
+          }
+        ]
+      },
+      "retryPolicy": {
+        "maxRetries": 3,
+        "retryErrors": {
+          "includes": [
+            {
+              "processExitCodes": {"includes": [143]},
+              "statusesAtFailure": {"includes": ["FAILED"]},
+              "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+            }
+          ]
         }
-      ],
+      },
       "setTaskNames": false,
       "tag": "my_tag",
       "taskCount": 5,
       "taskData": "my_task_data_string",
-      "taskDataFile": "my_data_file.txt",
-      "taskDataFiles": ["header.txt", "body.txt"],
       "taskDataInputs": [
         {"destination": "dest_path_1", "source": "in_src_path_1"},
         {"localPath": "local_file", "uploadPath": "in_src_path_2", "destination": "dest_path_2", "source": "in_src_path_2"}
@@ -625,6 +639,7 @@ Showing all possible properties at the Task Group level:
     {
       "name": "second-task-group",
       "dependencies": ["first-task-group"],
+      "taskType": "docker",
       "tasks": [
         {}
       ]
@@ -635,7 +650,7 @@ Showing all possible properties at the Task Group level:
 
 ### JSON Properties at the Task Level
 
-Showing all possible properties at the Task level:
+Showing all possible properties at the Task level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`.
 
 ```json
 {
@@ -650,8 +665,6 @@ Showing all possible properties at the Task level:
           "setTaskNames": false,
           "tag": "my_tag",
           "taskData": "my_task_data_string",
-          "taskDataFile": "my_data_file.txt",
-          "taskDataFiles": ["header.txt", "body.txt"],
           "taskDataInputs": [
             {"destination": "dest_path_1", "source": "in_src_path_1"},
             {"localPath": "local_file", "uploadPath": "in_src_path_2", "destination": "dest_path_2", "source": "in_src_path_2"}
@@ -671,7 +684,7 @@ Showing all possible properties at the Task level:
 
 ## Variable Substitutions in Work Requirement Properties
 
-Variable substitutions can be used within any property value in TOML configuration files or Work Requirement JSON files. See the description [above](variables.md#variable-substitutions) for more details on variable substitutions. This is a powerful feature that allows Work Requirements to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
+Variable substitutions can be used within any property value in TOML configuration files or Work Requirement JSON files. See [Variable Substitutions](variables.md) for more details. This is a powerful feature that allows Work Requirements to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
 
 ### Work Requirement Name Substitution
 
@@ -818,7 +831,7 @@ As with a normal `yd-submit`, `--follow` (or `-f`) can be used to follow the Wor
 
 If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd-submit` exits with a non-zero status.
 
-If the spec contains `taskDataInputs` with `localFile` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
+If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
 
 ```bash
 yd-submit --add-to my-work-requirement --overwrite my-spec.json
@@ -844,7 +857,7 @@ The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platfo
 
 The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-submit --which-rclone` or `yd-version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd-submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-submit`, i.e. by `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy`.
 
-Currently, Data Client only supports **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
+Currently, Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
 ### Specifying Data Client Inputs
 
@@ -873,13 +886,13 @@ JSON:
 
 ### Automatic Upload of Local Files
 
-The `yd-submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localFile` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
+The `yd-submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localPath` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
 
 TOML, in the `workRequirement` section:
 
 ```toml
 taskDataInputs = [
-  {localFile = "my_local_file", uploadPath = "in_upload_path_1", source = "in_src_path_1", destination = "dest_path_1"},
+  {localPath = "my_local_file", uploadPath = "in_upload_path_1", source = "in_src_path_1", destination = "dest_path_1"},
 ]
 ```
 
@@ -888,7 +901,7 @@ JSON:
 ```json
 "taskDataInputs": [
   {
-    "localFile": "my_local_file",
+    "localPath": "my_local_file",
     "uploadPath": "in_upload_path_1",
     "source": "in_src_path_1",
     "destination": "dest_path_1"

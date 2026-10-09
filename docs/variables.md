@@ -13,7 +13,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:24 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:48 BST 2026 -->
 
 <!--te-->
 
@@ -200,7 +200,7 @@ For example, in a TOML file:
 [workRequirement]
 name          = "my-job"
 tag           = "{{wr_tag::}}"       # removed if 'wr_tag' is not set
-maxRetries    = "{{num:retries::}}"  # removed if 'retries' is not set
+taskCount     = "{{num:tasks::}}"    # removed if 'tasks' is not set
 ```
 
 If `wr_tag` is not supplied, the `tag` property will be absent from the submitted Work Requirement (rather than being set to an empty string or causing an error). If `wr_tag` is supplied, e.g. via `-v wr_tag=my-tag`, it will be used as the value.

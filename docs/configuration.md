@@ -11,7 +11,7 @@
       * [Variable Substitutions in Common Properties](#variable-substitutions-in-common-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:22 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:46 BST 2026 -->
 
 <!--te-->
 
@@ -34,7 +34,7 @@ The name of the configuration file can be supplied in two different ways:
 
 Run `yd-doctor` to see which configuration file was found and where each value came from.
 
-Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is still an error, as before. The data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, `yd-copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd-schema config` prints the schema itself. `yd-doctor` reports the same problems in its `Config schema` row.
+Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is an error. The data client commands (`yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, `yd-copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd-schema config` prints the schema itself. `yd-doctor` reports the same problems in its `Config schema` row.
 
 ## Naming Rules
 
@@ -63,11 +63,11 @@ The `[common]` section of the configuration file can contain the following prope
 |:------------|:--------------------------------------------------------------------------------------------|
 | `key`       | The **key ID** of the YellowDog Application under which the commands will run               |
 | `secret`    | The **key secret** of the YellowDog Application under which the commands will run           |
-| `namespace` | The **namespace** to be used for grouping resources                                         |
-| `tag`       | The **tag** to be used for tagging resources and naming objects                             |
+| `namespace` | The **namespace** to be used for grouping resources. Defaults to `default`                  |
+| `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint. Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
-| `variables` | A table containing **variable substitutions** (see the Variables section below)             |
+| `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |
 
 An example `common` section is shown below:
@@ -141,8 +141,6 @@ When setting the value of the above properties, a property set on the command li
 
 If all the required common properties are set using the command line or environment variables, then the entire `common` section of the TOML file can be omitted.
 
-Confirmation prompts are skipped only by `--yes`/`-y`, given to the command that would ask.
-
 ### Overriding Arbitrary TOML Properties on the Command Line
 
 Any property in the TOML configuration file can be overridden on the command line using the `--property` flag (repeatable):
@@ -174,11 +172,11 @@ yd-provision --property 'workerPool.maintainInstanceCount=true'
 yd-submit --property 'workRequirement.tag=2024'
 
 # Multiple overrides
-yd-submit --property 'workRequirement.maxRetries=3' \
+yd-submit --property 'workRequirement.taskCount=3' \
           --property 'workRequirement.priority=1.5'
 ```
 
-`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. Specific CLI flags (`--namespace`, `--tag`, etc.) are still applied on top, as before. `{{variable}}` substitutions within values are resolved in the normal way.
+`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. `{{variable}}` substitutions within values are resolved in the normal way.
 
 Use `--dry-run` to verify the effect of an override before submitting:
 
@@ -197,10 +195,10 @@ The `.env` file is located by checking the following locations in order:
 
 Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
 
-Environment variables sourced from a `.env` file whose names start with `YD` will be reported on the command line. Variables whose names do not start with `YD` will not be reported, but they will still be applied.
+With `--debug`, environment variables sourced from a `.env` file whose names start with `YD` are reported as the command starts. Variables whose names do not start with `YD` are never reported, but they are still applied.
 
 ### Variable Substitutions in Common Properties
 
 Note the use of `{{username}}` in the value of the `tag` property example above: this is a **variable substitution** that can optionally be used to insert the login username of the user running the commands. So, for username `abc`, the `tag` would be set to `testing-abc`. This can be helpful to disambiguate multiple users running with the same configuration data.
 
-Variable substitutions are discussed in more detail below.
+Variable substitutions are described in detail in [Variable Substitutions](variables.md).

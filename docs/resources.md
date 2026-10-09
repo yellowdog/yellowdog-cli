@@ -29,7 +29,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:23 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:48 BST 2026 -->
 
 <!--te-->
 
@@ -42,7 +42,6 @@ The commands **yd-create** and **yd-remove** allow the creation, update and remo
 - Compute Requirement Templates
 - Image Families, Image Groups, and Images
 - Namespaces
-- Namespace Storage Configurations
 - Configured Worker Pools
 - Allowances
 - String Attribute Definitions
@@ -119,7 +118,8 @@ When using the `yd-create` and `yd-remove` commands, note that an additional pro
 - `"NamespacePolicy"`
 - `"Group"`
 - `"Application"`
-- `"User"`
+- `"InternalUser"`, `"ExternalUser"` (update only)
+- `"Namespace"`
 
 ## Generating Resource Specifications using `yd-list`
 

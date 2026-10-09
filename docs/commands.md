@@ -53,7 +53,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:22 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:46 BST 2026 -->
 
 <!--te-->
 
@@ -501,7 +501,7 @@ An example JSON specification is shown below:
   "requirementNamespace": "pyexamples",
   "requirementTag": "pyexamples-test",
   "templateId": "ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4",
-  "userData": "#/bin/bash\n#Other stuff...",
+  "userData": "#!/bin/bash\n#Other stuff...",
   "targetInstanceCount": 1,
   "maintainInstanceCount": true
 }
@@ -1246,7 +1246,7 @@ yd-copy -R --dry-run input/ output/
 
 ## Utility Commands
 
-None of `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options); `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd-help`, `yd-version` and `yd-jsonnet2json` accept; `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
 
 ### yd-doctor
 

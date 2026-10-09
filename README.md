@@ -36,7 +36,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:43:16 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 10:46:45 BST 2026 -->
 
 <!--te-->
 
@@ -51,8 +51,9 @@ The commands provide the following capabilities:
 - **Aborting** running Tasks with the **`yd-abort`** command
 - **Boosting** Allowances with the **`yd-boost`** command
 - **Cancelling** Work Requirements with the **`yd-cancel`** command
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
 - **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
-- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Allowances, Configured Worker Pools, User Attributes, Namespace Policies, Groups, and Applications with the **`yd-create`** and **`yd-remove`** commands
+- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with the **`yd-create`** and **`yd-remove`** commands
 - **Finishing** Work Requirements with the **`yd-finish`** command
 - **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
 - **Instantiating** Compute Requirements with the **`yd-instantiate`** command
@@ -66,6 +67,7 @@ The commands provide the following capabilities:
 - **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
 - **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
 - **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
+- **Diagnosing** the configuration, credentials and connectivity with the **`yd-doctor`** command
 - **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
 - **Reprovisioning** Compute Requirements, restoring their target instance counts, with the **`yd-compute-reprovision`** command
 - **Submitting** Work Requirements with the **`yd-submit`** command
@@ -303,6 +305,8 @@ options:
   --interactive, -i     list, and interactively select, the items to act on
   --yes, -y             perform modifying/destructive actions without requiring user confirmation
 ```
+
+If a command fails and the reason isn't clear, run **[`yd-doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
 ## Specification Schemas
 

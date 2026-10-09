@@ -257,6 +257,7 @@ WORK_REQUIREMENT_PROPERTIES: tuple[Property, ...] = (
     Property("timeout", NUM, _levels(T, K)),
     Property("vcpus", RANGE, _levels(T, W, G)),
     Property("workRequirementData", STR, _levels(T)),
+    Property("workerTag", STR, _levels(T)),
     Property("workerTags", STRS, _levels(T, W, G)),
 )
 
