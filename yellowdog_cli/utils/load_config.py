@@ -985,6 +985,18 @@ def load_config_data_client_for_profile(
     return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
 
 
+def load_config_data_client_destination() -> ConfigDataClient:
+    """
+    Load yd-copy's destination data client config, from the profile and
+    prefix its command line names (--dst-profile, --dst-prefix).
+    """
+    ensure_config_loaded()
+    return load_config_data_client_for_profile(
+        getattr(_ARGS, "dst_profile", None),
+        getattr(_ARGS, "dst_prefix", None),
+    )
+
+
 def load_config_work_requirement() -> ConfigWorkRequirement:
     """
     Load the configuration data for a Work Requirement

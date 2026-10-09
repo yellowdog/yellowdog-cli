@@ -226,12 +226,12 @@ def _get_user_input(input_prompt: str) -> str:
     """
     try:
         if OUTPUT.json_output:
-            CONSOLE_ERR.print(input_prompt, end="")
+            CONSOLE_ERR.print(input_prompt, end="", soft_wrap=True)
             return input("")
         if OUTPUT.no_format:
             return input(input_prompt)
         # Prevents broken wrapping
-        CONSOLE.print(input_prompt, end="")
+        CONSOLE.print(input_prompt, end="", soft_wrap=True)
         return CONSOLE.input("")
     except EOFError:
         raise NoAnswerToPrompt() from None

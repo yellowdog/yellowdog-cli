@@ -15,6 +15,8 @@ Covers here:
     computeRequirementBatchSize cast with int(), the batch size at least 1
   - _resolve_section_variables: a circular variable reference in a section
     is reported and exits
+  - load_config_data_client_destination: yd-copy's --dst-profile and
+    --dst-prefix reach the profile loader
 """
 
 import os
@@ -752,3 +754,31 @@ class TestReviewedLoaderErrors:
         assert lc_module._number({"maxNodes": "7"}, "maxNodes", int) == 7
         assert lc_module._number({}, "maxNodes", int, 3) == 3
         assert lc_module._number({}, "maxNodes", int) is None
+
+
+class TestLoadConfigDataClientDestination:
+    """
+    yd-copy's destination is loaded from the profile and prefix its own
+    command line names, read from the arguments load_config holds rather
+    than from ARGS_PARSER.
+    """
+
+    def test_the_dst_options_reach_the_profile_loader(self):
+        args = MagicMock(dst_profile="prod", dst_prefix="out")
+        with (
+            patch.object(lc_module, "_ARGS", args),
+            patch.object(lc_module, "ensure_config_loaded"),
+            patch.object(lc_module, "load_config_data_client_for_profile") as load,
+        ):
+            lc_module.load_config_data_client_destination()
+        load.assert_called_once_with("prod", "out")
+
+    def test_without_them_the_defaults_apply(self):
+        args = MagicMock(spec=[])  # a command line with neither option
+        with (
+            patch.object(lc_module, "_ARGS", args),
+            patch.object(lc_module, "ensure_config_loaded"),
+            patch.object(lc_module, "load_config_data_client_for_profile") as load,
+        ):
+            lc_module.load_config_data_client_destination()
+        load.assert_called_once_with(None, None)

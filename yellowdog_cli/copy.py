@@ -9,7 +9,6 @@ which deletes at the destination, is refused for a single file and for a
 destination that is a remote's root or the configured bucket itself.
 """
 
-from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient.operations import (
@@ -24,17 +23,12 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import (
     load_config_data_client,
-    load_config_data_client_for_profile,
+    load_config_data_client_destination,
 )
 from yellowdog_cli.utils.printing import print_error, print_info
 
 CONFIG_SRC: ConfigDataClient = lazy(load_config_data_client)
-CONFIG_DST: ConfigDataClient = lazy(
-    lambda: load_config_data_client_for_profile(
-        ARGS_PARSER.dst_profile,
-        ARGS_PARSER.dst_prefix,
-    )
-)
+CONFIG_DST: ConfigDataClient = lazy(load_config_data_client_destination)
 
 
 @dataclient_wrapper
