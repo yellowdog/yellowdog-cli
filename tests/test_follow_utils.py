@@ -35,9 +35,14 @@ def _http_404() -> requests.HTTPError:
 
 @pytest.fixture(autouse=True)
 def _reset_follow_errors():
+    # The stop too: a --timeout leaves it set until the next follow_ids(),
+    # so a test calling follow_events() directly after one, as a worker
+    # under xdist may, saw it set and never connected
     fu.reset_follow_errors()
+    fu._STOP_FOLLOWING.clear()
     yield
     fu.reset_follow_errors()
+    fu._STOP_FOLLOWING.clear()
 
 
 class TestFollowWorkRequirementWithProgress:
