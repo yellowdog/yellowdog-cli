@@ -27,8 +27,9 @@ from yellowdog_cli.utils.printing import (
 from yellowdog_cli.utils.specs.schema import Family, SchemaGenerationError, build_schema
 
 # From the package metadata: importing anything from yellowdog_client builds
-# the whole Platform client, which --list, --check and the config family
-# never need. The SDK is imported only when a family that needs it is built
+# the whole Platform client, which --list never needs. The SDK is imported
+# only when a family that needs it is built, the config family included, for
+# its [workRequirement]; --check builds every family
 from yellowdog_cli.utils.version_info import sdk_version as installed_sdk_version
 
 sdk_version = installed_sdk_version()

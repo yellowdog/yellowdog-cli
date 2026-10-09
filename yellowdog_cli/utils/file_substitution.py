@@ -306,9 +306,9 @@ def process_variable_substitutions_in_file_contents(
             f" variable reference, in '{label}'{expressions}"
         )
 
-    # A type-tagged expression inside a longer string is not substituted here
-    # but left for the in-situ pass to substitute as text, so one still here
-    # is not a sign of a circular reference
+    # The Jsonnet pass leaves a type-tagged expression inside a longer string
+    # for the in-situ pass to substitute as text, so one still here is not a
+    # sign of a circular reference
     _undefined_unless_circular(
         [
             reference

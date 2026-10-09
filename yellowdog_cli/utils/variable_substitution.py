@@ -87,12 +87,6 @@ _UNDEFINED_VARIABLE_WARNINGS = False
 # an expression is reported once, however many times it is read
 _UNDEFINED_VARIABLES_REPORTED: set[str | tuple[str, str]] = set()
 
-# What an expression naming a variable looks like, once resolution has left
-# it: an optional type tag, then either 'env:' and an environment variable's
-# name, or a variable name. Anything else -- Docker's '{{.ID}}', a Go
-# template's '{{ .Values.x }}', Handlebars' '{{#each}}' -- is text meant for
-# something else, since no variable can be defined with such a name.
-
 
 def _finite(value: float) -> float:
     """
@@ -209,6 +203,11 @@ _TYPE_CONVERTERS = {
     FORMAT_NAME_TYPE_TAG: lambda text: format_yd_name(text, add_prefix=False),
 }
 TYPE_TAGS = tuple(_TYPE_CONVERTERS)
+# What an expression naming a variable looks like, once resolution has left
+# it: an optional type tag, then either 'env:' and an environment variable's
+# name, or a variable name. Anything else -- Docker's '{{.ID}}', a Go
+# template's '{{ .Values.x }}', Handlebars' '{{#each}}' -- is text meant for
+# something else, since no variable can be defined with such a name.
 _VARIABLE_REFERENCE = re.compile(
     "(?:"
     + "|".join(re.escape(tag) for tag in TYPE_TAGS)

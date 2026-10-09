@@ -223,13 +223,33 @@ def test_the_same_failure_is_not_reported_over_and_over(win, monkeypatch):
     #
     # No _invalidate_config_parse() between the two, deliberately: a failed parse
     # leaves _config_parse_invalid set, so the reparse this stands in for runs
-    # again without one — and the box's reparse does not call it in any case.
+    # again without one — and the box's edit reaches _mark_stale(), not it (see
+    # the test after this one).
     # Calling it here reset what the suppression compares against, which is the
     # behaviour a configuration file being reselected needs and this one must not
     # have.
     python_commands(win, monkeypatch, EXITS_NON_ZERO)
 
     win._discovery.reparse_placeholders()
+    win._discovery.reparse_placeholders()
+
+    assert win.log_output.toPlainText().count("Exit 3") == 1
+
+
+@pytest.mark.parametrize("field", ["user_variables", "properties"])
+def test_an_edit_between_reparses_does_not_report_the_failure_again(
+    win, monkeypatch, field
+):
+    # What the box's reparse is: an edit, then a reparse. The edit's
+    # textChanged once reached invalidate(), which forgot the failure said last,
+    # so a broken configuration was reported again after every pause in typing
+    python_commands(win, monkeypatch, EXITS_NON_ZERO)
+    box = getattr(win, field)
+
+    win._discovery.reparse_placeholders()
+    box.setPlainText("x=1")
+    win._discovery.reparse_placeholders()
+    box.setPlainText("x=2")
     win._discovery.reparse_placeholders()
 
     assert win.log_output.toPlainText().count("Exit 3") == 1

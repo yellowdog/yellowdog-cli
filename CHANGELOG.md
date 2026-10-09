@@ -4,6 +4,9 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Commander** no longer repeats a broken configuration's error in the output window after every pause in typing in the User-Defined Variables or Properties box: the error is shown once, and again only if the configuration file is reselected or the error changes.
+- **Commander's Show** buttons, with no definition file selected, resolve a `{{variable}}` in the configuration's `workRequirementData` or `workerPoolData` with Commander's own CLI rather than whichever `yd-variables` is on the `PATH`, and no longer fall back to the variable's default when the configuration prints a warning.
+
 ## 13.3.1 — 2026-10-09
 
 - **Cloud Wizard for GCP** is best run on Python 3.11 or later, as the Cloud Wizard README now says: on Python 3.10, Google's libraries print a `FutureWarning` as `yd-cloudwizard --cloud-provider gcp` starts, and they no longer receive updates for 3.10. The setup itself is unaffected.

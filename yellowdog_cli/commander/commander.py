@@ -117,9 +117,6 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # Include the CLI version in the window title
         self.setWindowTitle(WINDOW_TITLE)
 
-        # The framed label showing the selected configuration file (the frame
-        # itself comes from commander.ui, which cannot carry this margin)
-
         self._align_field_labels()
 
         self._pid = os.getpid()

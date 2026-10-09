@@ -3,10 +3,7 @@ The base of YellowDogApp's class hierarchy (see commander.py).
 """
 
 import os
-import re
-import subprocess
-from json import loads
-from os.path import abspath, basename, dirname, exists, join
+from os.path import abspath, basename, dirname, exists
 from typing import cast
 
 from PyQt6.QtCore import (
@@ -500,62 +497,3 @@ class WindowBase(QMainWindow):
         file_name = self._file_dialogs.browse(f"Browse '{directory}'", directory)
         if file_name is not None:
             self._file_dialogs.open_with_default_application(file_name)
-
-    def _get_config_data_file(self, key: str) -> str | None:
-        """
-        Extract the value of workRequirementData or workerPoolData directly
-        from the config TOML text, resolving template variable defaults and
-        checking user_variables overrides.
-        """
-        if self._config_file is None or not exists(self._config_file):
-            return None
-        try:
-            with open(self._config_file, encoding="utf-8") as f:
-                content = f.read()
-        except OSError:
-            return None
-
-        m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)
-        if not m:
-            return None
-
-        value = m.group(1)
-
-        # Resolve template variables iteratively, innermost first, to support up
-        # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
-        # Each pass finds the deepest {{...}} with no further {{ inside it,
-        # resolves that single variable via yd-variables, and substitutes the result.
-        for _ in range(3):
-            if "{{" not in value:
-                break
-            inner = re.search(r"\{\{([^{}]+)}}", value)
-            if not inner:
-                break
-            fragment = inner.group(1)
-            var_name, default = (
-                fragment.split(":=", 1) if ":=" in fragment else (fragment, "")
-            )
-            try:
-                result = subprocess.run(
-                    [
-                        "yd-variables",
-                        "-c",
-                        self._config_basename(),
-                        var_name,
-                        *self._namespace_tag_and_user_vars(),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    cwd=self._config_dir(),
-                )
-                resolved = loads(result.stdout.strip()).get(var_name)
-                substitution = resolved if resolved is not None else default
-            except Exception:
-                substitution = default
-            value = value[: inner.start()] + substitution + value[inner.end() :]
-
-        if not value:
-            return None
-
-        return str(join(self._config_dir(), value))
