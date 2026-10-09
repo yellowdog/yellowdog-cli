@@ -34,19 +34,22 @@ pypi_test_upload: clean build
 pypi_check: build
 	twine check dist/*
 
-toc_all: toc toc_cloudwizard toc_commander toc_mcp
+toc_all: toc toc_cloudwizard toc_commander toc_mcp toc_development
 
 toc: README.md
-	./gh-md-toc --insert --skip-header README.md
+	./gh-md-toc --insert --no-backup --skip-header README.md
 
 toc_cloudwizard: README_CLOUDWIZARD.md
-	./gh-md-toc --insert --skip-header README_CLOUDWIZARD.md
+	./gh-md-toc --insert --no-backup --skip-header README_CLOUDWIZARD.md
 
 toc_commander: yellowdog_cli/commander/README.md
-	./gh-md-toc --insert --skip-header yellowdog_cli/commander/README.md
+	./gh-md-toc --insert --no-backup --skip-header yellowdog_cli/commander/README.md
 
 toc_mcp: yellowdog_cli/mcp/README.md
-	./gh-md-toc --insert --skip-header yellowdog_cli/mcp/README.md
+	./gh-md-toc --insert --no-backup --skip-header yellowdog_cli/mcp/README.md
+
+toc_development: DEVELOPMENT.md
+	./gh-md-toc --insert --no-backup --skip-header DEVELOPMENT.md
 
 schema_descriptions: README.md
 	python3 scripts/extract_schema_descriptions.py > yellowdog_cli/spec_data/descriptions.json

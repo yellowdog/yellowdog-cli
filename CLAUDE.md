@@ -277,7 +277,7 @@ Documentation here is spread across several files, each with its own audience, a
 | `PYPI_README.md` | The command list or the headline description changes — it is the PyPI landing page, so it summarises rather than documents |
 | `yellowdog_cli/commander/README.md` | Commander's GUI behaviour changes: a new button, dialog, or a change in what an action does (`make toc_commander` for its TOC, which the Help window shows too) |
 | `yellowdog_cli/mcp/README.md` | The MCP server's user-visible behaviour changes: a tool added, removed or changed (`make toc_mcp` for its TOC; `tests/test_mcp_readme.py` holds it to every tool) |
-| `DEVELOPMENT.md` | Anything a developer runs or needs installed changes: make targets, prerequisites, the venv or extras, `setup-ubuntu.sh`, the project layout |
+| `DEVELOPMENT.md` | Anything a developer runs or needs installed changes: make targets, prerequisites, the venv or extras, `setup-ubuntu.sh`, the project layout, the architecture outline (`make toc_development` for its TOC) |
 | `tests/README.md` | Test files are added, renamed or removed, or a category, flag, marker or shared fixture changes |
 | `CLAUDE.md` (this file) | A new module, pattern or convention arrives, or an existing one is described here and changes |
 | `.claude/rules/*.md` | The subsystem a rule file covers changes (Commander, the MCP server, variable substitution, the specification schemas). Subsystem detail goes there, not in `CLAUDE.md`, which must stay under Claude Code's 150k-character limit; a new rule file needs `paths:` frontmatter, or it loads in every session |

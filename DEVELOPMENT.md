@@ -1,5 +1,38 @@
 # Development Guide
 
+<!--ts-->
+   * [Prerequisites](#prerequisites)
+   * [Getting Started](#getting-started)
+   * [Code Formatting](#code-formatting)
+      * [Pre-commit Hook](#pre-commit-hook)
+   * [Testing](#testing)
+      * [Coverage](#coverage)
+      * [Complexity](#complexity)
+      * [Commander GUI Tests](#commander-gui-tests)
+      * [Testing Across Python Versions](#testing-across-python-versions)
+         * [Python Pre-Releases](#python-pre-releases)
+   * [Type Checking](#type-checking)
+   * [Building](#building)
+   * [Commander](#commander)
+   * [MCP Server](#mcp-server)
+   * [Architecture](#architecture)
+      * [One set of commands, three front ends](#one-set-of-commands-three-front-ends)
+      * [The life of a command](#the-life-of-a-command)
+      * [The command registry](#the-command-registry)
+      * [Laziness: importing does nothing](#laziness-importing-does-nothing)
+      * [Passing context rather than reading globals](#passing-context-rather-than-reading-globals)
+      * [Thin commands over libraries](#thin-commands-over-libraries)
+      * [From specification to Platform object](#from-specification-to-platform-object)
+      * [Output and failure](#output-and-failure)
+      * [Rules held by tests](#rules-held-by-tests)
+   * [Project Structure](#project-structure)
+   * [Branching](#branching)
+
+<!-- Created by https://github.com/ekalinin/github-markdown-toc -->
+<!-- Added by: pwt, at: Fri Oct  9 08:59:32 BST 2026 -->
+
+<!--te-->
+
 ## Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) — install via `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`; on Windows use `winget install --id=astral-sh.uv` or `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
