@@ -385,6 +385,37 @@ def finite_float(value: str) -> float:
     return number
 
 
+def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
+    """
+    A '--sort' value: one sort key, or several separated by commas, the most
+    significant first, each one of 'valid' and none given twice.
+    """
+    keys = tuple(key.strip() for key in value.split(","))
+    for key in keys:
+        if not key:
+            raise ArgumentTypeError(f"empty sort key in '{value}'")
+        if key not in valid:
+            raise ArgumentTypeError(
+                f"invalid sort key '{key}' (choose from {', '.join(valid)})"
+            )
+    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated:
+        raise ArgumentTypeError(f"sort key given more than once: {', '.join(repeated)}")
+    return keys
+
+
+# The sort keys of the entity listings and interactive selection
+# (tables.sorted_objects())
+ENTITY_SORT_KEYS: tuple[str, ...] = ("name", "created", "status", "namespace")
+
+
+def entity_sort_keys(value: str) -> tuple[str, ...]:
+    """
+    An argparse type for the entity listings' '--sort'.
+    """
+    return parse_sort_keys(value, ENTITY_SORT_KEYS)
+
+
 def non_negative_int(value: str) -> int:
     """
     An argparse type for a size that may be zero, as a Worker Pool or
@@ -628,24 +659,24 @@ def mcp_excluded(command: Command, option: Option) -> bool:
 
 SORT = option(
     "--sort",
-    type=str,
+    type=entity_sort_keys,
     required=False,
-    choices=["name", "created", "status", "namespace"],
     default="name",
     help=(
         "order in which listed and interactively-selected entities "
         "are sorted: 'name' (default), 'created' (creation time, "
-        "earliest first), 'status' (status name, then name), or "
-        "'namespace' (namespace, then name); combine with --reverse "
-        "to invert the order"
+        "earliest first), 'status' (status name), or 'namespace'; give "
+        "several, separated by commas, to sort by each in turn (e.g. "
+        "'status,created'), the name always breaking any tie; combine "
+        "with --reverse to invert the whole order"
     ),
-    metavar="<name|created|status|namespace>",
+    metavar="<name|created|status|namespace>[,...]",
 )
 REVERSE = option(
     "--reverse",
     action="store_true",
     required=False,
-    help="reverse (descending) order of the active --sort key",
+    help="reverse (descending) the whole order --sort gives",
 )
 VARIABLE = option(
     "--variable",
@@ -2605,6 +2636,22 @@ CLOUD_INFO_PRICED_SORT_KEYS: tuple[str, ...] = (
 )
 _CLOUD_INFO_SORT_CHOICES = ("name", "vcpus", "ram", "price", "spot", "on-demand")
 
+
+def cloud_info_sort_keys(value: str) -> tuple[str, ...]:
+    """
+    An argparse type for yd-cloud-info's '--sort': any of its keys, which
+    check_cloud_info_options() then holds to the ones the type offers.
+    """
+    return parse_sort_keys(value, _CLOUD_INFO_SORT_CHOICES)
+
+
+# Each '--sort' type and the keys it accepts, which the MCP catalogue offers
+# as a list of them (mcp/tools.py)
+SORT_KEY_TYPES: dict[Callable[[str], tuple[str, ...]], tuple[str, ...]] = {
+    entity_sort_keys: ENTITY_SORT_KEYS,
+    cloud_info_sort_keys: _CLOUD_INFO_SORT_CHOICES,
+}
+
 # The types each filter applies to, as (dest, flag, types); '--provider' and
 # '--name' apply to all
 CLOUD_INFO_OPTION_TYPES: tuple[tuple[str, str, frozenset[str]], ...] = (
@@ -2743,13 +2790,14 @@ PRICES = option(
     ),
 )
 CLOUD_INFO_SORT = SORT.variant(
-    choices=list(_CLOUD_INFO_SORT_CHOICES),
-    metavar="<name|vcpus|ram|price|spot|on-demand>",
+    type=cloud_info_sort_keys,
+    metavar="<name|vcpus|ram|price|spot|on-demand>[,...]",
     help=(
         "order of the listing: 'name' (default), 'vcpus' and 'ram' for"
         " instance types, 'price' for prices, 'spot' and 'on-demand' for"
-        " instance types with --prices; items without a value come last,"
-        " with --reverse too"
+        " instance types with --prices; give several, separated by commas,"
+        " to sort by each in turn (e.g. 'spot,vcpus'); items without a"
+        " value for a key come after those with one, with --reverse too"
     ),
 )
 
@@ -2788,13 +2836,14 @@ def check_cloud_info_options(args: Namespace, parser: ArgumentParser) -> None:
     sort_keys = (
         CLOUD_INFO_PRICED_SORT_KEYS if args.prices else CLOUD_INFO_SORT_KEYS[info_type]
     )
-    if args.sort not in sort_keys:
-        parser.error(
-            f"--sort {args.sort} does not apply to {info_type}"
-            + (" with --prices" if args.prices else "")
-            + "; choose from "
-            + ", ".join(sort_keys)
-        )
+    for key in args.sort:
+        if key not in sort_keys:
+            parser.error(
+                f"--sort {key} does not apply to {info_type}"
+                + (" with --prices" if args.prices else "")
+                + "; choose from "
+                + ", ".join(sort_keys)
+            )
     for dest, flag in (("vcpus", "--vcpus"), ("ram", "--ram")):
         text = getattr(args, dest)
         try:

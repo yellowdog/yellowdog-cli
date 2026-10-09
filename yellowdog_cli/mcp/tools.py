@@ -20,6 +20,7 @@ from typing import Any
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
+    SORT_KEY_TYPES,
     Command,
     Exclusive,
     Option,
@@ -232,6 +233,17 @@ def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
         )
     if action == "store_true":
         schema["type"] = "boolean"
+    elif kwargs.get("type") in SORT_KEY_TYPES:
+        # A '--sort' value is keys separated by commas: a list of them here,
+        # which _to_argv() joins
+        schema["type"] = "array"
+        schema["items"] = {
+            "type": "string",
+            "enum": list(SORT_KEY_TYPES[kwargs["type"]]),
+        }
+        schema["minItems"] = 1
+        schema["uniqueItems"] = True
+        schema["default"] = [kwargs["default"]]
     else:
         nargs = kwargs.get("nargs")
         item = _item_schema(option)
@@ -473,6 +485,12 @@ def _check(name: str, value: Any, schema: dict[str, Any]) -> None:
     elif kind == "array":
         if not isinstance(value, list):
             raise ToolArgumentError(f"{name} must be a list")
+        if len(value) < schema.get("minItems", 0):
+            raise ToolArgumentError(
+                f"{name} must have at least {schema['minItems']} item(s)"
+            )
+        if schema.get("uniqueItems") and len(set(map(repr, value))) < len(value):
+            raise ToolArgumentError(f"{name} must not repeat an item")
         for item in value:
             _check(name, item, schema["items"])
     elif kind == "string":
@@ -550,7 +568,7 @@ def to_argv(
     A tool call's arguments as the child's own arguments: options in
     registry order (a true boolean as its flag, a value as one
     '--long-flag=value' entry (_joined(), which says why), a list as that
-    entry repeated for 'append'), then
+    entry repeated for 'append', or '--sort''s keys joined by commas), then
     '--' and the positionals in registry order, so that a positional
     starting with '-' (a glob, a remote path) is not read as an option. An inline specification is written to
     a uniquely named JSON file in the working directory, so that relative
@@ -603,7 +621,9 @@ def _to_argv(
                 [str(v) for v in value] if isinstance(value, list) else [str(value)]
             )
             continue
-        if isinstance(value, bool):
+        if option.kwargs.get("type") in SORT_KEY_TYPES:
+            options.append(_joined(option, ",".join(value)))
+        elif isinstance(value, bool):
             # The option's last flag: its short form, or its alias
             # (Option.flags lists the long flag first), or the long flag
             if value:

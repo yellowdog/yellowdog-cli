@@ -36,7 +36,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 10:46:45 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 14:40:52 BST 2026 -->
 
 <!--te-->
 
@@ -255,7 +255,7 @@ Commands are run from the command line. Invoking any command with the `--help` o
 % yd-cancel -h
 usage: yd-cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>] [--debug]
                  [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config] [--property <section.key=value>]
-                 [--sort <name|created|status|namespace>] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
+                 [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
                  [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
                  [<work-requirement-name-or-ID> ...]
 
@@ -287,11 +287,11 @@ options:
   --property <section.key=value>
                         override a TOML configuration property; format: 'section.key=value', e.g.
                         'workRequirement.workerTags=["mytag"]'; can be supplied multiple times
-  --sort <name|created|status|namespace>
-                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation
-                        time, earliest first), 'status' (status name, then name), or 'namespace' (namespace, then name); combine with
-                        --reverse to invert the order
-  --reverse             reverse (descending) order of the active --sort key
+  --sort <name|created|status|namespace>[,...]
+                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time,
+                        earliest first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in
+                        turn (e.g. 'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
+  --reverse             reverse (descending) the whole order --sort gives
   --variable, -v <var1=v1>
                         user-defined variable substitution; the option can be supplied multiple times, one per variable
   --namespace, -n [<namespace>]

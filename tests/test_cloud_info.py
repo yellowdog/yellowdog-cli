@@ -10,7 +10,8 @@ Covers:
     't3.*' never includes 't3a', a literal name is exact
   - the '--prices' join: on-demand and lowest spot price per type, the
     spot price's zone, a sub-region, Windows prices, missing prices
-  - sorting: each key, '--reverse', values missing last both ways
+  - sorting: each key, several keys in turn, '--reverse', values missing
+    last both ways
   - PricedInstanceType's JSON record
 """
 
@@ -125,7 +126,7 @@ class TestInstanceTypes:
         assert _names(found) == ["t3.micro", "t3.xlarge", "t3a.micro", "t4g.xlarge"]
 
     def test_sorting_by_vcpus_puts_a_missing_value_last(self, fake):
-        query = CloudInfoQuery(providers=("aws",), sort="vcpus")
+        query = CloudInfoQuery(providers=("aws",), sort=("vcpus",))
         assert _names(instance_types(fake.ctx, query)) == [
             "t3.micro",
             "t3a.micro",
@@ -136,8 +137,32 @@ class TestInstanceTypes:
             "u-unknown",
         ]
 
+    def test_sorting_by_several_keys_sorts_by_each_in_turn(self, fake):
+        by_vcpus = CloudInfoQuery(
+            providers=("aws",), sort=("ram", "vcpus"), reverse=True
+        )
+        by_name = CloudInfoQuery(providers=("aws",), sort=("ram", "name"), reverse=True)
+        assert _names(instance_types(fake.ctx, by_vcpus)) == [
+            "c5.2xlarge",
+            "g4dn.xlarge",
+            "t3.xlarge",
+            "t4g.xlarge",
+            "t3.micro",
+            "t3a.micro",
+            "u-unknown",
+        ]
+        assert _names(instance_types(fake.ctx, by_name)) == [
+            "t4g.xlarge",
+            "t3.xlarge",
+            "g4dn.xlarge",
+            "c5.2xlarge",
+            "t3a.micro",
+            "t3.micro",
+            "u-unknown",
+        ]
+
     def test_reversing_keeps_ties_ascending_and_a_missing_value_last(self, fake):
-        query = CloudInfoQuery(providers=("aws",), sort="vcpus", reverse=True)
+        query = CloudInfoQuery(providers=("aws",), sort=("vcpus",), reverse=True)
         assert _names(instance_types(fake.ctx, query)) == [
             "c5.2xlarge",
             "g4dn.xlarge",
@@ -193,7 +218,7 @@ class TestPrices:
         assert last_search(fake.info.get_instance_type_prices).subRegion is None
 
     def test_sorting_by_price_puts_a_missing_one_last(self, fake):
-        query = CloudInfoQuery(region="eu-west-2", sort="price")
+        query = CloudInfoQuery(region="eu-west-2", sort=("price",))
         assert [p.price.value for p in prices(fake.ctx, query)] == [
             0.0118,
             0.04,
@@ -205,7 +230,7 @@ class TestPrices:
         ]
 
     def test_reversing_by_price_still_puts_a_missing_one_last(self, fake):
-        query = CloudInfoQuery(region="eu-west-2", sort="price", reverse=True)
+        query = CloudInfoQuery(region="eu-west-2", sort=("price",), reverse=True)
         assert [p.price.value for p in prices(fake.ctx, query)] == [
             0.188,
             0.07,
@@ -267,7 +292,7 @@ class TestJoin:
     def test_sorting_by_spot_puts_types_without_one_last(self, fake):
         found = instance_types_with_prices(
             fake.ctx,
-            CloudInfoQuery(region="eu-west-2", providers=("aws",), sort="spot"),
+            CloudInfoQuery(region="eu-west-2", providers=("aws",), sort=("spot",)),
         )
         assert [p.instance_type.name for p in found] == [
             "t4g.xlarge",
@@ -281,7 +306,7 @@ class TestJoin:
         found = instance_types_with_prices(
             fake.ctx,
             CloudInfoQuery(
-                region="eu-west-2", providers=("aws",), sort="spot", reverse=True
+                region="eu-west-2", providers=("aws",), sort=("spot",), reverse=True
             ),
         )
         assert [p.instance_type.name for p in found] == [

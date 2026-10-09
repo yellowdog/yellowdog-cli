@@ -363,7 +363,7 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
-    def sort(self) -> str | None:
+    def sort(self) -> tuple[str, ...] | None:
         return self.args.sort
 
     @property

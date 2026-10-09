@@ -53,7 +53,7 @@
       * [yd-schema](#yd-schema)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 10:46:46 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct  9 14:40:48 BST 2026 -->
 
 <!--te-->
 
@@ -106,8 +106,8 @@ These options are accepted by many commands, but not by all. The command section
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
 | `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it — `yd-hold` until the Work Requirement is `HELD`; `yd-compute-stop` until nothing is changing, having stopped; `yd-compute-start`, `yd-compute-deprovision`, `yd-compute-reprovision` and `yd-resize -C` until the Compute Requirement is `RUNNING` at its target with no Instance starting, stopping or terminating; `yd-compute-restart` and `yd-resize` of a Provisioned Worker Pool until it is so again, having left it. A Configured Worker Pool resized is followed until Ctrl-C |
-| `--sort <name\|created\|status\|namespace>` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name) |
-| `--reverse` | Reverse (descending) order of the active `--sort` key |
+| `--sort <name\|created\|status\|namespace>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
+| `--reverse` | Reverse (descending) the whole order `--sort` gives |
 | `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
 
 All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
@@ -725,8 +725,8 @@ Unambiguous prefix matching is supported — for example `yd-list work-r` resolv
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line. Like `--json`, this lists non-interactively: e.g. `yd-list tasks --ids-only` gives the IDs of all Tasks across all matching Work Requirements and Task Groups. An Instance is given as `<compute-requirement-ydid>.<instance-id>`, the form `yd-compute-stop` and the other Instance commands take. Refused for attribute definitions, namespace policies and permissions, which have no IDs |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
 | `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd-list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
-| `--sort <name\|created\|status\|namespace>` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name, then name), or `namespace` (namespace, then name). `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; others fall back to name order. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
-| `--reverse` | List items in reverse (descending) order of the active `--sort` key |
+| `--sort <name\|created\|status\|namespace>[,...]` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn: `--sort namespace,status,created` groups by namespace, then by status within it, then by age; the name (for Instances the instance type, for Nodes and Workers the Worker Pool name, for Tasks the task number) breaks any tie that remains. `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; a key an entity type lacks is passed over. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-cancel`, `yd-hold` and `yd-start` |
+| `--reverse` | List items in reverse (descending) order: the whole order `--sort` gives, every key's included |
 | `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
 | `--hide-user-data` | With `--details` or `--json`, show each `userData` value (in Compute Source Templates, Compute Requirement Templates and Compute Requirements) as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full. It applies to `--output-file` too, whose JSON can then no longer be used with `yd-create` as it is |
 
@@ -1016,7 +1016,7 @@ Key options:
 - `--usage <spot|on-demand>` — one kind of price only (prices)
 - `--os <none|windows>` — prices for this operating system licence, `none` by default (prices, and instance-types with `--prices`)
 - `--prices` — add each instance type's on-demand price and lowest spot price in the region, and the sub-region the spot price is found in; needs `--region` (instance-types)
-- `--sort <name|vcpus|ram|price|spot|on-demand>` — `name` (the default) for every type, `vcpus` and `ram` for instance types, `price` for prices, `spot` and `on-demand` for instance types with `--prices`; items without a value come last, with `--reverse` too
+- `--sort <name|vcpus|ram|price|spot|on-demand>[,...]` — `name` (the default) for every type, `vcpus` and `ram` for instance types, `price` for prices, `spot` and `on-demand` for instance types with `--prices`; give several keys, separated by commas, to sort by each in turn (`--sort spot,vcpus`: cheapest first, the smaller of equally priced types first); items without a value for a key come after those with one, with `--reverse` too
 - `--count` — print only the number of items
 - `--json` — emit the items as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 

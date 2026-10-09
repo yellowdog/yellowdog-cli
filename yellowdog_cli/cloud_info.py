@@ -75,7 +75,7 @@ def query_from_args(args: Any) -> CloudInfoQuery:
         arch=args.arch,
         usage=args.usage,
         os_licence=args.os_licence or "none",
-        sort=args.sort or "name",
+        sort=tuple(args.sort or ("name",)),
         reverse=bool(args.reverse),
     )
 

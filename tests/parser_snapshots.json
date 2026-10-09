@@ -178,12 +178,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -193,7 +188,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -917,12 +912,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -932,7 +922,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -1263,14 +1253,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "vcpus",
-        "ram",
-        "price",
-        "spot",
-        "on-demand"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -1280,7 +1263,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "cloud_info_sort_keys"
     },
     {
       "choices": null,
@@ -2421,12 +2404,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -2436,7 +2414,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -3011,12 +2989,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -3026,7 +2999,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -3329,12 +3302,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -3344,7 +3312,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -5316,12 +5284,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -5331,7 +5294,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -5880,12 +5843,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -5895,7 +5853,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -6582,12 +6540,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -6597,7 +6550,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -7361,12 +7314,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -7376,7 +7324,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -9464,12 +9412,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -9479,7 +9422,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -9824,12 +9767,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -9839,7 +9777,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,
@@ -10705,12 +10643,7 @@
       "type": "str"
     },
     {
-      "choices": [
-        "name",
-        "created",
-        "status",
-        "namespace"
-      ],
+      "choices": null,
       "const": null,
       "default": "name",
       "dest": "sort",
@@ -10720,7 +10653,7 @@
         "--sort"
       ],
       "required": false,
-      "type": "str"
+      "type": "entity_sort_keys"
     },
     {
       "choices": null,

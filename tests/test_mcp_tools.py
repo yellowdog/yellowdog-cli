@@ -171,8 +171,15 @@ class TestSchemaMapping:
 
     def test_choices_and_defaults(self):
         sort = self._prop("yd_cancel", "sort")
-        assert sort["enum"] == ["name", "created", "status", "namespace"]
-        assert sort["default"] == "name"
+        assert sort["type"] == "array"
+        assert sort["items"]["enum"] == ["name", "created", "status", "namespace"]
+        assert sort["default"] == ["name"]
+        assert (sort["minItems"], sort["uniqueItems"]) == (1, True)
+
+    def test_cloud_info_sort_offers_its_own_keys(self):
+        sort = self._prop("yd_cloud_info", "sort")
+        assert "spot" in sort["items"]["enum"]
+        assert "created" not in sort["items"]["enum"]
 
     def test_dest_names_the_property(self):
         assert "status_filter" in TOOLS["yd_list"].input_schema["properties"]
@@ -281,7 +288,7 @@ class TestToArgv:
             TOOLS["yd_cancel"],
             {
                 "abort": True,
-                "sort": "created",
+                "sort": ["status", "created"],
                 "variable": ["a=1", "b=2"],
                 "work_requirements": ["wr-1", "wr-*"],
                 "timeout_seconds": 10,
@@ -291,7 +298,7 @@ class TestToArgv:
         # Options in registry order, then '--' and the positionals;
         # timeout_seconds is the server's, not the command's
         assert argv == [
-            "--sort=created",
+            "--sort=status,created",
             "--variable=a=1",
             "--variable=b=2",
             "-a",
@@ -368,8 +375,9 @@ class TestToArgv:
             to_argv(TOOLS["yd_cancel"], {"abort": "yes"}, str(tmp_path))
         with pytest.raises(ToolArgumentError, match="work_requirements"):
             to_argv(TOOLS["yd_cancel"], {"work_requirements": "wr-1"}, str(tmp_path))
-        with pytest.raises(ToolArgumentError, match="sort"):
-            to_argv(TOOLS["yd_cancel"], {"sort": "size"}, str(tmp_path))
+        for sort in ("created", ["size"], [], ["name", "name"]):
+            with pytest.raises(ToolArgumentError, match="sort"):
+                to_argv(TOOLS["yd_cancel"], {"sort": sort}, str(tmp_path))
 
     def test_a_missing_required_argument_is_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError, match="remote_paths"):

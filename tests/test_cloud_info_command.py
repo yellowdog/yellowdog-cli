@@ -55,7 +55,7 @@ def _args(**overrides: Any) -> SimpleNamespace:
         "usage": None,
         "os_licence": None,
         "prices": False,
-        "sort": "name",
+        "sort": ("name",),
         "reverse": False,
         "count_only": False,
         "json_output": False,
@@ -113,7 +113,7 @@ class TestQueryFromArgs:
                 name_glob="t3*",
                 vcpus_range=(4.0, None),
                 arch="arm64",
-                sort="vcpus",
+                sort=("vcpus",),
                 reverse=True,
             )
         )
@@ -124,7 +124,7 @@ class TestQueryFromArgs:
             vcpus=(4.0, None),
             arch="arm64",
             os_licence="none",
-            sort="vcpus",
+            sort=("vcpus",),
             reverse=True,
         )
 
@@ -371,6 +371,11 @@ class TestParsing:
             ),
             (["instance-types", "--sort", "price"], "--sort price does not apply"),
             (
+                ["instance-types", "--sort", "vcpus,price"],
+                "--sort price does not apply",
+            ),
+            (["regions", "--sort", "name,size"], "invalid sort key 'size'"),
+            (
                 ["instance-types", "--region", "r", "--sort", "spot"],
                 "--sort spot does not apply",
             ),
@@ -388,6 +393,10 @@ class TestParsing:
     )
     def test_refusals(self, capsys, argv, message):
         assert message in _refused(capsys, *argv)
+
+    def test_sort_keys_are_parsed_in_order_and_default_to_name(self):
+        assert _parse("instance-types").sort == ("name",)
+        assert _parse("instance-types", "--sort", "ram,vcpus").sort == ("ram", "vcpus")
 
 
 class TestRegistry:
