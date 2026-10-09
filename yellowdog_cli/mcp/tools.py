@@ -59,6 +59,12 @@ SCOPE_TARGETS: dict[str, str] = {
 }
 ALL_IN_SCOPE_ARGUMENT = "all_in_scope"
 
+# Minimums a tool call is held to above the option's own: yd-submit's
+# '--pause-between-batches 0' waits for Enter, which no tool call can press
+MCP_MINIMUMS: dict[tuple[str, str], int] = {
+    ("yd-submit", "--pause-between-batches"): 1,
+}
+
 # The specification-taking commands: the argument that replaces their file
 # option(s), and whether it takes several
 SPECIFICATION_ARGUMENTS: dict[str, tuple[str, bool]] = {
@@ -287,6 +293,11 @@ def _build_tool(command: Command) -> ToolSpec:
                 continue
             name = property_name(option)
             schema, is_required = _property_schema(option)
+            if (command.name, option.name) in MCP_MINIMUMS:
+                schema = {
+                    **schema,
+                    "minimum": MCP_MINIMUMS[(command.name, option.name)],
+                }
             properties[name] = (option, schema)
             schema_properties[name] = schema
             if is_required:

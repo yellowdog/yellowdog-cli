@@ -6388,7 +6388,7 @@
         "-T"
       ],
       "required": false,
-      "type": "int"
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -8222,7 +8222,7 @@
         "-T"
       ],
       "required": false,
-      "type": "int"
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -10265,7 +10265,7 @@
         "-C"
       ],
       "required": false,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,
@@ -10279,7 +10279,7 @@
         "-G"
       ],
       "required": false,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,
@@ -10293,7 +10293,7 @@
         "-b"
       ],
       "required": false,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,
@@ -10307,7 +10307,7 @@
         "-P"
       ],
       "required": false,
-      "type": "int"
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -10363,7 +10363,7 @@
         "-l"
       ],
       "required": false,
-      "type": "int"
+      "type": "positive_int"
     },
     {
       "choices": null,

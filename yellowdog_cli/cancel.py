@@ -34,7 +34,7 @@ from yellowdog_cli.utils.action_runner import (
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.dryrun_utils import report_dry_run, report_dry_run_items
 from yellowdog_cli.utils.entity_names import ET_TASKS, ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
@@ -213,6 +213,19 @@ def _cancel_by_name_or_id(ctx: RunContext, names_or_ids: list[str]):
 
     if not items:
         print_info("No Work Requirements or Tasks cancelled")
+        return
+
+    if ctx.args.dry_run:
+        report_dry_run_items(
+            items,
+            _CANCEL,
+            lambda item, status: _record(
+                item.entity,
+                f"would {_CANCEL}",
+                entity_type=item.entity_type,
+                status=status,
+            ),
+        )
         return
 
     if not confirm_items(_confirmation(ctx, items), items, _recorder):

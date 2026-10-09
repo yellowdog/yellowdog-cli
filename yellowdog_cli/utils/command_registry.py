@@ -885,7 +885,7 @@ FOLLOW_PROVISIONING = FOLLOW.variant(help="follow progress after provisioning")
 TARGET = option(
     "--target",
     "-T",
-    type=int,
+    type=non_negative_int,
     required=False,
     help="override targetInstanceCount from the spec or config",
     metavar="<n>",
@@ -1138,8 +1138,8 @@ REMOTE_PATHS = option(
 def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> None:
     """
     Positional names/IDs on the destructive commands. A name may be a glob
-    pattern; globs route through the summary-based dry-run and are allowed
-    with --dry-run, but must not be mixed with literal names/IDs.
+    pattern, but must not be mixed with literal names/IDs. Either may be
+    given with --dry-run.
     """
     explicit_names: list[str] = []
     for attr in (
@@ -1154,8 +1154,6 @@ def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> Non
     literals = [n for n in explicit_names if not contains_glob_chars(n)]
     if globs and literals:
         parser.error("cannot mix name glob patterns with explicit names/IDs")
-    if getattr(args, "dry_run", False) and literals:
-        parser.error("--dry-run is not supported with explicit names/IDs")
 
 
 def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
@@ -3183,7 +3181,7 @@ TASK_TYPE = option(
 TASK_COUNT = option(
     "--task-count",
     "-C",
-    type=int,
+    type=positive_int,
     required=False,
     help="the number of tasks to submit (copies of a single task)",
     metavar="<task_count>",
@@ -3191,7 +3189,7 @@ TASK_COUNT = option(
 TASK_GROUP_COUNT = option(
     "--task-group-count",
     "-G",
-    type=int,
+    type=positive_int,
     required=False,
     help="the number of task groups to submit (copies of a single task group)",
     metavar="<task_group_count>",
@@ -3199,7 +3197,7 @@ TASK_GROUP_COUNT = option(
 TASK_BATCH_SIZE = option(
     "--task-batch-size",
     "-b",
-    type=int,
+    type=positive_int,
     required=False,
     help="the batch size for task submission; must be between 1 and 10,000",
     metavar="<batch_size>",
@@ -3208,7 +3206,7 @@ PAUSE_BETWEEN_BATCHES = option(
     "--pause-between-batches",
     "-P",
     nargs="?",
-    type=int,
+    type=non_negative_int,
     const=0,
     required=False,
     metavar="<interval_between_batches_in_seconds>",
@@ -3247,7 +3245,7 @@ HOLD = option(
 PARALLEL_BATCHES = option(
     "--parallel-batches",
     "-l",
-    type=int,
+    type=positive_int,
     required=False,
     help=(
         "the maximum number of parallel task batch "

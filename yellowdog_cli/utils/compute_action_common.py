@@ -40,7 +40,7 @@ from yellowdog_cli.utils.action_runner import (
 )
 from yellowdog_cli.utils.capacity_wait import wait_for_capacity
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.dryrun_utils import report_dry_run
+from yellowdog_cli.utils.dryrun_utils import report_dry_run, report_dry_run_items
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_INSTANCES,
@@ -417,6 +417,17 @@ def _apply_action_by_name_or_id(
 
     if not items:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
+        return
+
+    if ctx.args.dry_run:  # yd-terminate's, the only one to take --dry-run
+        verb = action.name.lower()
+        report_dry_run_items(
+            items,
+            verb,
+            lambda item, status: record_action(
+                item.entity, item.entity_type, verb, f"would {verb}", status=status
+            ),
+        )
         return
 
     if not confirm_items(_confirmation(action, items), items, action.recorder()):

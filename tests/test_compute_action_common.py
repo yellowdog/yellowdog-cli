@@ -193,7 +193,7 @@ def platform(monkeypatch):
         entity_utils, "get_compute_requirement_summaries", get_summaries
     )
 
-    def record_action(entity, entity_type, action, outcome, error=None):
+    def record_action(entity, entity_type, action, outcome, error=None, **extra):
         if isinstance(entity, str):  # as results.record_action() names it
             is_ydid = get_ydid_type(entity) is not None
             entity = {
@@ -243,6 +243,15 @@ def _run(
 # ---------------------------------------------------------------------------
 # Listing: by tag, or by glob pattern
 # ---------------------------------------------------------------------------
+
+
+class TestDryRunByName:
+    def test_reports_and_does_nothing(self, platform, monkeypatch):
+        _run(platform, COMPUTE_TERMINATE, [CR_ID], dry_run=True)
+        assert platform.calls == []
+        assert platform.outcomes() == [
+            (CR_ID, "compute-requirements", "would terminate")
+        ]
 
 
 class TestListing:

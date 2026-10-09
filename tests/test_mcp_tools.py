@@ -657,3 +657,10 @@ class TestActingOnTheWholeScopeIsOptedInto:
     @pytest.mark.parametrize("tool", SCOPE_TOOLS)
     def test_the_description_says_so(self, tool):
         assert "all_in_scope" in TOOLS[tool].description
+
+
+def test_a_submit_never_waits_for_enter():
+    # '-P 0' waits for Enter between batches, which no tool call can press:
+    # it failed on the prompt once the Work Requirement existed
+    schema = TOOLS["yd_submit"].input_schema["properties"]["pause_between_batches"]
+    assert schema["minimum"] == 1

@@ -28,6 +28,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_ROLES,
     ET_TASKS,
     ET_WORKER_POOLS,
+    ET_WORKERS,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
@@ -258,3 +259,57 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
     monkeypatch.setattr(yd_list, "get_worker_pool_summaries", lambda *a, **k: pools)
     yd_list.list_worker_pools(_ctx())
     assert [p.id for p in listing.printed[0]] == ["a"]
+
+
+class TestActiveInstancesAndWorkers:
+    """
+    '--active-only' filtered Instances' Compute Requirements but not the
+    Instances themselves, so terminated ones were listed; and a Worker on a
+    Node without details was dropped, its append indented under the details.
+    """
+
+    @staticmethod
+    def _instances(listing, monkeypatch, **args):
+        monkeypatch.setattr(
+            wrapper_module, "ARGS_PARSER", _args(ET_INSTANCES, active_only=True, **args)
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [SimpleNamespace(id=CR_ID, name="cr", status=None)],
+        )
+        listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+            SimpleNamespace(id=SimpleNamespace(instanceId="i-up"), status="RUNNING"),
+            SimpleNamespace(
+                id=SimpleNamespace(instanceId="i-gone"), status="TERMINATED"
+            ),
+        ]
+
+    def test_terminated_instances_are_not_active(self, listing, monkeypatch):
+        self._instances(listing, monkeypatch, json_output=True)
+        yd_list.list_compute_requirements(_ctx())
+        assert [i.id.instanceId for i in listing.printed[0]] == ["i-up"]
+
+    def test_nor_in_the_listing_of_one_compute_requirement(self, listing, monkeypatch):
+        self._instances(listing, monkeypatch)
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda _c, objects: shown.extend(objects),
+        )
+        yd_list.list_instances(_ctx(), CR_ID)
+        assert [i.id.instanceId for i in shown] == ["i-up"]
+
+    def test_a_worker_on_a_node_without_details_is_listed(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module, "ARGS_PARSER", _args(ET_WORKERS, json_output=True)
+        )
+        worker = SimpleNamespace(status="SLEEPING")
+        node = SimpleNamespace(details=None, workers=[worker], workerPoolName="wp")
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_workers(_ctx(), [node])
+        assert printed == [[worker]]

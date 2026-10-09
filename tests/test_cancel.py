@@ -227,6 +227,11 @@ class TestListing:
 
 
 class TestExplicit:
+    def test_a_dry_run_names_what_it_would_cancel(self, platform, monkeypatch):
+        _run(platform, [WR_A], dry_run=True)
+        assert platform.calls == []
+        assert platform.outcomes() == [(WR_A, "work-requirements", "would cancel")]
+
     def test_an_id_in_another_namespace_is_found(self, platform, monkeypatch):
         platform.wrs[WR_B] = _wr(WR_B, "wr-b", namespace="elsewhere")
         _run(platform, [WR_B])

@@ -146,6 +146,7 @@ from yellowdog_cli.utils.resource_processing import (
 )
 from yellowdog_cli.utils.results import record, record_resource
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
+from yellowdog_cli.utils.specs.sdk_models import RESOURCE_TYPES
 from yellowdog_cli.utils.type_check import check_dict, check_list
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -206,6 +207,9 @@ def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> N
             RN_REQUIREMENT_TEMPLATE,
             RN_SOURCE_TEMPLATE,
         ]:
+            # Refused as the real run refuses it, not shown as if it were one
+            if resource_type not in RESOURCE_TYPES:
+                raise ValueError(f"Unknown resource type '{resource_type}'")
             _show_dry_run_specification(resource_type, resource)
             return
         _create_resource(ctx, resource_type, resource, source_dir, show_secrets)
@@ -290,7 +294,8 @@ def create_compute_source_template(
     try:
         namespace = resource[PROP_NAMESPACE]
         source = resource.pop(PROP_SOURCE)  # Extract the Source properties
-        source_type = source.pop(PROP_TYPE).split(".")[-1]  # Extract Source type
+        full_source_type = source.pop(PROP_TYPE)
+        source_type = full_source_type.split(".")[-1]  # Extract Source type
         name = source[PROP_NAME]
     except KeyError as e:
         raise missing_property(e) from e
@@ -315,8 +320,9 @@ def create_compute_source_template(
     resolve_user_data_in_spec(source, base_dir=source_dir)
 
     if _OPTIONS.dry_run:
-        resource[PROP_SOURCE] = source
         _get_model_object(source_type, source)  # Report extras and omissions
+        # Shown with its 'type', so the output is a specification yd-create takes
+        resource[PROP_SOURCE] = {PROP_TYPE: full_source_type, **source}
         _show_dry_run_specification(RN_SOURCE_TEMPLATE, resource)
         return
 
@@ -366,7 +372,8 @@ def create_compute_requirement_template(
     Compute Requirement types.
     """
     try:
-        type = resource.pop(PROP_TYPE).split(".")[-1]  # Extract type
+        full_type = resource.pop(PROP_TYPE)
+        type = full_type.split(".")[-1]  # Extract type
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
@@ -429,7 +436,10 @@ def create_compute_requirement_template(
 
     if _OPTIONS.dry_run:
         _get_model_object(type, resource)  # Report omissions, extras, errors
-        _show_dry_run_specification(RN_REQUIREMENT_TEMPLATE, resource)
+        # Shown with its 'type', so the output is a specification yd-create takes
+        _show_dry_run_specification(
+            RN_REQUIREMENT_TEMPLATE, {PROP_TYPE: full_type, **resource}
+        )
         return
 
     # Overwrite source dictionaries with ComputeSourceUsage objects for static CRTs

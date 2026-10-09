@@ -183,7 +183,7 @@ By default, any Tasks that are currently running on Workers will continue to run
 
 Key options:
 - `--abort`/`-a` — instruct running Tasks to abort immediately, rather than running to completion
-- `--dry-run`/`-D` — show the matched Work Requirements before anything is cancelled; it cannot be combined with explicit names or IDs
+- `--dry-run`/`-D` — show the Work Requirements (and Tasks) that would be cancelled, whether matched or named, without cancelling anything
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -359,7 +359,7 @@ A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matc
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement, and Node targets are unaffected
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
-- `--dry-run`/`-D` — show the matched Worker Pools before anything is shut down, and with `--terminate` the Compute Requirements that would be terminated; it cannot be combined with explicit names or IDs
+- `--dry-run`/`-D` — show the Worker Pools (and Nodes) that would be shut down, whether matched or named, and with `--terminate` the Compute Requirements that would be terminated, without acting
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -560,7 +560,7 @@ A Compute Requirement name is looked up in the configured namespace unless it is
 Explicit names and IDs are handled as [`yd-compute-stop`](#yd-compute-stop) handles them: in the order given, confirmed together, with the Instances in a Compute Requirement terminated in a single request. A Compute Requirement, Instance or Node that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 
 Key options:
-- `--dry-run`/`-D` — show which Compute Requirements would be terminated, when they are selected by `namespace` and `tag` or by glob pattern; it cannot be combined with explicit names or IDs
+- `--dry-run`/`-D` — show which Compute Requirements (and Instances or Nodes) would be terminated, whether selected by `namespace` and `tag`, by glob pattern or by name or ID, without terminating anything
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 - `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 

@@ -618,12 +618,9 @@ def list_compute_requirements(ctx: RunContext):
             # take one
             all_instances: list[tuple[str, Instance]] = []
             for cr_summary in compute_requirement_summaries:
-                sc: SearchClient = ctx.client.compute_client.get_instances(
-                    instance_search=InstanceSearch(computeRequirementId=cr_summary.id)
-                )
                 all_instances.extend(
                     (cast(str, cr_summary.id), instance)
-                    for instance in _apply_status_filter(ctx, sc.list_all())
+                    for instance in _instances_of(ctx, cast(str, cr_summary.id))
                 )
             if ctx.args.ids_only:
                 for cr_id, instance in all_instances:
@@ -670,15 +667,40 @@ def list_compute_requirements(ctx: RunContext):
         print_numbered_object_list(ctx.client, compute_requirement_summaries)
 
 
+def _instances_of(ctx: RunContext, compute_requirement_id: str) -> list[Instance]:
+    """
+    A Compute Requirement's Instances, as --status and --active-only filter
+    them: an Instance's own status, since its Compute Requirement's says
+    nothing of it (a RUNNING one holds TERMINATED Instances once scaled
+    down). Active is any status but TERMINATED, as TERMINATING is an active
+    Compute Requirement's.
+    """
+    search_client: SearchClient = ctx.client.compute_client.get_instances(
+        instance_search=InstanceSearch(computeRequirementId=compute_requirement_id)
+    )
+    instances: list[Instance] = _apply_status_filter(ctx, search_client.list_all())
+    if ctx.args.active_only:
+        instances = [
+            instance
+            for instance in instances
+            if _status_name(instance) != InstanceStatus.TERMINATED.value
+        ]
+    return instances
+
+
+def _status_name(entity: Any) -> str | None:
+    """
+    An entity's status as its name, whether an enum or (in a test) a string.
+    """
+    status = getattr(entity, "status", None)
+    return getattr(status, "value", status)
+
+
 def list_instances(ctx: RunContext, compute_requirement_id: str):
     """
     List the instances within a Compute Requirement.
     """
-    instance_search = InstanceSearch(computeRequirementId=compute_requirement_id)
-    search_client: SearchClient = ctx.client.compute_client.get_instances(
-        instance_search=instance_search
-    )
-    instances: list[Instance] = _apply_status_filter(ctx, search_client.list_all())
+    instances = _instances_of(ctx, compute_requirement_id)
     if not instances:
         print_info("No instances to list")
         return
@@ -753,7 +775,8 @@ def list_workers(ctx: RunContext, nodes: list[Node]):
                 worker.workerPoolName = (  # type: ignore[attr-defined]
                     node.workerPoolName  # type: ignore[attr-defined]
                 )  # This property is added by the caller
-                workers_all.append(worker)
+            # Listed whether or not its Node reports details
+            workers_all.append(worker)
 
     workers_all = _apply_status_filter(ctx, workers_all)
     if not workers_all:

@@ -568,3 +568,44 @@ class TestRemotePathsWithParentSegments:
         from yellowdog_cli.utils.args import CLIParser
 
         CLIParser(command, argv)
+
+
+class TestCountsAreRangeChecked:
+    """
+    yd-submit's counts and yd-provision/yd-instantiate's --target took any
+    integer: '-C 0' quietly became 1, and '-l 0' crashed once the Work
+    Requirement existed. Each is now refused as parsed.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-C", "0", "wr.json"]),
+            ("yd-submit", ["-G", "-2", "wr.json"]),
+            ("yd-submit", ["-b", "0", "wr.json"]),
+            ("yd-submit", ["-l", "0", "wr.json"]),
+            ("yd-submit", ["-P", "-5", "wr.json"]),
+            ("yd-provision", ["--target", "-1"]),
+            ("yd-instantiate", ["--target", "-1"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-C", "1", "-G", "1", "-b", "1", "-l", "1", "wr.json"]),
+            ("yd-submit", ["-P", "0", "wr.json"]),  # Waits for Enter
+            ("yd-submit", ["wr.json", "-P"]),
+            ("yd-provision", ["--target", "0"]),
+        ],
+    )
+    def test_accepted(self, command, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command, argv)

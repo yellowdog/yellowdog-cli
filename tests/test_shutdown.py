@@ -227,6 +227,14 @@ class TestListing:
         ]
         assert platform.records[0]["workerPoolId"] == WP_A
 
+    def test_a_dry_run_by_name_reports_and_does_nothing(self, platform, monkeypatch):
+        _run(platform, [WP_A], dry_run=True, terminate=True)
+        assert platform.calls == []
+        assert platform.outcomes() == [
+            (WP_A, "worker-pools", "shutdown", "would shutdown"),
+            (CR_A, "compute-requirements", "terminate", "would terminate"),
+        ]
+
     def test_follow_is_given_only_the_pools_shut_down(self, platform, monkeypatch):
         platform.pools[WP_B] = _provisioned(WP_B, "wp-tag-b")
         failing = {WP_B}

@@ -543,6 +543,30 @@ def test_a_dry_run_leaves_a_source_template_name_unresolved(env, requirement_tem
     assert env.shown[0]["sources"] == [{"sourceTemplateId": "cst-made-earlier"}]
 
 
+def test_a_dry_run_keeps_a_requirement_templates_type(env, requirement_template):
+    # Its output is offered as a specification yd-create takes, and lost the
+    # 'type' the template is built by
+    env.args.dry_run = True
+    yd_create.create_compute_requirement_template(_ctx(), requirement_template)
+    assert env.shown[0]["type"] == "ComputeRequirementStaticTemplate"
+
+
+def test_a_dry_run_keeps_a_source_templates_type(env, requirement_template):
+    env.args.dry_run = True
+    source_type = "co.yellowdog.platform.model.AwsInstancesComputeSource"
+    yd_create.create_compute_source_template(
+        _ctx(), {"namespace": "ns", "source": {"type": source_type, "name": "s"}}
+    )
+    assert env.shown[0]["source"]["type"] == source_type
+
+
+def test_a_dry_run_refuses_an_unknown_resource_type(env):
+    # As the real run does: the dry run showed it, and exited 0
+    env.args.dry_run = True
+    with pytest.raises(ReportedFailure, match="Unknown resource type 'Keyrng'"):
+        yd_create._create_all(_ctx(), [{"resource": "Keyrng", "name": "x"}], False)
+
+
 def test_a_source_template_name_not_found_fails_for_real(env, requirement_template):
     with pytest.raises(NotFoundError):
         yd_create.create_compute_requirement_template(_ctx(), requirement_template)
