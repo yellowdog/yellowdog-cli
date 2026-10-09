@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 13.3.1 — 2026-10-09
+
 - **Cloud Wizard for GCP** is best run on Python 3.11 or later, as the Cloud Wizard README now says: on Python 3.10, Google's libraries print a `FutureWarning` as `yd-cloudwizard --cloud-provider gcp` starts, and they no longer receive updates for 3.10. The setup itself is unaffected.
 
 ## 13.3.0 — 2026-10-08
