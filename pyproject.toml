@@ -143,7 +143,12 @@
     line-length = 88
 
 [tool.ruff.lint]
-    select = ["E", "F401", "I", "RUF", "UP", "W"]
+    # TC004: a name imported under TYPE_CHECKING but used at run time. The
+    # modules every command imports keep their SDK names there, with a local
+    # import where one is used, so that the SDK-free commands never load it.
+    # Its fix, a module-level import, is the wrong one here, and is unsafe,
+    # so 'ruff check --fix' reports it and leaves it alone
+    select = ["E", "F401", "I", "RUF", "TC004", "UP", "W"]
     ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
@@ -184,8 +189,10 @@
 
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
-    extras = ["dev", "commander", "mcp"]
-    commands = [["pytest", "{posargs}"]]
+    extras = ["dev", "commander", "mcp", "jsonnet", "cloudwizard"]
+    # Eight pytest-xdist workers, as 'make test' uses; a later '-n' given
+    # after 'tox --' wins
+    commands = [["pytest", "-n", "8", { replace = "posargs", extend = true }]]
 
 [tool.tox.env.py315]
     description = "pre-release; excluded from the default run, see DEVELOPMENT.md"

@@ -3,11 +3,15 @@ utils/command_runner.py, the run both wrappers share, and what each wrapper
 passes it: a bare sys.exit() a success and a message a failure printed; the
 ^C carriage return written only to a terminal; main_wrapper's error message
 chosen as its exit code is (classify()), and PAC resolved under --dry-run
-too; and rows_as_objects() refusing headings that collide.
+too; rows_as_objects() refusing headings that collide; and no command
+module importing ARGS_PARSER, CONFIG_COMMON or CLIENT, which it is given
+as its context, bar yd-doctor and yd-schema, on neither wrapper.
 """
 
+import ast
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -133,3 +137,25 @@ def test_the_runner_closes_the_client_whatever_happens(monkeypatch):
         runner_module.run_command(fail, args=args, config_sections=(), after=closed)
     assert raised.value.code == ExitCode.NOT_FOUND
     closed.assert_called_once()
+
+
+# Built on neither wrapper, so they read ARGS_PARSER themselves
+_OWN_RUN_COMMANDS = {"doctor.py", "schema.py"}
+_CONTEXT_GLOBALS = {"ARGS_PARSER", "CONFIG_COMMON", "CLIENT"}
+
+
+def test_no_command_module_imports_what_its_context_carries():
+    package = Path(runner_module.__file__).parent.parent
+    offenders = []
+    for path in sorted(package.glob("*.py")):
+        if path.name in _OWN_RUN_COMMANDS:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                offenders += [
+                    f"{path.name}: {alias.name}"
+                    for alias in node.names
+                    if alias.name in _CONTEXT_GLOBALS
+                ]
+    assert offenders == []

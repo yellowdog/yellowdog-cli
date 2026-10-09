@@ -43,7 +43,7 @@ class ConsoleWithInputBackspaceFixed(Console):
         prompt_str = ""
         if prompt:
             with self.capture() as capture:
-                self.print(prompt, markup=markup, emoji=emoji, end="")
+                self.print(prompt, markup=markup, emoji=emoji, end="", soft_wrap=True)
             prompt_str = capture.get()
         if self.legacy_windows:
             self.file.write(prompt_str)

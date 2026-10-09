@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import ANY, MagicMock
 
 import pytest
+import qt_guard
 from requests import ConnectionError as ConnectionError_
 from requests import HTTPError, Response
 from yellowdog_client.model import (
@@ -2819,6 +2820,7 @@ class TestDownload:
 
     def test_the_dry_run_records_group_into_commanders_selection(self, remote, run_dc):
         # Commander offers the top-level items the records name in 'match'
+        qt_guard.require_qt()
         from yellowdog_cli.commander.selection import (
             ObjectSummary,
             parse_download_summaries,
@@ -3255,6 +3257,7 @@ class TestDelete:
         assert not (remote / "remote" / "sub").exists()
 
     def test_the_records_are_commanders_selection(self, remote, run_dc):
+        qt_guard.require_qt()
         from yellowdog_cli.commander.selection import (
             ObjectSummary,
             parse_object_summaries,
