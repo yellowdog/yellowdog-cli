@@ -19,6 +19,7 @@ from yellowdog_cli.utils.dataclient.operations import (
     flattened_destinations,
     record_transfer,
     resolve_remote_path,
+    sync_destination_problem,
     upload_directory,
     upload_file,
 )
@@ -61,6 +62,8 @@ def main(ctx: DataClientContext):
 
     uploads, failed = _plan(ctx, ctx.args.local_paths, flatten, sync)
     _refuse_colliding_destinations(uploads, flatten)
+    if sync:
+        _refuse_unsafe_syncs(uploads)
 
     for upload in uploads:
         if upload.is_dir:
@@ -136,6 +139,27 @@ def _plan(
             )
         )
     return uploads, failed
+
+
+def _refuse_unsafe_syncs(uploads: list[_Upload]) -> None:
+    """
+    Refuse, before anything is uploaded, a --sync of a directory into the
+    remote's root or the configured bucket itself, whose every other file
+    it would delete (see sync_destination_problem()).
+    """
+    problems = [
+        problem
+        for upload in uploads
+        if upload.is_dir
+        and (
+            problem := sync_destination_problem(CONFIG_DATA_CLIENT, upload.remote_path)
+        )
+    ]
+    if problems:
+        for problem in problems:
+            print_error(problem)
+        print_error("Nothing was uploaded: name a directory within the bucket instead")
+        raise SystemExit(ExitCode.USAGE)
 
 
 def _refuse_colliding_destinations(uploads: list[_Upload], flatten: bool) -> None:

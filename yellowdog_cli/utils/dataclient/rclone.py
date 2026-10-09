@@ -7,11 +7,13 @@ Shared rclone utilities: instantiation, config parsing, and binary management.
 # other helpers (e.g. parse_rclone_config, find_rclone) don't pay that cost.
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import platform
 import re
 import sys
+import tempfile
 from contextlib import contextmanager, nullcontext
 from functools import cache
 from pathlib import Path
@@ -167,16 +169,53 @@ def make_rclone_for_copy(
     return src_name, dst_name, make_rclone(Config("\n\n".join(sections)))
 
 
+# The private configuration files written for inline remotes, removed at exit
+_PRIVATE_CONFIG_FILES: list[Path] = []
+
+
+def _remove_private_config_files() -> None:
+    for path in _PRIVATE_CONFIG_FILES:
+        path.unlink(missing_ok=True)
+    _PRIVATE_CONFIG_FILES.clear()
+
+
+atexit.register(_remove_private_config_files)
+
+
+def _private_config_file(text: str) -> Path:
+    """
+    An inline remote's configuration, which carries its credentials, written
+    to a file only its owner can read (mkstemp's 0600), in the system's
+    temporary directory, and removed at exit. rclone_api, given the Config
+    itself, writes it to '.rclone/tmp_config' under the current directory,
+    readable by all, where an upload of the directory would send it.
+    """
+    descriptor, name = tempfile.mkstemp(prefix="yd-rclone-", suffix=".conf")
+    path = Path(name)
+    _PRIVATE_CONFIG_FILES.append(path)
+    # Also on rclone_api's own list, which its Ctrl-C handler (replacing
+    # Python's, so that no atexit runs) removes before the process ends
+    from rclone_api import util as rclone_api_util
+
+    getattr(rclone_api_util, "_RCLONE_CONFIGS_LIST", []).append(path)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        file.write(text)
+    return path
+
+
 def make_rclone(config: Config | None) -> Rclone:
     """
     Instantiate Rclone, suppressing download output when --quiet is active.
     Passing None causes rclone to use the system rclone.conf (for locally
-    configured remotes).
+    configured remotes); a Config (an inline remote's) is passed as a
+    private file of its own (see _private_config_file()).
     """
     from rclone_api import Rclone
 
     _keep_logging_off_stdout()
-    rclone_conf: Config | Path = _find_rclone_conf() if config is None else config
+    rclone_conf: Path = (
+        _find_rclone_conf() if config is None else _private_config_file(config.text)
+    )
     ctx = _suppress_rclone_download_output() if OUTPUT.quiet else nullcontext()
     with ctx:
         return Rclone(rclone_conf)

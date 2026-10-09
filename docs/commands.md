@@ -1104,6 +1104,12 @@ These five commands provide direct access to remote data stores via rclone, and 
 
 They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](data-client.md), along with the `[dataClient]` configuration section and named profiles.
 
+A remote path given to `yd-upload` (as `--destination`), `yd-download`, `yd-delete` or `yd-copy` cannot contain a `..` segment: it would climb out of the prefix, or the bucket, past the checks that keep these commands from deleting or syncing over the remote's root or the bucket, and object stores do not resolve it as a local disk does. It is refused as the command line is read (exit 2); to reach a path outside the prefix, use `--no-prefix` or `--bucket`. A `.` segment names the directory it is in, so `.` alone is the configured prefix itself. `yd-ls`, which only reads, accepts `..`, and a local path may contain it anywhere.
+
+A wildcard (`*`, `?`, `[…]`) is matched against the names in the last part of a remote path only. An entry whose name is exactly the path's last part is taken as itself rather than as a pattern, so a file named `data[1].csv` can be listed, downloaded and deleted by its name, and deleting `file[ab].txt` deletes that file alone, not `filea.txt` and `fileb.txt`.
+
+An inline remote's configuration, which carries its credentials, is passed to rclone in a file only you can read, in the system's temporary directory, and removed when the command ends.
+
 ### yd-upload
 
 The `yd-upload` command uploads local files or directories to a remote data store.
@@ -1126,7 +1132,7 @@ yd-upload --recursive my_input_data/
 
 A file is uploaded to its own name under the configured prefix, and a directory's contents to a remote directory of the directory's own name. `--destination` names the remote path instead: for a single file, the file's own path (or, ending in `/`, the directory it goes into); for a single directory, the remote directory its contents go into. With more than one local path, `--destination` is a directory, and every file and directory keeps its own name inside it, so `yd-upload -R -d out a/ b/` produces `out/a/` and `out/b/`. A directory given without `--recursive`, `--flatten` or `--sync` is an error.
 
-Before anything is uploaded, `yd-upload` works out where every argument will land, and refuses the whole run (exit 2) if two of them would land on the same remote path — two directories of the same name would merge, and with `--sync` the second would delete what the first uploaded; with `--flatten`, it is two files landing on one path that is refused. A failed upload is reported and recorded, and the rest are still attempted; the command then exits 1. Symbolic links are not uploaded (rclone does not follow them), and a warning says how many were left out.
+Before anything is uploaded, `yd-upload` works out where every argument will land, and refuses the whole run (exit 2) if two of them would land on the same remote path — two directories of the same name would merge, and with `--sync` the second would delete what the first uploaded; with `--flatten`, it is two files landing on one path that is refused. A `--sync` whose destination is the remote's root or the configured bucket itself, whose every other file it would delete, is refused in the same way, as `yd-copy`'s is. A failed upload is reported and recorded, and the rest are still attempted; the command then exits 1. Symbolic links are not uploaded (rclone does not follow them), and a warning says how many were left out.
 
 ### yd-download
 

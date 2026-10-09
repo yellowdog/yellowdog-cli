@@ -20,7 +20,7 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from functools import cache
@@ -1012,13 +1012,37 @@ def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
             parser.error(f"the following arguments are required: {metavar}")
 
 
+def refuse_parent_segments(
+    parser: ArgumentParser, remote_paths: Iterable[str | None]
+) -> None:
+    """
+    Refuse a remote path with a '..' segment: it climbs out of the prefix,
+    or the bucket, past the checks that refuse deleting or syncing over the
+    remote's root or the bucket itself, and object stores do not resolve it
+    as a local disk does.
+    """
+    for remote_path in remote_paths:
+        if remote_path is None:
+            continue
+        if ".." in remote_path.split(":", 1)[-1].split("/"):
+            parser.error(
+                f"'{remote_path}': a remote path cannot contain '..'; name it"
+                " from the remote's root with --no-prefix (or --bucket) instead"
+            )
+
+
 def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-upload and yd-download: their paths (see check_paths_given()); and
-    not --sync with --flatten, which would transfer without the deletion
-    --sync promises.
+    yd-upload and yd-download: their paths (see check_paths_given()), the
+    remote ones without '..' (see refuse_parent_segments()); and not --sync
+    with --flatten, which would transfer without the deletion --sync
+    promises.
     """
     check_paths_given(args, parser)
+    if hasattr(args, "remote_paths"):  # yd-download: its destination is local
+        refuse_parent_segments(parser, args.remote_paths or [])
+    else:  # yd-upload: its destination is remote
+        refuse_parent_segments(parser, [args.destination])
     if args.sync and args.flatten:
         parser.error("--sync cannot be used with --flatten")
 
@@ -1026,8 +1050,10 @@ def check_transfer_args(args: Namespace, parser: ArgumentParser) -> None:
 def check_delete_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-delete: a path, unless --recursive asks for the entire default
-    prefix (or it is only asked for --which-rclone or --upgrade-rclone).
+    prefix (or it is only asked for --which-rclone or --upgrade-rclone);
+    none with '..' (see refuse_parent_segments()).
     """
+    refuse_parent_segments(parser, args.remote_paths or [])
     if args.remote_paths or args.recursive or args.which_rclone or args.upgrade_rclone:
         return
     parser.error(
@@ -1679,8 +1705,10 @@ DST_PATH = Option(
 def check_copy_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-copy: both paths, unless it is only asked for --which-rclone or
-    --upgrade-rclone, which is why argparse takes them as optional.
+    --upgrade-rclone, which is why argparse takes them as optional; neither
+    with '..' (see refuse_parent_segments()).
     """
+    refuse_parent_segments(parser, [args.src_path, args.dst_path])
     if args.which_rclone or args.upgrade_rclone:
         return
     missing = [

@@ -16,6 +16,7 @@ from yellowdog_cli.utils.dataclient.operations import (
     copy_remote,
     record_transfer,
     resolve_remote_path,
+    sync_destination_problem,
 )
 from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.dataclient.wrapper import dataclient_wrapper
@@ -84,17 +85,10 @@ def _refuse_unsafe_sync(dst_path: str, src_is_file: bool) -> None:
     root or the configured destination bucket itself, whose every other
     file it would delete.
     """
-    problem = None
-    path_part = dst_path.split(":", 1)[-1].strip("/")
-    bucket = (CONFIG_DST.bucket or "").strip("/")
     if src_is_file:
         problem = "--sync mirrors a directory; copy a single file without it"
-    elif path_part == "":
-        problem = f"--sync to '{dst_path}' would delete from the remote's root itself"
-    elif bucket and path_part == bucket:
-        problem = (
-            f"--sync to '{dst_path}' would delete from the bucket '{bucket}' itself"
-        )
+    else:
+        problem = sync_destination_problem(CONFIG_DST, dst_path)
     if problem is not None:
         print_error(problem)
         print_error("Nothing was copied")

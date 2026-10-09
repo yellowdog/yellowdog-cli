@@ -523,3 +523,48 @@ class TestArgsProperties:
             CLIParser(command=command, argv=["--docs"])
         assert raised.value.code == 0
         assert "Online documentation" in capsys.readouterr().out
+
+
+class TestRemotePathsWithParentSegments:
+    """
+    A '..' segment in a remote path climbs out of the prefix (or the bucket)
+    past the checks that refuse deleting or syncing over the remote's root or
+    the bucket, so the commands that delete or write remotely refuse it as
+    parsed. yd-ls only reads, and a local path may climb as it likes.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-delete", ["-R", ".."]),
+            ("yd-delete", ["a/../../b"]),
+            ("yd-delete", ["myremote:bucket/.."]),
+            ("yd-download", [".."]),
+            ("yd-download", ["--sync", "x/.."]),
+            ("yd-copy", ["../a", "b"]),
+            ("yd-copy", ["a", "b/../.."]),
+            ("yd-upload", ["f.txt", "-d", "../x"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+        assert "'..'" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-ls", [".."]),
+            ("yd-download", ["a..b"]),
+            ("yd-download", ["x", "-d", "../out"]),
+            ("yd-download", ["x", "--into", "../out"]),
+            ("yd-upload", ["../f.txt"]),
+        ],
+    )
+    def test_accepted(self, command, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command, argv)

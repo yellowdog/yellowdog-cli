@@ -11,6 +11,7 @@ from yellowdog_cli.utils.dataclient.rclone import (
     parse_rclone_config,
     shown_remote,
 )
+from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 
 
 class TestParseRcloneConfig:
@@ -331,3 +332,39 @@ def test_rclone_api_logging_is_kept_off_stdout():
     )
     assert result.stdout == ""
     assert "Downloading rclone" in result.stderr
+
+
+@pytest.mark.skipif(find_rclone() is None, reason="needs an rclone binary")
+class TestInlineConfigIsKeptPrivate:
+    """
+    An inline remote's configuration carries its credentials. rclone_api
+    writes a Config it is given to '.rclone/tmp_config' under the current
+    directory, readable by all, where 'yd-upload -R .' would upload it; so
+    make_rclone() writes it itself, to a private file in the system's
+    temporary directory, removed at exit.
+    """
+
+    INLINE = "[inl]\ntype = local\ndescription = NOT_A_REAL_SECRET\n"
+
+    def test_nothing_is_written_to_the_current_directory(self, tmp_path, monkeypatch):
+        from rclone_api import Config
+
+        from yellowdog_cli.utils.dataclient.rclone import make_rclone
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "f.txt").write_text("x", encoding="utf-8")
+        rclone = make_rclone(Config(self.INLINE))
+        assert rclone.exists(f"inl:{tmp_path}/f.txt")
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["f.txt"]
+
+    def test_the_file_written_is_private(self, tmp_path, monkeypatch):
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        monkeypatch.chdir(tmp_path)
+        path = rclone_module._private_config_file(self.INLINE)
+        try:
+            assert path.read_text(encoding="utf-8") == self.INLINE
+            assert path.stat().st_mode & 0o777 == 0o600
+            assert tmp_path not in path.parents
+        finally:
+            path.unlink()

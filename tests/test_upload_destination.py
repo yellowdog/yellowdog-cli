@@ -71,3 +71,45 @@ class TestUploadDestination:
     def test_no_destination_uses_filename(self, tmp_path):
         remote_paths = _run_upload(tmp_path, ["a.txt"], None)
         assert remote_paths == ["myremote:b/a.txt"]
+
+
+class TestSyncIntoTheRootOrBucketIsRefused:
+    """
+    --sync deletes every remote file not in the local directory, so a sync
+    whose destination is the remote's root or the configured bucket itself
+    is refused before anything is uploaded, as yd-copy's is.
+    """
+
+    @staticmethod
+    def _sync(tmp_path, config: ConfigDataClient, destination: str) -> tuple:
+        directory = tmp_path / "d"
+        directory.mkdir()
+        (directory / "a.txt").write_text("a", encoding="utf-8")
+        args = _args([str(directory)], destination)
+        args.sync = True
+        with (
+            patch.object(dataclient_wrapper_module, "ARGS_PARSER", args),
+            patch.object(upload_module, "CONFIG_DATA_CLIENT", config),
+            patch.object(upload_module, "upload_directory") as mock_upload,
+            pytest.raises(SystemExit) as raised,
+        ):
+            upload_module.main()
+        return raised.value.code, mock_upload
+
+    @pytest.mark.parametrize("destination", ["/", "."])
+    def test_into_the_bucket(self, tmp_path, destination):
+        code, mock_upload = self._sync(tmp_path, CONFIG, destination)
+        assert code == 2
+        mock_upload.assert_not_called()
+
+    def test_into_the_remote_root(self, tmp_path):
+        code, mock_upload = self._sync(
+            tmp_path, ConfigDataClient(remote="myremote"), "/"
+        )
+        assert code == 2
+        mock_upload.assert_not_called()
+
+    def test_into_a_directory_within_the_bucket(self, tmp_path):
+        code, mock_upload = self._sync(tmp_path, CONFIG, "dest")
+        assert code == 0
+        assert mock_upload.call_args.args[2] == "myremote:b/dest"
