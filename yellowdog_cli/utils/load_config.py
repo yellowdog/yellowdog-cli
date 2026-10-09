@@ -328,6 +328,16 @@ CONFIG_TOML: dict
 # None when no file was read.
 _CONFIG_AS_WRITTEN: dict | None = None
 
+# Why no configuration file was read, when none was: said with a required
+# value that is missing, which otherwise reads as a fault in the file
+_NO_FILE_REASON: str | None = None
+
+# Where else each required [common] value can be given
+_GIVEN_ELSEWHERE = {
+    KEY: "--key (-k) or the YD_KEY environment variable",
+    SECRET: "--secret (-s) or the YD_SECRET environment variable",
+}
+
 _CONFIG_LOADED = False
 
 # The command line the configuration is loaded under (see
@@ -408,6 +418,8 @@ def _load_config_file() -> None:
     validated, and the '--property' overrides applied. Exits on a broken one.
     """
     global CONFIG_FILE, CONFIG_FILE_DIR, CONFIG_TOML, _CONFIG_AS_WRITTEN
+    global _NO_FILE_REASON
+    _NO_FILE_REASON = None
     # Support for alternative common env. vars; written into the normal vars.
     for norm, alt in [
         (YD_KEY, YD_KEY_ALT),
@@ -427,6 +439,7 @@ def _load_config_file() -> None:
     if _ARGS.no_config:
         # Suppress use of any TOML config file
         print_debug(f"Configuration file ('{CONFIG_FILE}') ignored")
+        _NO_FILE_REASON = "the configuration file is ignored (--no-config)"
         CONFIG_TOML = {COMMON_SECTION: {}}
         CONFIG_FILE_DIR = os.getcwd()
         if _ARGS.property_overrides:
@@ -478,6 +491,10 @@ def _load_config_file() -> None:
             )
             CONFIG_TOML = {COMMON_SECTION: {}}
             CONFIG_FILE_DIR = os.getcwd()
+            _NO_FILE_REASON = (
+                f"no configuration file was found ('{CONFIG_FILE}' in"
+                f" {os.getcwd()}; another can be named with --config)"
+            )
             if _ARGS.property_overrides:
                 _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
 
@@ -507,7 +524,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         _apply_common_overrides(common_section, file_source)
         _apply_common_defaults(common_section)
 
-        url = _resolved_url(common_section)
+        url = _resolved_url(common_section, strict)
         # Exhaustive variable processing for common section variables
         # Note that add_substitutions() will perform all possible
         # substitutions for the items in its dictionary each time it's
@@ -548,8 +565,21 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         )
 
     except KeyError as e:
-        print_error(f"{MISSING_CONFIG_DATA}: {e}")
+        print_error(_missing_config_data(e.args[0] if e.args else None))
         exit(ExitCode.CONFIGURATION)
+
+
+def _missing_config_data(name: str | None) -> str:
+    """
+    The error for a required [common] value given nowhere: why no file
+    supplied it, when none was read, and where else it can be given.
+    """
+    message = f"{MISSING_CONFIG_DATA}: '{name}'"
+    if _NO_FILE_REASON is not None:
+        message += f": {_NO_FILE_REASON}"
+    if name in _GIVEN_ELSEWHERE:
+        message += f". Give it in [common], with {_GIVEN_ELSEWHERE[name]}"
+    return message
 
 
 def _common_section() -> tuple[dict, Callable[[str], str]]:
@@ -643,11 +673,24 @@ def _apply_common_defaults(common_section: dict) -> None:
         CONFIG_SOURCES[URL] = "default"
 
 
-def _resolved_url(common_section: dict) -> str:
+def _resolved_url(common_section: dict, strict: bool = True) -> str:
+    """
+    The API URL, its variables substituted. With 'strict', one not beginning
+    'http(s)://' exits as a configuration error; without (yd-doctor), it is
+    returned, for the check that reaches it to report.
+    """
     url = cast(
         str,
         _resolve_value(common_section.get(URL, DEFAULT_URL), f"{COMMON_SECTION}.{URL}"),
     )
+    # Refused here, as a configuration error: requests refused it only once
+    # the command ran, with 'No connection adapters were found'
+    if strict and not url.lower().startswith(("https://", "http://")):
+        print_error(
+            f"The YellowDog API URL '{url}' must begin with 'https://' (or"
+            f" 'http://'), e.g. '{DEFAULT_URL}'"
+        )
+        exit(ExitCode.CONFIGURATION)
     if url != DEFAULT_URL:
         print_debug(f"Using the YellowDog API at: {url}")
     return url

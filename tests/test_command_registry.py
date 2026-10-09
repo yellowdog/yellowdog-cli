@@ -609,3 +609,37 @@ class TestCountsAreRangeChecked:
         from yellowdog_cli.utils.args import CLIParser
 
         CLIParser(command, argv)
+
+
+class TestANamespaceOrTagThatIsAFileName:
+    """
+    -n and -t take an optional value, so 'yd-submit -t wr.json' made the
+    tag 'wr.json' and submitted no specification, failing with a message
+    about Task Types. A namespace or tag naming a specification or
+    configuration file is refused as parsed.
+    """
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-submit", ["-t", "wr.json"]),
+            ("yd-provision", ["-n", "wp.jsonnet"]),
+            ("yd-list", ["work-requirements", "--tag", "config.toml"]),
+        ],
+    )
+    def test_refused(self, command, argv, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command, argv)
+        assert raised.value.code == 2
+        assert "looks like a file" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "argv",
+        [["wr.json", "-t", "my-tag"], ["wr.json", "-t"], ["-n", "ns", "wr.json"]],
+    )
+    def test_accepted(self, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser("yd-submit", argv)

@@ -113,3 +113,25 @@ class TestSyncIntoTheRootOrBucketIsRefused:
         code, mock_upload = self._sync(tmp_path, CONFIG, "dest")
         assert code == 0
         assert mock_upload.call_args.args[2] == "myremote:b/dest"
+
+
+@pytest.mark.parametrize("dry_run, said", [(False, "Upload complete"), (True, None)])
+def test_a_dry_run_does_not_say_it_uploaded(tmp_path, dry_run, said):
+    # It ended 'Upload complete', having uploaded nothing
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    args = _args([str(tmp_path / "a.txt")], None)
+    args.dry_run = dry_run
+    infos: list[str] = []
+    with (
+        patch.object(dataclient_wrapper_module, "ARGS_PARSER", args),
+        patch.object(upload_module, "CONFIG_DATA_CLIENT", CONFIG),
+        patch.object(upload_module, "upload_file", return_value=True),
+        patch.object(upload_module, "print_info", side_effect=infos.append),
+        pytest.raises(SystemExit),
+    ):
+        upload_module.main()
+    if said is not None:
+        assert infos[-1] == said
+    else:
+        assert not any("complete" in info and "Dry run" not in info for info in infos)
+        assert infos[-1].startswith("Dry run complete")

@@ -84,7 +84,9 @@ def main(ctx: DataClientContext):
     if failed:
         print_error(f"{failed} item(s) failed to upload")
         raise SystemExit(ExitCode.FAILURE)
-    print_info("Upload complete")
+    print_info(
+        "Dry run complete: nothing was uploaded" if dry_run else "Upload complete"
+    )
 
 
 def _plan(

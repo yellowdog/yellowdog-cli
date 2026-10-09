@@ -100,7 +100,7 @@ These options are accepted by many commands, but not by all. The command section
 | Option | Effect |
 |---|---|
 | `--variable <var1=v1>`, `-v` | Set a user-defined variable substitution; can be supplied multiple times, one per variable — see [User-Defined Variables](variables.md#user-defined-variables) |
-| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value |
+| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value. Since its value is optional, `-n wr.json` would take a file name as the namespace: a namespace (or tag) ending `.json`, `.jsonnet`, `.toml`, `.yaml`, `.yml` or `.csv` is refused, so give the option after the file |
 | `--tag [<tag>]`, `-t` | The tag to use when naming, tagging, or selecting entities; this is set to `''` if the option is supplied without a value |
 | `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
 | `--dry-run`, `-D` | Report what the command would do, without acting |
@@ -678,7 +678,7 @@ yd-compute-reprovision my-compute-requirement --wait --timeout 600
 
 ### yd-list
 
-The `yd-list` command lists various YellowDog items, using the `namespace` and `tag` properties (if applicable) to target the scope of what to list.
+The `yd-list` command lists various YellowDog items, using the configured `namespace`, and a `tag` given on the command line (not the configured one), to target the scope of what to list.
 
 ```shell
 yd-list [options] <entity-type>

@@ -313,3 +313,61 @@ class TestActiveInstancesAndWorkers:
         )
         yd_list.list_workers(_ctx(), [node])
         assert printed == [[worker]]
+
+
+@pytest.mark.parametrize(
+    "lister, entity_type, fetcher",
+    [
+        ("list_users", "users", "get_all_users"),
+        ("list_applications", "applications", "get_all_applications"),
+        ("list_groups", "groups", "get_all_groups"),
+        ("list_roles", "roles", "get_all_roles"),
+    ],
+)
+def test_sort_and_reverse_apply_to_every_listing(
+    listing, monkeypatch, lister, entity_type, fetcher
+):
+    # These sorted by name whatever --sort or --reverse said (and Namespaces
+    # and Namespace Policies not at all), outside the interactive selection
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(entity_type, json_output=True)
+    )
+    entities = [SimpleNamespace(name=n, id=n) for n in ("a", "b", "c")]
+    monkeypatch.setattr(yd_list, fetcher, lambda *a, **k: list(entities))
+    # Groups and Roles are fetched in full for '--json', by their IDs
+    for call in ("get_group", "get_role"):
+        getattr(listing.client.account_client, call).side_effect = lambda id_: (
+            SimpleNamespace(name=id_, permissions=[])
+        )
+    monkeypatch.setattr(
+        yd_list, "sorted_objects", lambda objects: list(reversed(objects))
+    )
+    getattr(yd_list, lister)(_ctx())
+    assert [e.name for e in listing.printed[0]] == ["c", "b", "a"]
+
+
+@pytest.mark.parametrize(
+    "lister, entity_type, client_call",
+    [
+        ("list_namespaces", "namespaces", "get_namespaces"),
+        ("list_namespace_policies", "namespace-policies", "get_namespace_policies"),
+    ],
+)
+def test_namespaces_and_policies_are_sorted(
+    listing, monkeypatch, lister, entity_type, client_call
+):
+    monkeypatch.setattr(
+        wrapper_module, "ARGS_PARSER", _args(entity_type, json_output=True)
+    )
+    monkeypatch.setattr(
+        yd_list, "search_namespaces", lambda *a, **k: None, raising=False
+    )
+    entities = [SimpleNamespace(name=n, id=n, namespace=n) for n in ("a", "b")]
+    getattr(
+        listing.client.namespaces_client, client_call
+    ).return_value.list_all.return_value = list(entities)
+    monkeypatch.setattr(
+        yd_list, "sorted_objects", lambda objects: list(reversed(objects))
+    )
+    getattr(yd_list, lister)(_ctx())
+    assert [e.name for e in listing.printed[0]] == ["b", "a"]

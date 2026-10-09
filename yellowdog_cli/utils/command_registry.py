@@ -750,7 +750,7 @@ ACTIONS_JSON = option(
 )
 TRANSFERS_JSON = ACTIONS_JSON.variant(help="emit the files uploaded as a JSON array")
 RESOURCES_JSON = ACTIONS_JSON.variant(
-    help="emit the resources created, updated, removed or skipped as a JSON array"
+    help="emit the resources removed or skipped as a JSON array"
 )
 CREATE_JSON = ACTIONS_JSON.variant(
     help=(
@@ -761,7 +761,7 @@ CREATE_JSON = ACTIONS_JSON.variant(
 ENTITY_JSON = ACTIONS_JSON.variant(
     help=(
         "emit the created entity as JSON; with --dry-run, the processed"
-        " specification; not with --progress or --report"
+        " specification; not with --report"
     )
 )
 FOLLOW_WORK_REQUIREMENT_EVENTS = FOLLOW.variant(
@@ -914,7 +914,8 @@ SUBSTITUTE_IDS = option(
     help=(
         "substitute compute source template IDs and image family IDs "
         "for names in detailed compute requirement templates, "
-        "and image family IDs in compute source templates "
+        "image family IDs in compute source templates, "
+        "and template IDs in allowances "
         "(implies '--details')"
     ),
 )
@@ -1016,6 +1017,28 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
     DATA_CLIENT_PROFILE,
     DRY_RUN_TRANSFERS,
 )
+
+
+# The file extensions a namespace or tag never has, but a specification or
+# configuration file does
+_FILE_EXTENSIONS = (".json", ".jsonnet", ".toml", ".yaml", ".yml", ".csv")
+
+
+def check_namespace_and_tag_are_no_files(
+    args: Namespace, parser: ArgumentParser
+) -> None:
+    """
+    Every command with -n or -t: neither names a file. Each takes an optional
+    value, so a file named straight after one ('yd-submit -t wr.json') was
+    taken as its value, and the command ran without the file.
+    """
+    for name, flag in (("namespace", "--namespace"), ("tag", "--tag")):
+        value = getattr(args, name, None)
+        if isinstance(value, str) and value.lower().endswith(_FILE_EXTENSIONS):
+            parser.error(
+                f"{flag} '{value}' looks like a file name: give {flag} a value,"
+                f" or put it after the file (e.g. '{value} {flag} <value>')"
+            )
 
 
 def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
@@ -1372,7 +1395,7 @@ COMMANDS["yd-cancel"] = Command(
 
 OPERATION = option(
     "operation",
-    metavar="'setup', 'teardown', 'add-ssh' or 'remove-ssh'",
+    metavar="<operation>",
     type=str,
     choices=["setup", "teardown", "add-ssh", "remove-ssh"],
     help=(
@@ -1890,7 +1913,7 @@ COMMANDS["yd-remove"] = Command(
         JSONNET_DRY_RUN,
         RESOURCES_JSON,
         RESOURCE_SPECIFICATIONS,
-        YES_ALLOW_UPDATES,
+        YES.variant(help="remove without user confirmation"),
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
@@ -2320,7 +2343,7 @@ COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     help=(
         "the JSON or Jsonnet specification of the compute requirement"
         " to provision; alternative to using the"
-        "'--compute-requirement/-C' option"
+        " '--compute-requirement/-C' option"
     ),
 )
 
@@ -2407,7 +2430,14 @@ COMMANDS["yd-provision"] = Command(
 
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
 # Tag attribute is defaulted to "" when using 'yd-list'
-LIST_TAG = TAG.variant(default="", help="the tag to search when listing entities")
+LIST_TAG = TAG.variant(
+    default="",
+    help=(
+        "the tag to search when listing entities; unlike other commands,"
+        " the configured tag is not used, so without this the whole"
+        " namespace is listed"
+    ),
+)
 IDS_ONLY = option(
     "--ids-only",
     "-D",
@@ -2440,7 +2470,10 @@ ACTIVE_ONLY = option(
     "-l",
     action="store_true",
     required=False,
-    help=("list only active compute requirements / worker pools / work requirements"),
+    help=(
+        "list only active entities: work requirements, task groups, tasks,"
+        " worker pools, nodes, workers, compute requirements and instances"
+    ),
 )
 NAME = option(
     "--name",
@@ -3357,7 +3390,12 @@ COMMANDS["yd-submit"] = Command(
         DRY_RUN_ACTION,
         JSONNET_DRY_RUN,
         VALIDATE,
-        ENTITY_JSON,
+        ENTITY_JSON.variant(
+            help=(
+                "emit the created entity as JSON; with --dry-run, the processed"
+                " specification; not with --progress"
+            )
+        ),
         CONTENT_PATH,
         WORK_REQUIREMENT_FILE_POSITIONAL,
         UPGRADE_RCLONE,

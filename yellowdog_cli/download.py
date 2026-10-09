@@ -171,7 +171,9 @@ def main(ctx: DataClientContext):
     if failed:
         print_error(f"{failed} item(s) failed to download")
         raise SystemExit(ExitCode.FAILURE)
-    print_info("Download complete")
+    print_info(
+        "Dry run complete: nothing was downloaded" if dry_run else "Download complete"
+    )
 
 
 def _refuse_unsafe_syncs(

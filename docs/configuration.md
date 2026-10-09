@@ -65,7 +65,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `secret`    | The **key secret** of the YellowDog Application under which the commands will run           |
 | `namespace` | The **namespace** to be used for grouping resources. Defaults to `default`                  |
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
-| `url`       | The **URL** of the YellowDog Platform API endpoint. Defaults to `https://api.yellowdog.ai`. |
+| `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |

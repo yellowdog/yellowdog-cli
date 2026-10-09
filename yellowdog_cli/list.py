@@ -1210,6 +1210,7 @@ def list_namespaces(ctx: RunContext):
     if not namespaces:
         _print_empty(ctx, "No Namespaces found")
         return
+    namespaces = sorted_objects(namespaces)
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, namespaces)
@@ -1245,6 +1246,7 @@ def list_namespace_policies(ctx: RunContext):
     if not namespace_policies:
         _print_empty(ctx, "No Namespace Policies to display")
         return
+    namespace_policies = sorted_objects(namespace_policies)
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, namespace_policies)
@@ -1280,7 +1282,7 @@ def list_users(ctx: RunContext):
         _print_empty(ctx, "No Users to display")
         return
 
-    users.sort(key=lambda user: user.name or "")
+    users = sorted_objects(users)
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, users)
@@ -1328,7 +1330,7 @@ def list_applications(ctx: RunContext):
         _print_empty(ctx, "No Applications to display")
         return
 
-    applications.sort(key=lambda app: app.name or "")
+    applications = sorted_objects(applications)
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, applications)
@@ -1380,7 +1382,7 @@ def list_groups(ctx: RunContext):
         _print_empty(ctx, "No Groups to display")
         return
 
-    group_summaries.sort(key=lambda group: group.name if group.name is not None else "")  # type: ignore[arg-type]
+    group_summaries = sorted_objects(group_summaries)
 
     # The summaries are enough to count the Groups or give their IDs; the
     # table, '--json' and '--details' show each one's roles, which only the
@@ -1427,7 +1429,7 @@ def list_roles(ctx: RunContext):
         _print_empty(ctx, "No Roles to display")
         return
 
-    role_summaries.sort(key=lambda role_: role_.name if role_.name is not None else "")
+    role_summaries = sorted_objects(role_summaries)
 
     # The summaries are enough to count the Roles or give their IDs; the
     # table, '--json' and '--details' show each one's permissions, which only

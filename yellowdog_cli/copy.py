@@ -75,7 +75,11 @@ def main(ctx: DataClientContext):
         dry_run=ctx.args.dry_run or False,
     )
 
-    print_info("Copy complete")
+    print_info(
+        "Dry run complete: nothing was copied"
+        if ctx.args.dry_run or False
+        else "Copy complete"
+    )
 
 
 def _refuse_unsafe_sync(dst_path: str, src_is_file: bool) -> None:

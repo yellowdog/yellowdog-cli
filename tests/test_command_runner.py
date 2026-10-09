@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from requests import HTTPError, Response
 
 import yellowdog_cli.utils.command_runner as runner_module
@@ -60,6 +61,34 @@ class TestDescribe:
 
     def test_an_unauthorised_request_is_described_as_credentials(self):
         assert "not recognised" in wrapper_module._describe(_http_error(401))
+
+    @pytest.mark.parametrize(
+        "error, cause",
+        [
+            (
+                requests.ConnectionError(
+                    "HTTPConnectionPool(host='127.0.0.1', port=9): Max retries"
+                    " exceeded with url: /api (Caused by NewConnectionError(...:"
+                    " Failed to establish a new connection: [Errno 61] Connection"
+                    " refused'))"
+                ),
+                "[Errno 61] Connection refused",
+            ),
+            (requests.ReadTimeout("read timed out"), "read timed out"),
+        ],
+    )
+    def test_an_unreachable_platform_is_named(self, monkeypatch, error, cause):
+        # It was urllib3's own text, naming a connection pool, not the
+        # Platform, and nothing to check
+        monkeypatch.setattr(
+            wrapper_module, "CONFIG_COMMON", SimpleNamespace(url="https://api.x")
+        )
+        message = wrapper_module._describe(error)
+        assert message.startswith(
+            "Cannot reach the YellowDog Platform at 'https://api.x'"
+        )
+        assert message.endswith(f"({cause})")
+        assert "HTTPConnectionPool" not in message
 
     def test_anything_else_is_its_message(self):
         assert wrapper_module._describe(RuntimeError("boom")) == "boom"

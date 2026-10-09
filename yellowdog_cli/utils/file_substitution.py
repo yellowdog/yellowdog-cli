@@ -18,7 +18,7 @@ from json import dumps as json_dumps
 from json import loads as json_loads
 from typing import Any, cast
 
-from tomli import load as toml_load
+from tomli import loads as toml_loads
 
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
@@ -54,6 +54,19 @@ from yellowdog_cli.utils.variable_syntax import (
 )
 
 
+def _read_text(filename: str) -> str:
+    """
+    A specification or configuration file's text: UTF-8, a leading
+    byte-order mark (as Windows Notepad writes) dropped, and one that is not
+    UTF-8 at all refused naming the file, which the codec's error does not.
+    """
+    try:
+        with open(filename, encoding="utf-8-sig") as f:
+            return f.read()
+    except UnicodeDecodeError as e:
+        raise ValueError(f"'{filename}' is not UTF-8 text: {e}") from e
+
+
 def load_json_file_with_variable_substitutions(
     filename: str, prefix: str = "", postfix: str = ""
 ) -> dict:
@@ -83,8 +96,7 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
     """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
-    with open(filename, encoding="utf-8") as f:
-        file_contents = f.read()
+    file_contents = _read_text(filename)
     try:
         result = json_loads(file_contents)
     except JSONDecodeError as e:
@@ -175,10 +187,9 @@ def load_jsonnet_file_with_variable_substitutions(
     from _jsonnet import evaluate_snippet
 
     # Jsonnet source is UTF-8, whatever the platform's default encoding
-    with open(filename, encoding="utf-8") as f:
-        file_contents = process_variable_substitutions_in_file_contents(
-            f.read(), prefix, postfix, source=filename, jsonnet=True
-        )
+    file_contents = process_variable_substitutions_in_file_contents(
+        _read_text(filename), prefix, postfix, source=filename, jsonnet=True
+    )
     # Evaluated as the file it came from, with nothing written to disk: its
     # imports are found beside it, an error names it, and the current
     # directory, the fallback for an import written relative to it, need not
@@ -236,8 +247,7 @@ def load_toml_file_with_variable_substitutions(
     Takes a TOML filename and returns a dictionary with its variable
     substitutions processed.
     """
-    with open(filename, "rb") as f:
-        config = toml_load(f)
+    config = toml_loads(_read_text(filename))
 
     # Add any variable substitutions in the TOML file before processing the
     # file as a whole
