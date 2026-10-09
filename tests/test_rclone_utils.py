@@ -398,3 +398,33 @@ class TestTheFirstRunDownloadKeepsOffStdout:
         out, err = capsys.readouterr()
         assert out == ""
         assert "Downloading data from" in err
+
+
+class TestCtrlCIsPythonsOwn:
+    """
+    Importing rclone_api replaces Python's SIGINT handler with one that
+    kills the process at once, so a data client command interrupted (Ctrl-C,
+    or an MCP call stopped) never reached the wrapper's flush, and its --json
+    records were lost. make_rclone() puts Python's back; rclone_api's clean-up
+    is also registered at exit, which an interrupted command still reaches.
+    """
+
+    def test_restored(self, monkeypatch):
+        import signal
+
+        import rclone_api
+        from rclone_api import util as rclone_api_util
+
+        from yellowdog_cli.utils.dataclient import rclone as rclone_module
+
+        previous = signal.getsignal(signal.SIGINT)
+        try:
+            signal.signal(signal.SIGINT, rclone_api_util._clean_configs)
+            monkeypatch.setattr(rclone_api, "Rclone", lambda _conf: None)
+            monkeypatch.setattr(
+                rclone_module, "_private_config_file", lambda text: Path("unused")
+            )
+            rclone_module.make_rclone(MagicMock(text=""))
+            assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        finally:
+            signal.signal(signal.SIGINT, previous)

@@ -461,3 +461,32 @@ def test_a_long_name_does_not_elide_the_status(window, captured, monkeypatch):
     )
     window._add_to_work_requirement_action()
     assert fits == [True]
+
+
+FINISHING = {
+    "id": "ydid:workreq:4",
+    "name": "wr-finishing",
+    "status": "FINISHING",
+    "createdTime": "2026-09-29T12:00:00.000000+00:00",
+}
+
+
+def test_a_finishing_work_requirement_is_not_offered(window, captured, monkeypatch):
+    # '--active-only' keeps it, and 'yd-submit --add-to' refuses it: a
+    # FINISHING Work Requirement takes no new Tasks
+    listed(window, monkeypatch, [FINISHING])
+
+    def offered(*args, **kwargs):
+        raise AssertionError("a FINISHING Work Requirement was offered")
+
+    monkeypatch.setattr(window, "_choose_one", offered)
+    window._add_to_work_requirement_action()
+    assert captured == []
+    assert "No active Work Requirements" in log(window)
+
+
+def test_the_newest_default_skips_a_finishing_one(window, captured, monkeypatch):
+    listed(window, monkeypatch, [OLDER, FINISHING])
+    commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
+    window._add_to_work_requirement_action()
+    assert captured == [("yd-submit", ["-A", OLDER["id"], "-f"])]

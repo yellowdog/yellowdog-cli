@@ -145,6 +145,8 @@ Destructive tools run with `--yes`, since there is no terminal for the CLI to pr
 
 Acting tools set `destructiveHint: false` explicitly, since the protocol's own default for a tool with no annotation is `true`.
 
+The CLI's action commands act on everything matching the namespace and tag when given no targets, and `yd-delete --recursive` on the whole default prefix. Since the server passes `--yes`, a tool call leaving its targets out would do that without anyone having asked for it, so the tools for those commands (`yd_abort`, `yd_cancel`, `yd_compute_reprovision`, `yd_compute_start`, `yd_compute_stop`, `yd_delete`, `yd_finish`, `yd_hold`, `yd_shutdown`, `yd_start` and `yd_terminate`) refuse a call with no targets unless it sets `all_in_scope` to `true`, and refuse one that sets both.
+
 A tool with a `dry_run` argument enumerates what it would do without doing it, exactly as the CLI's own `--dry-run` does, which an agent can call first as a lighter-weight check of what a destructive or acting call would affect.
 
 ## Specifications
@@ -159,7 +161,7 @@ An inline specification is written to a uniquely named `.yd-mcp-*.json` file in 
 
 ## Timeouts and Following
 
-Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result.
+Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result. The command is interrupted first, as a Ctrl-C would, and given a few seconds to write its `--json` document of what it had done (the Tasks a `yd_submit` created, the files a `yd_download` fetched) before it is killed; on Windows it is killed at once, and the result holds only what it had written. A command's own wait (`yd_wait`'s `timeout`, `yd_resize`'s `wait`) has no limit by default, so set `timeout_seconds` above it when the command should be let finish.
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
@@ -173,7 +175,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **Supplied by the server itself, meaningless without a terminal, or refused together with `--json`**: `--json`, `--yes`, `--interactive`, `--progress`, `--report`, `--ids-only`.
 - **Machine maintenance, not platform work**: `--upgrade-rclone`, `--which-rclone`.
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
-- **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `--work-requirement`, `--worker-pool`, `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)).
+- **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd-submit`'s `--work-requirement`, `yd-provision`'s and `yd-instantiate`'s `--worker-pool`, `yd-instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_resize`'s `compute_requirement` and `yd_nodeaction`'s `worker_pool`, which share those names but are no files, are offered as on the command line.
 
 Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help).
 

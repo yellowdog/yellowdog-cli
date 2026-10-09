@@ -1,7 +1,7 @@
 """
 The MCP tool catalogue, built from the command registry: one tool per
 command whose ToolKind is not NONE, its input schema from the command's
-options less MCP_EXCLUDED_OPTIONS, and the mapping from a call's arguments
+options less those excluded (mcp_excluded()), and the mapping from a call's arguments
 back to the child's command line. Imports nothing from the 'mcp' package,
 so the catalogue is testable without the extra, and nothing from the SDK,
 wrapper.py, args.py or printing.py.
@@ -20,12 +20,12 @@ from typing import Any
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
-    MCP_EXCLUDED_OPTIONS,
     Command,
     Exclusive,
     Option,
     ToolKind,
     finite_float,
+    mcp_excluded,
     non_negative_int,
     positive_int,
     resolve_cloud_info_type,
@@ -38,6 +38,26 @@ from yellowdog_cli.utils.limits import (
 )
 
 TIMEOUT_ARGUMENT = "timeout_seconds"
+
+# The action commands whose targets may be left out, and the positional that
+# holds them: given none, each acts on everything matching the namespace and
+# tag (yd-delete, with --recursive, on the whole default prefix), and the
+# server passes --yes, so a tool call leaving them out would do that by
+# omission. It must say so with ALL_IN_SCOPE_ARGUMENT instead (_validate()).
+SCOPE_TARGETS: dict[str, str] = {
+    "yd-abort": "task_id_list",
+    "yd-cancel": "work_requirements",
+    "yd-compute-reprovision": "compute_reqs_instances_or_nodes",
+    "yd-compute-start": "compute_reqs_instances_or_nodes",
+    "yd-compute-stop": "compute_reqs_instances_or_nodes",
+    "yd-delete": "remote_paths",
+    "yd-finish": "work_requirements",
+    "yd-hold": "work_requirements",
+    "yd-shutdown": "worker_pool_nodes_list",
+    "yd-start": "work_requirements",
+    "yd-terminate": "compute_reqs_instances_or_nodes",
+}
+ALL_IN_SCOPE_ARGUMENT = "all_in_scope"
 
 # The specification-taking commands: the argument that replaces their file
 # option(s), and whether it takes several
@@ -132,6 +152,9 @@ class ToolSpec:
         default_factory=dict, repr=False
     )
     exclusive_pairs: tuple[tuple[str, ...], ...] = ()
+    # The targets argument a call must give, or set ALL_IN_SCOPE_ARGUMENT
+    # instead (SCOPE_TARGETS)
+    scope_target: str | None = None
 
 
 def tool_name(command: Command) -> str:
@@ -260,7 +283,7 @@ def _build_tool(command: Command) -> ToolSpec:
         options = item.options if isinstance(item, Exclusive) else (item,)
         names: list[str] = []
         for option in options:
-            if option.name in MCP_EXCLUDED_OPTIONS:
+            if mcp_excluded(command, option):
                 continue
             name = property_name(option)
             schema, is_required = _property_schema(option)
@@ -302,6 +325,33 @@ def _build_tool(command: Command) -> ToolSpec:
     properties[TIMEOUT_ARGUMENT] = (None, timeout_schema)
     schema_properties[TIMEOUT_ARGUMENT] = timeout_schema
 
+    description = _description(command)
+    scope_target = None
+    if command.name in SCOPE_TARGETS:
+        target_option = command.option_named(SCOPE_TARGETS[command.name])
+        assert target_option is not None, command.name
+        scope_target = property_name(target_option)
+        whole = (
+            "the whole default prefix (with recursive)"
+            if command.name == "yd-delete"
+            else "everything matching the namespace and tag"
+        )
+        scope_schema = {
+            "type": "boolean",
+            "description": (
+                f"act on {whole}, as the command does when given no"
+                f" {scope_target}; a call giving neither is refused"
+            ),
+        }
+        properties[ALL_IN_SCOPE_ARGUMENT] = (None, scope_schema)
+        schema_properties[ALL_IN_SCOPE_ARGUMENT] = scope_schema
+        description += (
+            f" Name its targets in '{scope_target}'; to act on {whole} instead,"
+            f" set '{ALL_IN_SCOPE_ARGUMENT}' to true. A call doing neither is"
+            " refused, so that leaving the targets out never acts on"
+            " everything."
+        )
+
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": schema_properties,
@@ -318,13 +368,14 @@ def _build_tool(command: Command) -> ToolSpec:
         name=tool_name(command),
         command=command,
         title=command.summary,
-        description=_description(command),
+        description=description,
         input_schema=input_schema,
         annotations=_annotations(command.tool),
         specification_argument=spec_argument,
         timeout_default=timeout_default,
         properties=properties,
         exclusive_pairs=tuple(exclusive_pairs),
+        scope_target=scope_target,
     )
 
 
@@ -433,6 +484,18 @@ def _validate(tool: ToolSpec, arguments: dict[str, Any]) -> None:
         given = [name for name in pair if name in arguments]
         if len(given) > 1:
             raise ToolArgumentError(f"give one of {' and '.join(pair)}, not both")
+    if tool.scope_target is not None:
+        targets = arguments.get(tool.scope_target)
+        all_in_scope = arguments.get(ALL_IN_SCOPE_ARGUMENT, False)
+        if targets and all_in_scope:
+            raise ToolArgumentError(
+                f"give {tool.scope_target} or {ALL_IN_SCOPE_ARGUMENT}, not both"
+            )
+        if not targets and not all_in_scope:
+            raise ToolArgumentError(
+                f"{tool.name} was given no {tool.scope_target}: name them, or set"
+                f" {ALL_IN_SCOPE_ARGUMENT} to true to act on everything in scope"
+            )
 
 
 def _write_specification(specification: dict[str, Any], working_dir: str) -> Path:
@@ -463,7 +526,7 @@ def _joined(option: Option, value: Any) -> str:
     Load-bearing for security, not style: given as two entries, a value that
     looks like a flag ('--show-secrets', '--debug', '--yes') is taken by
     argparse as that flag wherever the option has nargs='?' ('--namespace',
-    '--tag'), which would switch on exactly the options MCP_EXCLUDED_OPTIONS
+    '--tag'), which would switch on exactly the options mcp_excluded()
     withholds. Joined, argparse can only read it as the value.
     """
     return f"{option.name}={value}"
@@ -518,7 +581,7 @@ def _to_argv(
                 else:
                     positionals.append(item)
             continue
-        if option.name in MCP_EXCLUDED_OPTIONS:
+        if mcp_excluded(tool.command, option):
             continue
         name = property_name(option)
         if name not in arguments:

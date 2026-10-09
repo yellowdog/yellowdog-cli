@@ -33,7 +33,14 @@ from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import path_would_be_globbed
-from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
+from yellowdog_cli.utils.command_registry import (
+    COMMANDS,
+    NAMESPACE,
+    PROPERTY,
+    TAG,
+    VARIABLE,
+    CommandKind,
+)
 
 # The 'yd-' commands that take none of the configuration options Commander adds
 # to the others (the config source, namespace, tag, variables, properties,
@@ -383,34 +390,47 @@ class WindowBase(QMainWindow):
             return None
         return [*run_args, f"<{len(handles)} {plural}>"]
 
-    def _namespace_tag_and_user_vars(self) -> list[str]:
+    def _namespace_tag_and_user_vars(self, command: str | None = None) -> list[str]:
         """
         The arguments every 'yd-' command is given from the top of the window:
         '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
-        variable and '--property' for each property override.
+        variable and '--property' for each property override. Given the
+        'command', only those it takes: typed into the command box, a
+        command without '-n' (yd-show) failed on it, and one without '-v'
+        (yd-cloud-info) read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',
         so a value that begins with '-' is never taken for an option. Raises
         QuotingError when the Properties field cannot be split, which every
         action refuses on beforehand (_properties_are_usable).
         """
+        registered = None if command is None else COMMANDS.get(command)
+
+        def takes(option) -> bool:
+            # A command the registry does not know is given everything
+            return registered is None or registered.has(option)
+
         # Split out a list of variables of the form "x=y",
         # and prefix each with "-v" -> ["-v', "x=y"], etc.
         # Apply a namespace override if it exists.
         # Apply a tag override if it exists.
         namespace_tag_user_vars = [
-            x for y in self.user_variables.toPlainText().split() for x in ["-v", y]
+            x
+            for y in self.user_variables.toPlainText().split()
+            for x in ["-v", y]
+            if takes(VARIABLE)
         ] + [
             f"--property={override}"
             for override in split_arguments(self.properties.toPlainText())
+            if takes(PROPERTY)
         ]
 
         tag_override = self.tag_override.toPlainText().strip()
-        if tag_override:
+        if tag_override and takes(TAG):
             namespace_tag_user_vars = ["-t", tag_override, *namespace_tag_user_vars]
 
         namespace_override = self.namespace_override.toPlainText().strip()
-        if namespace_override:
+        if namespace_override and takes(NAMESPACE):
             namespace_tag_user_vars = [
                 "-n",
                 namespace_override,
@@ -474,7 +494,7 @@ class WindowBase(QMainWindow):
                 args = self._config_source_args() + args
             # Ensure user-defined variables can be overridden by commands
             # by specifying them first.
-            for index, var in enumerate(self._namespace_tag_and_user_vars()):
+            for index, var in enumerate(self._namespace_tag_and_user_vars(command)):
                 args.insert(index, var)
             args += ["--nf", "--pp"]
         elif command in NO_FORMAT_UNDECORATED_YD_COMMANDS and not (

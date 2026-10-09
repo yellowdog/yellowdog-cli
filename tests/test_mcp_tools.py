@@ -26,8 +26,8 @@ from yellowdog_cli.mcp.tools import (
 )
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
-    MCP_EXCLUDED_OPTIONS,
     ToolKind,
+    mcp_excluded,
 )
 from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
@@ -58,14 +58,14 @@ class TestCatalogue:
         for tool in TOOLS.values():
             properties = tool.input_schema["properties"]
             for option in tool.command.flat_options():
-                if option.name in MCP_EXCLUDED_OPTIONS:
+                if mcp_excluded(tool.command, option):
                     continue
                 assert _property_name(option) in properties, (tool.name, option.name)
 
     def test_excluded_options_are_in_no_schema(self):
         for tool in TOOLS.values():
             for option in tool.command.flat_options():
-                if option.name in MCP_EXCLUDED_OPTIONS:
+                if mcp_excluded(tool.command, option):
                     assert (
                         _property_name(option) not in tool.input_schema["properties"]
                     ), (
@@ -302,7 +302,9 @@ class TestToArgv:
         assert files == []
 
     def test_a_false_boolean_and_an_absent_argument_add_nothing(self, tmp_path):
-        argv, _ = to_argv(TOOLS["yd_cancel"], {"abort": False}, str(tmp_path))
+        argv, _ = to_argv(
+            TOOLS["yd_cancel"], {"abort": False, "all_in_scope": True}, str(tmp_path)
+        )
         assert argv == []
 
     def test_integers_and_appends(self, tmp_path):
@@ -319,9 +321,15 @@ class TestToArgv:
         # A value is one argv entry joined to its long flag, so argparse
         # cannot take a value that looks like a flag as that flag: as two
         # entries, '--tag --debug' on a nargs='?' option turned --debug on
-        argv, _ = to_argv(TOOLS["yd_cancel"], {"tag": "--debug"}, str(tmp_path))
+        argv, _ = to_argv(
+            TOOLS["yd_cancel"], {"tag": "--debug", "all_in_scope": True}, str(tmp_path)
+        )
         assert argv == ["--tag=--debug"]
-        argv, _ = to_argv(TOOLS["yd_cancel"], {"variable": ["--yes"]}, str(tmp_path))
+        argv, _ = to_argv(
+            TOOLS["yd_cancel"],
+            {"variable": ["--yes"], "all_in_scope": True},
+            str(tmp_path),
+        )
         assert argv == ["--variable=--yes"]
 
     def test_a_specification_path_is_passed_as_given(self, tmp_path):
@@ -436,7 +444,9 @@ class TestPositionalSeparator:
         assert argv == ["--", "-weird"]
 
     def test_no_positionals_no_separator(self, tmp_path):
-        argv, _ = to_argv(TOOLS["yd_cancel"], {"abort": True}, str(tmp_path))
+        argv, _ = to_argv(
+            TOOLS["yd_cancel"], {"abort": True, "all_in_scope": True}, str(tmp_path)
+        )
         assert argv == ["-a"]
 
 
@@ -553,3 +563,97 @@ def test_a_launch_value_beginning_with_a_dash_stays_a_value():
     args = fixed_args(COMMANDS["yd-variables"], settings)
     assert "--namespace=-x" in args and "--tag=--show-secrets" in args
     assert "--show-secrets" not in args
+
+
+class TestSpecificationFileExclusionsAreTheirCommandsOwn:
+    """
+    The specification-file options are excluded from the commands they are
+    files on: by name alone, yd_resize lost '--compute-requirement' (a flag
+    saying the name is a Compute Requirement's) and yd_nodeaction lost
+    '--worker-pool' (the target Worker Pool's name).
+    """
+
+    @pytest.mark.parametrize(
+        "tool, name",
+        [("yd_resize", "compute_requirement"), ("yd_nodeaction", "worker_pool")],
+    )
+    def test_a_like_named_option_that_is_no_file_is_offered(self, tool, name):
+        assert name in TOOLS[tool].input_schema["properties"]
+
+    @pytest.mark.parametrize(
+        "tool, name",
+        [
+            ("yd_submit", "work_requirement"),
+            ("yd_provision", "worker_pool"),
+            ("yd_instantiate", "worker_pool"),
+            ("yd_instantiate", "compute_requirement"),
+        ],
+    )
+    def test_a_specification_file_option_is_not(self, tool, name):
+        assert name not in TOOLS[tool].input_schema["properties"]
+
+    def test_the_resize_flag_reaches_the_command_line(self, tmp_path):
+        argv, _ = to_argv(
+            TOOLS["yd_resize"],
+            {"compute_requirement": True, "worker_pool": "cr", "worker_pool_size": 2},
+            str(tmp_path),
+        )
+        from yellowdog_cli.utils.args import CLIParser
+
+        assert CLIParser("yd-resize", argv).compute_req_resize is True
+
+
+class TestActingOnTheWholeScopeIsOptedInto:
+    """
+    The server passes --yes, so an action tool given no targets acted on
+    everything matching the namespace and tag (yd_abort: every executing
+    Task), as an omission. It now needs 'all_in_scope': true to do that.
+    """
+
+    SCOPE_TOOLS = sorted(
+        tools_module.tool_name(COMMANDS[name]) for name in tools_module.SCOPE_TARGETS
+    )
+
+    def test_every_action_tool_with_optional_targets_is_held_to_it(self):
+        # Placed on purpose: a new acting command whose targets may be left
+        # out joins SCOPE_TARGETS
+        for tool in TOOLS.values():
+            if tool.command.tool not in (ToolKind.ACTING, ToolKind.DESTRUCTIVE):
+                continue
+            optional_lists = [
+                option.flags[0]
+                for option in tool.command.flat_options()
+                if option.positional
+                and option.kwargs.get("nargs") == "*"
+                # Optional to argparse, but required of a tool call
+                and not option.tool_required
+            ]
+            if optional_lists:
+                assert tools_module.SCOPE_TARGETS.get(tool.command.name) in (
+                    optional_lists
+                ), tool.name
+
+    @pytest.mark.parametrize("tool", SCOPE_TOOLS)
+    def test_no_targets_is_refused(self, tool, tmp_path):
+        with pytest.raises(ToolArgumentError, match="all_in_scope"):
+            to_argv(TOOLS[tool], {}, str(tmp_path))
+
+    @pytest.mark.parametrize("tool", SCOPE_TOOLS)
+    def test_no_targets_with_the_opt_in_runs_over_the_scope(self, tool, tmp_path):
+        argv, _ = to_argv(TOOLS[tool], {"all_in_scope": True}, str(tmp_path))
+        assert not any("all_in_scope" in arg for arg in argv)
+        assert "--" not in argv  # No targets: no positionals
+
+    @pytest.mark.parametrize("tool", SCOPE_TOOLS)
+    def test_targets_with_the_opt_in_are_refused(self, tool, tmp_path):
+        target = tools_module.property_name(
+            TOOLS[tool].command.option_named(
+                tools_module.SCOPE_TARGETS[TOOLS[tool].command.name]
+            )
+        )
+        with pytest.raises(ToolArgumentError, match="not both"):
+            to_argv(TOOLS[tool], {target: ["x"], "all_in_scope": True}, str(tmp_path))
+
+    @pytest.mark.parametrize("tool", SCOPE_TOOLS)
+    def test_the_description_says_so(self, tool):
+        assert "all_in_scope" in TOOLS[tool].description

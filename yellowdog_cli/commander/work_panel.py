@@ -15,10 +15,11 @@ from yellowdog_cli.commander.window_base import CWD, NO_LISTING_TAG
 from yellowdog_cli.commander.window_dialogs import WindowDialogs
 
 SELECTED_WR_PREFIX = "Work Requirement: "
-# The one non-terminal Work Requirement status 'yd-list --active-only' keeps and
-# 'yd-submit --add-to' refuses, so Add to must not offer it. Spelled out rather
-# than imported: nothing in Commander imports the SDK.
-CANCELLING_STATUS = "CANCELLING"
+# The Work Requirement statuses 'yd-submit --add-to' accepts, the only ones Add
+# to offers: 'yd-list --active-only' also keeps FINISHING and CANCELLING ones,
+# which take no new Tasks. Spelled out rather than imported: nothing in
+# Commander imports the SDK.
+ADDABLE_STATUSES = ("RUNNING", "HELD")
 WR_DATA = "workRequirementData"
 
 
@@ -141,7 +142,7 @@ class WorkPanel(WindowDialogs):
             )
             return
 
-        entities = [entity for entity in entities if entity.status != CANCELLING_STATUS]
+        entities = [entity for entity in entities if entity.status in ADDABLE_STATUSES]
         if not entities:
             self._output.log(f"No active Work Requirements{scope} to add to")
             return

@@ -12,8 +12,10 @@ import logging
 import os
 import platform
 import re
+import signal
 import sys
 import tempfile
+import threading
 from contextlib import contextmanager, redirect_stdout
 from functools import cache
 from pathlib import Path
@@ -205,14 +207,35 @@ def _private_config_file(text: str) -> Path:
     descriptor, name = tempfile.mkstemp(prefix="yd-rclone-", suffix=".conf")
     path = Path(name)
     _PRIVATE_CONFIG_FILES.append(path)
-    # Also on rclone_api's own list, which its Ctrl-C handler (replacing
-    # Python's, so that no atexit runs) removes before the process ends
+    # Also on rclone_api's own list, which it removes at exit and in its
+    # SIGTERM handler (which, like the SIGINT one _python_handles_ctrl_c()
+    # replaces, ends the process without running atexit)
     from rclone_api import util as rclone_api_util
 
     getattr(rclone_api_util, "_RCLONE_CONFIGS_LIST", []).append(path)
     with os.fdopen(descriptor, "w", encoding="utf-8") as file:
         file.write(text)
     return path
+
+
+def _python_handles_ctrl_c() -> None:
+    """
+    Put Python's own SIGINT handler back where rclone_api, as it is
+    imported, replaced it with one that removes its configuration files and
+    kills the process at once: a data client command interrupted (Ctrl-C,
+    or an MCP call stopped) then never reached its wrapper's flush, and its
+    --json records were lost. rclone_api's clean-up is also registered at
+    exit, which a KeyboardInterrupt reaches. Only rclone_api's handler is
+    replaced, and only from the main thread, the one that can set it.
+    """
+    from rclone_api import util as rclone_api_util
+
+    if threading.current_thread() is not threading.main_thread():
+        return
+    if signal.getsignal(signal.SIGINT) is getattr(
+        rclone_api_util, "_clean_configs", None
+    ):
+        signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
 def make_rclone(config: Config | None) -> Rclone:
@@ -224,6 +247,7 @@ def make_rclone(config: Config | None) -> Rclone:
     """
     from rclone_api import Rclone
 
+    _python_handles_ctrl_c()
     _keep_logging_off_stdout()
     rclone_conf: Path = (
         _find_rclone_conf() if config is None else _private_config_file(config.text)
@@ -331,6 +355,7 @@ def upgrade_rclone():
     """
     from rclone_api import Rclone
 
+    _python_handles_ctrl_c()
     _keep_logging_off_stdout()
     print_info("Downloading / upgrading the rclone binary")
     with _download_output_kept_off_stdout():

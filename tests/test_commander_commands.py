@@ -25,6 +25,13 @@ from yellowdog_cli.commander.window_base import (
     NO_FORMAT_UNDECORATED_YD_COMMANDS,
     UNDECORATED_YD_COMMANDS,
 )
+from yellowdog_cli.utils.command_registry import (
+    COMMANDS,
+    NAMESPACE,
+    PROPERTY,
+    TAG,
+    VARIABLE,
+)
 
 
 @pytest.fixture
@@ -307,6 +314,29 @@ def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
     window._cancel_work_requirements_action()
     assert seen == [[]]
     assert captured == [("yd-cancel", ["-y", "ydid:x:1"])]
+
+
+@pytest.mark.parametrize(
+    "method, listed_with",
+    [
+        ("_cancel_work_requirements_action", []),
+        # Its listing asked 'yd-cancel -D' without '--abort', which leaves out
+        # a Work Requirement already CANCELLING, the very kind Cancel & Abort
+        # is for once Cancel has run: it found nothing to abort
+        ("_cancel_work_requirements_and_abort_action", ["--abort"]),
+    ],
+)
+def test_the_listing_asks_what_the_action_will_do(
+    window, captured, monkeypatch, method, listed_with
+):
+    seen: list = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_summaries",
+        lambda command, extra_args=None: seen.append(extra_args) or [],
+    )
+    getattr(window, method)()
+    assert seen == [listed_with]
 
 
 def test_destructive_action_declined_does_not_run(window, captured, monkeypatch):
@@ -1013,3 +1043,24 @@ class TestConfigDataFile:
         )
         path = window._get_config_data_file("workRequirementData")
         assert path == join(str(tmp_path), "utf-8")
+
+
+@pytest.mark.parametrize(
+    "command",
+    sorted(name for name in COMMANDS if name not in UNDECORATED_YD_COMMANDS),
+)
+def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
+    # The Namespace, Tag, User-Defined Variables and Properties fields were
+    # added to every typed command, so 'yd-show <id>' failed with
+    # "unrecognized arguments: -n", and 'yd-cloud-info instance-types' read
+    # the namespace as its type
+    window._config_file = None
+    window.namespace_override.setPlainText("ns")
+    window.tag_override.setPlainText("tg")
+    window.user_variables.setPlainText("a=1")
+    window.properties.setPlainText("common.x=1")
+    args = window._build_command_args(command, [], yd_command=False)
+    registered = COMMANDS[command]
+    for flag, option in (("-n", NAMESPACE), ("-t", TAG), ("-v", VARIABLE)):
+        assert (flag in args) == registered.has(option), (command, flag)
+    assert any(a.startswith("--property=") for a in args) == registered.has(PROPERTY)

@@ -553,9 +553,10 @@ COMMON_OPTIONS[CommandKind.DATA_CLIENT] = (
 COMMON_OPTIONS[CommandKind.STANDALONE] = ()
 
 # The options no MCP tool exposes, by option name (Option.name: the first
-# long flag, or a positional's name), compared as Command.has() compares.
+# long flag, or a positional's name), compared as Command.has() compares,
+# with MCP_EXCLUDED_SPECIFICATION_FILES below (see mcp_excluded()).
 # tests/test_mcp_tools.py holds every option of every tool command to being
-# either in a schema or here, so a new option is placed on purpose.
+# either in a schema or excluded, so a new option is placed on purpose.
 MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
     {
         # The common set: the server owns the configuration, the credentials
@@ -588,16 +589,37 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         "--show-keyring-passwords",
         "--show-secrets",
         # The specification files, replaced by the tools' 'specification(s)'
-        # argument (yellowdog_cli/mcp/tools.py)
-        "--work-requirement",
-        "--worker-pool",
-        "--compute-requirement",
+        # argument (yellowdog_cli/mcp/tools.py); the flag forms are
+        # MCP_EXCLUDED_SPECIFICATION_FILES', their names being other
+        # commands' options too
         "work_requirement_file_positional",
         "worker_pool_file_positional",
         "compute_requirement_file_positional",
         "resource_specifications",
     }
 )
+
+
+# The specification-file options given as flags, excluded only from the
+# commands they are files on: by name alone they also hid yd-resize's
+# '--compute-requirement' (a flag) and yd-nodeaction's '--worker-pool' (a
+# name), as their names are those options' names too
+MCP_EXCLUDED_SPECIFICATION_FILES: dict[str, frozenset[str]] = {
+    "yd-submit": frozenset({"--work-requirement"}),
+    "yd-provision": frozenset({"--worker-pool"}),
+    "yd-instantiate": frozenset({"--worker-pool", "--compute-requirement"}),
+}
+
+
+def mcp_excluded(command: Command, option: Option) -> bool:
+    """
+    Whether no MCP tool for 'command' exposes 'option': it is in
+    MCP_EXCLUDED_OPTIONS, or is one of the command's own specification-file
+    options.
+    """
+    return option.name in MCP_EXCLUDED_OPTIONS or option.name in (
+        MCP_EXCLUDED_SPECIFICATION_FILES.get(command.name, frozenset())
+    )
 
 
 # --- Shared options ------------------------------------------------------
@@ -1244,8 +1266,9 @@ TASK_ID_LIST = option(
         " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
         " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
         " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
-        " group. Without arguments, selects interactively by namespace and"
-        " tag."
+        " group. Without arguments, the executing tasks of the work"
+        " requirements matching the namespace and tag, selected interactively"
+        " unless --yes is given."
     ),
 )
 

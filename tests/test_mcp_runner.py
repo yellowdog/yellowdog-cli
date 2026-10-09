@@ -176,3 +176,39 @@ def test_a_stop_kills_what_the_command_started(tmp_path):
     assert monotonic() - started < 10, "the stop waited on the grandchild"
     sleep(4)
     assert not marker.exists(), "the grandchild survived the stop"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+class TestAStopInterruptsFirst:
+    """
+    A stopped call returned no document at all: the command was killed
+    outright, and records are only written by the flush its wrapper makes on
+    the way out. It is interrupted first, which the wrappers flush on, and
+    killed only if it has not gone in INTERRUPT_SECONDS.
+    """
+
+    def test_what_it_writes_when_interrupted_comes_back(self, tmp_path):
+        script = (
+            "import sys, time\n"
+            "try:\n"
+            "    print('started', file=sys.stderr, flush=True); time.sleep(30)\n"
+            "except KeyboardInterrupt:\n"
+            "    print('[{\"done\": 1}]'); sys.exit(130)\n"
+        )
+        result = run([sys.executable, "-c", script], str(tmp_path), _clean_env(), 1)
+        assert result.stopped
+        assert result.document == [{"done": 1}]
+
+    def test_one_that_ignores_the_interrupt_is_still_stopped(self, tmp_path):
+        from time import monotonic
+
+        from yellowdog_cli.mcp import runner
+
+        script = (
+            "import signal, time;"
+            " signal.signal(signal.SIGINT, signal.SIG_IGN); time.sleep(60)"
+        )
+        started = monotonic()
+        result = run([sys.executable, "-c", script], str(tmp_path), _clean_env(), 1)
+        assert result.stopped
+        assert monotonic() - started < 1 + runner.INTERRUPT_SECONDS + 5
