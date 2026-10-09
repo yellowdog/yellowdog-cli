@@ -5,6 +5,7 @@ Unit tests for the functions moved from submit.py to submit_utils.py:
 """
 
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -618,10 +619,11 @@ class TestUploadRcloneFileCore:
         mock_rclone = self._run(remote_exists=True, overwrite=False)
         mock_rclone.exists.assert_called_once_with(self._REMOTE_DEST)
 
-    def test_file_exists_with_overwrite_skips_existence_check(self):
-        # When --overwrite is set we don't need to check existence at all
+    def test_file_exists_with_overwrite_still_checks_existence(self):
+        # Under --overwrite too: a file that was already there is not this
+        # run's to delete if the submission fails
         mock_rclone = self._run(remote_exists=True, overwrite=True)
-        mock_rclone.exists.assert_not_called()
+        mock_rclone.exists.assert_called_once_with(self._REMOTE_DEST)
 
     def test_upload_failure_raises_runtime_error(self):
         uploaded_file = su.RcloneUploadedFile(
@@ -858,3 +860,54 @@ class TestDeleteUploadedFiles:
         assert len(errors) == 1
         assert "two.txt" in errors[0] and "rclone failed" in errors[0]
         assert "SECRET" not in errors[0]
+
+
+class TestOnlyFilesThisRunCreatedAreDeleted:
+    """
+    The clean-up after a failed submission deletes only the files the run
+    put there: a file already at its upload path, whether left alone or
+    overwritten with --overwrite, may be another Work Requirement's input.
+    """
+
+    _UPLOAD_PATH = "rclone:myremote:bucket/in.txt"
+
+    def _upload_then_clean_up(
+        self, tmp_path, *, remote_exists: bool, overwrite: bool
+    ) -> list[str]:
+        (tmp_path / "in.txt").write_text("data", encoding="utf-8")
+        ctx = RunContext(
+            args=SimpleNamespace(dry_run=False, overwrite=overwrite),
+            config=wrapper_module.CONFIG_COMMON,
+            client=None,
+        )
+        mock_rclone = MagicMock()
+        mock_rclone.exists.return_value = remote_exists
+        mock_rclone.copy_to.return_value = MagicMock(returncode=0, stderr="")
+        deleted: list[str] = []
+        instance = su.RcloneUploadedFiles(ctx, files_directory=str(tmp_path))
+        with (
+            patch.object(su, "make_rclone", return_value=mock_rclone),
+            patch.object(su, "print_info"),
+            patch.object(instance, "_delete_rcloned_file", side_effect=deleted.append),
+        ):
+            instance.upload_dataclient_input_files(
+                [{"localPath": "in.txt", "source": self._UPLOAD_PATH}]
+            )
+            instance.delete()
+        return deleted
+
+    def test_a_file_already_there_and_skipped_is_not_deleted(self, tmp_path):
+        assert not self._upload_then_clean_up(
+            tmp_path, remote_exists=True, overwrite=False
+        )
+
+    def test_a_file_already_there_and_overwritten_is_not_deleted(self, tmp_path):
+        assert not self._upload_then_clean_up(
+            tmp_path, remote_exists=True, overwrite=True
+        )
+
+    def test_a_file_this_run_uploaded_is_deleted(self, tmp_path):
+        deleted = self._upload_then_clean_up(
+            tmp_path, remote_exists=False, overwrite=False
+        )
+        assert deleted == [self._UPLOAD_PATH]

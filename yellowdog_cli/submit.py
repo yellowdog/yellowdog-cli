@@ -656,7 +656,7 @@ def _extend_work_requirement(
     record_entity(
         work_requirement.id,
         work_requirement.name,
-        run.ctx.config.namespace,  # Where it was looked up
+        work_requirement.namespace,  # Not necessarily the configured one
         ET_WORK_REQUIREMENTS,
     )
     return work_requirement, extension.additions
@@ -793,7 +793,7 @@ def add_tasks_to_task_group(
     source = TaskSource(
         config_wr=run.config_wr,
         wr_name=run.name,
-        namespace=run.ctx.config.namespace,
+        namespace=cast(str, work_requirement.namespace),
         wr_data=wr_data,
         files_directory=files_directory,
         task_group=task_group,
@@ -888,7 +888,7 @@ def submit_batch_of_tasks_to_task_group(
 
     def attempt() -> None:
         run.ctx.client.work_client.add_tasks_to_task_group_by_name(
-            run.ctx.config.namespace,
+            work_requirement.namespace,
             work_requirement.name,
             task_group.name,
             tasks_list,

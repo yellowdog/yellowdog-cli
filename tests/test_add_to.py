@@ -3,6 +3,7 @@ Tests for the --add-to feature: offset-aware task/task-group naming and the
 dispatch logic in add_to_existing_work_requirement.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, PropertyMock, patch
 
@@ -13,9 +14,11 @@ import yellowdog_cli.submit as submit_module
 import yellowdog_cli.utils.submit_utils as su
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
+from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
@@ -796,3 +799,65 @@ class TestAddToById:
             )
         find.assert_not_called()
         get.assert_called_once_with(wr_id)
+
+
+class TestAddToAnotherNamespace:
+    """
+    '--add-to' can name a Work Requirement outside the configured namespace
+    (by its YDID, or as 'namespace/name'): its Tasks go to that Work
+    Requirement, and its namespace is the one the Tasks and the record see.
+    """
+
+    @staticmethod
+    def _run() -> submit_module._Submission:
+        config = MagicMock()
+        config.namespace = "config-ns"
+        ctx = RunContext(
+            args=SimpleNamespace(dry_run=False), config=config, client=MagicMock()
+        )
+        return submit_module._Submission(ctx, config_wr=ConfigWorkRequirement())
+
+    @staticmethod
+    def _work_requirement() -> MagicMock:
+        wr = _make_wr("my-wr", WorkRequirementStatus.RUNNING, [_make_tg("tg")])
+        wr.namespace = "other-ns"
+        return wr
+
+    def test_the_tasks_are_added_in_its_namespace(self):
+        run = self._run()
+        submit_module.submit_batch_of_tasks_to_task_group(
+            run, [MagicMock()], self._work_requirement(), _make_tg("tg"), 1, 0, 10, 1
+        )
+        add = run.ctx.client.work_client.add_tasks_to_task_group_by_name
+        assert add.call_args.args[:3] == ("other-ns", "my-wr", "tg")
+
+    def test_the_tasks_are_generated_with_its_namespace(self):
+        run = self._run()
+        sources: list[dict] = []
+
+        def capture(**kwargs):
+            sources.append(kwargs)
+            raise StopIteration  # Nothing after the source is needed
+
+        with (
+            patch.object(submit_module, "TaskSource", side_effect=capture),
+            pytest.raises(StopIteration),
+        ):
+            submit_module.add_tasks_to_task_group(
+                run,
+                TaskGroupPosition(spec_index=0, number=1, count=2, existing_tasks=3),
+                _make_tg("tg"),
+                {TASK_GROUPS: [{NAME: "tg", TASKS: [{}]}]},
+                None,
+                self._work_requirement(),
+            )
+        assert sources[0]["namespace"] == "other-ns"
+
+    def test_it_is_recorded_in_its_namespace(self):
+        run = self._run()
+        work_requirement = self._work_requirement()
+        with patch.object(submit_module, "record_entity") as record:
+            submit_module._extend_work_requirement(
+                run, work_requirement, list(work_requirement.taskGroups), []
+            )
+        assert record.call_args.args[2] == "other-ns"

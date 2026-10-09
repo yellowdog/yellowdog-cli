@@ -911,7 +911,7 @@ JSON:
 
 If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd-submit`.
 
-If `yd-submit` fails for any reason, the uploaded objects will be deleted automatically.
+If `yd-submit` fails for any reason, the objects it uploaded are deleted automatically. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
 
 ### Rclone Authentication
 

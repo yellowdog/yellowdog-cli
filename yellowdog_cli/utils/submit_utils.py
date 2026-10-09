@@ -528,6 +528,11 @@ class RcloneUploadedFiles:
         files_directory: str = ".",
     ):
         self._ctx = ctx
+        # Every file this run has handled, uploaded or found already there
+        self._seen_files: list[RcloneUploadedFile] = []
+        # The files this run created, and so may delete: a file already at
+        # its upload path, left alone or overwritten, may be another Work
+        # Requirement's input
         self._rcloned_files: list[RcloneUploadedFile] = []
         self._files_directory = abspath(files_directory)
         self._working_directory = getcwd()
@@ -570,10 +575,10 @@ class RcloneUploadedFiles:
                 )
 
             rclone_uploaded_file = RcloneUploadedFile(local_file, rclone_upload_path)
-            if rclone_uploaded_file in self._rcloned_files:
+            if rclone_uploaded_file in self._seen_files:
                 # Duplicate
                 return
-            for uploaded in self._rcloned_files:
+            for uploaded in self._seen_files:
                 # Another file bound for the same place would be skipped as
                 # already there, and its Tasks given the first file's data
                 if uploaded.upload_file_path == rclone_upload_path and abspath(
@@ -587,7 +592,7 @@ class RcloneUploadedFiles:
 
             if not self._ctx.args.dry_run:
                 try:
-                    self._upload_rclone_file_core(rclone_uploaded_file)
+                    created = self._upload_rclone_file_core(rclone_uploaded_file)
                 except Exception as e:
                     raise RuntimeError(
                         f"Unable to upload '{local_file}' ->"
@@ -598,14 +603,19 @@ class RcloneUploadedFiles:
                     f"Would upload '{local_file}' -> "
                     f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
                 )
+                created = False
 
-            self._rcloned_files.append(rclone_uploaded_file)
+            self._seen_files.append(rclone_uploaded_file)
+            if created:
+                self._rcloned_files.append(rclone_uploaded_file)
         finally:
             chdir(self._working_directory)
 
-    def _upload_rclone_file_core(self, rclone_upload_file: RcloneUploadedFile):
+    def _upload_rclone_file_core(self, rclone_upload_file: RcloneUploadedFile) -> bool:
         """
-        Core upload method for a single file.
+        Core upload method for a single file. Returns whether the file was
+        created: False if it was already at its upload path, whether it was
+        skipped or (with --overwrite) replaced.
         """
         from rclone_api import Config
 
@@ -620,12 +630,13 @@ class RcloneUploadedFiles:
 
         remote_dest = f"{remote_name}:{remote_path}"
 
-        if not self._ctx.args.overwrite and rclone.exists(remote_dest):
+        already_there = rclone.exists(remote_dest)
+        if already_there and not self._ctx.args.overwrite:
             print_info(
                 f"Skipping upload of '{rclone_upload_file.local_file_path}'"
                 f" (already exists at '{self._bucket_and_prefix(rclone_upload_file)}')"
             )
-            return
+            return False
 
         local_file = Path(rclone_upload_file.local_file_path).resolve()
         print_info(
@@ -641,6 +652,8 @@ class RcloneUploadedFiles:
 
         if result.returncode != 0:
             raise RuntimeError(f"Upload failed: {result.stderr}")
+
+        return not already_there
 
     def delete(self):
         """
@@ -660,6 +673,7 @@ class RcloneUploadedFiles:
                 )
 
         self._rcloned_files = []
+        self._seen_files = []
 
     def _delete_rcloned_file(self, conn_str: str):
         """
