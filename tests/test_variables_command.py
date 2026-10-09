@@ -551,12 +551,12 @@ class TestInlineRemoteNote:
 
 
 class TestPatternIsStatedFromTheConstant:
-    # The pattern is quoted in the help and the README; both copies must be
+    # The pattern is quoted in the help and the Command List; both copies must be
     # the one the command redacts by
 
-    def test_the_readme_quotes_the_pattern(self):
-        readme = (Path(__file__).parent.parent / "README.md").read_text("utf-8")
-        assert SECRET_VARIABLE_NAME_PATTERN.pattern in readme
+    def test_the_command_list_quotes_the_pattern(self):
+        path = Path(__file__).parent.parent / "docs" / "commands.md"
+        assert SECRET_VARIABLE_NAME_PATTERN.pattern in path.read_text("utf-8")
 
     def test_the_help_quotes_the_pattern(self):
         parser = build_parser(COMMANDS["yd-variables"], prog="yd-variables")

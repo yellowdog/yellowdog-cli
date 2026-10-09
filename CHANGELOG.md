@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Documentation:** the README is now a short landing page, and the rest of the documentation has moved to pages under [docs/](docs/), one per topic: the [Command List](docs/commands.md), [configuration](docs/configuration.md), [variable substitutions](docs/variables.md), [Work Requirements](docs/work-requirements.md) and their [Property Dictionary](docs/property-dictionary.md), [Worker Pools](docs/worker-pools.md), the [data client](docs/data-client.md), [resources](docs/resources.md), [Jsonnet](docs/jsonnet.md), and [machine-readable output and exit codes](docs/json-output.md). Each section's old heading in the README remains, pointing to its page.
 - **Commander** no longer repeats a broken configuration's error in the output window after every pause in typing in the User-Defined Variables or Properties box: the error is shown once, and again only if the configuration file is reselected or the error changes.
 - **Commander's Show** buttons, with no definition file selected, resolve a `{{variable}}` in the configuration's `workRequirementData` or `workerPoolData` with Commander's own CLI rather than whichever `yd-variables` is on the `PATH`, and no longer fall back to the variable's default when the configuration prints a warning.
 

@@ -125,7 +125,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 
 ## Results and Errors
 
-A successful call's `content` is one text block holding the command's `--json` document as compact JSON, and its `structuredContent` is `{"result": <document>, "exitCode": 0, "stopped": false}` — `result` is wrapped in an object because `structuredContent` must itself be an object and the document is often an array. The per-family document shapes are the CLI README's own, in [Machine-readable Output and Exit Codes](../../README.md#machine-readable-output-and-exit-codes).
+A successful call's `content` is one text block holding the command's `--json` document as compact JSON, and its `structuredContent` is `{"result": <document>, "exitCode": 0, "stopped": false}` — `result` is wrapped in an object because `structuredContent` must itself be an object and the document is often an array. The per-family document shapes are the CLI README's own, in [Machine-readable Output and Exit Codes](../../docs/json-output.md).
 
 `yd_show` and `yd_variables` are the two exceptions to `--json`: their commands have no such option, since they print their JSON document whatever they are given, so the server runs them with `--quiet` instead, which leaves the document alone on stdout; the warnings those two commands would print, such as an undefined variable in `yd_variables`, are suppressed by `--quiet` rather than sent to stderr.
 

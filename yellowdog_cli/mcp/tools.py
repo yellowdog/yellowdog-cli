@@ -73,7 +73,9 @@ ENTITY_TYPE_DESCRIPTION = "the type of entity: one of the full names in the enum
 OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "result": {"description": "the command's --json document (see the CLI README)"},
+        "result": {
+            "description": "the command's --json document (see the CLI's docs/json-output.md)"
+        },
         "exitCode": {"type": "integer"},
         "stopped": {
             "type": "boolean",
@@ -229,7 +231,8 @@ def _description(command: Command) -> str:
         return command.tool_description
     return (
         f"{command.summary}. Runs `{command.name}`; see the {command.name} section"
-        " of the CLI README for its options and its --json result."
+        " of the CLI's Command List (docs/commands.md) for its options and its"
+        " --json result."
     )
 
 

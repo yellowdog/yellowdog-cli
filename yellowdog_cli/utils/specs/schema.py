@@ -389,7 +389,7 @@ def _polymorphic_dispatch(
 def _nullable(schema: dict[str, Any]) -> dict[str, Any]:
     """
     An Optional field's schema, admitting null: the SDK structures a null as
-    the field's None, so a specification may write one (the README's own
+    the field's None, so a specification may write one (docs/resources.md's
     Compute Source Template example does), as a yd-list-generated one may.
 
     A $ref or a combinator (a dispatch's 'allOf' among them) admits null by

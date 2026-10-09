@@ -2,9 +2,10 @@
 The registry of yd-* commands and their options.
 
 Every command's options are defined here once, as data: argparse is built
-from it (build_parser()), yd-help lists from it, and the README's Command
-List is checked against it (tests/test_readme_command_list.py). It imports
-nothing from args.py; args.py imports it.
+from it (build_parser()), yd-help lists from it, and the Command List
+(docs/commands.md) is checked against it
+(tests/test_docs_command_list.py). It imports nothing from args.py; args.py
+imports it.
 """
 
 from __future__ import annotations

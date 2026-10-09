@@ -730,7 +730,8 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
     print_warning(
         f"'{MAX_RETRIES}' and '{RETRYABLE_ERRORS}' are deprecated; "
         f"please use '{RETRY_POLICY}' and (optionally) '{FAILURE_POLICY}' "
-        "instead. See the README's 'Task Retries and Failure Policies' section."
+        "instead. See 'Task Retries and Failure Policies' in the CLI's"
+        " docs/work-requirements.md."
     )
 
 

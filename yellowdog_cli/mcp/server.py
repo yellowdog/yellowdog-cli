@@ -42,8 +42,9 @@ USAGE_EXIT_CODE = 2
 
 INSTRUCTIONS = (
     "These tools are the YellowDog CLI's yd-* commands, one tool per command, run"
-    " with --json: a tool's result is the command's JSON document, as the CLI"
-    " README's 'Machine-readable Output and Exit Codes' section describes, and a"
+    " with --json: a tool's result is the command's JSON document, as the CLI's"
+    " 'Machine-readable Output and Exit Codes' page (docs/json-output.md)"
+    " describes, and a"
     " failure carries the command's error text and exit code. Destructive tools"
     " (cancel, terminate, shut down, remove, delete) run without a confirmation"
     " prompt, so confirm with the user first; every acting or destructive tool"

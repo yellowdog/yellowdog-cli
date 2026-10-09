@@ -100,7 +100,7 @@ Hover over any button, checkbox or field for a one-line description of what it d
 
 ## Objects and the Data Client
 
-The object actions in panel 4 — **Download Matching Objects**, **Delete Matching Objects**, and the listings their dialogs are built from — are carried out by the CLI's data client: `yd-download` and `yd-delete`, which move and remove objects with [rclone](https://rclone.org/). They are fully supported, and are the same commands you would run by hand; see [the CLI's documentation of the data client](https://github.com/yellowdog/yellowdog-cli/blob/main/README.md#data-client) for everything they accept.
+The object actions in panel 4 — **Download Matching Objects**, **Delete Matching Objects**, and the listings their dialogs are built from — are carried out by the CLI's data client: `yd-download` and `yd-delete`, which move and remove objects with [rclone](https://rclone.org/). They are fully supported, and are the same commands you would run by hand; see [the CLI's documentation of the data client](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/data-client.md) for everything they accept.
 
 They act on the remote storage the data client is configured for — the `remote`, `bucket` and `prefix` in the configuration file's `[dataClient]` section, or the `YD_DATA_CLIENT_*` environment variables — not on anything held by the YellowDog platform itself, and they need no YellowDog credentials. So:
 

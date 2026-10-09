@@ -3,7 +3,7 @@
 # TOML key names are case-sensitive.
 #
 # Some properties can be overridden by a command-line flag or an environment
-# variable; see the README for details.  Others are only settable here or via
+# variable; see docs/configuration.md for details.  Others are only settable here or via
 # {{variable}} substitution backed by a YD_VAR_<NAME> environment variable.
 #
 # Variable substitution is supported throughout using {{variable_name}}.
