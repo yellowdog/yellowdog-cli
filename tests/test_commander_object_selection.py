@@ -450,3 +450,11 @@ def test_capture_objects_offers_only_what_would_be_deleted(window, monkeypatch):
     assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
         objects()[0]
     ]
+
+
+def test_parse_download_summaries_names_an_item_by_its_own_name():
+    # A ':' in the name is the name's; the remote's is split off first
+    rows = [_download_record("loc:a:b.txt", "loc:a:b.txt")]
+    assert parse_download_summaries(rows) == [
+        ObjectSummary(path="loc:a:b.txt", name="a:b.txt", is_dir=False)
+    ]

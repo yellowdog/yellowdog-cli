@@ -60,7 +60,7 @@ class TestValidateSpecification:
     def test_every_violation_is_reported_with_its_path(self):
         violations = validate_specification(Family.WORK_REQUIREMENT, BAD, "wr.json")
         assert violations == [
-            Violation("taskGroups[0].maxWorkers", "must be integer"),
+            Violation("taskGroups[0].maxWorkers", "must be integer or null"),
             Violation("taskGroups[0].tasks[0].taskType", "must be string"),
             Violation("taskGroups[1]", "unknown property 'nope'"),
         ]

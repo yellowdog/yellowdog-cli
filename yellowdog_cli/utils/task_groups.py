@@ -190,7 +190,9 @@ def create_task_group(
 
     # Gather task types, in order of first appearance
     task_types_from_tasks = [
-        task[TASK_TYPE] for task in task_group_data[TASKS] if TASK_TYPE in task
+        task[TASK_TYPE]
+        for task in task_group_data[TASKS]
+        if task.get(TASK_TYPE) is not None
     ]
 
     task_group_name, num_tasks = _name_task_group(
@@ -300,7 +302,8 @@ def _task_types(
     # set, whose order varies from run to run with string hashing
     task_types: list = list(
         dict.fromkeys(
-            levels.checked(TASK_TYPES, check_list, []) + task_types_from_tasks
+            # A level setting null declares none, inheriting none either
+            (levels.checked(TASK_TYPES, check_list, []) or []) + task_types_from_tasks
         )
     )
     # Use the task type from the config file if present and task_types is empty

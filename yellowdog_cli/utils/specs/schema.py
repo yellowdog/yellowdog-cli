@@ -43,6 +43,7 @@ from yellowdog_cli.utils.specs.properties import (
     Property,
     SdkRef,
     load_descriptions,
+    null_stops_inheritance,
     properties_at,
 )
 from yellowdog_cli.utils.specs.schema_cache import compile_validator
@@ -95,9 +96,9 @@ FIELD_OVERRIDES: dict[tuple[str, str], dict[str, Any]] = {
     for field in ("effectiveFrom", "effectiveUntil")
 }
 
-# Properties create.py demands (it indexes resource["namespace"], with no
-# default) though the SDK model leaves them optional: the schema describes
-# what yd-create accepts
+# Properties the CLI demands though the SDK model leaves them optional, so
+# that the schema describes what the CLI accepts: create.py indexes
+# resource["namespace"], with no default
 CLI_REQUIRED: dict[str, tuple[str, ...]] = {
     "ComputeSourceTemplate": ("namespace",),
     "ComputeRequirementStaticTemplate": ("namespace",),
@@ -562,11 +563,22 @@ def _object_schema(
     descriptions: dict[str, str] | None,
     *,
     root: bool,
+    level: Level | None = None,
 ) -> dict[str, Any]:
+    """
+    An object of 'props'. 'level' is a Work Requirement level, at which an
+    inherited property may also be null, stopping its inheritance.
+    """
     properties: dict[str, Any] = {"$schema": SCHEMA_PROPERTY} if root else {}
     required: list[str] = []
     for prop in props:
         properties[prop.name] = _property_schema(prop, defs, descriptions)
+        if level is not None and null_stops_inheritance(prop, level):
+            # The description and the rest stay on the outside, where the
+            # wrapping hoists them from, rather than inside an 'else'
+            schema = dict(properties[prop.name])
+            meta = {k: schema.pop(k) for k in _HOISTED if k in schema}
+            properties[prop.name] = {**_nullable(schema), **meta}
         if prop.required:
             required.append(prop.name)
     schema: dict[str, Any] = {
@@ -829,13 +841,25 @@ def build_schema(family: Family) -> dict[str, Any]:
     if family is Family.WORK_REQUIREMENT:
         descriptions = load_descriptions()
         defs["task"] = _object_schema(
-            properties_at(Level.TASK), defs, descriptions, root=False
+            properties_at(Level.TASK),
+            defs,
+            descriptions,
+            root=False,
+            level=Level.TASK,
         )
         defs["taskGroup"] = _object_schema(
-            properties_at(Level.TASK_GROUP), defs, descriptions, root=False
+            properties_at(Level.TASK_GROUP),
+            defs,
+            descriptions,
+            root=False,
+            level=Level.TASK_GROUP,
         )
         root = _object_schema(
-            properties_at(Level.WORK_REQUIREMENT), defs, descriptions, root=True
+            properties_at(Level.WORK_REQUIREMENT),
+            defs,
+            descriptions,
+            root=True,
+            level=Level.WORK_REQUIREMENT,
         )
     elif family is Family.WORKER_POOL:
         root = _object_schema(WORKER_POOL_SHELL, defs, None, root=True)

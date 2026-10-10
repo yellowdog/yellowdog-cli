@@ -3,6 +3,7 @@
 <!--ts-->
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
    * [Property Inheritance](#property-inheritance)
+      * [Stopping Inheritance with null](#stopping-inheritance-with-null)
    * [Work Requirement Property Dictionary](#work-requirement-property-dictionary)
    * [Automatic taskTypes Population](#automatic-tasktypes-population)
    * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
@@ -55,7 +56,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 10:46:48 BST 2026 -->
+<!-- Added by: pwt, at: Sat Oct 10 10:19:57 BST 2026 -->
 
 <!--te-->
 
@@ -113,6 +114,30 @@ Work Requirement specifications can be simplified substantially by the property 
 This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level). Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
 
 Overridden properties are also inherited at lower levels in the hierarchy. E.g. if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
+
+### Stopping Inheritance with `null`
+
+To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, exactly as if it had been set nowhere: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on, as the [Property Dictionary](property-dictionary.md) gives them. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:
+
+```json
+{
+  "taskGroups": [
+    {"name": "plain", "arguments": null, "priority": null, "tasks": [{"name": "task-1"}]},
+    {"name": "verbose", "tasks": [{"name": "task-2"}, {"name": "task-3", "arguments": null}]}
+  ]
+}
+```
+
+`task-1` runs with no arguments, in a Task Group with no priority. `task-2` inherits `["--verbose"]` and its Task Group a priority of `5.0`, while `task-3` stops the inheritance for itself alone.
+
+`null` can be used for any property that is inherited, at any level with a level above it to inherit from (the TOML file counts, so `null` at the Work Requirement level stops a TOML value). The TOML file is the top of the hierarchy, with nothing above it to stop, so it has no need of `null`, which TOML cannot express. Two properties are exceptions:
+
+- `name` and `tag` are not inherited, so there is nothing for `null` to stop.
+- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none: it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
+
+For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance, with the same result. An inherited `taskData`, `taskDataFile` or `taskDataFiles` is stopped by setting any one of the three, to `null` or to an empty value: the three are one setting, and the first level to set any of them supplies the Task Data.
+
+`null` is not the same as removing the property with the [unset syntax](variables.md#removing-properties-using-the-unset-suffix): a property removed by `{{::}}` (or by `{{variable::}}` with the variable undefined) is treated as never written at that level, so it is still inherited from the level above. See [Unset Properties and Property Inheritance](variables.md#unset-properties-and-property-inheritance).
 
 ## Work Requirement Property Dictionary
 
@@ -194,7 +219,7 @@ Each `TaskErrorSelector` has three optional fields, each itself a Selection of p
 }
 ```
 
-`maxRetries` is required and must be `>= 0` (set it to `0` to define the policy but disable retries). `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
+`maxRetries` must be `>= 0`, and defaults to `0` when omitted, which defines the policy but retries nothing. `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
 
 ### `failurePolicy`
 

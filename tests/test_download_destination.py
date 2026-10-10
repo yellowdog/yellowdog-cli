@@ -72,6 +72,23 @@ def test_no_destination_mirrors_the_remote_name():
     assert local_destination_for("S3:bucket/pfx/mydir") == Path("mydir")
 
 
+def test_an_item_at_the_remotes_root_is_named_without_the_remote():
+    # 'loc:a.txt' has no '/' to split on: '--into' wrote 'results/loc:a.txt'
+    assert local_destination_for(
+        "loc:a.txt", into_dir="results", names_remote=True
+    ) == Path("results/a.txt")
+    assert local_destination_for("loc:a.txt", names_remote=True) == Path("a.txt")
+
+
+def test_a_colon_in_the_items_own_name_is_kept():
+    assert local_destination_for(
+        "S3:bucket/a:b.txt", into_dir="results", names_remote=True
+    ) == Path("results/a:b.txt")
+    assert local_destination_for("a:b.txt", into_dir="results") == Path(
+        "results/a:b.txt"
+    )
+
+
 def test_no_destination_expands_a_pattern_into_the_current_directory():
     assert local_destination_for("pyex*") == Path(".")
 

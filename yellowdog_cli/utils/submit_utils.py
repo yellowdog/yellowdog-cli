@@ -59,6 +59,7 @@ from yellowdog_cli.utils.property_names import (
     TASK_DATA,
     TASK_DATA_FILE,
     TASK_DATA_FILES,
+    TASK_DATA_PROPERTIES,
     TASK_DATA_SOURCE,
     TASK_GROUPS,
     TASK_TAG,
@@ -406,7 +407,8 @@ def generate_retry_policy(
 ) -> RetryPolicy | None:
     """
     Build a RetryPolicy from TG > WR > config inheritance. Returns None when
-    no retryPolicy is defined at any level.
+    no retryPolicy is defined at any level. 'maxRetries' defaults to 0, as
+    the SDK and the Platform default it.
     """
     policy_data = Cascade(wr_data, tg_data).checked(
         RETRY_POLICY, check_dict, config_wr.retry_policy
@@ -418,12 +420,12 @@ def generate_retry_policy(
     if extra:
         raise ValueError(
             f"Unknown key(s) {sorted(extra)} in '{RETRY_POLICY}'; "
-            f"expected '{RETRY_MAX_RETRIES}' and optional '{RETRY_ERRORS}'"
+            f"expected '{RETRY_MAX_RETRIES}' and '{RETRY_ERRORS}'"
         )
 
     max_retries = check_int(policy_data.get(RETRY_MAX_RETRIES), RETRY_MAX_RETRIES)
     if max_retries is None:
-        raise ValueError(f"'{RETRY_POLICY}.{RETRY_MAX_RETRIES}' is required")
+        max_retries = 0
     if max_retries < 0:
         raise ValueError(
             f"'{RETRY_POLICY}.{RETRY_MAX_RETRIES}' must be >= 0 (got {max_retries})"
@@ -911,12 +913,19 @@ def get_task_data_property(
     Work Requirement and configuration levels in turn: the first level that
     sets any of 'taskData', 'taskDataFile' or 'taskDataFiles' supplies it,
     so a specification's overrides the configuration's, whichever of the
-    three each uses. 'taskDataFile' is resolved to its file contents.
+    three each uses. 'taskDataFile' is resolved to its file contents. A
+    level setting one to null, or to an empty value, sets it, as for every
+    inherited property: the Task then has no Task data, and the levels
+    above are not consulted.
     """
     config_level = {
-        TASK_DATA: config_wr.task_data,
-        TASK_DATA_FILE: config_wr.task_data_file,
-        TASK_DATA_FILES: config_wr.task_data_files,
+        name: value
+        for name, value in (
+            (TASK_DATA, config_wr.task_data),
+            (TASK_DATA_FILE, config_wr.task_data_file),
+            (TASK_DATA_FILES, config_wr.task_data_files),
+        )
+        if value is not None
     }
     for data, level in [
         (task, f"Task '{task_name}'"),
@@ -924,12 +933,12 @@ def get_task_data_property(
         (wr_data, "the Work Requirement"),
         (config_level, "the configuration file"),
     ]:
+        if not any(name in data for name in TASK_DATA_PROPERTIES):
+            continue
         try:
-            result = resolve_task_data(data, files_directory)
+            return resolve_task_data(data, files_directory)
         except ValueError as e:
             raise ValueError(f"In {level}: {e}") from e
-        if result is not None:
-            return result
 
     return None
 

@@ -162,9 +162,10 @@ class TestGenerateRetryPolicy:
         assert includes is not None and len(includes) == 1
         assert includes[0].processExitCodes == Selection(includes=[137], excludes=None)
 
-    def test_max_retries_required(self):
-        with pytest.raises(ValueError, match="required"):
-            generate_retry_policy(_config(), {}, {"retryPolicy": {}})
+    def test_max_retries_defaults_to_zero(self):
+        # As the SDK and the Platform default it
+        policy = generate_retry_policy(_config(), {}, {"retryPolicy": {}})
+        assert policy == RetryPolicy(maxRetries=0, retryErrors=None)
 
     def test_max_retries_negative_rejected(self):
         with pytest.raises(ValueError, match=">= 0"):

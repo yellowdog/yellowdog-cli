@@ -297,7 +297,7 @@ def parse_download_summaries(parsed: list) -> list[ObjectSummary] | None:
     return [
         ObjectSummary(
             path=match,
-            name=match.rsplit("/", 1)[-1].split(":", 1)[-1] + ("/" if dir_ else ""),
+            name=match.split(":", 1)[-1].rsplit("/", 1)[-1] + ("/" if dir_ else ""),
             is_dir=dir_,
         )
         for match, dir_ in is_dir.items()

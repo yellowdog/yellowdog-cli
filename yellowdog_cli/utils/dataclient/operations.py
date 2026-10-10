@@ -49,6 +49,15 @@ def is_glob(path: str) -> bool:
     return bool(GLOB_CHARS.intersection(path_part))
 
 
+def remote_basename(remote_path: str) -> str:
+    """
+    The last segment of a resolved remote path ('remote:dir/name'): the
+    remote's name is split off first, since a path at the remote's root
+    ('loc:a.txt') has no '/' to split on, and a name may hold a ':'.
+    """
+    return remote_path.rstrip("/").split(":", 1)[-1].rsplit("/", 1)[-1]
+
+
 def _rclone_error_detail(result) -> str:
     """
     Error detail for a failed rclone invocation: stderr is None when rclone
@@ -190,7 +199,7 @@ def record_deletion(
     handle passed back to delete that one item.
     """
     path = remote_path.rstrip("/")
-    name = path.rsplit("/", 1)[-1].split(":", 1)[-1] if path else path
+    name = remote_basename(path) if path else path
     item = {
         "path": path,
         "action": action,
@@ -231,6 +240,15 @@ def _rclone_for_config(config: ConfigDataClient):
     return remote_name, rclone
 
 
+def names_remote(config: ConfigDataClient, path: str) -> bool:
+    """
+    Whether a remote path argument is absolute, naming the configured
+    remote ('loc:dir/a.txt'), rather than relative to the bucket and prefix.
+    """
+    remote_name, _ = parse_rclone_config(_require_remote(config))
+    return path.startswith(f"{remote_name}:")
+
+
 def resolve_remote_path(
     config: ConfigDataClient,
     relative_path: str | None = None,
@@ -259,7 +277,7 @@ def resolve_remote_path(
         filename = cast(str, resolve_variables_in_string(filename))
 
     # Absolute rclone path — used as given, bar its '.' segments
-    if relative_path is not None and relative_path.startswith(f"{remote_name}:"):
+    if relative_path is not None and names_remote(config, relative_path):
         path_part = relative_path[len(remote_name) + 1 :]
         return f"{remote_name}:{_without_current_directory_segments(path_part)}"
 
@@ -766,6 +784,7 @@ def _download_with_glob(
     local_destination: Path,
     sync: bool = False,
     flatten: bool = False,
+    flattened: dict[str, str] | None = None,
 ) -> bool:
     """
     Download files whose names match a glob pattern. Returns False, having
@@ -796,7 +815,7 @@ def _download_with_glob(
         if json_requested() or flatten
         else [[] for _ in matches]
     )
-    flattened: dict[str, str] = {}
+    flattened = {} if flattened is None else flattened
     succeeded = True
     for entry, files in zip(matches, files_of_matches):
         src = _join_remote(remote_dir, entry["Name"])
@@ -980,6 +999,7 @@ def download_files(
     sync: bool = False,
     dry_run: bool = False,
     destination_is_item: bool = False,
+    flattened: dict[str, str] | None = None,
 ) -> bool:
     """
     Download from remote_path to local_destination. Returns False, having
@@ -994,16 +1014,32 @@ def download_files(
     present in the remote are deleted. With destination_is_item=True,
     local_destination is the remote item's own path rather than a directory
     to copy it into, so a single file is written to that path itself.
+    'flattened' maps each local file a flattened download has already
+    written to its source, for a caller downloading several remote paths
+    into one destination to share, so that a file landing on one an earlier
+    path fetched is warned of too.
     """
+    flattened = {} if flattened is None else flattened
     if dry_run:
         _dry_run_download(
-            config, remote_path, local_destination, flatten, sync, destination_is_item
+            config,
+            remote_path,
+            local_destination,
+            flatten,
+            sync,
+            destination_is_item,
+            flattened,
         )
         return True
 
     if is_glob(remote_path):
         return _download_with_glob(
-            config, remote_path, local_destination, sync=sync, flatten=flatten
+            config,
+            remote_path,
+            local_destination,
+            sync=sync,
+            flatten=flatten,
+            flattened=flattened,
         )
 
     _, rclone = _rclone_for_config(config)
@@ -1024,7 +1060,7 @@ def download_files(
         files = _download_files_of(
             rclone, remote_path, True, local_destination, flatten=True
         )
-        _warn_of_flattened_collisions(files, {})
+        _warn_of_flattened_collisions(files, flattened)
         local_destination.mkdir(parents=True, exist_ok=True)
         return _download_each(rclone, files, remote_path)
     else:
@@ -1061,6 +1097,7 @@ def _dry_run_download(
     flatten: bool,
     sync: bool,
     destination_is_item: bool,
+    flattened: dict[str, str],
 ) -> None:
     """
     Report what download_files() would do, recording each file under
@@ -1080,7 +1117,6 @@ def _dry_run_download(
             files_of_matches = _files_of_matches(
                 rclone, remote_dir, matches, local_destination, flatten
             )
-            flattened: dict[str, str] = {}
             for entry, files in zip(matches, files_of_matches):
                 if flatten:
                     _warn_of_flattened_collisions(files, flattened)
@@ -1111,7 +1147,7 @@ def _dry_run_download(
             rclone, remote_path, local_destination, flatten, destination_is_item, stat
         )
         if flatten:
-            _warn_of_flattened_collisions(files, {})
+            _warn_of_flattened_collisions(files, flattened)
         _record_downloads(files, remote_path, "would download")
     if sync and stat["IsDir"]:
         _report_local_sync_deletions(rclone, remote_path, local_destination)
@@ -1158,7 +1194,7 @@ def _literal_download_files(
     if not stat["IsDir"]:
         if destination_is_item:
             return [(remote_path, str(local_destination), stat.get("Size"))]
-        name = remote_path.rstrip("/").rsplit("/", 1)[-1]
+        name = remote_basename(remote_path)
         return [(remote_path, str(local_destination / name), stat.get("Size"))]
     return _download_files_of(
         rclone, remote_path, True, local_destination, flatten=flatten

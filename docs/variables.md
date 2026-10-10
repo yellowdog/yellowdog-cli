@@ -9,11 +9,12 @@
       * [Nested Variables](#nested-variables)
       * [Providing Default Values for User-Defined Variables](#providing-default-values-for-user-defined-variables)
       * [Removing Properties Using the Unset Suffix](#removing-properties-using-the-unset-suffix)
+         * [Unset Properties and Property Inheritance](#unset-properties-and-property-inheritance)
       * [Undefined Variables](#undefined-variables)
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 10:46:48 BST 2026 -->
+<!-- Added by: pwt, at: Sat Oct 10 10:19:57 BST 2026 -->
 
 <!--te-->
 
@@ -213,7 +214,7 @@ The `env:` prefix can be combined with the unset suffix to make a property condi
 region = "{{env:MY_REGION::}}"   # removed if MY_REGION is not set
 ```
 
-The bare `{{::}}` (no variable name) always removes the property unconditionally — useful for explicitly suppressing a property that a base template includes:
+The bare `{{::}}` (no variable name) always removes the property unconditionally — useful for explicitly suppressing a property that a base template includes (though in a Work Requirement, a removed property is still inherited from the level above: see [Unset Properties and Property Inheritance](#unset-properties-and-property-inheritance)):
 
 ```toml
 taskType = "{{::}}"   # always removed
@@ -237,6 +238,30 @@ name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' n
 The nested form is the only way to combine a default with the unset suffix: written in one expression, as in `{{name:=x::}}`, they are an error, since a property with a default value is never removed.
 
 A variable defined with the unset syntax, in `[common.variables]` or elsewhere, is itself removed: `region = "{{::}}"`, or `region = "{{env:MY_REGION::}}"` with `MY_REGION` not set, leaves `region` undefined. A plain reference to it, `{{region}}`, is then treated like a reference to any undefined variable: it is left unsubstituted, with a [warning](#undefined-variables), and the property or variable containing it is kept. To make a property or variable conditional on it too, use the suffix there as well: `zone = "{{region::}}a"` is removed along with `region`.
+
+#### Unset Properties and Property Inheritance
+
+In a Work Requirement, removing a property is not the same as clearing it. A property removed by the unset syntax is treated exactly as if it had never been written at that level, so it is still [inherited](work-requirements.md#property-inheritance) from the level above: from the Task Group, the Work Requirement or the `[workRequirement]` section of the TOML file, whichever is the nearest to set it. `{{::}}` therefore cannot be used to stop a Task Group or a Task receiving a value set higher up. To do that, set the property to `null` at that level, as described in [Stopping Inheritance with `null`](work-requirements.md#stopping-inheritance-with-null).
+
+For example, with `arguments = ["--verbose"]` in the `[workRequirement]` section of the TOML file:
+
+```json
+{
+  "taskGroups": [
+    {"name": "tg-1", "arguments": "{{::}}", "tasks": [{"name": "task-1"}]},
+    {"name": "tg-2", "arguments": null, "tasks": [{"name": "task-2"}]},
+    {"name": "tg-3", "arguments": ["{{::}}"], "tasks": [{"name": "task-3"}]},
+    {"name": "tg-4", "tasks": [{"name": "task-4", "arguments": ["x"]}]}
+  ]
+}
+```
+
+- `task-1` runs with `["--verbose"]`: `tg-1`'s `arguments` is removed, so `tg-1` inherits it from the TOML file and passes it on.
+- `task-2` runs with no arguments: `null` stops the inheritance.
+- `task-3` runs with no arguments too: the `{{::}}` is a list element, so only that element is removed, leaving `tg-3` with an empty list of its own, which stops the inheritance as `null` does.
+- `task-4` runs with `["x"]`, its own setting, which takes precedence over the inherited one.
+
+The same holds when the unset is conditional: `"arguments": "{{extra_args::}}"` on a Task Group uses `extra_args` if it is defined, and otherwise lets the Task Group inherit `arguments` from above as if the line were not there. To have no arguments instead when `extra_args` is undefined, give it an empty default with a type tag, which stops the inheritance as `null` would: `"arguments": "{{array:extra_args:=[]}}"`.
 
 ### Undefined Variables
 

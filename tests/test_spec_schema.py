@@ -514,8 +514,10 @@ class TestWrapping:
     def test_descriptions_sit_beside_the_wrapping(self):
         schema = build_schema(Family.WORK_REQUIREMENT)
         retry = schema["properties"]["retryPolicy"]
-        assert retry["description"] and "description" not in _unwrapped(retry)
-        assert _unwrapped(retry) == {"$ref": "#/$defs/RetryPolicy"}
+        # Never beside the $ref, where draft-07 ignores it; null, which stops
+        # its inheritance, is admitted around it
+        assert retry["description"]
+        assert _non_null(_unwrapped(retry)) == {"$ref": "#/$defs/RetryPolicy"}
         assert schema["$defs"]["taskGroup"]["properties"]["dependentOn"]["deprecated"]
 
 
@@ -582,6 +584,40 @@ class TestFamilies:
         _rejects(validate, {"resource": "Keyring", "name": "k"})
         _rejects(validate, {"resource": "Nonsense", "name": "k"})
         _rejects(validate, {"resource": "Application", "name": "a", "bogus": 1})
+
+    def test_null_is_accepted_where_it_stops_inheritance(self):
+        # Null at a level stops the property being inherited from above
+        validate = compile_schema(Family.WORK_REQUIREMENT)
+        validate(
+            {
+                "priority": None,
+                "retryPolicy": None,
+                "taskGroups": [
+                    {
+                        "arguments": None,
+                        "taskTypes": None,
+                        "failurePolicy": None,
+                        "tasks": [{"environment": None, "timeout": None}],
+                    }
+                ],
+            }
+        )
+        # Nothing to inherit: 'taskTypes' has no level above the Work
+        # Requirement, nor 'dependencies' above the Task Group
+        _rejects(validate, {"taskTypes": None, "taskGroups": [{"tasks": [{}]}]})
+        _rejects(validate, {"taskGroups": [{"dependencies": None, "tasks": [{}]}]})
+        # Not inherited, and a Task must have a type
+        _rejects(validate, {"taskGroups": [{"name": None, "tasks": [{}]}]})
+        _rejects(validate, {"taskGroups": [{"tasks": [{"taskType": None}]}]})
+
+    def test_max_retries_is_optional_as_the_sdk_and_platform_make_it(self):
+        # Both default it to 0; so does generate_retry_policy()
+        validate = compile_schema(Family.WORK_REQUIREMENT)
+        tasks = [{"tasks": [{}]}]
+        validate({"retryPolicy": {"maxRetries": 0}, "taskGroups": tasks})
+        validate({"retryPolicy": {"maxRetries": "{{retries}}"}, "taskGroups": tasks})
+        validate({"retryPolicy": {}, "taskGroups": tasks})
+        validate({"retryPolicy": {"retryErrors": None}, "taskGroups": tasks})
 
     def test_namespace_is_required_where_yd_create_demands_it(self):
         validate = compile_schema(Family.RESOURCES)

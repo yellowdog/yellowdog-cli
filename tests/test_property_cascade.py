@@ -5,9 +5,11 @@ and every lookup the CLI makes through it naming an inherited property.
 """
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
+from cli_test_helpers import shell
 
 from yellowdog_cli.utils import property_names
 from yellowdog_cli.utils.property_cascade import Cascade
@@ -124,3 +126,122 @@ class TestEveryLookup:
         inherited = {p.name for p in WORK_REQUIREMENT_PROPERTIES if p.inherited}
         wrong = [lookup for lookup in _cascade_lookups() if lookup[2] not in inherited]
         assert wrong == []
+
+
+_CONFIG = """
+[common]
+key = "k"
+secret = "s"
+namespace = "ns"
+tag = "t"
+[workRequirement]
+taskType = "bash"
+arguments = ["from-toml"]
+priority = 5.0
+setTaskNames = true
+timeout = 30.0
+taskData = "from-toml"
+"""
+
+
+def _dry_run(tmp_path: Path, specification: dict) -> tuple[dict, str]:
+    """
+    The Work Requirement yd-submit would submit, and what it printed.
+    """
+    (tmp_path / "config.toml").write_text(_CONFIG, encoding="utf-8")
+    (tmp_path / "wr.json").write_text(json.dumps(specification), encoding="utf-8")
+    result = shell(f"cd {tmp_path} && yd-submit -c config.toml wr.json --dry-run")
+    assert result.exit_code == 0, result.stdout + result.stderr
+    out = result.stdout
+    return json.loads(out[out.index("{") : out.rindex("}") + 1]), out + result.stderr
+
+
+class TestNullStopsInheritance:
+    """
+    A level setting a property to null stops it being inherited from the
+    levels above: the property has its default, as though no level set it.
+    """
+
+    def test_null_and_empty_stop_inheritance_and_unset_does_not(self, tmp_path):
+        wr, output = _dry_run(
+            tmp_path,
+            {
+                "taskTypes": ["bash", "docker"],
+                "taskGroups": [
+                    {"name": "null", "arguments": None, "tasks": [{}]},
+                    {"name": "empty", "arguments": [], "tasks": [{}]},
+                    {"name": "unset", "arguments": "{{::}}", "tasks": [{}]},
+                    {"name": "task-null", "tasks": [{"arguments": None}]},
+                ],
+            },
+        )
+        arguments = {
+            group["name"]: group["tasks"][0].get("arguments")
+            for group in wr["taskGroups"]
+        }
+        assert arguments == {
+            "null": None,
+            "empty": None,
+            "unset": ["from-toml"],
+            "task-null": None,
+        }
+        assert "WARNING" not in output
+
+    def test_a_scalar_set_to_null_has_its_default(self, tmp_path):
+        wr, _ = _dry_run(
+            tmp_path,
+            {
+                "priority": None,
+                "taskGroups": [
+                    {"tasks": [{"timeout": None}]},
+                ],
+            },
+        )
+        assert "priority" not in wr
+        task = wr["taskGroups"][0]["tasks"][0]
+        assert "timeout" not in task
+
+    def test_null_task_data_stops_it_being_inherited(self, tmp_path):
+        # The first level setting any Task Data property supplies it: a
+        # null fell through to the next level that set one
+        wr, _ = _dry_run(
+            tmp_path,
+            {
+                "taskGroups": [
+                    {"taskDataFile": None, "tasks": [{}, {"taskData": "own"}]}
+                ]
+            },
+        )
+        tasks = wr["taskGroups"][0]["tasks"]
+        assert [task.get("taskData") for task in tasks] == [None, "own"]
+
+    def test_null_task_types_declares_none(self, tmp_path):
+        # It raised a TypeError: the Task Group's types are then its Tasks'
+        wr, _ = _dry_run(
+            tmp_path,
+            {
+                "taskTypes": ["bash", "docker"],
+                "taskGroups": [{"taskTypes": None, "tasks": [{"taskType": "bash"}]}],
+            },
+        )
+        assert wr["taskGroups"][0]["runSpecification"]["taskTypes"] == ["bash"]
+
+    def test_a_null_task_type_is_no_type_of_its_own(self, tmp_path):
+        # A Task must have a type, so it takes its Task Group's, as without one
+        wr, output = _dry_run(
+            tmp_path, {"taskGroups": [{"tasks": [{"taskType": None}]}]}
+        )
+        assert wr["taskGroups"][0]["runSpecification"]["taskTypes"] == ["bash"]
+        assert wr["taskGroups"][0]["tasks"][0]["taskType"] == "bash"
+        assert "taskType: must be string" in " ".join(output.split())
+
+    def test_null_set_task_names_has_the_default(self, tmp_path):
+        # The default is to name Tasks; null gave False
+        wr, _ = _dry_run(
+            tmp_path,
+            {
+                "setTaskNames": False,
+                "taskGroups": [{"setTaskNames": None, "tasks": [{}]}],
+            },
+        )
+        assert wr["taskGroups"][0]["tasks"][0].get("name")
