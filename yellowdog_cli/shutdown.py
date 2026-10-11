@@ -71,6 +71,9 @@ _SHUT_DOWN = "shut down"
 _TERMINATE = "terminate"
 _TERMINATED = "terminated"
 
+# The finished Worker Pools named when nothing active matched
+_LISTED_FINISHED = 5
+
 # A Worker Pool to shut down: fetched, or listed
 _Pool: TypeAlias = WorkerPool | WorkerPoolSummary
 
@@ -129,10 +132,8 @@ def shut_down(ctx: RunContext, names: list[str]):
         return
 
     if globs:
-        print_info(
-            f"Shutting down Worker Pools "
-            f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
-        )
+        scope = describe_glob_scope(ctx.client, globs, ctx.config.namespace)
+        print_info(f"Shutting down Worker Pools {scope}")
         worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
             globs,
             ctx.config.namespace,
@@ -141,10 +142,10 @@ def shut_down(ctx: RunContext, names: list[str]):
             ),
         )
     else:
-        print_info(
-            f"Shutting down Worker Pools {namespace_scope(ctx.client, ctx.config.namespace)}"
-            + filter_phrase("with names including '{}'", ctx.config.name_tag)
+        scope = namespace_scope(ctx.client, ctx.config.namespace) + filter_phrase(
+            "with names including '{}'", ctx.config.name_tag
         )
+        print_info(f"Shutting down Worker Pools {scope}")
         worker_pool_summaries = [
             worker_pool_summary
             for worker_pool_summary in get_worker_pool_summaries(
@@ -158,11 +159,13 @@ def shut_down(ctx: RunContext, names: list[str]):
             and ctx.config.name_tag in worker_pool_summary.name
         ]
 
+    finished = [summary for summary in worker_pool_summaries if _is_finished(summary)]
     worker_pool_summaries = [
-        worker_pool_summary
-        for worker_pool_summary in worker_pool_summaries
-        if not _is_finished(worker_pool_summary)
+        summary for summary in worker_pool_summaries if not _is_finished(summary)
     ]
+    if not worker_pool_summaries and not ctx.args.dry_run:
+        print_info(_nothing_to_shut_down(scope, finished))
+        return
 
     if ctx.args.dry_run:
         report_dry_run(
@@ -187,6 +190,32 @@ def shut_down(ctx: RunContext, names: list[str]):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _nothing_to_shut_down(scope: str, finished: list[WorkerPoolSummary]) -> str:
+    """
+    Why nothing was shut down when nothing active matched: nothing matched
+    at all, or what matched has finished, which is named, so that a pool
+    the user expected is accounted for.
+    """
+    if not finished:
+        return f"No Worker Pools to shut down {scope}"
+    listed = ", ".join(
+        f"'{summary.name}' ({summary.status})"
+        for summary in finished[:_LISTED_FINISHED]
+    )
+    more = len(finished) - _LISTED_FINISHED
+    if more > 0:
+        listed += f" and {more} more"
+    matching = (
+        "1 matching Worker Pool is"
+        if len(finished) == 1
+        else f"{len(finished)} matching Worker Pools are"
+    )
+    return (
+        f"No active Worker Pools to shut down {scope}; {matching} already"
+        f" finished: {listed}"
+    )
 
 
 def _is_finished(worker_pool: _Pool) -> bool:

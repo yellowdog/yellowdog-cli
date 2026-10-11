@@ -207,6 +207,53 @@ class TestListing:
         _run(platform, ["wp-*"])
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
 
+    @staticmethod
+    def _messages(monkeypatch) -> list[str]:
+        printed: list[str] = []
+        monkeypatch.setattr(yd_shutdown, "print_info", printed.append)
+        return printed
+
+    def test_nothing_active_says_what_matched_and_was_finished(
+        self, platform, monkeypatch
+    ):
+        printed = self._messages(monkeypatch)
+        platform.pools[WP_A] = _provisioned(
+            WP_A, "wp-tag-a", WorkerPoolStatus.TERMINATED
+        )
+        platform.pools[WP_B] = _configured(WP_B, "on-premise", WorkerPoolStatus.EMPTY)
+
+        _run(platform, [])
+
+        assert platform.calls == []
+        assert printed[-1] == (
+            "No active Worker Pools to shut down in namespace 'ns' with names"
+            " including 'tag'; 1 matching Worker Pool is already finished:"
+            " 'wp-tag-a' (TERMINATED)"
+        )
+
+    def test_nothing_matching_says_so(self, platform, monkeypatch):
+        printed = self._messages(monkeypatch)
+        platform.pools.clear()
+
+        _run(platform, [])
+
+        assert printed[-1] == (
+            "No Worker Pools to shut down in namespace 'ns' with names including 'tag'"
+        )
+
+    def test_several_finished_are_counted_and_named(self, platform, monkeypatch):
+        printed = self._messages(monkeypatch)
+        for id_, name in ((WP_A, "wp-tag-a"), (WP_B, "wp-tag-b"), (WP_C, "wp-tag-c")):
+            platform.pools[id_] = _provisioned(id_, name, WorkerPoolStatus.SHUTDOWN)
+
+        _run(platform, ["wp-*"])
+
+        assert printed[-1].startswith("No active Worker Pools to shut down")
+        assert printed[-1].endswith(
+            "; 3 matching Worker Pools are already finished: 'wp-tag-a' (SHUTDOWN),"
+            " 'wp-tag-b' (SHUTDOWN), 'wp-tag-c' (SHUTDOWN)"
+        )
+
     def test_a_dry_run_reports_and_does_nothing(self, platform, monkeypatch):
         report = MagicMock()
         monkeypatch.setattr(yd_shutdown, "report_dry_run", report)
