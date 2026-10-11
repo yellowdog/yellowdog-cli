@@ -192,6 +192,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-copy",
         }
         standalone = {
+            "yd-completion",
             "yd-help",
             "yd-version",
             "yd-format-json",
@@ -406,9 +407,11 @@ class TestToolKinds:
             assert isinstance(command.tool, ToolKind), command.name
 
     def test_the_commands_that_are_not_tools(self):
-        # Interactive, or file formatters, or the tool list itself
+        # Interactive, or file formatters, or the tool list itself, or a
+        # shell script
         assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.NONE} == {
             "yd-cloudwizard",
+            "yd-completion",
             "yd-format-json",
             "yd-jsonnet2json",
             "yd-help",

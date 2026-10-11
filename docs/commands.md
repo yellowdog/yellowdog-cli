@@ -73,10 +73,11 @@
       * [yd-format-json](#yd-format-json)
       * [yd-jsonnet2json](#yd-jsonnet2json)
       * [yd-schema](#yd-schema)
+      * [yd-completion](#yd-completion)
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 10:02:42 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 13:29:39 BST 2026 -->
 
 <!--te-->
 
@@ -113,7 +114,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema`, `yd-version` and `yd-jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-completion`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema`, `yd-version` and `yd-jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
 
 The five [`yd-data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -1679,7 +1680,7 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
-None of `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd-help`, `yd-version` and `yd-jsonnet2json` accept; `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd-completion`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd-help`, `yd-version` and `yd-jsonnet2json` accept; `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
 
 ### yd-doctor
 
@@ -1818,6 +1819,28 @@ Exactly one of a `<family>`, `--write <dir>`, `--check <dir>` or `--list` must b
 After upgrading the CLI or the SDK, `yd-schema --check <dir>` says whether a written directory is still current — the versions in its index, and every family's file, which must be there and be exactly what the installed CLI and SDK build, so a file edited or missing is reported — and `yd-schema --write <dir>` again refreshes it.
 
 A family printed with `yd-schema <family>` is exactly what `--write` writes for it (coloured when printed to a terminal, unless `--no-format` is given, so piped or redirected it is the same bytes), and each file is replaced whole or not at all. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.
+
+### yd-completion
+
+The `yd-completion` command prints a shell completion script for the `yd-*` commands, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes a noun's verbs (`yd-wr s` → `submit`, `start`, `show`), the options a command or verb takes (never one it does not), and the values the CLI knows: an option's fixed choices, the keys `--sort` takes (each after a comma, too), the entity types `yd-list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help. Names and IDs on the YellowDog Platform are not completed. The commands the nouns replace, such as `yd-submit`, are not completed either; `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
+
+```shell
+yd-completion bash | zsh | fish | powershell
+```
+
+Load the script in the shell's start-up file, so that every new shell has it:
+
+```shell
+eval "$(yd-completion bash)"     # in ~/.bashrc
+eval "$(yd-completion zsh)"      # in ~/.zshrc, after compinit if it is run there
+yd-completion fish | source      # in ~/.config/fish/config.fish
+```
+
+```powershell
+yd-completion powershell | Out-String | Invoke-Expression    # in $PROFILE
+```
+
+The script asks `yd-completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. It needs no configuration file and no credentials, and contacts nothing.
 
 ## Deprecated Commands
 

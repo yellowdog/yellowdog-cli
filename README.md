@@ -22,6 +22,7 @@
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
+   * [Shell Completion](#shell-completion)
    * [Specification Schemas](#specification-schemas)
    * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
@@ -36,7 +37,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 10:02:41 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 13:29:38 BST 2026 -->
 
 <!--te-->
 
@@ -61,6 +62,7 @@ Each command names the object it acts on, then what to do to it — `yd-workrequ
 - **Showing** the details of the current Application with the **`yd-application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd-doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
+- **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd-completion`** command
 
 The commands the nouns replace, such as `yd-submit` and `yd-terminate`, still run, with a warning, until a future release; `yd-help --deprecated` says what replaces each.
 
@@ -294,6 +296,22 @@ options:
 ```
 
 If a command fails and the reason isn't clear, run **[`yd-doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
+
+## Shell Completion
+
+Tab completion of the commands, their verbs, their options and the values the CLI knows is available for bash, zsh, fish and PowerShell: add the line for your shell to its start-up file.
+
+```shell
+eval "$(yd-completion bash)"     # ~/.bashrc
+eval "$(yd-completion zsh)"      # ~/.zshrc
+yd-completion fish | source      # ~/.config/fish/config.fish
+```
+
+```powershell
+yd-completion powershell | Out-String | Invoke-Expression    # $PROFILE
+```
+
+See [yd-completion](docs/commands.md#yd-completion) for what it completes.
 
 ## Specification Schemas
 

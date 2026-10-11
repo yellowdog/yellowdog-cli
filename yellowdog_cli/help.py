@@ -16,7 +16,7 @@ from rich.theme import Theme
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.check_imports import EXTRA_PROBES
-from yellowdog_cli.utils.command_registry import COMMANDS
+from yellowdog_cli.utils.command_registry import COMMANDS, OTHER_COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.noun_registry import DEPRECATED, NOUNS, Noun
 from yellowdog_cli.utils.output_settings import configure_output
@@ -36,18 +36,6 @@ HEADING_STYLE = "bold"
 NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|short: yd-\w+)\)$")
 # A summary's extra, as the registry and OTHER_COMMANDS write it
 EXTRA = re.compile(r" \(needs the (\w+) extra\)$")
-
-
-# The entry points that are not registry commands: they take none of the
-# CLI's options, so the registry has nothing to say about them, but a user
-# has them all the same (each prints the install hint for its extra when
-# that is missing). tests/test_command_registry.py holds this table to
-# pyproject.toml's entry points less the registry, so a new entry point is
-# listed by one or the other.
-OTHER_COMMANDS: dict[str, str] = {
-    "yd-commander": "Launch the Commander desktop GUI (needs the commander extra)",
-    "yd-mcp": "Run the MCP server over the yd-* commands (needs the mcp extra)",
-}
 
 
 def _listing() -> list[tuple[str, str]]:

@@ -22,7 +22,7 @@ from argparse import (
     _ArgumentGroup,
 )
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from functools import cache
 from importlib.metadata import entry_points
@@ -70,6 +70,18 @@ Validator = Callable[[Namespace, ArgumentParser], None]
 DESCRIPTION_PREFIX = "YellowDog command-line utility for "
 
 
+class Completes(Enum):
+    """
+    What a value-taking option's value completes to in the shell
+    (utils/completion.py), beyond the choices and types the registry
+    already states. tests/test_completion.py holds it to the metavar.
+    """
+
+    NONE = auto()
+    FILE = auto()  # a local file (or a file or directory)
+    DIR = auto()  # a local directory
+
+
 @dataclass(frozen=True, eq=False)
 class Option:
     """
@@ -84,6 +96,8 @@ class Option:
     # and --upgrade-rclone can run without it: required for every MCP tool,
     # which offers neither, and by the command's own check otherwise
     tool_required: bool = False
+    # What its value completes to in the shell
+    completes: Completes = Completes.NONE
 
     @property
     def positional(self) -> bool:
@@ -102,18 +116,25 @@ class Option:
     def aliases(self) -> tuple[str, ...]:
         return tuple(flag for flag in self.flags if flag != self.name)
 
-    def variant(self, **overrides: Any) -> Option:
+    def variant(
+        self, *, completes: Completes | None = None, **overrides: Any
+    ) -> Option:
         """
-        The same option with some keyword arguments replaced.
+        The same option with some keyword arguments replaced, and what its
+        value completes to, if given.
         """
-        return Option(self.flags, {**self.kwargs, **overrides}, self.tool_required)
+        return replace(
+            self,
+            kwargs={**self.kwargs, **overrides},
+            completes=self.completes if completes is None else completes,
+        )
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
         return target.add_argument(*self.flags, **self.kwargs)
 
 
-def option(*flags: str, **kwargs: Any) -> Option:
-    return Option(flags, kwargs)
+def option(*flags: str, completes: Completes = Completes.NONE, **kwargs: Any) -> Option:
+    return Option(flags, kwargs, completes=completes)
 
 
 @dataclass(frozen=True, eq=False)
@@ -208,6 +229,18 @@ COMMON_OPTIONS: dict[CommandKind, tuple[Option, ...]] = {
     CommandKind.STANDALONE: (),
 }
 COMMANDS: dict[str, Command] = {}
+
+# The entry points that are not registry commands: they take none of the
+# CLI's options, so the registry has nothing to say about them, but a user
+# has them all the same (each prints the install hint for its extra when
+# that is missing). yd-help lists them, and shell completion registers them.
+# tests/test_command_registry.py holds this table to pyproject.toml's entry
+# points less the registry, so a new entry point is listed by one or the
+# other.
+OTHER_COMMANDS: dict[str, str] = {
+    "yd-commander": "Launch the Commander desktop GUI (needs the commander extra)",
+    "yd-mcp": "Run the MCP server over the yd-* commands (needs the mcp extra)",
+}
 
 _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
 
@@ -489,6 +522,7 @@ CONFIG = option(
         "configuration file in TOML format; "
         "the default to use is 'config.toml' in the current directory"
     ),
+    completes=Completes.FILE,
     metavar="<config_file.toml>",
 )
 KEY = option(
@@ -777,6 +811,7 @@ WORKER_POOL = option(
         "worker pool definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<worker_pool.json>",
 )
 DRY_RUN = option(
@@ -890,6 +925,7 @@ RESOURCE_SPECIFICATIONS = option(
     "resource_specifications",
     nargs="+",
     default=[],
+    completes=Completes.FILE,
     metavar="<resource-specification>",
     type=str,
     help=(
@@ -934,6 +970,7 @@ CONTENT_PATH = option(
         "the directory in which files for upload (or for user data "
         "or CSV data) are found"
     ),
+    completes=Completes.DIR,
     metavar="<directory>",
 )
 FOLLOW_PROVISIONING = FOLLOW.variant(help="follow progress after provisioning")
@@ -999,6 +1036,7 @@ OUTPUT_FILE = option(
         "if specified, the detailed JSON resource listing will also be written "
         "to the nominated output file"
     ),
+    completes=Completes.FILE,
     metavar="<output-file>",
 )
 UPGRADE_RCLONE = option(
@@ -1470,6 +1508,7 @@ CLOUD_PROVIDER = option(
 CREDENTIALS_FILE = option(
     "--credentials-file",
     required=False,
+    completes=Completes.FILE,
     metavar="<file-containing-google-credentials>",
     type=str,
     help=(
@@ -2041,6 +2080,7 @@ INTO = option(
         "own name; unlike --destination, which names the local path "
         "corresponding to a single remote item"
     ),
+    completes=Completes.DIR,
     metavar="<local-dir>",
 )
 
@@ -2068,6 +2108,7 @@ COMMANDS["yd-download"] = Command(
                 DESTINATION.variant(
                     default=None,
                     help="local directory or file path to write to (default: mirrors remote name)",
+                    completes=Completes.FILE,
                     metavar="<local-path>",
                 ),
                 INTO,
@@ -2379,6 +2420,7 @@ COMPUTE_REQUIREMENT = option(
         "compute requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<compute_requirement.json>",
 )
 REPORT = option(
@@ -2392,6 +2434,7 @@ REPORT = option(
 )
 COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     "compute_requirement_file_positional",
+    completes=Completes.FILE,
     metavar="<compute-requirement-specification-file>",
     type=str,
     nargs="?",
@@ -2434,6 +2477,7 @@ COMMANDS["yd-instantiate"] = Command(
 
 WORKER_POOL_FILE_POSITIONAL = option(
     "worker_pool_file_positional",
+    completes=Completes.FILE,
     metavar="<worker-pool-specification-file>",
     type=str,
     nargs="?",
@@ -2961,6 +3005,7 @@ ACTIONS = option(
     type=str,
     required=False,
     help="node action spec file in JSON or Jsonnet format",
+    completes=Completes.FILE,
     metavar="<node_actions.json>",
 )
 NODE = option(
@@ -3043,7 +3088,9 @@ COMMANDS["yd-nodeaction"] = Command(
         ACTIONS,
         VALIDATE,
         WORKER_POOL.variant(
-            help="name of the target worker pool", metavar="<worker-pool-name>"
+            help="name of the target worker pool",
+            metavar="<worker-pool-name>",
+            completes=Completes.NONE,
         ),
         Exclusive((NODE, ALL_NODES)),
         NODE_ACTION_STATUS,
@@ -3162,12 +3209,14 @@ SCHEMA_FAMILY = option(
 SCHEMA_WRITE = option(
     "--write",
     type=str,
+    completes=Completes.DIR,
     metavar="<dir>",
     help="write every family's schema to <dir>, and index.json naming the CLI and SDK versions",
 )
 SCHEMA_CHECK = option(
     "--check",
     type=str,
+    completes=Completes.DIR,
     metavar="<dir>",
     help="exit 0 if the schemas in <dir> were written by the installed CLI and SDK, else 1 saying which changed",
 )
@@ -3256,6 +3305,7 @@ WORK_REQUIREMENT = option(
         "work requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<work_requirement.json>",
 )
 JSON_RAW = option(
@@ -3264,6 +3314,7 @@ JSON_RAW = option(
     type=str,
     required=False,
     help="submit a 'raw' JSON work requirement file",
+    completes=Completes.FILE,
     metavar="<raw_work_requirement.json>",
 )
 EXIT_ON_FAILURE = option(
@@ -3330,6 +3381,7 @@ CSV_FILE = option(
     required=False,
     action="append",
     help="the CSV file(s) from which to read Task data",
+    completes=Completes.FILE,
     metavar="<data.csv>",
 )
 PROCESS_CSV_ONLY = option(
@@ -3395,6 +3447,7 @@ ADD_TO = option(
 # Note: removes the need for the '-r' option
 WORK_REQUIREMENT_FILE_POSITIONAL = option(
     "work_requirement_file_positional",
+    completes=Completes.FILE,
     metavar="<work-requirement-specification-file>",
     type=str,
     nargs="?",
@@ -3618,6 +3671,7 @@ LOCAL_PATHS = Option(
         "help": "local file(s) or directory(ies) to upload",
     },
     tool_required=True,
+    completes=Completes.FILE,
 )
 
 
@@ -3705,8 +3759,30 @@ COMMANDS["yd-variables"] = Command(
 
 # --- Standalone commands -------------------------------------------------
 # Each keeps a parser of its own (or none); only their purpose and summary
-# are held here.
+# are held here, bar yd-completion, whose parser is built from its options
+# here (build_parser()).
 
+COMPLETION_SHELLS = ("bash", "zsh", "fish", "powershell")
+COMPLETION_SHELL = option(
+    "shell",
+    choices=COMPLETION_SHELLS,
+    help=(
+        "the shell to print the completion script for: load it with"
+        " 'eval \"$(yd-completion bash)\"' (or zsh) in the shell's start-up"
+        " file, 'yd-completion fish | source' in fish's config.fish, or"
+        " 'yd-completion powershell | Out-String | Invoke-Expression' in a"
+        " PowerShell profile"
+    ),
+)
+
+COMMANDS["yd-completion"] = Command(
+    name="yd-completion",
+    purpose="printing the shell completion script for the yd-* commands",
+    summary="Print the shell completion script for the yd-* commands",
+    kind=CommandKind.STANDALONE,
+    options=(COMPLETION_SHELL,),
+    tool=ToolKind.NONE,
+)
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
     purpose="formatting JSON files using a compact encoder",

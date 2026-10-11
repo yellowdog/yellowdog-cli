@@ -126,3 +126,21 @@ class TestDataClient:
         )
         assert loaded["returncode"] == 1
         assert loaded["sdk"] is False
+
+
+class TestCompletion:
+    # The shell runs 'yd-completion --complete' on every Tab, so it answers
+    # from the registries without the SDK, or requests
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["yd-completion", "zsh"],
+            ["yd-completion", "--complete", "zsh", "2", "yd-wr", "cancel", "--"],
+            ["yd-completion", "--complete", "bash", "2", "yd-wr", "submit", ""],
+        ],
+    )
+    def test_completion_loads_no_sdk(self, tmp_path, argv):
+        loaded = _loaded(tmp_path, "yellowdog_cli.completion", argv, COMMON)
+        assert loaded["returncode"] == 0
+        assert loaded["sdk"] is False
+        assert loaded["requests"] is False

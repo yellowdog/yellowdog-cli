@@ -91,6 +91,11 @@ ALLOWED: dict[str, str] = {
         "Commander: a child's output that cannot be read is reported in the"
         " window, which stays up"
     ),
+    "yellowdog_cli/completion.py::_answer#0": (
+        "A completion request run by the shell on Tab: a failure prints no"
+        " candidates rather than a traceback into the user's command line, and"
+        " makes no Platform call"
+    ),
     "yellowdog_cli/delete.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/download.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/download.py::_refuse_unsafe_syncs#0": (

@@ -4534,6 +4534,24 @@
       "type": null
     }
   ],
+  "yd-completion": [
+    {
+      "choices": [
+        "bash",
+        "zsh",
+        "fish",
+        "powershell"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "shell",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [],
+      "required": null,
+      "type": null
+    }
+  ],
   "yd-compute-deprovision": [
     {
       "choices": null,

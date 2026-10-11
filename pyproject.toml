@@ -81,6 +81,7 @@
     yd-cloudwizard = "yellowdog_cli.cloudwizard:main"
     yd-commander = "yellowdog_cli.commander.launcher:main"
     yd-compare = "yellowdog_cli.compare:main"
+    yd-completion = "yellowdog_cli.completion:main"
     yd-compute-deprovision = "yellowdog_cli.compute_deprovision:main"
     yd-compute-reprovision = "yellowdog_cli.compute_reprovision:main"
     yd-compute-restart = "yellowdog_cli.compute_restart:main"
@@ -148,6 +149,7 @@
     ]
 
 [tool.setuptools.package-data]
+    "yellowdog_cli" = ["completion_scripts/*"]
     "yellowdog_cli.commander" = ["*.ui", "images/*", "README.md"]
     "yellowdog_cli.mcp" = ["README.md"]
     "yellowdog_cli.spec_data" = ["*.json"]

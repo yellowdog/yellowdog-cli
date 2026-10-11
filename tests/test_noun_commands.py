@@ -48,6 +48,7 @@ INSTANCE_SPEC = f"{CR_ID}.i-0123456789"
 UTILITIES = {
     "yd-application",
     "yd-cloudwizard",
+    "yd-completion",
     "yd-doctor",
     "yd-variables",
     "yd-schema",

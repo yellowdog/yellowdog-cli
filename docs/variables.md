@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 10:02:44 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 13:29:41 BST 2026 -->
 
 <!--te-->
 
