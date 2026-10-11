@@ -15,10 +15,10 @@ from yellowdog_cli.commander.window_base import CWD, NO_LISTING_TAG
 from yellowdog_cli.commander.window_dialogs import WindowDialogs
 
 SELECTED_WR_PREFIX = "Work Requirement: "
-# The Work Requirement statuses 'yd-submit --add-to' accepts, the only ones Add
-# to offers: 'yd-list --active-only' also keeps FINISHING and CANCELLING ones,
-# which take no new Tasks. Spelled out rather than imported: nothing in
-# Commander imports the SDK.
+# The Work Requirement statuses 'yd-workrequirement submit --add-to' accepts,
+# the only ones Add to offers: 'yd-list --active-only' also keeps FINISHING and
+# CANCELLING ones, which take no new Tasks. Spelled out rather than imported:
+# nothing in Commander imports the SDK.
 ADDABLE_STATUSES = ("RUNNING", "HELD")
 WR_DATA = "workRequirementData"
 
@@ -61,10 +61,10 @@ class WorkPanel(WindowDialogs):
 
     def _submit_args(self, follow: bool = True) -> list[str] | None:
         """
-        The 'yd-submit' arguments Panel 2 sets, shared by Submit and Add to: the
-        selected definition, Dry Run, Follow Progress (unless 'follow' is False)
-        and the Extra Options. None, having said why, when the Extra Options
-        cannot be split.
+        The 'yd-workrequirement submit' arguments Panel 2 sets, shared by
+        Submit and Add to: the selected definition, Dry Run, Follow Progress
+        (unless 'follow' is False) and the Extra Options. None, having said
+        why, when the Extra Options cannot be split.
         """
         if self._wr_file is None:
             args = []
@@ -87,19 +87,20 @@ class WorkPanel(WindowDialogs):
         submit_args = self._submit_args()
         if submit_args is None:
             return
-        self._run_command_in_subprocess("yd-submit", submit_args)
+        self._run_command_in_subprocess("yd-workrequirement submit", submit_args)
 
     def _add_to_work_requirement_action(self):
         """
         Add the Task Groups and Tasks of the selected definition (or the
-        configuration file's) to an existing Work Requirement, chosen from a list
-        of those that can still be added to: 'yd-submit --add-to <ydid>', with
-        the same Panel 2 settings as Submit.
+        configuration file's) to an existing Work Requirement, chosen from a
+        list of those that can still be added to: 'yd-workrequirement submit
+        --add-to <ydid>', with the same Panel 2 settings as Submit.
 
         Lists the candidates with 'yd-list work-requirements --active-only
         --json', in the current namespace and tag or matching the Name pattern.
-        '--active-only' leaves out COMPLETED, CANCELLED and FAILED, and CANCELLING
-        is dropped here, since 'yd-submit --add-to' refuses it too.
+        '--active-only' leaves out COMPLETED, CANCELLED and FAILED, and
+        CANCELLING is dropped here, since 'yd-workrequirement submit --add-to'
+        refuses it too.
 
         Every failure refuses rather than falling back. The destructive actions
         fall back to acting over their whole scope when the listing fails, but
@@ -107,7 +108,8 @@ class WorkPanel(WindowDialogs):
         a plain submission, which creates a Work Requirement nobody asked for.
 
         The target is passed by YDID, not by name, because names are not
-        guaranteed unique and 'yd-submit' takes the first one that matches.
+        guaranteed unique and 'yd-workrequirement submit' takes the first one
+        that matches.
 
         '--yes' skips the chooser when there is exactly one candidate, and
         refuses when there are several: an unattended session cannot choose, and
@@ -189,12 +191,14 @@ class WorkPanel(WindowDialogs):
             if submit_args is None:
                 return
 
-        self._run_command_in_subprocess("yd-submit", ["-A", target, *submit_args])
+        self._run_command_in_subprocess(
+            "yd-workrequirement submit", ["-A", target, *submit_args]
+        )
 
     def _cancel_work_requirements_action(self):
         self._run_destructive_with_listing(
             action_key="cancel",
-            command="yd-cancel",
+            command="yd-workrequirement cancel",
             run_args=["-y"],
             title="Cancel Work Requirements",
             gerund="Cancelling",
@@ -205,7 +209,7 @@ class WorkPanel(WindowDialogs):
     def _cancel_work_requirements_and_abort_action(self):
         self._run_destructive_with_listing(
             action_key="cancel_abort",
-            command="yd-cancel",
+            command="yd-workrequirement cancel",
             run_args=["-ay"],
             title="Cancel and Abort Work Requirements",
             gerund="Cancelling",

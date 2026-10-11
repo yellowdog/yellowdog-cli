@@ -54,12 +54,16 @@ CHILD_ENVIRONMENT = {"PYTHONIOENCODING": "utf-8"}
 
 def cli_program(command: str, args: list[str]) -> tuple[str, list[str]]:
     """
-    The program and arguments that run 'command': a console script of this
-    installation's under this interpreter ('python -m <its module>'), so that
-    it is this installation's CLI that runs, whatever the PATH Commander was
-    started with holds; anything else as it is.
+    The program and arguments that run 'command' (a 'yd-*' command, or a
+    noun and its verb): a console script of this installation's under this
+    interpreter ('python -m <its module>'), so that it is this
+    installation's CLI that runs, whatever the PATH Commander was started
+    with holds; anything else as it is.
     """
-    module = command_module(command)
+    # A noun verb ('yd-workrequirement submit') runs its noun's module with
+    # the verb first, ahead of the arguments Commander adds
+    program, _, verb = command.partition(" ")
+    module = command_module(program)
     if module is None:
         return command, args
-    return sys.executable, ["-m", module, *args]
+    return sys.executable, ["-m", module, *([verb] if verb else []), *args]

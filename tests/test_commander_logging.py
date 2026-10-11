@@ -26,7 +26,10 @@ def summaries(count: int) -> list[EntitySummary]:
 
 
 def test_command_line_text_joins_command_and_args():
-    assert command_line_text("yd-cancel", ["-y", "wr-1"]) == "yd-cancel -y wr-1"
+    assert (
+        command_line_text("yd-workrequirement cancel", ["-y", "wr-1"])
+        == "yd-workrequirement cancel -y wr-1"
+    )
 
 
 def test_command_line_text_strips_when_no_args():

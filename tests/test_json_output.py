@@ -3701,7 +3701,15 @@ class TestHelp:
             "command": "yd-help",
             "summary": yd_help.COMMANDS["yd-help"].summary,
         } in out
-        assert [r["command"] for r in out] == sorted(r["command"] for r in out)
+        # The nouns, then the other commands, then the deprecated ones, each
+        # in order of name
+        groups = [
+            [r["command"] for r in out if "verbs" in r],
+            [r["command"] for r in out if "verbs" not in r and "deprecated" not in r],
+            [r["command"] for r in out if "deprecated" in r],
+        ]
+        assert [r["command"] for r in out] == [c for group in groups for c in group]
+        assert all(group == sorted(group) and group for group in groups)
 
     def test_without_json_the_listing_is_text(self, monkeypatch, capsys):
         monkeypatch.setattr(_sys, "argv", ["yd-help"])

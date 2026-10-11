@@ -1,8 +1,11 @@
 """
 The MCP tool catalogue, built from the command registry: one tool per
-command whose ToolKind is not NONE, its input schema from the command's
-options less those excluded (mcp_excluded()), and the mapping from a call's arguments
-back to the child's command line. Imports nothing from the 'mcp' package,
+command whose ToolKind is not NONE -- each noun verb that replaces a
+registry command (yd_workrequirement_submit, yd_instance_terminate), and
+each registry command no noun replaces (yd_list, yd_show, yd_doctor) -- its
+input schema from the command's options less those excluded
+(mcp_excluded()), and the mapping from a call's arguments back to the
+child's command line. Imports nothing from the 'mcp' package,
 so the catalogue is testable without the extra, and nothing from the SDK,
 wrapper.py, args.py or printing.py.
 """
@@ -20,7 +23,9 @@ from typing import Any
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
+    NAMESPACE,
     SORT_KEY_TYPES,
+    TAG,
     Command,
     Exclusive,
     Option,
@@ -36,6 +41,11 @@ from yellowdog_cli.utils.entity_names import CLOUD_INFO_TYPES
 from yellowdog_cli.utils.limits import (
     MCP_FOLLOW_TIMEOUT_SECONDS,
     MCP_TOOL_TIMEOUT_SECONDS,
+)
+from yellowdog_cli.utils.noun_registry import (
+    DEPRECATED,
+    GENERIC_COMMANDS,
+    NOUN_COMMANDS,
 )
 
 TIMEOUT_ARGUMENT = "timeout_seconds"
@@ -163,9 +173,23 @@ class ToolSpec:
     # instead (SCOPE_TARGETS)
     scope_target: str | None = None
 
+    @property
+    def program(self) -> str:
+        """
+        The command run: a noun ('yd-workrequirement'), or a registry command.
+        """
+        return self.command.name.split(" ", 1)[0]
+
+    @property
+    def leading_args(self) -> list[str]:
+        """
+        What comes ahead of every other argument: a noun verb's verb.
+        """
+        return self.command.name.split(" ", 1)[1:]
+
 
 def tool_name(command: Command) -> str:
-    return command.name.replace("-", "_")
+    return command.name.replace(" ", "_").replace("-", "_")
 
 
 def property_name(option: Option) -> str:
@@ -293,9 +317,8 @@ def _build_tool(command: Command) -> ToolSpec:
     schema_properties: dict[str, Any] = {}
     required: list[str] = []
     exclusive_pairs: list[tuple[str, ...]] = []
-    spec_argument, spec_plural = SPECIFICATION_ARGUMENTS.get(
-        command.name, (None, False)
-    )
+    internal = command.internal_name
+    spec_argument, spec_plural = SPECIFICATION_ARGUMENTS.get(internal, (None, False))
 
     for item in command.all_options():
         options = item.options if isinstance(item, Exclusive) else (item,)
@@ -305,10 +328,10 @@ def _build_tool(command: Command) -> ToolSpec:
                 continue
             name = property_name(option)
             schema, is_required = _property_schema(option)
-            if (command.name, option.name) in MCP_MINIMUMS:
+            if (internal, option.name) in MCP_MINIMUMS:
                 schema = {
                     **schema,
-                    "minimum": MCP_MINIMUMS[(command.name, option.name)],
+                    "minimum": MCP_MINIMUMS[(internal, option.name)],
                 }
             properties[name] = (option, schema)
             schema_properties[name] = schema
@@ -336,7 +359,7 @@ def _build_tool(command: Command) -> ToolSpec:
 
     timeout_default = (
         MCP_FOLLOW_TIMEOUT_SECONDS
-        if command.name == "yd-follow"
+        if internal == "yd-follow"
         else MCP_TOOL_TIMEOUT_SECONDS
     )
     timeout_schema = {
@@ -350,13 +373,17 @@ def _build_tool(command: Command) -> ToolSpec:
 
     description = _description(command)
     scope_target = None
-    if command.name in SCOPE_TARGETS:
-        target_option = command.option_named(SCOPE_TARGETS[command.name])
-        assert target_option is not None, command.name
+    target_option = (
+        command.option_named(SCOPE_TARGETS[internal])
+        if internal in SCOPE_TARGETS
+        else None
+    )
+    # A noun verb taking IDs alone needs one (nargs '+'), so it has no scope
+    if target_option is not None and target_option.kwargs.get("nargs") == "*":
         scope_target = property_name(target_option)
         whole = (
             "the whole default prefix (with recursive)"
-            if command.name == "yd-delete"
+            if internal == "yd-delete"
             else "everything matching the namespace and tag"
         )
         scope_schema = {
@@ -402,15 +429,29 @@ def _build_tool(command: Command) -> ToolSpec:
     )
 
 
+def tool_commands() -> list[Command]:
+    """
+    The commands offered as tools: each noun verb that replaces a registry
+    command, and each registry command no noun replaces, bar those whose
+    ToolKind is NONE. The noun verbs offering a generic command (yd-list,
+    yd-show, yd-follow, yd-wait) restricted to their object are left to that
+    command's own tool.
+    """
+    commands = [
+        command for name, command in COMMANDS.items() if name not in DEPRECATED
+    ] + [
+        command
+        for command in NOUN_COMMANDS.values()
+        if command.internal_name not in GENERIC_COMMANDS
+    ]
+    return [command for command in commands if command.tool is not ToolKind.NONE]
+
+
 @cache
 def build_tools() -> tuple[ToolSpec, ...]:
     # Built once: the registry is fixed at import, and tool_named() hands out
     # the same ToolSpec objects every caller of build_tools() sees
-    tools = [
-        _build_tool(command)
-        for command in COMMANDS.values()
-        if command.tool is not ToolKind.NONE
-    ]
+    tools = [_build_tool(command) for command in tool_commands()]
     return tuple(sorted(tools, key=lambda t: t.name))
 
 
@@ -430,6 +471,7 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
     result (or, for SELF_PRINTING_COMMANDS, quiet), no prompts, and the launch-time namespace, tag and variables
     (first, so a tool's own come later and win).
     """
+
     args: list[str] = []
     if command.option_named("--config") is not None:
         args += (
@@ -442,15 +484,16 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
     if command.option_named("--json") is not None or command.name == "yd-version":
         # yd-version's parser is its own and not in the registry
         args.append("--json")
-    if command.name in SELF_PRINTING_COMMANDS:
+    if command.internal_name in SELF_PRINTING_COMMANDS:
         args.append("--quiet")
     if command.option_named("--yes") is not None:
         args.append("--yes")
     # Joined, as a tool's own values are (see _joined()): a launch-time value
-    # beginning with '-' is a value, never a flag
-    if settings.namespace and command.option_named("--namespace") is not None:
+    # beginning with '-' is a value, never a flag. An option a noun verb hides
+    # is refused if given
+    if settings.namespace and command.offers(NAMESPACE):
         args.append(f"--namespace={settings.namespace}")
-    if settings.tag and command.option_named("--tag") is not None:
+    if settings.tag and command.offers(TAG):
         args.append(f"--tag={settings.tag}")
     if command.option_named("--variable") is not None:
         args += [f"--variable={variable}" for variable in settings.variables]
@@ -592,7 +635,7 @@ def _to_argv(
 ) -> list[str]:
     options: list[str] = []
     positionals: list[str] = []
-    spec_positional = SPECIFICATION_POSITIONALS.get(tool.command.name)
+    spec_positional = SPECIFICATION_POSITIONALS.get(tool.command.internal_name)
 
     for option in tool.command.flat_options():
         if (

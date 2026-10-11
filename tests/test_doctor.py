@@ -565,7 +565,7 @@ class TestInstallation:
     def test_rclone_missing_warns(self, monkeypatch):
         monkeypatch.setattr(dc, "find_rclone", lambda: None)
         r = dc.check_rclone(_ctx())
-        assert r.status is dc.Status.WARN and "yd-upload" in (r.remedy or "")
+        assert r.status is dc.Status.WARN and "yd-data" in (r.remedy or "")
 
     def test_rclone_found(self, monkeypatch):
         monkeypatch.setattr(

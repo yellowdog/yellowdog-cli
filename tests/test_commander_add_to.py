@@ -1,5 +1,5 @@
 """
-Tests for Commander's Add to button: 'yd-submit --add-to' against a Work
+Tests for Commander's Add to button: 'yd-workrequirement submit --add-to' against a Work
 Requirement chosen from a list. The listing is stubbed at _capture_json and the
 command at _run_command_in_subprocess; the chooser is the real dialog, driven
 inside its real modal loop.
@@ -120,7 +120,7 @@ def test_the_newest_is_chosen_by_default(window, captured, monkeypatch):
     listed(window, monkeypatch, [OLDER, NEWER])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", NEWER["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", NEWER["id"], "-f"])]
 
 
 def test_the_row_chosen_is_the_target(window, captured, monkeypatch):
@@ -129,7 +129,7 @@ def test_the_row_chosen_is_the_target(window, captured, monkeypatch):
         window, monkeypatch, commander_dialogs.ACCEPT, choose=0
     )
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", OLDER["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", OLDER["id"], "-f"])]
 
 
 def test_the_submit_settings_are_carried_over(window, captured, monkeypatch):
@@ -140,7 +140,10 @@ def test_the_submit_settings_are_carried_over(window, captured, monkeypatch):
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
     assert captured == [
-        ("yd-submit", ["-A", OLDER["id"], "-r", "/abs/wr.json", "-D", "--foo", "bar"])
+        (
+            "yd-workrequirement submit",
+            ["-A", OLDER["id"], "-r", "/abs/wr.json", "-D", "--foo", "bar"],
+        )
     ]
 
 
@@ -201,7 +204,7 @@ def test_double_clicking_a_row_accepts_it(window, captured, monkeypatch):
         window, monkeypatch, commander_dialogs.NOTHING, inspect=inspect
     )
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", OLDER["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", OLDER["id"], "-f"])]
 
 
 # --- Refusing rather than guessing -------------------------------------------
@@ -245,7 +248,7 @@ def test_the_newest_default_skips_a_cancelling_one(window, captured, monkeypatch
     listed(window, monkeypatch, [OLDER, CANCELLING])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", OLDER["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", OLDER["id"], "-f"])]
 
 
 def test_an_operation_in_flight_refuses(window, captured, monkeypatch):
@@ -279,22 +282,22 @@ def started(window, command: str, arguments: list[str]) -> OutputRun:
 
 def test_a_submit_following_it_is_not_followed_again(window, captured, monkeypatch):
     # The Submit that created it printed its YDID, and is following it
-    run = started(window, "yd-submit", ["-r", "/abs/wr.json", "-f"])
+    run = started(window, "yd-workrequirement submit", ["-r", "/abs/wr.json", "-f"])
     window._output._log_lines([f"YellowDog ID is '{FOLLOWED['id']}'"], run)
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+    assert captured == [("yd-workrequirement submit", ["-A", FOLLOWED["id"]])]
     assert "Not following Work Requirement 'wr-followed' again" in log(window)
     assert f"{run.bar_subject} is following it already" in log(window)
 
 
 def test_an_add_to_following_it_is_not_followed_again(window, captured, monkeypatch):
-    started(window, "yd-submit", ["-A", FOLLOWED["id"], "-f"])
+    started(window, "yd-workrequirement submit", ["-A", FOLLOWED["id"], "-f"])
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+    assert captured == [("yd-workrequirement submit", ["-A", FOLLOWED["id"]])]
 
 
 def test_a_yd_follow_of_it_counts(window, captured, monkeypatch):
@@ -302,7 +305,7 @@ def test_a_yd_follow_of_it_counts(window, captured, monkeypatch):
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"]])]
+    assert captured == [("yd-workrequirement submit", ["-A", FOLLOWED["id"]])]
 
 
 @pytest.mark.parametrize(
@@ -315,36 +318,38 @@ def test_a_yd_follow_of_it_counts(window, captured, monkeypatch):
     ids=["finished", "not-following", "dry-run"],
 )
 def test_otherwise_it_is_followed(window, captured, monkeypatch, arguments, finished):
-    run = started(window, "yd-submit", arguments)
+    run = started(window, "yd-workrequirement submit", arguments)
     window._output._log_lines([f"YellowDog ID is '{FOLLOWED['id']}'"], run)
     if finished:
         run.outcome = "exit 0"
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", FOLLOWED["id"], "-f"])]
     assert "Not following" not in log(window)
 
 
 def test_another_work_requirement_followed_does_not_count(
     window, captured, monkeypatch
 ):
-    started(window, "yd-submit", ["-A", OLDER["id"], "-f"])
+    started(window, "yd-workrequirement submit", ["-A", OLDER["id"], "-f"])
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", FOLLOWED["id"], "-f"])]
 
 
 def test_follow_in_the_extra_options_is_left_alone(window, captured, monkeypatch):
     # Follow Progress unticked: the user's own '--follow' is theirs to give
-    started(window, "yd-submit", ["-A", FOLLOWED["id"], "-f"])
+    started(window, "yd-workrequirement submit", ["-A", FOLLOWED["id"], "-f"])
     window.follow_progress.setChecked(False)
     window.wr_submit_options.setPlainText("--follow")
     listed(window, monkeypatch, [FOLLOWED])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", FOLLOWED["id"], "--follow"])]
+    assert captured == [
+        ("yd-workrequirement submit", ["-A", FOLLOWED["id"], "--follow"])
+    ]
 
 
 class TestFollowedWorkRequirements:
@@ -355,7 +360,7 @@ class TestFollowedWorkRequirements:
     """
 
     def test_only_work_requirement_ydids_are_noted(self):
-        run = OutputRun(1, "yd-submit", arguments=("-f",))
+        run = OutputRun(1, "yd-workrequirement submit", arguments=("-f",))
         run.note_output(f"Added Task {FOLLOWED_TASK}")
         assert run.work_requirements_printed == set()
         run.note_output(f"... '{FOLLOWED['id']}' ...")
@@ -364,11 +369,11 @@ class TestFollowedWorkRequirements:
     @pytest.mark.parametrize(
         "command, arguments, follows",
         [
-            ("yd-submit", ("-f",), True),
-            ("yd-submit", ("--follow",), True),
-            ("yd-submit", ("--progress",), True),
-            ("yd-submit", ("-f", "--dry-run"), False),
-            ("yd-submit", ("-fD",), False),  # a cluster is not read
+            ("yd-workrequirement submit", ("-f",), True),
+            ("yd-workrequirement submit", ("--follow",), True),
+            ("yd-workrequirement submit", ("--progress",), True),
+            ("yd-workrequirement submit", ("-f", "--dry-run"), False),
+            ("yd-workrequirement submit", ("-fD",), False),  # a cluster is not read
             ("yd-follow", (), True),
             ("yd-list", ("-f",), False),  # no '--follow' to give
             ("ls", ("-f",), False),
@@ -397,7 +402,7 @@ def test_yes_adds_to_the_only_candidate(unattended, monkeypatch):
     )
     listed(unattended, monkeypatch, [OLDER])
     unattended._add_to_work_requirement_action()
-    assert calls == [("yd-submit", ["-A", OLDER["id"], "-f"])]
+    assert calls == [("yd-workrequirement submit", ["-A", OLDER["id"], "-f"])]
     assert "adding to the only active Work Requirement" in log(unattended)
 
 
@@ -472,7 +477,7 @@ FINISHING = {
 
 
 def test_a_finishing_work_requirement_is_not_offered(window, captured, monkeypatch):
-    # '--active-only' keeps it, and 'yd-submit --add-to' refuses it: a
+    # '--active-only' keeps it, and 'yd-workrequirement submit --add-to' refuses it: a
     # FINISHING Work Requirement takes no new Tasks
     listed(window, monkeypatch, [FINISHING])
 
@@ -489,4 +494,4 @@ def test_the_newest_default_skips_a_finishing_one(window, captured, monkeypatch)
     listed(window, monkeypatch, [OLDER, FINISHING])
     commander_dialogs.drive_single_choice(window, monkeypatch, commander_dialogs.ACCEPT)
     window._add_to_work_requirement_action()
-    assert captured == [("yd-submit", ["-A", OLDER["id"], "-f"])]
+    assert captured == [("yd-workrequirement submit", ["-A", OLDER["id"], "-f"])]

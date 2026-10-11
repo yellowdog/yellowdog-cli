@@ -14,6 +14,7 @@ import math
 import os
 import re
 from argparse import (
+    SUPPRESS,
     Action,
     ArgumentParser,
     ArgumentTypeError,
@@ -164,6 +165,16 @@ class Command:
     # A hand-written description for a tool whose workflow needs explaining;
     # None means the summary and purpose are used
     tool_description: str | None = None
+    # The registry command a noun verb's derived command runs
+    # (noun_registry.py); None for a registry command itself
+    runs: str | None = None
+
+    @property
+    def internal_name(self) -> str:
+        """
+        The registry command this one runs: itself, or a noun verb's.
+        """
+        return self.runs or self.name
 
     def all_options(self) -> tuple[Option | Exclusive, ...]:
         return COMMON_OPTIONS[self.kind] + self.options
@@ -176,6 +187,15 @@ class Command:
 
     def has(self, option: Option) -> bool:
         return self.option_named(option.name) is not None
+
+    def offers(self, option: Option) -> bool:
+        """
+        Whether the command takes 'option' from its user: has it, and does
+        not hide it (a noun verb's option that does not apply to its object,
+        refused if given: noun_registry.py).
+        """
+        found = self.option_named(option.name)
+        return found is not None and found.kwargs.get("help") != SUPPRESS
 
     def option_named(self, name: str) -> Option | None:
         return next((o for o in self.flat_options() if o.name == name), None)
@@ -645,11 +665,15 @@ MCP_EXCLUDED_SPECIFICATION_FILES: dict[str, frozenset[str]] = {
 def mcp_excluded(command: Command, option: Option) -> bool:
     """
     Whether no MCP tool for 'command' exposes 'option': it is in
-    MCP_EXCLUDED_OPTIONS, or is one of the command's own specification-file
-    options.
+    MCP_EXCLUDED_OPTIONS, is one of the command's own specification-file
+    options, or is hidden (a noun verb's option that does not apply to its
+    object, or one its verb fixes: noun_registry.py).
     """
-    return option.name in MCP_EXCLUDED_OPTIONS or option.name in (
-        MCP_EXCLUDED_SPECIFICATION_FILES.get(command.name, frozenset())
+    return (
+        option.name in MCP_EXCLUDED_OPTIONS
+        or option.name
+        in MCP_EXCLUDED_SPECIFICATION_FILES.get(command.internal_name, frozenset())
+        or option.kwargs.get("help") == SUPPRESS
     )
 
 
@@ -870,7 +894,7 @@ RESOURCE_SPECIFICATIONS = option(
     type=str,
     help=(
         "the resource specifications to process (or resource IDs if used"
-        " with 'yd-remove --ids')"
+        " with 'yd-resource remove --ids')"
     ),
 )
 YES_ALLOW_UPDATES = YES.variant(help="allow updates without user confirmation")
@@ -881,7 +905,7 @@ MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     required=False,
     help=(
         "match using the 'description' property when updating "
-        "(using yd-create) or removing allowances"
+        "(using yd-resource create) or removing allowances"
     ),
 )
 YELLOWDOG_IDS = option(
@@ -957,7 +981,7 @@ STRIP_IDS = option(
     help=(
         "omit the YellowDog IDs of objects from their JSON "
         "representations, as well as other properties not "
-        "required when capturing JSON for use with yd-create and yd-remove "
+        "required when capturing JSON for use with yd-resource create and remove "
         "(implies '--details')"
     ),
 )
@@ -1928,7 +1952,7 @@ def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     for resource_id in args.resource_specifications:
         if get_ydid_type(resource_id) not in REMOVABLE_YDID_TYPES:
             parser.error(
-                f"not the ID of a resource yd-remove can remove: '{resource_id}'"
+                f"not the ID of a resource that can be removed: '{resource_id}'"
             )
 
 
@@ -2452,7 +2476,7 @@ COMMANDS["yd-provision"] = Command(
         "Provision a Worker Pool from a specification (a file path, or the"
         " specification itself). Returns {id, name, namespace, type}. With"
         " dry_run, the processed specification. Shut it"
-        " down afterwards with yd_shutdown; yd_schema worker-pool gives the"
+        " down afterwards with yd_workerpool_shutdown; yd_schema worker-pool gives the"
         " schema to compose against."
     ),
 )
@@ -2880,9 +2904,9 @@ COMMANDS["yd-cloud-info"] = Command(
     validators=(check_cloud_info_options,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
-        "List what the YellowDog Platform knows of the cloud providers."
-        " cloud_info_type is regions, sub-regions, instance-types or prices."
-        " Filters: providers (aws, azure, google, oci), region and sub_region"
+        "List what the YellowDog Platform knows of the cloud providers: its"
+        " regions, sub-regions, instance types or prices, as the tool's name"
+        " says. Filters: providers (aws, azure, google, oci), region and sub_region"
         " (exact names; sub_region needs region), name_glob (a glob; for"
         " prices, the instance type), and for instance-types vcpus and ram"
         " (GiB) as 'n', 'n-m', 'n-' or '-m', and arch; for prices usage"
@@ -3169,9 +3193,10 @@ COMMANDS["yd-schema"] = Command(
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Print the JSON Schema a specification family must follow —"
-        " work-requirement (yd_submit), worker-pool (yd_provision),"
-        " compute-requirement (yd_instantiate), resources (yd_create),"
-        " node-actions (yd_nodeaction), or config, the TOML configuration"
+        " work-requirement (yd_workrequirement_submit), worker-pool"
+        " (yd_workerpool_provision), compute-requirement"
+        " (yd_computerequirement_instantiate), resources (yd_resource_create),"
+        " node-actions (yd_node_action), or config, the TOML configuration"
         " file — generated from the installed CLI and SDK. Ask for it before"
         " composing an inline specification."
     ),
@@ -3465,7 +3490,7 @@ COMMANDS["yd-submit"] = Command(
         " type} of the created Work Requirement; with dry_run, the processed"
         " specification instead. Follow it afterwards with yd_follow, or"
         " poll with yd_list and yd_show, then fetch its outputs with"
-        " yd_download; yd_schema work-requirement gives the schema to"
+        " yd_data_download; yd_schema work-requirement gives the schema to"
         " compose against."
     ),
 )

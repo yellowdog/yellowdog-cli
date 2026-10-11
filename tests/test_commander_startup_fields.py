@@ -139,6 +139,6 @@ def test_a_selected_work_requirement_reaches_yd_submit(
     )
     window._submit_work_requirement_action()
     [(command, args)] = calls
-    assert command == "yd-submit"
+    assert command == "yd-workrequirement submit"
     handed_over = args[args.index("-r") + 1]
     assert realpath(join(window._working_dir(), handed_over)) == realpath(wr)

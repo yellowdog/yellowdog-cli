@@ -12,6 +12,12 @@ from pathlib import Path
 import pytest
 
 from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
+from yellowdog_cli.utils.noun_registry import (
+    DEPRECATED,
+    GENERIC_COMMANDS,
+    NOUN_COMMANDS,
+    NOUNS,
+)
 
 COMMAND_LIST = Path(__file__).parent.parent / "docs" / "commands.md"
 
@@ -164,11 +170,23 @@ class TestSharedOptions:
             assert set(aliases) == set(registered.aliases), name
 
 
-DOCUMENTED = sorted(n for n in CLI_COMMANDS if n != "yd-cloudwizard")
+# The registry commands with sections of their own: those no noun replaces
+# (yd-cloudwizard has its own README)
+DOCUMENTED = sorted(
+    n for n in CLI_COMMANDS if n != "yd-cloudwizard" and n not in DEPRECATED
+)
 
 
 STANDALONE_DOCUMENTED = sorted(
     n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
+)
+
+# The noun verbs with sections of their own: every one but a generic command
+# restricted to the noun, which its noun's table points to that command for
+VERBS_DOCUMENTED = sorted(
+    name
+    for name, command in NOUN_COMMANDS.items()
+    if command.internal_name not in GENERIC_COMMANDS
 )
 
 
@@ -190,3 +208,57 @@ class TestCommandSections:
         known = {f for o in command.flat_options() for f in o.flags}
         unknown = [f for f in _bullet_flags(section) if f not in known]
         assert unknown == [], f"{name} bullets name options it does not take: {unknown}"
+
+    def test_no_deprecated_command_has_a_section(self):
+        for name in DEPRECATED:
+            assert _heading(self.text, f"### {name}") is None, name
+
+
+class TestNounSections:
+    text = _command_list()
+
+    @pytest.mark.parametrize("noun", [n.name for n in NOUNS])
+    def test_every_noun_has_a_section_listing_its_verbs(self, noun):
+        section = _section(self.text, f"## {noun}")
+        verbs = next(n for n in NOUNS if n.name == noun).verbs
+        rows = [
+            line
+            for line in _outside_fences(section).splitlines()
+            if line.startswith("| ")
+        ]
+        for verb in verbs:
+            assert any(
+                re.match(rf"\| \[?`{re.escape(verb.name)}( <type>)?`", row)
+                for row in rows
+            ), f"{noun}'s table has no row for {verb.name}"
+
+    @pytest.mark.parametrize("name", VERBS_DOCUMENTED)
+    def test_every_verb_has_a_section(self, name):
+        assert _heading(self.text, f"### {name}") is not None
+
+    @pytest.mark.parametrize("name", VERBS_DOCUMENTED)
+    def test_every_option_bullet_names_an_option_the_verb_offers(self, name):
+        section = _section(self.text, f"### {name}")
+        command = NOUN_COMMANDS[name]
+        offered = {
+            f for o in command.flat_options() if command.offers(o) for f in o.flags
+        }
+        unknown = [f for f in _bullet_flags(section) if f not in offered]
+        assert unknown == [], (
+            f"{name} bullets name options it does not offer: {unknown}"
+        )
+
+    def test_the_deprecated_table_names_every_replacement(self):
+        section = _section(self.text, "## Deprecated Commands")
+        for name, forms in DEPRECATED.items():
+            row = next(
+                (
+                    line
+                    for line in section.splitlines()
+                    if line.startswith(f"| `{name}` |")
+                ),
+                None,
+            )
+            assert row is not None, name
+            for form in forms:
+                assert f"`{form}`" in row, (name, form)

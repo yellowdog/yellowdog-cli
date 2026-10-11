@@ -5,6 +5,10 @@ Basic check that all the entrypoints are present, and can be invoked.
 import pytest
 from cli_test_helpers import shell
 
+from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME
+
+NOUN_ENTRY_POINTS = sorted(NOUNS_BY_NAME)
+
 
 @pytest.mark.parametrize(
     "cmd,expected",
@@ -38,6 +42,10 @@ from cli_test_helpers import shell
         ("yd-variables --help", 0),
         ("yd-version", 0),
         ("yd-wait --help", 0),
+        # The nouns, their short forms, and a verb's help
+        *((f"{noun} --help", 0) for noun in NOUN_ENTRY_POINTS),
+        ("yd-workrequirement submit --help", 0),
+        ("yd-wr", 2),  # no verb
     ],
 )
 def test_entrypoint(cmd, expected):

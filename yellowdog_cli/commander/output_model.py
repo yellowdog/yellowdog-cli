@@ -10,7 +10,8 @@ from codecs import getincrementaldecoder
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from yellowdog_cli.utils.command_registry import COMMANDS, DRY_RUN, FOLLOW, PROGRESS
+from yellowdog_cli.utils.command_registry import DRY_RUN, FOLLOW, PROGRESS
+from yellowdog_cli.utils.noun_registry import command_named
 from yellowdog_cli.utils.ydid_utils import (
     YDID_HIGHLIGHT_RE,
     YDIDType,
@@ -53,7 +54,9 @@ class OutputRun:
     """
 
     run_id: int
-    command: str  # the program run, e.g. 'yd-submit'; empty for Commander
+    command: (
+        str  # the program run, e.g. 'yd-workrequirement submit'; empty for Commander
+    )
     command_line: str = ""  # as echoed on the 'Executing:' line
     # As the user would recognise it: without the config source, namespace, tag,
     # variables and '--nf --pp' that Commander adds to every 'yd-*' command
@@ -69,7 +72,8 @@ class OutputRun:
     printed_pid: int | None = None
     # The arguments it was run with, as given to the process
     arguments: tuple[str, ...] = ()
-    # The Work Requirement YDIDs it has printed: the one a 'yd-submit' created
+    # The Work Requirement YDIDs it has printed: the one a 'yd-workrequirement
+    # submit' created
     work_requirements_printed: set[str] = field(default_factory=set)
 
     def note_output(self, text: str) -> None:
@@ -92,7 +96,7 @@ class OutputRun:
         """
         if self.command == FOLLOWING_COMMAND:
             return True
-        command = COMMANDS.get(self.command)
+        command = command_named(self.command)
         if command is None:
             return False
         # A variant() keeps its base's flags, so the base's are the command's
@@ -110,7 +114,7 @@ class OutputRun:
         """
         Whether this run, still running, is following the Work Requirement:
         one it follows events for, and named on its command line or printed
-        by it (the one a 'yd-submit' created).
+        by it (the one a 'yd-workrequirement submit' created).
         """
         return (
             self.running

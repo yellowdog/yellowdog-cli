@@ -21,7 +21,12 @@ from yellowdog_cli.utils.load_config import (
     warn_of_undefined_config_variables,
 )
 from yellowdog_cli.utils.output_settings import configure_output
-from yellowdog_cli.utils.printing import print_debug, print_error, print_info
+from yellowdog_cli.utils.printing import (
+    print_debug,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.results import (
     any_failed,
     flush_results,
@@ -45,9 +50,31 @@ def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     """
     prepare(args)
     configure_output(args)
+    warn_if_deprecated(args)
     ensure_config_loaded(args)
     prepare(*values)
     prepare(*func.__globals__.values())
+
+
+def warn_if_deprecated(args: Any) -> None:
+    """
+    Warn, on stderr, of a command invoked by a name the noun commands
+    replace ('yd-submit' for 'yd-workrequirement submit'): once the output
+    settings are configured, so '--quiet' suppresses it, and before anything
+    else is printed. 'python -m' (Commander, the MCP server) is not warned.
+    """
+    # A test's stand-in for the command line may be a mock: only a list of
+    # noun forms is a deprecation
+    replaced_by = getattr(args, "replaced_by", None)
+    if not isinstance(replaced_by, list) or not replaced_by:
+        return
+    forms = [f"'{form}'" for form in replaced_by]
+    use = forms[0] if len(forms) == 1 else f"{', '.join(forms[:-1])} or {forms[-1]}"
+    print_warning(
+        f"'{args.command_name}' is deprecated and will be removed in a future"
+        f" release: use {use}",
+        stderr=True,
+    )
 
 
 def describe_error(error: Exception) -> str:

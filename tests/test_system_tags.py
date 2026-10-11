@@ -2,9 +2,9 @@
 The tags the live system tests submit under (conftest.py's system_tag): each
 session's must be its own. Under 'pytest -n', every worker is a session, and
 'pytest-<seconds>' alone was shared by workers starting in the same second,
-so one test's yd-cancel or yd-finish, which select by tag, acted on another's
-Work Requirement. The tag filters match a tag containing the text given, so
-no tag may contain another, either.
+so one test's yd-workrequirement cancel or finish, which select by tag, acted
+on another's Work Requirement. The tag filters match a tag containing the text
+given, so no tag may contain another, either.
 """
 
 import re

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/utils/*/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/spec_data/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/utils/*/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/nouns/*.py yellowdog_cli/spec_data/*.py
 SCRIPTS = scripts/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md

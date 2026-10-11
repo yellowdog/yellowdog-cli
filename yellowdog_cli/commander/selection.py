@@ -242,7 +242,7 @@ def pool_rows(pools: list[ResizablePool]) -> list[SelectableRow]:
 @dataclass(frozen=True)
 class ObjectSummary:
     """
-    One item in a 'yd-delete -D --json' enumeration: the resolved remote path
+    One item in a 'yd-data delete -D --json' enumeration: the resolved remote path
     used to delete it, its display name (directories carry a trailing '/'), and
     whether it is a directory — which decides whether the confirmation warns
     that a tick takes the directory's whole contents.
@@ -255,7 +255,7 @@ class ObjectSummary:
 
 def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
     """
-    Convert a parsed 'yd-delete -D --json' array into ObjectSummary objects.
+    Convert a parsed 'yd-data delete -D --json' array into ObjectSummary objects.
     Returns None if any row is not a dict or lacks a 'path' or a 'name': without
     a path the object cannot be targeted, and guessing one would delete
     something other than what the user ticked. A missing 'isDir' defaults to
@@ -277,7 +277,7 @@ def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
 
 def parse_download_summaries(parsed: list) -> list[ObjectSummary] | None:
     """
-    Convert a parsed 'yd-download -D --json' array -- one record per file,
+    Convert a parsed 'yd-data download -D --json' array -- one record per file,
     each naming in 'match' the top-level item it belongs to -- into one
     ObjectSummary per top-level item, in the order first seen. An item is a
     directory when any of its files is not the item itself. Returns None if
@@ -322,14 +322,15 @@ def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
 
 def path_would_be_globbed(remote_path: str) -> bool:
     """
-    Whether 'yd-delete' would treat this remote path as a wildcard pattern
+    Whether 'yd-data delete' would treat this remote path as a wildcard pattern
     rather than a literal object. Mirrors dataclient.operations.is_glob (which
     Commander cannot import, since that module pulls in rclone_api): strip a
     leading 'remote:' prefix, then look for glob metacharacters.
 
     This matters because an object whose own name contains '*', '?' or '['
-    cannot be targeted by path at all — 'yd-delete' would expand it and act on
-    whatever it matched instead, which for 'a[1].txt' is the sibling 'a1.txt'.
+    cannot be targeted by path at all — 'yd-data delete' would expand it and
+    act on whatever it matched instead, which for 'a[1].txt' is the sibling
+    'a1.txt'.
     """
     path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
     return contains_glob_chars(path_part)

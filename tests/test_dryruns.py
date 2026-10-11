@@ -6,7 +6,7 @@ import pytest
 from cli_test_helpers import shell
 
 DEMO_DIR = "../python-examples-demos"
-CMD_SEQ = "yd-provision -D && yd-submit -D && yd-instantiate -D"
+CMD_SEQ = "yd-workerpool provision -D && yd-workrequirement submit -D && yd-computerequirement instantiate -D"
 
 _DEMOS = [
     "bash",
@@ -35,8 +35,8 @@ def test_dry_run_in_dir(demo):
 def test_dry_run_out_of_dir(demo):
     result = shell(
         f"cd {DEMO_DIR}"
-        f" && yd-provision -D -c {demo}/config.toml"
-        f" && yd-submit -D -c {demo}/config.toml"
-        f" && yd-instantiate -D -c {demo}/config.toml"
+        f" && yd-workerpool provision -D -c {demo}/config.toml"
+        f" && yd-workrequirement submit -D -c {demo}/config.toml"
+        f" && yd-computerequirement instantiate -D -c {demo}/config.toml"
     )
     assert result.exit_code == 0

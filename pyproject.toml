@@ -116,6 +116,22 @@
     yd-variables = "yellowdog_cli.variables:main"
     yd-version = "yellowdog_cli.version:main"
     yd-wait = "yellowdog_cli.wait:main"
+    yd-workrequirement = "yellowdog_cli.nouns.workrequirement:main"
+    yd-taskgroup = "yellowdog_cli.nouns.taskgroup:main"
+    yd-task = "yellowdog_cli.nouns.task:main"
+    yd-workerpool = "yellowdog_cli.nouns.workerpool:main"
+    yd-node = "yellowdog_cli.nouns.node:main"
+    yd-worker = "yellowdog_cli.nouns.worker:main"
+    yd-computerequirement = "yellowdog_cli.nouns.computerequirement:main"
+    yd-instance = "yellowdog_cli.nouns.instance:main"
+    yd-resource = "yellowdog_cli.nouns.resource:main"
+    yd-allowance = "yellowdog_cli.nouns.allowance:main"
+    yd-data = "yellowdog_cli.nouns.data:main"
+    yd-cloudinfo = "yellowdog_cli.nouns.cloudinfo:main"
+    yd-wr = "yellowdog_cli.nouns.workrequirement:main"
+    yd-tg = "yellowdog_cli.nouns.taskgroup:main"
+    yd-wp = "yellowdog_cli.nouns.workerpool:main"
+    yd-cr = "yellowdog_cli.nouns.computerequirement:main"
 
 [tool.setuptools]
     include-package-data = false
@@ -127,6 +143,7 @@
         "yellowdog_cli.utils.specs",
         "yellowdog_cli.commander",
         "yellowdog_cli.mcp",
+        "yellowdog_cli.nouns",
         "yellowdog_cli.spec_data",
     ]
 

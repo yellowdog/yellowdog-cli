@@ -27,10 +27,10 @@ resource_corpus.require_jsonnet()
 pytestmark = pytest.mark.xdist_group("live_resources")
 
 # Resource type (a corpus specification's own 'resource' property) -> the
-# yd-list/yd-remove entity type it becomes. One entry per resource type the live
-# corpus can create (resource_corpus.OFFLINE_ONLY's two files -- credentials and
-# the shared namespace -- never reach this module at all, so neither needs an
-# entry here).
+# entity type yd-list and yd-resource remove use for it. One entry per resource
+# type the live corpus can create (resource_corpus.OFFLINE_ONLY's two files --
+# credentials and the shared namespace -- never reach this module at all, so
+# neither needs an entry here).
 ENTITY_TYPE_FOR_RESOURCE = {
     "Keyring": "keyrings",
     "NamespacePolicy": "namespace-policies",
@@ -294,11 +294,11 @@ def _expected_creation_failures(corpus_file, run_id: str) -> set[tuple[str, str]
 
 def _remove_args(corpus_file) -> list[str]:
     """
-    Extra 'yd-remove' arguments a corpus file needs beyond '-y' and the shared
-    '-c'/'-v run_id=...'. Only allowances.jsonnet needs one: '-M' (see
-    remove.py's remove_allowance()) opts into matching Allowances by their
-    'description' property, without which yd-remove only warns and does
-    nothing for every Allowance in the file.
+    Extra 'yd-resource remove' arguments a corpus file needs beyond '-y' and
+    the shared '-c'/'-v run_id=...'. Only allowances.jsonnet needs one: '-M'
+    (see remove.py's remove_allowance()) opts into matching Allowances by their
+    'description' property, without which yd-resource remove only warns and
+    does nothing for every Allowance in the file.
     """
     if corpus_file.name == "allowances.jsonnet":
         return ["-M"]
@@ -353,18 +353,20 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     everything and confirm removal.
 
     requirement-templates.jsonnet, configured-worker-pools.jsonnet and
-    applications.jsonnet are exactly the three files resource_live.KNOWN_PARTIAL_FAILURES
-    documents as unable to create every one of their specifications standalone
+    applications.jsonnet are exactly the three files
+    resource_live.KNOWN_PARTIAL_FAILURES documents as unable to create every one of
+    their specifications standalone
     (create_compute_requirement_template()/create_configured_worker_pool() read
     'namespace' with a bare KeyError check before any model is built; application-max
     names a Group and a Keyring that only groups.jsonnet and keyrings.jsonnet create).
-    For those, 'yd-create' is expected to exit non-zero, and so is 'yd-remove' for the
-    first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) -- create_resources()/
-    remove_resources() (create.py/remove.py) each continue past one resource's failure
-    and only raise once the whole file is done -- and this test demands the *specific* specifications
-    named in resource_live.KNOWN_PARTIAL_FAILURE_NAMES are the ones missing, not merely
-    that the exit code is non-zero: an unrelated regression elsewhere in the same file
-    would otherwise hide behind the already-expected failure.
+    For those, 'yd-resource create' is expected to exit non-zero, and so is 'yd-resource
+    remove' for the first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) --
+    create_resources()/remove_resources() (create.py/remove.py) each continue past one
+    resource's failure and only raise once the whole file is done -- and this test
+    demands the *specific* specifications named in
+    resource_live.KNOWN_PARTIAL_FAILURE_NAMES are the ones missing, not merely that the
+    exit code is non-zero: an unrelated regression elsewhere in the same file would
+    otherwise hide behind the already-expected failure.
 
     applications.jsonnet's Application specifications name a Group and a Keyring by
     name (created by groups.jsonnet/keyrings.jsonnet respectively) to grant. Run here
@@ -380,7 +382,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     """
     cleanup(
         resource_live.command_line(
-            "yd-remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+            "yd-resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
         )
     )
 
@@ -391,15 +393,16 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     known_partial_failure = corpus_file.name in resource_live.KNOWN_PARTIAL_FAILURES
     secret_emitting = corpus_file.name in resource_live.SECRET_EMITTING
 
-    result = resource_live.yd("yd-create", str(corpus_file))
+    result = resource_live.yd("yd-resource create", str(corpus_file))
     if known_partial_failure:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_FAILURES) "
-            "to partially fail creation, but yd-create exited 0"
+            "to partially fail creation, but yd-resource create exited 0"
         )
     else:
-        assert result.exit_code == 0, f"yd-create {corpus_file.name} failed" + (
-            "" if secret_emitting else f":\n{result.stdout}"
+        assert result.exit_code == 0, (
+            f"yd-resource create {corpus_file.name} failed"
+            + ("" if secret_emitting else f":\n{result.stdout}")
         )
 
     created: dict[str, set[str]] = {
@@ -449,16 +452,16 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     )
 
     result = resource_live.yd(
-        "yd-remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+        "yd-resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
     )
     if corpus_file.name in resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) "
             "to partially fail removal too (the same specifications that could never "
-            "be created cannot be removed either), but yd-remove exited 0"
+            "be created cannot be removed either), but yd-resource remove exited 0"
         )
     else:
-        assert result.exit_code == 0, f"yd-remove {corpus_file.name} failed"
+        assert result.exit_code == 0, f"yd-resource remove {corpus_file.name} failed"
 
     for entity in entity_types:
         if entity == "worker-pools":
@@ -472,7 +475,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
             for key in created[entity]:
                 status = resource_live.fetch(entity, key).get("status")
                 assert status in _FINISHED_WORKER_POOL_STATUSES, (
-                    f"{entity}/{key}: expected a finished status after yd-remove, "
+                    f"{entity}/{key}: expected a finished status after yd-resource remove, "
                     f"got {status!r}"
                 )
             continue

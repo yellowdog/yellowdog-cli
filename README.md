@@ -36,7 +36,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 14:40:52 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 10:02:41 BST 2026 -->
 
 <!--te-->
 
@@ -46,36 +46,23 @@ This repository contains a set of command-line utilities for driving the YellowD
 
 This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**, which provides a comprehensive description of the concepts and operation of the YellowDog Platform.
 
-The commands provide the following capabilities:
+Each command names the object it acts on, then what to do to it — `yd-workrequirement submit`, `yd-instance terminate` — and `yd-<noun> --help` lists a noun's verbs. The commands provide the following capabilities:
 
-- **Aborting** running Tasks with the **`yd-abort`** command
-- **Boosting** Allowances with the **`yd-boost`** command
-- **Cancelling** Work Requirements with the **`yd-cancel`** command
-- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
-- **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
-- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with the **`yd-create`** and **`yd-remove`** commands
-- **Finishing** Work Requirements with the **`yd-finish`** command
-- **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
-- **Instantiating** Compute Requirements with the **`yd-instantiate`** command
-- **Listing** YellowDog items using the **`yd-list`** command
-- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
-- **Provisioning** Worker Pools with the **`yd-provision`** command
-- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
-- **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
-- **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
+- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd-workrequirement`** (short form `yd-wr`)
+- **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd-taskgroup`** (`yd-tg`), and aborting running Tasks with **`yd-task`**
+- **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd-workerpool`** (`yd-wp`)
+- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd-computerequirement`** (`yd-cr`)
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd-instance`**, and Worker Pool Nodes' Instances with **`yd-node`**, which also shuts Nodes down and submits Node Actions to them
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd-resource`**
+- **Allowances** — boosting them with **`yd-allowance`**
+- **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd-data`**
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd-cloudinfo`**
+- **Inspecting** — listing YellowDog items with **`yd-list`**, showing any entity's details by its YellowDog ID with **`yd-show`**, following event streams with **`yd-follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd-wait`**; every noun also has `list` and `show` verbs for its own objects
 - **Showing** the details of the current Application with the **`yd-application`** command
-- **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
-- **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
-- **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd-doctor`** command
-- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
-- **Reprovisioning** Compute Requirements, restoring their target instance counts, with the **`yd-compute-reprovision`** command
-- **Submitting** Work Requirements with the **`yd-submit`** command
-- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
-- **Terminating** Compute Requirements with the **`yd-terminate`** command
-- **Uploading**, **Downloading**, **Deleting**, **Listing** and **Copying** files in remote data stores with the **`yd-upload`**, **`yd-download`**, **`yd-delete`**, **`yd-ls`** and **`yd-copy`** commands
 - **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
-- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
+
+The commands the nouns replace, such as `yd-submit` and `yd-terminate`, still run, with a warning, until a future release; `yd-help --deprecated` says what replaces each.
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 
@@ -247,17 +234,17 @@ It runs the `yd-*` commands on an agent's behalf and returns their `--json` resu
 
 # Usage
 
-All three installation methods add a number of **`yd-`** commands to your PATH.
+All three installation methods add a number of **`yd-`** commands to your PATH. Most name an object and take a verb, `yd-<noun> <verb>`; see the [Command List](docs/commands.md).
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
 ```text
-% yd-cancel -h
-usage: yd-cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>] [--debug]
-                 [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config] [--property <section.key=value>]
-                 [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
-                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
-                 [<work-requirement-name-or-ID> ...]
+% yd-workrequirement cancel -h
+usage: yd-workrequirement cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>]
+                                 [--debug] [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config]
+                                 [--property <section.key=value>] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>]
+                                 [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
+                                 [<work-requirement-name-or-ID> ...]
 
 YellowDog command-line utility for cancelling Work Requirements
 
@@ -325,7 +312,7 @@ Point an editor's JSON Schema support at the files `yd-schema --write` produces,
 
 A specification file can instead name its own schema directly, with a `$schema` key at the top of the file; the CLI accepts this key and ignores it, so it is never sent on to the Platform. JetBrains IDEs offer the same association under Preferences → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings.
 
-Every run of `yd-submit`, `yd-provision`, `yd-instantiate`, `yd-create` and `yd-nodeaction` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd-schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one. To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
+Every run of `yd-workrequirement submit`, `yd-workerpool provision`, `yd-computerequirement instantiate`, `yd-resource create` and `yd-node action` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd-schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one. To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
 
 A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd-jsonnet2json` on a Jsonnet file to see that JSON.
 
@@ -341,20 +328,20 @@ A common pattern when using YellowDog is to submit a Work Requirement and provis
 
 ```bash
 # Submit a Work Requirement and capture its YDID
-WR_ID=$(yd-submit --quiet)
+WR_ID=$(yd-workrequirement submit --quiet)
 
 # Provision a Worker Pool and capture its YDID
-WP_ID=$(yd-provision --quiet)
+WP_ID=$(yd-workerpool provision --quiet)
 
 # Follow both until the Work Requirement finishes and the Worker Pool shuts down
 yd-follow "$WR_ID" "$WP_ID"
 ```
 
-Alternatively, `yd-submit --follow` and `yd-provision` can be run in parallel, letting the Worker Pool pick up Tasks as they are submitted:
+Alternatively, `yd-workrequirement submit --follow` and `yd-workerpool provision` can be run in parallel, letting the Worker Pool pick up Tasks as they are submitted:
 
 ```bash
-yd-provision &
-yd-submit --follow
+yd-workerpool provision &
+yd-workrequirement submit --follow
 ```
 
 When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout`.

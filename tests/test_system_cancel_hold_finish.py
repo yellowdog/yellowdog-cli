@@ -49,30 +49,38 @@ def _wr_status(tag: str) -> str:
 @pytest.mark.system
 class TestWRControlCommands:
     def test_hold_start_cancel(self, system_tag, cleanup):
-        # Its own: yd-hold, yd-start and yd-cancel act on every Work
-        # Requirement with the tag, test_finish's included
+        # Its own: yd-workrequirement hold, start and cancel act on every
+        # Work Requirement with the tag, test_finish's included
         tag = f"{system_tag}-hold"
 
         # Register upfront cleanup
-        cleanup(f"cd {SYSTEM_DIR} && yd-cancel -y -t={tag} -n={NAMESPACE}")
+        cleanup(
+            f"cd {SYSTEM_DIR} && yd-workrequirement cancel -y -t={tag} -n={NAMESPACE}"
+        )
 
         # Submit a WR that will stay PENDING (no matching worker pool)
-        result = shell(f"cd {SYSTEM_DIR} && yd-submit wr_trivial.json -t={tag}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement submit wr_trivial.json -t={tag}"
+        )
         assert result.exit_code == 0, (
-            f"yd-submit failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement submit failed:\n{result.stdout}\n{result.stderr}"
         )
 
         # Hold
-        result = shell(f"cd {SYSTEM_DIR} && yd-hold -y -t={tag} -n={NAMESPACE}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement hold -y -t={tag} -n={NAMESPACE}"
+        )
         assert result.exit_code == 0, (
-            f"yd-hold failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement hold failed:\n{result.stdout}\n{result.stderr}"
         )
         assert _wr_status(tag) == "HELD", f"Expected HELD, got: {_wr_status(tag)}"
 
         # Start (releases the hold)
-        result = shell(f"cd {SYSTEM_DIR} && yd-start -y -t={tag} -n={NAMESPACE}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement start -y -t={tag} -n={NAMESPACE}"
+        )
         assert result.exit_code == 0, (
-            f"yd-start failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement start failed:\n{result.stdout}\n{result.stderr}"
         )
         status = _wr_status(tag)
         assert status in (
@@ -81,9 +89,11 @@ class TestWRControlCommands:
         ), f"Expected PENDING or RUNNING after start, got: {status}"
 
         # Cancel
-        result = shell(f"cd {SYSTEM_DIR} && yd-cancel -y -t={tag} -n={NAMESPACE}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement cancel -y -t={tag} -n={NAMESPACE}"
+        )
         assert result.exit_code == 0, (
-            f"yd-cancel failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement cancel failed:\n{result.stdout}\n{result.stderr}"
         )
         status = _wr_status(tag)
         assert status in (
@@ -95,19 +105,25 @@ class TestWRControlCommands:
         tag = f"{system_tag}-finish"  # Its own, as test_hold_start_cancel's
 
         # Register upfront cleanup
-        cleanup(f"cd {SYSTEM_DIR} && yd-cancel -y -t={tag} -n={NAMESPACE}")
+        cleanup(
+            f"cd {SYSTEM_DIR} && yd-workrequirement cancel -y -t={tag} -n={NAMESPACE}"
+        )
 
         # Submit
-        result = shell(f"cd {SYSTEM_DIR} && yd-submit wr_trivial.json -t={tag}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement submit wr_trivial.json -t={tag}"
+        )
         assert result.exit_code == 0, (
-            f"yd-submit failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement submit failed:\n{result.stdout}\n{result.stderr}"
         )
 
         # Finish — transitions WR to FINISHING (no new tasks dispatched).
         # With no workers, the WR may move directly to COMPLETING/COMPLETED.
-        result = shell(f"cd {SYSTEM_DIR} && yd-finish -y -t={tag} -n={NAMESPACE}")
+        result = shell(
+            f"cd {SYSTEM_DIR} && yd-workrequirement finish -y -t={tag} -n={NAMESPACE}"
+        )
         assert result.exit_code == 0, (
-            f"yd-finish failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workrequirement finish failed:\n{result.stdout}\n{result.stderr}"
         )
         status = _wr_status(tag)
         assert status not in (

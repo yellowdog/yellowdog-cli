@@ -27,6 +27,15 @@ def test_a_console_script_runs_under_this_interpreter(command, module):
     assert cli_program(command, ["-q"]) == (sys.executable, ["-m", module, "-q"])
 
 
+@pytest.mark.parametrize("noun", ["yd-workrequirement", "yd-wr"])
+def test_a_noun_verb_runs_its_noun_with_the_verb_first(noun):
+    # Ahead of the arguments Commander adds, which follow the verb
+    assert cli_program(f"{noun} submit", ["-q"]) == (
+        sys.executable,
+        ["-m", "yellowdog_cli.nouns.workrequirement", "submit", "-q"],
+    )
+
+
 def test_anything_else_runs_as_it_is():
     assert cli_program("ls", ["-l"]) == ("ls", ["-l"])
     assert cli_program("yd-no-such-command", []) == ("yd-no-such-command", [])
@@ -48,8 +57,9 @@ def _console_script_modules() -> list[tuple[str, str]]:
 def test_every_console_script_module_runs_under_python_m(name, module):
     """
     Commander and the MCP server run a command as 'python -m <module>', which
-    runs main() only from the module's '__main__' guard: yd-cancel and
-    yd-application had none, so run that way they parsed and did nothing.
+    runs main() only from the module's '__main__' guard: yd-workrequirement
+    cancel and yd-application had none, so run that way they parsed and did
+    nothing.
     """
     spec = find_spec(module)
     assert spec is not None and spec.origin is not None, module

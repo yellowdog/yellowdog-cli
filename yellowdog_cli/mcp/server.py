@@ -108,7 +108,7 @@ def _result_of(
 ) -> types.CallToolResult:
     document = (
         parse_event_documents(result.stdout)
-        if tool.command.name == "yd-follow"
+        if tool.command.internal_name == "yd-follow"
         else result.document
     )
     succeeded = (
@@ -157,7 +157,8 @@ def call_tool(
         timeout_seconds = timeout_of(tool, arguments)
         own_args, written = to_argv(tool, arguments, settings.working_dir)
         argv = (
-            command_argv(tool.command.name)
+            command_argv(tool.program)
+            + tool.leading_args
             + fixed_args(tool.command, settings)
             + own_args
         )

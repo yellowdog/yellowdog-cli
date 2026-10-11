@@ -204,12 +204,12 @@ class ComputePanel(WindowDialogs):
         extra_options = self._split_field(self.wp_provision_options, "Extra Options")
         if extra_options is None:
             return
-        self._run_command_in_subprocess("yd-provision", args + extra_options)
+        self._run_command_in_subprocess("yd-workerpool provision", args + extra_options)
 
     def _resize_worker_pool_action(self):
         """
         Resize a Worker Pool, chosen from a list with the target node count, by
-        'yd-resize -y <ydid> <nodes>': the dialog is the confirmation, so the
+        'yd-workerpool resize -y <ydid> <nodes>': the dialog is the confirmation, so the
         CLI's own is not asked for as well.
 
         Lists the candidates with 'yd-list worker-pools --active-only --details
@@ -219,8 +219,8 @@ class ComputePanel(WindowDialogs):
         number the platform can change. A pool awaiting nodes is listed but
         cannot be chosen, since the platform refuses to resize it, and when
         every pool is awaiting nodes no dialog opens. A pool that starts
-        awaiting nodes after the listing still fails in 'yd-resize', whose
-        error reaches the output window like any other. Every failure
+        awaiting nodes after the listing still fails in 'yd-workerpool resize',
+        whose error reaches the output window like any other. Every failure
         refuses, as for Add to.
 
         Neither Panel 3 checkbox applies: a Worker Pool being resized is
@@ -282,12 +282,14 @@ class ComputePanel(WindowDialogs):
             return
 
         pool_id, nodes = choice
-        self._run_command_in_subprocess("yd-resize", ["-y", pool_id, str(nodes)])
+        self._run_command_in_subprocess(
+            "yd-workerpool resize", ["-y", pool_id, str(nodes)]
+        )
 
     def _shutdown_all_worker_pools_action(self):
         self._run_destructive_with_listing(
             action_key="shutdown",
-            command="yd-shutdown",
+            command="yd-workerpool shutdown",
             run_args=["-y"],
             title="Shut Down Worker Pools",
             gerund="Shutting down",
@@ -298,7 +300,7 @@ class ComputePanel(WindowDialogs):
     def _terminate_all_compute_requirements_action(self):
         self._run_destructive_with_listing(
             action_key="terminate",
-            command="yd-terminate",
+            command="yd-computerequirement terminate",
             run_args=["-y"],
             title="Terminate Compute Requirements",
             gerund="Terminating",

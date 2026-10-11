@@ -1,7 +1,8 @@
 """
-Flag/guard tests for the dry-run mode on yd-cancel / yd-shutdown / yd-terminate.
-These exercise argument parsing only (the by-name guard errors at parse time,
-before any platform contact), so they need no credentials.
+Flag/guard tests for the dry-run mode on yd-workrequirement cancel,
+yd-workerpool shutdown and yd-computerequirement terminate. These exercise
+argument parsing only (the by-name guard errors at parse time, before any
+platform contact), so they need no credentials.
 """
 
 from json import loads as json_loads
@@ -22,7 +23,14 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
 
 
-@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "yd-workrequirement cancel",
+        "yd-workerpool shutdown",
+        "yd-computerequirement terminate",
+    ],
+)
 def test_dry_run_flag_in_help(cmd):
     assert "--dry-run" in shell(f"{cmd} --help").stdout
 
@@ -30,9 +38,9 @@ def test_dry_run_flag_in_help(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel -D some-wr-name",
-        "yd-shutdown -D some-wp-name",
-        "yd-terminate -D some-cr-name",
+        "yd-workrequirement cancel -D some-wr-name",
+        "yd-workerpool shutdown -D some-wp-name",
+        "yd-computerequirement terminate -D some-cr-name",
     ],
 )
 def test_dry_run_with_explicit_names_is_accepted(cmd):
@@ -47,14 +55,15 @@ def test_dry_run_with_explicit_names_is_accepted(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel",
-        "yd-shutdown",
-        "yd-terminate",
-        # yd-delete and yd-download need a path, so give them one: the point is
-        # that --json alone is accepted, not that the arguments are incomplete.
+        "yd-workrequirement cancel",
+        "yd-workerpool shutdown",
+        "yd-computerequirement terminate",
+        # yd-data delete and yd-data download need a path, so give them one:
+        # the point is that --json alone is accepted, not that the arguments
+        # are incomplete.
         # '--nc', so that no configured remote is ever reached
-        "yd-delete --nc somepath",
-        "yd-download somepath",
+        "yd-data delete --nc somepath",
+        "yd-data download somepath",
     ],
 )
 def test_json_without_dry_run_is_accepted(cmd):
@@ -68,7 +77,11 @@ def test_json_without_dry_run_is_accepted(cmd):
 
 @pytest.mark.parametrize(
     "cmd",
-    ["yd-cancel 'proj-*' -D", "yd-shutdown 'wp-*' -D", "yd-terminate 'cr-*' -D"],
+    [
+        "yd-workrequirement cancel 'proj-*' -D",
+        "yd-workerpool shutdown 'wp-*' -D",
+        "yd-computerequirement terminate 'cr-*' -D",
+    ],
 )
 def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
     # A glob + --dry-run must NOT fail at parse time (exit 2). It proceeds to
@@ -81,9 +94,9 @@ def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel 'proj-*' some-wr",
-        "yd-shutdown 'wp-*' some-wp",
-        "yd-terminate 'cr-*' some-cr",
+        "yd-workrequirement cancel 'proj-*' some-wr",
+        "yd-workerpool shutdown 'wp-*' some-wp",
+        "yd-computerequirement terminate 'cr-*' some-cr",
     ],
 )
 def test_mixing_glob_and_literal_errors(cmd):

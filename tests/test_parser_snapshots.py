@@ -1,5 +1,5 @@
 """
-Every command's option shapes, held to a snapshot: the keyword arguments
+Every command's option shapes (the noun verbs' included), held to a snapshot: the keyword arguments
 of each argparse action (nargs, const, default, type, choices, ...), which
 help text cannot show. Wording is deliberately excluded, so a help edit
 never fails here; a shape change always does, naming the command and the
@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+from yellowdog_cli.utils.noun_registry import NOUN_COMMANDS
 
 SNAPSHOT_FILE = Path(__file__).parent / "parser_snapshots.json"
 UPDATE_COMMAND = "pytest tests/test_parser_snapshots.py --update-parser-snapshots"
@@ -64,7 +65,7 @@ def parser_shapes() -> dict[str, list[dict[str, Any]]]:
             for a in build_parser(command, prog=name)._actions
             if not isinstance(a, _HelpAction)
         ]
-        for name, command in COMMANDS.items()
+        for name, command in {**COMMANDS, **NOUN_COMMANDS}.items()
     }
 
 

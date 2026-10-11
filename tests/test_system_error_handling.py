@@ -54,8 +54,8 @@ class TestHardFailures:
     @pytest.mark.parametrize(
         "cmd",
         [
-            "yd-create /this/path/does/not/exist.json",
-            "yd-remove -y /this/path/does/not/exist.json",
+            "yd-resource create /this/path/does/not/exist.json",
+            "yd-resource remove -y /this/path/does/not/exist.json",
         ],
     )
     def test_nonexistent_file(self, cmd):
@@ -68,13 +68,13 @@ class TestHardFailures:
         # No platform needed
         bad = tmp_path / "bad.json"
         bad.write_text("{ this is not : valid json !!!")
-        result = shell(f"yd-create {bad}")
+        result = shell(f"yd-resource create {bad}")
         assert result.exit_code == 1
         assert _has_error(result)
 
     def test_bad_variable_format(self):
         # No platform needed — variable parsing fails before any API call
-        result = shell("yd-submit -D -n=test -t=test -v no_equals_sign")
+        result = shell("yd-workrequirement submit -D -n=test -t=test -v no_equals_sign")
         assert result.exit_code == ExitCode.CONFIGURATION
         assert _has_error(result)
         assert "no_equals_sign" in _output(result)
@@ -83,7 +83,7 @@ class TestHardFailures:
         # No platform needed — resource type is checked client-side
         spec = tmp_path / "unknown.json"
         spec.write_text('[{"resource": "WibbleWobbleUnknown", "name": "test"}]')
-        result = shell(f"yd-create {spec}")
+        result = shell(f"yd-resource create {spec}")
         assert result.exit_code == 1
         assert _has_error(result)
         assert "WibbleWobbleUnknown" in _output(result)

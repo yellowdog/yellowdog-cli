@@ -5,14 +5,14 @@
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:22 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 10:02:43 BST 2026 -->
 
 <!--te-->
 
 
-The `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
+The `yd-data upload`, `yd-data download`, `yd-data delete`, `yd-data ls`, and `yd-data copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
 
-This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-upload](commands.md#yd-upload), [yd-download](commands.md#yd-download), [yd-delete](commands.md#yd-delete), [yd-ls](commands.md#yd-ls), and [yd-copy](commands.md#yd-copy).
+This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd-data upload](commands.md#yd-data-upload), [yd-data download](commands.md#yd-data-download), [yd-data delete](commands.md#yd-data-delete), [yd-data ls](commands.md#yd-data-ls), and [yd-data copy](commands.md#yd-data-copy).
 
 The `rclone` binary will be automatically downloaded if not already present.
 
@@ -34,7 +34,7 @@ The `remote` field accepts either:
 
 A value in an inline connection string is read as rclone reads it: one holding a comma goes in double or single quotes (`secret_access_key="a,b"`), a quote inside it doubled, and spaces around `=` are allowed.
 
-The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command-line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-upload`, `yd-download`, `yd-delete`, `yd-ls`, and `yd-copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
+The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command-line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd-data upload`, `yd-data download`, `yd-data delete`, `yd-data ls`, and `yd-data copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
 
 > **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target. A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one; without the `/` it is relative to the remote's default directory (for a local remote, the current directory). With no bucket, the same holds for a prefix beginning with `/`.
 
@@ -59,8 +59,8 @@ bucket = "staging-data"
 Select a profile with `--data-client-profile <name>`:
 
 ```
-yd-upload --data-client-profile prod myfile.txt
-yd-download --data-client-profile staging results/
+yd-data upload --data-client-profile prod myfile.txt
+yd-data download --data-client-profile staging results/
 ```
 
 The active profile can also be set via the `YD_DATA_CLIENT` environment variable. The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation.
@@ -69,7 +69,7 @@ Profile names are free-form; the only reserved names are `remote`, `bucket`, and
 
 ## Variable Substitutions for Data Client Properties
 
-The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as variable substitutions in all spec files (TOML, JSON, Jsonnet) and in `userdata` scripts for every command — including `yd-submit`, `yd-provision`, and `yd-instantiate`:
+The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as variable substitutions in all spec files (TOML, JSON, Jsonnet) and in `userdata` scripts for every command — including `yd-workrequirement submit`, `yd-workerpool provision`, and `yd-computerequirement instantiate`:
 
 | Variable | Value |
 |---|---|
@@ -80,7 +80,7 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
 | `{{dataClient.<name>.prefix}}` | Named profile's prefix |
 
-For `yd-upload`/`yd-download`/`yd-delete`/`yd-ls`/`yd-copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
+For `yd-data upload`/`yd-data download`/`yd-data delete`/`yd-data ls`/`yd-data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 

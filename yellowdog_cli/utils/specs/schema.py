@@ -137,11 +137,11 @@ class Family(Enum):
 
 
 FAMILY_COMMANDS: dict[Family, str] = {
-    Family.WORK_REQUIREMENT: "yd-submit",
-    Family.WORKER_POOL: "yd-provision",
-    Family.COMPUTE_REQUIREMENT: "yd-instantiate",
-    Family.RESOURCES: "yd-create",
-    Family.NODE_ACTIONS: "yd-nodeaction",
+    Family.WORK_REQUIREMENT: "yd-workrequirement submit",
+    Family.WORKER_POOL: "yd-workerpool provision",
+    Family.COMPUTE_REQUIREMENT: "yd-computerequirement instantiate",
+    Family.RESOURCES: "yd-resource create",
+    Family.NODE_ACTIONS: "yd-node action",
     Family.CONFIG: "every yd-* command",
 }
 
@@ -875,7 +875,7 @@ def build_schema(family: Family) -> dict[str, Any]:
                 dataclasses.replace(
                     pool["provisionedProperties"],
                     required=False,
-                    description="a Worker Pool file's; ignored by yd-instantiate",
+                    description="a Worker Pool file's; ignored by yd-computerequirement instantiate",
                 ),
             ),
             defs,

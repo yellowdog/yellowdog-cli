@@ -7,7 +7,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 09:37:23 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 10:02:43 BST 2026 -->
 
 <!--te-->
 
@@ -17,7 +17,7 @@ In all circumstances where JSON files are used by the YellowDog CLI commands, **
 A simple usage example might be:
 
 ```shell
-yd-submit my_work_req.jsonnet
+yd-workrequirement submit my_work_req.jsonnet
 ```
 
 The use of the filename extension `.jsonnet` will activate Jsonnet evaluation. The file is evaluated in memory, after variable substitution. An error message names the `.jsonnet` file itself, and its imports are found beside it, or failing that in the current directory.
@@ -83,7 +83,7 @@ yd-jsonnet2json my_file.jsonnet
 ```
 
 
-2. The `jsonnet-dry-run` (`-J`) option of the `yd-submit`, `yd-provision`, `yd-instantiate`, `yd-create` and `yd-remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
+2. The `jsonnet-dry-run` (`-J`) option of the `yd-workrequirement submit`, `yd-workerpool provision`, `yd-computerequirement instantiate`, `yd-resource create` and `yd-resource remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
 
 
 3. The `dry-run` (`-D`) option will generate JSON output representing the full processing of the Jsonnet file into what will be submitted to the API. This allows inspection to check that the output matches expectations, prior to submitting to the Platform.
@@ -116,7 +116,7 @@ local Task(arguments=[], environment={}) = {
 }
 ```
 
-When this is inspected using the `jsonnet-dry-run` option (`yd-submit -Jq my_work_req.jsonnet`), this is the processed output:
+When this is inspected using the `jsonnet-dry-run` option (`yd-workrequirement submit -Jq my_work_req.jsonnet`), this is the processed output:
 
 ```json
 {
@@ -150,7 +150,7 @@ When this is inspected using the `jsonnet-dry-run` option (`yd-submit -Jq my_wor
 }
 ```
 
-When this is inspected using the `dry-run` option (`yd-submit -D my_work_req.jsonnet`), this is the processed output:
+When this is inspected using the `dry-run` option (`yd-workrequirement submit -D my_work_req.jsonnet`), this is the processed output:
 
 ```json
 {

@@ -78,11 +78,11 @@ class CommandRunning(WindowBase):
         """
         Run '<command> <flags>' (quiet, no formatting) with the current config
         source and namespace/tag/user variables, then 'extra_args', and return
-        the parsed JSON array; 'flags' must ask for JSON. None on any failure: a
-        process error, a non-zero exit, or output that is not a JSON array.
+        the parsed JSON array; 'flags' must ask for JSON. None on any failure:
+        a process error, a non-zero exit, or output that is not a JSON array.
         With 'failures_recorded', an exit 1 still returns the array, for a
-        command (yd-download) that records what failed -- a path that matched
-        nothing -- in it, for the caller to read.
+        command (yd-data download) that records what failed -- a path that
+        matched nothing -- in it, for the caller to read.
         """
         parsed = self._capture_json_document(
             command, flags, extra_args, failures_recorded
@@ -214,11 +214,11 @@ class CommandRunning(WindowBase):
         enumeration failed or did not carry paths, which drops the caller back to
         acting over the whole pattern.
 
-        'command' is 'yd-delete' or 'yd-download', which offer the same
-        selection: yd-delete's '--dry-run --json' records one row per item,
-        yd-download's one per file, naming the item each belongs to.
+        'command' is 'yd-data delete' or 'yd-data download', which offer the same
+        selection: yd-data delete's '--dry-run --json' records one row per item,
+        yd-data download's one per file, naming the item each belongs to.
         """
-        downloading = command == "yd-download"
+        downloading = command == "yd-data download"
         parsed = self._capture_dry_run_json(
             command, extra_args, failures_recorded=downloading
         )
@@ -244,7 +244,7 @@ class CommandRunning(WindowBase):
             ]
         summaries = (
             parse_download_summaries(parsed)
-            if command == "yd-download"
+            if command == "yd-data download"
             else parse_object_summaries(parsed)
         )
         if summaries is None:

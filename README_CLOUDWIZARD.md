@@ -192,7 +192,7 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `t3a.micro` AWS instance type. In addition, an example **dynamic** template is created that will be constrained to AWS instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-aws-split-ondemand` or `cloudwizard-aws-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
 
 ### Cloud Wizard Teardown
 
@@ -332,7 +332,7 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `f1-micro` GCP instance type by default. In addition, an example **dynamic** template is created that will be constrained to GCP instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-gcp-split-ondemand` or `cloudwizard-gcp-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
 
 ###  Cloud Wizard Teardown
 
@@ -501,7 +501,7 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `Standard_A1_v2` Azure instance type. In addition, an example **dynamic** template is created that will be constrained to Azure instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-azure-split-ondemand` or `cloudwizard-azure-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option when running Cloud Wizard.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
 
 ### Cloud Wizard Teardown
 

@@ -667,7 +667,7 @@ def _get_provisioned_worker_pool_by_id(
     else:
         raise TypeError(
             f"Worker Pool ID '{worker_pool_id}' is not a Provisioned Worker Pool; "
-            "Configured Worker Pools are not supported by 'yd-compare'"
+            "Configured Worker Pools cannot be compared"
         )
 
 

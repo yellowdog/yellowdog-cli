@@ -41,13 +41,14 @@ def _with_cleanup(work: str, cleanup: str) -> str:
 
 
 # Terminate the Worker Pool and delete the objects the demo uploaded.
-CLEANUP = "yd-terminate -y; yd-delete -Ry '{{tag}}*'"
+CLEANUP = "yd-computerequirement terminate -y; yd-data delete -Ry '{{tag}}*'"
 
 # Provision, then submit and follow with '-E' (--exit-on-failure), which exits
 # non-zero if the WR ends FAILED/CANCELLED, so a WR that does not complete
 # successfully fails the test. The WR's exit code is surfaced via 'exit $rc'.
 CMD_SEQ = _with_cleanup(
-    f"{_timed('yd-provision')} && {_timed('yd-submit -f -E')}", CLEANUP
+    f"{_timed('yd-workerpool provision')} && {_timed('yd-workrequirement submit -f -E')}",
+    CLEANUP,
 )
 
 _STANDARD_DEMOS = [
@@ -73,15 +74,16 @@ class TestDemos:
 
     def test_cmd_modelled_on_premise(self):
         cmd_seq = _with_cleanup(
-            f"{_timed('yd-instantiate')} && sleep 120", "yd-terminate -y"
+            f"{_timed('yd-computerequirement instantiate')} && sleep 120",
+            "yd-computerequirement terminate -y",
         )
         result = shell(f"cd {DEMO_DIR}/modelled-on-premise && {cmd_seq}")
         assert result.exit_code == 0
 
     def test_video_demo(self):
         cmd_seq = _with_cleanup(
-            f"{_timed('yd-provision -v instances=1 -v max_nodes=1')} && "
-            f"{_timed('yd-submit -C 1 -f -E')}",
+            f"{_timed('yd-workerpool provision -v instances=1 -v max_nodes=1')} && "
+            f"{_timed('yd-workrequirement submit -C 1 -f -E')}",
             CLEANUP,
         )
         result = shell(f"cd {DEMO_DIR}/video-demo && {cmd_seq}")

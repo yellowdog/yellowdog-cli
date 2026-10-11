@@ -41,6 +41,7 @@ from yellowdog_cli.utils.command_registry import (
     VARIABLE,
     CommandKind,
 )
+from yellowdog_cli.utils.noun_registry import command_named
 
 # The 'yd-' commands that take none of the configuration options Commander adds
 # to the others (the config source, namespace, tag, variables, properties,
@@ -397,18 +398,19 @@ class WindowBase(QMainWindow):
         variable and '--property' for each property override. Given the
         'command', only those it takes: typed into the command box, a
         command without '-n' (yd-show) failed on it, and one without '-v'
-        (yd-cloud-info) read the namespace as its own positional.
+        (yd-cloudinfo) read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',
         so a value that begins with '-' is never taken for an option. Raises
         QuotingError when the Properties field cannot be split, which every
         action refuses on beforehand (_properties_are_usable).
         """
-        registered = None if command is None else COMMANDS.get(command)
+        registered = None if command is None else command_named(command)
 
         def takes(option) -> bool:
-            # A command the registry does not know is given everything
-            return registered is None or registered.has(option)
+            # A command the registry does not know is given everything, and a
+            # noun verb hides (and refuses) an option that does not apply
+            return registered is None or registered.offers(option)
 
         # Split out a list of variables of the form "x=y",
         # and prefix each with "-v" -> ["-v', "x=y"], etc.

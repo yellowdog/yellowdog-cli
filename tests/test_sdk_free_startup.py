@@ -109,6 +109,8 @@ class TestDataClient:
             ("yellowdog_cli.download", ["yd-download", "--json", "a.txt", "-d", "out"]),
             ("yellowdog_cli.delete", ["yd-delete", "--json", "-y", "a.txt"]),
             ("yellowdog_cli.copy", ["yd-copy", "--json", "a.txt", "b.txt"]),
+            # The noun form, through the dispatcher
+            ("yellowdog_cli.nouns.data", ["yd-data", "ls", "--json"]),
         ],
     )
     def test_a_command_loads_no_sdk(self, store, module, argv):

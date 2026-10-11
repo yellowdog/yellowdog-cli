@@ -8,44 +8,26 @@
 
 This is a set of Python CLI commands for interacting with the YellowDog Platform, also providing examples of usage of the [YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html).
 
-The commands support:
+Each command names the object it acts on, then what to do to it — `yd-workrequirement submit`, `yd-instance terminate` — and `yd-<noun> --help` lists a noun's verbs. The commands support:
 
-- **Aborting** running Tasks with the **`yd-abort`** command
-- **Boosting** Allowances with the **`yd-boost`** command
-- **Cancelling** Work Requirements with the **`yd-cancel`** command
+- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd-workrequirement`** (short form `yd-wr`)
+- **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd-taskgroup`** (`yd-tg`), and aborting running Tasks with **`yd-task`**
+- **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd-workerpool`** (`yd-wp`)
+- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd-computerequirement`** (`yd-cr`)
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd-instance`**, and Worker Pool Nodes' Instances with **`yd-node`**, which also shuts Nodes down and submits Node Actions to them
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd-resource`**
+- **Allowances** — boosting them with **`yd-allowance`**
+- **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd-data`**
 - **Cloud provider setup** (AWS, Azure, GCP) with the **`yd-cloudwizard`** command
-- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
-- **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
-- **Copying** files between remote data stores with the **`yd-copy`** command
-- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with the **`yd-create`** and **`yd-remove`** commands
-- **Deleting** files from a remote data store with the **`yd-delete`** command
-- **Downloading** files from a remote data store with the **`yd-download`** command
-- **Finishing** Work Requirements with the **`yd-finish`** command
-- **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
-- **Instantiating** Compute Requirements with the **`yd-instantiate`** command
-- **Listing** YellowDog items using the **`yd-list`** command
-- **Listing** remote data store contents with the **`yd-ls`** command
-- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
-- **Provisioning** Worker Pools with the **`yd-provision`** command
-- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
-- **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
-- **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd-cloudinfo`**
+- **Inspecting** — listing YellowDog items with **`yd-list`**, showing any entity's details by its YellowDog ID with **`yd-show`**, following event streams with **`yd-follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd-wait`**; every noun also has `list` and `show` verbs for its own objects
 - **Showing** the details of the current Application with the **`yd-application`** command
-- **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
-- **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
-- **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
-- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
-- **Reprovisioning** Compute Requirements, restoring their target instance counts, with the **`yd-compute-reprovision`** command
-- **Submitting** Work Requirements with the **`yd-submit`** command
-- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
-- **Terminating** Compute Requirements with the **`yd-terminate`** command
-- **Uploading** files to a remote data store with the **`yd-upload`** command
+- **Diagnosing** the configuration, credentials and connectivity with the **`yd-doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
-- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
 
 Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, **`yd-schema`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
 
-The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
+The remote data store commands — the `yd-data` verbs `upload`, `download`, `delete`, `ls` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 
 ## Installation
 

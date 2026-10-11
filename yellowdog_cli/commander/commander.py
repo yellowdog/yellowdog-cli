@@ -82,6 +82,7 @@ from yellowdog_cli.commander.window_base import (
     WINDOW_TITLE,
 )
 from yellowdog_cli.commander.work_panel import WorkPanel
+from yellowdog_cli.utils.noun_registry import noun_and_verb
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.paths import relative_if_possible
 
@@ -249,12 +250,13 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # changes (see _show_config_selection)
         self.select_config_label.installEventFilter(self)
         # Absolute, deliberately: these are handed to a child process that runs
-        # in the config file's directory (see _working_dir), while Commander's own
-        # directory is wherever it was launched from — and Show reads them in this
-        # process. A path relative to either base is wrong for the other, so
-        # 'yd-submit -r ../demos/bash/x.json' went looking for it under the config
-        # directory and failed. The config file needs no such care: its consumers
-        # take _config_dir() and _config_basename() from it rather than passing it on.
+        # in the config file's directory (see _working_dir), while Commander's
+        # own directory is wherever it was launched from — and Show reads them
+        # in this process. A path relative to either base is wrong for the
+        # other, so 'yd-workrequirement submit -r ../demos/bash/x.json' went
+        # looking for it under the config directory and failed. The config file
+        # needs no such care: its consumers take _config_dir() and
+        # _config_basename() from it rather than passing it on.
         self._wr_file: str | None = None
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
@@ -912,6 +914,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             command_and_args = self._split_text(command_text, "command")
             if command_and_args is None:
                 return
+            # A noun and its verb are one command, so that what Commander
+            # adds comes after the verb ('yd-wr submit -c config.toml ...')
+            if (noun_form := noun_and_verb(command_and_args)) is not None:
+                command_and_args = [noun_form, *command_and_args[2:]]
             # The standalone ones are given at most '--nf'
             # (UNDECORATED_YD_COMMANDS), so the Properties field has nothing
             # to do with them

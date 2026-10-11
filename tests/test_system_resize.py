@@ -18,7 +18,8 @@ NAMESPACE = "pytest-system"
 
 def _resize_with_retry(wp_id: str, target: int, timeout: int = 600) -> bool:
     """
-    Attempt yd-resize, retrying every 30 s if the pool is still awaiting nodes.
+    Attempt yd-workerpool resize, retrying every 30 s if the pool is still
+    awaiting nodes.
 
     The platform rejects a resize while a pool is registering its initial nodes;
     retrying is the most reliable way to wait out that transient state.
@@ -26,7 +27,7 @@ def _resize_with_retry(wp_id: str, target: int, timeout: int = 600) -> bool:
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = shell(f"cd {SYSTEM_DIR} && yd-resize -y {wp_id} {target}")
+        result = shell(f"cd {SYSTEM_DIR} && yd-workerpool resize -y {wp_id} {target}")
         if result.exit_code == 0:
             return True
         combined = result.stdout + result.stderr
@@ -43,20 +44,22 @@ class TestSystemResize:
         tag = system_tag
 
         # Register teardown
-        cleanup(f"cd {SYSTEM_DIR} && yd-shutdown -y -t={tag} -n={NAMESPACE}")
-        cleanup(f"cd {SYSTEM_DIR} && yd-terminate -y -t={tag} -n={NAMESPACE}")
+        cleanup(f"cd {SYSTEM_DIR} && yd-workerpool shutdown -y -t={tag} -n={NAMESPACE}")
+        cleanup(
+            f"cd {SYSTEM_DIR} && yd-computerequirement terminate -y -t={tag} -n={NAMESPACE}"
+        )
 
         # 1. Provision with 1 node (no -f: following runs to auto-shutdown).
         # --quiet returns just the Worker Pool YDID on stdout.
-        result = shell(f"cd {SYSTEM_DIR} && yd-provision -q -t={tag}")
+        result = shell(f"cd {SYSTEM_DIR} && yd-workerpool provision -q -t={tag}")
         assert result.exit_code == 0, (
-            f"yd-provision failed:\n{result.stdout}\n{result.stderr}"
+            f"yd-workerpool provision failed:\n{result.stdout}\n{result.stderr}"
         )
         wp_id = result.stdout.strip()
 
         # 2. Resize to 2 nodes, retrying until the pool is no longer awaiting nodes.
         assert _resize_with_retry(wp_id, 2), (
-            f"yd-resize did not succeed within timeout for {wp_id}"
+            f"yd-workerpool resize did not succeed within timeout for {wp_id}"
         )
 
         # 3. Verify the target instance count changed to 2 in yd-list compute-requirements.

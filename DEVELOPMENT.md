@@ -20,6 +20,7 @@
       * [One set of commands, three front ends](#one-set-of-commands-three-front-ends)
       * [The life of a command](#the-life-of-a-command)
       * [The command registry](#the-command-registry)
+      * [Nouns and verbs over the registry](#nouns-and-verbs-over-the-registry)
       * [Laziness: importing does nothing](#laziness-importing-does-nothing)
       * [Passing context rather than reading globals](#passing-context-rather-than-reading-globals)
       * [Thin commands over libraries](#thin-commands-over-libraries)
@@ -30,7 +31,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct  9 16:28:00 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 10:04:38 BST 2026 -->
 
 <!--te-->
 
@@ -296,6 +297,10 @@ A handful of commands sit outside this. `yd-help`, `yd-version`, `yd-format-json
 
 Every command and every option is declared once, as data, in `utils/command_registry.py`. The registry is the source for argparse (`CLIParser` in `utils/args.py` builds each command's parser from it), for `yd-help`'s listing, for the MCP server's tool catalogue and its JSON Schemas, and for the tests that hold the Command List (`docs/commands.md`) and `pyproject.toml`'s entry points to the commands that exist. A command declares its kind there: `API` (gets the full set of common options, including the credentials), `DATA_CLIENT` (no `--key`, `--secret`, `--url` or `--pac`, since it never contacts the Platform) or `STANDALONE`. Adding an option is therefore an edit to the registry, after which the parser, the help, the MCP tool and the checks all follow.
 
+### Nouns and verbs over the registry
+
+Users type `yd-<noun> <verb>`: `yd-workrequirement submit`, `yd-instance terminate`. A verb is not a command of its own. `utils/noun_registry.py` maps each noun and verb to a registry command (`yd-workrequirement submit` runs `yd-submit`), and derives a `Command` for each that narrows the registry command to the noun's object: the options that do not apply are hidden from its help and refused if given, arguments the verb fixes (`yd-list`'s entity type) are supplied, and its targets are held to the object's kind. Each noun is a module under `yellowdog_cli/nouns/`, so `python -m` runs it as it runs any command, and its `main()` hands over to `utils/noun_dispatch.py`, which selects the verb's parser and calls the registry command's `main()`. The registry commands keep their names inside the code and in the tests; those a verb replaces are deprecated, still installed as entry points, and warn when run by name. A new command is therefore added to the registry as before, and then given a verb in `noun_registry.py`, or listed there as generic or kept as a utility (`tests/test_noun_commands.py` requires one or the other).
+
 ### Laziness: importing does nothing
 
 Importing any module in the package parses no command line, reads no file, builds no client, prints nothing and exits nowhere. The values that once came into being on import — the parsed arguments, the configuration, the client, each command's configuration sections — are stand-ins from `utils/lazy.py`, built on first use, and the wrappers build the ones a command needs in `prepare_run()`. Two things follow. Tests can import any module freely and set up what they need. And commands that have no use for the SDK — the data client commands and `yd-variables` — start without importing it at all, which saves most of a command's start-up time; the modules every command imports keep their SDK imports inside the functions that use them, and a test fails if one of those commands ever loads it.
@@ -332,6 +337,7 @@ Many of the conventions above are enforced by the test suite rather than left to
 
 ```
 yellowdog_cli/            # One module per yd-* command
+yellowdog_cli/nouns/      # One module per noun (yd-workrequirement, ...), each handing over to utils/noun_dispatch.py
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
 yellowdog_cli/utils/cloudwizard/  # The Cloud Wizard's provider support (the cloudwizard extra)
 yellowdog_cli/utils/dataclient/   # The data client commands' layer over rclone

@@ -96,7 +96,7 @@ def test_a_second_destructive_action_during_an_enumeration_is_refused(
     window._cancel_work_requirements_action()
 
     assert inner_ran == ["returned"]  # the inner call returned, it did not raise
-    assert captured == [("yd-cancel", ["-y", "ydid:workreq:1"])]
+    assert captured == [("yd-workrequirement cancel", ["-y", "ydid:workreq:1"])]
     assert "ignoring Terminate Compute Requirements" in window.log_output.toPlainText()
 
 
@@ -132,7 +132,10 @@ def test_submit_and_provision_are_not_blocked(window, captured, monkeypatch):
     window._nested_depth = 1
     window._submit_work_requirement_action()
     window._create_worker_pool_action()
-    assert [command for command, _args in captured] == ["yd-submit", "yd-provision"]
+    assert [command for command, _args in captured] == [
+        "yd-workrequirement submit",
+        "yd-workerpool provision",
+    ]
     assert window.submit_work_requirement not in window._action_buttons()
     assert window.create_worker_pool not in window._action_buttons()
 
@@ -165,4 +168,4 @@ def test_normal_operation_is_unaffected(window, captured, monkeypatch):
 
     window._delete_objects_action()
 
-    assert captured == [("yd-delete", ["-Ry", "S3:b/pfx/o"])]
+    assert captured == [("yd-data delete", ["-Ry", "S3:b/pfx/o"])]

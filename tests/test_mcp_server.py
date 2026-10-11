@@ -70,11 +70,13 @@ def test_the_catalogue_is_listed(settings, clean_env):
     listed = _through_client(build_server(settings), action)
     by_name = {t.name: t for t in listed.tools}
     assert set(by_name) == {t.name for t in build_tools()}
-    assert by_name["yd_cancel"].annotations.destructive_hint is True
+    assert by_name["yd_workrequirement_cancel"].annotations.destructive_hint is True
     assert by_name["yd_list"].annotations.read_only_hint is True
     assert by_name["yd_list"].input_schema["additionalProperties"] is False
     assert by_name["yd_list"].output_schema["required"] == ["exitCode"]
-    assert by_name["yd_submit"].description.startswith("Submit a Work Requirement")
+    assert by_name["yd_workrequirement_submit"].description.startswith(
+        "Submit a Work Requirement"
+    )
 
 
 def test_the_server_names_itself(settings, clean_env):
@@ -240,7 +242,7 @@ def test_an_inline_specification_is_removed_after_the_run(
 ):
     # yd-submit fails for want of a key, and the file it was given is gone
     result = call_tool(
-        "yd_submit",
+        "yd_workrequirement_submit",
         {"specification": {"name": "wr"}, "dry_run": True},
         settings,
         dict(os.environ),
@@ -258,7 +260,7 @@ def test_a_data_client_call_on_the_local_backend(
     monkeypatch.setenv("YD_DATA_CLIENT_REMOTE", "loc,type=local")
     monkeypatch.setenv("YD_NAMESPACE", "ns")
     monkeypatch.setenv("YD_TAG", "tag")
-    result = call_tool("yd_ls", {}, settings, dict(os.environ))
+    result = call_tool("yd_data_ls", {}, settings, dict(os.environ))
     assert result.is_error is False, result.content[0].text
     assert [e["Name"] for e in result.structured_content["result"]] == ["a.txt"]
 
@@ -282,7 +284,7 @@ def test_an_unwritable_working_directory_is_a_tool_error(
             variables=(),
         )
         result = call_tool(
-            "yd_submit",
+            "yd_workrequirement_submit",
             {"specification": {"name": "wr"}, "dry_run": True},
             settings,
             dict(os.environ),
@@ -299,7 +301,7 @@ def test_a_failed_data_client_run_is_an_error_with_its_stderr(settings, clean_en
     # The wrapper flushes '[]' on its failure path: an empty document is not
     # a per-item failure, so this is an error, and the stderr is kept
     result = call_tool(
-        "yd_ls", {"remote": "x,type=nosuchbackend"}, settings, dict(os.environ)
+        "yd_data_ls", {"remote": "x,type=nosuchbackend"}, settings, dict(os.environ)
     )
     assert result.is_error is True
     assert result.structured_content["exitCode"] == 1
@@ -317,7 +319,7 @@ def test_a_recorded_per_item_failure_is_a_success(
     monkeypatch.setenv("YD_NAMESPACE", "ns")
     monkeypatch.setenv("YD_TAG", "tag")
     result = call_tool(
-        "yd_upload",
+        "yd_data_upload",
         {"remote": "loc,type=local", "local_paths": ["nope.txt"]},
         settings,
         dict(os.environ),
