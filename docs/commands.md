@@ -1410,7 +1410,7 @@ These commands act on no one kind of object, and keep the names they have always
 
 ### yd-list
 
-The `yd-list` command lists various YellowDog items, using the configured `namespace`, and a `tag` given on the command line (not the configured one), to target the scope of what to list.
+The `yd-list` command lists various YellowDog items in the configured `namespace`. Work Requirements, Worker Pools and Compute Requirements are listed with the configured `tag`, selected as the commands acting on them select them when given no names (Work Requirements and Compute Requirements by their tag, Worker Pools by the tag in their name), so a listing shows what `yd-workrequirement cancel`, `yd-workerpool shutdown` or `yd-computerequirement terminate` would consider; give `--tag ''` (or `-t` alone) to list the whole namespace. Templates and Image Families, which nothing selects by tag, are listed whatever their names unless `--tag` is given.
 
 ```shell
 yd-list [options] <entity-type>
@@ -1465,8 +1465,6 @@ Unambiguous prefix matching is supported — for example `yd-list work-r` resolv
 ```shell
 yd-list work-requirements --name 'myproject-*' --active-only
 ```
-
-For convenience, `tag` is set to the empty string unless explicitly set on the command line; `namespace` falls back to the configured value as usual.
 
 An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 

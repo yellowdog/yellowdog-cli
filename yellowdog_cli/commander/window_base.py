@@ -63,9 +63,9 @@ MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
 # Shown when an action that lists entities with 'yd-list' has no tag to list
-# them by. 'yd-list' defaults its tag to '' (every entity in the namespace), so
-# the tag must be passed explicitly, and without one the listing would offer
-# entities from outside the scope the dialog names.
+# them by. The tag is passed explicitly, so that the listing is the scope the
+# dialog names (the Tag field's, or the discovered one) whatever 'yd-list'
+# would take for itself; without one there is no scope to name.
 NO_LISTING_TAG = (
     "No tag: none has been discovered, so there is no default scope to list."
     " Enter a Tag or a Name pattern, or select a configuration file to discover"
@@ -255,12 +255,13 @@ class WindowBase(QMainWindow):
         The 'yd-list' arguments that confine a listing to the scope the other
         actions use: the Name pattern as '--name' when one is set, else the tag
         as '-t' — the Tag field's, or the discovered one. None when there is
-        neither, since 'yd-list' defaults its tag to '' and would list every
-        entity in the namespace; callers must refuse, with NO_LISTING_TAG.
+        neither, since there is then no scope to name; callers must refuse,
+        with NO_LISTING_TAG.
 
-        The tag has to be passed even when the configuration file names one,
-        because that default is 'yd-list''s own: the configuration's tag
-        reaches every other command and not this one.
+        The tag is passed even though 'yd-list' now takes the configured tag
+        for Work Requirements, Worker Pools and Compute Requirements: the
+        Tag field overrides the configuration, and the dialog names the scope
+        it lists.
         """
         if name_args:
             return ["--name", name_args[0]]

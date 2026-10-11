@@ -148,7 +148,10 @@ def test_the_messages_themselves_are_unchanged(config_dir):
     """
     The wording is carried over intact: only the gating changed.
     """
-    output = _import_wrapper(config_dir, ["--debug"], {"YD_DATA_CLIENT": "myprofile"})
+    # '--tag' given, for its message: yd-list no longer defaults it to ''
+    output = _import_wrapper(
+        config_dir, ["--debug", "--tag", "t"], {"YD_DATA_CLIENT": "myprofile"}
+    )
     for message in [
         "Loading environment variables from",
         "Adding 'YD' environment variable(s):",

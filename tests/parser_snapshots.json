@@ -761,7 +761,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -6870,7 +6870,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -14010,7 +14010,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -16348,7 +16348,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -17777,7 +17777,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -22168,7 +22168,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -25122,7 +25122,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -26105,7 +26105,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -28574,7 +28574,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -29574,7 +29574,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",
@@ -33376,7 +33376,7 @@
     {
       "choices": null,
       "const": "",
-      "default": "",
+      "default": null,
       "dest": "tag",
       "kind": "_StoreAction",
       "nargs": "?",

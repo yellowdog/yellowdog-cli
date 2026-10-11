@@ -2530,11 +2530,11 @@ COMMANDS["yd-provision"] = Command(
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
 # Tag attribute is defaulted to "" when using 'yd-list'
 LIST_TAG = TAG.variant(
-    default="",
     help=(
-        "the tag to search when listing entities; unlike other commands,"
-        " the configured tag is not used, so without this the whole"
-        " namespace is listed"
+        "the tag to list by: Work Requirements, Worker Pools and Compute"
+        " Requirements are listed with the configured tag, as the commands"
+        " acting on them select them, unless this is given ('' for the whole"
+        " namespace); templates and Image Families only by a tag given here"
     ),
 )
 IDS_ONLY = option(

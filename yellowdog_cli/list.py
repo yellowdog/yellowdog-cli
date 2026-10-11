@@ -591,7 +591,7 @@ def list_compute_requirements(ctx: RunContext):
     else:
         print_info(
             f"Listing Compute Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
-            + filter_phrase("with names containing '{}'", ctx.config.name_tag)
+            + filter_phrase("with tags including '{}'", ctx.config.name_tag)
         )
         compute_requirement_summaries = get_compute_requirement_summaries(
             ctx.client, ctx.config.namespace, ctx.config.name_tag, included_statuses
@@ -794,6 +794,17 @@ def list_workers(ctx: RunContext, nodes: list[Node]):
         print_numbered_object_list(ctx.client, workers_all)
 
 
+def _shared_tag(ctx: RunContext) -> str:
+    """
+    The tag a shared resource (a template, an Image Family) is listed by: the
+    one given with '--tag', else none. The configured tag scopes what the
+    commands act on (Work Requirements, Worker Pools, Compute Requirements),
+    which a listing of those previews; nothing selects a shared resource by
+    it, and it would hide those named for no one in particular.
+    """
+    return "" if ctx.args.tag is None else ctx.config.name_tag
+
+
 def list_compute_requirement_templates(ctx: RunContext):
     """
     Print the list of Compute Requirement Templates, filtered on Namespace
@@ -819,12 +830,12 @@ def list_compute_requirement_templates(ctx: RunContext):
         print_info(
             "Listing Compute Requirement Templates "
             f"{namespace_scope(ctx.client, ctx.config.namespace)}"
-            + filter_phrase("with names including '{}'", ctx.config.name_tag)
+            + filter_phrase("with names including '{}'", _shared_tag(ctx))
         )
         cr_templates = get_compute_requirement_templates(
             ctx.client,
             ctx.config.namespace,
-            ctx.config.name_tag,
+            _shared_tag(ctx),
             partial_name_matches=True,
         )
 
@@ -905,10 +916,10 @@ def list_compute_source_templates(ctx: RunContext):
         print_info(
             "Listing Compute Source Templates "
             f"{namespace_scope(ctx.client, ctx.config.namespace)}"
-            + filter_phrase("with names including '{}'", ctx.config.name_tag)
+            + filter_phrase("with names including '{}'", _shared_tag(ctx))
         )
         cs_templates = get_compute_source_templates(
-            ctx.client, namespace=ctx.config.namespace, name=ctx.config.name_tag
+            ctx.client, namespace=ctx.config.namespace, name=_shared_tag(ctx)
         )
 
     if not cs_templates:
@@ -1035,7 +1046,7 @@ def list_image_families(ctx: RunContext):
         image_search = MachineImageFamilySearch(
             includePublic=True,
             namespaces=search_namespaces(ctx.client, ctx.config.namespace),
-            familyName=ctx.config.name_tag,  # Supports partial match
+            familyName=_shared_tag(ctx) or None,  # Supports partial match
         )
         search_client: SearchClient = ctx.client.images_client.get_image_families(
             image_search
@@ -1046,7 +1057,7 @@ def list_image_families(ctx: RunContext):
                 ctx,
                 "No matching Machine Image Families found "
                 f"{namespace_scope(ctx.client, ctx.config.namespace)}"
-                + filter_phrase("with names including '{}'", ctx.config.name_tag),
+                + filter_phrase("with names including '{}'", _shared_tag(ctx)),
             )
             return
 
