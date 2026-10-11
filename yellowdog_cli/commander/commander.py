@@ -145,6 +145,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             bar=self.output_filter_bar,
             bar_label=self.output_filter_label,
             show_all_button=self.output_filter_show_all,
+            text_filter=self.output_text_filter,
             copy_button=self.copy_command_output,
             save_button=self.save_command_output,
             build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(

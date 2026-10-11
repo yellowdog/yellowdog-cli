@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFrame,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
@@ -94,6 +95,7 @@ class WindowBase(QMainWindow):
     log_output: QPlainTextEdit
     output_filter_bar: QFrame
     output_filter_label: QLabel
+    output_text_filter: QLineEdit
     user_variables: QPlainTextEdit
     properties: QPlainTextEdit
     wr_submit_options: QPlainTextEdit

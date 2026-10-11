@@ -1,8 +1,8 @@
 """
 The output window (OutputPane): the widget, its filter bar and right-click menu,
-and the process chooser, over the entries and runs in output_model. The window
-logs to it and hands it each process it starts; everything the filter does is
-here.
+the process chooser and the text filter, over the entries and runs in
+output_model. The window logs to it and hands it each process it starts;
+everything the filters do is here.
 """
 
 import re
@@ -11,13 +11,14 @@ from datetime import datetime
 from functools import partial as functools_partial
 from typing import cast
 
-from PyQt6.QtCore import QPoint, QProcess, Qt
+from PyQt6.QtCore import QPoint, QProcess, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeySequence, QShortcut, QTextBlock, QTextDocument
 from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
     QLabel,
     QLayout,
+    QLineEdit,
     QListWidget,
     QMainWindow,
     QMenu,
@@ -33,6 +34,7 @@ from yellowdog_cli.commander.output_model import (
     OutputEntry,
     OutputRun,
     filter_description,
+    line_pattern,
     message_prefix,
 )
 from yellowdog_cli.commander.selection import (
@@ -48,12 +50,16 @@ SHOW_ALL_OUTPUT = "Show All Output"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
 PROCESS_ROW_GAP = "  "  # between the process chooser's columns
+# How long after the last keystroke the text filter is applied, so that a long
+# output is not rebuilt for every character typed
+TEXT_FILTER_DELAY_MS = 250
 
 
 class OutputPane:
     """
-    The output window: a view of the entries logged to it, filterable by run.
-    Owns the entries, the runs and the filter; see OutputEntry and OutputRun.
+    The output window: a view of the entries logged to it, filterable by run
+    and by the text in each line. Owns the entries, the runs and the filters;
+    see OutputEntry and OutputRun.
 
     Given its widgets rather than the window, so what it can reach is what it
     is handed: the main window only for its layout and width, and the chooser
@@ -68,6 +74,7 @@ class OutputPane:
         bar: QFrame,
         bar_label: QLabel,
         show_all_button: QPushButton,
+        text_filter: QLineEdit,
         copy_button: QPushButton,
         save_button: QPushButton,
         build_chooser: Callable[..., tuple[QDialog, QPushButton]],
@@ -77,6 +84,7 @@ class OutputPane:
         self._view = view
         self._bar = bar
         self._bar_label = bar_label
+        self._text_filter = text_filter
         # Copy and Save take what is shown, and their tooltips say so
         self._copy_button = copy_button
         self._save_button = save_button
@@ -92,6 +100,10 @@ class OutputPane:
         self._output_line_total = 0
         # The runs shown, or None for all of them
         self._output_filter: frozenset[int] | None = None
+        # The text each line shown must contain, as typed and as searched for;
+        # set from the field when the filter is applied, not as it is typed
+        self._filter_text = ""
+        self._line_pattern: re.Pattern[str] | None = None
         self._hidden_line_count = 0  # arrived while filtered, and not shown
 
         bar.hide()
@@ -104,6 +116,23 @@ class OutputPane:
             self._show_all_output,
             context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
         )
+
+        self._text_filter_timer = QTimer(view)
+        self._text_filter_timer.setSingleShot(True)
+        self._text_filter_timer.setInterval(TEXT_FILTER_DELAY_MS)
+        self._text_filter_timer.timeout.connect(self._apply_text_filter)
+        text_filter.setClearButtonEnabled(True)
+        text_filter.textChanged.connect(self._text_filter_edited)
+        # Return applies it at once, and Esc empties it at once
+        text_filter.returnPressed.connect(self._apply_text_filter)
+        QShortcut(
+            QKeySequence(Qt.Key.Key_Escape),
+            text_filter,
+            self._clear_text_filter,
+            context=Qt.ShortcutContext.WidgetShortcut,
+        )
+        # Cmd+F on macOS, Ctrl+F elsewhere, from anywhere in the window
+        QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
 
     def start_run(
         self,
@@ -169,9 +198,10 @@ class OutputPane:
 
     def clear(self):
         """
-        Clear everything, filtered out or not, and so end any filter: clearing
-        only what is shown, or only what is hidden, would leave the window's
-        contents a surprise when the filter is lifted.
+        Clear everything, filtered out or not, and so end the filter by run:
+        clearing only what is shown, or only what is hidden, would leave the
+        window's contents a surprise when the filter is lifted. The text filter
+        stays, since the field still shows it.
         """
         self._output_entries.clear()
         self._output_line_total = 0
@@ -199,16 +229,16 @@ class OutputPane:
         )
         self._output_entries.append(entry)
         self._output_line_total += entry.lines
-        if entry.shown_under(self._output_filter):
-            self._view.appendPlainText(entry.text)
+        lines = entry.lines_shown(self._output_filter, self._line_pattern)
+        if lines:
+            self._view.appendPlainText("\n".join(line for _, line in lines))
             # Tag the blocks just added with their entry, which is how a
             # right-click finds the run of the line under it
             block = cast(QTextDocument, self._view.document()).lastBlock()
-            for _ in range(entry.lines):
+            for _ in lines:
                 block.setUserState(len(self._output_entries) - 1)
                 block = block.previous()
-        else:
-            self._hidden_line_count += entry.lines
+        self._hidden_line_count += entry.lines - len(lines)
         self._update_output_filter_bar()
 
     def _log_lines(self, lines: list[str], run: OutputRun):
@@ -279,7 +309,7 @@ class OutputPane:
             for run_id in (entry.runs if entry is not None else [])
             if frozenset({run_id}) != self._output_filter
         ]
-        if self._output_filter is not None:
+        if self._filtered:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
         menu.addSeparator()
         for text, slot in actions:
@@ -433,18 +463,64 @@ class OutputPane:
             return self._output_entries[index]
         return None
 
+    @property
+    def _filtered(self) -> bool:
+        """
+        Whether either filter is on: by run, or by text.
+        """
+        return self._output_filter is not None or self._line_pattern is not None
+
     def _show_all_output(self):
-        if self._output_filter is not None:
-            self._filter_output(None)
+        """
+        Lift both filters: the field is emptied with its signals blocked, so
+        that emptying it does not start a second rebuild.
+        """
+        self._text_filter_timer.stop()
+        if self._text_filter.text():
+            self._text_filter.blockSignals(True)
+            self._text_filter.clear()
+            self._text_filter.blockSignals(False)
+        if self._filtered:
+            self._filter_output(None, text="")
+
+    def _text_filter_edited(self):
+        self._text_filter_timer.start()
+
+    def _apply_text_filter(self):
+        """
+        Filter the lines shown by the text in the field, keeping the filter by
+        run; nothing is rebuilt if what the field means has not changed.
+        """
+        self._text_filter_timer.stop()
+        text = self._text_filter.text().strip()
+        if text != self._filter_text:
+            self._filter_output(self._output_filter, text=text)
+
+    def _clear_text_filter(self):
+        self._text_filter.clear()
+        self._apply_text_filter()
+
+    def _focus_text_filter(self):
+        self._text_filter.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self._text_filter.selectAll()
 
     def _filter_output(
-        self, run_ids: frozenset[int] | None, anchor_block: int | None = None
+        self,
+        run_ids: frozenset[int] | None,
+        anchor_block: int | None = None,
+        *,
+        # Keyword-only: a QAction's 'triggered' passes its checked state on
+        # to the partials the menu connects to this, as a third argument
+        text: str | None = None,
     ):
         """
-        Show only the output of 'run_ids', or (with None) all of it. The line being read
-        stays where it was on screen — the line right-clicked, when there was one,
-        otherwise the top line — unless the window was following the output at
-        its end, in which case it still is.
+        Show only the output of 'run_ids', or (with None) all of it, and of that
+        only the lines containing the filter's text, which 'text' replaces when
+        given ("" for every line). The line being read stays
+        where it was on screen — the line right-clicked, when there was one,
+        otherwise the top line — or, if it is no longer shown, the first shown
+        line after it does, unless the window was following the output at its
+        end, in which case it still is.
         """
         scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
         following = scrollbar.value() == scrollbar.maximum()
@@ -453,36 +529,33 @@ class OutputPane:
         anchor = document.findBlockByNumber(
             top if anchor_block is None else anchor_block
         )
-        anchor_index = anchor.userState()
-        # Anchor on the first line of the anchor's entry, the one the rebuilt
-        # view can locate, keeping its offset from the top of the window
-        while anchor.previous().isValid() and (
-            anchor.previous().userState() == anchor_index
-        ):
-            anchor = anchor.previous()
         anchor_row = anchor.blockNumber() - top
+        # Read under the filters it was shown by, so before they change
+        anchor_key = self._line_of(anchor)
 
         self._output_filter = run_ids
+        if text is not None:
+            self._filter_text, self._line_pattern = text, line_pattern(text)
         self._hidden_line_count = 0
         # Show or hide the bar before scrolling, and lay it out now rather than
         # at the next event: it takes its height from the output window, and a
         # window that loses rows after being scrolled to its end no longer is.
-        self._bar.setVisible(run_ids is not None)
+        self._bar.setVisible(self._filtered)
         cast(QLayout, cast(QWidget, self._window.centralWidget()).layout()).activate()
         shown = [
-            (index, entry)
+            (index, number, line)
             for index, entry in enumerate(self._output_entries)
-            if entry.shown_under(run_ids)
+            for number, line in entry.lines_shown(run_ids, self._line_pattern)
         ]
-        self._view.setPlainText("\n".join(entry.text for _, entry in shown))
+        self._view.setPlainText("\n".join(line for _, _, line in shown))
         block = document.firstBlock()
         anchor_line: int | None = None
-        for index, entry in shown:
-            if index == anchor_index:
-                anchor_line = block.blockNumber()
-            for _ in range(entry.lines):
-                block.setUserState(index)
-                block = block.next()
+        for index, number, _ in shown:
+            if anchor_line is None and anchor_key is not None:
+                if (index, number) >= anchor_key:
+                    anchor_line = block.blockNumber()
+            block.setUserState(index)
+            block = block.next()
 
         if following or anchor_line is None:
             scrollbar.setValue(scrollbar.maximum())
@@ -490,20 +563,41 @@ class OutputPane:
             scrollbar.setValue(max(0, anchor_line - anchor_row))
         self._update_output_filter_bar()
 
+    def _line_of(self, block: QTextBlock) -> tuple[int, int] | None:
+        """
+        Which line of which entry a block of the output window shows, as
+        (entry index, line number in the entry), or None for a block with no
+        entry. A block's tag gives its entry; its place among the entry's blocks
+        shown, under the filters in force, gives its line.
+        """
+        entry = self._entry_of(block)
+        if entry is None:
+            return None
+        index = block.userState()
+        position = 0
+        previous = block.previous()
+        while previous.isValid() and previous.userState() == index:
+            position += 1
+            previous = previous.previous()
+        lines = entry.lines_shown(self._output_filter, self._line_pattern)
+        if position >= len(lines):  # the view is not what the filters show
+            return (index, 0)
+        return (index, lines[position][0])
+
     def _update_output_filter_bar(self):
         """
         Show the filter bar while the output window is filtered, saying what it
         is filtered to and how much is not being shown, and hide it otherwise.
         Copy and Save take what is shown, so their tooltips say so while it is.
         """
-        self._bar.setVisible(self._output_filter is not None)
-        if self._output_filter is None:
+        self._bar.setVisible(self._filtered)
+        if not self._filtered:
             for button in (self._copy_button, self._save_button):
                 button.setToolTip("")
             return
 
-        runs = [self._output_runs[run_id] for run_id in self._output_filter]
-        description = filter_description(runs)
+        runs = [self._output_runs[run_id] for run_id in self._output_filter or ()]
+        description = filter_description(runs, self._filter_text)
         document = cast(QTextDocument, self._view.document())
         shown = 0 if document.isEmpty() else document.blockCount()
         # The count of hidden new lines is text rather than a button: clicking

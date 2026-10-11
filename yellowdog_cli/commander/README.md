@@ -25,7 +25,7 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 09:55:16 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 11 15:35:32 BST 2026 -->
 
 <!--te-->
 
@@ -284,7 +284,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Show Config** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lists whichever files are currently selected, each as a checkbox reading `Deselect <type>: <file>`, so you can deselect just one of them; all of them start checked, so accepting the dialog unchanged deselects everything. Uncheck a row to keep that file selected, and hover it for the full path. If nothing is selected, the button reports that and does nothing rather than showing the dialog.
-- **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate. While the output is [filtered to one command](#filtering-the-command-output), Copy and Save take only the lines shown, and Clear clears everything and ends the filter. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
+- **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate. While the output is [filtered](#filtering-the-command-output), Copy and Save take only the lines shown, and Clear clears everything and ends the filter by process, keeping the text filter. The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another; there is nothing to save when the window is empty.
 - **Dark Mode** — toggle between light and dark appearance.
 - **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. Section links jump within it, and **Back** returns to where you followed one from. **F1** opens it too (as does **Cmd+?** on macOS), and closing and reopening it keeps your place.
 
@@ -296,7 +296,11 @@ While the output is filtered, a bar above it says whose output is shown and how 
 
 To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. The dialog lists Commander's own messages and then each command in the order it started, with its PID, its command line as you gave it (without the configuration and formatting options Commander adds), when it started, whether it is still running or how it ended, and how many lines of output it has in the window. A command whose output has been cleared is not listed unless it is still running. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return; hover a row for its full command line. The rows ticked when the dialog opens are the processes being shown, otherwise the command of the line you right-clicked, otherwise the latest. With several processes shown, their output is interleaved as it arrived and the bar names each of them, and right-clicking a line of one of them offers to narrow the view to that one alone.
 
-**Copy Command Output** and **Save Command Output** take what is shown, so filtering is also how to copy or save one command's output on its own. The filter lasts until you lift it or clear the window, and is not remembered between sessions.
+To see only the lines containing some text, type it in the *Filter lines* field at the right of the *Command Output* heading, or press Cmd+F (Ctrl+F on Windows and Linux) to get there. The output is filtered a moment after you stop typing, or at once if you press Return. Each line is matched on its own, as `grep` would: a message wrapped onto several lines is shown only where the text falls, and a line of a table or JSON document is shown only if it contains the text itself. Case is ignored, the text can fall anywhere in the line, and two characters are wildcards: `*` matches any run of characters and `?` any single one, so `ydid:task:*` finds every line naming a Task and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
+
+The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. Press Esc in the field to empty it and see every line again. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
+
+**Copy Command Output** and **Save Command Output** take what is shown, so filtering is also how to copy or save one command's output, or just its errors, on their own. The filters last until you lift them, and are not remembered between sessions.
 
 ## Running Arbitrary Commands
 

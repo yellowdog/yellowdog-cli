@@ -1,5 +1,6 @@
 """
-Tests for filtering Commander's output window to one command's output.
+Tests for filtering Commander's output window to one command's output, and by
+the text in each line.
 
 The commands are real child processes, run through _run_command_in_subprocess, so
 their output reaches the window the way a yd-* command's does — by the QProcess
@@ -19,12 +20,17 @@ qt_guard.require_qt()
 import commander_dialogs
 import gui_harness
 from PyQt6.QtCore import QEventLoop, QPoint, QProcess, Qt, QTimer
-from PyQt6.QtGui import QTextCursor, QTextDocument
+from PyQt6.QtGui import QKeySequence, QTextCursor, QTextDocument
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMenu
 
 from yellowdog_cli.commander.commander import YellowDogApp
-from yellowdog_cli.commander.output_model import OutputRun, block_count
+from yellowdog_cli.commander.output_model import (
+    OutputRun,
+    block_count,
+    filter_description,
+    line_pattern,
+)
 from yellowdog_cli.commander.output_pane import (
     SHOW_ALL_OUTPUT,
     SHOW_OUTPUT_FROM_PROCESS,
@@ -779,3 +785,229 @@ def test_the_menu_item_is_there_while_filtered(two_runs):
     menu = two_runs._output._build_output_menu(position_of(two_runs, "second command"))
 
     assert menu_action(menu, SHOW_OUTPUT_FROM_PROCESS).isEnabled()
+
+
+# The text filter: the lines shown are those containing the text typed, line by
+# line, as grep shows them, together with the filter by run.
+
+
+@pytest.mark.parametrize(
+    "text, line, matches",
+    [
+        ("error", "2026-09-23 (123456) : Error: it failed", True),
+        ("ERROR", "an error", True),
+        ("ydid:task:*", "made ydid:task:ABC:1:2:3", True),
+        ("ydid:wrkreq:*", "made ydid:task:ABC:1:2:3", False),
+        ("a?c", "xabcx", True),
+        ("a?c", "ac", False),
+        ("a*c", "ac", True),
+        ("[1]", "item [1]", True),
+        ("[12]", "item 1", False),
+        ("a.c", "abc", False),
+        ("  spaced  ", "a spaced line", True),
+    ],
+)
+def test_line_pattern(text, line, matches):
+    pattern = line_pattern(text)
+    assert pattern is not None
+    assert bool(pattern.search(line)) is matches
+
+
+@pytest.mark.parametrize("text", ["", "   "])
+def test_an_empty_line_pattern_is_none(text):
+    assert line_pattern(text) is None
+
+
+def test_the_description_names_the_text():
+    run = OutputRun(1, "yd-a", pid=111111)
+    assert filter_description([], "error") == 'Showing only lines matching "error"'
+    assert filter_description([run], "error") == (
+        'Showing only output from process 111111 (yd-a) · lines matching "error"'
+    )
+
+
+def filter_text(window: YellowDogApp, text: str):
+    """
+    Type into the filter field and apply it, as the pause after typing does.
+    """
+    window.output_text_filter.setText(text)
+    window._output._apply_text_filter()
+
+
+def test_the_text_filter_shows_only_matching_lines(two_runs):
+    filter_text(two_runs, "MESSAGE")
+
+    text = shown(two_runs)
+    assert "first command, first message" in text
+    assert "second command's message" in text
+    assert "which wraps" not in text, "line by line, not message by message"
+    assert "| a | table |" not in text
+    assert "Commander says hello" not in text
+    assert two_runs.output_filter_bar.isVisible()
+    assert two_runs.output_filter_label.text().startswith(
+        'Showing only lines matching "MESSAGE" · 2 of '
+    )
+
+
+def test_a_continuation_line_can_match_alone(two_runs):
+    filter_text(two_runs, "wraps onto")
+
+    assert (
+        shown(two_runs)
+        == "                              which wraps onto a second line"
+    )
+
+
+def test_wildcards(two_runs):
+    filter_text(two_runs, "(12345?) : *, f?rst")
+
+    assert (
+        shown(two_runs) == "2026-09-23 10:00:00 (123456) : first command, first message"
+    )
+
+
+def test_the_filters_combine(two_runs):
+    filter_to_line_containing(two_runs, "second command")
+    filter_text(two_runs, "message")
+
+    assert shown(two_runs) == "2026-09-23 10:00:01 (654321) : second command's message"
+    label = two_runs.output_filter_label.text()
+    assert label.startswith("Showing only output from process 654321 (")
+    assert ') · lines matching "message" · 1 of ' in label
+
+    filter_text(two_runs, "")
+
+    assert "Executing:" in shown(two_runs), "the filter by run stays"
+    assert "first message" not in shown(two_runs)
+
+
+def test_a_matching_line_offers_its_process(two_runs):
+    filter_text(two_runs, "message")
+
+    filter_to_line_containing(two_runs, "first message")
+
+    assert (
+        shown(two_runs) == "2026-09-23 10:00:00 (123456) : first command, first message"
+    )
+
+
+def test_lines_arriving_are_matched_one_by_one(two_runs):
+    filter_text(two_runs, "keep")
+
+    run_child(two_runs, "keep this", "drop this", "and keep this")
+
+    assert shown(two_runs) == "keep this\nand keep this"
+    assert two_runs.output_filter_label.text().endswith(" · 2 new lines hidden"), (
+        "the dropped line and the 'Executing:' line"
+    )
+
+
+def test_the_filter_waits_for_a_pause_in_typing(two_runs):
+    everything = shown(two_runs)
+
+    two_runs.output_text_filter.setText("command's")
+
+    assert shown(two_runs) == everything, "not on the keystroke"
+    for _ in range(40):
+        if shown(two_runs) != everything:
+            break
+        QTest.qWait(50)
+    assert shown(two_runs) == "2026-09-23 10:00:01 (654321) : second command's message"
+
+
+def test_return_applies_the_filter_at_once(two_runs):
+    two_runs.output_text_filter.setText("second")
+    two_runs.output_text_filter.setFocus()
+
+    QTest.keyClick(two_runs.output_text_filter, Qt.Key.Key_Return)
+
+    assert "first message" not in shown(two_runs)
+
+
+def test_escape_in_the_field_empties_it(two_runs):
+    everything = shown(two_runs)
+    filter_text(two_runs, "second")
+    two_runs.output_text_filter.setFocus()
+
+    QTest.keyClick(two_runs.output_text_filter, Qt.Key.Key_Escape)
+
+    assert two_runs.output_text_filter.text() == ""
+    assert shown(two_runs) == everything
+    assert not two_runs.output_filter_bar.isVisible()
+
+
+def test_show_all_output_lifts_both_filters(two_runs):
+    everything = shown(two_runs)
+    filter_to_line_containing(two_runs, "second command")
+    filter_text(two_runs, "message")
+
+    two_runs.output_filter_show_all.click()
+
+    assert two_runs.output_text_filter.text() == ""
+    assert shown(two_runs) == everything
+    assert not two_runs.output_filter_bar.isVisible()
+    assert not two_runs._output._text_filter_timer.isActive(), "nothing pending"
+
+
+def test_clear_keeps_the_text_filter(two_runs):
+    filter_text(two_runs, "keep")
+
+    two_runs.clear_command_output.click()
+    two_runs._output.log("keep this", prefix=False)
+    two_runs._output.log("drop this", prefix=False)
+
+    assert two_runs.output_text_filter.text() == "keep"
+    assert shown(two_runs) == "keep this"
+
+
+def test_copy_takes_the_lines_shown(two_runs):
+    filter_text(two_runs, "message")
+
+    two_runs.copy_command_output.click()
+
+    clipboard = QApplication.clipboard()
+    assert clipboard is not None
+    assert clipboard.text() == shown(two_runs)
+    assert "which wraps" not in clipboard.text()
+    assert "Only the lines shown" in two_runs.copy_command_output.toolTip()
+
+
+def test_find_puts_the_cursor_in_the_field(window):
+    window.log_output.setFocus()
+    QApplication.processEvents()
+
+    QTest.keySequence(window, QKeySequence(QKeySequence.StandardKey.Find))
+
+    assert window.output_text_filter.hasFocus()
+
+
+def test_the_top_line_stays_where_it_was(window):
+    interleaved(window)
+    scrollbar = window.log_output.verticalScrollBar()
+    assert scrollbar is not None
+    scrollbar.setValue(scrollbar.maximum() // 2)
+    top = window.log_output.firstVisibleBlock()
+    if not top.text().startswith("a"):
+        scrollbar.setValue(scrollbar.value() + 1)
+        top = window.log_output.firstVisibleBlock()
+    target = top.text()
+
+    filter_text(window, "a")
+
+    assert window.log_output.firstVisibleBlock().text() == target
+
+
+def test_a_top_line_filtered_out_gives_way_to_the_next_shown(window):
+    interleaved(window)
+    scrollbar = window.log_output.verticalScrollBar()
+    assert scrollbar is not None
+    scrollbar.setValue(scrollbar.maximum() // 2)
+    top = window.log_output.firstVisibleBlock()
+    if not top.text().startswith("b"):
+        scrollbar.setValue(scrollbar.value() + 1)
+        top = window.log_output.firstVisibleBlock()
+    following = f"a{int(top.text()[1:]) + 1:03d}"
+
+    filter_text(window, "a")
+
+    assert window.log_output.firstVisibleBlock().text() == following

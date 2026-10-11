@@ -152,12 +152,34 @@ class OutputRun:
         return self.run_id != COMMANDER_RUN and self.outcome is None
 
 
-def filter_description(runs: list[OutputRun]) -> str:
+def line_pattern(text: str) -> re.Pattern[str] | None:
+    """
+    The output window's text filter as a pattern to search each line for:
+    'text' found anywhere in the line, ignoring case, with '*' matching any
+    run of characters and '?' any one. Every other character is itself, '['
+    included, which fnmatch would read as a character class. None for a
+    filter with nothing in it but spaces, which shows every line.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    wildcards = {"*": ".*", "?": "."}
+    return re.compile(
+        "".join(wildcards.get(char, re.escape(char)) for char in text),
+        re.IGNORECASE,
+    )
+
+
+def filter_description(runs: list[OutputRun], text: str = "") -> str:
     """
     What the filter bar says is shown: 'Showing only' and the runs, commands
     in the order they started and Commander's own messages last, where the
-    sentence reads better than at its start.
+    sentence reads better than at its start, then the text the lines are
+    filtered by. Either can be absent, but not both.
     """
+    matching = f'lines matching "{text}"' if text else ""
+    if not runs:
+        return f"Showing only {matching}"
     ordered = sorted(runs, key=lambda run: (run.run_id == COMMANDER_RUN, run.run_id))
     subjects = [run.bar_subject for run in ordered]
     listed = (
@@ -166,8 +188,10 @@ def filter_description(runs: list[OutputRun]) -> str:
         else f"{', '.join(subjects[:-1])} and {subjects[-1]}"
     )
     if ordered[0].run_id == COMMANDER_RUN:  # Commander's alone
-        return f"Showing only {listed}"
-    return f"Showing only output from {listed}"
+        description = f"Showing only {listed}"
+    else:
+        description = f"Showing only output from {listed}"
+    return f"{description} · {matching}" if matching else description
 
 
 @dataclass
@@ -201,6 +225,23 @@ class OutputEntry:
         Whether a filter to 'run_ids' shows this entry; None shows everything.
         """
         return run_ids is None or any(run_id in run_ids for run_id in self.runs)
+
+    def lines_shown(
+        self, run_ids: frozenset[int] | None, pattern: re.Pattern[str] | None
+    ) -> list[tuple[int, str]]:
+        """
+        The lines of this entry a filter to 'run_ids' and 'pattern' shows, each
+        with its number in the entry: none if its run is filtered out, else
+        those 'pattern' is found in, or every line with no pattern. A line is
+        what Qt makes a block of, so the numbers count blocks.
+        """
+        if not self.shown_under(run_ids):
+            return []
+        return [
+            (number, line)
+            for number, line in enumerate(BLOCK_SEPARATORS.split(self.text))
+            if pattern is None or pattern.search(line)
+        ]
 
 
 class LineBuffer:
