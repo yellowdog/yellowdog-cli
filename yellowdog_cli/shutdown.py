@@ -44,9 +44,11 @@ from yellowdog_cli.utils.entity_names import (
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.follow_utils import follow_ids
@@ -129,7 +131,7 @@ def shut_down(ctx: RunContext, names: list[str]):
     if globs:
         print_info(
             f"Shutting down Worker Pools "
-            f"{describe_glob_scope(globs, ctx.config.namespace)}"
+            f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
         worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
             globs,
@@ -140,9 +142,8 @@ def shut_down(ctx: RunContext, names: list[str]):
         )
     else:
         print_info(
-            "Shutting down Worker Pools in "
-            f"namespace '{ctx.config.namespace}' with "
-            f"names including '{ctx.config.name_tag}'"
+            f"Shutting down Worker Pools {namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with names including '{}'", ctx.config.name_tag)
         )
         worker_pool_summaries = [
             worker_pool_summary

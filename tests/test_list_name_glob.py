@@ -661,3 +661,76 @@ def test_name_glob_roles_warns_on_unnamed(capsys):
     assert capsys.readouterr().out.strip() == "1"
     mock_warning.assert_called_once()
     assert "no name" in mock_warning.call_args.args[0]
+
+
+@pytest.mark.parametrize(
+    "namespace, name_tag, expected",
+    [
+        (
+            "default",
+            "pwt",
+            "Displaying Worker Pools in namespace 'default' with 'pwt' in name",
+        ),
+        ("", "pwt", "Displaying Worker Pools in all namespaces with 'pwt' in name"),
+        ("", "", "Displaying Worker Pools in all namespaces"),
+    ],
+)
+def test_an_empty_namespace_or_tag_is_not_quoted(namespace, name_tag, expected):
+    """
+    '' searches every namespace and filters on no name, so the message says
+    so rather than "in namespace '' with '' in name".
+    """
+    import yellowdog_cli.list as yd_list
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace=namespace, name_tag=name_tag),
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == expected
+
+
+def test_an_empty_namespace_names_those_the_application_can_read():
+    """
+    An Application without global read access searches only the namespaces
+    it can read, so those are what the message names.
+    """
+    import yellowdog_cli.list as yd_list
+    import yellowdog_cli.utils.entity_utils as entity_utils
+
+    details = SimpleNamespace(
+        allNamespacesReadable=False, readableNamespaces=["a", "b"]
+    )
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="", name_tag="")
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(entity_utils, "get_application_details", return_value=details),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == (
+        "Displaying Worker Pools in namespaces 'a', 'b'"
+    )

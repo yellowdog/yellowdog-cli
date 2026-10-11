@@ -83,6 +83,7 @@ from yellowdog_cli.utils.entity_names import (
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.entity_utils import (
+    filter_phrase,
     filter_summaries_by_name_glob,
     get_all_applications,
     get_all_groups,
@@ -97,6 +98,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_task_groups_from_wr_by_id,
     get_user_groups,
     get_worker_pool_summaries,
+    namespace_scope,
     resolve_name_glob,
     search_namespaces,
     substitute_id_for_name_in_allowance,
@@ -322,7 +324,7 @@ def list_work_requirements(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Work Requirements in namespace '{namespace}' "
+            f"Listing Work Requirements {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         work_requirement_summaries = filter_summaries_by_name_glob(
@@ -336,8 +338,8 @@ def list_work_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            f"Listing Work Requirements in namespace '{ctx.config.namespace}' "
-            f"with '{ctx.config.name_tag}' in tag",
+            f"Listing Work Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with '{}' in tag", ctx.config.name_tag),
         )
         work_requirement_summaries = get_filtered_work_requirement_summaries(
             ctx.client,
@@ -455,7 +457,7 @@ def list_worker_pools(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Displaying Worker Pools in namespace '{namespace}' "
+            f"Displaying Worker Pools {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         searched_namespace = namespace
@@ -470,8 +472,8 @@ def list_worker_pools(ctx: RunContext):
         )
     else:
         print_info(
-            f"Displaying Worker Pools in namespace '{ctx.config.namespace}' "
-            f"with '{ctx.config.name_tag}' in name"
+            f"Displaying Worker Pools {namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with '{}' in name", ctx.config.name_tag)
         )
         worker_pool_summaries = get_worker_pool_summaries(
             ctx.client,
@@ -573,7 +575,7 @@ def list_compute_requirements(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Compute Requirements in namespace '{namespace}' "
+            f"Listing Compute Requirements {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         compute_requirement_summaries = filter_summaries_by_name_glob(
@@ -588,9 +590,8 @@ def list_compute_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            "Listing Compute Requirements in "
-            f"namespace '{ctx.config.namespace}' with "
-            f"names containing '{ctx.config.name_tag}'"
+            f"Listing Compute Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with names containing '{}'", ctx.config.name_tag)
         )
         compute_requirement_summaries = get_compute_requirement_summaries(
             ctx.client, ctx.config.namespace, ctx.config.name_tag, included_statuses
@@ -802,8 +803,8 @@ def list_compute_requirement_templates(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Compute Requirement Templates in namespace '{namespace}' "
-            f"matching name pattern '{name}'"
+            "Listing Compute Requirement Templates "
+            f"{namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
         )
         cr_templates = filter_summaries_by_name_glob(
             get_compute_requirement_templates(
@@ -816,9 +817,9 @@ def list_compute_requirement_templates(ctx: RunContext):
         )
     else:
         print_info(
-            "Listing Compute Requirement Templates in namespace "
-            f"'{ctx.config.namespace}' with names including "
-            f"'{ctx.config.name_tag}'"
+            "Listing Compute Requirement Templates "
+            f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with names including '{}'", ctx.config.name_tag)
         )
         cr_templates = get_compute_requirement_templates(
             ctx.client,
@@ -891,7 +892,7 @@ def list_compute_source_templates(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Compute Source Templates in namespace '{namespace}' "
+            f"Listing Compute Source Templates {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         cs_templates = filter_summaries_by_name_glob(
@@ -902,9 +903,9 @@ def list_compute_source_templates(ctx: RunContext):
         )
     else:
         print_info(
-            "Listing Compute Source Templates in namespace "
-            f"'{ctx.config.namespace}' with names including "
-            f"'{ctx.config.name_tag}'"
+            "Listing Compute Source Templates "
+            f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with names including '{}'", ctx.config.name_tag)
         )
         cs_templates = get_compute_source_templates(
             ctx.client, namespace=ctx.config.namespace, name=ctx.config.name_tag
@@ -1009,7 +1010,7 @@ def list_image_families(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Machine Image Families in namespace '{namespace}' "
+            f"Listing Machine Image Families {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         image_search = MachineImageFamilySearch(
@@ -1026,8 +1027,8 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                f"No matching Machine Image Families found in namespace "
-                f"'{namespace}' matching name pattern '{name}'",
+                "No matching Machine Image Families found "
+                f"{namespace_scope(ctx.client, namespace)} matching name pattern '{name}'",
             )
             return
     else:
@@ -1043,9 +1044,9 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                f"No matching Machine Image Families found in namespace "
-                f"'{ctx.config.namespace}' with tag including "
-                f"'{ctx.config.name_tag}'",
+                "No matching Machine Image Families found "
+                f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+                + filter_phrase("with names including '{}'", ctx.config.name_tag),
             )
             return
 

@@ -23,8 +23,10 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
 )
 from yellowdog_cli.utils.entity_utils import (
+    filter_phrase,
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
@@ -248,9 +250,9 @@ def _interactive_units(run: _Run) -> list[_Unit]:
     The Work Requirements in the namespace and tag the user selects.
     """
     print_info(
-        "Finding active Work Requirements in "
-        f"namespace '{run.ctx.config.namespace}' with tags "
-        f"including '{run.ctx.config.name_tag}'"
+        "Finding active Work Requirements "
+        f"{namespace_scope(run.ctx.client, run.ctx.config.namespace)}"
+        + filter_phrase("with tags including '{}'", run.ctx.config.name_tag)
     )
 
     # The Work Requirements, and then their Tasks, are chosen from lists,

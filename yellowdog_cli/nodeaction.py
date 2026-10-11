@@ -31,6 +31,7 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
@@ -225,7 +226,7 @@ def _resolve_worker_pool(ctx: RunContext) -> _Pool:
     ]
     if not summaries:
         raise ValueError(
-            f"No active Worker Pools found in namespace '{ctx.config.namespace}'"
+            f"No active Worker Pools found {namespace_scope(ctx.client, ctx.config.namespace)}"
         )
     selected = cast(
         list[WorkerPoolSummary],

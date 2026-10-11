@@ -126,7 +126,7 @@ def cancel(ctx: RunContext, names: list[str]):
     if globs:
         print_info(
             f"Cancelling Work Requirements "
-            f"{describe_glob_scope(globs, ctx.config.namespace)}"
+            f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
         summaries: list[WorkRequirementSummary] = expand_name_globs(
             globs,

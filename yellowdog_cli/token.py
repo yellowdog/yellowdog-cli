@@ -147,7 +147,7 @@ def _expand_globs(ctx: RunContext, targets: list[str]) -> list[str]:
             continue
         print_info(
             "Finding Configured Worker Pools"
-            f" {describe_glob_scope([target], ctx.config.namespace)}"
+            f" {describe_glob_scope(ctx.client, [target], ctx.config.namespace)}"
         )
         summaries: list[WorkerPoolSummary] = expand_name_globs(
             [target],
