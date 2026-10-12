@@ -29,7 +29,7 @@ BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
 
 
 # The command that does nothing but follow the YDIDs it is given
-FOLLOWING_COMMAND = "yd-follow"
+FOLLOWING_COMMAND = "yd-follow"  # the registry command, by any name
 
 
 def block_count(text: str) -> int:
@@ -55,7 +55,7 @@ class OutputRun:
 
     run_id: int
     command: (
-        str  # the program run, e.g. 'yd-workrequirement submit'; empty for Commander
+        str  # the program run, e.g. 'yd workrequirement submit'; empty for Commander
     )
     command_line: str = ""  # as echoed on the 'Executing:' line
     # As the user would recognise it: without the config source, namespace, tag,
@@ -72,7 +72,7 @@ class OutputRun:
     printed_pid: int | None = None
     # The arguments it was run with, as given to the process
     arguments: tuple[str, ...] = ()
-    # The Work Requirement YDIDs it has printed: the one a 'yd-workrequirement
+    # The Work Requirement YDIDs it has printed: the one a 'yd workrequirement
     # submit' created
     work_requirements_printed: set[str] = field(default_factory=set)
 
@@ -90,15 +90,16 @@ class OutputRun:
     def follows_events(self) -> bool:
         """
         Whether the command follows the event streams of the entities it is
-        about: 'yd-follow', or a command given '--follow' or '--progress'
-        that is not a dry run. Only separate flags count, not a cluster such
-        as '-fD', whose letters could be another option's value.
+        about: 'yd follow' (a noun's 'follow' verb, or 'yd follow'), or a
+        command given '--follow' or '--progress' that is not a dry run. Only
+        separate flags count, not a cluster such as '-fD', whose letters could
+        be another option's value.
         """
-        if self.command == FOLLOWING_COMMAND:
-            return True
         command = command_named(self.command)
         if command is None:
             return False
+        if command.internal_name == FOLLOWING_COMMAND:
+            return True
         # A variant() keeps its base's flags, so the base's are the command's
         flags = {
             flag
@@ -114,7 +115,7 @@ class OutputRun:
         """
         Whether this run, still running, is following the Work Requirement:
         one it follows events for, and named on its command line or printed
-        by it (the one a 'yd-workrequirement submit' created).
+        by it (the one a 'yd workrequirement submit' created).
         """
         return (
             self.running

@@ -565,7 +565,7 @@ class TestInstallation:
     def test_rclone_missing_warns(self, monkeypatch):
         monkeypatch.setattr(dc, "find_rclone", lambda: None)
         r = dc.check_rclone(_ctx())
-        assert r.status is dc.Status.WARN and "yd-data" in (r.remedy or "")
+        assert r.status is dc.Status.WARN and "yd data" in (r.remedy or "")
 
     def test_rclone_found(self, monkeypatch):
         monkeypatch.setattr(
@@ -1560,8 +1560,8 @@ class TestEntryPoint:
         text = (Path(__file__).parent.parent / "docs" / "commands.md").read_text(
             encoding="utf-8"
         )
-        assert "\n### yd-doctor\n" in text
-        assert "--offline" in text.split("### yd-doctor")[1].split("### yd-help")[0]
+        assert "\n### yd doctor\n" in text
+        assert "--offline" in text.split("### yd doctor")[1].split("### yd help")[0]
 
 
 class TestLogging:

@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:41 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:13 BST 2026 -->
 
 <!--te-->
 
@@ -29,7 +29,7 @@ Substitutions can also be performed for non-string (number, boolean, array, and 
 - Variable definitions supplied on the command line would then be of the form, e.g.:
 
 ```shell
- yd-workrequirement submit -v my_int=5 -v my_float=2.5 -v my_bool=true \
+ yd workrequirement submit -v my_int=5 -v my_float=2.5 -v my_bool=true \
            -v my_array="[1,2,3]" -v my_table='{"A": 100, "B": 200}'
 ```
 
@@ -41,7 +41,7 @@ A `num:` value may be written in JSON's syntax or Python's, e.g. `5`, `-2.5`, `1
 
 A type-tagged substitution that is only part of a string, e.g. `"--retries={{num:retries}}"` or `"--tags={{array:tags}}"`, is checked as its type and then written into the string as text: a number as it was written (`1.10` stays `1.10`), and a boolean, array or table as JSON (`true`, `["a", "b"]`). The same holds in the text files substituted as a whole — User Data scripts, Task Data files and `writeFile` content files — where `N={{num:count}}` in a shell script becomes `N=5`, and one standing alone in quotes, `"{{num:count}}"`, loses its quotes, so that in a JSON file it becomes the number itself.
 
-Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd-variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
+Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string — an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>` — is held as its **JSON** text, so that it can be read back by the type tags; this means that `my_array = [1, 2, 3]` and `my_array = "[1,2,3]"` are equivalent definitions, as are `my_bool = true` and `my_bool = "true"`. (Note that `yd variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.)
 
 ## Default Variables
 
@@ -93,7 +93,7 @@ The rule excludes the substitution syntax itself (`}}`, the `:=` default-value s
 
 ### Setting Variable Values
 
-1. The **command-line** option is `--variable` (or `-v`). For example, `yd-workrequirement submit -v project_code=pr-213-a -v run_id=1234` will establish two new variables that can be used as `{{project_code}}` and `{{run_id}}`, which will be substituted by `pr-213-a` and `1234` respectively.
+1. The **command-line** option is `--variable` (or `-v`). For example, `yd workrequirement submit -v project_code=pr-213-a -v run_id=1234` will establish two new variables that can be used as `{{project_code}}` and `{{run_id}}`, which will be substituted by `pr-213-a` and `1234` respectively.
 
 
 2. For **environment variables**, setting the variable `YD_VAR_project_code="pr-213-a"` will create a new variable that can be accessed as `{{project_code}}`, which will be substituted by `pr-213-a`. Note that if running on Windows, all environment variable names are case-insensitive and converted to upper case, so choose upper case variable names only.
@@ -143,7 +143,7 @@ For example, if one wanted to select a different `templateId` for a Worker Pool 
     templateId = "{{template_{{region}}}}"
 ```
 
-Then, if one used `yd-workerpool provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
+Then, if one used `yd workerpool provision -v region=phoenix`, the `templateId` property would first resolve to `"{{template_phoenix}}"`, and then to `"ydid:crt:65EF4F:e4239dec-78c2-421c-a7f3-71e61b72946f"`.
 
 There is no limit on how deeply variables can be nested, and a variable whose value itself contains variable references is resolved however long the chain. A circular reference, where a variable refers back to itself either directly or through other variables, is reported as an error. The example is TOML, but `"templateId": "{{template_{{region}}}}"` works the same way in a JSON or Jsonnet specification. Note that sequencing of properties does not matter, e.g. variable `{{a}}` can depend on a variable `{{b}}` that is defined after it in the file.
 
@@ -277,9 +277,9 @@ Where the variable was defined but has been removed by the [unset syntax](#remov
 WARNING : Variable '{{site}}' is unset, and has been left unsubstituted in 'name': 'site' is '{{::}}', which always unsets it
 ```
 
-This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd-node action` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
+This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd node action` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
-Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named. The Task and Task Group variables that `yd-workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named. The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 

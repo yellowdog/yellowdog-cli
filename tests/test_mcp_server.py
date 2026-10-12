@@ -89,7 +89,7 @@ def test_the_server_names_itself(settings, clean_env):
     init = _through_client(build_server(settings), action)
     assert init.server_info.name == "yellowdog-cli"
     assert init.server_info.version == __version__
-    assert "yd-mcp" in (init.instructions or "")
+    assert "yd mcp" in (init.instructions or "")
 
 
 def test_a_call_returns_the_document(settings, clean_env):

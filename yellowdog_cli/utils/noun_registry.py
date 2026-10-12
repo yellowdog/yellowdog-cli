@@ -1,5 +1,5 @@
 """
-The noun commands: 'yd-workrequirement submit', 'yd-instance terminate', and
+The noun commands: 'yd workrequirement submit', 'yd instance terminate', and
 the rest, each a noun naming the object operated on and a verb naming what
 is done to it.
 
@@ -12,7 +12,7 @@ help and refused if given, any arguments the verb fixes (yd-list's entity
 type, yd-cloud-info's type) supplied by the dispatcher (noun_dispatch.py),
 and the targets it is given held to the object's kind. The registry commands
 the noun verbs replace are kept for a release as deprecated aliases
-(DEPRECATED); yd-list, yd-show, yd-follow and yd-wait are not replaced, but
+(REPLACED_BY_VERBS); yd-list, yd-show, yd-follow and yd-wait are not replaced, but
 offered under each noun as well, restricted to its objects.
 """
 
@@ -33,6 +33,7 @@ from yellowdog_cli.utils.command_registry import (
     Exclusive,
     Option,
     Validator,
+    command_module,
 )
 from yellowdog_cli.utils.entity_names import (
     CI_INSTANCE_TYPES,
@@ -88,7 +89,7 @@ _SELECTION_OPTIONS = (
     "--interactive",
 )
 
-# The configuration types 'yd-resource list' lists: those yd-create makes,
+# The configuration types 'yd resource list' lists: those yd-create makes,
 # and the Platform's own (namespaces, permissions) beside them
 RESOURCE_LIST_TYPES = frozenset(
     {
@@ -108,7 +109,7 @@ RESOURCE_LIST_TYPES = frozenset(
     }
 )
 
-# The YDID types 'yd-resource show' shows
+# The YDID types 'yd resource show' shows
 RESOURCE_YDID_TYPES = frozenset(
     {
         YDIDType.ALLOWANCE,
@@ -159,10 +160,10 @@ class Verb:
 
 @dataclass(frozen=True)
 class Noun:
-    name: str  # "yd-workrequirement"
+    name: str  # "workrequirement"
     summary: str  # what the noun's commands do, for its help and yd-help
     verbs: tuple[Verb, ...]
-    alias: str | None = None  # "yd-wr"
+    alias: str | None = None  # "wr"
 
     def verb(self, name: str) -> Verb | None:
         return next((verb for verb in self.verbs if verb.name == name), None)
@@ -419,7 +420,7 @@ _CR_ID_DESCRIBED = "compute-requirement-ID"
 
 NOUNS: tuple[Noun, ...] = (
     Noun(
-        "yd-workrequirement",
+        "workrequirement",
         "Submit, control and inspect Work Requirements",
         (
             Verb(
@@ -464,10 +465,10 @@ NOUNS: tuple[Noun, ...] = (
             ),
             _wait("Work Requirements", YDIDType.WORK_REQUIREMENT, _WR_DESCRIBED),
         ),
-        alias="yd-wr",
+        alias="wr",
     ),
     Noun(
-        "yd-taskgroup",
+        "taskgroup",
         "Inspect Task Groups and change their priority",
         (
             _priority("Task Groups and Work Requirements"),
@@ -475,10 +476,10 @@ NOUNS: tuple[Noun, ...] = (
             _list(ET_TASK_GROUPS, "Task Groups"),
             _show("Task Groups", _ids(YDIDType.TASK_GROUP), _TG_DESCRIBED),
         ),
-        alias="yd-tg",
+        alias="tg",
     ),
     Noun(
-        "yd-task",
+        "task",
         "Abort and inspect Tasks",
         (
             Verb(
@@ -492,7 +493,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-workerpool",
+        "workerpool",
         "Provision, resize, shut down and inspect Worker Pools",
         (
             Verb(
@@ -560,10 +561,10 @@ NOUNS: tuple[Noun, ...] = (
             ),
             _wait("Worker Pools", YDIDType.WORKER_POOL, _WP_DESCRIBED),
         ),
-        alias="yd-wp",
+        alias="wp",
     ),
     Noun(
-        "yd-computerequirement",
+        "computerequirement",
         "Instantiate, control and inspect Compute Requirements",
         (
             Verb(
@@ -634,10 +635,10 @@ NOUNS: tuple[Noun, ...] = (
                 "Compute Requirements", YDIDType.COMPUTE_REQUIREMENT, _CR_ID_DESCRIBED
             ),
         ),
-        alias="yd-cr",
+        alias="cr",
     ),
     Noun(
-        "yd-instance",
+        "instance",
         "Control and inspect the Instances of Compute Requirements",
         (
             _instance_action(
@@ -674,7 +675,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-node",
+        "node",
         "Act on and inspect Worker Pool Nodes",
         (
             Verb(
@@ -741,7 +742,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-worker",
+        "worker",
         "Inspect Workers",
         (
             _list(ET_WORKERS, "Workers"),
@@ -749,7 +750,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-resource",
+        "resource",
         "Create, remove and inspect resources: templates, keyrings, users and the rest",
         (
             Verb(
@@ -783,7 +784,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-allowance",
+        "allowance",
         "Boost and inspect Allowances",
         (
             Verb("boost", "yd-boost", "Boost Allowances", "boosting Allowances"),
@@ -792,7 +793,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-data",
+        "data",
         "Transfer, list and delete files in a remote data client location",
         (
             Verb(
@@ -828,7 +829,7 @@ NOUNS: tuple[Noun, ...] = (
         ),
     ),
     Noun(
-        "yd-cloudinfo",
+        "cloudinfo",
         "List cloud regions, instance types and prices",
         (
             _cloud_info("regions", CI_REGIONS, "List cloud regions"),
@@ -911,7 +912,7 @@ def derive_command(noun: Noun, verb: Verb) -> Command:
     renamed, its options narrowed to the object.
     """
     base = COMMANDS[verb.command]
-    name = f"{noun.name} {verb.name}"
+    name = f"yd {noun.name} {verb.name}"
     for option_name in (*verb.hidden, *verb.fixed_options, *verb.overrides):
         # The selection options are hidden from every by-ID compute action,
         # whether or not its command has them all
@@ -957,7 +958,7 @@ NOUNS_BY_NAME: dict[str, Noun] = {
 }
 
 NOUN_COMMANDS: dict[str, Command] = {
-    f"{noun.name} {verb.name}": derive_command(noun, verb)
+    f"yd {noun.name} {verb.name}": derive_command(noun, verb)
     for noun in NOUNS
     for verb in noun.verbs
 }
@@ -966,44 +967,89 @@ NOUN_COMMANDS: dict[str, Command] = {
 def noun_forms(command_name: str) -> list[str]:
     """
     The noun forms that run a registry command: 'yd-terminate' is
-    'yd-computerequirement terminate', 'yd-instance terminate' and
-    'yd-node terminate'.
+    'yd computerequirement terminate', 'yd instance terminate' and
+    'yd node terminate'.
     """
     return [
-        f"{noun.name} {verb.name}"
+        f"yd {noun.name} {verb.name}"
         for noun in NOUNS
         for verb in noun.verbs
         if verb.command == command_name
     ]
 
 
-# The registry commands the noun verbs replace, each with its noun forms:
-# kept for a release, with a warning, then removed
-DEPRECATED: dict[str, list[str]] = {
+# The registry commands the noun verbs replace, each with its noun forms
+# (every deprecated script, these included, is top_level.SCRIPT_FORMS)
+REPLACED_BY_VERBS: dict[str, list[str]] = {
     name: noun_forms(name)
     for name in COMMANDS
     if name not in GENERIC_COMMANDS and noun_forms(name)
 }
 
 
+def noun_module(noun: Noun) -> str:
+    """
+    The module that runs a noun's verbs: 'python -m' it with the verb first.
+    """
+    return f"yellowdog_cli.nouns.{noun.name}"
+
+
 def command_named(name: str) -> Command | None:
     """
-    A registry command, or a noun verb's derived command, by name: 'yd-wr
-    submit' is 'yd-workrequirement submit'.
+    A registry command, or a noun verb's derived command, by any name it is
+    given: 'yd-submit', 'yd workrequirement submit', 'yd wr submit', or the
+    'yd' form of a registry command no verb replaces ('yd list' is yd-list;
+    'yd submit' is nothing, as 'yd' refuses it).
     """
-    noun, _, verb = name.partition(" ")
-    if noun in NOUNS_BY_NAME:
-        name = f"{NOUNS_BY_NAME[noun].name} {verb}"
-    return COMMANDS.get(name) or NOUN_COMMANDS.get(name)
+    words = name.split(" ")
+    if words[0] != "yd" or len(words) < 2:
+        return COMMANDS.get(name) or NOUN_COMMANDS.get(name)
+    noun = NOUNS_BY_NAME.get(words[1])
+    if noun is not None:
+        if len(words) != 3:
+            return None
+        return NOUN_COMMANDS.get(f"yd {noun.name} {words[2]}")
+    registry_name = f"yd-{words[1]}"
+    if len(words) != 2 or registry_name in REPLACED_BY_VERBS:
+        return None
+    return COMMANDS.get(registry_name)
 
 
-def noun_and_verb(words: list[str]) -> str | None:
+def module_invocation(command: str) -> tuple[str, list[str]] | None:
     """
-    The noun form a command line's first two words make ('yd-wr submit'),
-    or None if they make none.
+    The module 'python -m' runs for a command, and the arguments that come
+    first. A 'yd' command ('yd wr submit', 'yd list') runs the 'yd'
+    dispatcher with its words, so it is shown as typed and refused as 'yd'
+    refuses it; a 'yd-*' name runs its own module, as its script would, or
+    the dispatcher, which reports it, when this installation has no such
+    command. None for anything else.
     """
-    if len(words) < 2 or words[0] not in NOUNS_BY_NAME:
+    words = command.split(" ")
+    if words[0] == "yd":
+        return "yellowdog_cli.yd", words[1:]
+    if len(words) != 1 or not command.startswith("yd-"):
         return None
-    if NOUNS_BY_NAME[words[0]].verb(words[1]) is None:
+    module = command_module(command)
+    return ("yellowdog_cli.yd", [command]) if module is None else (module, [])
+
+
+def typed_command(words: list[str]) -> list[str] | None:
+    """
+    A typed command line with its command as one word, its arguments after:
+    'yd wr submit -y' is ['yd wr submit', '-y'] and 'yd list wr' ['yd list',
+    'wr']. A 'yd' word not known is kept as a command, for the CLI to
+    report; a 'yd-*' name is as typed; None for a line that is not the
+    CLI's.
+    """
+    if not words:
         return None
-    return f"{words[0]} {words[1]}"
+    if words[0].startswith("yd-"):
+        return list(words)
+    if words[0] != "yd":
+        return None
+    if len(words) == 1:
+        return ["yd"]
+    noun = NOUNS_BY_NAME.get(words[1])
+    if noun is not None and len(words) > 2 and noun.verb(words[2]) is not None:
+        return [" ".join(words[:3]), *words[3:]]
+    return [" ".join(words[:2]), *words[2:]]

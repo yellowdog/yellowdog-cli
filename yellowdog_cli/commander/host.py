@@ -10,7 +10,7 @@ import os
 import sys
 from platform import system as _platform_system
 
-from yellowdog_cli.utils.command_registry import command_module
+from yellowdog_cli.utils.noun_registry import module_invocation
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 _system = _platform_system()
@@ -54,16 +54,14 @@ CHILD_ENVIRONMENT = {"PYTHONIOENCODING": "utf-8"}
 
 def cli_program(command: str, args: list[str]) -> tuple[str, list[str]]:
     """
-    The program and arguments that run 'command' (a 'yd-*' command, or a
-    noun and its verb): a console script of this installation's under this
-    interpreter ('python -m <its module>'), so that it is this
-    installation's CLI that runs, whatever the PATH Commander was started
-    with holds; anything else as it is.
+    The program and arguments that run 'command' (a 'yd …' command, or a
+    'yd-*' name): its module under this interpreter ('python -m'), a noun
+    verb's verb first, so that it is this installation's CLI that runs,
+    whatever the PATH Commander was started with holds; anything else as
+    it is.
     """
-    # A noun verb ('yd-workrequirement submit') runs its noun's module with
-    # the verb first, ahead of the arguments Commander adds
-    program, _, verb = command.partition(" ")
-    module = command_module(program)
-    if module is None:
+    invocation = module_invocation(command)
+    if invocation is None:
         return command, args
-    return sys.executable, ["-m", module, *([verb] if verb else []), *args]
+    module, leading = invocation
+    return sys.executable, ["-m", module, *leading, *args]

@@ -127,7 +127,7 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     except (SchemaGenerationError, fastjsonschema.JsonSchemaDefinitionException) as e:
         print_warning(
             f"cannot check '{CONFIG_FILE}' against the config schema: {e};"
-            " run 'yd-schema config' to see why"
+            " run 'yd schema config' to see why"
         )
         return
     except Exception as e:
@@ -143,7 +143,7 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
     for violation in violations:
         print_warning(
             f"'{CONFIG_FILE}': {violation.path}: {violation.message}"
-            " (see yd-schema config)"
+            " (see yd schema config)"
         )
 
 

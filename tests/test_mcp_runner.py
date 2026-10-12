@@ -27,6 +27,17 @@ def test_command_argv_runs_the_module_with_this_interpreter():
     ]
 
 
+def test_command_argv_runs_a_yd_command_through_the_dispatcher():
+    assert command_argv("yd instance terminate") == [
+        sys.executable,
+        "-m",
+        "yellowdog_cli.yd",
+        "instance",
+        "terminate",
+    ]
+    assert command_argv("yd list")[2:] == ["yellowdog_cli.yd", "list"]
+
+
 def test_yd_version_json(tmp_path):
     result = run(
         [*command_argv("yd-version"), "--json"], str(tmp_path), _clean_env(), 60
@@ -135,8 +146,13 @@ def test_command_argv_uses_the_entry_point_module():
     # 'yd-commander' runs yellowdog_cli.commander.launcher, which no rule on
     # the name gives
     assert command_argv("yd-commander")[2] == "yellowdog_cli.commander.launcher"
+    # One this installation lacks is the dispatcher's to report
+    assert command_argv("yd-no-such-command")[2:] == [
+        "yellowdog_cli.yd",
+        "yd-no-such-command",
+    ]
     with pytest.raises(ValueError):
-        command_argv("yd-no-such-command")
+        command_argv("ls")
 
 
 def test_the_child_writes_utf8(tmp_path):

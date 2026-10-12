@@ -115,7 +115,7 @@ TASK_DATA_INPUT: dict[str, Any] = {
         "localPath": {
             **STR,
             "description": (
-                "a local file yd-workrequirement submit uploads to 'uploadPath' (or 'source')"
+                "a local file yd workrequirement submit uploads to 'uploadPath' (or 'source')"
                 " before the Work Requirement is submitted"
             ),
         },
@@ -633,7 +633,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         "maintainInstanceCount",
         BOOL,
         description=(
-            "replace instances to keep the target number RUNNING (yd-computerequirement instantiate"
+            "replace instances to keep the target number RUNNING (yd computerequirement instantiate"
             " only; a Worker Pool's is always false)"
         ),
     ),

@@ -20,7 +20,9 @@ from yellowdog_cli.utils.compact_json import (
     FloatAsWritten,
     IntAsWritten,
 )
+from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.output_style import ERROR_MARKER
+from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
@@ -55,8 +57,9 @@ def _error(message: str) -> None:
 
 
 def main():
+    warn_if_deprecated_script("yd-format-json")
     parser = ArgumentParser(
-        prog="yd-format-json",
+        prog=selected_prog("yd-format-json"),
         description=(
             "Reformat JSON files in place with the CLI's compact layout (small"
             " containers on one line), changing nothing but the layout."

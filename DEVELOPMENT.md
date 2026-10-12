@@ -31,7 +31,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 10:04:38 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:14 BST 2026 -->
 
 <!--te-->
 
@@ -71,7 +71,7 @@ source .venv/bin/activate      # macOS/Linux
 uv pip install -e ".[dev,jsonnet,cloudwizard,commander,mcp]"
 ```
 
-This installs the package in editable mode, making all `yd-*` commands available in your environment and reflecting any local code changes immediately. You may need to re-source the venv to access the commands immediately.
+This installs the package in editable mode, making the `yd` command (and the deprecated `yd-*` ones) available in your environment and reflecting any local code changes immediately. You may need to re-source the venv to access the commands immediately.
 
 PyCharm supports uv natively — point it at the `.venv` created above via `Settings → Project → Python Interpreter`.
 
@@ -135,7 +135,7 @@ Line and branch coverage of the unit tests, from `pytest-cov` (in the `dev` extr
 make coverage
 ```
 
-It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd-schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks, the demo dry runs) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
+It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks, the demo dry runs) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
 
 ### Complexity
 
@@ -234,15 +234,15 @@ make schema_descriptions
 
 ## Commander
 
-`yd-commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together; what follows is what you need in order to work on it.
+`yd commander` is a PyQt6 desktop GUI over the CLI, in `yellowdog_cli/commander/`. [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together; what follows is what you need in order to work on it.
 
 ```shell
-yd-commander                        # or: python -m yellowdog_cli.commander
-yd-commander config.toml            # pre-select a configuration file
-yd-commander -y                     # skip the destructive-action confirmations
+yd commander                        # or: python -m yellowdog_cli.commander
+yd commander config.toml            # pre-select a configuration file
+yd commander -y                     # skip the destructive-action confirmations
 ```
 
-PyQt6 is the optional `commander` extra, installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd-commander` exits with an instruction to install it rather than a traceback, and the GUI tests skip (see [Commander GUI Tests](#commander-gui-tests)).
+PyQt6 is the optional `commander` extra, installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd commander` exits with an instruction to install it rather than a traceback, and the GUI tests skip (see [Commander GUI Tests](#commander-gui-tests)).
 
 The GUI holds no API client and imports neither the SDK nor `utils/wrapper.py`: every action runs a `yd-*` command as a child process. Two consequences worth keeping in mind when changing a command:
 
@@ -255,15 +255,15 @@ Assets ship through `[tool.setuptools.package-data]` in `pyproject.toml`, which 
 
 ## MCP Server
 
-`yd-mcp` is an MCP server over the CLI, in `yellowdog_cli/mcp/`. [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together.
+`yd mcp` is an MCP server over the CLI, in `yellowdog_cli/mcp/`. [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) documents it for users, and [`CLAUDE.md`](CLAUDE.md) describes how it is put together.
 
 ```shell
-yd-mcp config.toml                  # or: python -m yellowdog_cli.mcp config.toml
+yd mcp config.toml                  # or: python -m yellowdog_cli.mcp config.toml
 ```
 
-The `mcp` extra (`mcp>=2.2`) is installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd-mcp` exits with an instruction to install it rather than a traceback, and `tests/test_mcp_server.py`, the one test module that needs the extra, skips (`tests/mcp_guard.py`'s `require_mcp()`); the other three MCP test modules need neither the extra nor the SDK.
+The `mcp` extra (`mcp>=2.2`) is installed by the `uv pip install` line in [Getting Started](#getting-started). Without it, `yd mcp` exits with an instruction to install it rather than a traceback, and `tests/test_mcp_server.py`, the one test module that needs the extra, skips (`tests/mcp_guard.py`'s `require_mcp()`); the other three MCP test modules need neither the extra nor the SDK.
 
-Like Commander, the server holds no API client and runs every tool call as a `yd-*` command in a child process, under its own interpreter (`python -m yellowdog_cli.<command>`) rather than the console scripts, so a fix to a command reaches it for free.
+Like Commander, the server holds no API client and runs every tool call as a `yd` command in a child process, under its own interpreter (`python -m yellowdog_cli.yd <command>`) rather than the console scripts, so a fix to a command reaches it for free.
 
 ## Architecture
 
@@ -275,12 +275,12 @@ Everything the CLI does is done by a `yd-*` command, one module per command in `
 
 ```
   terminal ──────────────┐
-  yd-commander (PyQt6) ──┼──>  yd-* command  ──>  YellowDog SDK  ──>  Platform API
-  yd-mcp (MCP server) ───┘          │
+  yd commander (PyQt6) ──┼──>  yd-* command  ──>  YellowDog SDK  ──>  Platform API
+  yd mcp (MCP server) ───┘          │
                                     └──────────>  rclone  ──>  object storage
 ```
 
-Commander starts a command for each button, and the MCP server one for each tool call, both under their own interpreter (`python -m yellowdog_cli.<command>`) and reading what it prints, the MCP server always through `--json`. Neither imports the SDK. The consequence is that a command's behaviour, configuration precedence, output and exit codes exist in exactly one place, and a fix to a command reaches all three front ends without further work. The price is that the commands' machine-readable output is an interface: changing the shape of a `--json` record changes what Commander offers to act on and what an MCP client sees.
+Commander starts a command for each button, and the MCP server one for each tool call, both under their own interpreter (`python -m yellowdog_cli.yd <command>`) and reading what it prints, the MCP server always through `--json`. Neither imports the SDK. The consequence is that a command's behaviour, configuration precedence, output and exit codes exist in exactly one place, and a fix to a command reaches all three front ends without further work. The price is that the commands' machine-readable output is an interface: changing the shape of a `--json` record changes what Commander offers to act on and what an MCP client sees.
 
 ### The life of a command
 
@@ -291,21 +291,21 @@ A command's `main()` is decorated by a wrapper (`utils/wrapper.py`'s `@main_wrap
 3. **Report.** With `--json`, the outcomes the command recorded (`utils/results.py`) are printed as one JSON document, even when the command failed part-way, so a script still learns what was done.
 4. **Exit.** Whatever escaped `main()` is classified (`utils/exit_codes.py`'s `classify()`) into an exit code saying what kind of failure it was: not found, not authorised, a connection failure, a server error, and so on.
 
-A handful of commands sit outside this. `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` need neither credentials nor configuration and have a plain `main()`. `yd-doctor` and `yd-schema` build their own run, because `yd-doctor` exists to diagnose exactly the missing or broken configuration that would stop a wrapper before `main()`.
+A handful of commands sit outside this. `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` need neither credentials nor configuration and have a plain `main()`. `yd doctor` and `yd schema` build their own run, because `yd doctor` exists to diagnose exactly the missing or broken configuration that would stop a wrapper before `main()`.
 
 ### The command registry
 
-Every command and every option is declared once, as data, in `utils/command_registry.py`. The registry is the source for argparse (`CLIParser` in `utils/args.py` builds each command's parser from it), for `yd-help`'s listing, for the MCP server's tool catalogue and its JSON Schemas, and for the tests that hold the Command List (`docs/commands.md`) and `pyproject.toml`'s entry points to the commands that exist. A command declares its kind there: `API` (gets the full set of common options, including the credentials), `DATA_CLIENT` (no `--key`, `--secret`, `--url` or `--pac`, since it never contacts the Platform) or `STANDALONE`. Adding an option is therefore an edit to the registry, after which the parser, the help, the MCP tool and the checks all follow.
+Every command and every option is declared once, as data, in `utils/command_registry.py`. The registry is the source for argparse (`CLIParser` in `utils/args.py` builds each command's parser from it), for `yd help`'s listing, for the MCP server's tool catalogue and its JSON Schemas, and for the tests that hold the Command List (`docs/commands.md`) and `pyproject.toml`'s entry points to the commands that exist. A command declares its kind there: `API` (gets the full set of common options, including the credentials), `DATA_CLIENT` (no `--key`, `--secret`, `--url` or `--pac`, since it never contacts the Platform) or `STANDALONE`. Adding an option is therefore an edit to the registry, after which the parser, the help, the MCP tool and the checks all follow.
 
 ### Nouns and verbs over the registry
 
-Users type `yd-<noun> <verb>`: `yd-workrequirement submit`, `yd-instance terminate`. A verb is not a command of its own. `utils/noun_registry.py` maps each noun and verb to a registry command (`yd-workrequirement submit` runs `yd-submit`), and derives a `Command` for each that narrows the registry command to the noun's object: the options that do not apply are hidden from its help and refused if given, arguments the verb fixes (`yd-list`'s entity type) are supplied, and its targets are held to the object's kind. Each noun is a module under `yellowdog_cli/nouns/`, so `python -m` runs it as it runs any command, and its `main()` hands over to `utils/noun_dispatch.py`, which selects the verb's parser and calls the registry command's `main()`. The registry commands keep their names inside the code and in the tests; those a verb replaces are deprecated, still installed as entry points, and warn when run by name. A new command is therefore added to the registry as before, and then given a verb in `noun_registry.py`, or listed there as generic or kept as a utility (`tests/test_noun_commands.py` requires one or the other).
+Users type `yd <noun> <verb>`: `yd workrequirement submit`, `yd instance terminate`, and `yd <command>` for the rest: `yd list`, `yd doctor`. `yd` itself (`yellowdog_cli/yd.py`) reads the word after it from `utils/top_level.py`'s table, built from the two registries, and imports only the module that word runs. A verb is not a command of its own. `utils/noun_registry.py` maps each noun and verb to a registry command (`yd workrequirement submit` runs `yd-submit`), and derives a `Command` for each that narrows the registry command to the noun's object: the options that do not apply are hidden from its help and refused if given, arguments the verb fixes (`yd list`'s entity type) are supplied, and its targets are held to the object's kind. Each noun is a module under `yellowdog_cli/nouns/`, so `python -m` runs it as it runs any command, and its `main()` hands over to `utils/noun_dispatch.py`, which selects the verb's parser and calls the registry command's `main()`. The registry commands keep their `yd-*` names inside the code and in the tests; their scripts, released before `yd`, are deprecated, still installed as entry points, and warn when run by name (`top_level.SCRIPT_FORMS`). A new command is therefore added to the registry as before, and then given a verb in `noun_registry.py`, or listed there as generic or kept as a utility (`tests/test_noun_commands.py` requires one or the other).
 
-Shell completion (`yd-completion`) is built on the same two registries. Its bash, zsh, fish and PowerShell scripts (`yellowdog_cli/completion_scripts/`) are thin: on each Tab they run `yd-completion --complete`, which `utils/completion.py` answers from the registries alone, without importing a command module or the SDK. A new verb or option therefore completes with no change to completion; an option whose value is a local file or directory says so with `completes=Completes.FILE` or `Completes.DIR` (`tests/test_completion.py` holds the markings to the metavars).
+Shell completion (`yd completion`) is built on the same two registries. Its bash, zsh, fish and PowerShell scripts (`yellowdog_cli/completion_scripts/`) are thin: on each Tab they run `yd completion --complete`, which `utils/completion.py` answers from the registries alone, without importing a command module or the SDK. A new verb or option therefore completes with no change to completion; an option whose value is a local file or directory says so with `completes=Completes.FILE` or `Completes.DIR` (`tests/test_completion.py` holds the markings to the metavars).
 
 ### Laziness: importing does nothing
 
-Importing any module in the package parses no command line, reads no file, builds no client, prints nothing and exits nowhere. The values that once came into being on import — the parsed arguments, the configuration, the client, each command's configuration sections — are stand-ins from `utils/lazy.py`, built on first use, and the wrappers build the ones a command needs in `prepare_run()`. Two things follow. Tests can import any module freely and set up what they need. And commands that have no use for the SDK — the data client commands and `yd-variables` — start without importing it at all, which saves most of a command's start-up time; the modules every command imports keep their SDK imports inside the functions that use them, and a test fails if one of those commands ever loads it.
+Importing any module in the package parses no command line, reads no file, builds no client, prints nothing and exits nowhere. The values that once came into being on import — the parsed arguments, the configuration, the client, each command's configuration sections — are stand-ins from `utils/lazy.py`, built on first use, and the wrappers build the ones a command needs in `prepare_run()`. Two things follow. Tests can import any module freely and set up what they need. And commands that have no use for the SDK — the data client commands and `yd variables` — start without importing it at all, which saves most of a command's start-up time; the modules every command imports keep their SDK imports inside the functions that use them, and a test fails if one of those commands ever loads it.
 
 ### Passing context rather than reading globals
 
@@ -320,7 +320,7 @@ Command modules are mostly thin: the work lives in libraries under `utils/`, whi
 - **Resources** (`load_resources.py`, `resource_creation.py`, `resource_removal.py`): `yd-create` and `yd-remove` as libraries, reading resource specifications, ordering them by dependency, and creating, updating or removing them.
 - **Submitting work** (`submit.py` with `task_groups.py`, `task_generation.py`, `task_batches.py` and `property_cascade.py`): one pipeline for both creating a Work Requirement and adding to an existing one, building Task Groups and then Tasks in batches, with each Task inheriting properties from its Task Group and the Work Requirement.
 - **Provisioning** (`provision_utils.py`): what `yd-provision` (Worker Pools) and `yd-instantiate` (Compute Requirements) share, such as User Data and template lookup.
-- **Following** (`follow_utils.py`, `event_printing.py`): the Platform's event streams, with reconnection, for `--follow`, `yd-follow` and `yd-wait`.
+- **Following** (`follow_utils.py`, `event_printing.py`): the Platform's event streams, with reconnection, for `--follow`, `yd follow` and `yd wait`.
 - **Moving data** (`dataclient/`): the data client commands' layer over rclone, which imports no SDK.
 
 ### From specification to Platform object
@@ -339,15 +339,15 @@ Many of the conventions above are enforced by the test suite rather than left to
 
 ```
 yellowdog_cli/            # One module per yd-* command
-yellowdog_cli/nouns/      # One module per noun (yd-workrequirement, ...), each handing over to utils/noun_dispatch.py
+yellowdog_cli/nouns/      # One module per noun (yd workrequirement, ...), each handing over to utils/noun_dispatch.py
 yellowdog_cli/utils/      # Shared utilities (config, variables, printing, SDK wrappers, etc.)
 yellowdog_cli/utils/cloudwizard/  # The Cloud Wizard's provider support (the cloudwizard extra)
 yellowdog_cli/utils/dataclient/   # The data client commands' layer over rclone
 yellowdog_cli/utils/specs/        # Specification properties, schemas, validation and loading
-yellowdog_cli/commander/  # yd-commander: the PyQt6 GUI, its .ui layout, images, and user README
-yellowdog_cli/mcp/        # yd-mcp: the MCP server over the yd-* commands, and its user README
+yellowdog_cli/commander/  # yd commander: the PyQt6 GUI, its .ui layout, images, and user README
+yellowdog_cli/mcp/        # yd mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
-yellowdog_cli/completion_scripts/  # yd-completion's bash, zsh, fish and PowerShell scripts
+yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)

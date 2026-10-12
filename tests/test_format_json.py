@@ -16,7 +16,7 @@ import yellowdog_cli.format_json as yd_format_json
 
 
 def _run(monkeypatch, capsys, *argv: str) -> tuple[str, str, int]:
-    monkeypatch.setattr(sys, "argv", ["yd-format-json", *argv])
+    monkeypatch.setattr(sys, "argv", ["yd", *argv])
     code = 0
     try:
         yd_format_json.main()

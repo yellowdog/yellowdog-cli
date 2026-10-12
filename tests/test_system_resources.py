@@ -27,7 +27,7 @@ resource_corpus.require_jsonnet()
 pytestmark = pytest.mark.xdist_group("live_resources")
 
 # Resource type (a corpus specification's own 'resource' property) -> the
-# entity type yd-list and yd-resource remove use for it. One entry per resource
+# entity type yd list and yd resource remove use for it. One entry per resource
 # type the live corpus can create (resource_corpus.OFFLINE_ONLY's two files --
 # credentials and the shared namespace -- never reach this module at all, so
 # neither needs an entry here).
@@ -52,7 +52,7 @@ ENTITY_TYPE_FOR_RESOURCE = {
 _FINISHED_WORKER_POOL_STATUSES = {"SHUTDOWN", "TERMINATED"}
 
 # The read gate's raw material: every property name actually seen in a live
-# 'yd-show'/'yd-list --details' response, per model class, accumulated across every
+# 'yd show'/'yd list --details' response, per model class, accumulated across every
 # test_resource_lifecycle case in this session by _record_read_gate_evidence().
 # Keyed the same way resource_models.SERVER_ASSIGNED_COVERAGE is (a concrete SDK
 # class name, e.g. 'AwsInstancesComputeSource', 'AccountAllowance',
@@ -166,7 +166,7 @@ READ_GATE_EXCLUSIONS.update(
         ("fleetId", "AwsFleetComputeSource"): (
             "creation itself is rejected (see source-templates.jsonnet's own comment on "
             "why the corpus no longer sets it) -- never even reaches a "
-            "yd-show to be confirmed or not"
+            "yd show to be confirmed or not"
         ),
         # rootDeviceName: only ever populated from real AMI metadata once an
         # AWS instance actually launches, which this suite never does; the two
@@ -199,7 +199,7 @@ READ_GATE_EXCLUSIONS.update(
         # supportingResourceCreated -- confirmed absent for exactly these seven
         # classes, live, by direct re-probe on a second pass: re-created
         # source-templates.jsonnet by hand and checked 'source.supportingResourceCreated'
-        # in each yd-show response directly. OciInstancesComputeSource and
+        # in each yd show response directly. OciInstancesComputeSource and
         # SimulatorComputeSource are deliberately NOT here: both return a real
         # boolean ('False' and 'True' respectively, confirmed the same way) --
         # a genuine, surprising difference from the other seven, including
@@ -294,10 +294,10 @@ def _expected_creation_failures(corpus_file, run_id: str) -> set[tuple[str, str]
 
 def _remove_args(corpus_file) -> list[str]:
     """
-    Extra 'yd-resource remove' arguments a corpus file needs beyond '-y' and
+    Extra 'yd resource remove' arguments a corpus file needs beyond '-y' and
     the shared '-c'/'-v run_id=...'. Only allowances.jsonnet needs one: '-M'
     (see remove.py's remove_allowance()) opts into matching Allowances by their
-    'description' property, without which yd-resource remove only warns and
+    'description' property, without which yd resource remove only warns and
     does nothing for every Allowance in the file.
     """
     if corpus_file.name == "allowances.jsonnet":
@@ -349,7 +349,7 @@ def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
 def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     """
     Create every specification in one live corpus file, confirm each one round-trips
-    through yd-show/yd-list with no property silently dropped or mangled, then remove
+    through yd show/yd list with no property silently dropped or mangled, then remove
     everything and confirm removal.
 
     requirement-templates.jsonnet, configured-worker-pools.jsonnet and
@@ -359,7 +359,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     (create_compute_requirement_template()/create_configured_worker_pool() read
     'namespace' with a bare KeyError check before any model is built; application-max
     names a Group and a Keyring that only groups.jsonnet and keyrings.jsonnet create).
-    For those, 'yd-resource create' is expected to exit non-zero, and so is 'yd-resource
+    For those, 'yd resource create' is expected to exit non-zero, and so is 'yd resource
     remove' for the first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) --
     create_resources()/remove_resources() (create.py/remove.py) each continue past one
     resource's failure and only raise once the whole file is done -- and this test
@@ -375,14 +375,14 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     target rather than reconciling memberships against it, but does *not* prove the
     grant itself succeeds when the target exists. 'groups'/
     'keyrings' are excluded from the round-trip comparison entirely (see
-    resource_live.LIVE_ONLY_EXCLUSIONS) for exactly this reason: yd-show's own
+    resource_live.LIVE_ONLY_EXCLUSIONS) for exactly this reason: yd show's own
     'groups' key is a live membership listing (empty here), not an echo of what was
     sent, and comparing it would fail for a reason that has nothing to do with
     whether the CLI transmitted anything correctly.
     """
     cleanup(
         resource_live.command_line(
-            "yd-resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+            "yd resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
         )
     )
 
@@ -393,15 +393,15 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     known_partial_failure = corpus_file.name in resource_live.KNOWN_PARTIAL_FAILURES
     secret_emitting = corpus_file.name in resource_live.SECRET_EMITTING
 
-    result = resource_live.yd("yd-resource create", str(corpus_file))
+    result = resource_live.yd("yd resource create", str(corpus_file))
     if known_partial_failure:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_FAILURES) "
-            "to partially fail creation, but yd-resource create exited 0"
+            "to partially fail creation, but yd resource create exited 0"
         )
     else:
         assert result.exit_code == 0, (
-            f"yd-resource create {corpus_file.name} failed"
+            f"yd resource create {corpus_file.name} failed"
             + ("" if secret_emitting else f":\n{result.stdout}")
         )
 
@@ -411,7 +411,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     }
     # Fetched once per (entity, key) and reused below for both the missing-
     # identities check and the mismatches loop -- fetch() is a subprocess
-    # ('yd-show', or a full 'yd-list --details' for a NO_YDID_ENTITY_TYPES
+    # ('yd show', or a full 'yd list --details' for a NO_YDID_ENTITY_TYPES
     # entity), so re-fetching each one a second time would double the
     # subprocess count (and the wall-clock time) of every live run for no
     # reason: the entity does not change between the two uses.
@@ -452,16 +452,16 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     )
 
     result = resource_live.yd(
-        "yd-resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+        "yd resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
     )
     if corpus_file.name in resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) "
             "to partially fail removal too (the same specifications that could never "
-            "be created cannot be removed either), but yd-resource remove exited 0"
+            "be created cannot be removed either), but yd resource remove exited 0"
         )
     else:
-        assert result.exit_code == 0, f"yd-resource remove {corpus_file.name} failed"
+        assert result.exit_code == 0, f"yd resource remove {corpus_file.name} failed"
 
     for entity in entity_types:
         if entity == "worker-pools":
@@ -475,7 +475,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
             for key in created[entity]:
                 status = resource_live.fetch(entity, key).get("status")
                 assert status in _FINISHED_WORKER_POOL_STATUSES, (
-                    f"{entity}/{key}: expected a finished status after yd-resource remove, "
+                    f"{entity}/{key}: expected a finished status after yd resource remove, "
                     f"got {status!r}"
                 )
             continue

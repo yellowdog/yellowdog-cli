@@ -25,16 +25,16 @@
       * [Following Progress](#following-progress)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:42 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:14 BST 2026 -->
 
 <!--te-->
 
 
-A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances running the YellowDog agent, which claim and execute Tasks from Work Requirements. Worker Pools are created using the **`yd-workerpool provision`** command and are automatically scaled and shut down based on demand and configured timeout settings.
+A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances running the YellowDog agent, which claim and execute Tasks from Work Requirements. Worker Pools are created using the **`yd workerpool provision`** command and are automatically scaled and shut down based on demand and configured timeout settings.
 
 **Jump to:** [Property Dictionary](#worker-pool-properties) · [TOML Example](#toml-properties-in-the-workerpool-section) · [JSON Spec](#worker-pool-specification-using-json-documents) · [Variable Substitutions](#variable-substitutions-in-worker-pool-properties) · [Dry-Running](#dry-running-worker-pool-provisioning) · [Node Actions](#node-actions)
 
-The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd-workerpool provision` command. A subset of the properties is also used by the `yd-computerequirement instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
+The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd workerpool provision` command. A subset of the properties is also used by the `yd computerequirement instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
 
 The only mandatory property is `templateId`. All other properties have defaults (or are not required).
 The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name, optionally prefixed with its namespace (`namespace/name`). A name without a namespace is looked for in every namespace the Application can read, and is an error if templates of that name are found in more than one.
@@ -43,11 +43,11 @@ The `templateId` property can use either the YellowDog ID ('YDID') for the Compu
 
 It is worth clarifying the distinction between the two related concepts:
 
-- A **Worker Pool** (created by `yd-workerpool provision`) is a managed set of cloud instances running the YellowDog agent. The platform automatically scales the pool up and down to meet Task demand, and shuts it down when idle. Worker Pool nodes claim Tasks from Work Requirements and execute them.
+- A **Worker Pool** (created by `yd workerpool provision`) is a managed set of cloud instances running the YellowDog agent. The platform automatically scales the pool up and down to meet Task demand, and shuts it down when idle. Worker Pool nodes claim Tasks from Work Requirements and execute them.
 
-- A **Compute Requirement** (created by `yd-computerequirement instantiate`) is simply a set of cloud instances — there is no YellowDog Worker Pool associated with them. The instances are managed directly by the user. This is useful when you want to use YellowDog's provisioning capabilities but manage instances yourself.
+- A **Compute Requirement** (created by `yd computerequirement instantiate`) is simply a set of cloud instances — there is no YellowDog Worker Pool associated with them. The instances are managed directly by the user. This is useful when you want to use YellowDog's provisioning capabilities but manage instances yourself.
 
-Both use the same `workerPool` / `computeRequirement` TOML section for configuration. A Worker Pool is shut down using `yd-workerpool shutdown` (with `--terminate` to terminate its instances at once), and a Compute Requirement is terminated using `yd-computerequirement terminate`.
+Both use the same `workerPool` / `computeRequirement` TOML section for configuration. A Worker Pool is shut down using `yd workerpool shutdown` (with `--terminate` to terminate its instances at once), and a Compute Requirement is terminated using `yd computerequirement terminate`.
 
 ## Worker Pool Properties
 
@@ -56,7 +56,7 @@ The following properties are available:
 | Property                | Description                                                                                                                                       | Default                 |
 |:------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------|
 | `computeRequirementBatchSize` | The maximum number of instances per Compute Requirement batch (see [Large-Scale Provisioning](#large-scale-provisioning)). Values above 10,000 are clamped to 10,000; a value below 1 is an error. | `10000` |
-| `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd-computerequirement instantiate` (see [yd-computerequirement instantiate](commands.md#yd-computerequirement-instantiate)).  |                         |
+| `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd computerequirement instantiate` (see [yd computerequirement instantiate](commands.md#yd-computerequirement-instantiate)).  |                         |
 | `idleNodeTimeout`       | The timeout in minutes after which an idle node will be shut down. Set this to `0` to disable the timeout.                                        | `5.0`                   |
 | `idlePoolTimeout`       | The timeout in minutes after which an idle Worker Pool will be shut down. Set this to `0` to disable the timeout.                                 | `30.0`                  |
 | `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances.                                              |                         |
@@ -87,7 +87,7 @@ Similarly, the `imagesId` property can be populated with the YDID of an Image Fa
 
 ## Large-Scale Provisioning
 
-The platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. When `targetInstanceCount` (for `yd-computerequirement instantiate`) or `maxNodes` (for `yd-workerpool provision`) exceeds this limit, the CLI automatically splits the request across multiple Compute Requirements, distributing instances as evenly as possible.
+The platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. When `targetInstanceCount` (for `yd computerequirement instantiate`) or `maxNodes` (for `yd workerpool provision`) exceeds this limit, the CLI automatically splits the request across multiple Compute Requirements, distributing instances as evenly as possible.
 
 The `computeRequirementBatchSize` property controls the maximum number of instances per batch and defaults to 10,000 (the platform maximum). Set it to a smaller value to submit in smaller batches. Values above 10,000 are clamped to 10,000 with a warning, and a value below 1 is an error.
 
@@ -127,11 +127,11 @@ Here's an example of the `workerPool` section of a TOML configuration file, show
 
 ## Worker Pool Specification Using JSON Documents
 
-It's also possible to capture a Worker Pool definition as a JSON document. The JSON filename can be supplied either by supplying the command-line positional argument for `yd-workerpool provision`, or by populating the `workerPoolData` property in the TOML configuration file with the JSON filename. Command-line specification takes priority over TOML specification.
+It's also possible to capture a Worker Pool definition as a JSON document. The JSON filename can be supplied either by supplying the command-line positional argument for `yd workerpool provision`, or by populating the `workerPoolData` property in the TOML configuration file with the JSON filename. Command-line specification takes priority over TOML specification.
 
 The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types.
 
-When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning. The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is, so a property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd-computerequirement instantiate`.
+When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning. The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is, so a property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd computerequirement instantiate`.
 
 ### Worker Pool JSON Examples
 
@@ -287,24 +287,24 @@ In general, double underscores are **not** required in variable substitutions wi
 
 ## Dry-Running Worker Pool Provisioning
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command-line option when running `yd-workerpool provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform. Add `--hide-user-data` to show the User Data as a summary of its size, where a long script would otherwise swamp the rest of the specification.
+To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command-line option when running `yd workerpool provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform. Add `--hide-user-data` to show the User Data as a summary of its size, where a long script would otherwise swamp the rest of the specification.
 
 The generated JSON is produced after all processing (incorporating `config.toml` properties, variable substitutions, etc.) has been concluded, so the dry-run is useful for inspecting the results of all the processing that's been performed.
 
 To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
 
-Use `--follow` (`-f`) to track the provisioning progress after submission — `yd-workerpool provision` will report on node events and not return until the Worker Pool reaches a stable state.
+Use `--follow` (`-f`) to track the provisioning progress after submission — `yd workerpool provision` will report on node events and not return until the Worker Pool reaches a stable state.
 
-The JSON dry-run output could itself be used by `yd-workerpool provision`, if captured in a file, e.g.:
+The JSON dry-run output could itself be used by `yd workerpool provision`, if captured in a file, e.g.:
 
 ```shell
-yd-workerpool provision --dry-run -q > my_worker_pool.json
-yd-workerpool provision my_worker_pool.json
+yd workerpool provision --dry-run -q > my_worker_pool.json
+yd workerpool provision my_worker_pool.json
 ```
 
 ## Node Actions
 
-Node Actions allow scripts and commands to be dispatched directly to running Worker Pool nodes. They can be used to start services (e.g. Slurm controllers), write configuration files, or create YellowDog Workers dynamically — without modifying the original Worker Pool specification. Node Actions are submitted using the **`yd-node action`** command.
+Node Actions allow scripts and commands to be dispatched directly to running Worker Pool nodes. They can be used to start services (e.g. Slurm controllers), write configuration files, or create YellowDog Workers dynamically — without modifying the original Worker Pool specification. Node Actions are submitted using the **`yd node action`** command.
 
 ### Action Types
 
@@ -452,9 +452,9 @@ When `--node` is given with explicit node YDIDs and `--worker-pool` is omitted, 
 The `--status` flag displays the action queue for selected node(s) as a single consolidated table. Use `--details` for the full JSON representation of each queue:
 
 ```shell
-yd-node action --status --worker-pool my-pool
-yd-node action --status --node ydid:node:D9C548:abc123...
-yd-node action --status --node ydid:node:D9C548:abc123... --details
+yd node action --status --worker-pool my-pool
+yd node action --status --node ydid:node:D9C548:abc123...
+yd node action --status --node ydid:node:D9C548:abc123... --details
 ```
 
 When `--node` is given with a node YDID, `--status` goes directly to the node without prompting for a Worker Pool.
@@ -466,7 +466,7 @@ The summary table shows, for each node: Node ID, queue status, count of waiting 
 Use `--follow` to poll the node action queues after submission, printing a status table every few seconds until all queues reach `EMPTY` or `FAILED`:
 
 ```shell
-yd-node action --actions actions.json --node ydid:node:D9C548:abc123... --follow
+yd node action --actions actions.json --node ydid:node:D9C548:abc123... --follow
 ```
 
 `--follow` also works with `--all-nodes`; the current node list is fetched from the Worker Pool at follow time.
@@ -474,5 +474,5 @@ yd-node action --actions actions.json --node ydid:node:D9C548:abc123... --follow
 `--follow` can also be combined with `--status` to poll an already-running queue without submitting new actions:
 
 ```shell
-yd-node action --status --node ydid:node:D9C548:abc123... --follow
+yd node action --status --node ydid:node:D9C548:abc123... --follow
 ```

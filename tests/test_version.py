@@ -20,7 +20,7 @@ from yellowdog_cli.utils.dataclient.rclone_version import NOT_INSTALLED, UNKNOWN
 
 
 def _run(monkeypatch, capsys, *argv: str) -> tuple[str, int]:
-    monkeypatch.setattr(sys, "argv", ["yd-version", *argv])
+    monkeypatch.setattr(sys, "argv", ["yd", *argv])
     code = 0
     try:
         yd_version.main()
@@ -62,7 +62,7 @@ def test_json_has_null_for_a_version_not_to_be_had(monkeypatch, capsys):
 
 
 def test_debug_with_a_single_version_flag_is_refused(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["yd-version", "--cli", "--debug"])
+    monkeypatch.setattr(sys, "argv", ["yd", "--cli", "--debug"])
     with pytest.raises(SystemExit) as raised:
         yd_version.main()
     assert raised.value.code == 2

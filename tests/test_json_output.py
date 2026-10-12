@@ -3603,7 +3603,7 @@ class TestNodeActionOutcomes:
 
 class TestVersion:
     def _run(self, monkeypatch, capsys, *argv):
-        monkeypatch.setattr(_sys, "argv", ["yd-version", *argv])
+        monkeypatch.setattr(_sys, "argv", ["yd", *argv])
         yd_version.main()
         return json_loads(capsys.readouterr().out)
 
@@ -3648,7 +3648,7 @@ class TestVersion:
 
     def test_mcp_alone_prints_the_bare_version_or_exits_1(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_mcp_version", lambda: "2.9.9")
-        monkeypatch.setattr(_sys, "argv", ["yd-version", "--mcp"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--mcp"])
         yd_version.main()
         assert capsys.readouterr().out.strip() == "2.9.9"
         monkeypatch.setattr(yd_version, "_mcp_version", lambda: "Not installed")
@@ -3665,7 +3665,7 @@ class TestVersion:
         with open(_Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
             declared = tomli.load(f)["project"]["license"]
         assert yd_version.cli_licence() == declared
-        monkeypatch.setattr(_sys, "argv", ["yd-version"])
+        monkeypatch.setattr(_sys, "argv", ["yd"])
         yd_version.main()
         assert f"Licence: {declared}" in capsys.readouterr().out
 
@@ -3681,7 +3681,7 @@ class TestVersion:
         assert self._run(monkeypatch, capsys, "--json")["rclone"] is None
 
     def test_json_excludes_the_single_version_options(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-version", "--json", "--cli"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json", "--cli"])
         with pytest.raises(SystemExit) as exit_info:
             yd_version.main()
         assert exit_info.value.code == 2
@@ -3694,11 +3694,11 @@ class TestVersion:
 
 class TestHelp:
     def test_the_command_list(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-help", "--json"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json"])
         yd_help.main()
         out = json_loads(capsys.readouterr().out)
         assert {
-            "command": "yd-help",
+            "command": "help",
             "summary": yd_help.COMMANDS["yd-help"].summary,
         } in out
         # The nouns, then the other commands, then the deprecated ones, each
@@ -3712,7 +3712,7 @@ class TestHelp:
         assert all(group == sorted(group) and group for group in groups)
 
     def test_without_json_the_listing_is_text(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-help"])
+        monkeypatch.setattr(_sys, "argv", ["yd"])
         yd_help.main()
         assert "available commands" in capsys.readouterr().out
 
@@ -3739,7 +3739,7 @@ class TestHelp:
                 emoji=False,
             ),
         )
-        monkeypatch.setattr(_sys, "argv", ["yd-help", "--json", *argv])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json", *argv])
         yd_help.main()
         out = capsys.readouterr().out
         if coloured:

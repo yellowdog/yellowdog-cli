@@ -3,7 +3,7 @@ Tests for choosing which objects a Commander download fetches. The chooser is a
 non-destructive dialog, so it deliberately differs from the destructive
 confirmation: no warning icon and no 'Don't Ask Again'. It IS skipped by '--yes',
 like the confirmations, since an unattended session cannot answer a chooser either.
-What matters here is which paths reach yd-data download.
+What matters here is which paths reach yd data download.
 """
 
 import pytest
@@ -153,7 +153,7 @@ def test_the_accept_button_is_the_dialogs_default(window):
     assert dialog.findChild(QPushButton, "select_none").autoDefault() is False
 
 
-# --- What reaches yd-data download ------------------------------------------------
+# --- What reaches yd data download ------------------------------------------------
 
 
 def test_only_the_ticked_objects_are_downloaded(window, captured, monkeypatch):
@@ -167,7 +167,7 @@ def test_only_the_ticked_objects_are_downloaded(window, captured, monkeypatch):
     window._download_results_action()
 
     command, args, _kwargs = captured[0]
-    assert command == "yd-data download"
+    assert command == "yd data download"
     assert args[-1] == "S3:b/pfx/pyex-logs"
     assert "S3:b/pfx/pyex-001" not in args
     assert "pyex*" not in args
@@ -260,7 +260,7 @@ def test_the_dry_run_checkbox_skips_the_chooser(window, captured, monkeypatch):
 
 
 def test_the_chooser_enumerates_with_yd_download(window, captured, monkeypatch):
-    # The enumeration must ask yd-data download, not yd-data delete: their
+    # The enumeration must ask yd data download, not yd data delete: their
     # dry-run listings agree in shape but not necessarily in what they match.
     seen = stub_enumeration(window, monkeypatch, objects())
     drive_chooser(window, monkeypatch, accept=True)
@@ -268,7 +268,7 @@ def test_the_chooser_enumerates_with_yd_download(window, captured, monkeypatch):
 
     window._download_results_action()
 
-    assert seen == [("yd-data download", ["pyex*"])]
+    assert seen == [("yd data download", ["pyex*"])]
 
 
 def test_a_directory_match_adds_the_recursion_note(window, captured, monkeypatch):
@@ -296,7 +296,7 @@ def test_a_directory_match_adds_the_recursion_note(window, captured, monkeypatch
 
 
 def test_a_wildcard_named_object_is_refused(window, captured, monkeypatch):
-    # yd-data download applies is_glob to each path exactly as yd-data delete does, so a
+    # yd data download applies is_glob to each path exactly as yd data delete does, so a
     # name like 'a[1].txt' would be expanded and fetch the sibling 'a1.txt'.
     unsafe = [ObjectSummary(path="S3:b/pfx/a[1].txt", name="a[1].txt", is_dir=False)]
     stub_enumeration(window, monkeypatch, unsafe)
@@ -349,7 +349,7 @@ def test_a_large_selection_is_echoed_as_a_count(window, captured, monkeypatch):
 def test_a_path_matching_nothing_says_so_and_downloads_nothing(
     window, captured, monkeypatch
 ):
-    # yd-data download's dry run exits 1 for a pattern matching nothing, recording
+    # yd data download's dry run exits 1 for a pattern matching nothing, recording
     # why: Commander reads the record rather than taking the exit for a
     # listing that failed, which would download the whole pattern instead
     calls: list = []

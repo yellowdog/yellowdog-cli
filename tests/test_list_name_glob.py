@@ -747,9 +747,9 @@ def test_an_empty_namespace_names_those_the_application_can_read():
     "command_name, entity_type",
     [
         ("yd-list", "work-requirements"),
-        ("yd-workrequirement list", "work-requirements"),
-        ("yd-workerpool list", "worker-pools"),
-        ("yd-computerequirement list", "compute-requirements"),
+        ("yd workrequirement list", "work-requirements"),
+        ("yd workerpool list", "worker-pools"),
+        ("yd computerequirement list", "compute-requirements"),
     ],
 )
 def test_the_tag_is_not_defaulted_away(command_name, entity_type):

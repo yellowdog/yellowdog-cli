@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 
 """
-yd-completion: shell completion for the yd-* commands.
+yd completion: shell completion for the yd command.
 
-'yd-completion bash|zsh|fish|powershell' prints the shell's completion script,
-which registers completion for every command a user types (the nouns, the
-generic commands and the utilities; not the deprecated commands). On each Tab
-the script runs 'yd-completion --complete <shell> <index> <words...>', handled
-here before any parser is built, which prints the mode ('values', 'files' or
-'dirs') on its first line and then a candidate per line, each
-'value<TAB>description'. The work is utils/completion.py's.
+'yd completion bash|zsh|fish|powershell' prints the shell's completion
+script, which registers completion for 'yd' (not for the deprecated 'yd-*'
+commands). On each Tab the script runs 'yd completion --complete <shell>
+<index> <words...>', handled here before any parser is built, which prints
+the mode ('values', 'files' or 'dirs') on its first line and then a
+candidate per line, each 'value<TAB>description'. The work is
+utils/completion.py's.
 """
 
 import sys
 from importlib.resources import files
 
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
-from yellowdog_cli.utils.completion import (
-    complete,
-    completion_names,
-    join_bash_words,
-)
+from yellowdog_cli.utils.completion import complete, join_bash_words
+from yellowdog_cli.utils.invocation import selected_prog
 
 COMPLETE_FLAG = "--complete"
 _SCRIPTS = {
@@ -29,25 +26,18 @@ _SCRIPTS = {
     "fish": "yd.fish",
     "powershell": "yd.ps1",
 }
-_NAMES_PLACEHOLDER = "@NAMES@"
 
 
 def completion_script(shell: str) -> str:
     """
-    The completion script for a shell, registered for completion_names().
+    The completion script for a shell.
     """
-    names = completion_names()
-    if shell == "powershell":
-        listed = ", ".join(f"'{name}'" for name in names)
-    else:
-        listed = " ".join(names)
-    script = (
+    return (
         files("yellowdog_cli")
         .joinpath("completion_scripts")
         .joinpath(_SCRIPTS[shell])
         .read_text(encoding="utf-8")
     )
-    return script.replace(_NAMES_PLACEHOLDER, listed)
 
 
 def completion_reply(shell: str, index: int, words: list[str]) -> list[str]:
@@ -91,7 +81,9 @@ def main() -> None:
     if sys.argv[1:2] == [COMPLETE_FLAG]:
         _answer(sys.argv[2:])
         return
-    parser = build_parser(COMMANDS["yd-completion"], prog="yd-completion")
+    parser = build_parser(
+        COMMANDS["yd-completion"], prog=selected_prog("yd-completion")
+    )
     args = parser.parse_args()
     sys.stdout.write(completion_script(args.shell))
 

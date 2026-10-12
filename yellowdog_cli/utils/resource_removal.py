@@ -410,7 +410,7 @@ def remove_allowance(ctx: RunContext, resource: dict):
             "To remove Allowances by matching on their 'description', "
             "please use the '--match-allowances-by-description' flag; "
             "alternatively, Allowances can be removed by their "
-            "YellowDog IDs (yd-resource remove --ids)"
+            "YellowDog IDs (yd resource remove --ids)"
         )
         record_resource(RN_ALLOWANCE, description, None, "skipped")
         return

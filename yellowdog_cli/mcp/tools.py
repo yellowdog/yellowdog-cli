@@ -43,10 +43,11 @@ from yellowdog_cli.utils.limits import (
     MCP_TOOL_TIMEOUT_SECONDS,
 )
 from yellowdog_cli.utils.noun_registry import (
-    DEPRECATED,
     GENERIC_COMMANDS,
     NOUN_COMMANDS,
+    REPLACED_BY_VERBS,
 )
+from yellowdog_cli.utils.top_level import yd_form
 
 TIMEOUT_ARGUMENT = "timeout_seconds"
 
@@ -176,16 +177,11 @@ class ToolSpec:
     @property
     def program(self) -> str:
         """
-        The command run: a noun ('yd-workrequirement'), or a registry command.
+        The command run, as typed under 'yd' ('yd instance terminate', 'yd
+        list'), so that its usage and errors name what the CLI is now.
         """
-        return self.command.name.split(" ", 1)[0]
-
-    @property
-    def leading_args(self) -> list[str]:
-        """
-        What comes ahead of every other argument: a noun verb's verb.
-        """
-        return self.command.name.split(" ", 1)[1:]
+        name = self.command.name
+        return name if name.startswith("yd ") else yd_form(name)
 
 
 def tool_name(command: Command) -> str:
@@ -294,8 +290,11 @@ def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
 def _description(command: Command) -> str:
     if command.tool_description:
         return command.tool_description
+    # A noun verb is named 'yd <noun> <verb>' already; a registry command
+    # by its 'yd-*' name
+    shown = command.name if command.name.startswith("yd ") else yd_form(command.name)
     return (
-        f"{command.summary}. Runs `{command.name}`; see the {command.name} section"
+        f"{command.summary}. Runs `{shown}`; see the {shown} section"
         " of the CLI's Command List (docs/commands.md) for its options and its"
         " --json result."
     )
@@ -438,7 +437,7 @@ def tool_commands() -> list[Command]:
     command's own tool.
     """
     commands = [
-        command for name, command in COMMANDS.items() if name not in DEPRECATED
+        command for name, command in COMMANDS.items() if name not in REPLACED_BY_VERBS
     ] + [
         command
         for command in NOUN_COMMANDS.values()

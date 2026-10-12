@@ -474,7 +474,7 @@ def warn_of_violations(family: Family, document: Any, source: str) -> list[Viola
     except (SchemaGenerationError, fastjsonschema.JsonSchemaDefinitionException) as e:
         print_warning(
             f"cannot check '{source}' against the {family.value} schema: {e};"
-            f" run 'yd-schema {family.value}' to see why"
+            f" run 'yd schema {family.value}' to see why"
         )
         return []
     except Exception as e:
@@ -489,7 +489,7 @@ def warn_of_violations(family: Family, document: Any, source: str) -> list[Viola
         )
         return []
     for violation in violations:
-        print_warning(f"{_describe(source, violation)} (see yd-schema {family.value})")
+        print_warning(f"{_describe(source, violation)} (see yd schema {family.value})")
     return violations
 
 

@@ -16,15 +16,15 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 09:49:24 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:18:31 BST 2026 -->
 
 <!--te-->
 
 ## Overview
 
-`yd-mcp` is an MCP server that exposes the YellowDog CLI's `yd-*` commands as tools for an agent.
+`yd mcp` is an MCP server that exposes the YellowDog CLI's `yd` commands as tools for an agent.
 
-Every tool call runs the corresponding `yd-*` command as a child process with `--json`, so behaviour, configuration precedence, output shapes and exit codes are the CLI's own by construction.
+Every tool call runs the corresponding `yd` command as a child process with `--json`, so behaviour, configuration precedence, output shapes and exit codes are the CLI's own by construction.
 
 It is a stdio server, for an agent running on the same machine as the developer's own configuration — Claude Code or Claude Desktop, for instance.
 
@@ -34,17 +34,17 @@ It is a stdio server, for an agent running on the same machine as the developer'
 pip install -U "yellowdog-cli[mcp]"
 ```
 
-`yd-mcp --help` works without the extra installed; launched without the `mcp` package present, `yd-mcp` prints an instruction to install it and exits, before serving anything.
+`yd mcp --help` works without the extra installed; launched without the `mcp` package present, `yd mcp` prints an instruction to install it and exits, before serving anything.
 
-`yd-doctor` reports the extra on its `MCP Server` row, distinguishing not installed from installed but unable to load, and `yd-version` reports the MCP SDK's version (`--mcp` for the bare number, `null` in its `--json` output when not installed).
+`yd doctor` reports the extra on its `MCP Server` row, distinguishing not installed from installed but unable to load, and `yd version` reports the MCP SDK's version (`--mcp` for the bare number, `null` in its `--json` output when not installed).
 
 ## Launching
 
 ```shell
-yd-mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...]
+yd mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...]
 ```
 
-A configuration file, given either as the positional argument or with `-c`/`--config` (not both), is read exactly as every other `yd-*` command reads it, and its directory becomes the working directory of every command the server runs.
+A configuration file, given either as the positional argument or with `-c`/`--config` (not both), is read exactly as every other `yd` command reads it, and its directory becomes the working directory of every command the server runs.
 
 Without a configuration file, every command runs with `--nc`, so only the environment (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_DATA_CLIENT_*`) and the launch-time `-n`/`-t`/`-v` options are available to it.
 
@@ -57,7 +57,7 @@ A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped` to 
 **Claude Code:**
 
 ```shell
-claude mcp add yellowdog -- yd-mcp /path/to/config.toml
+claude mcp add yellowdog -- yd mcp /path/to/config.toml
 ```
 
 **Claude Desktop**, in its configuration file:
@@ -66,18 +66,20 @@ claude mcp add yellowdog -- yd-mcp /path/to/config.toml
 {
   "mcpServers": {
     "yellowdog": {
-      "command": "yd-mcp",
-      "args": ["/path/to/config.toml"]
+      "command": "yd",
+      "args": ["mcp", "/path/to/config.toml"]
     }
   }
 }
 ```
 
-A desktop client launches the server with a minimal `PATH`, so give the full path to `yd-mcp` if it is not found there once configured.
+A desktop client launches the server with a minimal `PATH`, so give the full path to `yd` if it is not found there once configured.
 
-Every command the server runs is launched under the same Python interpreter as the server itself (`python -m yellowdog_cli.<command>`, or `python -m yellowdog_cli.nouns.<noun> <verb>`), not through the `yd-*` console scripts, because a client's `PATH` cannot be relied on to hold them.
+A client configured with `yd mcp`, the command's name in earlier releases, keeps working for now; the server then warns on stderr that the name is deprecated.
 
-A one-shot script that pipes requests to `yd-mcp` and then closes stdin gets no reply for a call still running when stdin closes: the SDK's stdio loop ends at end of input, so a call that outlives the script is abandoned rather than answered. A real client — Claude Code, Claude Desktop — holds stdin open for as long as the connection is alive, so this only bites a hand-rolled test harness, not normal use.
+Every command the server runs is launched under the same Python interpreter as the server itself (`python -m yellowdog_cli.yd <command>`, or `python -m yellowdog_cli.yd <noun> <verb>`), not through the `yd` console script, because a client's `PATH` cannot be relied on to hold them.
+
+A one-shot script that pipes requests to `yd mcp` and then closes stdin gets no reply for a call still running when stdin closes: the SDK's stdio loop ends at end of input, so a call that outlives the script is abandoned rather than answered. A real client — Claude Code, Claude Desktop — holds stdin open for as long as the connection is alive, so this only bites a hand-rolled test harness, not normal use.
 
 ## The Tools
 
@@ -85,61 +87,61 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 
 | Tool | Kind | Command | What it does |
 |---|---|---|---|
-| `yd_allowance_boost` | destructive | `yd-allowance boost` | Boost Allowances |
-| `yd_application` | read-only | `yd-application` | Report details of the current Application |
-| `yd_cloudinfo_instance_types` | read-only | `yd-cloudinfo instance-types` | List instance types |
-| `yd_cloudinfo_prices` | read-only | `yd-cloudinfo prices` | List instance prices |
-| `yd_cloudinfo_regions` | read-only | `yd-cloudinfo regions` | List cloud regions |
-| `yd_cloudinfo_sub_regions` | read-only | `yd-cloudinfo sub-regions` | List cloud sub-regions |
-| `yd_computerequirement_instantiate` | acting | `yd-computerequirement instantiate` | Instantiate a Compute Requirement |
-| `yd_computerequirement_reprovision` | destructive | `yd-computerequirement reprovision` | Reprovision Compute Requirements, restoring their target instance counts |
-| `yd_computerequirement_resize` | destructive | `yd-computerequirement resize` | Resize a Compute Requirement |
-| `yd_computerequirement_start` | destructive | `yd-computerequirement start` | Start stopped Compute Requirements |
-| `yd_computerequirement_stop` | destructive | `yd-computerequirement stop` | Stop Compute Requirements |
-| `yd_computerequirement_terminate` | destructive | `yd-computerequirement terminate` | Terminate Compute Requirements |
-| `yd_data_copy` | acting | `yd-data copy` | Copy files between remote data client locations |
-| `yd_data_delete` | destructive | `yd-data delete` | Delete remote data client files and directories |
-| `yd_data_download` | acting | `yd-data download` | Download files from a remote data client |
-| `yd_data_ls` | read-only | `yd-data ls` | List remote data client files and directories |
-| `yd_data_upload` | acting | `yd-data upload` | Upload files to a remote data client |
-| `yd_doctor` | read-only | `yd-doctor` | Check the installation, configuration and platform connection |
-| `yd_follow` | acting | `yd-follow` | Follow event streams |
-| `yd_instance_deprovision` | destructive | `yd-instance deprovision` | Deprovision Instances, reducing their Compute Requirements' target counts |
-| `yd_instance_restart` | destructive | `yd-instance restart` | Restart Instances |
-| `yd_instance_start` | destructive | `yd-instance start` | Start stopped Instances |
-| `yd_instance_stop` | destructive | `yd-instance stop` | Stop Instances |
-| `yd_instance_terminate` | destructive | `yd-instance terminate` | Terminate Instances |
-| `yd_list` | read-only | `yd-list` | List YellowDog items |
-| `yd_node_action` | destructive | `yd-node action` | Submit Node Actions to Worker Pool nodes |
-| `yd_node_deprovision` | destructive | `yd-node deprovision` | Deprovision the Instances of Nodes, reducing their Compute Requirements' target counts |
-| `yd_node_restart` | destructive | `yd-node restart` | Restart the Instances of Nodes |
-| `yd_node_shutdown` | destructive | `yd-node shutdown` | Shut down Nodes |
-| `yd_node_start` | destructive | `yd-node start` | Start the stopped Instances of Nodes |
-| `yd_node_stop` | destructive | `yd-node stop` | Stop the Instances of Nodes |
-| `yd_node_terminate` | destructive | `yd-node terminate` | Terminate the Instances of Nodes |
-| `yd_resource_create` | acting | `yd-resource create` | Create and update resources |
-| `yd_resource_remove` | destructive | `yd-resource remove` | Remove resources |
-| `yd_schema` | read-only | `yd-schema` | Print, write or check the specification schemas |
-| `yd_show` | read-only | `yd-show` | Show the JSON details of entities referenced by their YDIDs |
-| `yd_task_abort` | destructive | `yd-task abort` | Abort running Tasks |
-| `yd_taskgroup_compare` | read-only | `yd-taskgroup compare` | Compare a Task Group against Worker Pool(s) |
-| `yd_taskgroup_priority` | destructive | `yd-taskgroup priority` | Change the priority of Task Groups and Work Requirements |
-| `yd_variables` | read-only | `yd-variables` | Report the processed values of variable substitutions |
-| `yd_version` | read-only | `yd-version` | Report version information |
-| `yd_wait` | acting | `yd-wait` | Wait for entities to reach a terminal state |
+| `yd_allowance_boost` | destructive | `yd allowance boost` | Boost Allowances |
+| `yd_application` | read-only | `yd application` | Report details of the current Application |
+| `yd_cloudinfo_instance_types` | read-only | `yd cloudinfo instance-types` | List instance types |
+| `yd_cloudinfo_prices` | read-only | `yd cloudinfo prices` | List instance prices |
+| `yd_cloudinfo_regions` | read-only | `yd cloudinfo regions` | List cloud regions |
+| `yd_cloudinfo_sub_regions` | read-only | `yd cloudinfo sub-regions` | List cloud sub-regions |
+| `yd_computerequirement_instantiate` | acting | `yd computerequirement instantiate` | Instantiate a Compute Requirement |
+| `yd_computerequirement_reprovision` | destructive | `yd computerequirement reprovision` | Reprovision Compute Requirements, restoring their target instance counts |
+| `yd_computerequirement_resize` | destructive | `yd computerequirement resize` | Resize a Compute Requirement |
+| `yd_computerequirement_start` | destructive | `yd computerequirement start` | Start stopped Compute Requirements |
+| `yd_computerequirement_stop` | destructive | `yd computerequirement stop` | Stop Compute Requirements |
+| `yd_computerequirement_terminate` | destructive | `yd computerequirement terminate` | Terminate Compute Requirements |
+| `yd_data_copy` | acting | `yd data copy` | Copy files between remote data client locations |
+| `yd_data_delete` | destructive | `yd data delete` | Delete remote data client files and directories |
+| `yd_data_download` | acting | `yd data download` | Download files from a remote data client |
+| `yd_data_ls` | read-only | `yd data ls` | List remote data client files and directories |
+| `yd_data_upload` | acting | `yd data upload` | Upload files to a remote data client |
+| `yd_doctor` | read-only | `yd doctor` | Check the installation, configuration and platform connection |
+| `yd_follow` | acting | `yd follow` | Follow event streams |
+| `yd_instance_deprovision` | destructive | `yd instance deprovision` | Deprovision Instances, reducing their Compute Requirements' target counts |
+| `yd_instance_restart` | destructive | `yd instance restart` | Restart Instances |
+| `yd_instance_start` | destructive | `yd instance start` | Start stopped Instances |
+| `yd_instance_stop` | destructive | `yd instance stop` | Stop Instances |
+| `yd_instance_terminate` | destructive | `yd instance terminate` | Terminate Instances |
+| `yd_list` | read-only | `yd list` | List YellowDog items |
+| `yd_node_action` | destructive | `yd node action` | Submit Node Actions to Worker Pool nodes |
+| `yd_node_deprovision` | destructive | `yd node deprovision` | Deprovision the Instances of Nodes, reducing their Compute Requirements' target counts |
+| `yd_node_restart` | destructive | `yd node restart` | Restart the Instances of Nodes |
+| `yd_node_shutdown` | destructive | `yd node shutdown` | Shut down Nodes |
+| `yd_node_start` | destructive | `yd node start` | Start the stopped Instances of Nodes |
+| `yd_node_stop` | destructive | `yd node stop` | Stop the Instances of Nodes |
+| `yd_node_terminate` | destructive | `yd node terminate` | Terminate the Instances of Nodes |
+| `yd_resource_create` | acting | `yd resource create` | Create and update resources |
+| `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
+| `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |
+| `yd_show` | read-only | `yd show` | Show the JSON details of entities referenced by their YDIDs |
+| `yd_task_abort` | destructive | `yd task abort` | Abort running Tasks |
+| `yd_taskgroup_compare` | read-only | `yd taskgroup compare` | Compare a Task Group against Worker Pool(s) |
+| `yd_taskgroup_priority` | destructive | `yd taskgroup priority` | Change the priority of Task Groups and Work Requirements |
+| `yd_variables` | read-only | `yd variables` | Report the processed values of variable substitutions |
+| `yd_version` | read-only | `yd version` | Report version information |
+| `yd_wait` | acting | `yd wait` | Wait for entities to reach a terminal state |
 
-A tool is named for the command it runs, `yd_workrequirement_submit` for `yd-workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
-| `yd_workerpool_provision` | acting | `yd-workerpool provision` | Provision a Worker Pool |
-| `yd_workerpool_resize` | destructive | `yd-workerpool resize` | Resize a Worker Pool |
-| `yd_workerpool_shutdown` | destructive | `yd-workerpool shutdown` | Shut down Worker Pools |
-| `yd_workerpool_token` | destructive | `yd-workerpool token` | Refresh or regenerate the tokens of Configured Worker Pools |
-| `yd_workrequirement_cancel` | destructive | `yd-workrequirement cancel` | Cancel Work Requirements |
-| `yd_workrequirement_compare` | read-only | `yd-workrequirement compare` | Compare a Work Requirement against Worker Pool(s) |
-| `yd_workrequirement_finish` | destructive | `yd-workrequirement finish` | Finish Work Requirements |
-| `yd_workrequirement_hold` | destructive | `yd-workrequirement hold` | Hold (pause) running Work Requirements |
-| `yd_workrequirement_priority` | destructive | `yd-workrequirement priority` | Change the priority of Work Requirements and Task Groups |
-| `yd_workrequirement_start` | destructive | `yd-workrequirement start` | Start held (paused) Work Requirements |
-| `yd_workrequirement_submit` | acting | `yd-workrequirement submit` | Submit a Work Requirement |
+A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
+| `yd_workerpool_provision` | acting | `yd workerpool provision` | Provision a Worker Pool |
+| `yd_workerpool_resize` | destructive | `yd workerpool resize` | Resize a Worker Pool |
+| `yd_workerpool_shutdown` | destructive | `yd workerpool shutdown` | Shut down Worker Pools |
+| `yd_workerpool_token` | destructive | `yd workerpool token` | Refresh or regenerate the tokens of Configured Worker Pools |
+| `yd_workrequirement_cancel` | destructive | `yd workrequirement cancel` | Cancel Work Requirements |
+| `yd_workrequirement_compare` | read-only | `yd workrequirement compare` | Compare a Work Requirement against Worker Pool(s) |
+| `yd_workrequirement_finish` | destructive | `yd workrequirement finish` | Finish Work Requirements |
+| `yd_workrequirement_hold` | destructive | `yd workrequirement hold` | Hold (pause) running Work Requirements |
+| `yd_workrequirement_priority` | destructive | `yd workrequirement priority` | Change the priority of Work Requirements and Task Groups |
+| `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
+| `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
 
 ## Results and Errors
 
@@ -163,7 +165,7 @@ Destructive tools run with `--yes`, since there is no terminal for the CLI to pr
 
 Acting tools set `destructiveHint: false` explicitly, since the protocol's own default for a tool with no annotation is `true`.
 
-The CLI's action commands act on everything matching the namespace and tag when given no targets, and `yd-delete --recursive` on the whole default prefix. Since the server passes `--yes`, a tool call leaving its targets out would do that without anyone having asked for it, so the tools for those commands (`yd_task_abort`, `yd_workrequirement_cancel`, `yd_computerequirement_reprovision`, `yd_computerequirement_start`, `yd_computerequirement_stop`, `yd_computerequirement_terminate`, `yd_data_delete`, `yd_workrequirement_finish`, `yd_workrequirement_hold`, `yd_workrequirement_start` and `yd_workerpool_shutdown`) refuse a call with no targets unless it sets `all_in_scope` to `true`, and refuse one that sets both. The tools that take Instance or Node IDs alone (`yd_instance_terminate`, `yd_node_shutdown` and the rest) need at least one.
+The CLI's action commands act on everything matching the namespace and tag when given no targets, and `yd data delete --recursive` on the whole default prefix. Since the server passes `--yes`, a tool call leaving its targets out would do that without anyone having asked for it, so the tools for those commands (`yd_task_abort`, `yd_workrequirement_cancel`, `yd_computerequirement_reprovision`, `yd_computerequirement_start`, `yd_computerequirement_stop`, `yd_computerequirement_terminate`, `yd_data_delete`, `yd_workrequirement_finish`, `yd_workrequirement_hold`, `yd_workrequirement_start` and `yd_workerpool_shutdown`) refuse a call with no targets unless it sets `all_in_scope` to `true`, and refuse one that sets both. The tools that take Instance or Node IDs alone (`yd_instance_terminate`, `yd_node_shutdown` and the rest) need at least one.
 
 A tool with a `dry_run` argument enumerates what it would do without doing it, exactly as the CLI's own `--dry-run` does, which an agent can call first as a lighter-weight check of what a destructive or acting call would affect.
 
@@ -193,9 +195,9 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **Supplied by the server itself, meaningless without a terminal, or refused together with `--json`**: `--json`, `--yes`, `--interactive`, `--progress`, `--report`, `--ids-only`.
 - **Machine maintenance, not platform work**: `--upgrade-rclone`, `--which-rclone`.
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
-- **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd-submit`'s `--work-requirement`, `yd-provision`'s and `yd-instantiate`'s `--worker-pool`, `yd-instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
+- **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
-Four commands have no tool at all: `yd-cloudwizard` (interactive cloud provider setup), `yd-format-json` and `yd-jsonnet2json` (local file formatters, not platform commands), and `yd-help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
+Four commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
 
 ## Namespace, Tag and Variables
 

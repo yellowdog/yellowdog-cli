@@ -1,5 +1,5 @@
 """
-yd-mcp's entry point: the launch options, then the missing-extra guard, then
+yd mcp's entry point: the launch options, then the missing-extra guard, then
 the server. Free of the 'mcp' package, the SDK and Qt, so '--help' and the
 install hint work without the extra installed.
 """
@@ -11,6 +11,8 @@ import sys
 
 from yellowdog_cli.mcp.tools import ServerSettings
 from yellowdog_cli.utils.check_imports import check_mcp_imports
+from yellowdog_cli.utils.invocation import selected_prog
+from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 from yellowdog_cli.utils.variable_syntax import (
     RESERVED_VARIABLE_NAMES,
     VARIABLE_NAME_PATTERN,
@@ -63,10 +65,10 @@ class _Once(argparse.Action):
 
 def parse_args(argv: list[str] | None = None) -> ServerSettings:
     parser = argparse.ArgumentParser(
-        prog="yd-mcp",
+        prog=selected_prog("yd-mcp"),
         description=(
-            "Run the YellowDog MCP server: every yd-* command as a tool, each call"
-            " run as a yd-* command with --json."
+            "Run the YellowDog MCP server: every yd command as a tool, each call"
+            " run as a yd command with --json."
         ),
         epilog="The namespace, tag and variables are given to every command the tools run.",
     )
@@ -123,6 +125,8 @@ def parse_args(argv: list[str] | None = None) -> ServerSettings:
 
 
 def main() -> None:
+    # On stderr: stdout is the protocol's
+    warn_if_deprecated_script("yd-mcp")
     settings = parse_args()
     try:
         check_mcp_imports()

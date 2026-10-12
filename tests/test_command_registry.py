@@ -24,7 +24,8 @@ from yellowdog_cli.utils.command_registry import (
     command_from_argv0,
     option,
 )
-from yellowdog_cli.utils.noun_registry import DEPRECATED, NOUNS_BY_NAME
+from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME, REPLACED_BY_VERBS
+from yellowdog_cli.utils.top_level import SCRIPT_FORMS, yd_form
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -174,8 +175,9 @@ def _entry_points() -> set[str]:
 
 class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
-        assert set(COMMANDS) == (
-            _entry_points() - {"yd-commander", "yd-mcp"} - set(NOUNS_BY_NAME)
+        # yd-completion, never released, is 'yd completion' alone
+        assert set(COMMANDS) - {"yd-completion"} == (
+            _entry_points() - {"yd", "yd-commander", "yd-mcp"}
         )
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -219,11 +221,14 @@ def _lines() -> dict:
     """
     The listing's command lines, by the command each names.
     """
-    return {
-        t.plain.split()[0]: t
-        for t in help_module.styled_lines()
-        if t.plain.startswith("  yd-")
-    }
+    lines = {}
+    for t in help_module.styled_lines():
+        words = t.plain.split()
+        if t.plain.startswith("  yd-"):
+            lines[words[0]] = t
+        elif t.plain.startswith("  yd "):
+            lines[" ".join(words[:2])] = t
+    return lines
 
 
 class TestHelpCommand:
@@ -238,7 +243,8 @@ class TestHelpCommand:
         out = capsys.readouterr().out
         width = help_module.column_width()
         for noun in NOUNS_BY_NAME.values():
-            assert out.count(f"  {noun.name:<{width}}  {noun.summary}") == 1
+            name = f"yd {noun.name}"
+            assert out.count(f"  {name:<{width}}  {noun.summary}") == 1
             assert ", ".join(verb.name for verb in noun.verbs) in out
 
     def test_lists_every_command_no_noun_replaces_once(self, capsys):
@@ -246,32 +252,31 @@ class TestHelpCommand:
         out = capsys.readouterr().out
         width = help_module.column_width()
         for name, cmd in COMMANDS.items():
-            listed = f"  {name:<{width}}  {cmd.summary}"
-            assert out.count(listed) == (0 if name in DEPRECATED else 1), name
+            listed = f"  {yd_form(name):<{width}}  {cmd.summary}"
+            assert out.count(listed) == (0 if name in REPLACED_BY_VERBS else 1), name
 
-    def test_deprecated_lists_the_replaced_commands(self, capsys, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["yd-help", "--deprecated", "--nf"])
+    def test_deprecated_lists_every_deprecated_script(self, capsys, monkeypatch):
+        monkeypatch.setattr(sys, "argv", ["yd", "--deprecated", "--nf"])
         help_module.main()
         out = capsys.readouterr().out
         width = help_module.column_width()
-        for name, forms in DEPRECATED.items():
+        for name, forms in SCRIPT_FORMS.items():
             assert f"  {name:<{width}}  {', '.join(forms)}" in out, name
-        assert "yd-list " not in out
+        assert f"  {'yd-list':<{width}}  yd list" in out
 
     def test_the_entry_points_outside_the_registry_are_listed(self, capsys):
-        # yd-commander and yd-mcp take none of the CLI's options and so have
+        # yd commander and yd mcp take none of the CLI's options and so have
         # no registry entry, but they are commands a user has
         help_module.main()
         out = capsys.readouterr().out
         width = help_module.column_width()
         for name, summary in help_module.OTHER_COMMANDS.items():
-            assert f"{name:<{width}}  {summary}" in out, name
-        assert "yd-commander" in out and "yd-mcp" in out
+            assert f"{yd_form(name):<{width}}  {summary}" in out, name
 
     def test_the_other_commands_are_the_entry_points_the_registry_lacks(self):
         # Held both ways, so a new entry point is listed by one or the other
         assert set(help_module.OTHER_COMMANDS) == (
-            _entry_points() - set(COMMANDS) - set(NOUNS_BY_NAME)
+            _entry_points() - {"yd"} - set(COMMANDS)
         )
 
     def test_the_listing_is_coloured(self):
@@ -281,20 +286,20 @@ class TestHelpCommand:
         # theme defines; the summary proper is plain
         lines = _lines()
         assert all(isinstance(t, Text) for t in lines.values())
-        show = lines["yd-show"]
+        show = lines["yd show"]
         assert any(
             s.style == help_module.NAME_STYLE
-            and show.plain[s.start : s.end].strip() == "yd-show"
+            and show.plain[s.start : s.end].strip() == "yd show"
             for s in show.spans
         )
         assert not any(s.style == help_module.NOTE_STYLE for s in show.spans)
-        wr = lines["yd-workrequirement"]
+        wr = lines["yd workrequirement"]
         assert any(
             s.style == help_module.NOTE_STYLE
-            and wr.plain[s.start : s.end] == " (short: yd-wr)"
+            and wr.plain[s.start : s.end] == " (short: yd wr)"
             for s in wr.spans
         )
-        mcp = lines["yd-mcp"]
+        mcp = lines["yd mcp"]
         assert any(
             s.style == help_module.NOTE_STYLE
             and "needs the mcp extra" in mcp.plain[s.start : s.end]
@@ -307,7 +312,7 @@ class TestHelpCommand:
         line = help_module._row("yd-x", "Hold (pause) running things", 4)
         assert not any(s.style == help_module.NOTE_STYLE for s in line.spans)
         lines = _lines()
-        cloudwizard = lines["yd-cloudwizard"]
+        cloudwizard = lines["yd cloudwizard"]
         dimmed = [
             cloudwizard.plain[s.start : s.end]
             for s in cloudwizard.spans
@@ -318,10 +323,10 @@ class TestHelpCommand:
     def test_no_format_prints_the_same_text_without_styles(self, capsys, monkeypatch):
         import sys
 
-        monkeypatch.setattr(sys, "argv", ["yd-help"])
+        monkeypatch.setattr(sys, "argv", ["yd"])
         help_module.main()
         styled = capsys.readouterr().out
-        monkeypatch.setattr(sys, "argv", ["yd-help", "--no-format"])
+        monkeypatch.setattr(sys, "argv", ["yd", "--no-format"])
         help_module.main()
         plain = capsys.readouterr().out
         # Not a terminal here, so the styled run carries no escape codes either
@@ -331,29 +336,27 @@ class TestHelpCommand:
         import json
         import sys
 
-        monkeypatch.setattr(sys, "argv", ["yd-help", "--json"])
+        monkeypatch.setattr(sys, "argv", ["yd", "--json"])
         help_module.main()
         listed = {row["command"] for row in json.loads(capsys.readouterr().out)}
-        assert {"yd-commander", "yd-mcp"} <= listed
+        assert {"commander", "mcp"} <= listed
 
     def test_the_json_states_extras_as_fields(self, monkeypatch):
         monkeypatch.setattr(
             help_module, "extra_installed", lambda extra: extra == "commander"
         )
         records = {r["command"]: r for r in help_module.entries()}
-        assert records["yd-commander"]["extra"] == "commander"
-        assert records["yd-commander"]["installed"] is True
-        assert records["yd-mcp"]["installed"] is False
+        assert records["commander"]["extra"] == "commander"
+        assert records["commander"]["installed"] is True
+        assert records["mcp"]["installed"] is False
         # The summary itself is unchanged, and a plain command has neither
-        assert records["yd-commander"]["summary"].endswith(
-            "(needs the commander extra)"
-        )
-        assert set(records["yd-show"]) == {"command", "summary"}
+        assert records["commander"]["summary"].endswith("(needs the commander extra)")
+        assert set(records["show"]) == {"command", "summary"}
 
     def test_the_json_gives_nouns_verbs_and_the_deprecated(self):
         records = {r["command"]: r for r in help_module.entries()}
-        wr = records["yd-workrequirement"]
-        assert wr["alias"] == "yd-wr"
+        wr = records["workrequirement"]
+        assert wr["alias"] == "wr"
         assert {
             "verb": "submit",
             "summary": "Submit a Work Requirement",
@@ -362,19 +365,22 @@ class TestHelpCommand:
         # A generic command's verb replaces nothing
         assert {"verb": "list", "summary": "List Work Requirements"} in wr["verbs"]
         assert records["yd-submit"]["deprecated"] is True
-        assert records["yd-submit"]["replacedBy"] == ["yd-workrequirement submit"]
-        assert "deprecated" not in records["yd-list"]
+        assert records["yd-submit"]["replacedBy"] == ["yd workrequirement submit"]
+        assert "deprecated" not in records["list"]
+        assert records["yd-list"]["deprecated"] is True
+        assert records["yd-list"]["replacedBy"] == ["yd list"]
+        assert records["yd-mcp"]["replacedBy"] == ["yd mcp"]
 
     def test_an_installed_extra_says_so(self, monkeypatch):
         monkeypatch.setattr(
             help_module, "extra_installed", lambda extra: extra == "mcp"
         )
         lines = _lines()
-        assert lines["yd-mcp"].plain.endswith("(mcp extra installed)")
-        assert lines["yd-commander"].plain.endswith("(needs the commander extra)")
+        assert lines["yd mcp"].plain.endswith("(mcp extra installed)")
+        assert lines["yd commander"].plain.endswith("(needs the commander extra)")
         dimmed = [
-            lines["yd-mcp"].plain[s.start : s.end]
-            for s in lines["yd-mcp"].spans
+            lines["yd mcp"].plain[s.start : s.end]
+            for s in lines["yd mcp"].spans
             if s.style == help_module.NOTE_STYLE
         ]
         assert dimmed == [" (mcp extra installed)"]
@@ -392,13 +398,13 @@ class TestHelpCommand:
     def test_the_listing_ends_with_where_to_go_next(self, capsys, monkeypatch):
         import sys
 
-        monkeypatch.setattr(sys, "argv", ["yd-help", "--no-format"])
+        monkeypatch.setattr(sys, "argv", ["yd", "--no-format"])
         help_module.main()
         out = capsys.readouterr().out.strip()
         footer = next(line for line in out.splitlines() if line.startswith("Run "))
-        assert footer.startswith("Run 'yd-<noun> --help'")
+        assert footer.startswith("Run 'yd <noun> --help'")
         assert "README.md" in footer
-        assert out.splitlines()[-1].endswith("'yd-help --deprecated' lists them.")
+        assert out.splitlines()[-1].endswith("'yd help --deprecated' lists them.")
 
 
 class TestToolKinds:

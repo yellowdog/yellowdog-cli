@@ -206,7 +206,7 @@ def test_a_command_that_cannot_be_started_is_reported(win, monkeypatch):
 
     assert win._discovery._parse_yd_config(quiet=True) is False
 
-    assert "yd-variables" in win.log_output.toPlainText()
+    assert "yd variables" in win.log_output.toPlainText()
 
 
 def test_output_that_is_not_json_is_reported(win, monkeypatch):
@@ -558,7 +558,7 @@ def test_the_real_command_is_quiet():
 
     command, args = ConfigDiscovery._yd_variables_command(stand_in)  # type: ignore[arg-type]
 
-    assert command == "yd-variables"
+    assert command == "yd variables"
     assert "--quiet" in args
 
 

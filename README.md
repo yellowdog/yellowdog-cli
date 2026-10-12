@@ -37,7 +37,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:38 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:10 BST 2026 -->
 
 <!--te-->
 
@@ -47,24 +47,24 @@ This repository contains a set of command-line utilities for driving the YellowD
 
 This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**, which provides a comprehensive description of the concepts and operation of the YellowDog Platform.
 
-Each command names the object it acts on, then what to do to it — `yd-workrequirement submit`, `yd-instance terminate` — and `yd-<noun> --help` lists a noun's verbs. The commands provide the following capabilities:
+The CLI is one command, `yd`. Most of what it does names the object acted on, then what to do to it — `yd workrequirement submit`, `yd instance terminate` — and `yd <noun> --help` lists a noun's verbs; `yd` alone, or `yd help`, lists everything. The commands provide the following capabilities:
 
-- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd-workrequirement`** (short form `yd-wr`)
-- **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd-taskgroup`** (`yd-tg`), and aborting running Tasks with **`yd-task`**
-- **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd-workerpool`** (`yd-wp`)
-- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd-computerequirement`** (`yd-cr`)
-- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd-instance`**, and Worker Pool Nodes' Instances with **`yd-node`**, which also shuts Nodes down and submits Node Actions to them
-- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd-resource`**
-- **Allowances** — boosting them with **`yd-allowance`**
-- **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd-data`**
-- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd-cloudinfo`**
-- **Inspecting** — listing YellowDog items with **`yd-list`**, showing any entity's details by its YellowDog ID with **`yd-show`**, following event streams with **`yd-follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd-wait`**; every noun also has `list` and `show` verbs for its own objects
-- **Showing** the details of the current Application with the **`yd-application`** command
-- **Diagnosing** the configuration, credentials and connectivity with the **`yd-doctor`** command
-- **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
-- **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd-completion`** command
+- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd workrequirement`** (short form `yd wr`)
+- **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and aborting running Tasks with **`yd task`**
+- **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
+- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd computerequirement`** (`yd cr`)
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**
+- **Allowances** — boosting them with **`yd allowance`**
+- **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
+- **Inspecting** — listing YellowDog items with **`yd list`**, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun also has `list` and `show` verbs for its own objects
+- **Showing** the details of the current Application with the **`yd application`** command
+- **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
+- **Reporting** the processed values of variable substitutions with the **`yd variables`** command
+- **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-The commands the nouns replace, such as `yd-submit` and `yd-terminate`, still run, with a warning, until a future release; `yd-help --deprecated` says what replaces each.
+The `yd-*` commands of earlier releases, such as `yd-submit` and `yd-list`, still run, with a warning, until a future release; `yd help --deprecated` says what replaces each.
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 
@@ -214,35 +214,35 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 # YellowDog Commander (GUI)
 
-Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra and launch it with `yd-commander`:
+Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra and launch it with `yd commander`:
 
 ```commandline
 pip install -U "yellowdog-cli[commander]"
-yd-commander
+yd commander
 ```
 
-It works by invoking the `yd-*` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
+It works by running `yd` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
 # YellowDog MCP Server
 
-`yd-mcp` is an MCP server exposing the `yd-*` commands as tools for an agent. Install it with the `mcp` extra and launch it with `yd-mcp`:
+`yd mcp` is an MCP server exposing the `yd` commands as tools for an agent. Install it with the `mcp` extra and launch it with `yd mcp`:
 
 ```commandline
 pip install -U "yellowdog-cli[mcp]"
-yd-mcp config.toml
+yd mcp config.toml
 ```
 
-It runs the `yd-*` commands on an agent's behalf and returns their `--json` results. See [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) for details.
+It runs `yd` commands on an agent's behalf and returns their `--json` results. See [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) for details.
 
 # Usage
 
-All three installation methods add a number of **`yd-`** commands to your PATH. Most name an object and take a verb, `yd-<noun> <verb>`; see the [Command List](docs/commands.md).
+All three installation methods add the **`yd`** command to your PATH. Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
 ```text
-% yd-workrequirement cancel -h
-usage: yd-workrequirement cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>]
+% yd workrequirement cancel -h
+usage: yd workrequirement cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>]
                                  [--debug] [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config]
                                  [--property <section.key=value>] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>]
                                  [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
@@ -295,29 +295,29 @@ options:
   --yes, -y             perform modifying/destructive actions without requiring user confirmation
 ```
 
-If a command fails and the reason isn't clear, run **[`yd-doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
+If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
 ## Shell Completion
 
 Tab completion of the commands, their verbs, their options and the values the CLI knows is available for bash, zsh, fish and PowerShell: add the line for your shell to its start-up file.
 
 ```shell
-eval "$(yd-completion bash)"     # ~/.bashrc
-eval "$(yd-completion zsh)"      # ~/.zshrc
-yd-completion fish | source      # ~/.config/fish/config.fish
+eval "$(yd completion bash)"     # ~/.bashrc
+eval "$(yd completion zsh)"      # ~/.zshrc
+yd completion fish | source      # ~/.config/fish/config.fish
 ```
 
 ```powershell
-yd-completion powershell | Out-String | Invoke-Expression    # $PROFILE
+yd completion powershell | Out-String | Invoke-Expression    # $PROFILE
 ```
 
-See [yd-completion](docs/commands.md#yd-completion) for what it completes.
+See [yd completion](docs/commands.md#yd-completion) for what it completes.
 
 ## Specification Schemas
 
-A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd-schema` command prints, writes or checks them (see [yd-schema](docs/commands.md#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](docs/property-dictionary.md#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd-schema --write <dir>` afterwards, or `yd-schema --check <dir>` first to see whether it is needed. The TOML configuration file has a schema too, `config`, which every command checks the file against (see [Configuration](docs/configuration.md#configuration)).
+A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd schema` command prints, writes or checks them (see [yd schema](docs/commands.md#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](docs/property-dictionary.md#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd schema --write <dir>` afterwards, or `yd schema --check <dir>` first to see whether it is needed. The TOML configuration file has a schema too, `config`, which every command checks the file against (see [Configuration](docs/configuration.md#configuration)).
 
-Point an editor's JSON Schema support at the files `yd-schema --write` produces, to get inline validation and autocomplete while writing a specification. In VS Code, add an entry to `settings.json`:
+Point an editor's JSON Schema support at the files `yd schema --write` produces, to get inline validation and autocomplete while writing a specification. In VS Code, add an entry to `settings.json`:
 
 ```json
 "json.schemas": [
@@ -330,11 +330,11 @@ Point an editor's JSON Schema support at the files `yd-schema --write` produces,
 
 A specification file can instead name its own schema directly, with a `$schema` key at the top of the file; the CLI accepts this key and ignores it, so it is never sent on to the Platform. JetBrains IDEs offer the same association under Preferences → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings.
 
-Every run of `yd-workrequirement submit`, `yd-workerpool provision`, `yd-computerequirement instantiate`, `yd-resource create` and `yd-node action` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd-schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one. To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
+Every run of `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create` and `yd node action` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd schema` with that specification's type shows why. `--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one. To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
 
-A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd-jsonnet2json` on a Jsonnet file to see that JSON.
+A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd jsonnet2json` on a Jsonnet file to see that JSON.
 
-**Applications that can read only some namespaces.** Wherever a command searches without a namespace — a name given without `namespace/`, or `yd-list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
+**Applications that can read only some namespaces.** Wherever a command searches without a namespace — a name given without `namespace/`, or `yd list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
 
 ## Machine-readable Output and Exit Codes
 
@@ -346,20 +346,20 @@ A common pattern when using YellowDog is to submit a Work Requirement and provis
 
 ```bash
 # Submit a Work Requirement and capture its YDID
-WR_ID=$(yd-workrequirement submit --quiet)
+WR_ID=$(yd workrequirement submit --quiet)
 
 # Provision a Worker Pool and capture its YDID
-WP_ID=$(yd-workerpool provision --quiet)
+WP_ID=$(yd workerpool provision --quiet)
 
 # Follow both until the Work Requirement finishes and the Worker Pool shuts down
-yd-follow "$WR_ID" "$WP_ID"
+yd follow "$WR_ID" "$WP_ID"
 ```
 
-Alternatively, `yd-workrequirement submit --follow` and `yd-workerpool provision` can be run in parallel, letting the Worker Pool pick up Tasks as they are submitted:
+Alternatively, `yd workrequirement submit --follow` and `yd workerpool provision` can be run in parallel, letting the Worker Pool pick up Tasks as they are submitted:
 
 ```bash
-yd-workerpool provision &
-yd-workrequirement submit --follow
+yd workerpool provision &
+yd workrequirement submit --follow
 ```
 
 When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout`.

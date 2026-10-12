@@ -3,120 +3,120 @@
 <!--ts-->
    * [Universal Options](#universal-options)
    * [Shared Options](#shared-options)
-   * [yd-workrequirement](#yd-workrequirement)
-      * [yd-workrequirement submit](#yd-workrequirement-submit)
-      * [yd-workrequirement cancel](#yd-workrequirement-cancel)
-      * [yd-workrequirement hold](#yd-workrequirement-hold)
-      * [yd-workrequirement start](#yd-workrequirement-start)
-      * [yd-workrequirement finish](#yd-workrequirement-finish)
-      * [yd-workrequirement priority](#yd-workrequirement-priority)
-      * [yd-workrequirement compare](#yd-workrequirement-compare)
-   * [yd-taskgroup](#yd-taskgroup)
-      * [yd-taskgroup priority](#yd-taskgroup-priority)
-      * [yd-taskgroup compare](#yd-taskgroup-compare)
-   * [yd-task](#yd-task)
-      * [yd-task abort](#yd-task-abort)
-   * [yd-workerpool](#yd-workerpool)
-      * [yd-workerpool provision](#yd-workerpool-provision)
-      * [yd-workerpool resize](#yd-workerpool-resize)
-      * [yd-workerpool shutdown](#yd-workerpool-shutdown)
-      * [yd-workerpool token](#yd-workerpool-token)
-   * [yd-computerequirement](#yd-computerequirement)
-      * [yd-computerequirement instantiate](#yd-computerequirement-instantiate)
+   * [yd workrequirement](#yd-workrequirement)
+      * [yd workrequirement submit](#yd-workrequirement-submit)
+      * [yd workrequirement cancel](#yd-workrequirement-cancel)
+      * [yd workrequirement hold](#yd-workrequirement-hold)
+      * [yd workrequirement start](#yd-workrequirement-start)
+      * [yd workrequirement finish](#yd-workrequirement-finish)
+      * [yd workrequirement priority](#yd-workrequirement-priority)
+      * [yd workrequirement compare](#yd-workrequirement-compare)
+   * [yd taskgroup](#yd-taskgroup)
+      * [yd taskgroup priority](#yd-taskgroup-priority)
+      * [yd taskgroup compare](#yd-taskgroup-compare)
+   * [yd task](#yd-task)
+      * [yd task abort](#yd-task-abort)
+   * [yd workerpool](#yd-workerpool)
+      * [yd workerpool provision](#yd-workerpool-provision)
+      * [yd workerpool resize](#yd-workerpool-resize)
+      * [yd workerpool shutdown](#yd-workerpool-shutdown)
+      * [yd workerpool token](#yd-workerpool-token)
+   * [yd computerequirement](#yd-computerequirement)
+      * [yd computerequirement instantiate](#yd-computerequirement-instantiate)
          * [Test-Running a Dynamic Template](#test-running-a-dynamic-template)
-      * [yd-computerequirement resize](#yd-computerequirement-resize)
-      * [yd-computerequirement stop](#yd-computerequirement-stop)
-      * [yd-computerequirement start](#yd-computerequirement-start)
-      * [yd-computerequirement reprovision](#yd-computerequirement-reprovision)
-      * [yd-computerequirement terminate](#yd-computerequirement-terminate)
-   * [yd-instance](#yd-instance)
-      * [yd-instance stop](#yd-instance-stop)
-      * [yd-instance start](#yd-instance-start)
-      * [yd-instance restart](#yd-instance-restart)
-      * [yd-instance deprovision](#yd-instance-deprovision)
-      * [yd-instance terminate](#yd-instance-terminate)
-   * [yd-node](#yd-node)
-      * [yd-node action](#yd-node-action)
-      * [yd-node shutdown](#yd-node-shutdown)
-      * [yd-node stop](#yd-node-stop)
-      * [yd-node start](#yd-node-start)
-      * [yd-node terminate](#yd-node-terminate)
-      * [yd-node restart](#yd-node-restart)
-      * [yd-node deprovision](#yd-node-deprovision)
-   * [yd-worker](#yd-worker)
-   * [yd-resource](#yd-resource)
-      * [yd-resource create](#yd-resource-create)
-      * [yd-resource remove](#yd-resource-remove)
-   * [yd-allowance](#yd-allowance)
-      * [yd-allowance boost](#yd-allowance-boost)
-   * [yd-data](#yd-data)
-      * [yd-data upload](#yd-data-upload)
-      * [yd-data download](#yd-data-download)
-      * [yd-data ls](#yd-data-ls)
-      * [yd-data delete](#yd-data-delete)
-      * [yd-data copy](#yd-data-copy)
-   * [yd-cloudinfo](#yd-cloudinfo)
-      * [yd-cloudinfo regions](#yd-cloudinfo-regions)
-      * [yd-cloudinfo sub-regions](#yd-cloudinfo-sub-regions)
-      * [yd-cloudinfo instance-types](#yd-cloudinfo-instance-types)
-      * [yd-cloudinfo prices](#yd-cloudinfo-prices)
+      * [yd computerequirement resize](#yd-computerequirement-resize)
+      * [yd computerequirement stop](#yd-computerequirement-stop)
+      * [yd computerequirement start](#yd-computerequirement-start)
+      * [yd computerequirement reprovision](#yd-computerequirement-reprovision)
+      * [yd computerequirement terminate](#yd-computerequirement-terminate)
+   * [yd instance](#yd-instance)
+      * [yd instance stop](#yd-instance-stop)
+      * [yd instance start](#yd-instance-start)
+      * [yd instance restart](#yd-instance-restart)
+      * [yd instance deprovision](#yd-instance-deprovision)
+      * [yd instance terminate](#yd-instance-terminate)
+   * [yd node](#yd-node)
+      * [yd node action](#yd-node-action)
+      * [yd node shutdown](#yd-node-shutdown)
+      * [yd node stop](#yd-node-stop)
+      * [yd node start](#yd-node-start)
+      * [yd node terminate](#yd-node-terminate)
+      * [yd node restart](#yd-node-restart)
+      * [yd node deprovision](#yd-node-deprovision)
+   * [yd worker](#yd-worker)
+   * [yd resource](#yd-resource)
+      * [yd resource create](#yd-resource-create)
+      * [yd resource remove](#yd-resource-remove)
+   * [yd allowance](#yd-allowance)
+      * [yd allowance boost](#yd-allowance-boost)
+   * [yd data](#yd-data)
+      * [yd data upload](#yd-data-upload)
+      * [yd data download](#yd-data-download)
+      * [yd data ls](#yd-data-ls)
+      * [yd data delete](#yd-data-delete)
+      * [yd data copy](#yd-data-copy)
+   * [yd cloudinfo](#yd-cloudinfo)
+      * [yd cloudinfo regions](#yd-cloudinfo-regions)
+      * [yd cloudinfo sub-regions](#yd-cloudinfo-sub-regions)
+      * [yd cloudinfo instance-types](#yd-cloudinfo-instance-types)
+      * [yd cloudinfo prices](#yd-cloudinfo-prices)
    * [Other Commands](#other-commands)
-      * [yd-list](#yd-list)
-      * [yd-show](#yd-show)
-      * [yd-follow](#yd-follow)
-      * [yd-wait](#yd-wait)
-      * [yd-application](#yd-application)
-      * [yd-variables](#yd-variables)
-      * [yd-doctor](#yd-doctor)
-      * [yd-help](#yd-help)
-      * [yd-version](#yd-version)
-      * [yd-format-json](#yd-format-json)
-      * [yd-jsonnet2json](#yd-jsonnet2json)
-      * [yd-schema](#yd-schema)
-      * [yd-completion](#yd-completion)
+      * [yd list](#yd-list)
+      * [yd show](#yd-show)
+      * [yd follow](#yd-follow)
+      * [yd wait](#yd-wait)
+      * [yd application](#yd-application)
+      * [yd variables](#yd-variables)
+      * [yd doctor](#yd-doctor)
+      * [yd help](#yd-help)
+      * [yd version](#yd-version)
+      * [yd format-json](#yd-format-json)
+      * [yd jsonnet2json](#yd-jsonnet2json)
+      * [yd schema](#yd-schema)
+      * [yd completion](#yd-completion)
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:39 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:11 BST 2026 -->
 
 <!--te-->
 
-Each command names the object it acts on, then what to do to it:
+The CLI is one command, `yd`. Most of what it does names the object acted on, then what to do to it:
 
 ```shell
-yd-<noun> <verb> [options] [arguments]
+yd <noun> <verb> [options] [arguments]
 ```
 
-For example, `yd-workrequirement submit wr.json` submits a Work Requirement, and `yd-instance terminate <cr-id>.<instance-id>` terminates an Instance. The four longest nouns have short forms, so `yd-wr submit wr.json` is the same command.
+For example, `yd workrequirement submit wr.json` submits a Work Requirement, and `yd instance terminate <cr-id>.<instance-id>` terminates an Instance. The four longest nouns have short forms, so `yd wr submit wr.json` is the same command.
 
 | Noun | Short form | Its objects | Verbs |
 |---|---|---|---|
-| [`yd-workrequirement`](#yd-workrequirement) | `yd-wr` | Work Requirements | `submit`, `cancel`, `hold`, `start`, `finish`, `priority`, `compare`, `list`, `show`, `follow`, `wait` |
-| [`yd-taskgroup`](#yd-taskgroup) | `yd-tg` | Task Groups | `priority`, `compare`, `list`, `show` |
-| [`yd-task`](#yd-task) | | Tasks | `abort`, `list`, `show` |
-| [`yd-workerpool`](#yd-workerpool) | `yd-wp` | Worker Pools | `provision`, `resize`, `shutdown`, `token`, `list`, `show`, `follow`, `wait` |
-| [`yd-computerequirement`](#yd-computerequirement) | `yd-cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `terminate`, `list`, `show`, `follow`, `wait` |
-| [`yd-instance`](#yd-instance) | | the Instances of Compute Requirements | `stop`, `start`, `restart`, `deprovision`, `terminate`, `list`, `show` |
-| [`yd-node`](#yd-node) | | Worker Pool Nodes | `action`, `shutdown`, `stop`, `start`, `terminate`, `restart`, `deprovision`, `list`, `show` |
-| [`yd-worker`](#yd-worker) | | Workers | `list`, `show` |
-| [`yd-resource`](#yd-resource) | | resources: templates, keyrings, namespaces, users and the rest | `create`, `remove`, `list`, `show` |
-| [`yd-allowance`](#yd-allowance) | | Allowances | `boost`, `list`, `show` |
-| [`yd-data`](#yd-data) | | files in a remote data client location | `upload`, `download`, `ls`, `delete`, `copy` |
-| [`yd-cloudinfo`](#yd-cloudinfo) | | the cloud providers' regions, instance types and prices | `regions`, `sub-regions`, `instance-types`, `prices` |
+| [`yd workrequirement`](#yd-workrequirement) | `yd wr` | Work Requirements | `submit`, `cancel`, `hold`, `start`, `finish`, `priority`, `compare`, `list`, `show`, `follow`, `wait` |
+| [`yd taskgroup`](#yd-taskgroup) | `yd tg` | Task Groups | `priority`, `compare`, `list`, `show` |
+| [`yd task`](#yd-task) | | Tasks | `abort`, `list`, `show` |
+| [`yd workerpool`](#yd-workerpool) | `yd wp` | Worker Pools | `provision`, `resize`, `shutdown`, `token`, `list`, `show`, `follow`, `wait` |
+| [`yd computerequirement`](#yd-computerequirement) | `yd cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `terminate`, `list`, `show`, `follow`, `wait` |
+| [`yd instance`](#yd-instance) | | the Instances of Compute Requirements | `stop`, `start`, `restart`, `deprovision`, `terminate`, `list`, `show` |
+| [`yd node`](#yd-node) | | Worker Pool Nodes | `action`, `shutdown`, `stop`, `start`, `terminate`, `restart`, `deprovision`, `list`, `show` |
+| [`yd worker`](#yd-worker) | | Workers | `list`, `show` |
+| [`yd resource`](#yd-resource) | | resources: templates, keyrings, namespaces, users and the rest | `create`, `remove`, `list`, `show` |
+| [`yd allowance`](#yd-allowance) | | Allowances | `boost`, `list`, `show` |
+| [`yd data`](#yd-data) | | files in a remote data client location | `upload`, `download`, `ls`, `delete`, `copy` |
+| [`yd cloudinfo`](#yd-cloudinfo) | | the cloud providers' regions, instance types and prices | `regions`, `sub-regions`, `instance-types`, `prices` |
 
-`yd-<noun> --help` lists a noun's verbs, and `yd-<noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd-instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd-instance terminate`.
+`yd <noun> --help` lists a noun's verbs, and `yd <noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd instance terminate`.
 
-The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd-list`](#yd-list), [`yd-show`](#yd-show), [`yd-follow`](#yd-follow) and [`yd-wait`](#yd-wait) restricted to the noun's objects: `yd-workrequirement list` is `yd-list work-requirements`, and `yd-workrequirement show` takes Work Requirement IDs alone. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object.
+The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs alone. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
-The commands the nouns replace, such as `yd-submit` and `yd-terminate`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
+The `yd-*` commands of earlier releases, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
 Help is available for every command with the `--help` or `-h` option. The two tables below describe the options shared across commands; the sections that follow describe each command individually, along with its own command-specific options.
 
 ## Universal Options
 
-These options are accepted by every `yd-*` command except `yd-commander`, `yd-mcp`, `yd-completion`, `yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd-help`, `yd-schema`, `yd-version` and `yd-jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
 
-The five [`yd-data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
+The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
 | Option | Effect |
 |---|---|
@@ -134,15 +134,15 @@ The five [`yd-data`](#yd-data) verbs are a partial exception: they accept all of
 | `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](configuration.md#https-proxy-support) |
 | `--docs` | Provide a link to the documentation for this version of the CLI |
 
-Note that `yd-version` also accepts `--debug`, but reports the Python path and executable details rather than a stack trace.
+Note that `yd version` also accepts `--debug`, but reports the Python path and executable details rather than a stack trace.
 
 A table longer than 2,000 lines, or JSON longer than 5,000 lines, is printed without colour, whether or not `--no-format` is used, since colouring output that long takes a noticeable time.
 
-For `yd-workrequirement submit`, `yd-workerpool provision`, and `yd-computerequirement instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
+For `yd workrequirement submit`, `yd workerpool provision`, and `yd computerequirement instantiate`, `--quiet` prints **only the YDID** of the created entity to stdout, making those commands directly composable in shell scripts:
 
 ```bash
-WR_ID=$(yd-workrequirement submit --quiet)
-yd-workrequirement follow "$WR_ID"
+WR_ID=$(yd workrequirement submit --quiet)
+yd workrequirement follow "$WR_ID"
 ```
 
 ## Shared Options
@@ -157,18 +157,18 @@ These options are accepted by many commands, but not by all. The command section
 | `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
-| `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it — `yd-workrequirement hold` until the Work Requirement is `HELD`; `stop` until nothing is changing, having stopped; `start`, `deprovision`, `reprovision` and `yd-computerequirement resize` until the Compute Requirement is `RUNNING` at its target with no Instance starting, stopping or terminating; `restart` and `yd-workerpool resize` of a Provisioned Worker Pool until it is so again, having left it. A Configured Worker Pool resized is followed until Ctrl-C |
+| `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it — `yd workrequirement hold` until the Work Requirement is `HELD`; `stop` until nothing is changing, having stopped; `start`, `deprovision`, `reprovision` and `yd computerequirement resize` until the Compute Requirement is `RUNNING` at its target with no Instance starting, stopping or terminating; `restart` and `yd workerpool resize` of a Provisioned Worker Pool until it is so again, having left it. A Configured Worker Pool resized is followed until Ctrl-C |
 | `--sort <name\|created\|status\|namespace>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
 | `--reverse` | Reverse (descending) the whole order `--sort` gives |
 | `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
 
 All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
 
-The `yd-data` verbs share a further set of options (`--remote`, `--bucket`, `--prefix`, `--no-prefix` and `--data-client-profile`), which are described under [Data Client](data-client.md).
+The `yd data` verbs share a further set of options (`--remote`, `--bucket`, `--prefix`, `--no-prefix` and `--data-client-profile`), which are described under [Data Client](data-client.md).
 
-## yd-workrequirement
+## yd workrequirement
 
-Work Requirements: `yd-workrequirement`, or `yd-wr` for short.
+Work Requirements: `yd workrequirement`, or `yd wr` for short.
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -179,17 +179,17 @@ Work Requirements: `yd-workrequirement`, or `yd-wr` for short.
 | [`finish`](#yd-workrequirement-finish) | Finish Work Requirements | `yd-finish` |
 | [`priority`](#yd-workrequirement-priority) | Change the priority of Work Requirements and Task Groups | `yd-priority` |
 | [`compare`](#yd-workrequirement-compare) | Compare a Work Requirement against Worker Pools | `yd-compare` |
-| `list` | `yd-list work-requirements` |  |
-| `show` | `yd-show`, for Work Requirement IDs |  |
-| `follow` | `yd-follow`, for Work Requirement IDs |  |
-| `wait` | `yd-wait`, for Work Requirement IDs |  |
+| `list` | `yd list work-requirements` |  |
+| `show` | `yd show`, for Work Requirement IDs |  |
+| `follow` | `yd follow`, for Work Requirement IDs |  |
+| `wait` | `yd wait`, for Work Requirement IDs |  |
 
-### yd-workrequirement submit
+### yd workrequirement submit
 
-The `yd-workrequirement submit` command submits a new Work Requirement, according to the Work Requirement definition found in the `workRequirement` section of the TOML configuration file and/or the specification found in a Work Requirement JSON (or Jsonnet) document.
+The `yd workrequirement submit` command submits a new Work Requirement, according to the Work Requirement definition found in the `workRequirement` section of the TOML configuration file and/or the specification found in a Work Requirement JSON (or Jsonnet) document.
 
 ```shell
-yd-workrequirement submit [options] [<work-requirement-specification-file>]
+yd workrequirement submit [options] [<work-requirement-specification-file>]
 ```
 
 Once submitted, the Work Requirement will appear in the **Work** tab in the YellowDog Portal.
@@ -198,7 +198,7 @@ Key options:
 - `--follow`/`-f` — report on Tasks as they conclude, and don't return until the Work Requirement has finished
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
 - `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state, or, if it could not be followed to its end (its event stream lost, say) and has not finished, with the code of that failure, since its outcome is not known; needs `--follow` or `--progress`
-- `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd-workrequirement start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
+- `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd workrequirement start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
@@ -215,28 +215,28 @@ Key options:
 - `--json` — emit the created Work Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--progress`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement submit my_work_requirement.json --follow
+yd workrequirement submit my_work_requirement.json --follow
 ```
 
 When `--quiet` (`-q`) is used, only the YDID of the submitted Work Requirement is printed to stdout, with all other output suppressed. This is convenient for scripting:
 
 ```bash
-WR_ID=$(yd-workrequirement submit --quiet)
-yd-workrequirement follow "$WR_ID"
+WR_ID=$(yd workrequirement submit --quiet)
+yd workrequirement follow "$WR_ID"
 ```
 
-To force a download or upgrade of the rclone binary used by the Data Client, run `yd-workrequirement submit --upgrade-rclone`. To report the path and version of the binary that would be used, without downloading anything, run `yd-workrequirement submit --which-rclone`. Both options are also accepted by the `yd-data` verbs themselves.
+To force a download or upgrade of the rclone binary used by the Data Client, run `yd workrequirement submit --upgrade-rclone`. To report the path and version of the binary that would be used, without downloading anything, run `yd workrequirement submit --which-rclone`. Both options are also accepted by the `yd data` verbs themselves.
 
 The specification file may also be supplied using the deprecated `--work-requirement`/`-r` option; the positional argument is preferred.
 
 See [Work Requirements](work-requirements.md) for the full specification reference, [Specifying Work Requirements using CSV Data](work-requirements.md#specifying-work-requirements-using-csv-data) for the CSV options, and [Adding Task Groups and Tasks to an Existing Work Requirement](work-requirements.md#adding-task-groups-and-tasks-to-an-existing-work-requirement) for `--add-to`.
 
-### yd-workrequirement cancel
+### yd workrequirement cancel
 
-The `yd-workrequirement cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain.
+The `yd workrequirement cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain.
 
 ```shell
-yd-workrequirement cancel [options] [<work-requirement-name-or-ID> ...]
+yd workrequirement cancel [options] [<work-requirement-name-or-ID> ...]
 ```
 
 The `namespace` and `tag` values in the `config.toml` file are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
@@ -245,7 +245,7 @@ A YDID names its Work Requirement or Task in whatever namespace it is in. A name
 
 Explicit names and IDs are handled in the order given, and are confirmed together; one that has already finished, or a Task that has, is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list work-requirements --name 'myproject-*'` to preview the matches first.
+A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list work-requirements --name 'myproject-*'` to preview the matches first.
 
 By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. A Work Requirement that is already `CANCELLING` is left alone unless `--abort` is given, in which case it is cancelled again to abort its executing Tasks.
 
@@ -255,34 +255,34 @@ Key options:
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement cancel 'myproject-*' --dry-run
+yd workrequirement cancel 'myproject-*' --dry-run
 ```
 
-### yd-workrequirement hold
+### yd workrequirement hold
 
-The `yd-workrequirement hold` command holds (pauses) `RUNNING` Work Requirements.
+The `yd workrequirement hold` command holds (pauses) `RUNNING` Work Requirements.
 
 ```shell
-yd-workrequirement hold [options] [<work-requirement-name-or-ID> ...]
+yd workrequirement hold [options] [<work-requirement-name-or-ID> ...]
 ```
 
-It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements. Names, YDIDs and glob patterns are handled as [`yd-workrequirement start`](#yd-workrequirement-start) handles them, with `RUNNING` in place of `HELD`.
+It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to hold, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements. Names, YDIDs and glob patterns are handled as [`yd workrequirement start`](#yd-workrequirement-start) handles them, with `RUNNING` in place of `HELD`.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement hold my-analysis-run
+yd workrequirement hold my-analysis-run
 ```
 
-A held Work Requirement is restarted using `yd-workrequirement start`.
+A held Work Requirement is restarted using `yd workrequirement start`.
 
-### yd-workrequirement start
+### yd workrequirement start
 
-The `yd-workrequirement start` command starts Work Requirements that are in the `HELD` (paused) state.
+The `yd workrequirement start` command starts Work Requirements that are in the `HELD` (paused) state.
 
 ```shell
-yd-workrequirement start [options] [<work-requirement-name-or-ID> ...]
+yd workrequirement start [options] [<work-requirement-name-or-ID> ...]
 ```
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
@@ -295,38 +295,38 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement start my-analysis-run --follow
-yd-workrequirement start 'analysis-*'
+yd workrequirement start my-analysis-run --follow
+yd workrequirement start 'analysis-*'
 ```
 
-Work Requirements are submitted in the `HELD` state using `yd-workrequirement submit --hold`; `yd-workrequirement hold` returns a `RUNNING` one to it.
+Work Requirements are submitted in the `HELD` state using `yd workrequirement submit --hold`; `yd workrequirement hold` returns a `RUNNING` one to it.
 
-### yd-workrequirement finish
+### yd workrequirement finish
 
-The `yd-workrequirement finish` command moves Work Requirements into the `FINISHING` state, meaning that the requirements will be allowed to conclude but that no new Tasks can be added.
+The `yd workrequirement finish` command moves Work Requirements into the `FINISHING` state, meaning that the requirements will be allowed to conclude but that no new Tasks can be added.
 
 ```shell
-yd-workrequirement finish [options] [<work-requirement-name-or-ID> ...]
+yd workrequirement finish [options] [<work-requirement-name-or-ID> ...]
 ```
 
-As with `yd-workrequirement start` and `yd-workrequirement hold`, specific names and/or YDIDs can be supplied, otherwise the `namespace` and `tag` are used to generate the list of candidates. Names, YDIDs and glob patterns are handled as [`yd-workrequirement start`](#yd-workrequirement-start) handles them, with `RUNNING` or `HELD` in place of `HELD`: a Work Requirement that is already `FINISHING` is left out of the candidates, and skipped with a warning if named. With `--follow`, only the Work Requirements this command finished are followed.
+As with `yd workrequirement start` and `yd workrequirement hold`, specific names and/or YDIDs can be supplied, otherwise the `namespace` and `tag` are used to generate the list of candidates. Names, YDIDs and glob patterns are handled as [`yd workrequirement start`](#yd-workrequirement-start) handles them, with `RUNNING` or `HELD` in place of `HELD`: a Work Requirement that is already `FINISHING` is left out of the candidates, and skipped with a warning if named. With `--follow`, only the Work Requirements this command finished are followed.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement finish my-analysis-run
+yd workrequirement finish my-analysis-run
 ```
 
-### yd-workrequirement priority
+### yd workrequirement priority
 
-The `yd-workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
+The `yd workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
 
 ```shell
-yd-workrequirement priority [options] <priority> <target> [<target> ...]
+yd workrequirement priority [options] <priority> <target> [<target> ...]
 ```
 
-The new priority, any finite number (negative ones included), comes first, followed by one or more targets, read as [`yd-task abort`](#yd-task-abort) reads them:
+The new priority, any finite number (negative ones included), comes first, followed by one or more targets, read as [`yd task abort`](#yd-task-abort) reads them:
 
 - a Work Requirement name, `<namespace>/<wr-name>` or YDID
 - a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`
@@ -338,17 +338,17 @@ Key options:
 - `--json` — emit the actions taken as a JSON array, each with its `previousPriority` and `priority` (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement priority 10 my-analysis-run
-yd-workrequirement priority 5 my-analysis-run/render my-analysis-run/encode
-yd-workrequirement priority -1 ydid:workreq:000000:...
+yd workrequirement priority 10 my-analysis-run
+yd workrequirement priority 5 my-analysis-run/render my-analysis-run/encode
+yd workrequirement priority -1 ydid:workreq:000000:...
 ```
 
-### yd-workrequirement compare
+### yd workrequirement compare
 
-The `yd-workrequirement compare` command takes a Work Requirement ID and one or more Worker Pool IDs, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd-taskgroup compare`](#yd-taskgroup-compare).
+The `yd workrequirement compare` command takes a Work Requirement ID and one or more Worker Pool IDs, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd taskgroup compare`](#yd-taskgroup-compare).
 
 ```shell
-yd-workrequirement compare [options] <work-requirement-ID> <provisioned-worker-pool-ID> ...
+yd workrequirement compare [options] <work-requirement-ID> <provisioned-worker-pool-ID> ...
 ```
 
 The command checks if the **Run Specification** of a Task Group matches the properties of the Worker Pools and their registered Nodes and Workers, meaning there are Workers in the Worker Pool that could be claimed by the Task Group and that the Worker Pool would be a candidate for scaling up to meet the demands of the Task Group.
@@ -364,7 +364,7 @@ Key options:
 - `--json` — emit the comparison as a JSON array, one object per Worker Pool compared with each Task Group (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workrequirement compare ydid:workreq:000000:83587010-5e26-4174-92a7-c7cc2612638d ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+yd workrequirement compare ydid:workreq:000000:83587010-5e26-4174-92a7-c7cc2612638d ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
 ```
 
 The properties are compared as follows. A property the Task Group leaves unset, or sets to an empty list, places no constraint on the Worker Pool.
@@ -391,35 +391,35 @@ The match status of each property, and of the Worker Pool as a whole, is one of:
 
 A Worker Pool ID given more than once is compared once, with a warning. An ID of the wrong kind is a usage error (exit code 2), and a Work Requirement, Task Group or Worker Pool that does not exist exits with code 6.
 
-## yd-taskgroup
+## yd taskgroup
 
-Task Groups: `yd-taskgroup`, or `yd-tg` for short.
+Task Groups: `yd taskgroup`, or `yd tg` for short.
 
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`priority`](#yd-taskgroup-priority) | Change the priority of Task Groups and Work Requirements | `yd-priority` |
 | [`compare`](#yd-taskgroup-compare) | Compare a Task Group against Worker Pools | `yd-compare` |
-| `list` | `yd-list task-groups` |  |
-| `show` | `yd-show`, for Task Group IDs |  |
+| `list` | `yd list task-groups` |  |
+| `show` | `yd show`, for Task Group IDs |  |
 
-### yd-taskgroup priority
+### yd taskgroup priority
 
-The `yd-taskgroup priority` command is [`yd-workrequirement priority`](#yd-workrequirement-priority) by another name: it takes the same arguments, Task Groups and Work Requirements alike, and does the same.
+The `yd taskgroup priority` command is [`yd workrequirement priority`](#yd-workrequirement-priority) by another name: it takes the same arguments, Task Groups and Work Requirements alike, and does the same.
 
 ```shell
-yd-taskgroup priority [options] <priority> <target> [<target> ...]
+yd taskgroup priority [options] <priority> <target> [<target> ...]
 ```
 
 ```shell
-yd-taskgroup priority 5 my-analysis-run/render
+yd taskgroup priority 5 my-analysis-run/render
 ```
 
-### yd-taskgroup compare
+### yd taskgroup compare
 
-The `yd-taskgroup compare` command compares one Task Group against one or more Worker Pools, as [`yd-workrequirement compare`](#yd-workrequirement-compare) compares each of a Work Requirement's Task Groups, and reports in the same way.
+The `yd taskgroup compare` command compares one Task Group against one or more Worker Pools, as [`yd workrequirement compare`](#yd-workrequirement-compare) compares each of a Work Requirement's Task Groups, and reports in the same way.
 
 ```shell
-yd-taskgroup compare [options] <task-group-ID> <provisioned-worker-pool-ID> ...
+yd taskgroup compare [options] <task-group-ID> <provisioned-worker-pool-ID> ...
 ```
 
 Key options:
@@ -427,25 +427,25 @@ Key options:
 - `--json` — emit the comparison as a JSON array, one object per Worker Pool compared (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-taskgroup compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+yd taskgroup compare ydid:taskgrp:000000:83587010-5e26-4174-92a7-c7cc2612638d:1 ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
 ```
 
-## yd-task
+## yd task
 
 Tasks.
 
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`abort`](#yd-task-abort) | Abort running Tasks | `yd-abort` |
-| `list` | `yd-list tasks` |  |
-| `show` | `yd-show`, for Task IDs |  |
+| `list` | `yd list tasks` |  |
+| `show` | `yd show`, for Task IDs |  |
 
-### yd-task abort
+### yd task abort
 
-The `yd-task abort` command aborts Tasks that are currently running, without cancelling the Work Requirements that contain them.
+The `yd task abort` command aborts Tasks that are currently running, without cancelling the Work Requirements that contain them.
 
 ```shell
-yd-task abort [options] [<target> ...]
+yd task abort [options] [<target> ...]
 ```
 
 With no arguments, the user interactively selects the Work Requirements to target, and then which Tasks within those Work Requirements to abort.
@@ -460,7 +460,7 @@ The `namespace` and `tag` values in the `config.toml` file are used to identify 
 
 A running Task is one that is `DOWNLOADING`, `EXECUTING` or `UPLOADING`; a Task that has yet to start, or has finished, is left alone.
 
-`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`. A Work Requirement name is looked up as for `yd-workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
+`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`. A Work Requirement name is looked up as for `yd workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
 
 Targets are handled in the order given, except that the Task YDIDs are confirmed together, where the first of them appears. A repeated target is ignored, and a Task included by more than one target is aborted once. If an attempt fails because the credentials are rejected or the platform cannot be reached, nothing further is attempted, the remaining Tasks and targets are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -470,12 +470,12 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-task abort my-analysis-run/task-group-1
+yd task abort my-analysis-run/task-group-1
 ```
 
-## yd-workerpool
+## yd workerpool
 
-Worker Pools: `yd-workerpool`, or `yd-wp` for short.
+Worker Pools: `yd workerpool`, or `yd wp` for short.
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -483,17 +483,17 @@ Worker Pools: `yd-workerpool`, or `yd-wp` for short.
 | [`resize`](#yd-workerpool-resize) | Resize a Worker Pool | `yd-resize` |
 | [`shutdown`](#yd-workerpool-shutdown) | Shut down Worker Pools | `yd-shutdown` |
 | [`token`](#yd-workerpool-token) | Refresh or regenerate the tokens of Configured Worker Pools | `yd-token` |
-| `list` | `yd-list worker-pools` |  |
-| `show` | `yd-show`, for Worker Pool IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd-follow`, for Worker Pool IDs |  |
-| `wait` | `yd-wait`, for Worker Pool IDs |  |
+| `list` | `yd list worker-pools` |  |
+| `show` | `yd show`, for Worker Pool IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Worker Pool IDs |  |
+| `wait` | `yd wait`, for Worker Pool IDs |  |
 
-### yd-workerpool provision
+### yd workerpool provision
 
-The `yd-workerpool provision` command provisions a new Worker Pool according to the specifications in the `workerPool` section of the TOML configuration file and/or in a Worker Pool JSON (or Jsonnet) document.
+The `yd workerpool provision` command provisions a new Worker Pool according to the specifications in the `workerPool` section of the TOML configuration file and/or in a Worker Pool JSON (or Jsonnet) document.
 
 ```shell
-yd-workerpool provision [options] [<worker-pool-specification-file>]
+yd workerpool provision [options] [<worker-pool-specification-file>]
 ```
 
 Once provisioned, the Worker Pool will appear in the **Workers** tab in the YellowDog Portal, and its associated Compute Requirement will appear in the **Compute** tab.
@@ -509,7 +509,7 @@ Key options:
 - `--json` — emit the created Worker Pool as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workerpool provision my_worker_pool.json --target 10 --follow
+yd workerpool provision my_worker_pool.json --target 10 --follow
 ```
 
 When `--quiet` (`-q`) is used, only the YDID of the provisioned Worker Pool is printed to stdout.
@@ -520,15 +520,15 @@ The specification file may also be supplied using the deprecated `--worker-pool`
 
 See [Worker Pools](worker-pools.md) for the full specification reference.
 
-### yd-workerpool resize
+### yd workerpool resize
 
-The `yd-workerpool resize` command resizes a Provisioned Worker Pool to a new number of Nodes, which may be zero but not negative.
+The `yd workerpool resize` command resizes a Provisioned Worker Pool to a new number of Nodes, which may be zero but not negative.
 
 ```shell
-yd-workerpool resize [options] <worker-pool-name-or-ID> <new-node-count>
+yd workerpool resize [options] <worker-pool-name-or-ID> <new-node-count>
 ```
 
-A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`. To resize a Compute Requirement, use [`yd-computerequirement resize`](#yd-computerequirement-resize).
+A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`. To resize a Compute Requirement, use [`yd computerequirement resize`](#yd-computerequirement-resize).
 
 What cannot be resized is reported before anything is asked. A Worker Pool that does not exist exits with code 6. A Worker Pool fails if it is a Configured Worker Pool, is awaiting nodes, or would be taken outside its minimum or maximum number of nodes; it is skipped if it has already shut down or terminated, or already expects the number of nodes asked for. The confirmation shows the current and new sizes.
 
@@ -537,23 +537,23 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workerpool resize pyex-slurm-pwt_230711-1243561-0d 10
-yd-workerpool resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
+yd workerpool resize pyex-slurm-pwt_230711-1243561-0d 10
+yd workerpool resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 ```
 
-### yd-workerpool shutdown
+### yd workerpool shutdown
 
-The `yd-workerpool shutdown` command shuts down the Worker Pools in the configured `namespace` whose names include the `tag`. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which a Provisioned Worker Pool's Compute Requirement will be terminated. Worker Pools that are already `SHUTDOWN` or `TERMINATED` are left out.
+The `yd workerpool shutdown` command shuts down the Worker Pools in the configured `namespace` whose names include the `tag`. All remaining work will be cancelled, but currently executing Tasks will be allowed to complete, after which a Provisioned Worker Pool's Compute Requirement will be terminated. Worker Pools that are already `SHUTDOWN` or `TERMINATED` are left out.
 
 ```shell
-yd-workerpool shutdown [options] [<worker-pool-name-or-ID> ...]
+yd workerpool shutdown [options] [<worker-pool-name-or-ID> ...]
 ```
 
-Specific Worker Pool names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. To shut down individual Nodes, use [`yd-node shutdown`](#yd-node-shutdown).
+Specific Worker Pool names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection. To shut down individual Nodes, use [`yd node shutdown`](#yd-node-shutdown).
 
 They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd-list worker-pools --name 'wp-*'` to preview the matches first.
+A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list worker-pools --name 'wp-*'` to preview the matches first.
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
@@ -562,15 +562,15 @@ Key options:
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workerpool shutdown 'wp-*' --dry-run
+yd workerpool shutdown 'wp-*' --dry-run
 ```
 
-### yd-workerpool token
+### yd workerpool token
 
-The `yd-workerpool token` command refreshes or regenerates the token of one or more Configured Worker Pools: the token that the YellowDog Agents on a pool's nodes use to register with it. Refreshing keeps the current token and sets its expiry afresh: `--ttl-hours` from now, or, without it, no expiry at all. Regenerating, with `--regenerate`, issues a new token instead, and Agents still holding the old one can no longer use it to register. Either is confirmed before anything is changed, the prompt saying what the tokens' expiry will be; `--yes` skips the confirmation.
+The `yd workerpool token` command refreshes or regenerates the token of one or more Configured Worker Pools: the token that the YellowDog Agents on a pool's nodes use to register with it. Refreshing keeps the current token and sets its expiry afresh: `--ttl-hours` from now, or, without it, no expiry at all. Regenerating, with `--regenerate`, issues a new token instead, and Agents still holding the old one can no longer use it to register. Either is confirmed before anything is changed, the prompt saying what the tokens' expiry will be; `--yes` skips the confirmation.
 
 ```shell
-yd-workerpool token [options] <worker-pool-name-or-ID> [<worker-pool-name-or-ID> ...]
+yd workerpool token [options] <worker-pool-name-or-ID> [<worker-pool-name-or-ID> ...]
 ```
 
 Each argument is a Worker Pool's YDID or name (a bare name is looked up in the configured `namespace`, or give it as `namespace/name`), or a glob pattern (`*`, `?`, `[...]`) matched against Worker Pool names in the namespace, which takes only the Configured Worker Pools it matches that have not been shut down. Arguments are handled in the order given, each pool once. A Worker Pool that does not exist, or is not a Configured Worker Pool, is reported as failed, and one that has already been shut down is skipped with a warning; the others go ahead. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining pools are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
@@ -584,13 +584,13 @@ Key options:
 - `--json` — emit the actions taken, each with the new `token` and its `expiryTime`, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-workerpool token my-namespace/my-configured-pool --ttl-hours 720
-yd-workerpool token 'cwp-*' --regenerate
+yd workerpool token my-namespace/my-configured-pool --ttl-hours 720
+yd workerpool token 'cwp-*' --regenerate
 ```
 
-## yd-computerequirement
+## yd computerequirement
 
-Compute Requirements: `yd-computerequirement`, or `yd-cr` for short.
+Compute Requirements: `yd computerequirement`, or `yd cr` for short.
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -600,20 +600,20 @@ Compute Requirements: `yd-computerequirement`, or `yd-cr` for short.
 | [`start`](#yd-computerequirement-start) | Start stopped Compute Requirements | `yd-compute-start` |
 | [`reprovision`](#yd-computerequirement-reprovision) | Restore Compute Requirements to their target instance counts | `yd-compute-reprovision` |
 | [`terminate`](#yd-computerequirement-terminate) | Terminate Compute Requirements | `yd-terminate` |
-| `list` | `yd-list compute-requirements` |  |
-| `show` | `yd-show`, for Compute Requirement and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd-follow`, for Compute Requirement IDs |  |
-| `wait` | `yd-wait`, for Compute Requirement IDs |  |
+| `list` | `yd list compute-requirements` |  |
+| `show` | `yd show`, for Compute Requirement and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Compute Requirement IDs |  |
+| `wait` | `yd wait`, for Compute Requirement IDs |  |
 
-### yd-computerequirement instantiate
+### yd computerequirement instantiate
 
-The `yd-computerequirement instantiate` command instantiates a Compute Requirement (i.e. a set of instances that are managed by their creator and do not automatically become part of a YellowDog Worker Pool).
+The `yd computerequirement instantiate` command instantiates a Compute Requirement (i.e. a set of instances that are managed by their creator and do not automatically become part of a YellowDog Worker Pool).
 
 ```shell
-yd-computerequirement instantiate [options] [<compute-requirement-specification-file>]
+yd computerequirement instantiate [options] [<compute-requirement-specification-file>]
 ```
 
-This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd-computerequirement instantiate`.
+This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd computerequirement instantiate`.
 
 Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifications, supplied as the positional argument or by using the `computeRequirementData` property in the `workerPool`/`computeRequirement` section. The properties listed above will be inherited from the `config.toml` `workerPool` specification if they are not present in the JSON file.
 
@@ -625,13 +625,13 @@ Key options:
 - `--target`/`-T <n>` — override `targetInstanceCount` from the specification or configuration
 - `--report`/`-r` — report on a test run of a Dynamic Template, without provisioning (see below)
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
-- `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd-computerequirement instantiate`
-- `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd-workerpool provision`; refused without `--dry-run`
+- `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd computerequirement instantiate`
+- `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Specification Schemas](../README.md#specification-schemas))
 - `--json` — emit the created Compute Requirement as a JSON object; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-computerequirement instantiate my_compute_requirement.json --target 4
+yd computerequirement instantiate my_compute_requirement.json --target 4
 ```
 
 An example JSON specification is shown below:
@@ -654,20 +654,20 @@ Note that the `templateId` property can use either the YellowDog ID ('YDID') for
 
 Values missing from a JSON specification are taken from the configuration file; `targetInstanceCount` only if the configuration actually sets it, so that a specification with no count is never sent with a count of zero. User Data merged in from the configuration is reported by its source and size, never printed. A target count larger than `computeRequirementBatchSize` is split across several Compute Requirements; if one of them fails, those already provisioned are listed, since they are still running, and `--report` reports on the first of them alone, saying so.
 
-If a Worker Pool is defined in JSON, using `workerPoolData` in the configuration file or by supplying the command-line positional argument, `yd-computerequirement instantiate` will extract the Compute Requirement from the Worker Pool specification (ignoring Worker-Pool-specific data), and use that for instantiating the Compute Requirement.
+If a Worker Pool is defined in JSON, using `workerPoolData` in the configuration file or by supplying the command-line positional argument, `yd computerequirement instantiate` will extract the Compute Requirement from the Worker Pool specification (ignoring Worker-Pool-specific data), and use that for instantiating the Compute Requirement.
 
 When `--quiet` (`-q`) is used, only the YDID of the instantiated Compute Requirement is printed to stdout.
 
 #### Test-Running a Dynamic Template
 
-When the `templateId` of a Dynamic Requirement is used, the `yd-computerequirement instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications. `yd-workerpool provision --report` does the same for a Worker Pool, testing the Compute Requirement it would be provisioned with.
+When the `templateId` of a Dynamic Requirement is used, the `yd computerequirement instantiate` command can be used to report on a test run of the Template, using the `--report` (or `-r`) command-line option. This can be used with both TOML-defined and JSON-defined Compute Requirement specifications. `yd workerpool provision --report` does the same for a Worker Pool, testing the Compute Requirement it would be provisioned with.
 
 No instances will be provisioned during the test run.
 
 For example:
 
 ```shell
-% yd-computerequirement instantiate --report --quiet
+% yd computerequirement instantiate --report --quiet
 ┌────┬────────┬────────────┬───────────────────────────┬───────────┬────────────────┬───────────────────┐
 │    │   Rank │ Provider   │ Type                      │ Region    │ InstanceType   │ Source Name       │
 ├────┼────────┼────────────┼───────────────────────────┼───────────┼────────────────┼───────────────────┤
@@ -684,15 +684,15 @@ For example:
 └────┴────────┴────────────┴───────────────────────────┴───────────┴────────────────┴───────────────────┘
 ```
 
-### yd-computerequirement resize
+### yd computerequirement resize
 
-The `yd-computerequirement resize` command sets a Compute Requirement's target number of Instances, which may be zero but not negative.
+The `yd computerequirement resize` command sets a Compute Requirement's target number of Instances, which may be zero but not negative.
 
 ```shell
-yd-computerequirement resize [options] <compute-requirement-name-or-ID> <new-instance-count>
+yd computerequirement resize [options] <compute-requirement-name-or-ID> <new-instance-count>
 ```
 
-A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`. A Worker Pool and its Compute Requirement share their name: this command resizes the Compute Requirement, and [`yd-workerpool resize`](#yd-workerpool-resize) the Worker Pool.
+A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`. A Worker Pool and its Compute Requirement share their name: this command resizes the Compute Requirement, and [`yd workerpool resize`](#yd-workerpool-resize) the Worker Pool.
 
 Only a `RUNNING` Compute Requirement is resized: one in any other state is skipped, as is one whose target is already the number of instances asked for, and a name shared by two `RUNNING` Compute Requirements is ambiguous, so the YDID must be given instead. One that does not exist exits with code 6. The confirmation shows the current and new sizes.
 
@@ -704,17 +704,17 @@ Key options:
 With `--wait`, the command returns only once the resized Compute Requirement has settled: it is `RUNNING`, as many of its Instances are `RUNNING` as its new target asks for, and none is still starting, stopping or terminating. Scaling up therefore waits for the new Instances to start, and scaling down for the surplus Instances to finish terminating, which can take a minute or more. Progress is printed whenever it changes. A Compute Requirement that cannot reach its target, because the cloud provider has no more capacity of the kind it asks for (on-demand as well as spot) or an Allowance or quota stands in the way, never settles, so give a `--timeout` when that is possible: if it passes first, the command reports what is still missing and exits 1, though the resize itself has been made and is recorded as `resized`. `--wait` cannot be combined with `--follow`.
 
 ```shell
-yd-computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5
-yd-computerequirement resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
-yd-computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
+yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5
+yd computerequirement resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
+yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
 ```
 
-### yd-computerequirement stop
+### yd computerequirement stop
 
-The `yd-computerequirement stop` command stops `RUNNING` Compute Requirements. Stopped Compute Requirements can subsequently be started again using `yd-computerequirement start`. To stop individual Instances, use [`yd-instance stop`](#yd-instance-stop), or [`yd-node stop`](#yd-node-stop) for the Instances on which Worker Pool Nodes are running.
+The `yd computerequirement stop` command stops `RUNNING` Compute Requirements. Stopped Compute Requirements can subsequently be started again using `yd computerequirement start`. To stop individual Instances, use [`yd instance stop`](#yd-instance-stop), or [`yd node stop`](#yd-node-stop) for the Instances on which Worker Pool Nodes are running.
 
 ```shell
-yd-computerequirement stop [options] [<compute-requirement-name-or-ID> ...]
+yd computerequirement stop [options] [<compute-requirement-name-or-ID> ...]
 ```
 
 If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of Compute Requirement names or YDIDs.
@@ -729,62 +729,62 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-computerequirement stop
-yd-computerequirement stop my-compute-requirement
-yd-computerequirement stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
+yd computerequirement stop
+yd computerequirement stop my-compute-requirement
+yd computerequirement stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
 ```
 
-### yd-computerequirement start
+### yd computerequirement start
 
-The `yd-computerequirement start` command starts `STOPPED` Compute Requirements. To start individual Instances, use [`yd-instance start`](#yd-instance-start), or [`yd-node start`](#yd-node-start).
+The `yd computerequirement start` command starts `STOPPED` Compute Requirements. To start individual Instances, use [`yd instance start`](#yd-instance-start), or [`yd node start`](#yd-node-start).
 
 ```shell
-yd-computerequirement start [options] [<compute-requirement-name-or-ID> ...]
+yd computerequirement start [options] [<compute-requirement-name-or-ID> ...]
 ```
 
-It accepts the same arguments as `yd-computerequirement stop`, and handles them in the same way: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs.
+It accepts the same arguments as `yd computerequirement stop`, and handles them in the same way: if no arguments are supplied, `STOPPED` Compute Requirements that match the `namespace` and `tag` are candidates for starting; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs.
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-computerequirement start my-compute-requirement --follow
+yd computerequirement start my-compute-requirement --follow
 ```
 
-### yd-computerequirement reprovision
+### yd computerequirement reprovision
 
-The `yd-computerequirement reprovision` command reprovisions `RUNNING` Compute Requirements: it asks the Platform to provision Instances until as many are running as each Compute Requirement's target instance count asks for. This restores a Compute Requirement that has fewer Instances than its target, for example after Instances were terminated with `yd-instance terminate` or reclaimed by the cloud provider, without changing the target. It is the counterpart of `yd-instance deprovision`, which reduces the target; to change the target itself, use `yd-computerequirement resize`.
+The `yd computerequirement reprovision` command reprovisions `RUNNING` Compute Requirements: it asks the Platform to provision Instances until as many are running as each Compute Requirement's target instance count asks for. This restores a Compute Requirement that has fewer Instances than its target, for example after Instances were terminated with `yd instance terminate` or reclaimed by the cloud provider, without changing the target. It is the counterpart of `yd instance deprovision`, which reduces the target; to change the target itself, use `yd computerequirement resize`.
 
 ```shell
-yd-computerequirement reprovision [options] [<compute-requirement-name-or-ID> ...]
+yd computerequirement reprovision [options] [<compute-requirement-name-or-ID> ...]
 ```
 
-It selects Compute Requirements as `yd-computerequirement stop` does: if no arguments are supplied, `RUNNING` Compute Requirements that match the `namespace` and `tag` are candidates for reprovisioning; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is not `RUNNING` is skipped with a warning, including one still `PROVISIONING`, which is already provisioning towards its target. Reprovisioning a Compute Requirement that already has as many Instances running as its target count changes nothing. The command returns once the Platform has accepted the request: the Compute Requirement moves to `PROVISIONING` while the new Instances start, and `--follow` shows them being provisioned.
+It selects Compute Requirements as `yd computerequirement stop` does: if no arguments are supplied, `RUNNING` Compute Requirements that match the `namespace` and `tag` are candidates for reprovisioning; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is not `RUNNING` is skipped with a warning, including one still `PROVISIONING`, which is already provisioning towards its target. Reprovisioning a Compute Requirement that already has as many Instances running as its target count changes nothing. The command returns once the Platform has accepted the request: the Compute Requirement moves to `PROVISIONING` while the new Instances start, and `--follow` shows them being provisioned.
 
 Key options:
 - `--follow`/`-f` — follow the Compute Requirements' events as Instances are provisioned, until each is at its target
-- `--wait`/`-w` — wait until each Compute Requirement reprovisioned has its target number of Instances running, as for `yd-computerequirement resize --wait`
+- `--wait`/`-w` — wait until each Compute Requirement reprovisioned has its target number of Instances running, as for `yd computerequirement resize --wait`
 - `--timeout <seconds>` — with `--wait`, stop waiting after this many seconds and exit 1 (default: no limit)
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-computerequirement reprovision my-compute-requirement --follow
-yd-computerequirement reprovision my-compute-requirement --wait --timeout 600
+yd computerequirement reprovision my-compute-requirement --follow
+yd computerequirement reprovision my-compute-requirement --wait --timeout 600
 ```
 
-### yd-computerequirement terminate
+### yd computerequirement terminate
 
-The `yd-computerequirement terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated. To terminate individual Instances, use [`yd-instance terminate`](#yd-instance-terminate), or [`yd-node terminate`](#yd-node-terminate) for a Node's.
+The `yd computerequirement terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated. To terminate individual Instances, use [`yd instance terminate`](#yd-instance-terminate), or [`yd node terminate`](#yd-node-terminate) for a Node's.
 
 ```shell
-yd-computerequirement terminate [options] [<compute-requirement-name-or-ID> ...]
+yd computerequirement terminate [options] [<compute-requirement-name-or-ID> ...]
 ```
 
 Specific Compute Requirement names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
 
-A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `--dry-run`, or `yd-list compute-requirements --name 'ci-*'`, to preview the matches first.
+A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview the matches first.
 
-Explicit names and IDs are handled as [`yd-computerequirement stop`](#yd-computerequirement-stop) handles them: in the order given, and confirmed together. A Compute Requirement that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
+Explicit names and IDs are handled as [`yd computerequirement stop`](#yd-computerequirement-stop) handles them: in the order given, and confirmed together. A Compute Requirement that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 
 Key options:
 - `--dry-run`/`-D` — show which Compute Requirements would be terminated, whether selected by `namespace` and `tag`, by glob pattern or by name or ID, without terminating anything
@@ -792,14 +792,14 @@ Key options:
 - `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 
 ```shell
-yd-computerequirement terminate 'ci-*' --dry-run
+yd computerequirement terminate 'ci-*' --dry-run
 ```
 
-## yd-instance
+## yd instance
 
-The Instances of Compute Requirements. An Instance has no YellowDog ID of its own: it is given as `<compute-requirement-ydid>.<instance-id>`, its Compute Requirement's YDID and its provider-assigned instance ID, the form `yd-instance list --ids-only` prints. Only the first `.` separates the two, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
+The Instances of Compute Requirements. An Instance has no YellowDog ID of its own: it is given as `<compute-requirement-ydid>.<instance-id>`, its Compute Requirement's YDID and its provider-assigned instance ID, the form `yd instance list --ids-only` prints. Only the first `.` separates the two, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
 
-Every `yd-instance` verb that acts takes at least one Instance, and takes no `--namespace`, `--tag` or `--interactive`, which select Compute Requirements. The Instances given are handled in the order given and confirmed together, those in the same Compute Requirement acted on in a single request. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
+Every `yd instance` verb that acts takes at least one Instance, and takes no `--namespace`, `--tag` or `--interactive`, which select Compute Requirements. The Instances given are handled in the order given and confirmed together, those in the same Compute Requirement acted on in a single request. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -808,62 +808,62 @@ Every `yd-instance` verb that acts takes at least one Instance, and takes no `--
 | [`restart`](#yd-instance-restart) | Restart Instances | `yd-compute-restart` |
 | [`deprovision`](#yd-instance-deprovision) | Terminate Instances, reducing their Compute Requirements' target counts | `yd-compute-deprovision` |
 | [`terminate`](#yd-instance-terminate) | Terminate Instances | `yd-terminate` |
-| `list` | `yd-list instances` |  |
-| `show` | `yd-show`, for Instances |  |
+| `list` | `yd list instances` |  |
+| `show` | `yd show`, for Instances |  |
 
-### yd-instance stop
+### yd instance stop
 
-The `yd-instance stop` command stops `RUNNING` Instances; `yd-instance start` starts them again. An Instance that is not `RUNNING` is skipped with a warning.
+The `yd instance stop` command stops `RUNNING` Instances; `yd instance start` starts them again. An Instance that is not `RUNNING` is skipped with a warning.
 
 ```shell
-yd-instance stop [options] <cr-id.instance-id> ...
+yd instance stop [options] <cr-id.instance-id> ...
 ```
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-instance stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+yd instance stop ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
 ```
 
-### yd-instance start
+### yd instance start
 
-The `yd-instance start` command starts `STOPPED` Instances. An Instance that is not `STOPPED` is skipped with a warning.
-
-```shell
-yd-instance start [options] <cr-id.instance-id> ...
-```
-
-Key options:
-- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+The `yd instance start` command starts `STOPPED` Instances. An Instance that is not `STOPPED` is skipped with a warning.
 
 ```shell
-yd-instance start ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890 --follow
-```
-
-### yd-instance restart
-
-The `yd-instance restart` command restarts (reboots) `RUNNING` Instances; an Instance that is not `RUNNING` is skipped with a warning. Whole Compute Requirements cannot be restarted.
-
-```shell
-yd-instance restart [options] <cr-id.instance-id> ...
+yd instance start [options] <cr-id.instance-id> ...
 ```
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-instance restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+yd instance start ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890 --follow
 ```
 
-### yd-instance deprovision
+### yd instance restart
 
-The `yd-instance deprovision` command deprovisions Instances: it terminates them and reduces their Compute Requirement's target instance count by the same number, so that they are not replaced. Terminating an Instance with `yd-instance terminate` leaves the target count as it was, so a Compute Requirement that maintains its instance count replaces it. To remove a whole Compute Requirement, use `yd-computerequirement terminate`.
-
-An Instance of a Provisioned Worker Pool can be deprovisioned too, by its `cr_id.instance_id`, or with [`yd-node deprovision`](#yd-node-deprovision) by its Node's YDID. The pool's expected node count follows its Compute Requirement's reduced target, so the pool does not ask for a replacement either. A pool left with no nodes stays up until its idle pool shutdown, if it has one, takes effect; use `yd-workerpool shutdown` to shut it down at once.
+The `yd instance restart` command restarts (reboots) `RUNNING` Instances; an Instance that is not `RUNNING` is skipped with a warning. Whole Compute Requirements cannot be restarted.
 
 ```shell
-yd-instance deprovision [options] <cr-id.instance-id> ...
+yd instance restart [options] <cr-id.instance-id> ...
+```
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+
+```shell
+yd instance restart ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+```
+
+### yd instance deprovision
+
+The `yd instance deprovision` command deprovisions Instances: it terminates them and reduces their Compute Requirement's target instance count by the same number, so that they are not replaced. Terminating an Instance with `yd instance terminate` leaves the target count as it was, so a Compute Requirement that maintains its instance count replaces it. To remove a whole Compute Requirement, use `yd computerequirement terminate`.
+
+An Instance of a Provisioned Worker Pool can be deprovisioned too, by its `cr_id.instance_id`, or with [`yd node deprovision`](#yd-node-deprovision) by its Node's YDID. The pool's expected node count follows its Compute Requirement's reduced target, so the pool does not ask for a replacement either. A pool left with no nodes stays up until its idle pool shutdown, if it has one, takes effect; use `yd workerpool shutdown` to shut it down at once.
+
+```shell
+yd instance deprovision [options] <cr-id.instance-id> ...
 ```
 
 An Instance that is already `TERMINATING` or `TERMINATED` is skipped with a warning. The command returns once the Platform has accepted the request: the target count drops at once, and the Instances are terminated shortly afterwards, which `--follow` shows.
@@ -873,15 +873,15 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-instance deprovision ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
+yd instance deprovision ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890
 ```
 
-### yd-instance terminate
+### yd instance terminate
 
-The `yd-instance terminate` command terminates Instances immediately. An Instance that is already terminating or terminated is skipped with a warning. Its Compute Requirement's target count is left as it was, so one that maintains its instance count replaces a terminated Instance; to terminate Instances without their being replaced, use [`yd-instance deprovision`](#yd-instance-deprovision).
+The `yd instance terminate` command terminates Instances immediately. An Instance that is already terminating or terminated is skipped with a warning. Its Compute Requirement's target count is left as it was, so one that maintains its instance count replaces a terminated Instance; to terminate Instances without their being replaced, use [`yd instance deprovision`](#yd-instance-deprovision).
 
 ```shell
-yd-instance terminate [options] <cr-id.instance-id> ...
+yd instance terminate [options] <cr-id.instance-id> ...
 ```
 
 Key options:
@@ -890,12 +890,12 @@ Key options:
 - `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
 
 ```shell
-yd-instance terminate ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890 --dry-run
+yd instance terminate ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890 --dry-run
 ```
 
-## yd-node
+## yd node
 
-Worker Pool Nodes, each given by its YellowDog ID. Every `yd-node` verb but `action` acts on the Instance a Node runs on, as the matching `yd-instance` verb does, or (`shutdown`) on the Node itself; each takes at least one Node, and handles them as the `yd-instance` verbs handle Instances.
+Worker Pool Nodes, each given by its YellowDog ID. Every `yd node` verb but `action` acts on the Instance a Node runs on, as the matching `yd instance` verb does, or (`shutdown`) on the Node itself; each takes at least one Node, and handles them as the `yd instance` verbs handle Instances.
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -906,15 +906,15 @@ Worker Pool Nodes, each given by its YellowDog ID. Every `yd-node` verb but `act
 | [`terminate`](#yd-node-terminate) | Terminate the Instances of Nodes | `yd-terminate` |
 | [`restart`](#yd-node-restart) | Restart the Instances of Nodes | `yd-compute-restart` |
 | [`deprovision`](#yd-node-deprovision) | Deprovision the Instances of Nodes | `yd-compute-deprovision` |
-| `list` | `yd-list nodes` |  |
-| `show` | `yd-show`, for Node IDs |  |
+| `list` | `yd list nodes` |  |
+| `show` | `yd show`, for Node IDs |  |
 
-### yd-node action
+### yd node action
 
-The `yd-node action` command submits Node Actions to running Worker Pool nodes.
+The `yd node action` command submits Node Actions to running Worker Pool nodes.
 
 ```shell
-yd-node action [options]
+yd node action [options]
 ```
 
 The command takes no positional arguments: the actions are supplied with `--actions`, which is required unless `--status` is used (and is refused with it). `--worker-pool` accepts a pool name or a Worker Pool YDID; if omitted, an interactive selection of the active pools is shown. Without `--node` or `--all-nodes`, the nodes are chosen interactively from the pool's running ones.
@@ -937,26 +937,26 @@ Key options:
 
 ```shell
 # Submit actions to interactively selected node(s)
-yd-node action --actions my_actions.json --worker-pool my-pool
+yd node action --actions my_actions.json --worker-pool my-pool
 
 # Submit to all current nodes in a pool
-yd-node action --actions my_actions.json --worker-pool my-pool --all-nodes
+yd node action --actions my_actions.json --worker-pool my-pool --all-nodes
 
 # Submit to a specific node by YDID (worker pool resolved automatically)
-yd-node action --actions my_actions.json --node ydid:node:D9C548:... --follow
+yd node action --actions my_actions.json --node ydid:node:D9C548:... --follow
 
 # Check node action queue status for a specific node
-yd-node action --status --node ydid:node:D9C548:... --details
+yd node action --status --node ydid:node:D9C548:... --details
 ```
 
 See [Node Actions](worker-pools.md#node-actions) for the spec format, action types, and field reference.
 
-### yd-node shutdown
+### yd node shutdown
 
-The `yd-node shutdown` command shuts down individual Worker Pool Nodes. A Node that does not exist is reported as failed, and one that has already finished is skipped with a warning; to shut down whole Worker Pools, use [`yd-workerpool shutdown`](#yd-workerpool-shutdown).
+The `yd node shutdown` command shuts down individual Worker Pool Nodes. A Node that does not exist is reported as failed, and one that has already finished is skipped with a warning; to shut down whole Worker Pools, use [`yd workerpool shutdown`](#yd-workerpool-shutdown).
 
 ```shell
-yd-node shutdown [options] <node-ID> ...
+yd node shutdown [options] <node-ID> ...
 ```
 
 Key options:
@@ -964,45 +964,45 @@ Key options:
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-node shutdown ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+yd node shutdown ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-### yd-node stop
+### yd node stop
 
-The `yd-node stop` command stops the `RUNNING` Instances on which Worker Pool Nodes are running, as [`yd-instance stop`](#yd-instance-stop) does.
-
-```shell
-yd-node stop [options] <node-ID> ...
-```
-
-Key options:
-- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+The `yd node stop` command stops the `RUNNING` Instances on which Worker Pool Nodes are running, as [`yd instance stop`](#yd-instance-stop) does.
 
 ```shell
-yd-node stop ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
-```
-
-### yd-node start
-
-The `yd-node start` command starts the `STOPPED` Instances of Worker Pool Nodes, as [`yd-instance start`](#yd-instance-start) does.
-
-```shell
-yd-node start [options] <node-ID> ...
+yd node stop [options] <node-ID> ...
 ```
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-node start ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+yd node stop ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-### yd-node terminate
+### yd node start
 
-The `yd-node terminate` command terminates the Instances of Worker Pool Nodes immediately, as [`yd-instance terminate`](#yd-instance-terminate) does.
+The `yd node start` command starts the `STOPPED` Instances of Worker Pool Nodes, as [`yd instance start`](#yd-instance-start) does.
 
 ```shell
-yd-node terminate [options] <node-ID> ...
+yd node start [options] <node-ID> ...
+```
+
+Key options:
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+
+```shell
+yd node start ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+```
+
+### yd node terminate
+
+The `yd node terminate` command terminates the Instances of Worker Pool Nodes immediately, as [`yd instance terminate`](#yd-instance-terminate) does.
+
+```shell
+yd node terminate [options] <node-ID> ...
 ```
 
 Key options:
@@ -1010,49 +1010,49 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-node terminate ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+yd node terminate ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-### yd-node restart
+### yd node restart
 
-The `yd-node restart` command restarts (reboots) the `RUNNING` Instances of Worker Pool Nodes, as [`yd-instance restart`](#yd-instance-restart) does.
+The `yd node restart` command restarts (reboots) the `RUNNING` Instances of Worker Pool Nodes, as [`yd instance restart`](#yd-instance-restart) does.
 
 ```shell
-yd-node restart [options] <node-ID> ...
+yd node restart [options] <node-ID> ...
 ```
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-node restart ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+yd node restart ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-### yd-node deprovision
+### yd node deprovision
 
-The `yd-node deprovision` command deprovisions the Instances of Worker Pool Nodes, reducing their Compute Requirements' target counts, and so their Worker Pools' expected node counts, as [`yd-instance deprovision`](#yd-instance-deprovision) does.
+The `yd node deprovision` command deprovisions the Instances of Worker Pool Nodes, reducing their Compute Requirements' target counts, and so their Worker Pools' expected node counts, as [`yd instance deprovision`](#yd-instance-deprovision) does.
 
 ```shell
-yd-node deprovision [options] <node-ID> ...
+yd node deprovision [options] <node-ID> ...
 ```
 
 Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-node deprovision ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
+yd node deprovision ydid:node:D9C548:f9d5a10e-5b0e-4b76-b50f-d2bbac0a5cb8
 ```
 
-## yd-worker
+## yd worker
 
 Workers.
 
 | Verb | What it does | Replaces |
 |---|---|---|
-| `list` | `yd-list workers` |  |
-| `show` | `yd-show`, for Worker IDs |  |
+| `list` | `yd list workers` |  |
+| `show` | `yd show`, for Worker IDs |  |
 
-## yd-resource
+## yd resource
 
 Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentials, Image Families, Attribute Definitions, Allowances, Namespace Policies, Configured Worker Pools, Groups, Applications and Users, as [Creating, Updating and Removing YellowDog Resources](resources.md) describes them.
 
@@ -1060,15 +1060,15 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 |---|---|---|
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
-| `list <type>` | `yd-list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
-| `show` | `yd-show`, for resource IDs, with `--show-members` |  |
+| `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
+| `show` | `yd show`, for resource IDs, with `--show-members` |  |
 
-### yd-resource create
+### yd resource create
 
-The `yd-resource create` command creates or updates YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
 
 ```shell
-yd-resource create [options] <resource-specification> [<resource-specification> ...]
+yd resource create [options] <resource-specification> [<resource-specification> ...]
 ```
 
 Key options:
@@ -1077,23 +1077,23 @@ Key options:
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
-- `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd-workerpool provision`; refused without `--dry-run`
+- `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
 - `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Specification Schemas](../README.md#specification-schemas))
 - `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-resource create my_keyring.json my_compute_templates.jsonnet
+yd resource create my_keyring.json my_compute_templates.jsonnet
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for the full resource specification reference.
 
-### yd-resource remove
+### yd resource remove
 
-The `yd-resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
 
 ```shell
-yd-resource remove [options] <resource-specification> [<resource-specification> ...]
+yd resource remove [options] <resource-specification> [<resource-specification> ...]
 ```
 
 Key options:
@@ -1103,28 +1103,28 @@ Key options:
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-resource remove my_compute_templates.jsonnet
-yd-resource remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove my_compute_templates.jsonnet
+yd resource remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for details.
 
-## yd-allowance
+## yd allowance
 
 Allowances.
 
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`boost`](#yd-allowance-boost) | Boost Allowances | `yd-boost` |
-| `list` | `yd-list allowances` |  |
-| `show` | `yd-show`, for Allowance IDs |  |
+| `list` | `yd list allowances` |  |
+| `show` | `yd show`, for Allowance IDs |  |
 
-### yd-allowance boost
+### yd allowance boost
 
-The `yd-allowance boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
+The `yd allowance boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
 
 ```shell
-yd-allowance boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
+yd allowance boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
 ```
 
 The number of hours to add is supplied first, and must be at least 1, followed by the YDID(s) of one or more Allowances to boost. Allowance names are not accepted, and anything that is not an Allowance YDID is a usage error, before anything is boosted; an Allowance ID given more than once is boosted once, with a warning.
@@ -1135,19 +1135,19 @@ Key options:
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-allowance boost 10 ydid:allow:D9C548:...
-yd-allowance boost 10 ydid:allow:D9C548:... ydid:allow:D9C548:...
+yd allowance boost 10 ydid:allow:D9C548:...
+yd allowance boost 10 ydid:allow:D9C548:... ydid:allow:D9C548:...
 ```
 
 See [Allowances](resources.md#allowances) for how Allowances are defined.
 
-## yd-data
+## yd data
 
-The five `yd-data` verbs provide direct access to remote data stores via rclone, and never contact the YellowDog Platform API. They accordingly do not accept the `--key`, `--secret`, `--url` or `--pac` [Universal Options](#universal-options); the remainder apply as usual, including `--config`, `--namespace`/`--tag` (which supply the default path prefix) and `--property`.
+The five `yd data` verbs provide direct access to remote data stores via rclone, and never contact the YellowDog Platform API. They accordingly do not accept the `--key`, `--secret`, `--url` or `--pac` [Universal Options](#universal-options); the remainder apply as usual, including `--config`, `--namespace`/`--tag` (which supply the default path prefix) and `--property`.
 
 They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](data-client.md), along with the `[dataClient]` configuration section and named profiles.
 
-A remote path given to `yd-data upload` (as `--destination`), `yd-data download`, `yd-data delete` or `yd-data copy` cannot contain a `..` segment: it would climb out of the prefix, or the bucket, past the checks that keep these commands from deleting or syncing over the remote's root or the bucket, and object stores do not resolve it as a local disk does. It is refused as the command line is read (exit 2); to reach a path outside the prefix, use `--no-prefix` or `--bucket`. A `.` segment names the directory it is in, so `.` alone is the configured prefix itself. `yd-data ls`, which only reads, accepts `..`, and a local path may contain it anywhere.
+A remote path given to `yd data upload` (as `--destination`), `yd data download`, `yd data delete` or `yd data copy` cannot contain a `..` segment: it would climb out of the prefix, or the bucket, past the checks that keep these commands from deleting or syncing over the remote's root or the bucket, and object stores do not resolve it as a local disk does. It is refused as the command line is read (exit 2); to reach a path outside the prefix, use `--no-prefix` or `--bucket`. A `.` segment names the directory it is in, so `.` alone is the configured prefix itself. `yd data ls`, which only reads, accepts `..`, and a local path may contain it anywhere.
 
 A wildcard (`*`, `?`, `[…]`) is matched against the names in the last part of a remote path only. An entry whose name is exactly the path's last part is taken as itself rather than as a pattern, so a file named `data[1].csv` can be listed, downloaded and deleted by its name, and deleting `file[ab].txt` deletes that file alone, not `filea.txt` and `fileb.txt`.
 
@@ -1161,12 +1161,12 @@ An inline remote's configuration, which carries its credentials, is passed to rc
 | [`delete`](#yd-data-delete) | Delete remote data client files and directories | `yd-delete` |
 | [`copy`](#yd-data-copy) | Copy files between remote data client locations | `yd-copy` |
 
-### yd-data upload
+### yd data upload
 
-The `yd-data upload` command uploads local files or directories to a remote data store.
+The `yd data upload` command uploads local files or directories to a remote data store.
 
 ```shell
-yd-data upload [options] <local-path> [<local-path> ...]
+yd data upload [options] <local-path> [<local-path> ...]
 ```
 
 Key options:
@@ -1178,19 +1178,19 @@ Key options:
 - `--json` — emit the files uploaded as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-data upload --recursive my_input_data/
+yd data upload --recursive my_input_data/
 ```
 
-A file is uploaded to its own name under the configured prefix, and a directory's contents to a remote directory of the directory's own name. `--destination` names the remote path instead: for a single file, the file's own path (or, ending in `/`, the directory it goes into); for a single directory, the remote directory its contents go into. With more than one local path, `--destination` is a directory, and every file and directory keeps its own name inside it, so `yd-data upload -R -d out a/ b/` produces `out/a/` and `out/b/`. A directory given without `--recursive`, `--flatten` or `--sync` is an error.
+A file is uploaded to its own name under the configured prefix, and a directory's contents to a remote directory of the directory's own name. `--destination` names the remote path instead: for a single file, the file's own path (or, ending in `/`, the directory it goes into); for a single directory, the remote directory its contents go into. With more than one local path, `--destination` is a directory, and every file and directory keeps its own name inside it, so `yd data upload -R -d out a/ b/` produces `out/a/` and `out/b/`. A directory given without `--recursive`, `--flatten` or `--sync` is an error.
 
-Before anything is uploaded, `yd-data upload` works out where every argument will land, and refuses the whole run (exit 2) if two of them would land on the same remote path — two directories of the same name would merge, and with `--sync` the second would delete what the first uploaded; with `--flatten`, it is two files landing on one path that is refused. A `--sync` whose destination is the remote's root or the configured bucket itself, whose every other file it would delete, is refused in the same way, as `yd-data copy`'s is. A failed upload is reported and recorded, and the rest are still attempted; the command then exits 1. Symbolic links are not uploaded (rclone does not follow them), and a warning says how many were left out.
+Before anything is uploaded, `yd data upload` works out where every argument will land, and refuses the whole run (exit 2) if two of them would land on the same remote path — two directories of the same name would merge, and with `--sync` the second would delete what the first uploaded; with `--flatten`, it is two files landing on one path that is refused. A `--sync` whose destination is the remote's root or the configured bucket itself, whose every other file it would delete, is refused in the same way, as `yd data copy`'s is. A failed upload is reported and recorded, and the rest are still attempted; the command then exits 1. Symbolic links are not uploaded (rclone does not follow them), and a warning says how many were left out.
 
-### yd-data download
+### yd data download
 
-The `yd-data download` command downloads files from a remote data store to the local filesystem.
+The `yd data download` command downloads files from a remote data store to the local filesystem.
 
 ```shell
-yd-data download [options] <remote-path> [<remote-path> ...]
+yd data download [options] <remote-path> [<remote-path> ...]
 ```
 
 Remote paths support `{{variable}}` substitution (e.g. `'{{tag}}/results.csv'`) and may also contain wildcard characters (`*`, `?`, `[…]`). A wildcard path is expanded against the configured prefix and all matching files and directories are downloaded. The matched names are displayed before the download begins. When a wildcard is used, files are downloaded into the current directory (preserving the names of the matched items) unless `--destination` is specified. `--sync` is supported with wildcards.
@@ -1203,24 +1203,24 @@ Key options:
 - `--dry-run`/`-D` — show what would be downloaded, without downloading; with `--sync`, also each local file that would be deleted
 - `--json` — emit the downloads, or with `--dry-run` the matched items, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
-`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd-data download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd-data download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. A single file is given its own path the same way: `yd-data download --into out a.txt` writes the file `out/a.txt`, and `yd-data download a.txt` writes `./a.txt`, while `yd-data download -d out a.txt` puts it inside `out`, as `out/a.txt`. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
+`--destination` and `--into` answer different questions, which matters when downloading more than one item. `--destination` names the local path that *corresponds to* the remote item, so `yd data download -d out mydir` puts the contents of `mydir` directly into `out`; giving several items one `--destination` therefore merges them. `--into` names a container, so `yd data download --into out mydir otherdir` produces `out/mydir/` and `out/otherdir/`, each keeping its own name. A single file is given its own path the same way: `yd data download --into out a.txt` writes the file `out/a.txt`, and `yd data download a.txt` writes `./a.txt`, while `yd data download -d out a.txt` puts it inside `out`, as `out/a.txt`. With a wildcard the two agree, since a wildcard is expanded into the destination by name either way.
 
 With `--sync`, which deletes local files not in the remote, two remote paths that would be synced into the same local path are refused before anything is downloaded (exit 2), since the second would delete what the first fetched, and so is a sync into the current directory itself (a remote path naming the configured prefix, `/`) unless the current directory is named explicitly with `-d .`. A wildcard is checked by listing its matches, each of which is synced to a path of its own; a wildcard whose matches cannot be listed for the check is never synced unchecked, but reported and recorded as failed while the other remote paths still are.
 
-With `--flatten`, each directory's files are placed directly in the destination, the directory's own name and those of its subdirectories being dropped, so `yd-data download --flatten -d flat 'my*'` puts every file of every matched directory in `flat`; a file whose name another flattened file already has is reported with a warning naming both, and the later of the two is the one kept.
+With `--flatten`, each directory's files are placed directly in the destination, the directory's own name and those of its subdirectories being dropped, so `yd data download --flatten -d flat 'my*'` puts every file of every matched directory in `flat`; a file whose name another flattened file already has is reported with a warning naming both, and the later of the two is the one kept.
 
 A remote path that does not exist, or a wildcard that matches nothing, is an error, as is a remote that cannot be reached; an empty directory downloads nothing, successfully. A failed download is reported and recorded, and the other remote paths (and the other items a wildcard matched) are still attempted; the command then exits 1.
 
 ```shell
-yd-data download 'results_*'
+yd data download 'results_*'
 ```
 
-### yd-data ls
+### yd data ls
 
-The `yd-data ls` command lists files and directories in a remote data store.
+The `yd data ls` command lists files and directories in a remote data store.
 
 ```shell
-yd-data ls [options] [<remote-path> ...]
+yd data ls [options] [<remote-path> ...]
 ```
 
 If no remote paths are specified, the configured prefix is listed.
@@ -1235,15 +1235,15 @@ Key options:
 - `--json` — emit the listing as a JSON array of rclone `lsjson` entries; not with `--long`, since the entries carry sizes and times anyway (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-data ls -Rl 'results_*'
+yd data ls -Rl 'results_*'
 ```
 
-### yd-data delete
+### yd data delete
 
-The `yd-data delete` command deletes files or directories from a remote data store.
+The `yd data delete` command deletes files or directories from a remote data store.
 
 ```shell
-yd-data delete [options] [<remote-path> ...]
+yd data delete [options] [<remote-path> ...]
 ```
 
 If no remote paths are specified, `--recursive` deletes the entire configured prefix; without `--recursive` that is refused. The remote's root and the configured bucket itself are never deleted (with `--no-prefix`, the 'prefix' is the bucket, or the root), nor is a wildcard over the remote's root: the command refuses them before deleting anything (exit 2).
@@ -1257,15 +1257,15 @@ Key options:
 - `--yes`/`-y` — skip confirmation prompts
 
 ```shell
-yd-data delete 'results_*' --dry-run
+yd data delete 'results_*' --dry-run
 ```
 
-### yd-data copy
+### yd data copy
 
-The `yd-data copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
+The `yd data copy` command copies files or directories between remote data client locations. Both source and destination are remote paths; no local files are involved.
 
 ```shell
-yd-data copy [options] <src-path> <dst-path>
+yd data copy [options] <src-path> <dst-path>
 ```
 
 `<src-path>` and `<dst-path>` are paths relative to their respective configured `remote:bucket/prefix` base paths. Both support `{{variable}}` substitution. The source remote is configured via the standard data client options; the destination defaults to the same, and is overridden with `--dst-profile` and/or `--dst-prefix`. A source that does not exist is an error, reported before anything is copied, as is a directory given without `--recursive`.
@@ -1280,33 +1280,33 @@ Key options:
 
 ```bash
 # Copy a file to a new location within the same prefix
-yd-data copy input/data.csv output/data.csv
+yd data copy input/data.csv output/data.csv
 
 # Rename a file while copying (destination path does not end with '/')
-yd-data copy results/output.csv archive/output-{{date}}.csv
+yd data copy results/output.csv archive/output-{{date}}.csv
 
 # Copy a directory to a different prefix on the same remote
-yd-data copy -R --dst-prefix staging input/ input/
+yd data copy -R --dst-prefix staging input/ input/
 
 # Copy results to a named profile (e.g. a separate bucket defined in config.toml)
-yd-data copy -R --dst-profile production results/ results/
+yd data copy -R --dst-profile production results/ results/
 
 # Sync a directory to a backup profile (deletes destination files not in source)
-yd-data copy --sync --dst-profile backup data/ data/
+yd data copy --sync --dst-profile backup data/ data/
 
 # Copy from outside the configured prefix using --no-prefix
-yd-data copy --no-prefix shared/configs/base.json configs/base.json
+yd data copy --no-prefix shared/configs/base.json configs/base.json
 
 # Dry-run to preview what would be copied without transferring anything
-yd-data copy -R --dry-run input/ output/
+yd data copy -R --dry-run input/ output/
 ```
 
-## yd-cloudinfo
+## yd cloudinfo
 
-The `yd-cloudinfo` verbs list what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. They answer questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, and which of them is cheapest on spot.
+The `yd cloudinfo` verbs list what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. They answer questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, and which of them is cheapest on spot.
 
 ```shell
-yd-cloudinfo <regions|sub-regions|instance-types|prices> [options]
+yd cloudinfo <regions|sub-regions|instance-types|prices> [options]
 ```
 
 Region and sub-region names are matched exactly, so `--region eu-west-2` does not include the Wavelength Zone `eu-west-2-wl1-lon1`; `--name` takes a glob pattern, and a value without wildcards matches the name exactly. Each option applies only to the verbs listed against it below, and is refused with any other.
@@ -1326,9 +1326,9 @@ Key options:
 - `--json` — emit the items as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
-yd-cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
-yd-cloudinfo sub-regions --provider aws --region us-east-1
+yd cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
+yd cloudinfo sub-regions --provider aws --region us-east-1
 ```
 
 Prices are per hour, as the Platform reports them, in the currency it gives them in.
@@ -1340,12 +1340,12 @@ Prices are per hour, as the Platform reports them, in the currency it gives them
 | [`instance-types`](#yd-cloudinfo-instance-types) | List instance types | `yd-cloud-info instance-types` |
 | [`prices`](#yd-cloudinfo-prices) | List instance prices | `yd-cloud-info prices` |
 
-### yd-cloudinfo regions
+### yd cloudinfo regions
 
-The `yd-cloudinfo regions` command lists the cloud providers' regions, with the options described under [`yd-cloudinfo`](#yd-cloudinfo).
+The `yd cloudinfo regions` command lists the cloud providers' regions, with the options described under [`yd cloudinfo`](#yd-cloudinfo).
 
 ```shell
-yd-cloudinfo regions [options]
+yd cloudinfo regions [options]
 ```
 
 Key options:
@@ -1353,15 +1353,15 @@ Key options:
 - `--name <glob>` — the region's name
 
 ```shell
-yd-cloudinfo regions --provider aws
+yd cloudinfo regions --provider aws
 ```
 
-### yd-cloudinfo sub-regions
+### yd cloudinfo sub-regions
 
-The `yd-cloudinfo sub-regions` command lists the cloud providers' sub-regions (availability zones), with the options described under [`yd-cloudinfo`](#yd-cloudinfo).
+The `yd cloudinfo sub-regions` command lists the cloud providers' sub-regions (availability zones), with the options described under [`yd cloudinfo`](#yd-cloudinfo).
 
 ```shell
-yd-cloudinfo sub-regions [options]
+yd cloudinfo sub-regions [options]
 ```
 
 Key options:
@@ -1369,15 +1369,15 @@ Key options:
 - `--provider`/`-p <aws|azure|google|oci>` — list only this provider's sub-regions; may be repeated
 
 ```shell
-yd-cloudinfo sub-regions --provider aws --region us-east-1
+yd cloudinfo sub-regions --provider aws --region us-east-1
 ```
 
-### yd-cloudinfo instance-types
+### yd cloudinfo instance-types
 
-The `yd-cloudinfo instance-types` command lists the cloud providers' instance types, with the options described under [`yd-cloudinfo`](#yd-cloudinfo).
+The `yd cloudinfo instance-types` command lists the cloud providers' instance types, with the options described under [`yd cloudinfo`](#yd-cloudinfo).
 
 ```shell
-yd-cloudinfo instance-types [options]
+yd cloudinfo instance-types [options]
 ```
 
 Key options:
@@ -1385,15 +1385,15 @@ Key options:
 - `--prices` — add each instance type's on-demand price and lowest spot price in the region; needs `--region`
 
 ```shell
-yd-cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
 ```
 
-### yd-cloudinfo prices
+### yd cloudinfo prices
 
-The `yd-cloudinfo prices` command lists the instance types' prices, with the options described under [`yd-cloudinfo`](#yd-cloudinfo).
+The `yd cloudinfo prices` command lists the instance types' prices, with the options described under [`yd cloudinfo`](#yd-cloudinfo).
 
 ```shell
-yd-cloudinfo prices [options]
+yd cloudinfo prices [options]
 ```
 
 Key options:
@@ -1401,19 +1401,19 @@ Key options:
 - `--name <glob>` — the instance type's name; prices need `--region` or `--name`
 
 ```shell
-yd-cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
+yd cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
 ```
 
 ## Other Commands
 
-These commands act on no one kind of object, and keep the names they have always had: `yd-list`, `yd-show`, `yd-follow` and `yd-wait` take any type of object, and the rest are utilities.
+These commands act on no one kind of object, and keep the names they have always had: `yd list`, `yd show`, `yd follow` and `yd wait` take any type of object, and the rest are utilities.
 
-### yd-list
+### yd list
 
-The `yd-list` command lists various YellowDog items in the configured `namespace`. Work Requirements, Worker Pools and Compute Requirements are listed with the configured `tag`, selected as the commands acting on them select them when given no names (Work Requirements and Compute Requirements by their tag, Worker Pools by the tag in their name), so a listing shows what `yd-workrequirement cancel`, `yd-workerpool shutdown` or `yd-computerequirement terminate` would consider; give `--tag ''` (or `-t` alone) to list the whole namespace. Templates and Image Families, which nothing selects by tag, are listed whatever their names unless `--tag` is given.
+The `yd list` command lists various YellowDog items in the configured `namespace`. Work Requirements, Worker Pools and Compute Requirements are listed with the configured `tag`, selected as the commands acting on them select them when given no names (Work Requirements and Compute Requirements by their tag, Worker Pools by the tag in their name), so a listing shows what `yd workrequirement cancel`, `yd workerpool shutdown` or `yd computerequirement terminate` would consider; give `--tag ''` (or `-t` alone) to list the whole namespace. Templates and Image Families, which nothing selects by tag, are listed whatever their names unless `--tag` is given.
 
 ```shell
-yd-list [options] <entity-type>
+yd list [options] <entity-type>
 ```
 
 Valid entity types are:
@@ -1444,38 +1444,38 @@ Valid entity types are:
 
 The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking.
 
-Unambiguous prefix matching is supported — for example `yd-list work-r` resolves to `yd-list work-requirements`, and `yd-list key` resolves to `yd-list keyrings`. Single uppercase synonyms also work, e.g. `yd-list W` and `yd-list K`.
+Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
 
-`yd-list` has more options than are listed here; use `yd-list --help` to inspect the full set. Commonly used options are:
+`yd list` has more options than are listed here; use `yd list --help` to inspect the full set. Commonly used options are:
 
 | Option | Description |
 |---|---|
-| `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd-list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
+| `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
 | `--active-only`/`-l` | List only entities in a non-terminated state: Work Requirements (and their Task Groups and Tasks), Worker Pools (and their Nodes and Workers) and Compute Requirements (and their Instances); a Compute Requirement that is still provisioning counts as active |
-| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd-list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and is refused for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd-workrequirement cancel`, `yd-workerpool shutdown` or `yd-computerequirement terminate` would select |
+| `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Work Requirements, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and is refused for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd workrequirement cancel`, `yd workerpool shutdown` or `yd computerequirement terminate` would select |
 | `--status <status>` | Include only entities whose status matches (case-insensitive); repeatable to allow multiple statuses. Applies to the entity types that have a status: Work Requirements, Task Groups, Tasks, Worker Pools, Nodes, Workers, Compute Requirements and Instances |
-| `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line. Like `--json`, this lists non-interactively: e.g. `yd-list tasks --ids-only` gives the IDs of all Tasks across all matching Work Requirements and Task Groups. An Instance is given as `<compute-requirement-ydid>.<instance-id>`, the form the `yd-instance` verbs take. Refused for attribute definitions, namespace policies and permissions, which have no IDs |
+| `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line. Like `--json`, this lists non-interactively: e.g. `yd list tasks --ids-only` gives the IDs of all Tasks across all matching Work Requirements and Task Groups. An Instance is given as `<compute-requirement-ydid>.<instance-id>`, the form the `yd instance` verbs take. Refused for attribute definitions, namespace policies and permissions, which have no IDs |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
-| `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd-list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
-| `--sort <name\|created\|status\|namespace>[,...]` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn: `--sort namespace,status,created` groups by namespace, then by status within it, then by age; the name (for Instances the instance type, for Nodes and Workers the Worker Pool name, for Tasks the task number) breaks any tie that remains. `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; a key an entity type lacks is passed over. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd-workrequirement cancel`, `yd-workrequirement hold` and `yd-workrequirement start` |
+| `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
+| `--sort <name\|created\|status\|namespace>[,...]` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn: `--sort namespace,status,created` groups by namespace, then by status within it, then by age; the name (for Instances the instance type, for Nodes and Workers the Worker Pool name, for Tasks the task number) breaks any tie that remains. `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; a key an entity type lacks is passed over. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd workrequirement cancel`, `yd workrequirement hold` and `yd workrequirement start` |
 | `--reverse` | List items in reverse (descending) order: the whole order `--sort` gives, every key's included |
 | `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
-| `--hide-user-data` | With `--details` or `--json`, show each `userData` value (in Compute Source Templates, Compute Requirement Templates and Compute Requirements) as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full. It applies to `--output-file` too, whose JSON can then no longer be used with `yd-resource create` as it is |
+| `--hide-user-data` | With `--details` or `--json`, show each `userData` value (in Compute Source Templates, Compute Requirement Templates and Compute Requirements) as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full. It applies to `--output-file` too, whose JSON can then no longer be used with `yd resource create` as it is |
 
 ```shell
-yd-list work-requirements --name 'myproject-*' --active-only
+yd list work-requirements --name 'myproject-*' --active-only
 ```
 
 An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
-The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd-list`](resources.md#generating-resource-specifications-using-yd-list).
+The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
 
-### yd-show
+### yd show
 
-The `yd-show` command shows the details (in JSON) of any YellowDog entity that has a YellowDog ID.
+The `yd show` command shows the details (in JSON) of any YellowDog entity that has a YellowDog ID.
 
 ```shell
-yd-show [options] <yellowdog-id> [<yellowdog-id> ...]
+yd show [options] <yellowdog-id> [<yellowdog-id> ...]
 ```
 
 It supports IDs referring to:
@@ -1498,49 +1498,49 @@ It supports IDs referring to:
 - Groups
 - Roles
 
-Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format the `yd-instance` verbs take. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
+Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format the `yd instance` verbs take. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
 
 Key options:
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
 - `--show-source-report` — follow a Compute Requirement with the Platform's report of how its sources were chosen: the Compute Source Templates considered, selected and rejected, each source's rank and score, and the constraints and preferences applied. Only a Compute Requirement provisioned from a dynamic template has one, and it is kept after the Compute Requirement has been terminated; for any other, a warning says so and the Compute Requirement is still shown
-- `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd-allowance boost`](#yd-allowance-boost))
+- `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))
 
 - `--show-members` — follow a Group with `{"groupId", "users", "applications"}`, its Users (each `{"id", "username", "name"}`, `username` being `null` for an external User) and its Applications (each `{"id", "name"}`), or a Role with `{"roleId", "groups"}`, the Groups that hold it (each `{"id", "name"}`); a Group's own roles are already in its details. It is refused unless at least one of the IDs is a Group's or a Role's
 
-A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd-list users --details` shows them.
+A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd list users --details` shows them.
 
 `--show-source-report` and `--show-exhaustion` also apply to a Provisioned Worker Pool's ID, reporting on its Compute Requirement after the pool; a Configured Worker Pool, which has no Compute Requirement, is shown with a warning and no reports. Each is refused unless at least one of the IDs is a Compute Requirement's or a Worker Pool's.
 
-- `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd-list`, `--output-file` included
-- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd-list`; see [Generating Resource Specifications using `yd-list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
+- `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd list`, `--output-file` included
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`; see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
 
-At least one ID is required. A YDID names its entity in whatever namespace it is in, so `yd-show` takes no `--namespace` or `--tag`.
+At least one ID is required. A YDID names its entity in whatever namespace it is in, so `yd show` takes no `--namespace` or `--tag`.
 
 Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token, `--show-source-report` or `--show-exhaustion` add their reports after a Compute Requirement or Provisioned Worker Pool, or `--show-members` adds a Group's or a Role's members. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
 
 It exits with code 0 if every ID was shown; 6 if those that were not all name entities that do not exist; and 1 if any could not be shown for another reason (an invalid ID, or an API error). The IDs that could be shown are still emitted. If a lookup fails because the Application's credentials are not accepted, or the platform cannot be reached, the remaining IDs are not attempted, what was shown is still emitted, and the command exits with that failure's code (4 or 8).
 
 ```shell
-yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16 --show-source-report --show-exhaustion
-yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
-yd-show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
+yd show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16 --show-source-report --show-exhaustion
+yd show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abcdef0
+yd show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
 ```
 
-### yd-follow
+### yd follow
 
-The `yd-follow` command follows the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs.
+The `yd follow` command follows the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs.
 
 ```shell
-yd-follow [options] <yellowdog-id> [<yellowdog-id> ...]
+yd follow [options] <yellowdog-id> [<yellowdog-id> ...]
 ```
 
 At least one ID is required, and each must be a Work Requirement's, Worker Pool's or Compute Requirement's: anything else is refused before anything is followed (exit code 2). The IDs are followed in the order given, each once.
 
 The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage, which ends only once a stream delivers an event, so a connection that is accepted and then drops before any, over and over, is given up on as well; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
 
-It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd-follow` takes its exit code from them.
+It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd follow` takes its exit code from them.
 
-Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd-wait` (or `yd-workrequirement submit --exit-on-failure`) to act on Work Requirement outcomes.
+Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd wait` (or `yd workrequirement submit --exit-on-failure`) to act on Work Requirement outcomes.
 
 Key options:
 - `--progress` — display a live progress bar for Work Requirement IDs (ignored for Worker Pool and Compute Requirement IDs)
@@ -1548,20 +1548,20 @@ Key options:
 - `--json` — print each event as a JSON document as it arrives, refused with `--progress` (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
+yd follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
           ydid:wrkrpool:D9C548:c22f0d9a-4a99-460d-ae42-15653ba264c3 \
           ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
 ```
 
-### yd-wait
+### yd wait
 
-The `yd-wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome.
+The `yd wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome.
 
 ```shell
-yd-wait [options] <yellowdog-id> [<yellowdog-id> ...]
+yd wait [options] <yellowdog-id> [<yellowdog-id> ...]
 ```
 
-At least one ID is required, and each must be the ID of a Work Requirement, Worker Pool or Compute Requirement; anything else is refused before anything is followed (exit 2). Multiple IDs can be supplied, and `yd-wait` blocks until all of them have reached a terminal state: `COMPLETED`, `FAILED` or `CANCELLED` for a Work Requirement, `SHUTDOWN` or `TERMINATED` for a Worker Pool, and `TERMINATED` for a Compute Requirement. This makes it suitable for scripting pipelines. Use `--quiet`/`-q` to suppress all output and rely solely on the exit code. For interactive observation of event streams, use `yd-follow` instead.
+At least one ID is required, and each must be the ID of a Work Requirement, Worker Pool or Compute Requirement; anything else is refused before anything is followed (exit 2). Multiple IDs can be supplied, and `yd wait` blocks until all of them have reached a terminal state: `COMPLETED`, `FAILED` or `CANCELLED` for a Work Requirement, `SHUTDOWN` or `TERMINATED` for a Worker Pool, and `TERMINATED` for a Compute Requirement. This makes it suitable for scripting pipelines. Use `--quiet`/`-q` to suppress all output and rely solely on the exit code. For interactive observation of event streams, use `yd follow` instead.
 
 - **Exit 0** — every entity reached a terminal state, and no Work Requirement ended `FAILED` or `CANCELLED`
 - **Exit 1** — a Work Requirement ended `FAILED` or `CANCELLED`, `--timeout` expired with an entity not finished, or there were failures with different causes
@@ -1574,16 +1574,16 @@ Key options:
 - `--json` — emit each item's final status as a JSON array of `{"id", "name", "status", "succeeded"}` (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```bash
-WR_ID=$(yd-workrequirement submit mywork.json --quiet)
-yd-wait "$WR_ID" && yd-data download results/
+WR_ID=$(yd workrequirement submit mywork.json --quiet)
+yd wait "$WR_ID" && yd data download results/
 ```
 
-### yd-application
+### yd application
 
-The `yd-application` command shows the details of the current Application, i.e. the Application represented by the `key` and `secret` being used.
+The `yd application` command shows the details of the current Application, i.e. the Application represented by the `key` and `secret` being used.
 
 ```shell
-yd-application [options]
+yd application [options]
 ```
 
 It takes no arguments beyond the [Universal Options](#universal-options), and is the quickest way to confirm which Application a set of credentials belongs to.
@@ -1592,7 +1592,7 @@ Key options:
 - `--json`/`-J` — emit the Application's details as JSON instead of the readable report
 
 ```shell
-yd-application --config prod.toml
+yd application --config prod.toml
 ```
 
 The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined.
@@ -1602,7 +1602,7 @@ The JSON output contains the Application's properties, plus `portalUrl`, `groups
 `groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure, and `groupsAndRoles` is then added, saying `"permission denied"`; an Application in no groups, or with no roles, has `[]` or `{}` (the readable report says `none`); if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](json-output.md) once the rest has been reported.
 
 ```shell
-yd-application --json
+yd application --json
 ```
 
 ```json
@@ -1619,22 +1619,22 @@ yd-application --json
 }
 ```
 
-### yd-variables
+### yd variables
 
-The `yd-variables` command reports the processed values of variable substitutions, as JSON. It shows what a specification file would actually see, once the TOML configuration file, the environment, any `YD_VAR_*` variables, any `--variable`/`-v` options and the built-in defaults have all been taken into account, which makes it the quickest way to debug a variable substitution setup.
+The `yd variables` command reports the processed values of variable substitutions, as JSON. It shows what a specification file would actually see, once the TOML configuration file, the environment, any `YD_VAR_*` variables, any `--variable`/`-v` options and the built-in defaults have all been taken into account, which makes it the quickest way to debug a variable substitution setup.
 
 ```shell
-yd-variables [options] [<var> ...]
+yd variables [options] [<var> ...]
 ```
 
-Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd-show`, it is preceded by any warnings and followed by `Done`; pass `--quiet`/`-q` to get the JSON alone, for example to pipe it into another program.
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd show`, it is preceded by any warnings and followed by `Done`; pass `--quiet`/`-q` to get the JSON alone, for example to pipe it into another program.
 
-A name that isn't the name of a variable reports `null`, with a warning that it is not defined, so the command also answers whether a variable is set at all; a name no variable could have, such as `{{tag}}` or `env:HOME`, is refused. `yd-variables` never contacts the Platform, so it needs no application key or secret: when they are not configured, `key` and `secret` are reported as `null`.
+A name that isn't the name of a variable reports `null`, with a warning that it is not defined, so the command also answers whether a variable is set at all; a name no variable could have, such as `{{tag}}` or `env:HOME`, is refused. `yd variables` never contacts the Platform, so it needs no application key or secret: when they are not configured, `key` and `secret` are reported as `null`.
 
 ```shell
-yd-variables                           # report every variable
-yd-variables namespace tag             # report only these two
-yd-variables -v instances=5 instances  # report a variable set on the command line
+yd variables                           # report every variable
+yd variables namespace tag             # report only these two
+yd variables -v instances=5 instances  # report a variable set on the command line
 ```
 
 ```json
@@ -1646,16 +1646,16 @@ The report redacts the values of `key` and `secret`, replacing each with `<REDAC
 This applies whether the variables are named or not, and only `--show-secrets` reports their values; naming `key` or `secret` prints a line saying they were redacted. (Naming a variable once reported it in full; it no longer does, so that a caller unable to pass `--show-secrets`, such as the [MCP server](../yellowdog_cli/mcp/README.md)'s tools, cannot ask for a credential by name.)
 
 ```shell
-yd-variables                 # 'key' and 'secret' are reported as <REDACTED>
-yd-variables --show-secrets  # every variable, credentials included
-yd-variables key secret      # still <REDACTED>, with a line saying so
-yd-variables --show-secrets key secret  # reported in full
+yd variables                 # 'key' and 'secret' are reported as <REDACTED>
+yd variables --show-secrets  # every variable, credentials included
+yd variables key secret      # still <REDACTED>, with a line saying so
+yd variables --show-secrets key secret  # reported in full
 ```
 
 A reported variable whose value still contains a reference to a variable that is not defined is reported as it stands, and a [warning](variables.md#undefined-variables) naming it is printed ahead of the JSON. The same applies to the configuration's `namespace`, `tag` and `url`; `key` and `secret` are never checked. `--quiet` suppresses the warnings along with `Done`.
 
 ```shell
-yd-variables -v 'bucket=s3://{{regoin}}' bucket
+yd variables -v 'bucket=s3://{{regoin}}' bucket
 ```
 
 ```
@@ -1665,7 +1665,7 @@ WARNING : Variable '{{regoin}}' is not defined, and has been left unsubstituted 
 A variable that was defined but has been removed by the [unset syntax](variables.md#removing-properties-using-the-unset-suffix) (`{{::}}`, or `{{name::}}` for a `name` that is not defined) is reported as `null` when named, and left out of the full report. So that this can be told apart from a variable that was never defined, a warning also gives the reason, following each `{{name::}}` reference to a variable that was itself unset:
 
 ```shell
-yd-variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
+yd variables -v 'site={{::}}' -v 'pool={{site::}}-p' pool
 ```
 
 ```
@@ -1678,14 +1678,14 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
-None of `yd-completion`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd-help`, `yd-version` and `yd-jsonnet2json` accept; `yd-doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd completion`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd help`, `yd version` and `yd jsonnet2json` accept; `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
 
-### yd-doctor
+### yd doctor
 
-The `yd-doctor` command checks whether this machine, this configuration and these credentials can run the CLI, and reports each check as `OK`, `WARN`, `FAIL` or `SKIP` with a remedy for anything wrong. It is the first thing to run when a command fails unexpectedly, and its output is what to include in a support request: the secret is shown redacted, and an inline data client remote with its name, type and provider only, every other parameter's value withheld.
+The `yd doctor` command checks whether this machine, this configuration and these credentials can run the CLI, and reports each check as `OK`, `WARN`, `FAIL` or `SKIP` with a remedy for anything wrong. It is the first thing to run when a command fails unexpectedly, and its output is what to include in a support request: the secret is shown redacted, and an inline data client remote with its name, type and provider only, every other parameter's value withheld.
 
 ```shell
-yd-doctor [options]
+yd doctor [options]
 ```
 
 It checks, in order:
@@ -1711,7 +1711,7 @@ and then, live:
 
 A check that cannot run says why (`SKIP`) rather than disappearing.
 
-Unlike other commands, `yd-doctor` never exits on a missing or broken configuration: that is reported as a row.
+Unlike other commands, `yd doctor` never exits on a missing or broken configuration: that is reported as a row.
 
 A long detail or remedy wraps at the terminal's width, its continuation lines indented under its own column, only on a terminal; when piped or redirected, and under `--no-format`, every row and every remedy is one line, for grep and pasting.
 
@@ -1722,29 +1722,29 @@ Key options:
 - `--quiet`/`-q` — print only the `WARN` and `FAIL` lines and the summary
 
 ```shell
-yd-doctor                    # everything, against the current configuration
-yd-doctor --offline          # no network calls
-yd-doctor --json | jq '.[] | select(.status == "FAIL")'
+yd doctor                    # everything, against the current configuration
+yd doctor --offline          # no network calls
+yd doctor --json | jq '.[] | select(.status == "FAIL")'
 ```
 
 The exit code is 1 if any check failed, else 0, so it can gate a script or a CI job.
 
-### yd-help
+### yd help
 
-The `yd-help` command lists all available `yd-*` commands and their purposes, `yd-commander` and `yd-mcp` included, with the extra each command that needs one requires, or `(<extra> extra installed)` where it is installed already, and closes with how to see a command's options and where the documentation is.
+The `yd help` command lists all available `yd` commands and their purposes, `yd commander` and `yd mcp` included, with the extra each command that needs one requires, or `(<extra> extra installed)` where it is installed already, and closes with how to see a command's options and where the documentation is.
 
 ```shell
-yd-help [--json] [--no-format]
+yd help [--json] [--no-format]
 ```
 
 The listing is coloured on a terminal, with the command names and the notes on extras picked out; `--no-format`/`--nf` prints it plain, as it is when piped. With `--json` it prints the commands as a JSON array of `{"command", "summary"}`, a command needing an extra adding `"extra"` and `"installed"`, coloured on a terminal unless `--no-format` is given (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-### yd-version
+### yd version
 
-The `yd-version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd-mcp` as a table, followed by the CLI's author, licence and documentation link.
+The `yd version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd mcp` as a table, followed by the CLI's author, licence and documentation link.
 
 ```shell
-yd-version [options]
+yd version [options]
 ```
 
 Key options:
@@ -1754,39 +1754,39 @@ Key options:
 - `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed or whose version could not be read; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd-version           # report all versions
-yd-version --cli     # print the CLI version number only
-yd-version --rclone  # print the rclone binary version only
+yd version           # report all versions
+yd version --cli     # print the CLI version number only
+yd version --rclone  # print the rclone binary version only
 ```
 
-The rclone version is detected using the same lookup order as `yd-workrequirement submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download; an rclone binary that does not answer within 5 seconds is reported as `unknown`. Each single-version option prints nothing and exits 1 if its component is not installed, or its version could not be read, so a script never takes `Not installed` or `unknown` for a version number. The documentation link is the release's own README, or `main`'s for a development build.
+The rclone version is detected using the same lookup order as `yd workrequirement submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download; an rclone binary that does not answer within 5 seconds is reported as `unknown`. Each single-version option prints nothing and exits 1 if its component is not installed, or its version could not be read, so a script never takes `Not installed` or `unknown` for a version number. The documentation link is the release's own README, or `main`'s for a development build.
 
-### yd-format-json
+### yd format-json
 
-The `yd-format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored.
+The `yd format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Non-JSON files are ignored.
 
 ```shell
-yd-format-json [--check] <file.json> [<file.json> ...]
+yd format-json [--check] <file.json> [<file.json> ...]
 ```
 
 Only the layout changes: numbers are written back exactly as they were written (`1.10` stays `1.10`), non-ASCII text is kept rather than escaped, and a file that repeats a key is refused, and left as it is, rather than losing all but one of them. A file is replaced only once its new text is complete, keeping its permissions, so an interruption leaves the original; a file already in this layout is left untouched. `--check` writes nothing, reporting the files that would be reformatted, and exits 1 if there are any, for use in CI. A file that cannot be read, parsed or written is reported on stderr, the others are still processed, and the command exits 1.
 
 ```shell
-yd-format-json my_file.json my_other_file.json
+yd format-json my_file.json my_other_file.json
 ```
 
-### yd-jsonnet2json
+### yd jsonnet2json
 
-The `yd-jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout, coloured on a terminal unless `--no-format`/`--nf` is given; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
+The `yd jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout, coloured on a terminal unless `--no-format`/`--nf` is given; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
 
 ```shell
-yd-jsonnet2json [--yes] [--no-format] <file.jsonnet> [<file.jsonnet> ...]
+yd jsonnet2json [--yes] [--no-format] <file.jsonnet> [<file.jsonnet> ...]
 ```
 
 ```shell
-yd-jsonnet2json my_spec.jsonnet                 # JSON to stdout
-yd-jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
-yd-jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
+yd jsonnet2json my_spec.jsonnet                 # JSON to stdout
+yd jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
+yd jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
 ```
 
 Errors go to stderr, so a failed conversion piped to a file never leaves an error message in it, and the command exits 1.
@@ -1799,81 +1799,96 @@ This is the quickest way to verify that a Jsonnet file is syntactically correct 
 
 See [Jsonnet Support](jsonnet.md) for installation and usage.
 
-### yd-schema
+### yd schema
 
-The `yd-schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd-workrequirement submit` accepts), `worker-pool` (`yd-workerpool provision`), `compute-requirement` (`yd-computerequirement instantiate`), `resources` (`yd-resource create`), `node-actions` (`yd-node action`) and `config` (the TOML configuration file every command reads; see [Configuration](configuration.md)). It needs no configuration file and no credentials.
+The `yd schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd workrequirement submit` accepts), `worker-pool` (`yd workerpool provision`), `compute-requirement` (`yd computerequirement instantiate`), `resources` (`yd resource create`), `node-actions` (`yd node action`) and `config` (the TOML configuration file every command reads; see [Configuration](configuration.md)). It needs no configuration file and no credentials.
 
 ```shell
-yd-schema <family>            # print one family's schema as JSON
-yd-schema --write <dir>       # write every family's schema, and index.json, to <dir>
-yd-schema --check <dir>       # exit 0 if <dir> matches the installed CLI and SDK, else 1
-yd-schema --list              # list the family names
+yd schema <family>            # print one family's schema as JSON
+yd schema --write <dir>       # write every family's schema, and index.json, to <dir>
+yd schema --check <dir>       # exit 0 if <dir> matches the installed CLI and SDK, else 1
+yd schema --list              # list the family names
 ```
 
 A schema printed to a terminal is coloured unless it is longer than 5,000 lines (the `resources` family is); `--no-format`/`--nf` prints it plain, as it is when piped or redirected.
 
 Exactly one of a `<family>`, `--write <dir>`, `--check <dir>` or `--list` must be given. `--write` writes `<family>.schema.json` for every family into `<dir>`, plus an `index.json` naming the CLI and SDK versions that generated them, and exits 1 naming the path if `<dir>` cannot be created or written; point an editor's JSON Schema support (VS Code's `json.schemas`, JetBrains' JSON Schema mappings) at the files it writes.
 
-After upgrading the CLI or the SDK, `yd-schema --check <dir>` says whether a written directory is still current — the versions in its index, and every family's file, which must be there and be exactly what the installed CLI and SDK build, so a file edited or missing is reported — and `yd-schema --write <dir>` again refreshes it.
+After upgrading the CLI or the SDK, `yd schema --check <dir>` says whether a written directory is still current — the versions in its index, and every family's file, which must be there and be exactly what the installed CLI and SDK build, so a file edited or missing is reported — and `yd schema --write <dir>` again refreshes it.
 
-A family printed with `yd-schema <family>` is exactly what `--write` writes for it (coloured when printed to a terminal, unless `--no-format` is given, so piped or redirected it is the same bytes), and each file is replaced whole or not at all. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.
+A family printed with `yd schema <family>` is exactly what `--write` writes for it (coloured when printed to a terminal, unless `--no-format` is given, so piped or redirected it is the same bytes), and each file is replaced whole or not at all. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.
 
-### yd-completion
+### yd completion
 
-The `yd-completion` command prints a shell completion script for the `yd-*` commands, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes a noun's verbs (`yd-wr s` → `submit`, `start`, `show`), the options a command or verb takes (never one it does not), and the values the CLI knows: an option's fixed choices, the keys `--sort` takes (each after a comma, too), the entity types `yd-list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help. Names and IDs on the YellowDog Platform are not completed. The commands the nouns replace, such as `yd-submit`, are not completed either; `yd-commander`, `yd-mcp`, `yd-help`, `yd-version`, `yd-format-json` and `yd-jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
+The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes the word after `yd` (`yd w` → `wait`, `worker`, `workerpool`, `workrequirement`, `wp`, `wr`), a noun's verbs (`yd wr s` → `submit`, `start`, `show`), the options a command or verb takes (never one it does not), and the values the CLI knows: an option's fixed choices, the keys `--sort` takes (each after a comma, too), the entity types `yd list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help. Names and IDs on the YellowDog Platform are not completed. The deprecated `yd-*` commands, such as `yd-submit`, are not completed either; `yd commander`, `yd mcp`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
 
 ```shell
-yd-completion bash | zsh | fish | powershell
+yd completion bash | zsh | fish | powershell
 ```
 
 Load the script in the shell's start-up file, so that every new shell has it:
 
 ```shell
-eval "$(yd-completion bash)"     # in ~/.bashrc
-eval "$(yd-completion zsh)"      # in ~/.zshrc, after compinit if it is run there
-yd-completion fish | source      # in ~/.config/fish/config.fish
+eval "$(yd completion bash)"     # in ~/.bashrc
+eval "$(yd completion zsh)"      # in ~/.zshrc, after compinit if it is run there
+yd completion fish | source      # in ~/.config/fish/config.fish
 ```
 
 ```powershell
-yd-completion powershell | Out-String | Invoke-Expression    # in $PROFILE
+yd completion powershell | Out-String | Invoke-Expression    # in $PROFILE
 ```
 
-The script asks `yd-completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. It needs no configuration file and no credentials, and contacts nothing.
+The script asks `yd completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. It needs no configuration file and no credentials, and contacts nothing.
 
 ## Deprecated Commands
 
-These commands are replaced by the noun forms, and will be removed in a future release. Until then each runs as it always has, with a warning on stderr naming what to use instead (`--quiet` suppresses it); the warning is not given when Commander or the MCP server runs a command. `yd-help --deprecated` gives the same table.
+The `yd-*` commands of earlier releases are replaced by `yd` and the words after it, and will be removed in a future release. Until then each runs as it always has, with a warning on stderr naming what to use instead (`--quiet` suppresses it where the command has it); the warning is not given when Commander or the MCP server runs a command. `yd help --deprecated` gives the same table.
 
-Where a command acted on more than one kind of object, each kind has a verb of its own: `yd-terminate` took Compute Requirements, Instances and Nodes, which `yd-computerequirement terminate`, `yd-instance terminate` and `yd-node terminate` now take, and `yd-resize -C` is `yd-computerequirement resize`.
+Where a command acted on more than one kind of object, each kind has a verb of its own: `yd-terminate` took Compute Requirements, Instances and Nodes, which `yd computerequirement terminate`, `yd instance terminate` and `yd node terminate` now take, and `yd-resize -C` is `yd computerequirement resize`.
 
 | Deprecated command | Use instead |
 |---|---|
-| `yd-abort` | `yd-task abort` |
-| `yd-boost` | `yd-allowance boost` |
-| `yd-cancel` | `yd-workrequirement cancel` |
-| `yd-cloud-info` | `yd-cloudinfo regions`, `yd-cloudinfo sub-regions`, `yd-cloudinfo instance-types`, `yd-cloudinfo prices` |
-| `yd-compare` | `yd-workrequirement compare`, `yd-taskgroup compare` |
-| `yd-compute-deprovision` | `yd-instance deprovision`, `yd-node deprovision` |
-| `yd-compute-reprovision` | `yd-computerequirement reprovision` |
-| `yd-compute-restart` | `yd-instance restart`, `yd-node restart` |
-| `yd-compute-start` | `yd-computerequirement start`, `yd-instance start`, `yd-node start` |
-| `yd-compute-stop` | `yd-computerequirement stop`, `yd-instance stop`, `yd-node stop` |
-| `yd-copy` | `yd-data copy` |
-| `yd-create` | `yd-resource create` |
-| `yd-delete` | `yd-data delete` |
-| `yd-download` | `yd-data download` |
-| `yd-finish` | `yd-workrequirement finish` |
-| `yd-hold` | `yd-workrequirement hold` |
-| `yd-instantiate` | `yd-computerequirement instantiate` |
-| `yd-ls` | `yd-data ls` |
-| `yd-nodeaction` | `yd-node action` |
-| `yd-priority` | `yd-workrequirement priority`, `yd-taskgroup priority` |
-| `yd-provision` | `yd-workerpool provision` |
-| `yd-remove` | `yd-resource remove` |
-| `yd-resize` | `yd-workerpool resize`, `yd-computerequirement resize` |
-| `yd-shutdown` | `yd-workerpool shutdown`, `yd-node shutdown` |
-| `yd-start` | `yd-workrequirement start` |
-| `yd-submit` | `yd-workrequirement submit` |
-| `yd-terminate` | `yd-computerequirement terminate`, `yd-instance terminate`, `yd-node terminate` |
-| `yd-token` | `yd-workerpool token` |
-| `yd-upload` | `yd-data upload` |
+| `yd-abort` | `yd task abort` |
+| `yd-application` | `yd application` |
+| `yd-boost` | `yd allowance boost` |
+| `yd-cancel` | `yd workrequirement cancel` |
+| `yd-cloud-info` | `yd cloudinfo regions`, `yd cloudinfo sub-regions`, `yd cloudinfo instance-types`, `yd cloudinfo prices` |
+| `yd-cloudwizard` | `yd cloudwizard` |
+| `yd-commander` | `yd commander` |
+| `yd-compare` | `yd workrequirement compare`, `yd taskgroup compare` |
+| `yd-compute-deprovision` | `yd instance deprovision`, `yd node deprovision` |
+| `yd-compute-reprovision` | `yd computerequirement reprovision` |
+| `yd-compute-restart` | `yd instance restart`, `yd node restart` |
+| `yd-compute-start` | `yd computerequirement start`, `yd instance start`, `yd node start` |
+| `yd-compute-stop` | `yd computerequirement stop`, `yd instance stop`, `yd node stop` |
+| `yd-copy` | `yd data copy` |
+| `yd-create` | `yd resource create` |
+| `yd-delete` | `yd data delete` |
+| `yd-doctor` | `yd doctor` |
+| `yd-download` | `yd data download` |
+| `yd-finish` | `yd workrequirement finish` |
+| `yd-follow` | `yd follow` |
+| `yd-format-json` | `yd format-json` |
+| `yd-help` | `yd help` |
+| `yd-hold` | `yd workrequirement hold` |
+| `yd-instantiate` | `yd computerequirement instantiate` |
+| `yd-jsonnet2json` | `yd jsonnet2json` |
+| `yd-list` | `yd list` |
+| `yd-ls` | `yd data ls` |
+| `yd-mcp` | `yd mcp` |
+| `yd-nodeaction` | `yd node action` |
+| `yd-priority` | `yd workrequirement priority`, `yd taskgroup priority` |
+| `yd-provision` | `yd workerpool provision` |
+| `yd-remove` | `yd resource remove` |
+| `yd-resize` | `yd workerpool resize`, `yd computerequirement resize` |
+| `yd-schema` | `yd schema` |
+| `yd-show` | `yd show` |
+| `yd-shutdown` | `yd workerpool shutdown`, `yd node shutdown` |
+| `yd-start` | `yd workrequirement start` |
+| `yd-submit` | `yd workrequirement submit` |
+| `yd-terminate` | `yd computerequirement terminate`, `yd instance terminate`, `yd node terminate` |
+| `yd-token` | `yd workerpool token` |
+| `yd-upload` | `yd data upload` |
+| `yd-variables` | `yd variables` |
+| `yd-version` | `yd version` |
+| `yd-wait` | `yd wait` |

@@ -69,6 +69,16 @@ class TestVariables:
         )
         assert loaded == {"sdk": False, "requests": False, "returncode": 0}
 
+    def test_yd_variables_loads_no_sdk(self, tmp_path):
+        # The same, through the 'yd' dispatcher
+        loaded = _loaded(
+            tmp_path,
+            "yellowdog_cli.yd",
+            ["yd", "variables", "--quiet"],
+            COMMON + SDK_BACKED_SECTIONS,
+        )
+        assert loaded == {"sdk": False, "requests": False, "returncode": 0}
+
     def test_a_config_with_no_sdk_backed_section_loads_no_sdk(self, tmp_path):
         loaded = _loaded(tmp_path, "yellowdog_cli.variables", ["yd-variables"], COMMON)
         assert loaded == {"sdk": False, "requests": False, "returncode": 0}
@@ -109,8 +119,10 @@ class TestDataClient:
             ("yellowdog_cli.download", ["yd-download", "--json", "a.txt", "-d", "out"]),
             ("yellowdog_cli.delete", ["yd-delete", "--json", "-y", "a.txt"]),
             ("yellowdog_cli.copy", ["yd-copy", "--json", "a.txt", "b.txt"]),
-            # The noun form, through the dispatcher
-            ("yellowdog_cli.nouns.data", ["yd-data", "ls", "--json"]),
+            # The noun form, as 'python -m' runs it
+            ("yellowdog_cli.nouns.data", ["data.py", "ls", "--json"]),
+            # And through 'yd'
+            ("yellowdog_cli.yd", ["yd", "data", "ls", "--json"]),
         ],
     )
     def test_a_command_loads_no_sdk(self, store, module, argv):
@@ -129,18 +141,18 @@ class TestDataClient:
 
 
 class TestCompletion:
-    # The shell runs 'yd-completion --complete' on every Tab, so it answers
+    # The shell runs 'yd completion --complete' on every Tab, so it answers
     # from the registries without the SDK, or requests
     @pytest.mark.parametrize(
         "argv",
         [
-            ["yd-completion", "zsh"],
-            ["yd-completion", "--complete", "zsh", "2", "yd-wr", "cancel", "--"],
-            ["yd-completion", "--complete", "bash", "2", "yd-wr", "submit", ""],
+            ["yd", "completion", "zsh"],
+            ["yd", "completion", "--complete", "zsh", "3", "yd", "wr", "cancel", "--"],
+            ["yd", "completion", "--complete", "bash", "3", "yd", "wr", "submit", ""],
         ],
     )
     def test_completion_loads_no_sdk(self, tmp_path, argv):
-        loaded = _loaded(tmp_path, "yellowdog_cli.completion", argv, COMMON)
+        loaded = _loaded(tmp_path, "yellowdog_cli.yd", argv, COMMON)
         assert loaded["returncode"] == 0
         assert loaded["sdk"] is False
         assert loaded["requests"] is False

@@ -7,6 +7,7 @@ command line deterministically. Needs neither the 'mcp' extra nor the SDK.
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -64,10 +65,9 @@ class TestCatalogue:
 
     def test_a_noun_verbs_tool_runs_the_noun(self):
         tool = TOOLS["yd_instance_terminate"]
-        assert tool.program == "yd-instance"
-        assert tool.leading_args == ["terminate"]
-        assert TOOLS["yd_list"].program == "yd-list"
-        assert TOOLS["yd_list"].leading_args == []
+        assert tool.program == "yd instance terminate"
+        # Run as typed under 'yd', so its usage and errors name 'yd list'
+        assert TOOLS["yd_list"].program == "yd list"
 
     def test_a_noun_verbs_hidden_options_are_no_arguments(self):
         properties = TOOLS["yd_instance_terminate"].input_schema["properties"]
@@ -128,7 +128,7 @@ class TestCatalogue:
             == COMMANDS["yd-submit"].tool_description
         )
         assert TOOLS["yd_task_abort"].description.startswith("Abort running Tasks")
-        assert "yd-task abort" in TOOLS["yd_task_abort"].description
+        assert "yd task abort" in TOOLS["yd_task_abort"].description
         assert TOOLS["yd_task_abort"].title == "Abort running Tasks"
 
     def test_the_download_description_names_the_prefix(self):
@@ -671,7 +671,7 @@ class TestSpecificationFileExclusionsAreTheirCommandsOwn:
         assert name not in TOOLS[tool].input_schema["properties"]
 
     def test_a_compute_requirement_is_resized_by_name(self, tmp_path):
-        # The flag is yd-computerequirement resize's own, which the noun
+        # The flag is yd computerequirement resize's own, which the noun
         # supplies; yd_workerpool_resize has none
         from yellowdog_cli.utils.args import CLIParser
         from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME
@@ -681,9 +681,9 @@ class TestSpecificationFileExclusionsAreTheirCommandsOwn:
         argv, _ = to_argv(
             tool, {"worker_pool": "cr", "worker_pool_size": 2}, str(tmp_path)
         )
-        verb = NOUNS_BY_NAME["yd-computerequirement"].verb("resize")
+        verb = NOUNS_BY_NAME["computerequirement"].verb("resize")
         assert verb is not None
-        parser = CLIParser("yd-computerequirement resize", [*verb.fixed, *argv])
+        parser = CLIParser("yd computerequirement resize", [*verb.fixed, *argv])
         assert parser.compute_req_resize is True
         assert (
             "compute_requirement"
@@ -773,3 +773,19 @@ def test_a_launch_namespace_is_not_given_to_a_verb_that_hides_it():
     assert not any(a.startswith("--namespace") for a in fixed_args(instance, settings))
     cr = TOOLS["yd_computerequirement_terminate"].command
     assert "--namespace=ns" in fixed_args(cr, settings)
+
+
+def test_tool_names_are_unchanged_by_the_yd_form():
+    assert {"yd_workrequirement_submit", "yd_instance_terminate", "yd_list"} <= set(
+        TOOLS
+    )
+
+
+def test_descriptions_name_commands_in_the_yd_form():
+    for name, tool in TOOLS.items():
+        texts = [tool.description] + [
+            str(p.get("description", ""))
+            for p in tool.input_schema["properties"].values()
+        ]
+        for text in texts:
+            assert not re.search(r"\byd-[a-z]", text), (name, text)

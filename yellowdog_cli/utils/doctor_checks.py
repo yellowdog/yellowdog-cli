@@ -368,7 +368,7 @@ def check_rclone(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             "not found",
-            "the yd-data commands need it; run 'yd-data ls --upgrade-rclone'"
+            "the yd data commands need it; run 'yd data ls --upgrade-rclone'"
             " or install rclone on PATH",
         )
     path, source = found
@@ -520,7 +520,7 @@ def check_config_schema(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             f"the schema could not be built: {e}",
-            "Run 'yd-schema config' to see why; the configuration may be fine",
+            "Run 'yd schema config' to see why; the configuration may be fine",
         )
     if not violations:
         return Result(Status.OK, "no violations")
@@ -533,7 +533,7 @@ def check_config_schema(ctx: Context) -> Result:
         Status.WARN,
         f"{count}: {shown}" + (f"; and {more} more" if more > 0 else ""),
         "Every one is reported as a warning when a command runs;"
-        " 'yd-schema config' prints the schema",
+        " 'yd schema config' prints the schema",
     )
 
 

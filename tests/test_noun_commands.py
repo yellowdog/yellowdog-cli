@@ -7,27 +7,30 @@ dispatcher selects the verb's command and hands it the verb's arguments.
 
 import sys
 from argparse import SUPPRESS
+from importlib.util import find_spec
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from yellowdog_cli.utils import args as args_module
-from yellowdog_cli.utils import noun_dispatch
+from yellowdog_cli.utils import invocation, noun_dispatch
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.noun_registry import (
-    DEPRECATED,
     GENERIC_COMMANDS,
     INSTANCE,
     NAME,
     NOUN_COMMANDS,
     NOUNS,
     NOUNS_BY_NAME,
+    REPLACED_BY_VERBS,
     command_named,
+    module_invocation,
     noun_forms,
+    noun_module,
     target_kind,
+    typed_command,
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
@@ -67,7 +70,7 @@ def _scripts() -> dict[str, str]:
 @pytest.fixture(autouse=True)
 def _no_selection(monkeypatch):
     # The dispatcher's selection is module state: no test leaves it behind
-    monkeypatch.setattr(args_module, "_SELECTED", None)
+    monkeypatch.setattr(invocation, "_SELECTED", None)
 
 
 class TestTheRegistry:
@@ -85,7 +88,7 @@ class TestTheRegistry:
         # A new command is replaced by a noun verb, offered under the nouns
         # as a generic one, or kept as a utility: a decision either way
         for name in COMMANDS:
-            assert (name in DEPRECATED) + (name in GENERIC_COMMANDS) + (
+            assert (name in REPLACED_BY_VERBS) + (name in GENERIC_COMMANDS) + (
                 name in UTILITIES
             ) == 1, name
 
@@ -93,55 +96,135 @@ class TestTheRegistry:
         for name in GENERIC_COMMANDS:
             assert noun_forms(name), name
 
-    def test_every_noun_and_alias_is_an_entry_point_of_its_own_module(self):
+    def test_every_noun_has_its_own_module(self):
+        for noun in NOUNS:
+            assert noun_module(noun) == f"yellowdog_cli.nouns.{noun.name}"
+            assert find_spec(noun_module(noun)) is not None, noun.name
+
+    def test_no_noun_or_alias_is_a_script(self):
+        # 'yd <noun>' replaced them before they were released
         scripts = _scripts()
         for noun in NOUNS:
-            module = f"yellowdog_cli.nouns.{noun.name.removeprefix('yd-')}:main"
             for invoked in noun.invoked_names():
-                assert scripts.get(invoked) == module, invoked
+                assert f"yd-{invoked}" not in scripts
 
     def test_the_aliases(self):
         aliases = {noun.alias: noun.name for noun in NOUNS if noun.alias}
         assert aliases == {
-            "yd-wr": "yd-workrequirement",
-            "yd-tg": "yd-taskgroup",
-            "yd-wp": "yd-workerpool",
-            "yd-cr": "yd-computerequirement",
+            "wr": "workrequirement",
+            "tg": "taskgroup",
+            "wp": "workerpool",
+            "cr": "computerequirement",
         }
 
     def test_no_noun_or_alias_is_a_registry_command(self):
         assert not set(NOUNS_BY_NAME) & set(COMMANDS)
 
     def test_deprecated_names_map_to_their_noun_forms(self):
-        assert DEPRECATED["yd-submit"] == ["yd-workrequirement submit"]
-        assert set(DEPRECATED["yd-terminate"]) == {
-            "yd-computerequirement terminate",
-            "yd-instance terminate",
-            "yd-node terminate",
+        assert REPLACED_BY_VERBS["yd-submit"] == ["yd workrequirement submit"]
+        assert set(REPLACED_BY_VERBS["yd-terminate"]) == {
+            "yd computerequirement terminate",
+            "yd instance terminate",
+            "yd node terminate",
         }
-        assert "yd-list" not in DEPRECATED
+        assert "yd-list" not in REPLACED_BY_VERBS
+
+
+class TestResolvingNames:
+    @pytest.mark.parametrize(
+        "name, expected",
+        [
+            ("yd-submit", "yd-submit"),
+            ("yd workrequirement submit", "yd workrequirement submit"),
+            ("yd wr submit", "yd workrequirement submit"),
+            ("yd list", "yd-list"),
+        ],
+    )
+    def test_command_named(self, name, expected):
+        command = command_named(name)
+        assert command is not None and command.name == expected
+
+    @pytest.mark.parametrize(
+        "name",
+        # 'yd submit': yd-submit is replaced by a verb, so no word after 'yd'
+        ["yd commander", "yd frob", "yd wr frob", "ls", "yd submit", "yd cloud-info"],
+    )
+    def test_command_named_unknown(self, name):
+        assert command_named(name) is None
+
+    @pytest.mark.parametrize(
+        "command, expected",
+        [
+            # Every 'yd' line runs the dispatcher, so it shows the form typed
+            # and refuses what 'yd' refuses
+            ("yd wr submit", ("yellowdog_cli.yd", ["wr", "submit"])),
+            (
+                "yd workrequirement submit",
+                ("yellowdog_cli.yd", ["workrequirement", "submit"]),
+            ),
+            ("yd wr", ("yellowdog_cli.yd", ["wr"])),
+            ("yd list", ("yellowdog_cli.yd", ["list"])),
+            ("yd commander", ("yellowdog_cli.yd", ["commander"])),
+            ("yd submit", ("yellowdog_cli.yd", ["submit"])),
+            ("yd", ("yellowdog_cli.yd", [])),
+            ("yd frob", ("yellowdog_cli.yd", ["frob"])),
+            # A 'yd-*' name runs its own module, as the script would
+            ("yd-list", ("yellowdog_cli.list", [])),
+            ("yd-commander", ("yellowdog_cli.commander.launcher", [])),
+            # One this installation lacks: the dispatcher reports it, never
+            # another installation's script on the PATH
+            ("yd-wr", ("yellowdog_cli.yd", ["yd-wr"])),
+            ("yd-frob", ("yellowdog_cli.yd", ["yd-frob"])),
+        ],
+    )
+    def test_module_invocation(self, command, expected):
+        assert module_invocation(command) == expected
+
+    @pytest.mark.parametrize("command", ["ls -l", "ls"])
+    def test_module_invocation_unknown(self, command):
+        assert module_invocation(command) is None
+
+
+class TestTypedCommand:
+    @pytest.mark.parametrize(
+        "words, expected",
+        [
+            (["yd", "wr", "submit", "-y"], ["yd wr submit", "-y"]),
+            (["yd", "workrequirement", "submit"], ["yd workrequirement submit"]),
+            (["yd", "list", "wr"], ["yd list", "wr"]),
+            (["yd", "wr"], ["yd wr"]),
+            (["yd", "wr", "--help"], ["yd wr", "--help"]),
+            (["yd", "frob", "x"], ["yd frob", "x"]),
+            (["yd"], ["yd"]),
+            (["yd-submit", "x"], ["yd-submit", "x"]),
+            (["ls", "-l"], None),
+            ([], None),
+        ],
+    )
+    def test_typed_command(self, words, expected):
+        assert typed_command(words) == expected
 
 
 class TestDerivedCommands:
     def test_named_for_the_noun_form_and_running_the_registry_command(self):
-        command = NOUN_COMMANDS["yd-instance terminate"]
-        assert command.name == "yd-instance terminate"
+        command = NOUN_COMMANDS["yd instance terminate"]
+        assert command.name == "yd instance terminate"
         assert command.internal_name == "yd-terminate"
-        assert command_named("yd-instance terminate") is command
+        assert command_named("yd instance terminate") is command
         assert command_named("yd-terminate") is COMMANDS["yd-terminate"]
 
     def test_a_registry_command_runs_itself(self):
         assert COMMANDS["yd-submit"].internal_name == "yd-submit"
 
     def test_hidden_options_keep_their_identity_but_not_their_help(self):
-        command = NOUN_COMMANDS["yd-instance terminate"]
+        command = NOUN_COMMANDS["yd instance terminate"]
         namespace = command.option_named("--namespace")
         assert namespace is not None
         assert namespace.kwargs["help"] == SUPPRESS
         assert "--namespace" not in build_parser(command).format_help()
 
     def test_a_fixed_positional_is_hidden(self):
-        help_text = build_parser(NOUN_COMMANDS["yd-workrequirement list"]).format_help()
+        help_text = build_parser(NOUN_COMMANDS["yd workrequirement list"]).format_help()
         assert "ENTITY_TYPE" not in help_text
         # Filters that do not apply to the type are hidden; those that do
         # are offered
@@ -149,7 +232,7 @@ class TestDerivedCommands:
         assert "--public-ips-only" not in help_text
 
     def test_an_id_only_verb_needs_a_target(self):
-        option = NOUN_COMMANDS["yd-instance terminate"].option_named(
+        option = NOUN_COMMANDS["yd instance terminate"].option_named(
             "compute_reqs_instances_or_nodes"
         )
         assert option is not None and option.kwargs["nargs"] == "+"
@@ -168,52 +251,52 @@ def _refusal(capsys, command: str, *argv: str) -> str:
 
 class TestParsing:
     def test_the_parser_reports_the_registry_command_it_runs(self):
-        parser = _parse("yd-instance terminate", INSTANCE_SPEC)
+        parser = _parse("yd instance terminate", INSTANCE_SPEC)
         assert parser.command_name == "yd-terminate"
-        assert parser.parser.prog == "yd-instance terminate"
+        assert parser.parser.prog == "yd instance terminate"
         assert parser.args.compute_reqs_instances_or_nodes == [INSTANCE_SPEC]
 
     def test_a_target_of_another_kind_is_refused(self, capsys):
-        err = _refusal(capsys, "yd-instance terminate", WP_ID)
+        err = _refusal(capsys, "yd instance terminate", WP_ID)
         assert "is a Worker Pool ID" in err
         assert "<cr-id.instance-id>" in err
 
     def test_a_name_is_refused_where_only_ids_are_taken(self, capsys):
-        assert "is a name" in _refusal(capsys, "yd-node shutdown", "pool-1")
+        assert "is a name" in _refusal(capsys, "yd node shutdown", "pool-1")
 
     def test_names_and_ids_are_taken_where_names_are(self):
-        parser = _parse("yd-computerequirement terminate", "cr-1", CR_ID)
+        parser = _parse("yd computerequirement terminate", "cr-1", CR_ID)
         assert parser.args.compute_reqs_instances_or_nodes == ["cr-1", CR_ID]
 
     def test_a_hidden_option_given_is_refused(self, capsys):
         err = _refusal(
-            capsys, "yd-instance terminate", "--namespace", "x", INSTANCE_SPEC
+            capsys, "yd instance terminate", "--namespace", "x", INSTANCE_SPEC
         )
-        assert "--namespace does not apply to yd-instance terminate" in err
+        assert "--namespace does not apply to yd instance terminate" in err
 
     def test_a_hidden_option_left_alone_is_not_refused(self):
         # --sort's default is a string its type converts: still a default
-        _parse("yd-instance stop", INSTANCE_SPEC)
+        _parse("yd instance stop", INSTANCE_SPEC)
 
     def test_show_restricted_to_the_object(self, capsys):
-        _parse("yd-workrequirement show", WR_ID)
+        _parse("yd workrequirement show", WR_ID)
         assert "is a Worker Pool ID" in _refusal(
-            capsys, "yd-workrequirement show", WP_ID
+            capsys, "yd workrequirement show", WP_ID
         )
 
     def test_resource_list_takes_resource_types_only(self, capsys):
-        assert _parse("yd-resource list", "keyr").args.entity_type == "keyrings"
+        assert _parse("yd resource list", "keyr").args.entity_type == "keyrings"
         assert "not a resource type" in _refusal(
-            capsys, "yd-resource list", "work-requirements"
+            capsys, "yd resource list", "work-requirements"
         )
 
     def test_a_single_target_is_checked(self, capsys):
         assert "is a Compute Requirement ID" in _refusal(
-            capsys, "yd-workerpool resize", CR_ID, "2"
+            capsys, "yd workerpool resize", CR_ID, "2"
         )
 
     def test_follow_json_prints_events_under_a_noun_too(self):
-        assert _parse("yd-workrequirement follow", "--json", WR_ID).events_as_json
+        assert _parse("yd workrequirement follow", "--json", WR_ID).events_as_json
 
 
 class TestTargetKind:
@@ -242,7 +325,7 @@ class TestDispatch:
 
         def main():
             record.argv = list(sys.argv)
-            record.selected = args_module._SELECTED
+            record.selected = invocation._SELECTED
 
         def import_module(name):
             record.module = name
@@ -251,14 +334,14 @@ class TestDispatch:
         monkeypatch.setattr(noun_dispatch, "import_module", import_module)
         return record
 
-    def _run(self, monkeypatch, *argv: str, noun: str = "yd-workrequirement"):
+    def _run(self, monkeypatch, *argv: str, noun: str = "workrequirement"):
         monkeypatch.setattr(sys, "argv", list(argv))
         noun_dispatch.run_noun(noun)
 
     def test_runs_the_verbs_command_with_its_parser_selected(self, monkeypatch, ran):
         self._run(monkeypatch, "/bin/yd-wr", "submit", "-y", "wr.json")
         assert ran.module == "yellowdog_cli.submit"
-        assert ran.selected == ("yd-workrequirement submit", "yd-wr submit")
+        assert ran.selected == ("yd workrequirement submit", "yd wr submit")
         assert ran.argv == ["/bin/yd-wr", "-y", "wr.json"]
 
     def test_fixed_arguments_come_first(self, monkeypatch, ran):
@@ -269,18 +352,25 @@ class TestDispatch:
     def test_python_m_shows_the_full_noun(self, monkeypatch, ran):
         self._run(monkeypatch, "/x/nouns/workrequirement.py", "cancel")
         assert ran.selected == (
-            "yd-workrequirement cancel",
-            "yd-workrequirement cancel",
+            "yd workrequirement cancel",
+            "yd workrequirement cancel",
         )
+
+    def test_the_form_shown_can_be_given(self, monkeypatch, ran):
+        monkeypatch.setattr(
+            sys, "argv", ["/usr/local/bin/yd", "submit", "-y", "wr.json"]
+        )
+        noun_dispatch.run_noun("workrequirement", invoked="yd wr")
+        assert ran.selected == ("yd workrequirement submit", "yd wr submit")
 
     def test_help(self, monkeypatch, capsys):
         with pytest.raises(SystemExit) as exit_:
             self._run(monkeypatch, "yd-wr", "--help")
         assert exit_.value.code == ExitCode.SUCCESS
         out = capsys.readouterr().out
-        assert "usage: yd-wr <verb>" in out
+        assert "usage: yd wr <verb>" in out
         assert "submit    Submit a Work Requirement" in out
-        assert "'yd-wr' is short for 'yd-workrequirement'" in out
+        assert "'yd wr' is short for 'yd workrequirement'" in out
 
     def test_no_verb_is_a_usage_error(self, monkeypatch, capsys):
         with pytest.raises(SystemExit) as exit_:
@@ -302,11 +392,11 @@ class TestDispatch:
         assert "a verb must come before '-y'" in capsys.readouterr().err
 
     def test_the_selection_builds_the_verbs_parser(self, monkeypatch):
-        args_module.select_command("yd-instance terminate", "yd-instance terminate")
+        invocation.select_command("yd instance terminate", "yd instance terminate")
         monkeypatch.setattr(sys, "argv", ["yd-instance", INSTANCE_SPEC])
         parser = CLIParser()
-        assert parser.command is NOUN_COMMANDS["yd-instance terminate"]
-        assert parser.parser.prog == "yd-instance terminate"
+        assert parser.command is NOUN_COMMANDS["yd instance terminate"]
+        assert parser.parser.prog == "yd instance terminate"
         assert parser.replaced_by == []
 
 
@@ -316,14 +406,19 @@ class TestDeprecatedNames:
     )
     def test_an_old_name_typed_is_replaced(self, monkeypatch, argv0):
         monkeypatch.setattr(sys, "argv", [argv0, "--dry-run"])
-        assert CLIParser().replaced_by == ["yd-workrequirement submit"]
+        assert CLIParser().replaced_by == ["yd workrequirement submit"]
 
     def test_python_m_is_not_deprecated(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["/x/yellowdog_cli/submit.py", "--dry-run"])
         assert CLIParser().replaced_by == []
 
-    def test_a_generic_command_is_not_deprecated(self, monkeypatch):
+    def test_a_generic_command_typed_by_its_script_is_deprecated(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["yd-list", "work-requirements"])
+        assert CLIParser().replaced_by == ["yd list"]
+
+    def test_yd_list_is_not_deprecated(self, monkeypatch):
+        invocation.select_command("yd-list", "yd list")
+        monkeypatch.setattr(sys, "argv", ["/usr/local/bin/yd", "work-requirements"])
         assert CLIParser().replaced_by == []
 
 
@@ -343,18 +438,18 @@ class TestDeprecationWarning:
         out, err = self._warned(monkeypatch, capsys, "yd-submit", "--no-format")
         assert out == ""
         assert "'yd-submit' is deprecated" in err
-        assert "use 'yd-workrequirement submit'" in err
+        assert "use 'yd workrequirement submit'" in err
 
     def test_every_noun_form_is_offered(self, monkeypatch, capsys):
         _, err = self._warned(monkeypatch, capsys, "yd-terminate", "--no-format")
         assert (
-            "'yd-computerequirement terminate', 'yd-instance terminate' or"
-            " 'yd-node terminate'" in " ".join(err.split())
+            "'yd computerequirement terminate', 'yd instance terminate' or"
+            " 'yd node terminate'" in " ".join(err.split())
         )
 
     def test_quiet_suppresses_it(self, monkeypatch, capsys):
         assert self._warned(monkeypatch, capsys, "yd-submit", "-q") == ("", "")
 
     def test_a_noun_form_is_not_warned_of(self, monkeypatch, capsys):
-        args_module.select_command("yd-workrequirement submit", "yd-wr submit")
+        invocation.select_command("yd workrequirement submit", "yd wr submit")
         assert self._warned(monkeypatch, capsys, "yd-wr", "--no-format") == ("", "")

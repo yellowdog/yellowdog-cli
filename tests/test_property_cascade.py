@@ -151,7 +151,7 @@ def _dry_run(tmp_path: Path, specification: dict) -> tuple[dict, str]:
     (tmp_path / "config.toml").write_text(_CONFIG, encoding="utf-8")
     (tmp_path / "wr.json").write_text(json.dumps(specification), encoding="utf-8")
     result = shell(
-        f"cd {tmp_path} && yd-workrequirement submit -c config.toml wr.json --dry-run"
+        f"cd {tmp_path} && yd workrequirement submit -c config.toml wr.json --dry-run"
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     out = result.stdout

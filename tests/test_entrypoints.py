@@ -1,13 +1,12 @@
 """
-Basic check that all the entrypoints are present, and can be invoked.
+Basic check that all the entrypoints are present, and can be invoked: 'yd'
+and the words after it, and the deprecated yd-* scripts.
 """
 
 import pytest
 from cli_test_helpers import shell
 
-from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME
-
-NOUN_ENTRY_POINTS = sorted(NOUNS_BY_NAME)
+from yellowdog_cli.utils.top_level import TOP_LEVEL
 
 
 @pytest.mark.parametrize(
@@ -42,10 +41,12 @@ NOUN_ENTRY_POINTS = sorted(NOUNS_BY_NAME)
         ("yd-variables --help", 0),
         ("yd-version", 0),
         ("yd-wait --help", 0),
-        # The nouns, their short forms, and a verb's help
-        *((f"{noun} --help", 0) for noun in NOUN_ENTRY_POINTS),
-        ("yd-workrequirement submit --help", 0),
-        ("yd-wr", 2),  # no verb
+        # 'yd': every word after it, a verb's help, and the usage errors
+        ("yd --help", 0),
+        *((f"yd {word} --help", 0) for word in sorted(TOP_LEVEL)),
+        ("yd workrequirement submit --help", 0),
+        ("yd wr", 2),  # no verb
+        ("yd", 2),  # no command
     ],
 )
 def test_entrypoint(cmd, expected):

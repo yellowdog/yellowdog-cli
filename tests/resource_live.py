@@ -251,7 +251,7 @@ def command_line(command: str, *args: str) -> str:
 
 def yd(command: str, *args: str):
     """
-    Run a yd-* command against the test config, with the run id substituted.
+    Run a yd command against the test config, with the run id substituted.
     """
     return shell(command_line(command, *args))
 
@@ -261,7 +261,7 @@ def ydids(entity_type: str, namespace: str | None = None) -> set[str]:
     The YDIDs of every entity of this type. '-D' is --ids-only, not --dry-run.
     """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
-    result = yd("yd-list", entity_type, "-D", namespace_arg, "-t=''")
+    result = yd("yd list", entity_type, "-D", namespace_arg, "-t=''")
     return {
         line.strip()
         for line in result.stdout.splitlines()
@@ -278,7 +278,7 @@ def list_details(entity_type: str, namespace: str | None = None) -> list[dict]:
     from in the first place), so there is no separate per-entity fetch to make.
     """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
-    result = yd("yd-list", entity_type, "--details", "-J", "-q", namespace_arg, "-t=''")
+    result = yd("yd list", entity_type, "--details", "-J", "-q", namespace_arg, "-t=''")
     # Live evidence: '--json' prints nothing at all -- not even '[]' --
     # when nothing matches, unlike a normal, non-empty result.
     return json.loads(result.stdout) if result.stdout.strip() else []
@@ -344,8 +344,8 @@ def load_corpus_file(path) -> list[dict]:
 
 
 def show(ydid: str) -> dict:
-    result = yd("yd-show", "--quiet", ydid)
-    assert result.exit_code == 0, f"yd-show {ydid} failed"
+    result = yd("yd show", "--quiet", ydid)
+    assert result.exit_code == 0, f"yd show {ydid} failed"
     return json.loads(result.stdout)
 
 

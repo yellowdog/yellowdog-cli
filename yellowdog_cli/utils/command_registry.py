@@ -930,7 +930,7 @@ RESOURCE_SPECIFICATIONS = option(
     type=str,
     help=(
         "the resource specifications to process (or resource IDs if used"
-        " with 'yd-resource remove --ids')"
+        " with 'yd resource remove --ids')"
     ),
 )
 YES_ALLOW_UPDATES = YES.variant(help="allow updates without user confirmation")
@@ -941,7 +941,7 @@ MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     required=False,
     help=(
         "match using the 'description' property when updating "
-        "(using yd-resource create) or removing allowances"
+        "(using yd resource create) or removing allowances"
     ),
 )
 YELLOWDOG_IDS = option(
@@ -1018,7 +1018,7 @@ STRIP_IDS = option(
     help=(
         "omit the YellowDog IDs of objects from their JSON "
         "representations, as well as other properties not "
-        "required when capturing JSON for use with yd-resource create and remove "
+        "required when capturing JSON for use with yd resource create and remove "
         "(implies '--details')"
     ),
 )
@@ -3768,9 +3768,9 @@ COMPLETION_SHELL = option(
     choices=COMPLETION_SHELLS,
     help=(
         "the shell to print the completion script for: load it with"
-        " 'eval \"$(yd-completion bash)\"' (or zsh) in the shell's start-up"
-        " file, 'yd-completion fish | source' in fish's config.fish, or"
-        " 'yd-completion powershell | Out-String | Invoke-Expression' in a"
+        " 'eval \"$(yd completion bash)\"' (or zsh) in the shell's start-up"
+        " file, 'yd completion fish | source' in fish's config.fish, or"
+        " 'yd completion powershell | Out-String | Invoke-Expression' in a"
         " PowerShell profile"
     ),
 )

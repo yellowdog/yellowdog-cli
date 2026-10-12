@@ -149,7 +149,7 @@ def highlight(dialog, name: str) -> None:
 
 def downloaded_results(root: Path) -> Path:
     """
-    A results directory shaped the way yd-data download leaves one — work requirement,
+    A results directory shaped the way yd data download leaves one — work requirement,
     task group, task, output file — and the path of the file at the bottom of it.
     """
     task = root / "pyex-bash-pwt_260820-083723781" / "task_group_1" / "task_1"
@@ -1036,7 +1036,7 @@ def test_a_nested_file_is_reachable_without_leaving_the_directory(
 # over already sorted would therefore still fail this without the fix, rather
 # than passing by luck.
 NUMBERED_TASKS = ["task_1", "task_2", "task_3", "task_10", "task_20", "task_100"]
-# Padded the way yd-data download names them, which is the case the user hit.
+# Padded the way yd data download names them, which is the case the user hit.
 PADDED_TASKS = [f"task_{n:03d}" for n in range(1, 13)]
 
 

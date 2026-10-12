@@ -41,7 +41,7 @@ LOG = logging.getLogger("yd-mcp")
 USAGE_EXIT_CODE = 2
 
 INSTRUCTIONS = (
-    "These tools are the YellowDog CLI's yd-* commands, one tool per command, run"
+    "These tools are the YellowDog CLI's yd commands, one tool per command, run"
     " with --json: a tool's result is the command's JSON document, as the CLI's"
     " 'Machine-readable Output and Exit Codes' page (docs/json-output.md)"
     " describes, and a"
@@ -50,7 +50,7 @@ INSTRUCTIONS = (
     " prompt, so confirm with the user first; every acting or destructive tool"
     " that has dry_run can enumerate what it would do. Every tool takes"
     " timeout_seconds and returns what it had if stopped. Specifications may be"
-    " given inline. yd-mcp's own README documents the server."
+    " given inline. yd mcp's own README documents the server."
 )
 
 
@@ -91,7 +91,7 @@ def _records_a_failure(document: Any) -> bool:
 def _error_text(tool: ToolSpec, result: Run, document: Any) -> str:
     """
     A failed run's text content: its stderr, then its document as compact
-    JSON when it left one (yd-doctor's failing checks and yd-wait's failed
+    JSON when it left one (yd doctor's failing checks and yd wait's failed
     Work Requirement exit 1 with the document alone), so the text says as
     much as structuredContent does.
     """
@@ -157,10 +157,7 @@ def call_tool(
         timeout_seconds = timeout_of(tool, arguments)
         own_args, written = to_argv(tool, arguments, settings.working_dir)
         argv = (
-            command_argv(tool.program)
-            + tool.leading_args
-            + fixed_args(tool.command, settings)
-            + own_args
+            command_argv(tool.program) + fixed_args(tool.command, settings) + own_args
         )
         LOG.info("%s: %s", name, " ".join(argv[2:]))
         result = run(argv, settings.working_dir, environment, timeout_seconds)

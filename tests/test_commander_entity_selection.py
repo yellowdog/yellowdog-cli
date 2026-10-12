@@ -385,7 +385,7 @@ def test_action_targets_only_the_selected_ydids(window, captured, monkeypatch):
     )
     window._cancel_work_requirements_action()
     command, args, _kwargs = captured[0]
-    assert (command, args) == ("yd-workrequirement cancel", ["-y", "ydid:workreq:22"])
+    assert (command, args) == ("yd workrequirement cancel", ["-y", "ydid:workreq:22"])
 
 
 def test_all_four_actions_pass_ydids_with_their_own_flags(
@@ -397,16 +397,16 @@ def test_all_four_actions_pass_ydids_with_their_own_flags(
         window, monkeypatch, all_entities, Confirmation(proceed=True, handles=ids)
     )
     for method, command, flags in [
-        ("_cancel_work_requirements_action", "yd-workrequirement cancel", ["-y"]),
+        ("_cancel_work_requirements_action", "yd workrequirement cancel", ["-y"]),
         (
             "_cancel_work_requirements_and_abort_action",
-            "yd-workrequirement cancel",
+            "yd workrequirement cancel",
             ["-ay"],
         ),
-        ("_shutdown_all_worker_pools_action", "yd-workerpool shutdown", ["-y"]),
+        ("_shutdown_all_worker_pools_action", "yd workerpool shutdown", ["-y"]),
         (
             "_terminate_all_compute_requirements_action",
-            "yd-computerequirement terminate",
+            "yd computerequirement terminate",
             ["-y"],
         ),
     ]:

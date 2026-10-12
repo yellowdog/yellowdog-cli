@@ -43,28 +43,35 @@ from yellowdog_cli.utils.command_registry import (
     CommandKind,
 )
 from yellowdog_cli.utils.noun_registry import command_named
+from yellowdog_cli.utils.top_level import yd_form
 
-# The 'yd-' commands that take none of the configuration options Commander adds
-# to the others (the config source, namespace, tag, variables, properties,
-# '--pp'), so a typed one is run as it was typed, bar '--nf' (below)
+# The commands that take none of the configuration options Commander adds to
+# the others (the config source, namespace, tag, variables, properties,
+# '--pp'), so a typed one is run as it was typed, bar '--nf' (below): each by
+# its 'yd' form and by its deprecated 'yd-*' name, either of which is typed
 UNDECORATED_YD_COMMANDS = frozenset(
-    name for name, command in COMMANDS.items() if command.kind is CommandKind.STANDALONE
+    spelling
+    for name, command in COMMANDS.items()
+    if command.kind is CommandKind.STANDALONE
+    for spelling in (name, yd_form(name))
 )
 # Those of them that take '--nf', which Commander adds as it does to the rest,
 # since the output window shows no colour. Kept by hand because three of them
 # parse their own arguments outside the registry; a test holds it to each
 # command's '--help'
 NO_FORMAT_UNDECORATED_YD_COMMANDS = frozenset(
-    {"yd-help", "yd-jsonnet2json", "yd-schema", "yd-version"}
+    spelling
+    for name in ("yd-help", "yd-jsonnet2json", "yd-schema", "yd-version")
+    for spelling in (name, yd_form(name))
 )
 NO_FORMAT_FLAGS = ("--nf", "--no-format")
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label
 MAX_LOGGED_ENTITY_IDS = 3  # above this, the echoed command line shows a count
 WINDOW_TITLE = f"YellowDog CLI Commander (v{__version__})"
 CWD = os.getcwd()  # default dir for file dialogs when no config selected
-# Shown when an action that lists entities with 'yd-list' has no tag to list
+# Shown when an action that lists entities with 'yd list' has no tag to list
 # them by. The tag is passed explicitly, so that the listing is the scope the
-# dialog names (the Tag field's, or the discovered one) whatever 'yd-list'
+# dialog names (the Tag field's, or the discovered one) whatever 'yd list'
 # would take for itself; without one there is no scope to name.
 NO_LISTING_TAG = (
     "No tag: none has been discovered, so there is no default scope to list."
@@ -252,13 +259,13 @@ class WindowBase(QMainWindow):
 
     def _yd_list_scope_args(self, name_args: list[str]) -> list[str] | None:
         """
-        The 'yd-list' arguments that confine a listing to the scope the other
+        The 'yd list' arguments that confine a listing to the scope the other
         actions use: the Name pattern as '--name' when one is set, else the tag
         as '-t' — the Tag field's, or the discovered one. None when there is
         neither, since there is then no scope to name; callers must refuse,
         with NO_LISTING_TAG.
 
-        The tag is passed even though 'yd-list' now takes the configured tag
+        The tag is passed even though 'yd list' now takes the configured tag
         for Work Requirements, Worker Pools and Compute Requirements: the
         Tag field overrides the configuration, and the dialog names the scope
         it lists.
@@ -400,8 +407,8 @@ class WindowBase(QMainWindow):
         '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
         variable and '--property' for each property override. Given the
         'command', only those it takes: typed into the command box, a
-        command without '-n' (yd-show) failed on it, and one without '-v'
-        (yd-cloudinfo) read the namespace as its own positional.
+        command without '-n' (yd show) failed on it, and one without '-v'
+        (yd cloudinfo) read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',
         so a value that begins with '-' is never taken for an option. Raises
@@ -476,7 +483,7 @@ class WindowBase(QMainWindow):
         self, command: str, args: list[str], yd_command: bool
     ) -> list[str]:
         """
-        Decorate a command's arguments for execution. For 'yd-' commands this
+        Decorate a command's arguments for execution. For a 'yd' command this
         injects the config source ('-c <file>' or '--nc'), the namespace / tag /
         user variables, and the '--nf'/'--pp' flags. Non-yd commands are
         returned unchanged, and the standalone ones in UNDECORATED_YD_COMMANDS
@@ -491,7 +498,13 @@ class WindowBase(QMainWindow):
                 *args,
             ]
 
-        if command.startswith("yd-") and command not in UNDECORATED_YD_COMMANDS:
+        # Only a command the registry knows: a noun with no verb ('yd wr
+        # --help'), a word 'yd' refuses and yd commander take none of the
+        # options, and given them failed on the first
+        if (
+            command_named(command) is not None
+            and command not in UNDECORATED_YD_COMMANDS
+        ):
             args = list(args)
             # Use the selected config source unless one is set explicitly
             # (or config use is explicitly disabled) on the command line.

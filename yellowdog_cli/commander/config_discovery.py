@@ -1,5 +1,5 @@
 """
-Namespace and tag discovery (ConfigDiscovery): running 'yd-variables' against the
+Namespace and tag discovery (ConfigDiscovery): running 'yd variables' against the
 current configuration source, overrides and user variables to learn what the
 CLI will resolve them to, and showing the result as the placeholders of the
 Namespace, Tag and Path fields. Every failure is reported, bar the one that
@@ -23,9 +23,9 @@ from yellowdog_cli.commander.arguments import (
 from yellowdog_cli.commander.host import CHILD_ENVIRONMENT, cli_program
 from yellowdog_cli.commander.startup import variable_is_complete
 
-CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd-variables' can block on an unreachable API URL
+CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd variables' can block on an unreachable API URL
 # The one retry after a timeout gets a longer budget: by then it is known that a
-# 'yd-variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
+# 'yd variables' here is slow rather than hung, and on Windows the first 'yd-*' of a
 # session can legitimately need this long to start (interpreter start, SDK
 # imports, a virus scan of a freshly installed console script).
 CONFIG_PARSE_RETRY_TIMEOUT_MS = 30_000
@@ -101,7 +101,7 @@ class ConfigDiscovery:
 
         # Re-evaluate namespace/tag placeholders after a short delay when
         # user-defined variables or properties change (debounced to avoid
-        # running yd-variables on every keystroke). A property can set the
+        # running yd variables on every keystroke). A property can set the
         # namespace or tag itself: common.namespace, common.tag.
         self._user_vars_reparse_timer = QTimer(parent)
         self._user_vars_reparse_timer.setSingleShot(True)
@@ -171,7 +171,7 @@ class ConfigDiscovery:
 
         Held back while any variable in the box is not yet 'name=value'. Every
         variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd-variables' rejects one and exits 1, so the reparse
+        to 'instances=3' — and 'yd variables' rejects one and exits 1, so the reparse
         landing on such a keystroke reported "Error in variable substitution
         'instances'" against a mistake the user had not made. Nothing is said
         about it, because at 600ms after a keystroke there is nothing to say: an
@@ -184,7 +184,7 @@ class ConfigDiscovery:
         than an unfinished one, and where they are there to read it.
 
         The Properties box is held back the same way while any property is not
-        yet 'section.key=value', or a quote is still open: 'yd-variables' exits
+        yet 'section.key=value', or a quote is still open: 'yd variables' exits
         on a malformed '--property' just as it does on a malformed variable.
         """
         try:
@@ -203,7 +203,7 @@ class ConfigDiscovery:
 
         Only after a *timeout*: a non-zero exit or a program that cannot be
         started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd-variables'
+        timeout is different — the incident this exists for was a first 'yd variables'
         on Windows that needed longer than its budget to start, where the second
         one is warm and finishes at once. Before this, the placeholders stayed
         blank until Commander was restarted, which is what the user had to do.
@@ -266,12 +266,12 @@ class ConfigDiscovery:
 
     def _yd_variables_command(self) -> tuple[str, list[str]]:
         """
-        The 'yd-variables' invocation that resolves the namespace and tag for the
+        The 'yd variables' invocation that resolves the namespace and tag for the
         current configuration source, namespace/tag overrides and user variables.
         """
-        # '--quiet': the output is parsed as JSON, and yd-variables prints its
+        # '--quiet': the output is parsed as JSON, and yd variables prints its
         # undefined- and unset-variable warnings on stdout ahead of it
-        return "yd-variables", [
+        return "yd variables", [
             *self._config_source_args(),
             "--quiet",
             "--nf",
@@ -291,7 +291,7 @@ class ConfigDiscovery:
         timeout passes a longer one. Every failure is reported through
         _report_discovery_failure, whatever 'quiet' says — 'quiet' suppresses the
         announcement of a routine reparse, not the reason one failed.
-        'yd-variables' needs no credentials, so with nothing configured it
+        'yd variables' needs no credentials, so with nothing configured it
         reports the defaults rather than failing.
         """
         if not self._config_parse_invalid:
@@ -330,13 +330,13 @@ class ConfigDiscovery:
             self._config_parse_timed_out = True
             self._report_discovery_failure(
                 f"Timed out after {timeout_ms // 1000}s parsing"
-                f" configuration with 'yd-variables'"
+                f" configuration with 'yd variables'"
             )
             return False
 
         if yd_process.error() != QProcess.ProcessError.UnknownError:
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables': {yd_process.errorString()}"
+                f"Error parsing config with 'yd variables': {yd_process.errorString()}"
             )
             return False
 
@@ -348,7 +348,7 @@ class ConfigDiscovery:
                 .strip()
             )
             self._report_discovery_failure(
-                f"Error parsing config with 'yd-variables'"
+                f"Error parsing config with 'yd variables'"
                 f" (Exit {yd_process.exitCode()}): {error_output}"
             )
             return False

@@ -44,7 +44,7 @@
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh-1)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct  8 10:55:50 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:15 BST 2026 -->
 
 <!--te-->
 
@@ -99,7 +99,7 @@ You'll need an AWS account along with AWS access keys for the root user or for a
 Run the Cloud Wizard setup command:
 
 ```commandline
-yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup
 ```
 
 Once the command has configured the necessary aspects of your AWS account, it will present a list of AWS Availability Zones. Select the Availability Zone(s) you'd like to use. For example:
@@ -130,7 +130,7 @@ The resources that were created can be inspected in JSON format in the file `clo
 
 The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
 
-The AWS Key Secret is not displayed during command operation, and is not retained locally, for security reasons. If you wish to display it, use the `--show-secrets` command line option when invoking `yd-cloudwizard`.
+The AWS Key Secret is not displayed during command operation, and is not retained locally, for security reasons. If you wish to display it, use the `--show-secrets` command line option when invoking `yd cloudwizard`.
 
 At the conclusion of setup, the command will display the YellowDog Keyring name and password, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control AWS resources via the Portal.
 
@@ -139,7 +139,7 @@ At the conclusion of setup, the command will display the YellowDog Keyring name 
 The AWS account settings and resources, and the YellowDog resources that were created can be entirely removed using the `teardown` operation:
 
 ```commandline
-yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown
 ```
 
 All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
@@ -148,7 +148,7 @@ All destructive operations will require user confirmation; to avoid this, use th
 
 ### Cloud Wizard Setup
 
-The Cloud Wizard command is run using: `yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup`.
+The Cloud Wizard command is run using: `yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup`.
 
 Run the command with the `--help`/`-h` option to see the available options.
 
@@ -186,17 +186,17 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 2. It creates a Credential called `cloudwizard-aws` contained within the `cloudwizard-aws` Keyring, containing the access key created during the AWS account setup described above.
 
 
-3. It creates a range of Compute Source Templates, two for each selected AWS availability zone, one for **on-demand** instances and the other for **spot** instances. Each source is given a name with the following pattern: `cloudwizard-aws-eu-west-1a-ondemand`. Instances will use the `cloudwizard-aws/cloudwizard-aws` Credential. Instances will be created with public IP addresses, to permit outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels. Any instances created from the source will be tagged with `yd-cloudwizard=yellowdog-cloudwizard-source`.
+3. It creates a range of Compute Source Templates, two for each selected AWS availability zone, one for **on-demand** instances and the other for **spot** instances. Each source is given a name with the following pattern: `cloudwizard-aws-eu-west-1a-ondemand`. Instances will use the `cloudwizard-aws/cloudwizard-aws` Credential. Instances will be created with public IP addresses, to permit outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels. Any instances created from the source will be tagged with `yd cloudwizard=yellowdog-cloudwizard-source`.
 
 
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `t3a.micro` AWS instance type. In addition, an example **dynamic** template is created that will be constrained to AWS instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-aws-split-ondemand` or `cloudwizard-aws-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
 
 ### Cloud Wizard Teardown
 
-All settings and resources created by Cloud Wizard can be removed using `yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
 
 The following actions are taken in the **YellowDog account**:
 
@@ -221,13 +221,13 @@ If there are multiple invocations of `setup`, then the AWS access key and Yellow
 
 To add an inbound SSH rule to the default security group for a region, Cloud Wizard provides a convenient `add-ssh` option:
 
-`yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 add-ssh`
+`yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 add-ssh`
 
 Without `--region-name`, `add-ssh` adds the rule in the default security group of every region the account has opted into. Since the rule allows SSH from anywhere (`0.0.0.0/0`), `add-ssh` asks for confirmation first, naming the region or the number of regions (`--yes` skips it).
 
 The rule can be removed using:
 
-`yd-cloudwizard --cloud-provider=aws --region-name=eu-west-2 remove-ssh`
+`yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 remove-ssh`
 
 # Cloud Wizard for GCP
 
@@ -260,7 +260,7 @@ Ensure you have credentials (keys) for a **GCP Service Account** in a GCP projec
 Run the Cloud Wizard setup command:
 
 ```commandline
-yd-cloudwizard --cloud-provider=gcp --credentials-file=credentials.json setup
+yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json setup
 ```
 
 Once the command has discovered the GCP regions in which your service account has a default subnet, it will present them in a list. Select the regions for which to create YellowDog Compute Source Templates, e.g.:
@@ -295,7 +295,7 @@ At the conclusion of setup, the command will display the YellowDog Keyring name 
 The GCP account  and YellowDog resources that were created can be entirely removed using the `teardown` operation:
 
 ```commandline
-yd-cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
+yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
 ```
 
 All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
@@ -332,11 +332,11 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `f1-micro` GCP instance type by default. In addition, an example **dynamic** template is created that will be constrained to GCP instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-gcp-split-ondemand` or `cloudwizard-gcp-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
 
 ###  Cloud Wizard Teardown
 
-All settings and resources created by Cloud Wizard can be removed using `yd-cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
 
 The following actions are taken in the **YellowDog account**:
 
@@ -421,7 +421,7 @@ Please treat the `AZURE_CLIENT_SECRET` **very securely** -- it allows full acces
 Run the Cloud Wizard setup command:
 
 ```commandline
-yd-cloudwizard --cloud-provider=azure setup
+yd cloudwizard --cloud-provider=azure setup
 ```
 
 The command will present a list of Azure regions, allowing you to choose which regions you'd like to use with YellowDog: 
@@ -460,7 +460,7 @@ At the conclusion of setup, the command will display the YellowDog **Keyring nam
 The Azure account settings and resources and the YellowDog resources that were created by Cloud Wizard can be entirely removed using the `teardown` operation:
 
 ```commandline
-yd-cloudwizard --cloud-provider=azure teardown
+yd cloudwizard --cloud-provider=azure teardown
 ```
 
 All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
@@ -469,7 +469,7 @@ All destructive operations will require user confirmation; to avoid this, use th
 
 ### Cloud Wizard Setup
 
-The Cloud Wizard command is run using: `yd-cloudwizard --cloud-provider=azure setup`.
+The Cloud Wizard command is run using: `yd cloudwizard --cloud-provider=azure setup`.
 
 Run the command with the `--help`/`-h` option to see the available options.
 
@@ -501,11 +501,11 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `Standard_A1_v2` Azure instance type. In addition, an example **dynamic** template is created that will be constrained to Azure instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-azure-split-ondemand` or `cloudwizard-azure-dynamic-waterfall-lowestcost`. Note that the default instance type can be overridden using the `--instance-type` command line option when running Cloud Wizard.
 
 
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd-resource create` command to update the resources.
+5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
 
 ### Cloud Wizard Teardown
 
-All settings and resources created by Cloud Wizard can be removed using `yd-cloudwizard --cloud-provider=azure teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=azure teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
 
 The following actions are taken in the **YellowDog account**:
 
@@ -524,8 +524,8 @@ If there are multiple invocations of `setup` the Compute Source and Compute Requ
 
 To add an inbound SSH rule to the Cloud Wizard security group for a region, Cloud Wizard provides a convenient `add-ssh` option:
 
-`yd-cloudwizard --cloud-provider=azure --region-name=northeurope add-ssh`
+`yd cloudwizard --cloud-provider=azure --region-name=northeurope add-ssh`
 
 The rule can be removed using:
 
-`yd-cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh`
+`yd cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh`

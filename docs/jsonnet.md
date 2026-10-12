@@ -7,7 +7,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:40 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:12 BST 2026 -->
 
 <!--te-->
 
@@ -17,7 +17,7 @@ In all circumstances where JSON files are used by the YellowDog CLI commands, **
 A simple usage example might be:
 
 ```shell
-yd-workrequirement submit my_work_req.jsonnet
+yd workrequirement submit my_work_req.jsonnet
 ```
 
 The use of the filename extension `.jsonnet` will activate Jsonnet evaluation. The file is evaluated in memory, after variable substitution. An error message names the `.jsonnet` file itself, and its imports are found beside it, or failing that in the current directory.
@@ -26,7 +26,7 @@ The use of the filename extension `.jsonnet` will activate Jsonnet evaluation. T
 
 Jsonnet is **not** installed by default. If you try to use a Jsonnet file without it installed, the commands will print an error with installation instructions.
 
-On most platforms Jsonnet installs as a prebuilt wheel and needs nothing else. There is no wheel for Linux on Arm (`aarch64`), for Intel macOS, for Windows on Arm, or for Linux distributions older than Debian 9 / Ubuntu 17.04; on those, pip compiles Jsonnet from source, which needs a C++ compiler — `build-essential` on Debian/Ubuntu. `yd-version` reports whether Jsonnet is installed, and which version.
+On most platforms Jsonnet installs as a prebuilt wheel and needs nothing else. There is no wheel for Linux on Arm (`aarch64`), for Intel macOS, for Windows on Arm, or for Linux distributions older than Debian 9 / Ubuntu 17.04; on those, pip compiles Jsonnet from source, which needs a C++ compiler — `build-essential` on Debian/Ubuntu. `yd version` reports whether Jsonnet is installed, and which version.
 
 **With pipx:**
 
@@ -76,14 +76,14 @@ Because the substitution before the expansion is made in the Jsonnet text itself
 
 There are three possibilities for verifying that a Jsonnet specification is doing what is intended:
 
-1. To inspect the basic conversion of Jsonnet into JSON, without any additional processing by the YellowDog CLI commands, the `yd-jsonnet2json` command can be used. This takes the name(s) of the Jsonnet file(s) to be processed:
+1. To inspect the basic conversion of Jsonnet into JSON, without any additional processing by the YellowDog CLI commands, the `yd jsonnet2json` command can be used. This takes the name(s) of the Jsonnet file(s) to be processed:
 
 ```shell
-yd-jsonnet2json my_file.jsonnet
+yd jsonnet2json my_file.jsonnet
 ```
 
 
-2. The `jsonnet-dry-run` (`-J`) option of the `yd-workrequirement submit`, `yd-workerpool provision`, `yd-computerequirement instantiate`, `yd-resource create` and `yd-resource remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
+2. The `jsonnet-dry-run` (`-J`) option of the `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create` and `yd resource remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
 
 
 3. The `dry-run` (`-D`) option will generate JSON output representing the full processing of the Jsonnet file into what will be submitted to the API. This allows inspection to check that the output matches expectations, prior to submitting to the Platform.
@@ -116,7 +116,7 @@ local Task(arguments=[], environment={}) = {
 }
 ```
 
-When this is inspected using the `jsonnet-dry-run` option (`yd-workrequirement submit -Jq my_work_req.jsonnet`), this is the processed output:
+When this is inspected using the `jsonnet-dry-run` option (`yd workrequirement submit -Jq my_work_req.jsonnet`), this is the processed output:
 
 ```json
 {
@@ -150,7 +150,7 @@ When this is inspected using the `jsonnet-dry-run` option (`yd-workrequirement s
 }
 ```
 
-When this is inspected using the `dry-run` option (`yd-workrequirement submit -D my_work_req.jsonnet`), this is the processed output:
+When this is inspected using the `dry-run` option (`yd workrequirement submit -D my_work_req.jsonnet`), this is the processed output:
 
 ```json
 {

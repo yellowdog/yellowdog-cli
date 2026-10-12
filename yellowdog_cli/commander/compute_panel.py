@@ -204,22 +204,22 @@ class ComputePanel(WindowDialogs):
         extra_options = self._split_field(self.wp_provision_options, "Extra Options")
         if extra_options is None:
             return
-        self._run_command_in_subprocess("yd-workerpool provision", args + extra_options)
+        self._run_command_in_subprocess("yd workerpool provision", args + extra_options)
 
     def _resize_worker_pool_action(self):
         """
         Resize a Worker Pool, chosen from a list with the target node count, by
-        'yd-workerpool resize -y <ydid> <nodes>': the dialog is the confirmation, so the
+        'yd workerpool resize -y <ydid> <nodes>': the dialog is the confirmation, so the
         CLI's own is not asked for as well.
 
-        Lists the candidates with 'yd-list worker-pools --active-only --details
+        Lists the candidates with 'yd list worker-pools --active-only --details
         --json', since only the full Worker Pool carries the node count and its
         bounds, in the current namespace and tag or matching the Name pattern.
         Configured Worker Pools are left out, since their nodes are not a
         number the platform can change. A pool awaiting nodes is listed but
         cannot be chosen, since the platform refuses to resize it, and when
         every pool is awaiting nodes no dialog opens. A pool that starts
-        awaiting nodes after the listing still fails in 'yd-workerpool resize',
+        awaiting nodes after the listing still fails in 'yd workerpool resize',
         whose error reaches the output window like any other. Every failure
         refuses, as for Add to.
 
@@ -246,7 +246,7 @@ class ComputePanel(WindowDialogs):
         self._output.log("Checking which Worker Pools can be resized...")
         self.log_output.repaint()
         parsed = self._capture_json(
-            "yd-list",
+            "yd list",
             ["--json"],
             ["worker-pools", "--active-only", "--details", *scope_args],
         )
@@ -283,13 +283,13 @@ class ComputePanel(WindowDialogs):
 
         pool_id, nodes = choice
         self._run_command_in_subprocess(
-            "yd-workerpool resize", ["-y", pool_id, str(nodes)]
+            "yd workerpool resize", ["-y", pool_id, str(nodes)]
         )
 
     def _shutdown_all_worker_pools_action(self):
         self._run_destructive_with_listing(
             action_key="shutdown",
-            command="yd-workerpool shutdown",
+            command="yd workerpool shutdown",
             run_args=["-y"],
             title="Shut Down Worker Pools",
             gerund="Shutting down",
@@ -300,7 +300,7 @@ class ComputePanel(WindowDialogs):
     def _terminate_all_compute_requirements_action(self):
         self._run_destructive_with_listing(
             action_key="terminate",
-            command="yd-computerequirement terminate",
+            command="yd computerequirement terminate",
             run_args=["-y"],
             title="Terminate Compute Requirements",
             gerund="Terminating",

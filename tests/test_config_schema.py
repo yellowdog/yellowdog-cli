@@ -331,9 +331,9 @@ class TestWarnOfConfigViolations:
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert warnings == [
             "'config.toml': workRequirement: 'minNodes' is not read in this"
-            " section (see yd-schema config)",
+            " section (see yd schema config)",
             "'config.toml': workerPool.maxNodes: must be an integer"
-            " (see yd-schema config)",
+            " (see yd schema config)",
         ]
 
     def test_no_file_no_warnings(self, monkeypatch, warnings):
@@ -366,7 +366,7 @@ class TestWarnOfConfigViolations:
         load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
         assert len(warnings) == 1
         assert "cannot check 'config.toml' against the config schema" in warnings[0]
-        assert "Thing.field" in warnings[0] and "yd-schema config" in warnings[0]
+        assert "Thing.field" in warnings[0] and "yd schema config" in warnings[0]
 
 
 def test_the_suite_sees_no_config_snapshot():
@@ -515,7 +515,7 @@ class TestReviewFindings:
             tmp_path,
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "see yd-schema config" not in result.stdout
+        assert "see yd schema config" not in result.stdout
 
 
 class TestDeferredMinors:

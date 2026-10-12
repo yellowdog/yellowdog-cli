@@ -46,7 +46,7 @@ class ResultsPanel(WindowDialogs):
         None when neither is available — the Path field is empty and no tag has
         been discovered. Callers must refuse rather than carry on: this used to
         interpolate the missing tag and return the literal 'None*', which was
-        then handed to 'yd-data download' and 'yd-data delete' as the scope to
+        then handed to 'yd data download' and 'yd data delete' as the scope to
         act on.
         """
         override = self.object_path_override.toPlainText().strip()
@@ -83,7 +83,7 @@ class ResultsPanel(WindowDialogs):
         Download matching objects from remote storage into the results directory,
         letting the user choose which of the matched items to fetch.
 
-        Enumerates via 'yd-data download -D --json' first: with nothing matching, log
+        Enumerates via 'yd data download -D --json' first: with nothing matching, log
         and do nothing; when the enumeration fails there are no paths to choose
         between, so fall back to downloading the whole pattern as before.
 
@@ -110,7 +110,7 @@ class ResultsPanel(WindowDialogs):
 
         if self.dry_run_objects.isChecked():
             self._run_command_in_subprocess(
-                "yd-data download", ["--into", dst, path, "-D"]
+                "yd data download", ["--into", dst, path, "-D"]
             )
             return
 
@@ -119,12 +119,12 @@ class ResultsPanel(WindowDialogs):
                 "Selection suppressed by '--yes';"
                 f" downloading all objects matching '{path}'"
             )
-            self._run_command_in_subprocess("yd-data download", ["--into", dst, path])
+            self._run_command_in_subprocess("yd data download", ["--into", dst, path])
             return
 
         self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
-        objects = self._capture_dry_run_objects("yd-data download", [path])
+        objects = self._capture_dry_run_objects("yd data download", [path])
 
         if objects is not None and not objects:
             self._output.log(f"No objects match '{path}'")
@@ -134,7 +134,7 @@ class ResultsPanel(WindowDialogs):
             self._output.log(
                 "Could not list matching objects; downloading them all instead"
             )
-            self._run_command_in_subprocess("yd-data download", ["--into", dst, path])
+            self._run_command_in_subprocess("yd data download", ["--into", dst, path])
             return
 
         body = f"Downloading objects matching '{path}' into '{RESULTS_DIR}'."
@@ -150,7 +150,7 @@ class ResultsPanel(WindowDialogs):
             return
 
         self._run_command_in_subprocess(
-            "yd-data download",
+            "yd data download",
             ["--into", dst, *handles],
             log_args=self._abbreviated_run_args(["--into", dst], handles, "objects"),
         )
@@ -158,7 +158,7 @@ class ResultsPanel(WindowDialogs):
     def _delete_objects_action(self):
         """
         Delete matching objects from remote storage, letting the user select
-        which of the matched items to remove. Enumerates via 'yd-data delete -D
+        which of the matched items to remove. Enumerates via 'yd data delete -D
         --json -R <path>' first: with nothing matching, log a message and do
         nothing; when the enumeration fails there are no paths to target, so
         confirm at the scope level (without a list) and delete the whole
@@ -181,7 +181,7 @@ class ResultsPanel(WindowDialogs):
 
         if self.dry_run_objects.isChecked():
             # Harmless preview: run directly, no enumeration or confirmation.
-            self._run_command_in_subprocess("yd-data delete", ["-Ry", path, "-D"])
+            self._run_command_in_subprocess("yd data delete", ["-Ry", path, "-D"])
             return
 
         if self._confirmations_disabled or "delete" in self._skip_confirmations:
@@ -189,12 +189,12 @@ class ResultsPanel(WindowDialogs):
                 f"Confirmations suppressed for 'delete';"
                 f" deleting all objects matching '{path}'"
             )
-            self._run_command_in_subprocess("yd-data delete", ["-Ry", path])
+            self._run_command_in_subprocess("yd data delete", ["-Ry", path])
             return
 
         self._output.log(f"Checking which objects match '{path}'...")
         self.log_output.repaint()
-        objects = self._capture_dry_run_objects("yd-data delete", ["-R", path])
+        objects = self._capture_dry_run_objects("yd data delete", ["-R", path])
 
         if objects is not None and not objects:
             self._output.log(f"No objects match '{path}'")
@@ -217,11 +217,11 @@ class ResultsPanel(WindowDialogs):
         if result.handles is None:
             # The enumeration failed, so there are no paths to target: delete the
             # whole pattern the user has just confirmed.
-            self._run_command_in_subprocess("yd-data delete", ["-Ry", path])
+            self._run_command_in_subprocess("yd data delete", ["-Ry", path])
             return
 
         if not result.handles:
-            # 'yd-data delete -Ry' with no paths would delete the entire configured
+            # 'yd data delete -Ry' with no paths would delete the entire configured
             # prefix, so an empty selection must never reach the command.
             self._output.log("Nothing selected to delete; no objects removed")
             return
@@ -230,7 +230,7 @@ class ResultsPanel(WindowDialogs):
             return
 
         self._run_command_in_subprocess(
-            "yd-data delete",
+            "yd data delete",
             ["-Ry", *result.handles],
             log_args=self._abbreviated_run_args(["-Ry"], result.handles, "objects"),
         )

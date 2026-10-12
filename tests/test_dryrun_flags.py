@@ -1,6 +1,6 @@
 """
-Flag/guard tests for the dry-run mode on yd-workrequirement cancel,
-yd-workerpool shutdown and yd-computerequirement terminate. These exercise
+Flag/guard tests for the dry-run mode on yd workrequirement cancel,
+yd workerpool shutdown and yd computerequirement terminate. These exercise
 argument parsing only (the by-name guard errors at parse time, before any
 platform contact), so they need no credentials.
 """
@@ -26,9 +26,9 @@ from yellowdog_cli.utils.results import reset_results
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-workrequirement cancel",
-        "yd-workerpool shutdown",
-        "yd-computerequirement terminate",
+        "yd workrequirement cancel",
+        "yd workerpool shutdown",
+        "yd computerequirement terminate",
     ],
 )
 def test_dry_run_flag_in_help(cmd):
@@ -38,9 +38,9 @@ def test_dry_run_flag_in_help(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-workrequirement cancel -D some-wr-name",
-        "yd-workerpool shutdown -D some-wp-name",
-        "yd-computerequirement terminate -D some-cr-name",
+        "yd workrequirement cancel -D some-wr-name",
+        "yd workerpool shutdown -D some-wp-name",
+        "yd computerequirement terminate -D some-cr-name",
     ],
 )
 def test_dry_run_with_explicit_names_is_accepted(cmd):
@@ -55,15 +55,15 @@ def test_dry_run_with_explicit_names_is_accepted(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-workrequirement cancel",
-        "yd-workerpool shutdown",
-        "yd-computerequirement terminate",
-        # yd-data delete and yd-data download need a path, so give them one:
+        "yd workrequirement cancel",
+        "yd workerpool shutdown",
+        "yd computerequirement terminate",
+        # yd data delete and yd data download need a path, so give them one:
         # the point is that --json alone is accepted, not that the arguments
         # are incomplete.
         # '--nc', so that no configured remote is ever reached
-        "yd-data delete --nc somepath",
-        "yd-data download somepath",
+        "yd data delete --nc somepath",
+        "yd data download somepath",
     ],
 )
 def test_json_without_dry_run_is_accepted(cmd):
@@ -78,9 +78,9 @@ def test_json_without_dry_run_is_accepted(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-workrequirement cancel 'proj-*' -D",
-        "yd-workerpool shutdown 'wp-*' -D",
-        "yd-computerequirement terminate 'cr-*' -D",
+        "yd workrequirement cancel 'proj-*' -D",
+        "yd workerpool shutdown 'wp-*' -D",
+        "yd computerequirement terminate 'cr-*' -D",
     ],
 )
 def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
@@ -94,9 +94,9 @@ def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-workrequirement cancel 'proj-*' some-wr",
-        "yd-workerpool shutdown 'wp-*' some-wp",
-        "yd-computerequirement terminate 'cr-*' some-cr",
+        "yd workrequirement cancel 'proj-*' some-wr",
+        "yd workerpool shutdown 'wp-*' some-wp",
+        "yd computerequirement terminate 'cr-*' some-cr",
     ],
 )
 def test_mixing_glob_and_literal_errors(cmd):

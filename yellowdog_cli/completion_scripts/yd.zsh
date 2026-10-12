@@ -1,14 +1,14 @@
-# Zsh completion for the YellowDog CLI's yd-* commands, printed by
-# 'yd-completion zsh'. Load it from ~/.zshrc with:
+# Zsh completion for the YellowDog CLI's yd command, printed by
+# 'yd completion zsh'. Load it from ~/.zshrc with:
 #
-#   eval "$(yd-completion zsh)"
+#   eval "$(yd completion zsh)"
 #
-# Each Tab asks 'yd-completion --complete' what completes the current word.
+# Each Tab asks 'yd completion --complete' what completes the current word.
 
 _yd_completion() {
     local reply mode line
     local -a lines candidates
-    reply=$(yd-completion --complete zsh $(( CURRENT - 1 )) "${(@)words[1,CURRENT]}" 2>/dev/null) || return 1
+    reply=$(yd completion --complete zsh $(( CURRENT - 1 )) "${(@)words[1,CURRENT]}" 2>/dev/null) || return 1
     lines=("${(@f)reply}")
     mode=${lines[1]}
     case $mode in
@@ -30,4 +30,4 @@ _yd_completion() {
 if ! (( $+functions[compdef] )); then
     autoload -Uz compinit && compinit
 fi
-compdef _yd_completion @NAMES@
+compdef _yd_completion yd

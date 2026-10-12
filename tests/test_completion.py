@@ -1,6 +1,6 @@
 """
 Shell completion: utils/completion.py's complete() over the registries, the
-'yd-completion --complete' protocol the stubs speak, the stubs themselves
+'yd completion --complete' protocol the stubs speak, the stubs themselves
 (run in bash, zsh and fish where those are installed, parsed by PowerShell
 where it is), and the registry's Completes markings held to the metavars.
 """
@@ -16,21 +16,20 @@ from yellowdog_cli import completion as yd_completion
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
-    OTHER_COMMANDS,
     Completes,
 )
 from yellowdog_cli.utils.completion import (
     Mode,
     complete,
-    completion_names,
     join_bash_words,
 )
 from yellowdog_cli.utils.noun_registry import (
-    DEPRECATED,
     NOUN_COMMANDS,
     NOUNS,
+    REPLACED_BY_VERBS,
     RESOURCE_LIST_TYPES,
 )
+from yellowdog_cli.utils.top_level import TOP_LEVEL
 
 
 def _values(words: list[str], current: str = "") -> list[str]:
@@ -41,110 +40,110 @@ def _values(words: list[str], current: str = "") -> list[str]:
 
 class TestNounsAndVerbs:
     def test_a_noun_offers_its_verbs_with_their_summaries(self):
-        result = complete(["yd-workrequirement"], "")
-        noun = next(n for n in NOUNS if n.name == "yd-workrequirement")
+        result = complete(["yd", "workrequirement"], "")
+        noun = next(n for n in NOUNS if n.name == "workrequirement")
         assert [c.value for c in result.candidates] == [v.name for v in noun.verbs]
         assert result.candidates[0].description == noun.verbs[0].summary
 
     def test_the_short_form_offers_the_same(self):
-        assert _values(["yd-wr"]) == _values(["yd-workrequirement"])
+        assert _values(["yd", "wr"]) == _values(["yd", "workrequirement"])
 
     def test_the_verbs_are_filtered_by_what_is_typed(self):
-        assert _values(["yd-wr"], "s") == ["submit", "start", "show"]
+        assert _values(["yd", "wr"], "s") == ["submit", "start", "show"]
 
     def test_a_dash_at_the_verb_offers_help(self):
-        assert _values(["yd-wr"], "-") == ["--help"]
+        assert _values(["yd", "wr"], "-") == ["--help"]
 
     def test_an_unknown_verb_offers_nothing(self):
-        assert _values(["yd-wr", "nonesuch"], "-") == []
+        assert _values(["yd", "wr", "nonesuch"], "-") == []
 
     def test_a_deprecated_command_offers_nothing(self):
         assert _values(["yd-submit"], "--") == []
 
     def test_an_unknown_command_offers_nothing(self):
-        assert _values(["yd-nonesuch"], "--") == []
+        assert _values(["yd", "nonesuch"], "--") == []
         assert _values([], "") == []
 
     @pytest.mark.parametrize(
-        "name", ["yd-commander", "yd-mcp", "yd-format-json", "yd-jsonnet2json"]
+        "word", ["commander", "mcp", "format-json", "jsonnet2json"]
     )
-    def test_a_command_the_registry_does_not_describe_completes_files(self, name):
+    def test_a_command_the_registry_does_not_describe_completes_files(self, word):
         # Before the stubs claimed its name, the shell completed files for it
-        assert complete([name], "").mode is Mode.FILES
-        assert complete([name, "config.toml", "-r"], "w").mode is Mode.FILES
-        assert _values([name], "-") == ["--help"]
+        assert complete(["yd", word], "").mode is Mode.FILES
+        assert complete(["yd", word, "config.toml", "-r"], "w").mode is Mode.FILES
+        assert _values(["yd", word], "-") == ["--help"]
 
     def test_a_described_standalone_command_is_not_left_to_the_shell(self):
-        assert _values(["yd-completion"], "z") == ["zsh"]
+        assert _values(["yd", "completion"], "z") == ["zsh"]
 
     def test_the_command_may_be_a_path_or_an_exe(self):
-        assert _values(["/usr/local/bin/yd-wr"], "s") == ["submit", "start", "show"]
-        assert _values(["C:\\bin\\yd-wr.exe"], "s") == ["submit", "start", "show"]
+        assert _values(["/usr/local/bin/yd", "wr"], "s") == ["submit", "start", "show"]
+        assert _values(["C:\\bin\\yd.exe", "wr"], "s") == ["submit", "start", "show"]
 
 
 class TestOptions:
     def test_a_verb_offers_its_options_with_their_help(self):
-        result = complete(["yd-wr", "submit"], "--fol")
+        result = complete(["yd", "wr", "submit"], "--fol")
         assert [c.value for c in result.candidates] == ["--follow"]
         assert result.candidates[0].description
 
     def test_a_hidden_option_is_never_offered(self):
-        # yd-instance takes Instances by ID: no namespace or tag selection
-        offered = _values(["yd-instance", "terminate"], "--")
+        # yd instance takes Instances by ID: no namespace or tag selection
+        offered = _values(["yd", "instance", "terminate"], "--")
         assert "--namespace" not in offered
         assert "--tag" not in offered
         assert "--yes" in offered
 
     def test_a_given_option_is_not_offered_again(self):
-        assert "--follow" not in _values(["yd-wr", "submit", "--follow"], "--")
+        assert "--follow" not in _values(["yd", "wr", "submit", "--follow"], "--")
 
     def test_a_given_option_is_not_offered_again_by_its_short_flag(self):
-        assert "--follow" not in _values(["yd-wr", "submit", "-f"], "--")
+        assert "--follow" not in _values(["yd", "wr", "submit", "-f"], "--")
 
     def test_a_repeatable_option_is_offered_again(self):
-        words = ["yd-wr", "submit", "--variable", "a=1"]
+        words = ["yd", "wr", "submit", "--variable", "a=1"]
         assert "--variable" in _values(words, "--")
 
     def test_an_exclusive_group_with_a_member_given_is_not_offered(self):
-        words = ["yd-data", "download", "x", "--into", "out"]
+        words = ["yd", "data", "download", "x", "--into", "out"]
         assert "--destination" not in _values(words, "--")
 
     def test_a_short_flag_typed_in_full_completes_to_itself(self):
-        assert _values(["yd-wr", "submit"], "-f") == ["-f"]
+        assert _values(["yd", "wr", "submit"], "-f") == ["-f"]
 
     def test_help_is_offered(self):
-        assert "--help" in _values(["yd-wr", "submit"], "--")
+        assert "--help" in _values(["yd", "wr", "submit"], "--")
 
     def test_an_empty_word_with_no_positional_values_offers_options(self):
-        assert "--yes" in _values(["yd-wr", "cancel"], "")
+        assert "--yes" in _values(["yd", "wr", "cancel"], "")
 
     def test_a_double_dash_ends_options(self):
-        assert _values(["yd-wr", "cancel", "--"], "--") == []
+        assert _values(["yd", "wr", "cancel", "--"], "--") == []
 
     def test_an_optional_value_may_be_left_out(self):
         # '--namespace' takes a value or none: a dash after it is an option
-        assert "--follow" in _values(["yd-wr", "cancel", "--namespace"], "--f")
+        assert "--follow" in _values(["yd", "wr", "cancel", "--namespace"], "--f")
 
     def test_the_value_of_an_optional_value_option_is_not_a_positional(self):
-        words = ["yd-workerpool", "resize", "--namespace", "ns"]
+        words = ["yd", "workerpool", "resize", "--namespace", "ns"]
         # The next word is the first positional, which offers nothing
         assert _values(words, "x") == []
 
 
 class TestValues:
     def test_choices(self):
-        words = ["yd-cloudinfo", "prices", "--provider"]
+        words = ["yd", "cloudinfo", "prices", "--provider"]
         assert _values(words) == ["aws", "azure", "google", "oci"]
 
     def test_choices_after_an_equals(self):
-        words = ["yd-cloudinfo", "prices"]
+        words = ["yd", "cloudinfo", "prices"]
         assert _values(words, "--provider=a") == ["--provider=aws", "--provider=azure"]
 
     def test_an_unknown_option_after_an_equals_offers_nothing(self):
-        assert _values(["yd-wr", "cancel"], "--nonesuch=") == []
+        assert _values(["yd", "wr", "cancel"], "--nonesuch=") == []
 
     def test_sort_keys_after_a_comma_each_once(self):
-        words = ["yd-wr", "cancel", "--sort"]
+        words = ["yd", "wr", "cancel", "--sort"]
         assert _values(words, "name,") == [
             "name,created",
             "name,status",
@@ -152,40 +151,40 @@ class TestValues:
         ]
 
     def test_entity_types(self):
-        assert _values(["yd-list"], "work") == [
+        assert _values(["yd", "list"], "work") == [
             t for t in ENTITY_TYPES if t.startswith("work")
         ]
 
     def test_a_verb_narrows_the_entity_types(self):
-        assert _values(["yd-resource", "list"]) == sorted(RESOURCE_LIST_TYPES)
+        assert _values(["yd", "resource", "list"]) == sorted(RESOURCE_LIST_TYPES)
 
     def test_a_fixed_positional_is_not_offered(self):
-        # 'yd-wr list' supplies the entity type itself
-        assert "work-requirements" not in _values(["yd-wr", "list"])
+        # 'yd wr list' supplies the entity type itself
+        assert "work-requirements" not in _values(["yd", "wr", "list"])
 
     def test_a_value_the_cli_does_not_know_offers_nothing(self):
-        assert _values(["yd-wr", "cancel", "--namespace"]) == []
+        assert _values(["yd", "wr", "cancel", "--namespace"]) == []
 
     @pytest.mark.parametrize(
         "words, mode",
         [
-            (["yd-wr", "submit", "--config"], Mode.FILES),
-            (["yd-wr", "submit"], Mode.FILES),  # the specification positional
-            (["yd-resource", "create"], Mode.FILES),
-            (["yd-data", "upload"], Mode.FILES),
-            (["yd-schema", "--write"], Mode.DIRS),
-            (["yd-data", "download", "x", "--into"], Mode.DIRS),
+            (["yd", "wr", "submit", "--config"], Mode.FILES),
+            (["yd", "wr", "submit"], Mode.FILES),  # the specification positional
+            (["yd", "resource", "create"], Mode.FILES),
+            (["yd", "data", "upload"], Mode.FILES),
+            (["yd", "schema", "--write"], Mode.DIRS),
+            (["yd", "data", "download", "x", "--into"], Mode.DIRS),
         ],
     )
     def test_files_and_directories(self, words, mode):
         assert complete(words, "").mode is mode
 
     def test_a_file_after_an_equals(self):
-        assert complete(["yd-wr", "submit"], "--config=c").mode is Mode.FILES
+        assert complete(["yd", "wr", "submit"], "--config=c").mode is Mode.FILES
 
     def test_positionals_are_counted(self):
-        # yd-workerpool resize <pool> <size>: both given, so options
-        words = ["yd-workerpool", "resize", "pool", "3"]
+        # yd workerpool resize <pool> <size>: both given, so options
+        words = ["yd", "workerpool", "resize", "pool", "3"]
         assert "--yes" in _values(words)
 
 
@@ -197,67 +196,87 @@ class TestEveryCommand:
         complete(words, "-")
         assert complete(words, "--help").candidates
 
-    @pytest.mark.parametrize("name", completion_names())
-    def test_every_registered_name_completes(self, name):
-        complete([name], "")
-        complete([name], "-")
+    @pytest.mark.parametrize("word", sorted(TOP_LEVEL))
+    def test_every_word_completes(self, word):
+        complete(["yd", word], "")
+        complete(["yd", word], "-")
 
-    def test_the_registered_names(self):
-        names = completion_names()
-        for noun in NOUNS:
-            assert set(noun.invoked_names()) <= set(names)
-        assert set(OTHER_COMMANDS) <= set(names)
-        assert {"yd-list", "yd-show", "yd-follow", "yd-wait"} <= set(names)
-        assert not set(DEPRECATED) & set(names)
-        assert len(names) == len(set(names))
+
+class TestTheFirstWord:
+    def test_offers_the_words_with_their_summaries(self):
+        values = {c.value: c.description for c in complete(["yd"], "w").candidates}
+        assert {"wr", "workrequirement", "workerpool", "wp", "wait", "worker"} <= set(
+            values
+        )
+        assert values["wr"] == "short for 'yd workrequirement'"
+
+    def test_offers_every_word_and_no_deprecated_command(self):
+        values = {c.value for c in complete(["yd"], "").candidates}
+        assert values == set(TOP_LEVEL)
+        assert not values & set(REPLACED_BY_VERBS)
+        assert "submit" not in values
+
+    def test_help_after_a_dash(self):
+        assert _values(["yd"], "-") == ["--help"]
+
+    @pytest.mark.parametrize("argv0", ["yd", "/usr/local/bin/yd", r"C:\bin\yd.exe"])
+    def test_yd_by_any_path(self, argv0):
+        assert _values([argv0, "wr"], "sub") == ["submit"]
+
+    def test_a_deprecated_script_completes_nothing(self):
+        assert _values(["yd-list"], "") == []
+        assert _values(["yd-submit"], "-") == []
+
+    def test_an_unknown_word_completes_nothing(self):
+        assert _values(["yd", "frob"], "") == []
 
 
 class TestBashWords:
     def test_an_option_and_its_value_are_rejoined(self):
-        assert join_bash_words(["yd-wr", "cancel", "--sort", "="], "na") == (
-            ["yd-wr", "cancel"],
+        assert join_bash_words(["yd", "wr", "cancel", "--sort", "="], "na") == (
+            ["yd", "wr", "cancel"],
             "--sort=na",
             "--sort=",
         )
 
     def test_a_bare_equals_is_the_value_start(self):
-        assert join_bash_words(["yd-wr", "cancel", "--sort"], "=") == (
-            ["yd-wr", "cancel"],
+        assert join_bash_words(["yd", "wr", "cancel", "--sort"], "=") == (
+            ["yd", "wr", "cancel"],
             "--sort=",
             "--sort=",
         )
 
     def test_a_ydid_is_rejoined(self):
-        words = ["yd-show", "ydid", ":", "wrkreq", ":", "000", ":", "x"]
+        words = ["yd", "show", "ydid", ":", "wrkreq", ":", "000", ":", "x"]
         assert join_bash_words(words, "") == (
-            ["yd-show", "ydid:wrkreq:000:x"],
+            ["yd", "show", "ydid:wrkreq:000:x"],
             "",
             "",
         )
 
     def test_nothing_to_join(self):
-        assert join_bash_words(["yd-wr"], "s") == (["yd-wr"], "s", "")
+        assert join_bash_words(["yd", "wr"], "s") == (["yd", "wr"], "s", "")
 
 
 class TestReply:
     def test_bash_gets_values_without_the_prefix_it_keeps(self):
-        words = ["yd-wr", "cancel", "--sort", "=", "cr"]
-        assert yd_completion.completion_reply("bash", 4, words) == [
+        words = ["yd", "wr", "cancel", "--sort", "=", "cr"]
+        assert yd_completion.completion_reply("bash", 5, words) == [
             "values",
             "created",
         ]
 
     def test_zsh_gets_descriptions(self):
-        lines = yd_completion.completion_reply("zsh", 1, ["yd-wr", "sub"])
+        lines = yd_completion.completion_reply("zsh", 2, ["yd", "wr", "sub"])
         assert lines == ["values", "submit\tSubmit a Work Requirement"]
 
     def test_an_index_past_the_words_is_an_empty_current_word(self):
         # PowerShell 5.1 drops an empty argument, so it never sends one
-        lines = yd_completion.completion_reply("powershell", 1, ["yd-wr"])
+        lines = yd_completion.completion_reply("powershell", 2, ["yd", "wr"])
         assert "submit\tSubmit a Work Requirement" in lines
 
     def test_a_mode_without_candidates(self):
-        assert yd_completion.completion_reply("zsh", 2, ["yd-wr", "submit"]) == [
+        assert yd_completion.completion_reply("zsh", 3, ["yd", "wr", "submit"]) == [
             "files"
         ]
 
@@ -267,7 +286,7 @@ class TestReply:
         assert capsys.readouterr() == ("", "")
 
     def test_the_request_is_answered_on_stdout(self, monkeypatch, capsys):
-        argv = ["yd-completion", "--complete", "bash", "1", "yd-wr", "sub"]
+        argv = ["yd-completion", "--complete", "bash", "2", "yd", "wr", "sub"]
         monkeypatch.setattr(sys, "argv", argv)
         yd_completion.main()
         assert capsys.readouterr().out == "values\nsubmit\n"
@@ -275,12 +294,11 @@ class TestReply:
 
 class TestScripts:
     @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
-    def test_a_script_registers_every_name(self, shell):
+    def test_a_script_is_registered_for_yd_alone(self, shell):
         script = yd_completion.completion_script(shell)
         assert "@NAMES@" not in script
-        for name in completion_names():
-            spelled = f"'{name}'" if shell == "powershell" else name
-            assert re.search(rf"(?<![\w-]){re.escape(spelled)}(?![\w-])", script)
+        assert "yd completion --complete" in script
+        assert "yd-completion" not in script
 
     def test_the_command_prints_the_script(self, monkeypatch, capsys):
         monkeypatch.setattr(sys, "argv", ["yd-completion", "bash"])
@@ -294,11 +312,9 @@ class TestScripts:
         assert raised.value.code == 2
 
 
-# Stand-ins the stubs run under: 'yd-completion' as this interpreter's
-# module, so the checkout's code answers whatever is installed
-_COMPLETER = (
-    f'yd-completion() {{ "{sys.executable}" -m yellowdog_cli.completion "$@"; }}'
-)
+# Stand-ins the stubs run under: 'yd' as this interpreter's module, so the
+# checkout's code answers whatever is installed
+_COMPLETER = f'yd() {{ "{sys.executable}" -m yellowdog_cli.yd "$@"; }}'
 
 
 def _run_shell(shell: str, script: str, tmp_path) -> str:
@@ -331,11 +347,11 @@ class TestBashScript:
                 yd_completion.completion_script("bash"),
                 't() { COMP_WORDS=("$@"); COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ));'
                 ' _yd_completion; echo "${COMPREPLY[*]}"; }',
-                "t yd-wr s",
-                "t yd-wr cancel --sort = cr",
-                "t yd-wr submit specs/w",
-                "t yd-schema --write sp",
-                "complete -p yd-wr",
+                "t yd wr s",
+                "t yd wr cancel --sort = cr",
+                "t yd wr submit specs/w",
+                "t yd schema --write sp",
+                "complete -p yd",
             ]
         )
         assert _run_shell("bash", script, tmp_path).splitlines() == [
@@ -343,7 +359,7 @@ class TestBashScript:
             "created",
             "specs/wr.json",
             "specs",
-            "complete -F _yd_completion yd-wr",
+            "complete -F _yd_completion yd",
         ]
 
 
@@ -364,14 +380,14 @@ class TestZshScript:
                 "_files() { print -r -- files $* }",
                 yd_completion.completion_script("zsh"),
                 't() { words=("$@"); CURRENT=${#words}; _yd_completion }',
-                "t yd-wr su",
-                "t yd-wr cancel --sort=cr",
-                "t yd-wr submit ''",
-                "t yd-schema --write ''",
+                "t yd wr su",
+                "t yd wr cancel --sort=cr",
+                "t yd wr submit ''",
+                "t yd schema --write ''",
             ]
         )
         assert _run_shell("zsh", script, tmp_path).splitlines() == [
-            "compdef _yd_completion yd-workrequirement",
+            "compdef _yd_completion yd",
             "submit:Submit a Work Requirement",
             "--sort=created",
             "files",
@@ -392,36 +408,35 @@ class TestFishScript:
         (tmp_path / "specs").mkdir()
         (tmp_path / "specs" / "wr.json").write_text("{}", encoding="utf-8")
         lines = [
-            "yd-wr s",
-            "yd-wr cancel --sort=cr",
-            "yd-wr submit specs/w",
-            "yd-schema --write sp",
+            "yd wr s",
+            "yd wr cancel --sort=cr",
+            "yd wr submit specs/w",
+            "yd schema --write sp",
             "yd-submit --f",
         ]
         script = "\n".join(
             [
-                f'function yd-completion; "{sys.executable}" -m'
-                " yellowdog_cli.completion $argv; end",
+                f'function yd; "{sys.executable}" -m yellowdog_cli.yd $argv; end',
                 yd_completion.completion_script("fish"),
                 *(f"echo '[{line}]'; complete -C '{line}'" for line in lines),
-                "echo '[yd-wr ]'; complete -C 'yd-wr ' | count",
+                "echo '[yd wr ]'; complete -C 'yd wr ' | count",
             ]
         )
         assert _run_shell("fish", script, tmp_path).splitlines() == [
-            "[yd-wr s]",
+            "[yd wr s]",
             "show\tShow the details of Work Requirements",
             "start\tStart held (paused) Work Requirements",
             "submit\tSubmit a Work Requirement",
-            "[yd-wr cancel --sort=cr]",
+            "[yd wr cancel --sort=cr]",
             "--sort=created",
-            "[yd-wr submit specs/w]",
+            "[yd wr submit specs/w]",
             "specs/wr.json",
-            "[yd-schema --write sp]",
+            "[yd schema --write sp]",
             "specs/\tDirectory",
             # A deprecated command has no completion
             "[yd-submit --f]",
-            "[yd-wr ]",
-            str(len(next(n for n in NOUNS if n.name == "yd-workrequirement").verbs)),
+            "[yd wr ]",
+            str(len(next(n for n in NOUNS if n.name == "workrequirement").verbs)),
         ]
 
 

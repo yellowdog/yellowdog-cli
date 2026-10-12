@@ -33,6 +33,7 @@ from yellowdog_cli.utils.results import (
     flush_results_after_failure,
 )
 from yellowdog_cli.utils.specs.schema_cache import report_problems_to
+from yellowdog_cli.utils.top_level import deprecation_message
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
 
 
@@ -58,23 +59,18 @@ def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
 
 def warn_if_deprecated(args: Any) -> None:
     """
-    Warn, on stderr, of a command invoked by a name the noun commands
-    replace ('yd-submit' for 'yd-workrequirement submit'): once the output
+    Warn, on stderr, of a command invoked by a deprecated script's name
+    ('yd-submit' for 'yd workrequirement submit', 'yd-list' for 'yd list'):
+    once the output
     settings are configured, so '--quiet' suppresses it, and before anything
     else is printed. 'python -m' (Commander, the MCP server) is not warned.
     """
     # A test's stand-in for the command line may be a mock: only a list of
-    # noun forms is a deprecation
+    # 'yd' forms is a deprecation
     replaced_by = getattr(args, "replaced_by", None)
     if not isinstance(replaced_by, list) or not replaced_by:
         return
-    forms = [f"'{form}'" for form in replaced_by]
-    use = forms[0] if len(forms) == 1 else f"{', '.join(forms[:-1])} or {forms[-1]}"
-    print_warning(
-        f"'{args.command_name}' is deprecated and will be removed in a future"
-        f" release: use {use}",
-        stderr=True,
-    )
+    print_warning(deprecation_message(args.command_name, replaced_by), stderr=True)
 
 
 def describe_error(error: Exception) -> str:

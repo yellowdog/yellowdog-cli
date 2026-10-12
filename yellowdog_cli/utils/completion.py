@@ -1,21 +1,22 @@
 """
-Shell completion: what Tab offers for a partly typed yd-* command line.
+Shell completion: what Tab offers for a partly typed 'yd' command line.
 
-complete() works from the registries alone (command_registry.COMMANDS and
-noun_registry's nouns and derived commands), importing no command module
-and no SDK, since the shell runs 'yd-completion --complete' on every Tab.
+complete() works from the registries alone (command_registry.COMMANDS,
+noun_registry's nouns and derived commands, and top_level.TOP_LEVEL, the
+words after 'yd'), importing no command module and no SDK, since the shell
+runs 'yd completion --complete' on every Tab.
 It offers a noun's verbs, the options a command or verb offers (never one
 it hides), and the values the registry states: choices, '--sort' keys, the
 entity and Cloud Info types, and local files or directories for an option
 marked Completes.FILE or Completes.DIR. A value it knows nothing of (a
 name, a YDID) offers nothing; Platform names would be another Completes.
-A command whose arguments the registry does not describe (yd-commander,
-yd-mcp, and the standalone commands that parse their own) is left to the
+A command whose arguments the registry does not describe (yd commander,
+yd mcp, and the standalone commands that parse their own) is left to the
 shell's own completion of files, which is what it had before the stubs
 claimed its name, with '--help' for a word starting with '-'.
 
-The deprecated commands are not completed, and so not registered: the
-stubs register completion_names().
+The stubs register 'yd' alone: a deprecated 'yd-*' script is not
+completed.
 """
 
 from __future__ import annotations
@@ -29,23 +30,21 @@ from yellowdog_cli.utils.command_registry import (
     CLOUD_INFO_TYPES,
     COMMANDS,
     ENTITY_TYPES,
-    OTHER_COMMANDS,
     SORT_KEY_TYPES,
     Command,
     Completes,
     Exclusive,
     Option,
-    command_from_argv0,
     resolve_cloud_info_type,
     resolve_entity_type,
 )
+from yellowdog_cli.utils.invocation import invoked_name
 from yellowdog_cli.utils.noun_registry import (
-    DEPRECATED,
     NOUN_COMMANDS,
-    NOUNS,
     NOUNS_BY_NAME,
     RESOURCE_LIST_TYPES,
 )
+from yellowdog_cli.utils.top_level import TOP_LEVEL, Kind
 
 # The actions whose option takes no value
 _NO_VALUE_ACTIONS = frozenset(
@@ -64,7 +63,7 @@ _TYPE_VALUES: dict[object, tuple[str, ...]] = {
 # Values a verb narrows by a check of its own rather than in its options:
 # (derived command, option name) -> the values it accepts
 _VERB_VALUES: dict[tuple[str, str], tuple[str, ...]] = {
-    ("yd-resource list", "entity_type"): tuple(sorted(RESOURCE_LIST_TYPES)),
+    ("yd resource list", "entity_type"): tuple(sorted(RESOURCE_LIST_TYPES)),
 }
 
 _HELP_FLAGS = (("--help", "show the help message and exit"),)
@@ -94,40 +93,35 @@ class Completions:
 _NOTHING = Completions()
 
 
-def completion_names() -> list[str]:
-    """
-    The command names completion is registered for: the nouns and their
-    short forms, the registry commands no noun replaces (the generic
-    commands and the utilities), and the other entry points.
-    """
-    names = [name for noun in NOUNS for name in noun.invoked_names()]
-    names += sorted(name for name in COMMANDS if name not in DEPRECATED)
-    names += sorted(OTHER_COMMANDS)
-    return names
-
-
 def complete(words: list[str], current: str) -> Completions:
     """
     What completes 'current', the word under the cursor, after 'words', the
-    words before it (the command's name first).
+    words before it ('yd' first).
     """
-    if not words:
+    if not words or invoked_name(words[0]) != "yd":
         return _NOTHING
-    name = command_from_argv0(words[0])
-    rest = words[1:]
-    noun = NOUNS_BY_NAME.get(name)
-    if noun is not None:
+    if len(words) == 1:
+        if current.startswith("-"):
+            return _matching(_HELP_FLAGS, current)
+        return _matching(((e.word, e.summary) for e in TOP_LEVEL.values()), current)
+    entry = TOP_LEVEL.get(words[1])
+    if entry is None:
+        return _NOTHING
+    rest = words[2:]
+    command: Command | None
+    if entry.kind is Kind.NOUN:
+        noun = NOUNS_BY_NAME[entry.target]
         if not rest:
             if current.startswith("-"):
                 return _matching(_HELP_FLAGS, current)
             return _matching(((v.name, v.summary) for v in noun.verbs), current)
-        command = NOUN_COMMANDS.get(f"{noun.name} {rest[0]}")
+        command = NOUN_COMMANDS.get(f"yd {noun.name} {rest[0]}")
         rest = rest[1:]
-    elif name in DEPRECATED:
+    elif entry.kind is Kind.OTHER:
         command = None
     else:
-        command = COMMANDS.get(name)
-    if name in OTHER_COMMANDS or (command is not None and not command.all_options()):
+        command = COMMANDS[entry.target]
+    if entry.kind is Kind.OTHER or (command is not None and not command.all_options()):
         if current.startswith("-"):
             return _matching(_HELP_FLAGS, current)
         return Completions(Mode.FILES)

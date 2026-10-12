@@ -3,7 +3,6 @@ Class to parse command line arguments for all commands. The options
 themselves come from utils/command_registry.py.
 """
 
-import os
 import sys
 
 from yellowdog_cli._version import __version__
@@ -15,8 +14,10 @@ from yellowdog_cli.utils.command_registry import (
     parse_range,
     resize_targets_compute_requirement,
 )
+from yellowdog_cli.utils.invocation import invoked_name, selected
 from yellowdog_cli.utils.lazy import lazy
-from yellowdog_cli.utils.noun_registry import DEPRECATED, command_named
+from yellowdog_cli.utils.noun_registry import command_named
+from yellowdog_cli.utils.top_level import SCRIPT_FORMS
 from yellowdog_cli.utils.version_info import DOCS_URL
 
 
@@ -24,33 +25,6 @@ def docs():
     print(
         f"Online documentation for YellowDog CLI v{__version__}: {DOCS_URL}",
         flush=True,
-    )
-
-
-# The command a noun verb selected (noun_dispatch.py), and the name it was
-# invoked as ('yd-wr submit'): set before ARGS_PARSER is built, which reads
-# it in place of sys.argv[0]
-_SELECTED: tuple[str, str] | None = None
-
-
-def select_command(command: str, prog: str) -> None:
-    """
-    Make 'command', invoked as 'prog', the one ARGS_PARSER parses for.
-    """
-    global _SELECTED
-    _SELECTED = (command, prog)
-
-
-def invoked_name(argv0: str) -> str:
-    """
-    The name a command was invoked by, as typed: argv[0]'s basename, less a
-    Windows '.exe' or '-script.py'. 'python -m' gives the module's file
-    ('submit.py'), which is no 'yd-*' name.
-    """
-    return (
-        os.path.basename(argv0.replace("\\", "/"))
-        .removesuffix(".exe")
-        .removesuffix("-script.py")
     )
 
 
@@ -78,16 +52,16 @@ class CLIParser:
         options only.
         """
         prog: str | None = None
-        if command is None and _SELECTED is not None:
-            command, prog = _SELECTED
+        if command is None and (selection := selected()) is not None:
+            command, prog = selection
         name = command_from_argv0(sys.argv[0]) if command is None else command
         self.command: Command | None = command_named(name)
         # The registry command run: a noun verb's, or the command itself
         self.command_name = name if self.command is None else self.command.internal_name
-        # The noun forms that replace a deprecated name it was invoked by
-        # ('yd-submit' typed, not 'python -m yellowdog_cli.submit')
+        # The 'yd' forms that replace a deprecated script it was invoked by
+        # ('yd-submit' typed, not 'yd wr submit' or 'python -m')
         self.replaced_by: list[str] = (
-            DEPRECATED.get(self.command_name, [])
+            SCRIPT_FORMS.get(self.command_name, [])
             if command is None and invoked_name(sys.argv[0]) == self.command_name
             else []
         )

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 """
-List the available yd-* commands: the nouns with their verbs, the other
-commands, and (--deprecated) the commands the nouns replace.
+List the yd commands: the nouns with their verbs, the other commands, and
+(--deprecated) the yd-* scripts 'yd' replaces.
 """
 
 import json
 import re
+import sys
 from argparse import ArgumentParser
 from importlib.util import find_spec
 
@@ -18,10 +19,17 @@ from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.check_imports import EXTRA_PROBES
 from yellowdog_cli.utils.command_registry import COMMANDS, OTHER_COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
-from yellowdog_cli.utils.noun_registry import DEPRECATED, NOUNS, Noun
+from yellowdog_cli.utils.invocation import selected_prog
+from yellowdog_cli.utils.noun_registry import NOUNS, REPLACED_BY_VERBS, Noun
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import DEFAULT_THEME, JSON_INDENT
 from yellowdog_cli.utils.printing import print_json_text
+from yellowdog_cli.utils.top_level import (
+    SCRIPT_FORMS,
+    warn_if_deprecated_script,
+    word_of,
+    yd_form,
+)
 from yellowdog_cli.utils.version_info import docs_url
 
 # The CLI's theme, as printing.py uses it: a command name in the style of a
@@ -31,26 +39,34 @@ NAME_STYLE = "pyexamples.table_content"
 NOTE_STYLE = "dim"
 HEADING_STYLE = "bold"
 # The notes dimmed: a trailing '(needs the <extra> extra)', '(<extra> extra
-# installed)' or a noun's '(short: yd-wr)' -- never a parenthesis inside the
+# installed)' or a noun's '(short: yd wr)' -- never a parenthesis inside the
 # summary's own prose ('Hold (pause) ...')
-NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|short: yd-\w+)\)$")
+NOTE = re.compile(r" \((needs the \w+ extra|\w+ extra installed|short: yd \w+)\)$")
 # A summary's extra, as the registry and OTHER_COMMANDS write it
 EXTRA = re.compile(r" \(needs the (\w+) extra\)$")
 
 
-def _listing() -> list[tuple[str, str]]:
+def _other_commands() -> list[tuple[str, str]]:
     """
-    The commands that are not nouns, by name: the registry commands no noun
-    replaces (yd-list, the utilities), and the other entry points.
+    The commands that are not nouns, by their 'yd-*' names: the registry
+    commands no noun replaces (yd-list, the utilities), and the other entry
+    points.
     """
     return sorted(
         [
             (name, cmd.summary)
             for name, cmd in COMMANDS.items()
-            if name not in DEPRECATED
+            if name not in REPLACED_BY_VERBS
         ]
         + list(OTHER_COMMANDS.items())
     )
+
+
+def _listing() -> list[tuple[str, str]]:
+    """
+    The other commands as typed: 'yd list'.
+    """
+    return [(yd_form(name), summary) for name, summary in _other_commands()]
 
 
 def _nouns() -> list[Noun]:
@@ -63,7 +79,7 @@ def _noun_summary(noun: Noun) -> str:
     """
     if noun.alias is None:
         return noun.summary
-    return f"{noun.summary} (short: {noun.alias})"
+    return f"{noun.summary} (short: yd {noun.alias})"
 
 
 def _verbs(noun: Noun) -> str:
@@ -71,15 +87,15 @@ def _verbs(noun: Noun) -> str:
 
 
 def _deprecated_listing() -> list[tuple[str, str]]:
-    return sorted((name, ", ".join(forms)) for name, forms in DEPRECATED.items())
+    return sorted((name, ", ".join(forms)) for name, forms in SCRIPT_FORMS.items())
 
 
 def column_width() -> int:
     return max(
         len(name)
-        for name in [noun.name for noun in NOUNS]
+        for name in [f"yd {noun.name}" for noun in NOUNS]
         + [name for name, _ in _listing()]
-        + list(DEPRECATED)
+        + list(SCRIPT_FORMS)
     )
 
 
@@ -101,10 +117,10 @@ def _command_record(name: str, summary: str) -> dict:
 def entries() -> list[dict]:
     """
     The listing as '--json' gives it: each noun with its alias and verbs,
-    each other command's name and summary, with the extra it needs and
+    each other command's word and summary, with the extra it needs and
     whether that is installed as fields of their own, so that no script has
-    to pick them out of the summary; and each deprecated command, with the
-    noun forms that replace it.
+    to pick them out of the summary; and each deprecated 'yd-*' script, with
+    the 'yd' forms that replace it.
     """
     records: list[dict] = []
     for noun in _nouns():
@@ -119,7 +135,7 @@ def entries() -> list[dict]:
                         "summary": verb.summary,
                         **(
                             {"replaces": verb.command}
-                            if verb.command in DEPRECATED
+                            if verb.command in REPLACED_BY_VERBS
                             else {}
                         ),
                     }
@@ -127,11 +143,14 @@ def entries() -> list[dict]:
                 ],
             }
         )
-    records += [_command_record(name, summary) for name, summary in _listing()]
-    for name, forms in sorted(DEPRECATED.items()):
+    records += [
+        _command_record(word_of(name), summary) for name, summary in _other_commands()
+    ]
+    for name, forms in sorted(SCRIPT_FORMS.items()):
+        summary = COMMANDS[name].summary if name in COMMANDS else OTHER_COMMANDS[name]
         records.append(
             {
-                **_command_record(name, COMMANDS[name].summary),
+                **_command_record(name, summary),
                 "deprecated": True,
                 "replacedBy": forms,
             }
@@ -152,24 +171,25 @@ def shown_summary(summary: str) -> str:
 
 def _footer() -> str:
     return (
-        "Run 'yd-<noun> --help' for a noun's verbs, and 'yd-<noun> <verb>"
-        " --help' or 'yd-<command> --help' for the options; documentation:"
+        "Run 'yd <noun> --help' for a noun's verbs, and 'yd <noun> <verb>"
+        " --help' or 'yd <command> --help' for the options; documentation:"
         f" {docs_url()}"
     )
 
 
 def _deprecation_note() -> str:
     return (
-        "The commands the nouns replace (yd-submit, yd-terminate and the"
-        " rest) still run, with a warning, until a future release;"
-        " 'yd-help --deprecated' lists them."
+        "The yd-* commands (yd-submit, yd-list and the rest) still run, with"
+        " a warning, until a future release; 'yd help --deprecated' lists"
+        " them."
     )
 
 
 def main():
+    warn_if_deprecated_script("yd-help")
     parser = ArgumentParser(
-        prog="yd-help",
-        description="List the available yd-* commands and their purposes.",
+        prog=selected_prog("yd-help"),
+        description="List the yd commands and their purposes.",
     )
     parser.add_argument(
         "--json",
@@ -182,7 +202,7 @@ def main():
     parser.add_argument(
         "--deprecated",
         action="store_true",
-        help="list the deprecated commands and the noun forms that replace them",
+        help="list the deprecated yd-* commands and the yd forms that replace them",
     )
     parser.add_argument(
         "--no-format",
@@ -200,26 +220,38 @@ def main():
         )
         return
 
+    print_listing(deprecated=args.deprecated, no_format=args.no_format)
+
+
+def print_listing(
+    stderr: bool = False, deprecated: bool = False, no_format: bool = False
+) -> None:
+    """
+    The listing, on stdout or (for 'yd' with no command) stderr.
+    """
     lines = [
         Text(_heading(), style=HEADING_STYLE),
         Text(),
-        *styled_lines(deprecated=args.deprecated),
+        *styled_lines(deprecated=deprecated),
         Text(),
         Text(_footer(), style=NOTE_STYLE),
     ]
-    if not args.deprecated:
+    if not deprecated:
         lines += [Text(), Text(_deprecation_note(), style=NOTE_STYLE)]
 
-    if args.no_format:
-        print()
+    if no_format:
+        out = sys.stderr if stderr else sys.stdout
+        print(file=out)
         for line in lines:
-            print(line.plain)
-        print()
+            print(line.plain, file=out)
+        print(file=out)
         return
 
-    # Rich drops the styles by itself where stdout is not a terminal, or
+    # Rich drops the styles by itself where the stream is not a terminal, or
     # NO_COLOR is set; soft_wrap keeps a long summary on its one line
-    console = Console(theme=Theme(DEFAULT_THEME), highlight=False, emoji=False)
+    console = Console(
+        theme=Theme(DEFAULT_THEME), highlight=False, emoji=False, stderr=stderr
+    )
     console.print()
     for line in lines:
         console.print(line, soft_wrap=True)
@@ -260,7 +292,7 @@ def styled_lines(deprecated: bool = False) -> list[Text]:
         ]
     lines = [Text("Commands by object:", style=HEADING_STYLE)]
     for noun in _nouns():
-        lines.append(_row(noun.name, _noun_summary(noun), width))
+        lines.append(_row(f"yd {noun.name}", _noun_summary(noun), width))
         lines.append(Text(" " * (width + 4) + _verbs(noun), style=NOTE_STYLE))
     lines += [Text(), Text("Other commands:", style=HEADING_STYLE)]
     lines += [_row(name, shown_summary(summary), width) for name, summary in _listing()]

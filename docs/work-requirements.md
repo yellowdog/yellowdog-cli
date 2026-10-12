@@ -56,14 +56,14 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 13:29:42 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:13 BST 2026 -->
 
 <!--te-->
 
 
-A **Work Requirement** is the top-level unit of work submitted to the YellowDog platform. It contains one or more **Task Groups**, each of which contains one or more **Tasks**. Work Requirements are created and submitted using the **`yd-workrequirement submit`** command, and can be updated after submission — adding Task Groups or Tasks — using the `--add-to` option.
+A **Work Requirement** is the top-level unit of work submitted to the YellowDog platform. It contains one or more **Task Groups**, each of which contains one or more **Tasks**. Work Requirements are created and submitted using the **`yd workrequirement submit`** command, and can be updated after submission — adding Task Groups or Tasks — using the `--add-to` option.
 
-The `workRequirement` section of the configuration file is optional. It's used only by the `yd-workrequirement submit` command, and controls the Work Requirement that is submitted to the Platform.
+The `workRequirement` section of the configuration file is optional. It's used only by the `yd workrequirement submit` command, and controls the Work Requirement that is submitted to the Platform.
 
 **Jump to:** [Property Dictionary](property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
 
@@ -105,11 +105,11 @@ A very simple example document is shown below with a top-level Work Requirement 
 
 To specify the file containing the JSON document, either populate the `workRequirementData` property in the `workRequirement` section of the TOML configuration file with the JSON filename, or specify it on the command line as a positional argument (which will override the property in the TOML file), e.g.:
 
-`yd-workrequirement submit --config myconfig.toml my_workreq.json`
+`yd workrequirement submit --config myconfig.toml my_workreq.json`
 
 ## Property Inheritance
 
-Work Requirement specifications can be simplified substantially by the property inheritance features in `yd-workrequirement submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
+Work Requirement specifications can be simplified substantially by the property inheritance features in `yd workrequirement submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
 
 This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level). Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
 
@@ -176,7 +176,7 @@ If `taskTypes` is still empty after this union, the CLI falls back (in order) to
 
 A Task with no `taskType` of its own takes its Task Group's, if the group has only one. If the group allows several, the Task takes the `[workRequirement] taskType` config property where the group allows that type, or otherwise the type of the group's `taskTemplate`; if neither applies, submission fails with an error naming the Task, rather than sending a Task the platform would refuse.
 
-When using `yd-workrequirement submit --add-to <wr>` to add Tasks to an **existing** Task Group, the existing group's `taskTypes` allowlist cannot be modified (the platform does not support mutating `taskTypes` after the Task Group is created). The CLI detects this case before submitting anything and fails with a clear error if the incoming Tasks introduce a `taskType` that the existing group does not already allow. The remedy is to use a different Task Group name (so a new Task Group is created with the union of `taskTypes`) or change the offending Tasks to use a supported `taskType`.
+When using `yd workrequirement submit --add-to <wr>` to add Tasks to an **existing** Task Group, the existing group's `taskTypes` allowlist cannot be modified (the platform does not support mutating `taskTypes` after the Task Group is created). The CLI detects this case before submitting anything and fails with a clear error if the incoming Tasks introduce a `taskType` that the existing group does not already allow. The remedy is to use a different Task Group name (so a new Task Group is created with the union of `taskTypes`) or change the offending Tasks to use a supported `taskType`.
 
 ## Task Retries and Failure Policies
 
@@ -255,7 +255,7 @@ Common use cases:
 
 ### Deprecated: `maximumTaskRetries` / `retryableErrors`
 
-The legacy retry mechanism is still accepted but **cannot be combined with `retryPolicy`** on the same Task Group — `yd-workrequirement submit` will reject the spec with a clear error, because both control how many times and on which errors a Task is retried. Using the legacy fields emits a one-time deprecation warning per invocation.
+The legacy retry mechanism is still accepted but **cannot be combined with `retryPolicy`** on the same Task Group — `yd workrequirement submit` will reject the spec with a clear error, because both control how many times and on which errors a Task is retried. Using the legacy fields emits a one-time deprecation warning per invocation.
 
 `failurePolicy` *can* be used alongside `maximumTaskRetries` / `retryableErrors`: the legacy retry mechanism runs first, and if retries are exhausted, the `failurePolicy` is consulted for resubmission. This lets you adopt failure-based resubmission without simultaneously migrating your existing retry configuration.
 
@@ -420,7 +420,7 @@ All three Tasks use the `docker` task type from the template. The second Task ov
 
 ## Automatic Properties
 
-In addition to the property inheritance mechanism, some properties are set automatically by the `yd-workrequirement submit` command, as a usage convenience if they're not explicitly specified.
+In addition to the property inheritance mechanism, some properties are set automatically by the `yd workrequirement submit` command, as a usage convenience if they're not explicitly specified.
 
 ### Work Requirement, Task Group and Task Naming
 
@@ -442,7 +442,7 @@ When a Task executes, its Task name and number, Task Group name and number, Work
 - `YD_NAMESPACE`
 - `YD_TAG` (if set at the Task level)
 
-This applies whether the names were set automatically by `yd-workrequirement submit` or explicitly by the user.
+This applies whether the names were set automatically by `yd workrequirement submit` or explicitly by the user.
 
 In addition to the environment variables above, when a Task is executed by a Worker, the YellowDog Agent will set the following for use by the Task, based on the instance details and Task identification:
 
@@ -458,7 +458,7 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. This property can also be set on the command line using the `--task-count`/`-C` option of `yd-workrequirement submit` followed by the required number of Tasks.
+The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. This property can also be set on the command line using the `--task-count`/`-C` option of `yd workrequirement submit` followed by the required number of Tasks.
 
 Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
@@ -761,7 +761,7 @@ As an example, the following JSON Work Requirement:
 
 ## Dry-Running Work Requirement Submissions
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` (`-D`) command-line option when running `yd-workrequirement submit`. This will print the fully processed JSON for the Work Requirement. Nothing will be submitted to the Platform.
+To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` (`-D`) command-line option when running `yd workrequirement submit`. This will print the fully processed JSON for the Work Requirement. Nothing will be submitted to the Platform.
 
 A dry-run is useful for inspecting the results of all the processing that's been performed. To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
 
@@ -769,9 +769,9 @@ Note that the generated JSON is a **consolidated form** of what would be submitt
 
 A simple example of the JSON output is shown below, showing a Work Requirement with a single Task Group, containing a single Task.
 
-`% yd-workrequirement submit --dry-run --quiet`
+`% yd workrequirement submit --dry-run --quiet`
 
-> **Note:** When used outside of `--dry-run`, `--quiet` on `yd-workrequirement submit` prints only the Work Requirement YDID to stdout — see [yd-workrequirement submit](commands.md#yd-workrequirement-submit) for scripting examples.
+> **Note:** When used outside of `--dry-run`, `--quiet` on `yd workrequirement submit` prints only the Work Requirement YDID to stdout — see [yd workrequirement submit](commands.md#yd-workrequirement-submit) for scripting examples.
 
 ```json
 {
@@ -817,8 +817,8 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 The `--empty` (`-e`) option submits a new Work Requirement with no Task Groups or Tasks (using TOML configuration only, without a JSON spec file), providing a named shell that can be populated later using `--add-to`:
 
 ```bash
-WR_ID=$(yd-workrequirement submit --empty --quiet)
-yd-workrequirement submit --add-to "$WR_ID" my-spec.json
+WR_ID=$(yd workrequirement submit --empty --quiet)
+yd workrequirement submit --add-to "$WR_ID" my-spec.json
 ```
 
 When a JSON spec file is supplied, empty arrays are honoured directly — `--empty` is not required:
@@ -842,7 +842,7 @@ The `--add-to` (`-A`) option allows Task Groups and/or Tasks to be added to a Wo
 The argument to `--add-to` is the name or YellowDog ID of the target Work Requirement. A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`, and since a name can be reused, the `RUNNING` or `HELD` Work Requirement of that name is chosen (if there are two, its YDID must be given instead). A target that does not exist exits with code 6:
 
 ```bash
-yd-workrequirement submit --add-to my-work-requirement my-spec.json
+yd workrequirement submit --add-to my-work-requirement my-spec.json
 ```
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
@@ -850,19 +850,19 @@ The Work Requirement specification supplied is processed in the same way as for 
 - **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Task and Task Group numbers continue from where the existing Tasks left off, ensuring consistent naming.
 - **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way.
 
-A single `yd-workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
+A single `yd workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
 
-As with a normal `yd-workrequirement submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
+As with a normal `yd workrequirement submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
 
-If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd-workrequirement submit` exits with a non-zero status.
+If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
 
 If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
 
 ```bash
-yd-workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
+yd workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
 ```
 
-By default, `yd-workrequirement submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
+By default, `yd workrequirement submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
 
 `--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
 
@@ -870,9 +870,9 @@ The specification printed shows the Work Requirement as it would be: the existin
 
 ### Submitting 'Raw' JSON Work Requirement Specifications
 
-It's possible to use the JSON output of `yd-workrequirement submit --dry-run` (such as the example above) as a self-contained, fully specified Work Requirement specification, using the `--json-raw` (or `-j`) command-line option, i.e. `yd-workrequirement submit --json-raw <filename.json>`.
+It's possible to use the JSON output of `yd workrequirement submit --dry-run` (such as the example above) as a self-contained, fully specified Work Requirement specification, using the `--json-raw` (or `-j`) command-line option, i.e. `yd workrequirement submit --json-raw <filename.json>`.
 
-This will submit the Work Requirement, then add all the specified Tasks, using `--parallel-batches` (or the `parallelBatches` configuration property) and following with `--follow` or `--progress` as for any other submission. A batch that fails in a way a retry could cure is retried, as any other submission's are; if the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd-workrequirement submit` exits with a non-zero status naming the kind of failure.
+This will submit the Work Requirement, then add all the specified Tasks, using `--parallel-batches` (or the `parallelBatches` configuration property) and following with `--follow` or `--progress` as for any other submission. A batch that fails in a way a retry could cure is retried, as any other submission's are; if the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
 
 Note that variable substitutions **can** be used in the raw JSON file, just as in the other Work Requirement JSON examples, but there is no property inheritance, including from the `[workRequirement]` section of the TOML configuration or from Work Requirement properties supplied on the command line.
 
@@ -880,7 +880,7 @@ Note that variable substitutions **can** be used in the raw JSON file, just as i
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd-workrequirement submit --which-rclone` or `yd-version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd-workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd-workrequirement submit`, i.e. by `yd-data upload`, `yd-data download`, `yd-data delete`, `yd-data ls`, and `yd-data copy`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data ls`, and `yd data copy`.
 
 Currently, Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
@@ -911,7 +911,7 @@ JSON:
 
 ### Automatic Upload of Local Files
 
-The `yd-workrequirement submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localPath` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
+The `yd workrequirement submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localPath` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
 
 TOML, in the `workRequirement` section:
 
@@ -934,9 +934,9 @@ JSON:
 ]
 ```
 
-If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd-workrequirement submit`.
+If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`.
 
-If `yd-workrequirement submit` fails for any reason, the objects it uploaded are deleted automatically. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
+If `yd workrequirement submit` fails for any reason, the objects it uploaded are deleted automatically. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
 
 ### Rclone Authentication
 
@@ -981,7 +981,7 @@ This section discusses the context within which a Task operates when it's execut
 
 When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the following steps are followed:
 
-1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd-workrequirement submit` and the Agent itself — see above for details.
+1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
 2. An ephemeral working directory is created. Data Client input objects are downloaded to this directory, and the contents of the `taskData` property (if set) are written to the file `taskdata.txt`.
 3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This is done as a simple `exec` of a subprocess to run the Task.
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
@@ -1079,7 +1079,7 @@ G,     H,     I,     E-3
 
 Note that the (optional) leading spaces after each comma are ignored, but trailing spaces are not and will form part of the imported data.
 
-If these files are processed using `yd-workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd-workrequirement submit` script:
+If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` script:
 
 ```json
 {
@@ -1108,7 +1108,7 @@ If these files are processed using `yd-workrequirement submit wr.json -V wr_data
 
 When the CSV file data is processed, the only substitutions made are those which match the variable substitutions in the prototype Task. The CSV file is the **only** source of substitutions used for this processing phase; all other variable substitutions (supplied on the command line, in the TOML configuration file, or from environment variables) are ignored — i.e. they do not override the contents of the CSV file.
 
-All variable substitutions unrelated to the CSV file data are left unchanged, for subsequent processing by `yd-workrequirement submit`.
+All variable substitutions unrelated to the CSV file data are left unchanged, for subsequent processing by `yd workrequirement submit`.
 
 If the value to be inserted is a number, a Boolean, an array or a table, the `<<num:my_number_var>>`, `<<bool:my_boolean_var>>`, `<<array:my_array_var>>` and `<<table:my_table_var>>` forms can be used in the JSON file, and `<<format_name:my_var>>` for a name. The value is converted exactly as in a `{{...}}` [substitution](variables.md#variable-substitutions), so the same spellings are accepted: a substitution that is a whole string assumes the nominated type rather than being a string, and one inside a longer string is checked as its type and written as text. A value that is not of its type is an error naming the CSV file, the line in it and the column, e.g. `'tasks.csv' line 7, column 'count': 'abc' is not a number`.
 
@@ -1147,10 +1147,10 @@ The CSV files are supplied on the command line in the order of the Task Groups t
 }
 ```
 
-The `yd-workrequirement submit` command would then be invoked with a separate CSV file for each Task Group, e.g.:
+The `yd workrequirement submit` command would then be invoked with a separate CSV file for each Task Group, e.g.:
 
 ```shell
-yd-workrequirement submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
+yd workrequirement submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
 ```
 
 If there are **fewer** CSV files than Task Groups, a warning will be printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
@@ -1158,13 +1158,13 @@ If there are **fewer** CSV files than Task Groups, a warning will be printed and
 It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g. `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
 
 ```shell
-yd-workrequirement submit wr.json -V wr_data_task_group_2.csv:2 -V wr_data_task_group_4.csv:4
+yd workrequirement submit wr.json -V wr_data_task_group_2.csv:2 -V wr_data_task_group_4.csv:4
 ```
 
-Alternatively, the **Task Group name** (if supplied in the JSON file) can be used as the postfix. For example, if the Task Groups above are named `tg_two` and `tg_four`, the `yd-workrequirement submit` command would become:
+Alternatively, the **Task Group name** (if supplied in the JSON file) can be used as the postfix. For example, if the Task Groups above are named `tg_two` and `tg_four`, the `yd workrequirement submit` command would become:
 
 ```shell
-yd-workrequirement submit wr.json -V wr_data_task_group_2.csv:tg_two -V wr_data_task_group_4.csv:tg_four
+yd workrequirement submit wr.json -V wr_data_task_group_2.csv:tg_two -V wr_data_task_group_4.csv:tg_four
 ```
 
 Note that only one CSV file can be applied to any given Task Group, however it is chosen (by position, number or name): two for the same Task Group are an error naming both. A single CSV file can, however, be reused for multiple Task Groups.
@@ -1179,8 +1179,8 @@ To make use of this:
 2. Insert the required CSV-supplied variable substitutions directly into the TOML properties, e.g. `arguments = ["<<arg_1>>", "<<arg_2>>"]`
 3. Specify a single CSV file in the `csvFiles` TOML property, e.g. `csvFiles = ["wr_data.csv"]`, or provide the CSV file on the command line `-V wr_data.csv`; naming more than one is an error, since there is only one Task Group to apply them to
 
-When `yd-workrequirement submit` is run, it will expand the Task list to match the number of data rows in the CSV file.
+When `yd workrequirement submit` is run, it will expand the Task list to match the number of data rows in the CSV file.
 
 ### Inspecting the Results of CSV Variable Substitution
 
-The `--process-csv-only` (or `-p`) option can be used with `yd-workrequirement submit` to output the JSON Work Requirement after CSV variable substitutions only, prior to all other substitutions and property inheritance applied by `yd-workrequirement submit`.
+The `--process-csv-only` (or `-p`) option can be used with `yd workrequirement submit` to output the JSON Work Requirement after CSV variable substitutions only, prior to all other substitutions and property inheritance applied by `yd workrequirement submit`.

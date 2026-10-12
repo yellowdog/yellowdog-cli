@@ -1,5 +1,5 @@
 """
-Entry point for the yd-commander GUI. Kept free of PyQt6 and of the heavy CLI
+Entry point for the yd commander GUI. Kept free of PyQt6 and of the heavy CLI
 imports (which parse sys.argv at import time) so that argument parsing and the
 optional-extra guard can run and report friendly messages before any Qt import
 is attempted.
@@ -16,6 +16,7 @@ from yellowdog_cli.commander.arguments import (
 )
 from yellowdog_cli.commander.startup import StartupSettings, variable_is_complete
 from yellowdog_cli.utils.check_imports import check_commander_imports
+from yellowdog_cli.utils.invocation import selected_prog
 
 # Deleted from a field by Commander's edit-box handler, so a value containing
 # one could not be held as given
@@ -85,7 +86,7 @@ def _existing_file(value: str) -> str:
 
 def parse_args(argv: list[str] | None = None) -> StartupSettings:
     parser = argparse.ArgumentParser(
-        prog="yd-commander",
+        prog=selected_prog("yd-commander"),
         description="Launch the YellowDog Commander desktop GUI.",
         epilog=(
             "The namespace, tag, name, path, variable and property options only fill in"
@@ -194,6 +195,10 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
 
 
 def main():
+    # Here rather than at the top: the launcher's imports stay light
+    from yellowdog_cli.utils.top_level import warn_if_deprecated_script
+
+    warn_if_deprecated_script("yd-commander")
     settings = parse_args()
 
     try:

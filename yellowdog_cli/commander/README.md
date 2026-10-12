@@ -25,15 +25,15 @@
    * [A Note on Confirmations](#a-note-on-confirmations)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Oct 11 15:35:32 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 11:02:15 BST 2026 -->
 
 <!--te-->
 
 ## Overview
 
-YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by invoking the `yd-*` commands on your behalf and showing their output in a command-output window.
+YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CLI. It runs on macOS, Windows and Linux, adopting the native look and feel of each platform, and works by running `yd` commands on your behalf and showing their output in a command-output window.
 
-Its object actions — downloading, deleting and listing the objects your Tasks write — use the CLI's **data client**, the rclone-backed `yd-data download` and `yd-data delete`, so they work with whatever storage the configuration's `[dataClient]` section names; see [Objects and the Data Client](#objects-and-the-data-client).
+Its object actions — downloading, deleting and listing the objects your Tasks write — use the CLI's **data client**, the rclone-backed `yd data download` and `yd data delete`, so they work with whatever storage the configuration's `[dataClient]` section names; see [Objects and the Data Client](#objects-and-the-data-client).
 
 Commander is offered as a useful adjunct to the CLI, but is not formally supported.
 
@@ -50,20 +50,22 @@ pip install -U "yellowdog-cli[commander]"
 ## Running
 
 ```commandline
-yd-commander
+yd commander
 ```
+
+`yd-commander`, the command's name in earlier releases, still works for now, with a warning that it is deprecated.
 
 Optionally pass a configuration file as the first argument:
 
 ```commandline
-yd-commander path/to/config.toml
+yd commander path/to/config.toml
 ```
 
-The configuration file can also be given with `-c`/`--config`, as it is to the `yd-*` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
+The configuration file can also be given with `-c`/`--config`, as it is to the `yd` commands. Either way, a file that does not exist fails the launch rather than starting Commander without it.
 
 Pass `-y`/`--yes` to disable the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice, for the session (see [A Note on Confirmations](#a-note-on-confirmations)).
 
-Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd-*` commands:
+Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd` commands:
 
 | Option | Fills |
 |---|---|
@@ -77,7 +79,7 @@ Commander's fields and file selections can be filled in from the command line to
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
 ```commandline
-yd-commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
+yd commander config.toml -t run42 -v instances=3 -v region=eu -r ../demos/bash/wr.json
 ```
 
 These only set where Commander starts: once the window is open the values are ordinary field contents, which you can edit or clear, and a definition file can be deselected with **Deselect...** as usual. A relative definition file path is taken from the directory you launched Commander in, as the shell would take it, not from the configuration file's directory. Values Commander could not hold as given are refused at launch: a missing definition file, a variable not of the form `name=value` or containing whitespace (the field is split on whitespace when a command is built, so `title=my run` would become two tokens), a property not of the form `section.key=value` or containing both kinds of quote as well as a space, and an empty value or one containing a tab or newline for the other fields.
@@ -86,11 +88,11 @@ Multiple instances can run simultaneously.
 
 ## How It Works
 
-Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd-*` commands as a subprocess — under the same Python as Commander itself, so it is always this installation's CLI that runs, whatever your `PATH` holds or however Commander was started — in the directory containing the selected configuration file (or the launch directory if none is selected), and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
+Commander does not talk to the YellowDog platform directly. Every action runs one of the `yd` commands as a subprocess — under the same Python as Commander itself, so it is always this installation's CLI that runs, whatever your `PATH` holds or however Commander was started — in the directory containing the selected configuration file (or the launch directory if none is selected), and streams its output into the **Command Output** window. Commands run asynchronously, so you can start several at once and their output will be interleaved as it arrives.
 
-The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd-*` command and arguments were used.
+The full command line for every operation is echoed to the Command Output window before it runs (prefixed with `Executing:`), so you can always see exactly which `yd` command and arguments were used.
 
-A configuration file is optional: if none is selected, Commander runs the `yd-*` commands with `--no-config`, sourcing settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below, and results/downloads are written under the launch directory.
+A configuration file is optional: if none is selected, Commander runs the `yd` commands with `--no-config`, sourcing settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below, and results/downloads are written under the launch directory.
 
 Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it — Commander never picks one up implicitly.
 
@@ -100,7 +102,7 @@ Hover over any button, checkbox or field for a one-line description of what it d
 
 ## Objects and the Data Client
 
-The object actions in panel 4 — **Download Matching Objects**, **Delete Matching Objects**, and the listings their dialogs are built from — are carried out by the CLI's data client: `yd-data download` and `yd-data delete`, which move and remove objects with [rclone](https://rclone.org/). They are fully supported, and are the same commands you would run by hand; see [the CLI's documentation of the data client](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/data-client.md) for everything they accept.
+The object actions in panel 4 — **Download Matching Objects**, **Delete Matching Objects**, and the listings their dialogs are built from — are carried out by the CLI's data client: `yd data download` and `yd data delete`, which move and remove objects with [rclone](https://rclone.org/). They are fully supported, and are the same commands you would run by hand; see [the CLI's documentation of the data client](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/data-client.md) for everything they accept.
 
 They act on the remote storage the data client is configured for — the `remote`, `bucket` and `prefix` in the configuration file's `[dataClient]` section, or the `YD_DATA_CLIENT_*` environment variables — not on anything held by the YellowDog platform itself, and they need no YellowDog credentials. So:
 
@@ -115,9 +117,9 @@ Quitting with commands still running asks first, listing the commands that would
 
 Choosing **Quit and Stop** signals each command to finish and forces it to stop if it doesn't; work already accepted by the YellowDog platform continues there regardless, since stopping the CLI command does not cancel it. Launching with `-y`/`--yes` suppresses the question and quits immediately.
 
-Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd-variables` invocations it makes internally to read your configuration.
+Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd variables` invocations it makes internally to read your configuration.
 
-Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd-*` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
+Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
 
 ## Naming and Matching Assumptions
 
@@ -134,10 +136,10 @@ The default namespace is `default` and the default tag is your username, both ov
 
 Given that convention, the management actions match as follows:
 
-- **Cancel Work Requirements** (`yd-workrequirement cancel`) — Work Requirements in the namespace whose tag contains the current tag.
-- **Terminate Compute Requirements** (`yd-computerequirement terminate`) — Compute Requirements in the namespace whose tag contains the current tag.
-- **Shut Down Worker Pools** (`yd-workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
-- **Download / Delete Matching Objects** (`yd-data download` / `yd-data delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
+- **Cancel Work Requirements** (`yd workrequirement cancel`) — Work Requirements in the namespace whose tag contains the current tag.
+- **Terminate Compute Requirements** (`yd computerequirement terminate`) — Compute Requirements in the namespace whose tag contains the current tag.
+- **Shut Down Worker Pools** (`yd workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
+- **Download / Delete Matching Objects** (`yd data download` / `yd data delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
 
 Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind.
 
@@ -152,7 +154,7 @@ A value without wildcards matches the name exactly, so use `*` for partial match
 
 ### Object Naming and Matching
 
-The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd-data download` / `yd-data delete`, so anything those commands accept can be typed into it.
+The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd data download` / `yd data delete`, so anything those commands accept can be typed into it.
 
 Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default), which is why the default `<tag>*` finds your results: it matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
 
@@ -201,23 +203,23 @@ Use the **Select** button to choose a `config.toml` file. The selected file's fu
 
 ## Submitting and Managing Work (Panel 2)
 
-- **Submit Work Requirement** — runs `yd-workrequirement submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Add to…** — runs `yd-workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that are running or held, the only ones that can take new Tasks) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, except that **Follow Progress** does not follow a Work Requirement that a command still running in this window is following already (the **Submit Work Requirement** that created it, an earlier **Add to…**, or a `yd-follow` from the command box), which would show each of its events twice; the output window says when this happens. A dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
+- **Submit Work Requirement** — runs `yd workrequirement submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
+- **Add to…** — runs `yd workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that are running or held, the only ones that can take new Tasks) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, except that **Follow Progress** does not follow a Work Requirement that a command still running in this window is following already (the **Submit Work Requirement** that created it, an earlier **Add to…**, or a `yd follow` from the command box), which would show each of its events twice; the output window says when this happens. A dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
-- **Extra Options** — free-text command-line options appended to the `yd-workrequirement submit` command, split as described in [Quoting](#quoting).
+- **Extra Options** — free-text command-line options appended to the `yd workrequirement submit` command, split as described in [Quoting](#quoting).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
 ## Provisioning and Managing Compute (Panel 3)
 
-- **Provision Worker Pool** — runs `yd-workerpool provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
-- **Resize…** — runs `yd-workerpool resize` on a Worker Pool you choose. It first lists the active Worker Pools matching the current namespace and tag (or the **Name** pattern), each with its status and the number of nodes it expects now, and opens a dialog in which you choose one and set **Target nodes**. The count starts at the pool's current one and is kept within the pool's minimum and maximum; **Resize** is unavailable until you change it, and a warning appears if you are reducing it, since nodes will be shut down and tasks running on them may be interrupted. The dialog is the confirmation, so no second one follows. Configured (on-premise) Worker Pools are not listed, as their nodes are not a number the platform can change. A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived; if every matching pool is awaiting nodes, the output window says so and no dialog opens. The **Dry Run** and **Follow** checkboxes apply to creation only. If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
+- **Provision Worker Pool** — runs `yd workerpool provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
+- **Resize…** — runs `yd workerpool resize` on a Worker Pool you choose. It first lists the active Worker Pools matching the current namespace and tag (or the **Name** pattern), each with its status and the number of nodes it expects now, and opens a dialog in which you choose one and set **Target nodes**. The count starts at the pool's current one and is kept within the pool's minimum and maximum; **Resize** is unavailable until you change it, and a warning appears if you are reducing it, since nodes will be shut down and tasks running on them may be interrupted. The dialog is the confirmation, so no second one follows. Configured (on-premise) Worker Pools are not listed, as their nodes are not a number the platform can change. A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived; if every matching pool is awaiting nodes, the output window says so and no dialog opens. The **Dry Run** and **Follow** checkboxes apply to creation only. If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
-- **Extra Options** — free-text command-line options appended to the `yd-workerpool provision` command, split as described in [Quoting](#quoting).
+- **Extra Options** — free-text command-line options appended to the `yd workerpool provision` command, split as described in [Quoting](#quoting).
 - **Shutdown Worker Pools** — shuts down all matching Worker Pools.
 - **Terminate Compute Requirements** — terminates all matching Compute Requirements.
 
@@ -263,13 +265,13 @@ The **Properties** field overrides configuration file properties for every comma
 workRequirement.taskCount=10 workRequirement.workerTags='["gpu", "large"]'
 ```
 
-Each pair is passed to the command as a `--property` option. The valid sections are `common`, `dataClient`, `workRequirement`, `workerPool` and `computeRequirement`, and values are read as JSON where they can be, so numbers, booleans, lists and tables need no special treatment; see the CLI's documentation of `--property` for the details. Unlike the **Extra Options** fields, which reach only `yd-workrequirement submit` or `yd-workerpool provision`, this field reaches every `yd-*` command, including the data client commands behind **Download** and **Delete**, so it can change `dataClient` properties such as the remote.
+Each pair is passed to the command as a `--property` option. The valid sections are `common`, `dataClient`, `workRequirement`, `workerPool` and `computeRequirement`, and values are read as JSON where they can be, so numbers, booleans, lists and tables need no special treatment; see the CLI's documentation of `--property` for the details. Unlike the **Extra Options** fields, which reach only `yd workrequirement submit` or `yd workerpool provision`, this field reaches every `yd` command, including the data client commands behind **Download** and **Delete**, so it can change `dataClient` properties such as the remote.
 
-Like the User-Defined Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way; it waits until every entry is a complete `section.key=value` and no quote is left open. If the field cannot be split because a quote is left open, every action that runs a `yd-*` command says so in the output window and does nothing.
+Like the User-Defined Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way; it waits until every entry is a complete `section.key=value` and no quote is left open. If the field cannot be split because a quote is left open, every action that runs a `yd` command says so in the output window and does nothing.
 
 ## Quoting
 
-The **Extra Options** fields, the **Properties** field and a `yd-*` command typed into **Run Command in Config Directory** are split into separate arguments at spaces, except where text is inside single or double quotes: a quoted run of text is kept as one argument, with its quotes removed, as it would be in a shell. Quotes can surround the whole argument or any part of it, so both of these pass the same single argument:
+The **Extra Options** fields, the **Properties** field and a `yd` command typed into **Run Command in Config Directory** are split into separate arguments at spaces, except where text is inside single or double quotes: a quoted run of text is kept as one argument, with its quotes removed, as it would be in a shell. Quotes can surround the whole argument or any part of it, so both of these pass the same single argument:
 
 ```text
 --property 'workRequirement.workerTags=["gpu", "large"]'
@@ -290,7 +292,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 
 ## Filtering the Command Output
 
-When several commands are running at once their output is interleaved, each message prefixed with the PID of the process that printed it. To follow just one of them, right-click any line of its output and choose **Show Only Output from Process 012345 (yd-workrequirement submit)**. The line need not carry the PID: continuation lines, tables and JSON belong to the command that printed them. Right-clicking one of Commander's own messages offers **Show Only Commander's Own Messages** instead. The `Executing:` line announcing a command is both, since it is about the command but printed by Commander with Commander's own PID, so right-clicking it offers both options, and each view includes it: the command's, as the line saying what it ran, and Commander's, alongside every other command Commander started.
+When several commands are running at once their output is interleaved, each message prefixed with the PID of the process that printed it. To follow just one of them, right-click any line of its output and choose **Show Only Output from Process 012345 (yd workrequirement submit)**. The line need not carry the PID: continuation lines, tables and JSON belong to the command that printed them. Right-clicking one of Commander's own messages offers **Show Only Commander's Own Messages** instead. The `Executing:` line announcing a command is both, since it is about the command but printed by Commander with Commander's own PID, so right-clicking it offers both options, and each view includes it: the command's, as the line saying what it ran, and Commander's, alongside every other command Commander started.
 
 While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual; output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*. Click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window to see everything again, in the order it arrived. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted, unless the window was following the output at its end, in which case it still is.
 
@@ -304,7 +306,7 @@ The text filter works together with the filter by process, so filtering to one c
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd-`, the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, each only where the command takes it (`yd-show` takes no namespace or tag, and `yd-cloudinfo` none of them); a noun and its verb, such as `yd-wr submit`, are one command, the additions coming after the verb; and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The exceptions are `yd-version`, `yd-help`, `yd-schema`, `yd-format-json` and `yd-jsonnet2json`, which need no configuration and take none of those options, so they are run as typed, with only `--nf` added to those that accept it (all of them but `yd-format-json`). Any other command is run through the system shell (`%ComSpec%`, normally `cmd.exe`, on Windows; `/bin/sh` elsewhere), so wildcards, pipes and redirection work as they would in a terminal. The `<` and `>` buttons step back and forth through your command history.
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd` (or a deprecated `yd-*` name), the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, each only where the command takes it (`yd show` takes no namespace or tag, and `yd cloudinfo` none of them); a noun and its verb, such as `yd wr submit`, are one command, as is a command such as `yd list`, the additions coming after it; a `yd` command it does not recognise is still run as the CLI's, which reports it, never handed to the shell, where another `yd` on your `PATH` could run; and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The exceptions are `yd version`, `yd help`, `yd schema`, `yd format-json` and `yd jsonnet2json`, which need no configuration and take none of those options, so they are run as typed, with only `--nf` added to those that accept it (all of them but `yd format-json`). Any other command is run through the system shell (`%ComSpec%`, normally `cmd.exe`, on Windows; `/bin/sh` elsewhere), so wildcards, pipes and redirection work as they would in a terminal. The `<` and `>` buttons step back and forth through your command history.
 
 ## Sending Input to a Running Command
 
@@ -331,7 +333,7 @@ Check the namespace, tag, and path you have set before confirming. A real object
 
 Launching with `-y`/`--yes` skips it and downloads everything the path matched, just as that flag skips the confirmations: it asks for an unattended session, and an unattended session cannot answer a chooser either. To fetch a subset without being asked, narrow the **Path** field instead.
 
-Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd-data download` and `yd-data delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
+Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` substitution placeholder cannot be named individually on a command line — `yd data download` and `yd data delete` would expand them and act on whatever they matched instead — so selecting one refuses the whole run and says which names are at fault; those objects can only be reached with rclone directly.
 
 **Add to…** shows a chooser too, of exactly one Work Requirement: a plain list with one row selected rather than a checkable one, since a submission can be added to only one. Launching with `-y`/`--yes` skips it when only one Work Requirement can be added to, and adds to that one; when there are several it refuses and says so, since an unattended session cannot choose and Commander will not choose for it. Narrow the choice to one with the **Name** field.
 
