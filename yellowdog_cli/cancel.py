@@ -40,8 +40,10 @@ from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     find_work_requirement_by_name,
     get_filtered_work_requirement_summaries,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_ids
@@ -140,9 +142,9 @@ def cancel(ctx: RunContext, names: list[str]):
         )
     else:
         print_info(
-            "Cancelling Work Requirements in namespace "
-            f"'{ctx.config.namespace}' with tags "
-            f"including '{ctx.config.name_tag}'"
+            "Cancelling Work Requirements "
+            f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with tags including '{}'", ctx.config.name_tag)
         )
         summaries = get_filtered_work_requirement_summaries(
             client=ctx.client,
