@@ -77,7 +77,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:02:11 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 12:17:53 BST 2026 -->
 
 <!--te-->
 
@@ -1694,6 +1694,8 @@ It checks, in order:
 - the CLI and SDK versions, and whether the SDK imports (one that will not is reported here, and the checks that need it are skipped, rather than the doctor failing to start)
 - each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"
 - the rclone version
+- whether the `yd` first on your `PATH` is this installation's: another `yd`, such as a different tool of the same name, would run in its place, and Tab completion would ask it
+- whether your shell's start-up file (`~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, or fish's `config.fish`) loads [`yd completion`](#yd-completion), or still runs the pre-release `yd-completion`, which no longer exists. The file is read, not run, so a line in a file it sources is reported as not set up
 - the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks, the PyPI one included, then use that proxy)
 - whether a newer CLI is on PyPI
 - whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](configuration.md)), and where each of the key, secret, namespace, tag and URL came from
