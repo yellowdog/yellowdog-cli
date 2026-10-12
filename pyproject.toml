@@ -11,6 +11,7 @@
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: 3.14",
+        "Programming Language :: Python :: 3.15",
         "Operating System :: OS Independent",
         "Development Status :: 4 - Beta",
     ]
@@ -188,7 +189,7 @@
     typeCheckingMode = "basic"
 
 [tool.tox]
-    env_list = ["py310", "py311", "py312", "py313", "py314"]
+    env_list = ["py310", "py311", "py312", "py313", "py314", "py315"]
 
 [tool.tox.env_run_base]
     runner = "uv-venv-runner"
@@ -196,6 +197,3 @@
     # Eight pytest-xdist workers, as 'make test' uses; a later '-n' given
     # after 'tox --' wins
     commands = [["pytest", "-n", "8", { replace = "posargs", extend = true }]]
-
-[tool.tox.env.py315]
-    description = "pre-release; excluded from the default run, see DEVELOPMENT.md"

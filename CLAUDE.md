@@ -27,9 +27,9 @@ pytest -v --run-demos               # include demo integration tests
 pytest -v -n 4 --run-demos tests/test_demos.py  # parallel demos (target file to avoid unit tests consuming workers first)
 pytest -v -k test_variable          # run a single test file/pattern
 
-# Run tests across all supported Python versions (3.10–3.14) via tox + uv; every extra installed, -n 8
+# Run tests across all supported Python versions (3.10–3.15) via tox + uv; every extra installed, -n 8
 make tox
-tox -e py315          # Python 3.15 pre-release: opt-in, kept out of env_list (see DEVELOPMENT.md)
+tox -e py316          # a Python pre-release: opt-in, needing no entry (see DEVELOPMENT.md)
 
 # Type checking
 make pyright

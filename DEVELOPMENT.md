@@ -31,7 +31,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:02:14 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 12 14:14:10 BST 2026 -->
 
 <!--te-->
 
@@ -162,7 +162,7 @@ Each library surfaces separately as the previous one is satisfied, so install th
 
 ### Testing Across Python Versions
 
-To run the unit tests against all supported Python versions (3.10–3.14), use [tox](https://tox.wiki/) via:
+To run the unit tests against all supported Python versions (3.10–3.15), use [tox](https://tox.wiki/) via:
 
 ```shell
 make tox
@@ -174,7 +174,7 @@ To target a specific version or subset:
 
 ```shell
 tox -e py310            # single version
-tox -e py310,py314      # just the bounds
+tox -e py310,py315      # just the bounds
 ```
 
 To pass extra pytest arguments (e.g. to run demos or system tests), call `tox` directly using `--` as a separator — `make tox` cannot forward arguments this way. A `-n` given there overrides the default of eight workers, and `-n 0` runs without xdist:
@@ -182,28 +182,12 @@ To pass extra pytest arguments (e.g. to run demos or system tests), call `tox` d
 ```shell
 tox -- --run-demos
 tox -- --run-system --run-demos
-tox -e py310,py314 -- --run-demos tests/test_demos.py -n 12
+tox -e py310,py315 -- --run-demos tests/test_demos.py -n 12
 ```
 
 #### Python Pre-Releases
 
-Python 3.15 has a `py315` environment, deliberately kept out of `env_list` so that `make tox` neither runs it nor is broken by it; `tox list` shows it under *additional environments*, and it is run explicitly:
-
-```shell
-tox -e py315
-```
-
-The interpreter itself is no obstacle — uv downloads pre-release CPython like any other version — but as of October 2026 (3.15.0rc3) the environment cannot be created, because `pre-commit`, in the `dev` extra, requires `pyyaml`, which publishes no cp315 wheel and whose source build fails under 3.15 in Cython. The runtime extras all install, `rclone-api`'s `psycopg2-binary` (a blocker in August) included, but PyQt6 6.11 crashes the interpreter as `PyQt6.QtCore` is imported, in `PyQt6-sip`'s `createContainerType`, so Commander cannot run on 3.15 yet. Use rc3 or later: on 3.15.0a8, `anyio`, which the `mcp` extra pulls in, fails as pytest loads its plugin, needing the builtin `sentinel` that later pre-releases provide.
-
-Until then, the rest of the suite can be run in a throwaway venv without `pre-commit` and PyQt6, the Commander tests skipping as Qt is missing; in October 2026 it passed there:
-
-```shell
-uv venv --python cpython-3.15.0rc3 /tmp/py315  # or a later 3.15 release; a bare 3.15 takes whichever is installed
-VIRTUAL_ENV=/tmp/py315 uv pip install -e ".[mcp,jsonnet,cloudwizard]" pytest pytest-xdist cli-test-helpers python-dispatch
-/tmp/py315/bin/python -m pytest -n 8
-```
-
-Once `pyyaml` and PyQt6 work on 3.15, `tox -e py315` should pass, at which point `py315` belongs in `env_list` and `3.15` in the classifiers in `pyproject.toml`.
+A Python pre-release needs no configuration: tox builds an environment it has no entry for from its name, with the same extras and command as the others, so `tox -e py316` runs the suite on 3.16 once uv offers it, and `make tox` neither runs it nor is broken by it. Add it to `env_list`, and its version to the classifiers in `pyproject.toml`, when the release is final and the environment passes — `pyyaml`, which `pre-commit` in the `dev` extra needs, and PyQt6 have each been the last to work on a new version.
 
 ## Type Checking
 

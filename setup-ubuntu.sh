@@ -307,7 +307,7 @@ Then:
 
     pytest -v                 # unit tests, including the Commander GUI tests
     make pyright              # type checking
-    make tox                  # the unit tests on Python 3.10 - 3.14
+    make tox                  # the unit tests on Python 3.10 - 3.15
 
 uv is at $(command -v uv); if it was installed just now, open a new shell (or add
 ~/.local/bin to PATH) to pick it up outside this script.
