@@ -4,6 +4,7 @@ import io
 import secrets
 import sys
 import time
+from pathlib import Path
 
 import pytest
 from cli_test_helpers import shell
@@ -39,6 +40,12 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Run system tests that provision real cloud compute (implies --run-system)",
+    )
+    parser.addoption(
+        "--run-live",
+        action="store_true",
+        default=False,
+        help="Run the live system tests (tests/live/): real resources, real compute",
     )
     parser.addoption(
         "--run-crash-tests",
@@ -86,6 +93,12 @@ def pytest_collection_modifyitems(config, items):
         )
         for item in items:
             if item.get_closest_marker("system_compute"):
+                item.add_marker(skipper)
+
+    if not config.getoption("--run-live"):
+        skipper = pytest.mark.skip(reason="Only run when '--run-live' is given")
+        for item in items:
+            if item.get_closest_marker("live"):
                 item.add_marker(skipper)
 
     # A deliberate crash puts up macOS's 'quit unexpectedly' dialog, since
@@ -607,9 +620,12 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
     variable outranks both config.toml and .env, so a dummy set over a working
     credential would shadow it.
 
-    Never substituted for a run that talks to the platform: those need real
-    credentials, and 'auth failed' hours later is a worse answer than the CLI's own
-    'Missing configuration data' now.
+    Never substituted for a run that talks to the platform through the CLI's own
+    configuration: those need real credentials, and 'auth failed' hours later is a
+    worse answer than the CLI's own 'Missing configuration data' now. '--run-live'
+    is not one: the live suite has a configuration of its own and gives 'yd' its
+    credentials itself, so it may run where the CLI has none; the dummies are
+    marked (YD_TEST_DUMMY_CREDENTIALS) so that it never takes them for real ones.
     """
     global _dummy_credentials_used
 
@@ -627,6 +643,7 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
 
     os.environ[YD_KEY] = "dummy-key-for-tests"
     os.environ[YD_SECRET] = "dummy-secret-for-tests"
+    os.environ["YD_TEST_DUMMY_CREDENTIALS"] = "1"  # tests/live/harness/config.py
     _dummy_credentials_used = True
 
 
@@ -683,6 +700,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
+        "live: mark test to run only when '--run-live' is specified",
+    )
+    config.addinivalue_line(
+        "markers",
         "crashes: crashes a child interpreter on purpose; on macOS, run only when"
         " '--run-crash-tests' is specified",
     )
@@ -691,3 +712,22 @@ def pytest_configure(config):
         "real_config_parse: keep Commander's real _parse_yd_config, which runs"
         " 'yd-variables' (see the '_no_config_discovery' fixture)",
     )
+    _register_live_session(config)
+
+
+def _register_live_session(config) -> None:
+    """
+    Under '--run-live', the plugin that owns the live run (tests/live/
+    live_session.py). It is registered here, not in tests/live/conftest.py,
+    because an xdist controller never collects and so never loads that.
+    """
+    if not config.getoption("--run-live"):
+        return
+    live = str(Path(__file__).resolve().parent / "tests" / "live")
+    if live not in sys.path:
+        sys.path.insert(0, live)
+    from live_session import PLUGIN_NAME, LiveSession
+
+    session = LiveSession(config)
+    config.pluginmanager.register(session, PLUGIN_NAME)
+    session.configure()

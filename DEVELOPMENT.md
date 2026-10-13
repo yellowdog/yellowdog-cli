@@ -7,6 +7,7 @@
       * [Pre-commit Hook](#pre-commit-hook)
       * [Pre-push Hook](#pre-push-hook)
    * [Testing](#testing)
+      * [Live System Tests](#live-system-tests)
       * [Coverage](#coverage)
       * [Complexity](#complexity)
       * [Commander GUI Tests](#commander-gui-tests)
@@ -31,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 14:14:10 BST 2026 -->
+<!-- Added by: pwt, at: Tue Oct 13 15:17:41 BST 2026 -->
 
 <!--te-->
 
@@ -123,9 +124,82 @@ Unit tests require no credentials, no configuration file and no network access:
 pytest -v
 ```
 
-`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-system-compute` or `--run-demos`, which need genuine credentials.
+`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-system-compute`, `--run-demos` or `--run-live`, which need genuine credentials.
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, compute, and demo test categories, credentials setup, and parallel execution options.
+
+### Live System Tests
+
+`tests/live/` is an end-to-end suite that creates everything a run needs with `yd resource create`, provisions real compute on each configured cloud provider, and tears it all down with `yd resource remove`. It depends on nothing in `../python-examples-demos` and nothing already on the Platform except its namespace, which it creates if missing and never removes, since the Platform will not delete a namespace that has been populated. It creates real resources and real instances, so it never runs under `make test` or `tox`: it needs `--run-live`.
+
+Its configuration is its own, never the CLI's `config.toml`: the file `YDST_CONFIG` names, else `~/.config/yellowdog/system-tests.toml`, outside the repository so that its secrets cannot be committed. Every key can be set or overridden in the environment as `YDST_<SECTION>_<KEY>` (`YDST_AWS_SECRET_ACCESS_KEY`), so a CI job needs no file, and an empty value counts as unset. The Platform's key, secret and URL fall back to `YD_KEY`, `YD_SECRET` and `YD_URL`. A provider with no section is skipped; a section present but incomplete is an error. Every problem is reported at once, before anything remote is touched.
+
+Every instance is given a public IP address, because its Agent installs from the internet and reports to the Platform over it, so the network each provider is configured with must allow that: on AWS a subnet that routes to an internet gateway and a security group allowing outbound HTTPS, and on Azure, GCP and OCI their equivalents (OCI's subnet must be public, since a private one refuses a public IP). An instance that cannot reach the Platform shows as RUNNING but never registers as a Worker.
+
+```toml
+[platform]                      # or YD_KEY, YD_SECRET, YD_URL
+key = "..."                     # required
+secret = "..."                  # required
+url = "https://api.yellowdog.ai"
+
+[run]                           # every key optional
+primary_provider = "aws"        # needed with more than one provider
+namespace = "yd-cli-system-tests"
+max_instance_hours = 4          # the run's Allowance
+provision_timeout_minutes = 15
+teardown_timeout_minutes = 15
+sweep_age_hours = 24
+sweep_on_start = true
+keep_on_failure = false
+terminate_on_keep = true
+
+[aws]
+access_key_id = "..."           # required
+secret_access_key = "..."       # required
+region = "eu-west-2"            # required
+security_group_id = "sg-..."    # required
+subnet_id = "subnet-..."        # required
+availability_zone = "eu-west-2a"  # required: the subnet's
+image_id = "ami-..."            # required
+instance_type = "t3a.small"
+iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: the instances' role, e.g. for S3 data
+
+# A section enables its provider, so leave a provider you are not testing commented out
+
+# [azure]                         # required: tenant_id, client_id, client_secret, subscription_id,
+#                                 # region, network_resource_group, network_name, subnet_name, image_id
+# vm_size = "Standard_B2s"
+# ssh_public_key = "..."
+
+# [gcp]                           # required: service_account_key_file (a path), project, region
+# zone = "europe-west2-a"
+# network = "default"
+# subnetwork = "default"
+# machine_type = "e2-small"
+# image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
+
+# [oci]                           # required: tenancy_id, user_id, fingerprint, private_key_file (a path),
+#                                 # region, compartment_id, subnet_id, shape, image_id
+# availability_domain = "..."
+# flex_ocpus = 1.0
+# flex_ram = 8.0
+
+# [data]                        # the data scenarios: AWS as the primary, with iam_instance_profile_arn
+# bucket = "my-bucket"           # an S3 bucket the [aws] keys can write; Tasks reach it through the instance profile
+```
+
+Run it, and clear up after runs that died:
+
+```shell
+pytest -v --run-live -n 4 tests/live/
+python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]
+```
+
+A run provisions, on every configured provider, a Worker Pool of one instance from the run's static template, with the Agent installed at boot by `tests/live/specs/install-agent.sh` (vendored from `python-examples-demos`, and run whatever the image), and takes it through a smoke Task and the cloud actions: resize up, reprovision, resize down, deprovision, and shut down; stop, start, restart and terminating an instance act on a separate one-instance Compute Requirement that no pool manages, since a Worker Pool takes a stopped node's instance away. Each provider runs two or three small instances for roughly 15 to 25 minutes, within the run's Allowance; the pools also shut themselves down after 30 idle minutes, should the harness die. With `-n` the providers run in parallel, one worker each (`--dist loadgroup` is in `pyproject.toml`'s `addopts`); the run is set up once, by xdist's controller, and torn down when every worker has finished.
+
+The primary also runs an actions pool (two instances, two Workers each, growing to three for the Node verbs) for the work and compute scenarios, and a standalone Compute Requirement of one instance, for roughly 30 to 40 minutes; a whole-suite run takes about 25 minutes on AWS alone. The data scenarios, and a Task's inputs and outputs through S3, need `[data]`, AWS as the primary and `iam_instance_profile_arn`; both data remotes are built from `[aws]`, the run's files live under `<bucket>/<namespace>/<run ID>/`, and teardown deletes them. A whole-suite session (`pytest --run-live -n 4 tests/live/`) ends with the coverage gate, which fails on any CLI verb neither exercised nor listed, with its reason, in `tests/live/harness/coverage.py`'s `NOT_EXERCISED`; a narrower session skips it. Every `yd` call fails if its output holds a configured secret.
+
+Everything a run makes is named `ydst-<yymmddhhmm>-<4 base36>-...` and tagged with that run ID, so runs may overlap; the sweep tears down only runs of its namespace older than `--older-than` (`sweep_age_hours` by default), or those named with `--run`. A run whose compute may still be alive when teardown ends keeps its Keyring, without whose Credential the Platform cannot terminate it, and its Allowance, and the session fails saying how to tear it down again. A session sweeps first unless `sweep_on_start` is false. Secrets reach `yd` only through its environment, never the `config.toml` each run generates. See [`tests/README.md`](tests/README.md#live-system-tests---run-live-provisions-real-cloud-instances) for the files.
 
 ### Coverage
 
