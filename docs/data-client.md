@@ -86,14 +86,14 @@ Named profile variables are always resolved with profile fields taking precedenc
 
 > **Note on Worker Pool / Compute Requirement specs and User Data:** In JSON/Jsonnet Worker Pool and Compute Requirement specifications, and in all User Data (whether supplied via `userData`, `userDataFile`, or `userDataFiles`), variable substitutions **must be prefixed and postfixed by double underscores** to disambiguate them from server-side Mustache processing. Use `__{{dataClient.remote}}__`, `__{{dataClient.prod.bucket}}__`, etc.
 
-Example use in a Work Requirement spec (no underscores needed in WR JSON):
+Example use in a Work Requirement spec (no underscores needed in WR JSON). The Platform requires an input's `source` to start with `rclone:` and its `destination` with `local:` (an output's the other way round; see [Specifying Data Client Inputs](work-requirements.md#specifying-data-client-inputs)); leave out the `rclone:` below if the configured `remote` already starts with it:
 
 ```json
 {
   "taskDataInputs": [
     {
-      "source": "{{dataClient.remote}}:{{dataClient.bucket}}/{{dataClient.prefix}}/input.csv",
-      "destination": "input.csv"
+      "source": "rclone:{{dataClient.remote}}:{{dataClient.bucket}}/{{dataClient.prefix}}/input.csv",
+      "destination": "local:input.csv"
     }
   ]
 }
