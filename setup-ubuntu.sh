@@ -317,8 +317,11 @@ The test categories not covered above need more than this script installs:
     --run-dryruns             # needs the python-examples-demos repo checked out
                               # alongside this one, at $(dirname "$CHECKOUT")/python-examples-demos
     --run-system              # needs real credentials (YD_KEY / YD_SECRET, or a
-    --run-system-compute      # config.toml) and will provision cloud compute
-    --run-demos               # as above, plus python-examples-demos
+                              # config.toml)
+    --run-live                # needs its own configuration (see DEVELOPMENT.md),
+                              # and will provision cloud compute
+    --run-demos               # needs real credentials, plus python-examples-demos,
+                              # and will provision cloud compute
 
 If the Commander tests ever report themselves skipped with 'Qt is unavailable', the
 skip message names the library that is missing; install it and run them again.

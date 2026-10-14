@@ -8,23 +8,6 @@
 [common.variables]  ###########################################################
 
     worker_tag = "{{tag}}-worker"
-    timeout = 3.0
-
-[workerPool]  ##################################################################
-
-    templateId = "{{template_id:=yd-demo/yd-demo-aws-eu-west-2-split-ondemand}}"
-    imagesId = "{{images_id:=yd-demo/ubuntu-22-04}}"
-    userDataFiles = ["install-agent.sh"]
-
-    workerTag = "{{worker_tag}}"
-    workersPerNode = "{{num:workers_per_node:=5}}"
-
-    minNodes = "{{num:min_nodes:=0}}"
-    targetInstanceCount = "{{num:instances:=1}}"
-    maxNodes = "{{num:max_nodes:=2}}"
-
-    idleNodeTimeout = "{{num:node_timeout:={{timeout}}}}"
-    idlePoolTimeout = "{{num:pool_timeout:={{timeout}}}}"
 
 [workRequirement]  #############################################################
 

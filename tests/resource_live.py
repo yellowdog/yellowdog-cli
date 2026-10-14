@@ -220,7 +220,7 @@ def command_line(command: str, *args: str) -> str:
 
     Always prefixed with 'cd <CORPUS_DIR> &&', the same convention every other
     system test module already uses for its own 'cleanup(...)' registrations
-    (e.g. test_system_lifecycle.py's "cd {SYSTEM_DIR} && yd-shutdown ..."):
+    (e.g. test_system_cancel_hold_finish.py's "cd {SYSTEM_DIR} && yd ..."):
     'cleanup' (conftest.py) runs a registered command exactly as given, with no
     chdir of its own, from whatever directory the test process happens to be in
     by teardown time -- which is not reliably CORPUS_DIR, since a test that

@@ -36,12 +36,6 @@ def pytest_addoption(parser):
         help="Run system tests against the live platform",
     )
     parser.addoption(
-        "--run-system-compute",
-        action="store_true",
-        default=False,
-        help="Run system tests that provision real cloud compute (implies --run-system)",
-    )
-    parser.addoption(
         "--run-live",
         action="store_true",
         default=False,
@@ -65,9 +59,6 @@ def pytest_collection_modifyitems(config, items):
     # By marker, not by "name" in item.keywords: keywords also hold every test,
     # class, module and parameter name, so a parametrize ID such as "system"
     # would silently gate an ordinary test behind --run-system.
-    run_system = config.getoption("--run-system") or config.getoption(
-        "--run-system-compute"
-    )
 
     if not config.getoption("--run-demos"):
         skipper = pytest.mark.skip(reason="Only run when '--run-demos' is given")
@@ -81,18 +72,10 @@ def pytest_collection_modifyitems(config, items):
             if item.get_closest_marker("dryruns"):
                 item.add_marker(skipper)
 
-    if not run_system:
+    if not config.getoption("--run-system"):
         skipper = pytest.mark.skip(reason="Only run when '--run-system' is given")
         for item in items:
             if item.get_closest_marker("system"):
-                item.add_marker(skipper)
-
-    if not config.getoption("--run-system-compute"):
-        skipper = pytest.mark.skip(
-            reason="Only run when '--run-system-compute' is given"
-        )
-        for item in items:
-            if item.get_closest_marker("system_compute"):
                 item.add_marker(skipper)
 
     if not config.getoption("--run-live"):
@@ -633,10 +616,7 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
 
     from yellowdog_cli.utils.settings import YD_KEY, YD_SECRET
 
-    if any(
-        config.getoption(flag)
-        for flag in ("--run-system", "--run-system-compute", "--run-demos")
-    ):
+    if any(config.getoption(flag) for flag in ("--run-system", "--run-demos")):
         return
     if _configuration_loads_cleanly():
         return
@@ -693,10 +673,6 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "system: mark test to run only when '--run-system' is specified",
-    )
-    config.addinivalue_line(
-        "markers",
-        "system_compute: mark test to run only when '--run-system-compute' is specified",
     )
     config.addinivalue_line(
         "markers",

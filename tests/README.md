@@ -14,7 +14,6 @@ Five categories of test exist, controlled by pytest flags:
 | `--run-dryruns` | `dryruns` | Demo dry-runs (no platform calls); requires `../python-examples-demos` |
 | `--run-demos` | `demos` | Full live demo runs on the platform |
 | `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
-| `--run-system-compute` | `system_compute` | System tests that provision real cloud compute (implies `--run-system`) |
 | `--run-live` | `live` | The [live system tests](#live-system-tests---run-live-provisions-real-cloud-instances) under `tests/live/`: everything a run needs created from their own configuration, real compute provisioned, everything torn down; never part of `make test` or `tox` |
 | `--run-crash-tests` | `crashes` | Not a category: on macOS, runs the tests that crash a child interpreter on purpose, which are skipped there without it because each crash puts up the system's "quit unexpectedly" dialog (Homebrew's Python runs as `Python.app`). Elsewhere they always run |
 | `--update-parser-snapshots` | — | Not a category: regenerates `parser_snapshots.json` for `test_parser_snapshots.py`, which then passes, rather than running any extra tests. Regenerate on the oldest supported interpreter, or check the test on one, because a newer argparse can derive values differently |
@@ -33,9 +32,6 @@ pytest -v --run-dryruns
 # Add system tests (credentials required)
 pytest -v --run-system
 
-# Add compute-provisioning tests (slow, costs money)
-pytest -v --run-system-compute
-
 # Add live demos
 pytest -v --run-demos
 
@@ -44,7 +40,7 @@ pytest -v --run-live -n 4 tests/live/       # providers in parallel, one worker 
 python tests/live/sweep.py --dry-run   # what a sweep after dead runs would tear down
 
 # Everything
-pytest -v --run-dryruns --run-system-compute --run-demos
+pytest -v --run-dryruns --run-system --run-demos
 
 # Run a single file or pattern
 pytest -v tests/test_ydid_utils.py
@@ -161,6 +157,7 @@ pytest -v -n 4 --run-demos
 | `test_start_hold_common.py` | `utils/start_hold_common.py`, `finish.py` — `yd-start`/`yd-hold`/`yd-finish` against a fake Platform: the tag listing and glob patterns in the required state; IDs fetched whatever their namespace, names searched for (never the namespace listed) preferring the required state and refusing two, in the order given without duplicates, confirmed once; each outcome's record; session failures stopping the run; `--follow` given what was actioned; finishing's two states, `FINISHING` ones left out or skipped and never followed, and a name shared with a `CANCELLING` one not ambiguous |
 | `test_submit_batching.py` | `submit.py`, `utils/task_batches.py` — sequential vs. parallel task batch submission in `add_tasks_to_task_group`, a Task Group with no Tasks, `taskCount` expansion (no copies when every Task comes from the first), and the retrying of a failed batch (backoff, failures not retried, duplicate names, the original exception raised for the exit code); `Batches` skipping the batches not yet started once one fails, even on a single thread; a dry run's snapshot showing the Tasks in Task order however its parallel batches finish |
 | `test_submit_functions.py` | `submit.py`, `utils/task_groups.py`, `utils/task_generation.py` — `create_task_group`, `submit_work_requirement` (including a whole-valued float `taskGroupCount`), Task Group over Work Requirement precedence in `generate_batch_of_tasks`, `{{task_name}}`/`{{task_number}}` in an inherited property substituted per Task (arguments, environment, inline Task Data, a `taskDataFile` path, data inputs) with the inherited value left as written, `taskTypes` order, the Task Group tag's type, and cleanup on failure or interrupt (a failing step reported without masking the failure); a failed `--hold` cancelling the Work Requirement before any Task is added; and `--exit-on-failure` exiting with the outcome's code after following, and fetching no outcome without it |
+| `test_submit_csv_end_to_end.py` | `yd workrequirement submit -V <csv>` end to end, offline: the real command, run with `--dry-run --json`, makes one Task per CSV row with that row's values (a `{{...}}` variable in a cell substituted afterwards), and each Task Group takes its own CSV file |
 | `test_submit_inputs.py` | `submit.py`, `utils/task_groups.py`, `utils/task_generation.py` — what `yd-submit` makes of its inputs: the CSV files named (an empty `csvFiles`, more than one without a specification), a missing or malformed `taskGroups`/`tasks`, the reported path where none is relative (Windows, another drive: `utils/paths.relative_if_possible()`, which gives the absolute path), the `taskType` shorthand, and the type a Task without its own is given |
 | `test_submit_json_raw.py` | `utils/json_raw.py`, `utils/task_batches.py` — `--json-raw`: the new Work Requirement handed to the `follow` callback (not one whose Tasks failed); a refused Work Requirement or Task batch raised as an `HTTPError` whose status reaches the exit code, the Work Requirement cancelled when a batch fails, batch retries as the main path's, request timeouts, and `--progress`; a missing `name` or `taskGroups`, or a Task Group's `name`, named in a `ValueError` |
 | `test_submit_options.py` | `utils/command_registry.py` — `yd-submit`'s option combinations refused as the command line is parsed (`check_submit_combinations`): `--json-raw` with anything that builds or extends a specification, `--add-to` with `--hold` or `--empty`, `--exit-on-failure` without `--follow` or `--progress`; and the combinations still allowed |
@@ -269,14 +266,6 @@ These are supported by four non-test modules and by fixtures in the root `confte
 | `resource_live.py` | Helpers for the live suite: `yd()`/`ydids()`/`show()` subprocess wrappers, `mismatches()`, the create-vs-`yd-show` comparison, and the specifications that cannot be created standalone (`KNOWN_PARTIAL_FAILURE_NAMES`: those missing a `namespace`, `MISSING_NAMESPACE_FAILURE_NAMES`, whose removal fails too, and `applications.jsonnet`'s `application-max`, whose Group and Keyring other files create) |
 
 Beyond the general platform-test prerequisites below, the resource corpus needs only `YD_KEY` and `YD_SECRET` in the environment (plus `YD_URL` for a non-default platform). It requires no configuration file of your own and no cloud credentials: `tests/resources/test-config.toml` supplies the namespace and the dummy infrastructure values, and deliberately carries no credentials and imports none — see `tests/resources/README.md`.
-
-### System Compute Tests (`--run-system-compute`, provisions real cloud instances)
-
-| File | What it tests |
-|---|---|
-| `test_system_lifecycle.py` | Minimal end-to-end: provision pool → submit trivial WR → follow to completion → shutdown |
-| `test_system_csv_batch.py` | CSV-driven batch: 10 tasks from `tasks.csv`, all verified complete |
-| `test_system_resize.py` | Worker Pool resize: provision with 1 node, resize to 2, verify, tear down |
 
 ### Demo Tests (`--run-demos`, provisions real cloud instances)
 
