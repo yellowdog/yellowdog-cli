@@ -43,8 +43,7 @@ DUMMY_CREDENTIALS_MARKER = "YD_TEST_DUMMY_CREDENTIALS"
 class Key:
     """
     One configuration key: its type, and whether it is required, a secret,
-    a path to a file whose contents are the value, or a JSON object given
-    inline. A 'shown' secret is one
+    a JSON object or a PEM private key. A 'shown' secret is one
     the CLI prints on purpose (the Application key ID, in 'yd doctor'): it
     is masked in what the harness shows, but printing it does not fail a
     call.
@@ -53,8 +52,8 @@ class Key:
     kind: type
     required: bool = False
     secret: bool = False
-    file: bool = False
     json: bool = False
+    pem: bool = False
     default: Any = None
     shown: bool = False
 
@@ -102,7 +101,7 @@ SCHEMA: dict[str, dict[str, Key]] = {
         "ssh_public_key": Key(str),
     },
     "gcp": {
-        # The key file's contents, inline
+        # The key file's contents
         "service_account_key_json": Key(str, required=True, secret=True, json=True),
         "project": Key(str, required=True),
         "region": Key(str, required=True),
@@ -116,17 +115,15 @@ SCHEMA: dict[str, dict[str, Key]] = {
         ),
     },
     "oci": {
-        "tenancy_id": Key(str, required=True),
+        "tenant_id": Key(str, required=True),
         "user_id": Key(str, required=True),
         "fingerprint": Key(str, required=True),
-        "private_key_file": Key(str, required=True, secret=True, file=True),
+        "private_key": Key(str, required=True, secret=True, pem=True),
+        "passphrase": Key(str, secret=True),  # The private key's, if encrypted
         "region": Key(str, required=True),
         "compartment_id": Key(str, required=True),
-        "availability_domain": Key(str),
         "subnet_id": Key(str, required=True),
         "shape": Key(str, required=True),
-        "flex_ocpus": Key(float, default=1.0),
-        "flex_ram": Key(float, default=8.0),
         "image_id": Key(str, required=True),
     },
     "data": {
@@ -138,7 +135,6 @@ SCHEMA: dict[str, dict[str, Key]] = {
 _KIND_NAMES = {
     str: "a string",
     int: "an integer",
-    float: "a number",
     bool: "true or false",
 }
 _TRUE = {"true", "yes", "on", "1"}
@@ -149,8 +145,7 @@ _FALSE = {"false", "no", "off", "0"}
 class Section:
     """
     One section's values: every key of its schema, its default or None where
-    neither the file nor the environment gave one, a file key as its Path.
-    The values are left out of its repr, which pytest shows in a failure.
+    neither the file nor the environment gave one. The values are left out of its repr, which pytest shows in a failure.
     """
 
     name: str
@@ -161,21 +156,19 @@ class Section:
 
     def labelled_secrets(self, *, shown: bool = True) -> dict[str, str]:
         """
-        The section's secret values by '[<section>] <key>', a key file's as
-        its contents; without 'shown', leaving out those the CLI shows.
+        The section's secret values by '[<section>] <key>'; without 'shown',
+        leaving out those the CLI shows.
         """
         found: dict[str, str] = {}
         for key, spec in SCHEMA[self.name].items():
             value = self.values[key]
             if spec.secret and value is not None and (shown or not spec.shown):
-                found[f"[{self.name}] {key}"] = (
-                    value.read_text(encoding="utf-8") if spec.file else value
-                )
+                found[f"[{self.name}] {key}"] = value
         return found
 
     def secrets(self) -> list[str]:
         """
-        The section's secret values, a key file's as its contents.
+        The section's secret values.
         """
         return list(self.labelled_secrets().values())
 
@@ -357,15 +350,13 @@ def _is_kind(value: Any, kind: type) -> bool:
     """
     if isinstance(value, bool):
         return kind is bool
-    if kind is float:
-        return isinstance(value, (int, float))
     return isinstance(value, kind)
 
 
 def _section(name: str, raw: dict, problems: list[str]) -> Section:
     """
     One section, checked against its schema: unknown keys, types, required
-    keys, key files and inline JSON.
+    keys, inline JSON and PEM private keys.
     """
     schema = SCHEMA[name]
     values: dict[str, Any] = {}
@@ -378,20 +369,17 @@ def _section(name: str, raw: dict, problems: list[str]) -> Section:
         elif not _is_kind(value, spec.kind):
             problems.append(f"[{name}] {key} must be {_KIND_NAMES[spec.kind]}")
         else:
-            values[key] = float(value) if spec.kind is float else value
+            values[key] = value
 
     for key, spec in schema.items():
         if key not in values:
             if spec.required:
                 problems.append(f"[{name}] needs {key}")
             values[key] = spec.default
-        elif spec.file:
-            path = Path(values[key]).expanduser()
-            if not (path.is_file() and os.access(path, os.R_OK)):
-                problems.append(f"[{name}] {key}: '{path}' is not a readable file")
-            values[key] = path
         elif spec.json and not _is_json_object(values[key]):
             problems.append(f"[{name}] {key} is not a JSON object")
+        elif spec.pem and not _is_pem_private_key(values[key]):
+            problems.append(f"[{name}] {key} is not a PEM private key")
     return Section(name, MappingProxyType(values))
 
 
@@ -404,6 +392,15 @@ def _is_json_object(text: str) -> bool:
         return isinstance(json.loads(text, strict=False), dict)
     except ValueError:
         return False
+
+
+def _is_pem_private_key(text: str) -> bool:
+    """
+    Whether the text is a PEM private key: its BEGIN line, then its END line.
+    """
+    begin = text.find("-----BEGIN ")
+    end = text.find("-----END ")
+    return 0 <= begin < end and "PRIVATE KEY-----" in text[begin:end]
 
 
 def _primary(

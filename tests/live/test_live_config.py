@@ -9,10 +9,10 @@ from live_samples import (
     AWS,
     AZURE,
     PLATFORM,
+    PRIVATE_KEY_PEM,
     SERVICE_ACCOUNT_KEY,
     gcp,
     oci,
-    oci_key_file,
     write_config,
 )
 
@@ -167,9 +167,19 @@ def test_no_provider_is_an_error(tmp_path):
     assert problems[0].startswith("no provider is configured")
 
 
-def test_an_oci_key_file_must_exist(tmp_path):
-    problems = _problems(write_config(tmp_path, PLATFORM + oci(tmp_path / "none.pem")))
-    assert any("private_key_file" in p and "not a readable file" in p for p in problems)
+def test_an_oci_private_key_must_be_a_pem_private_key(tmp_path):
+    problems = _problems(write_config(tmp_path, PLATFORM + oci("not a key")))
+    assert "[oci] private_key is not a PEM private key" in problems
+
+
+def test_an_oci_passphrase_is_optional_and_a_secret(tmp_path):
+    loaded = load_live_config(write_config(tmp_path, PLATFORM + oci()))
+    assert loaded.providers["oci"]["passphrase"] is None
+    text = PLATFORM + oci(passphrase="dummy-oci-passphrase")
+    assert (
+        "dummy-oci-passphrase"
+        in load_live_config(write_config(tmp_path, text)).secrets()
+    )
 
 
 def test_a_service_account_key_must_be_a_json_object(tmp_path):
@@ -198,12 +208,11 @@ def test_a_service_account_key_can_come_from_the_environment(tmp_path):
     assert loaded.providers["gcp"]["service_account_key_json"] == SERVICE_ACCOUNT_KEY
 
 
-def test_the_secrets_include_the_key_and_key_file_contents(tmp_path):
-    oci_key = oci_key_file(tmp_path)
-    text = PLATFORM + gcp() + oci(oci_key) + '[run]\nprimary_provider = "gcp"\n'
+def test_the_secrets_include_the_inline_keys(tmp_path):
+    text = PLATFORM + gcp() + oci() + '[run]\nprimary_provider = "gcp"\n'
     secrets = load_live_config(write_config(tmp_path, text)).secrets()
     assert SERVICE_ACCOUNT_KEY in secrets
-    assert oci_key.read_text(encoding="utf-8") in secrets
+    assert PRIVATE_KEY_PEM in secrets
     assert "app-secret-abcdefghijklmnop" in secrets
     assert "ocid1.tenancy.oc1..dummy" not in secrets
 

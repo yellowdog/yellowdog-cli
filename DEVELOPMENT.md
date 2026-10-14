@@ -179,11 +179,12 @@ iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: 
 # machine_type = "e2-small"
 # image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
 
-# [oci]                           # required: tenancy_id, user_id, fingerprint, private_key_file (a path),
+# [oci]                           # required: tenant_id, user_id, fingerprint, private_key,
 #                                 # region, compartment_id, subnet_id, shape, image_id
-# availability_domain = "..."
-# flex_ocpus = 1.0
-# flex_ram = 8.0
+# private_key = '''-----BEGIN PRIVATE KEY-----
+# ...
+# -----END PRIVATE KEY-----'''    # the PEM text, inline
+# passphrase = "..."              # optional: the private key's, if it is encrypted
 
 # [data]                        # the data scenarios: AWS as the primary, with iam_instance_profile_arn
 # bucket = "my-bucket"           # an S3 bucket the [aws] keys can write; Tasks reach it through the instance profile

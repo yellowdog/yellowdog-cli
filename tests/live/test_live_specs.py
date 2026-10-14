@@ -11,9 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 from harness import config
-from harness.config import load_live_config
+from harness.config import LiveConfigError, load_live_config
 from harness.run import INSTALLER, SPECS, Run
-from live_samples import AWS, AZURE, PLATFORM, gcp, oci, oci_key_file, write_config
+from live_samples import AWS, AZURE, PLATFORM, gcp, oci, write_config
 
 # The jsonnet extra; tox installs it, a bare environment may not. (Not
 # resource_corpus.require_jsonnet(): tests/ is not on sys.path when only
@@ -26,8 +26,7 @@ def _no_default_file(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "DEFAULT_PATH", tmp_path / "absent.toml")
 
 
-def _run(tmp_path, extra: str = "", aws_extra: str = "") -> Run:
-    oci_key = oci_key_file(tmp_path)
+def _run(tmp_path, extra: str = "", aws_extra: str = "", oci_extra: str = "") -> Run:
     text = (
         PLATFORM
         + AWS
@@ -35,7 +34,8 @@ def _run(tmp_path, extra: str = "", aws_extra: str = "") -> Run:
         + AZURE
         + extra
         + gcp()
-        + oci(oci_key)
+        + oci()
+        + oci_extra
         + '[run]\nprimary_provider = "aws"\n'
     )
     return Run.start(load_live_config(write_config(tmp_path, text)), tmp_path / "runs")
@@ -273,6 +273,53 @@ def test_azures_source_takes_its_network_from_the_configuration(tmp_path):
     assert source["networkResourceGroupName"] == "yd-dummy-rg"
     assert source["networkName"] == "yd-dummy-vnet"
     assert source["subnetName"] == "yd-dummy-subnet"
+
+
+def _credential(run: Run, provider: str) -> dict:
+    (credential,) = [
+        r["credential"]
+        for r in _by_type(_load(run, run.spec_files()), "Credential")
+        if r["credential"]["name"] == run.credential_name(provider)
+    ]
+    return credential
+
+
+def test_ocis_source_takes_its_shape_alone(tmp_path):
+    source = _source(_run(tmp_path), "oci")
+    assert source["shape"] == "VM.Standard.E4.Flex"
+    assert not {"flexOcpus", "flexRam", "availabilityDomain"} & set(source)
+
+
+def test_oci_takes_no_flex_sizes_or_availability_domain(tmp_path):
+    text = (
+        PLATFORM
+        + oci()
+        + 'flex_ocpus = 1.0\nflex_ram = 8.0\navailability_domain = "AD-1"\n'
+    )
+    with pytest.raises(LiveConfigError) as caught:
+        load_live_config(write_config(tmp_path, text))
+    assert {
+        "[oci] has no key 'flex_ocpus'",
+        "[oci] has no key 'flex_ram'",
+        "[oci] has no key 'availability_domain'",
+    } <= set(caught.value.problems)
+
+
+def test_ocis_credential_takes_every_value_inline(tmp_path):
+    credential = _credential(_run(tmp_path), "oci")
+    assert credential["userId"] == "ocid1.user.oc1..dummy"
+    assert credential["tenantId"] == "ocid1.tenancy.oc1..dummy"
+    assert (
+        credential["fingerprint"] == "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff"
+    )
+    assert credential["privateKey"].startswith("-----BEGIN PRIVATE KEY-----")
+    assert "passphrase" not in credential
+
+
+def test_ocis_credential_takes_a_passphrase_when_set(tmp_path):
+    # OCI is the last section, so the line joins it
+    run = _run(tmp_path, oci_extra='passphrase = "dummy-oci-passphrase"\n')
+    assert _credential(run, "oci")["passphrase"] == "dummy-oci-passphrase"
 
 
 def test_multi_line_and_json_secrets_arrive_intact(tmp_path):

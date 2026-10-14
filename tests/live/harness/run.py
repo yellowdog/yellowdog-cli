@@ -193,20 +193,13 @@ class Run:
     def secret_variables(self) -> dict[str, str]:
         """
         The run's secret variables, named 'secret_<provider>_<key>' so that
-        'yd variables' redacts every one by its name; a key file's as its
-        contents, under the key's name less '_file' ('secret_oci_private_key').
+        'yd variables' redacts every one by its name.
         """
         found: dict[str, str] = {}
         for provider, section in self.config.providers.items():
             for key, spec in SCHEMA[provider].items():
                 value = section[key]
-                if not spec.secret or value is None:
-                    continue
-                if spec.file:
-                    found[f"secret_{provider}_{key.removesuffix('_file')}"] = (
-                        value.read_text(encoding="utf-8")
-                    )
-                else:
+                if spec.secret and value is not None:
                     found[f"secret_{provider}_{key}"] = value
         return found
 

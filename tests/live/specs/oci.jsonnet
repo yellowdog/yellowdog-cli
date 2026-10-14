@@ -12,10 +12,11 @@ local imageFamily = import 'image-family.libsonnet';
       type: 'co.yellowdog.platform.account.credentials.OciCredential',
       name: '{{oci_credential_name}}',
       userId: '{{oci_user_id}}',
-      tenantId: '{{oci_tenancy_id}}',
+      tenantId: '{{oci_tenant_id}}',
       fingerprint: '{{oci_fingerprint}}',
-      // The key file's contents, escaped for this string by the Jsonnet pass
+      // The PEM text, escaped for this string by the Jsonnet pass
       privateKey: '{{secret_oci_private_key}}',
+      passphrase: '{{secret_oci_passphrase::}}',
     },
   },
   {
@@ -28,11 +29,8 @@ local imageFamily = import 'image-family.libsonnet';
       credential: '{{oci_credential}}',
       region: '{{oci_region}}',
       compartmentId: '{{oci_compartment_id}}',
-      availabilityDomain: '{{oci_availability_domain::}}',
       subnetId: '{{oci_subnet_id}}',
       shape: '{{oci_shape}}',
-      flexOcpus: '{{num:oci_flex_ocpus}}',
-      flexRam: '{{num:oci_flex_ram}}',
       imageId: '{{namespace}}/{{oci_image_family}}',
       assignPublicIp: true,
     },

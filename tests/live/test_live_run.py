@@ -13,7 +13,7 @@ import pytest
 from harness import config
 from harness.config import load_live_config
 from harness.run import SPECS, Run, new_run_id, run_id_of, run_started
-from live_samples import AWS, PLATFORM, gcp, oci, oci_key_file, write_config
+from live_samples import AWS, PLATFORM, gcp, oci, write_config
 
 STARTED = datetime(2026, 10, 12, 15, 30, tzinfo=timezone.utc)
 
@@ -25,8 +25,7 @@ def _no_default_file(monkeypatch, tmp_path):
 
 @pytest.fixture
 def every_provider(tmp_path):
-    oci_key = oci_key_file(tmp_path)
-    text = PLATFORM + AWS + gcp() + oci(oci_key) + '[run]\nprimary_provider = "aws"\n'
+    text = PLATFORM + AWS + gcp() + oci() + '[run]\nprimary_provider = "aws"\n'
     return load_live_config(write_config(tmp_path, text))
 
 
@@ -95,7 +94,7 @@ def test_the_cli_config_holds_the_namespace_tag_and_variables(every_provider, tm
     assert variables["aws_credential"] == (
         "ydst-2610121530-ab12-keyring/ydst-2610121530-ab12-aws"
     )
-    assert variables["oci_flex_ocpus"] == "1.0"
+    assert variables["oci_shape"] == "VM.Standard.E4.Flex"
     assert variables["max_instance_hours"] == "4"
     assert variables["aws_subnet_id"] == "subnet-00000000000000000"
     assert variables["aws_availability_zone"] == "eu-west-2a"
@@ -113,7 +112,7 @@ def test_no_secret_is_written_to_the_cli_config(every_provider, tmp_path):
         assert name not in text
 
 
-def test_secret_variables_carry_key_file_contents(every_provider, tmp_path):
+def test_secret_variables_carry_the_inline_keys(every_provider, tmp_path):
     run = Run.start(every_provider, tmp_path / "runs")
     secrets = run.secret_variables()
     assert secrets["secret_gcp_service_account_key_json"].startswith(

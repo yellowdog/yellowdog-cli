@@ -18,7 +18,6 @@ from live_samples import (
     SERVICE_ACCOUNT_KEY,
     gcp,
     oci,
-    oci_key_file,
     write_config,
 )
 
@@ -54,8 +53,7 @@ def _no_default_file(monkeypatch, tmp_path):
 
 @pytest.fixture
 def run(tmp_path):
-    oci_key = oci_key_file(tmp_path)
-    text = PLATFORM + AWS + gcp() + oci(oci_key) + '[run]\nprimary_provider = "aws"\n'
+    text = PLATFORM + AWS + gcp() + oci() + '[run]\nprimary_provider = "aws"\n'
     return Run.start(load_live_config(write_config(tmp_path, text)), tmp_path / "runs")
 
 

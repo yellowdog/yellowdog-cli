@@ -58,17 +58,19 @@ region = "europe-west2"
 """
 
 
-def oci(key_file: Path) -> str:
+def oci(private_key: str = PRIVATE_KEY_PEM, passphrase: str | None = None) -> str:
     """
-    An [oci] section whose private key is the given file.
+    An [oci] section with its private key inline, as a literal string, and
+    a passphrase when one is given.
     """
+    extra = f'passphrase = "{passphrase}"\n' if passphrase is not None else ""
     return f"""
 [oci]
-tenancy_id = "ocid1.tenancy.oc1..dummy"
+tenant_id = "ocid1.tenancy.oc1..dummy"
 user_id = "ocid1.user.oc1..dummy"
 fingerprint = "00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff"
-private_key_file = "{key_file}"
-region = "uk-london-1"
+private_key = '''{private_key}'''
+{extra}region = "uk-london-1"
 compartment_id = "ocid1.compartment.oc1..dummy"
 subnet_id = "ocid1.subnet.oc1..dummy"
 shape = "VM.Standard.E4.Flex"
@@ -83,15 +85,6 @@ def write_config(tmp_path: Path, text: str) -> dict[str, str]:
     path = tmp_path / "system-tests.toml"
     path.write_text(text, encoding="utf-8")
     return {"YDST_CONFIG": str(path)}
-
-
-def oci_key_file(tmp_path: Path) -> Path:
-    """
-    The OCI private key, as a file.
-    """
-    oci_key = tmp_path / "oci.pem"
-    oci_key.write_text(PRIVATE_KEY_PEM, encoding="utf-8")
-    return oci_key
 
 
 DATA = """
