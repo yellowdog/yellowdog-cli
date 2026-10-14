@@ -4,8 +4,9 @@ corpus (resource_corpus.py) and the live harness (resource_live.py) built for it
 
 Run with: pytest --run-system tests/test_system_resources.py
 
-Prerequisites: YD_KEY and YD_SECRET in the environment (plus YD_URL for a
-non-default platform). Nothing else -- no configuration file of your own, and no
+Prerequisites: [platform] in the live system tests' configuration
+(~/.config/yellowdog/system-tests.toml), which conftest.py gives every
+'--run-system' test. Nothing else -- no configuration file of your own, and no
 cloud credentials. tests/resources/test-config.toml supplies the namespace and the
 dummy infrastructure values, and deliberately carries no credentials of any kind;
 see tests/resource_live.py's module docstring.

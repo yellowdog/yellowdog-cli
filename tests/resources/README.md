@@ -12,13 +12,9 @@ Every environment-specific value — an AWS region, an Azure resource group, a G
 
 ## Credentials
 
-Credentials come from the environment, and only from there:
+Credentials come from the live system tests' configuration, `[platform]` in `~/.config/yellowdog/system-tests.toml` (or the file `YDST_CONFIG` names, or `YDST_PLATFORM_KEY`/`_SECRET`/`_URL`): under `--run-system`, the root `conftest.py` sets `YD_KEY`, `YD_SECRET` and `YD_URL` from it, in place of the shell's, before anything runs, and a missing key or secret stops the session (see `DEVELOPMENT.md`'s live system tests section for the file).
 
-```shell
-export YD_KEY=... YD_SECRET=...      # and YD_URL, for a non-default platform
-```
-
-`test-config.toml` carries no key, secret or URL, and imports none from anywhere else — it names no credential property at all, which is precisely what hands the decision to the environment: an explicitly selected `-c` file outranks environment variables only for the properties it actually defines (see `CLAUDE.md`'s Configuration section). This is a deliberate constraint rather than an omission. It keeps the tracked configuration free of any reference to a personal file, so nothing in the repository has to be edited to switch accounts; it means a run that authenticates as the wrong account has one place to look rather than an indirection to unwind; and it is the same pair of variables every other platform-touching test in the suite already uses, so `--run-system` has a single prerequisite across the board. Setting a key or secret in `test-config.toml`, or reintroducing an `importCommon` that supplies one, would defeat all three.
+`test-config.toml` carries no key, secret or URL, and imports none from anywhere else — it names no credential property at all, which is precisely what hands the decision to the environment: an explicitly selected `-c` file outranks environment variables only for the properties it actually defines (see `CLAUDE.md`'s Configuration section). This is a deliberate constraint rather than an omission. It keeps the tracked configuration free of any reference to a personal file, so nothing in the repository has to be edited to switch accounts; it means a run that authenticates as the wrong account has one place to look rather than an indirection to unwind; and it is the same source every other platform-touching test in the suite uses, so `--run-system` and `--run-live` have a single prerequisite. Setting a key or secret in `test-config.toml`, or reintroducing an `importCommon` that supplies one, would defeat all three.
 
 ## What the Live Layer Cannot Create Standalone
 

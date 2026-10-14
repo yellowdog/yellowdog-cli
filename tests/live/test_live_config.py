@@ -4,7 +4,12 @@ The live suite's configuration: loading, environment overrides, validation.
 
 import pytest
 from harness import config
-from harness.config import LiveConfigError, load_live_config
+from harness.config import (
+    LiveConfigError,
+    load_live_config,
+    load_platform,
+    platform_environment,
+)
 from live_samples import (
     AWS,
     AZURE,
@@ -132,20 +137,49 @@ def test_an_empty_value_counts_as_unset(tmp_path):
     assert _problems(environ) == ["[aws] needs region"]
 
 
-def test_the_platform_falls_back_to_yd_key_secret_and_url(tmp_path):
+def test_the_platform_is_never_taken_from_yd_variables(tmp_path):
+    # The file (or YDST_PLATFORM_*) is the one source: an inherited YD_KEY,
+    # YD_SECRET or YD_URL, a real one or the root conftest's dummies, is not
     environ = write_config(tmp_path, AWS)
     environ.update(YD_KEY="env-key-123", YD_SECRET="env-secret-456", YD_URL="https://x")
-    loaded = load_live_config(environ)
-    assert loaded.platform["key"] == "env-key-123"
-    assert loaded.platform["url"] == "https://x"
+    problems = _problems(environ)
+    assert "[platform] needs key" in problems
+    assert "[platform] needs secret" in problems
 
 
-def test_the_file_outranks_yd_key_and_ydst_outranks_the_file(tmp_path):
+def test_ydst_outranks_the_file(tmp_path):
     environ = write_config(tmp_path, PLATFORM + AWS)
-    environ["YD_KEY"] = "env-key-123"
     assert load_live_config(environ).platform["key"] == "app-key-1234567890"
     environ["YDST_PLATFORM_KEY"] = "ydst-key-789"
     assert load_live_config(environ).platform["key"] == "ydst-key-789"
+
+
+def test_the_platform_loads_without_any_provider(tmp_path):
+    environ = write_config(tmp_path, PLATFORM)
+    assert load_platform(environ)["key"] == "app-key-1234567890"
+    environ["YDST_PLATFORM_URL"] = "https://ydst.example"
+    assert load_platform(environ)["url"] == "https://ydst.example"
+
+
+def test_the_platform_alone_still_needs_its_key_and_secret(tmp_path):
+    environ = write_config(tmp_path, AWS)
+    environ.update(YD_KEY="env-key-123", YD_SECRET="env-secret-456")
+    with pytest.raises(LiveConfigError) as caught:
+        load_platform(environ)
+    assert caught.value.problems == [
+        "[platform] needs key",
+        "[platform] needs secret",
+    ]
+
+
+def test_the_platform_is_given_to_yd_as_its_environment(tmp_path):
+    environ = write_config(tmp_path, PLATFORM)
+    assert platform_environment(environ) == {
+        "YD_KEY": "app-key-1234567890",
+        "YD_SECRET": "app-secret-abcdefghijklmnop",
+    }
+    environ["YDST_PLATFORM_URL"] = "https://ydst.example"
+    assert platform_environment(environ)["YD_URL"] == "https://ydst.example"
 
 
 def test_two_providers_need_a_primary(tmp_path):
@@ -226,19 +260,3 @@ def test_every_problem_is_reported_at_once(tmp_path):
 def test_a_named_file_that_does_not_exist_is_an_error(tmp_path):
     problems = _problems({"YDST_CONFIG": str(tmp_path / "missing.toml")})
     assert problems[0].startswith("YDST_CONFIG names")
-
-
-def test_the_test_runs_dummy_credentials_are_never_the_platforms(tmp_path):
-    """
-    The root conftest sets a dummy YD_KEY and YD_SECRET where the CLI has no
-    configuration, and marks them so; the live suite must not take them.
-    """
-    environ = write_config(tmp_path, AWS)
-    environ.update(
-        YD_KEY="dummy-key-for-tests",
-        YD_SECRET="dummy-secret-for-tests",
-        YD_TEST_DUMMY_CREDENTIALS="1",
-    )
-    problems = _problems(environ)
-    assert "[platform] needs key" in problems
-    assert "[platform] needs secret" in problems

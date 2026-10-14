@@ -244,6 +244,7 @@ These are supported by four non-test modules and by fixtures in the root `confte
 | File | What it tests |
 |---|---|
 | `test_entrypoints.py` | `yd` and every word after it, and the deprecated `yd-*` entry points, are present and respond to `--help`; `yd` and `yd wr` alone exit 2 |
+| `test_system_credentials.py` | `conftest.py`'s `_use_system_test_credentials()`: under `--run-system`, `YD_KEY`, `YD_SECRET` and `YD_URL` from the live system tests' `[platform]`, replacing the shell's (its URL unset when none is configured); a missing key or secret a usage error naming it; nothing touched without `--run-system` |
 | `test_system_tags.py` | `conftest.py`'s `_session_tag()`, the tag `system_tag` gives the live system tests: each session's its own, none containing another, since under `-n` every worker is a session and the tag filters match by containment |
 
 ### System Tests (`--run-system`, credentials required)
@@ -286,7 +287,7 @@ Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT`
 | `live/live_session.py` | The plugin owning the run, registered by the root `conftest.py` under `--run-live`: the xdist controller sets the run up when its paths reach `tests/live` and hands it to the workers; a lone process sets it up on the first live test; the owner tears it down (or keeps it under `keep_on_failure`) when the session finishes. A configuration problem stops the session before anything remote |
 | `live/conftest.py` | The fixtures over that plugin: `live_config` and `live_run` |
 | `live/live_chain.py` | A provider's steps as a chain: a failed step skips the later ones, naming it; the shutdown always runs |
-| `live/harness/config.py` | The configuration: its schema, the `YDST_*` overrides and the `YD_KEY`/`YD_SECRET`/`YD_URL` fallback, every problem reported together |
+| `live/harness/config.py` | The configuration: its schema and the `YDST_*` overrides, every problem reported together; `load_platform()` and `platform_environment()`, `[platform]` alone, which `conftest.py` gives the `--run-system` tests |
 | `live/harness/run.py` | A run: its ID, the names of what it makes, the generated `config.toml` (no secrets) and the `yd` subprocess's environment (secrets as `YD_VAR_*`, inherited `YD_*` dropped) |
 | `live/harness/yd.py` | Running `python -m yellowdog_cli.yd` for a run, every configured secret masked in what the harness shows |
 | `live/harness/lifecycle.py` | Setup, teardown by name and tag (every step attempted), and the sweep's age-guarded choice of stale runs |
@@ -339,13 +340,16 @@ Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT`
 
 ## Prerequisites for Platform Tests
 
-Set credentials in the environment or provide a `config.toml`:
+`--run-system` and `--run-live` take the Platform's credentials from one place: `[platform]` in the live system tests' configuration, `~/.config/yellowdog/system-tests.toml` (or the file `YDST_CONFIG` names), each key overridable as `YDST_PLATFORM_KEY`, `YDST_PLATFORM_SECRET` and `YDST_PLATFORM_URL`:
 
-```shell
-export YD_KEY=...
-export YD_SECRET=...
-export YD_URL=...   # optional, defaults to production
+```toml
+[platform]
+key = "..."
+secret = "..."
+url = "..."   # optional, defaults to production
 ```
+
+Under `--run-system`, `conftest.py` sets `YD_KEY`, `YD_SECRET` and `YD_URL` from it before anything runs, in place of the shell's, so every `yd` a test starts uses them; a missing key or secret stops the session. A configuration file of your own is never read for them. `--run-demos` is the exception: the demos run against the `python-examples-demos` repository's own configuration.
 
 `test_system_dataclient.py` additionally requires a `[dataClient]` section in `tests/system/config.toml` (rclone connection string and remote path).
 

@@ -1,7 +1,5 @@
 [common]  #####################################################################
 
-    importCommon = "../../config_{{CONFIG:=test}}.toml"
-
     namespace = "pytest-system"
     tag = "pytest-system-{{username}}"
 

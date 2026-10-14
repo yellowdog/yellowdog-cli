@@ -5,18 +5,19 @@ Every CLI invocation carries '-c tests/resources/test-config.toml' and
 '-v run_id=...': the config supplies the namespace and the dummy values, and the
 run id keeps concurrent runs from colliding.
 
-Credentials come from the environment, and only from there:
-
-    export YD_KEY=... YD_SECRET=...      # and YD_URL, for a non-default platform
+Credentials come from the live system tests' configuration: under
+'--run-system', the root conftest.py sets YD_KEY, YD_SECRET and YD_URL from
+[platform] in ~/.config/yellowdog/system-tests.toml (or YDST_CONFIG, or
+YDST_PLATFORM_*), in place of the shell's, before anything runs.
 
 test-config.toml holds no key, secret or URL and imports none -- it names no
-credential property at all, so the CLI takes each from the environment. (An
+credential property at all, so the CLI takes each from that environment. (An
 explicitly selected '-c' file outranks the environment only for the properties it
 actually defines, which is why omitting them is what hands the decision to the
 environment.) Keeping credentials out of the file entirely means the tracked config
 references nothing personal, there is no indirection to resolve when a run
-authenticates as the wrong account, and the same two variables work for every other
-platform-touching test in the suite.
+authenticates as the wrong account, and every platform-touching test in the suite
+authenticates the same way.
 
 Output is returned but never logged on success. Three creations print secrets -- a
 keyring's password, a configured worker pool's token, an application's API key --

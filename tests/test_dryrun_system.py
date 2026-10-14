@@ -1,6 +1,6 @@
 """
 End-to-end dry-run tests. Marked 'system' because they contact the platform to
-list entities (they need credentials in the environment / CI). Empty namespace
+list entities (with the credentials conftest.py gives '--run-system'). Empty namespace
 and tag are used so the matching set is empty and nothing could be acted on.
 """
 

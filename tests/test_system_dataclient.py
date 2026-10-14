@@ -6,8 +6,9 @@ command under test, cleans up, and verifies the post-condition.
 
 Run with: pytest --run-system tests/test_system_dataclient.py
 
-Prerequisites: YD_KEY, YD_SECRET (or equivalent) must be set in the
-environment, and tests/system/config.toml must contain a [dataClient] section.
+Prerequisites: [platform] in the live system tests' configuration
+(~/.config/yellowdog/system-tests.toml), which conftest.py gives every
+'--run-system' test, and a [dataClient] section in tests/system/config.toml.
 """
 
 import pytest

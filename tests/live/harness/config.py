@@ -6,10 +6,10 @@ The file is YDST_CONFIG, else ~/.config/yellowdog/system-tests.toml: outside
 the repository, so that the secrets it holds cannot be committed. Every key
 can be set or overridden as YDST_<SECTION>_<KEY> (YDST_AWS_SECRET_ACCESS_KEY),
 so a CI job can supply everything with no file at all; an empty value counts
-as unset. The Platform's key, secret and URL fall back to YD_KEY, YD_SECRET
-and YD_URL, which the other live suites use, unless DUMMY_CREDENTIALS_MARKER
-says those are the dummies the root conftest.py supplies where the CLI has
-no configuration of its own.
+as unset. The Platform's key, secret and URL come from [platform] alone,
+never from YD_KEY, YD_SECRET or YD_URL: the root conftest.py gives them to
+the '--run-system' tests too (platform_environment()), so every test that
+talks to the Platform does so as the one Application.
 
 A provider with no section is skipped; one with a section is to be tested,
 so an incomplete one is an error. Every problem is reported at once.
@@ -34,9 +34,8 @@ CONFIG_ENV = "YDST_CONFIG"
 DEFAULT_PATH = Path("~/.config/yellowdog/system-tests.toml")
 OVERRIDE_PREFIX = "YDST_"
 PROVIDERS = ("aws", "azure", "gcp", "oci")
-PLATFORM_FALLBACKS = {"key": "YD_KEY", "secret": "YD_SECRET", "url": "YD_URL"}
-# Set by the root conftest.py beside the dummy YD_KEY and YD_SECRET it supplies
-DUMMY_CREDENTIALS_MARKER = "YD_TEST_DUMMY_CREDENTIALS"
+# What 'yd' reads each [platform] key from
+PLATFORM_VARIABLES = {"key": "YD_KEY", "secret": "YD_SECRET", "url": "YD_URL"}
 
 
 @dataclass(frozen=True)
@@ -270,6 +269,38 @@ def load_live_config(environ: Mapping[str, str] | None = None) -> LiveConfig:
     )
 
 
+def load_platform(environ: Mapping[str, str] | None = None) -> Section:
+    """
+    Load and validate [platform] alone, from the file and YDST_PLATFORM_*,
+    for tests that need the Platform but no provider; raises LiveConfigError.
+    """
+    environ = os.environ if environ is None else environ
+    problems: list[str] = []
+    _, document = _read_document(environ, problems)
+    _apply_environment(document, environ, problems)
+    raw = document.get("platform", {})
+    if not isinstance(raw, dict):
+        problems.append("[platform] must be a table")
+        raw = {}
+    platform = _section("platform", raw, problems)
+    if problems:
+        raise LiveConfigError(problems)
+    return platform
+
+
+def platform_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """
+    The Platform's key, secret and URL (when configured) as the YD_*
+    variables 'yd' reads; raises LiveConfigError.
+    """
+    platform = load_platform(environ)
+    return {
+        variable: platform[key]
+        for key, variable in PLATFORM_VARIABLES.items()
+        if platform[key] is not None
+    }
+
+
 def _read_document(
     environ: Mapping[str, str], problems: list[str]
 ) -> tuple[Path | None, dict]:
@@ -296,19 +327,8 @@ def _apply_environment(
     document: dict, environ: Mapping[str, str], problems: list[str]
 ) -> None:
     """
-    Fill the Platform's key, secret and URL from YD_* where the file gives
-    none (never from the test run's dummies), then apply every
-    YDST_<SECTION>_<KEY> override.
+    Apply every YDST_<SECTION>_<KEY> override.
     """
-    dummies = bool(environ.get(DUMMY_CREDENTIALS_MARKER))
-    for key, variable in PLATFORM_FALLBACKS.items():
-        if dummies and key != "url":
-            continue
-        if environ.get(variable):
-            section = document.setdefault("platform", {})
-            if isinstance(section, dict):
-                section.setdefault(key, environ[variable])
-
     for variable in sorted(environ):
         if not variable.startswith(OVERRIDE_PREFIX) or variable == CONFIG_ENV:
             continue

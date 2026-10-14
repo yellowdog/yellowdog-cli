@@ -1,6 +1,7 @@
 import atexit
 import contextlib
 import io
+import os
 import secrets
 import sys
 import time
@@ -605,10 +606,10 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
 
     Never substituted for a run that talks to the platform through the CLI's own
     configuration: those need real credentials, and 'auth failed' hours later is a
-    worse answer than the CLI's own 'Missing configuration data' now. '--run-live'
-    is not one: the live suite has a configuration of its own and gives 'yd' its
-    credentials itself, so it may run where the CLI has none; the dummies are
-    marked (YD_TEST_DUMMY_CREDENTIALS) so that it never takes them for real ones.
+    worse answer than the CLI's own 'Missing configuration data' now. '--run-system'
+    has had its own set by _use_system_test_credentials() before this runs, and
+    '--run-live' is not one: the live suite gives 'yd' its credentials itself,
+    from its own configuration, so it may run where the CLI has none.
     """
     global _dummy_credentials_used
 
@@ -623,7 +624,6 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
 
     os.environ[YD_KEY] = "dummy-key-for-tests"
     os.environ[YD_SECRET] = "dummy-secret-for-tests"
-    os.environ["YD_TEST_DUMMY_CREDENTIALS"] = "1"  # tests/live/harness/config.py
     _dummy_credentials_used = True
 
 
@@ -663,6 +663,7 @@ def pytest_report_header(config):
 
 
 def pytest_configure(config):
+    _use_system_test_credentials(config)
     _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"
@@ -691,6 +692,47 @@ def pytest_configure(config):
     _register_live_session(config)
 
 
+def _use_system_test_credentials(config, environ=None) -> None:
+    """
+    Under '--run-system', the Platform's key, secret and URL from the live
+    system tests' configuration (tests/live/harness/config.py: [platform] in
+    YDST_CONFIG or ~/.config/yellowdog/system-tests.toml, or YDST_PLATFORM_*),
+    in place of whatever the shell had, so that every test talking to the
+    Platform, and every 'yd' it starts, does so as the one Application. Set
+    before the CLI's configuration is loaded, which reads them; a URL the
+    configuration does not give is unset, so the shell's cannot stand in for
+    it. A missing key or secret stops the session, naming the problems.
+    """
+    if not config.getoption("--run-system"):
+        return
+    environ = os.environ if environ is None else environ
+    _live_harness_importable()
+    from harness.config import (
+        PLATFORM_VARIABLES,
+        LiveConfigError,
+        platform_environment,
+    )
+
+    try:
+        credentials = platform_environment(environ)
+    except LiveConfigError as error:
+        raise pytest.UsageError(
+            f"--run-system needs its credentials: {error}"
+        ) from error
+    for variable in PLATFORM_VARIABLES.values():
+        environ.pop(variable, None)
+    environ.update(credentials)
+
+
+def _live_harness_importable() -> None:
+    """
+    tests/live on sys.path, for its harness and live_session.
+    """
+    live = str(Path(__file__).resolve().parent / "tests" / "live")
+    if live not in sys.path:
+        sys.path.insert(0, live)
+
+
 def _register_live_session(config) -> None:
     """
     Under '--run-live', the plugin that owns the live run (tests/live/
@@ -699,9 +741,7 @@ def _register_live_session(config) -> None:
     """
     if not config.getoption("--run-live"):
         return
-    live = str(Path(__file__).resolve().parent / "tests" / "live")
-    if live not in sys.path:
-        sys.path.insert(0, live)
+    _live_harness_importable()
     from live_session import PLUGIN_NAME, LiveSession
 
     session = LiveSession(config)

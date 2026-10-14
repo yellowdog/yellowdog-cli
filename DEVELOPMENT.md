@@ -137,7 +137,7 @@ Its configuration is its own, never the CLI's `config.toml`: the file `YDST_CONF
 Every instance is given a public IP address, because its Agent installs from the internet and reports to the Platform over it, so the network each provider is configured with must allow that: on AWS a subnet that routes to an internet gateway and a security group allowing outbound HTTPS, and on Azure, GCP and OCI their equivalents (OCI's subnet must be public, since a private one refuses a public IP). An instance that cannot reach the Platform shows as RUNNING but never registers as a Worker.
 
 ```toml
-[platform]                      # or YD_KEY, YD_SECRET, YD_URL
+[platform]                      # also the --run-system tests' credentials; never YD_KEY etc.
 key = "..."                     # required
 secret = "..."                  # required
 url = "https://api.yellowdog.ai"
