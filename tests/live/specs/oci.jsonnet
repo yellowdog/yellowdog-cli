@@ -1,6 +1,10 @@
 // OCI for a run: its Credential in the run's Keyring, an on-demand Compute
-// Source Template, and a static Compute Requirement Template over it.
+// Source Template naming the run's Image Family for it, which holds the
+// configured image, and a static Compute Requirement Template over it.
+local imageFamily = import 'image-family.libsonnet';
+
 [
+  imageFamily('{{oci_image_family}}', 'OCI', '{{oci_image_id}}', '{{oci_region}}'),
   {
     resource: 'Credential',
     keyringName: '{{keyring}}',
@@ -29,7 +33,7 @@
       shape: '{{oci_shape}}',
       flexOcpus: '{{num:oci_flex_ocpus}}',
       flexRam: '{{num:oci_flex_ram}}',
-      imageId: '{{oci_image_id}}',
+      imageId: '{{namespace}}/{{oci_image_family}}',
       assignPublicIp: true,
     },
   },

@@ -1,6 +1,10 @@
 // AWS for a run: its Credential in the run's Keyring, an on-demand Compute
-// Source Template, and a static Compute Requirement Template over it.
+// Source Template naming the run's Image Family for it, which holds the
+// configured image, and a static Compute Requirement Template over it.
+local imageFamily = import 'image-family.libsonnet';
+
 [
+  imageFamily('{{aws_image_family}}', 'AWS', '{{aws_image_id}}', '{{aws_region}}'),
   {
     resource: 'Credential',
     keyringName: '{{keyring}}',
@@ -24,7 +28,7 @@
       subnetId: '{{aws_subnet_id}}',
       availabilityZone: '{{aws_availability_zone}}',
       instanceType: '{{aws_instance_type}}',
-      imageId: '{{aws_image_id}}',
+      imageId: '{{namespace}}/{{aws_image_family}}',
       iamInstanceProfileArn: '{{aws_iam_instance_profile_arn::}}',
       assignPublicIp: true,
     },

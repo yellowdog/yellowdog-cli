@@ -72,6 +72,12 @@ def test_teardown_stops_compute_then_removes_in_order():
     ]
 
 
+def test_image_families_are_removed_after_the_templates_naming_them():
+    order = list(REMOVAL_ORDER)
+    assert order.index("compute-source-templates") < order.index("image-families")
+    assert order.index("image-families") < order.index("keyrings")
+
+
 def test_teardown_selects_compute_by_the_runs_tag():
     yd = FakeYd(_quiet_platform)
     teardown(yd, "ns", RUN, 15)
@@ -124,6 +130,7 @@ def test_compute_still_alive_is_a_problem_but_the_templates_are_still_removed():
         "configured-worker-pools",
         "compute-requirement-templates",
         "compute-source-templates",
+        "image-families",
     ]
 
 
@@ -292,6 +299,7 @@ def test_stale_runs_looks_everywhere_a_run_leaves_things():
         "allowances",
         "compute-source-templates",
         "compute-requirement-templates",
+        "image-families",
         "work-requirements",
         "worker-pools",
         "compute-requirements",

@@ -119,6 +119,9 @@ class Run:
     def requirement_template(self, provider: str) -> str:
         return self.name(provider, "static")
 
+    def image_family(self, provider: str) -> str:
+        return self.name(provider, "images")
+
     def pool_name(self, provider: str) -> str:
         return self.name(provider, "pool")
 
@@ -174,6 +177,7 @@ class Run:
                 f"{self.keyring}/{self.credential_name(provider)}"
             )
             found[f"{provider}_source_template"] = self.source_template(provider)
+            found[f"{provider}_image_family"] = self.image_family(provider)
             found[f"{provider}_requirement_template"] = self.requirement_template(
                 provider
             )

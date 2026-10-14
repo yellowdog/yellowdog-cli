@@ -166,8 +166,8 @@ iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: 
 
 # A section enables its provider, so leave a provider you are not testing commented out
 
-# [azure]                         # required: tenant_id, client_id, client_secret, subscription_id,
-#                                 # region, network_resource_group, network_name, subnet_name, image_id
+# [azure]                         # required: tenant_id, client_id, key (the client secret), subscription_id,
+#                                 # region, network_resource_group_name, network_name, subnet_name, image_id
 # vm_size = "Standard_B2s"
 # ssh_public_key = "..."
 
@@ -196,7 +196,7 @@ pytest -v --run-live -n 4 tests/live/
 python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]
 ```
 
-A run provisions, on every configured provider, a Worker Pool of one instance from the run's static template, with the Agent installed at boot by `tests/live/specs/install-agent.sh` (vendored from `python-examples-demos`, and run whatever the image), and takes it through a smoke Task and the cloud actions: resize up, reprovision, resize down, deprovision, and shut down; stop, start, restart and terminating an instance act on a separate one-instance Compute Requirement that no pool manages, since a Worker Pool takes a stopped node's instance away. Each provider runs two or three small instances for roughly 15 to 25 minutes, within the run's Allowance; the pools also shut themselves down after 30 idle minutes, should the harness die. With `-n` the providers run in parallel, one worker each (`--dist loadgroup` is in `pyproject.toml`'s `addopts`); the run is set up once, by xdist's controller, and torn down when every worker has finished.
+A run provisions, on every configured provider, a Worker Pool of one instance from the run's static template, whose source names an Image Family the run creates to hold the configured image, with the Agent installed at boot by `tests/live/specs/install-agent.sh` (vendored from `python-examples-demos`, and run whatever the image), and takes it through a smoke Task and the cloud actions: resize up, reprovision, resize down, deprovision, and shut down; stop, start, restart and terminating an instance act on a separate one-instance Compute Requirement that no pool manages, since a Worker Pool takes a stopped node's instance away. Each provider runs two or three small instances for roughly 15 to 25 minutes, within the run's Allowance; the pools also shut themselves down after 30 idle minutes, should the harness die. With `-n` the providers run in parallel, one worker each (`--dist loadgroup` is in `pyproject.toml`'s `addopts`); the run is set up once, by xdist's controller, and torn down when every worker has finished.
 
 The primary also runs an actions pool (two instances, two Workers each, growing to three for the Node verbs) for the work and compute scenarios, and a standalone Compute Requirement of one instance, for roughly 30 to 40 minutes; a whole-suite run takes about 25 minutes on AWS alone. The data scenarios, and a Task's inputs and outputs through S3, need `[data]`, AWS as the primary and `iam_instance_profile_arn`; both data remotes are built from `[aws]`, the run's files live under `<bucket>/<namespace>/<run ID>/`, and teardown deletes them. A whole-suite session (`pytest --run-live -n 4 tests/live/`) ends with the coverage gate, which fails on any CLI verb neither exercised nor listed, with its reason, in `tests/live/harness/coverage.py`'s `NOT_EXERCISED`; a narrower session skips it. Every `yd` call fails if its output holds a configured secret.
 

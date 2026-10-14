@@ -1,6 +1,10 @@
 // Azure for a run: its Credential in the run's Keyring, an on-demand Compute
-// Source Template, and a static Compute Requirement Template over it.
+// Source Template naming the run's Image Family for it, which holds the
+// configured image, and a static Compute Requirement Template over it.
+local imageFamily = import 'image-family.libsonnet';
+
 [
+  imageFamily('{{azure_image_family}}', 'AZURE', '{{azure_image_id}}', '{{azure_region}}'),
   {
     resource: 'Credential',
     keyringName: '{{keyring}}',
@@ -10,7 +14,7 @@
       clientId: '{{azure_client_id}}',
       tenantId: '{{azure_tenant_id}}',
       subscriptionId: '{{azure_subscription_id}}',
-      key: '{{secret_azure_client_secret}}',
+      key: '{{secret_azure_key}}',
     },
   },
   {
@@ -22,11 +26,11 @@
       name: '{{azure_source_template}}',
       credential: '{{azure_credential}}',
       region: '{{azure_region}}',
-      networkResourceGroupName: '{{azure_network_resource_group}}',
+      networkResourceGroupName: '{{azure_network_resource_group_name}}',
       networkName: '{{azure_network_name}}',
       subnetName: '{{azure_subnet_name}}',
       vmSize: '{{azure_vm_size}}',
-      imageId: '{{azure_image_id}}',
+      imageId: '{{namespace}}/{{azure_image_family}}',
       sshKey: '{{azure_ssh_public_key::}}',
       assignPublicIp: true,
     },

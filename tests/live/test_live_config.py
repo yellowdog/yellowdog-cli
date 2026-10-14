@@ -63,7 +63,7 @@ def test_a_provider_section_present_but_incomplete_is_an_error(tmp_path):
         write_config(tmp_path, PLATFORM + AWS + '[azure]\nregion = "uksouth"\n')
     )
     assert "[azure] needs tenant_id" in problems
-    assert "[azure] needs client_secret" in problems
+    assert "[azure] needs key" in problems
 
 
 def test_an_unknown_section_or_key_is_an_error(tmp_path):

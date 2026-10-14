@@ -33,6 +33,8 @@ REMOVAL_ORDER = (
     "allowances",
     "compute-requirement-templates",
     "compute-source-templates",
+    # After the Compute Source Templates, which name them
+    "image-families",
     "keyrings",
 )
 # Listed as active only, so a long-terminated one does not count
@@ -50,6 +52,7 @@ DISCOVERY_TYPES = (
     "configured-worker-pools",
     "compute-source-templates",
     "compute-requirement-templates",
+    "image-families",
     "keyrings",
     "allowances",
     *ACTIVE_TYPES,

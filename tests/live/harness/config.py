@@ -91,10 +91,10 @@ SCHEMA: dict[str, dict[str, Key]] = {
     "azure": {
         "tenant_id": Key(str, required=True),
         "client_id": Key(str, required=True),
-        "client_secret": Key(str, required=True, secret=True),
+        "key": Key(str, required=True, secret=True),  # The client secret
         "subscription_id": Key(str, required=True),
         "region": Key(str, required=True),
-        "network_resource_group": Key(str, required=True),
+        "network_resource_group_name": Key(str, required=True),
         "network_name": Key(str, required=True),
         "subnet_name": Key(str, required=True),
         "vm_size": Key(str, default="Standard_B2s"),

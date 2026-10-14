@@ -1,6 +1,10 @@
 // GCP for a run: its Credential in the run's Keyring, an on-demand Compute
-// Source Template, and a static Compute Requirement Template over it.
+// Source Template naming the run's Image Family for it, which holds the
+// configured image, and a static Compute Requirement Template over it.
+local imageFamily = import 'image-family.libsonnet';
+
 [
+  imageFamily('{{gcp_image_family}}', 'GOOGLE', '{{gcp_image}}', '{{gcp_region}}'),
   {
     resource: 'Credential',
     keyringName: '{{keyring}}',
@@ -25,7 +29,7 @@
       network: '{{gcp_network::}}',
       subnetwork: '{{gcp_subnetwork::}}',
       machineType: '{{gcp_machine_type}}',
-      image: '{{gcp_image}}',
+      image: '{{namespace}}/{{gcp_image_family}}',
       assignPublicIp: true,
     },
   },

@@ -174,6 +174,55 @@ def _source(run: Run, provider: str) -> dict:
     return source
 
 
+# Each provider's configured image, its key, its region and the Platform's
+# name for the provider, as live_samples.py configures them
+_IMAGES = {
+    "aws": ("image_id", "ami-00000000000000000", "eu-west-2", "AWS"),
+    "azure": (
+        "image_id",
+        "/subscriptions/00000000-0000-0000-0000-000000000003/dummy",
+        "uksouth",
+        "AZURE",
+    ),
+    "gcp": (
+        "image",
+        "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+        "europe-west2",
+        "GOOGLE",
+    ),
+    "oci": ("image_id", "ocid1.image.oc1..dummy", "uk-london-1", "OCI"),
+}
+
+
+@pytest.mark.parametrize("provider", ["aws", "azure", "gcp", "oci"])
+def test_each_provider_has_an_image_family_holding_its_configured_image(
+    tmp_path, provider
+):
+    run = _run(tmp_path)
+    (family,) = [
+        r
+        for r in _by_type(_load(run, run.spec_files()), "MachineImageFamily")
+        if r["name"] == run.image_family(provider)
+    ]
+    assert family["namespace"] == run.namespace
+    (group,) = family["imageGroups"]
+    (image,) = group["images"]
+    _, image_id, region, platform_provider = _IMAGES[provider]
+    assert image["providerImageId"] == image_id
+    assert image["provider"] == platform_provider
+    assert image["regions"] == [region]
+    assert family["osType"] == group["osType"] == image["osType"] == "LINUX"
+
+
+@pytest.mark.parametrize("provider", ["aws", "azure", "gcp", "oci"])
+def test_each_providers_template_names_its_image_family(tmp_path, provider):
+    run = _run(tmp_path)
+    key = "image" if provider == "gcp" else "imageId"
+    assert (
+        _source(run, provider)[key] == f"{run.namespace}/{run.image_family(provider)}"
+    )
+
+
 def test_the_aws_subnet_and_its_zone_are_given(tmp_path):
     source = _source(_run(tmp_path), "aws")
     assert source["subnetId"] == "subnet-00000000000000000"
@@ -204,6 +253,26 @@ def test_the_aws_instance_profile_is_given_when_set(tmp_path):
     arn = "arn:aws:iam::000000000000:instance-profile/yd-dummy"
     run = _run(tmp_path, aws_extra=f'iam_instance_profile_arn = "{arn}"\n')
     assert _source(run, "aws")["iamInstanceProfileArn"] == arn
+
+
+def test_azures_credential_takes_the_configured_key(tmp_path):
+    run = _run(tmp_path)
+    credentials = {
+        r["credential"]["name"]: r["credential"]
+        for r in _by_type(_load(run, run.spec_files()), "Credential")
+    }
+    azure = credentials[run.credential_name("azure")]
+    assert azure["key"] == "dummy-azure-client-secret"
+    assert azure["clientId"] == "00000000-0000-0000-0000-000000000002"
+    assert azure["tenantId"] == "00000000-0000-0000-0000-000000000001"
+    assert azure["subscriptionId"] == "00000000-0000-0000-0000-000000000003"
+
+
+def test_azures_source_takes_its_network_from_the_configuration(tmp_path):
+    source = _source(_run(tmp_path), "azure")
+    assert source["networkResourceGroupName"] == "yd-dummy-rg"
+    assert source["networkName"] == "yd-dummy-vnet"
+    assert source["subnetName"] == "yd-dummy-subnet"
 
 
 def test_multi_line_and_json_secrets_arrive_intact(tmp_path):

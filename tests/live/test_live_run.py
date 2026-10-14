@@ -69,6 +69,12 @@ def test_a_pool_and_its_worker_tag_are_named_for_the_run(every_provider, tmp_pat
     assert run.standalone_name("aws") == "ydst-2610121530-ab12-aws-standalone"
 
 
+def test_each_providers_image_family_is_named_for_the_run(every_provider, tmp_path):
+    run = Run.start(every_provider, tmp_path / "runs", run_id="ydst-2610121530-ab12")
+    assert run.image_family("gcp") == "ydst-2610121530-ab12-gcp-images"
+    assert run.variables()["oci_image_family"] == "ydst-2610121530-ab12-oci-images"
+
+
 def test_the_spec_files_are_the_common_one_then_each_provider(every_provider, tmp_path):
     run = Run.start(every_provider, tmp_path / "runs")
     assert run.spec_files() == [
