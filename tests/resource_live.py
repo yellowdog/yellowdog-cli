@@ -51,11 +51,7 @@ SECRET_EMITTING = {
 
 # Corpus files with at least one specification that cannot be created standalone:
 # requirement-templates.jsonnet's staticMin/dynamicMin and configured-worker-pools.
-# jsonnet's poolMin (see each file's own header comment), and applications.jsonnet's
-# application-max, whose Group and Keyring (made by groups.jsonnet and
-# keyrings.jsonnet) do not exist when the file is created alone: create_application()
-# refuses a Group that does not exist before changing anything, and fails on a
-# Keyring grant that cannot be made. create_compute_requirement
+# jsonnet's poolMin (see each file's own header comment). create_compute_requirement
 # _template() and create_configured_worker_pool() (create.py) read 'namespace' out
 # of the resource dict with a plain subscript before any model is ever built, which
 # is stricter than the SDK model's own optional field -- a known finding from
@@ -71,7 +67,6 @@ SECRET_EMITTING = {
 KNOWN_PARTIAL_FAILURES = {
     "requirement-templates.jsonnet",
     "configured-worker-pools.jsonnet",
-    "applications.jsonnet",
 }
 
 
@@ -84,7 +79,7 @@ KNOWN_PARTIAL_FAILURES = {
 #
 # MISSING_NAMESPACE_FAILURE_NAMES are those that fail for want of a
 # 'namespace', which the specification schema requires too, so the schema
-# rejects exactly those; application-max is valid, and fails only live.
+# rejects exactly those.
 MISSING_NAMESPACE_FAILURE_NAMES: dict[str, frozenset[str]] = {
     "requirement-templates.jsonnet": frozenset(
         {"static-template-min", "dynamic-template-min"}
@@ -93,13 +88,11 @@ MISSING_NAMESPACE_FAILURE_NAMES: dict[str, frozenset[str]] = {
 }
 KNOWN_PARTIAL_FAILURE_NAMES: dict[str, frozenset[str]] = {
     **MISSING_NAMESPACE_FAILURE_NAMES,
-    "applications.jsonnet": frozenset({"application-max"}),
 }
 
 # The KNOWN_PARTIAL_FAILURES files whose removal fails too: the specifications
 # missing a 'namespace' read it with a plain subscript in remove.py as in
-# create.py. applications.jsonnet's removal succeeds, an Application never
-# created being skipped as not found.
+# create.py.
 KNOWN_PARTIAL_REMOVAL_FAILURES = set(MISSING_NAMESPACE_FAILURE_NAMES)
 
 # Entity types yd-list has no YellowDog ID for at all ('--ids-only' warns "not
@@ -142,11 +135,11 @@ NO_YDID_KEY_FIELD: dict[str, str] = {
 #     AddApplicationRequest is ever built (see resource_models.build_models()'s
 #     Application branch); yd-show's own 'groups' key is a live group
 #     membership listing added by show.py's own rendering, not an echo of the
-#     specification's list, and is empty when applications.jsonnet runs alone
-#     (see its own header comment on the groups.jsonnet/keyrings.jsonnet
-#     ordering gap) -- comparing it against what was sent would fail for a
-#     reason that has nothing to do with whether the CLI transmitted anything
-#     correctly.
+#     specification's list -- comparing it against what was sent would fail
+#     for a reason that has nothing to do with whether the CLI transmitted
+#     anything correctly. The grants are proved instead by application-max's
+#     creation succeeding: a Group that does not exist is refused, and a
+#     Keyring grant that fails fails the resource (_grant_keyrings()).
 #   - 'sourceTemplateId' (ComputeRequirementTemplate.sources
 #     entries)/'sourceCreatedFromId' (a SourcesAllowance): each names a
 #     Compute Source Template by name in the specification, and

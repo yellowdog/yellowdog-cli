@@ -17,23 +17,25 @@
 // exercises the CLI's own group/keyring-grant handling, which is why the
 // maximal variant does.
 //
-// The group and keyring named below are real, not dangling: 'group-max' is
-// created by groups.jsonnet, and 'keyring-max' by keyrings.jsonnet -- both
-// named via the same base.name()/run_id construction, so the strings match
-// without either file importing the other. This file is not in
-// resource_corpus.OFFLINE_ONLY, so the live layer creates it
-// too: a real create needs the referenced Group and Keyring to already
-// exist, so groups.jsonnet and keyrings.jsonnet must run first -- within a
-// single yd-create invocation covering all three files,
-// load_resources.py's resource_creation_order already sequences Keyring
-// before Group before Application. The live layer creates each corpus file
-// as a separate invocation, though, and create_application() refuses a
-// Group that does not exist, so application-max fails there:
-// resource_live.KNOWN_PARTIAL_FAILURE_NAMES records it.
+// The Group and Keyring application-max is granted are created in this
+// file, before it ('yd resource create' sequences Keyring and Group before
+// Application whatever the order here), so the live layer, which creates
+// each corpus file on its own, creates the Application with both grants
+// made: its Group membership and its access to the Keyring.
 
 local base = import 'lib/base.libsonnet';
 
 [
+  {
+    resource: 'Group',
+    name: base.name('application-group'),
+    description: 'the Group application-max is a member of',
+  },
+  {
+    resource: 'Keyring',
+    name: base.name('application-keyring'),
+    description: 'the Keyring application-max is granted access to',
+  },
   {
     resource: 'Application',
     name: base.name('application-min'),
@@ -42,7 +44,7 @@ local base = import 'lib/base.libsonnet';
     resource: 'Application',
     name: base.name('application-max'),
     description: 'maximal: every settable property of an AddApplicationRequest',
-    groups: [base.name('group-max')],
-    keyrings: [base.name('keyring-max')],
+    groups: [base.name('application-group')],
+    keyrings: [base.name('application-keyring')],
   },
 ]

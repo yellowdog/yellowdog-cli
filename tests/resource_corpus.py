@@ -140,10 +140,11 @@ def corpus_files() -> list[Path]:
 
 
 # Files the live layer must not create: credentials need real provider
-# secrets, which are out of scope for these tests, and the namespace file is handled
+# secrets, which are out of scope for these tests; the namespace file is handled
 # once per test account by the session fixture rather than as a per-test resource
-# specification.
-OFFLINE_ONLY = {"credentials.jsonnet", "namespace.jsonnet"}
+# specification; and the CLI cannot create a User, only update an existing one,
+# so no account can be relied on to hold the Users users.jsonnet names.
+OFFLINE_ONLY = {"credentials.jsonnet", "namespace.jsonnet", "users.jsonnet"}
 
 
 def live_corpus_files() -> list[Path]:

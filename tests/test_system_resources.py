@@ -20,17 +20,17 @@ import resource_models
 
 resource_corpus.require_jsonnet()
 
-# One worker under 'pytest -n', shared with test_create_remove.py: a
-# lifecycle test compares every resource of its type in the account before
-# and after, so another's creations read as its own left behind; and the
-# read gate reads what this process's lifecycle tests recorded
+# One worker under 'pytest -n': a lifecycle test compares every resource of
+# its type in the account before and after, so another's creations read as
+# its own left behind; and the read gate reads what this process's lifecycle
+# tests recorded
 pytestmark = pytest.mark.xdist_group("live_resources")
 
 # Resource type (a corpus specification's own 'resource' property) -> the
 # entity type yd list and yd resource remove use for it. One entry per resource
-# type the live corpus can create (resource_corpus.OFFLINE_ONLY's two files --
-# credentials and the shared namespace -- never reach this module at all, so
-# neither needs an entry here).
+# type the live corpus can create (resource_corpus.OFFLINE_ONLY's three files --
+# credentials, the shared namespace and the Users -- never reach this module at
+# all, so none needs an entry here).
 ENTITY_TYPE_FOR_RESOURCE = {
     "Keyring": "keyrings",
     "NamespacePolicy": "namespace-policies",
@@ -352,33 +352,26 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     through yd show/yd list with no property silently dropped or mangled, then remove
     everything and confirm removal.
 
-    requirement-templates.jsonnet, configured-worker-pools.jsonnet and
-    applications.jsonnet are exactly the three files
-    resource_live.KNOWN_PARTIAL_FAILURES documents as unable to create every one of
-    their specifications standalone
+    requirement-templates.jsonnet and configured-worker-pools.jsonnet are exactly
+    the two files resource_live.KNOWN_PARTIAL_FAILURES documents as unable to
+    create every one of their specifications standalone
     (create_compute_requirement_template()/create_configured_worker_pool() read
-    'namespace' with a bare KeyError check before any model is built; application-max
-    names a Group and a Keyring that only groups.jsonnet and keyrings.jsonnet create).
-    For those, 'yd resource create' is expected to exit non-zero, and so is 'yd resource
-    remove' for the first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) --
-    create_resources()/remove_resources() (create.py/remove.py) each continue past one
-    resource's failure and only raise once the whole file is done -- and this test
-    demands the *specific* specifications named in
-    resource_live.KNOWN_PARTIAL_FAILURE_NAMES are the ones missing, not merely that the
-    exit code is non-zero: an unrelated regression elsewhere in the same file would
-    otherwise hide behind the already-expected failure.
+    'namespace' with a bare KeyError check before any model is built). For those,
+    'yd resource create' and 'yd resource remove' are expected to exit non-zero
+    (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) -- create_resources()/
+    remove_resources() (create.py/remove.py) each continue past one resource's
+    failure and only raise once the whole file is done -- and this test demands
+    the *specific* specifications named in resource_live.KNOWN_PARTIAL_FAILURE_NAMES
+    are the ones missing, not merely that the exit code is non-zero: an unrelated
+    regression elsewhere in the same file would otherwise hide behind the
+    already-expected failure.
 
-    applications.jsonnet's Application specifications name a Group and a Keyring by
-    name (created by groups.jsonnet/keyrings.jsonnet respectively) to grant. Run here
-    alone, neither exists, and create_application() (create.py) refuses the missing
-    Group before creating anything -- so this proves the CLI refuses an absent grant
-    target rather than reconciling memberships against it, but does *not* prove the
-    grant itself succeeds when the target exists. 'groups'/
-    'keyrings' are excluded from the round-trip comparison entirely (see
-    resource_live.LIVE_ONLY_EXCLUSIONS) for exactly this reason: yd show's own
-    'groups' key is a live membership listing (empty here), not an echo of what was
-    sent, and comparing it would fail for a reason that has nothing to do with
-    whether the CLI transmitted anything correctly.
+    applications.jsonnet creates the Group and the Keyring its application-max is
+    granted, so the grants are made here: a Group that does not exist is refused,
+    and a Keyring grant that fails fails the resource, so the file creating
+    cleanly proves both. 'groups'/'keyrings' are excluded from the round-trip
+    comparison (see resource_live.LIVE_ONLY_EXCLUSIONS): yd show's own 'groups'
+    key is a live membership listing, not an echo of what was sent.
     """
     cleanup(
         resource_live.command_line(

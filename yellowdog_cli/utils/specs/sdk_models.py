@@ -59,6 +59,9 @@ MODEL_FOR_RESOURCE: dict[str, str | None] = {
     "Namespace": None,  # CreateNamespaceRequest(namespace=...)
     "NamespacePolicy": None,  # NamespacePolicy(namespace, autoscalingMaxNodes)
     "Group": None,  # AddGroupRequest(name, description)
+    # update_user(): the User found by name, username or ID, its Groups set
+    "InternalUser": None,
+    "ExternalUser": None,
 }
 
 # ---------------------------------------------------------------------------
