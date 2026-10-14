@@ -9,14 +9,15 @@ group, so they run in order on one worker while providers run in parallel:
     pytest --run-live -n 4 tests/live/test_live_providers.py
 
 An action the capability table records as unsupported must be refused
-cleanly instead (harness/capabilities.py).
+cleanly instead, and one recorded as a known fault must show its symptom
+(harness/capabilities.py).
 """
 
 from __future__ import annotations
 
 import pytest
 from harness import compute
-from harness.capabilities import PROVIDERS, perform, unsupported
+from harness.capabilities import PROVIDERS, known_fault, perform, unsupported
 from harness.run import INSTALLER, SPECS
 from live_chain import Chain
 
@@ -261,6 +262,11 @@ def test_reprovision(chain, live_run):
 
 
 def test_resize_down(chain, live_run):
+    """
+    Down to one instance; where that is a known fault (its target drops to 0
+    with an instance left RUNNING), the next step acts on that instance.
+    """
+    fault = known_fault(chain.provider, "resize-down")
     with chain.step("resize-down"):
         if perform(
             live_run.yd,
@@ -272,11 +278,19 @@ def test_resize_down(chain, live_run):
             "1",
             "--wait",
             "--timeout",
-            _cr_seconds(live_run),
+            str(fault.wait_seconds) if fault else _cr_seconds(live_run),
             *_ACT,
         ):
             states = _settle(chain, live_run)
             assert sum(s == "RUNNING" for s in states.values()) == 1, states
+        else:
+            run = live_run.run
+            states = compute.instances(
+                live_run.yd, run.namespace, run.run_id, chain.cr_id
+            )
+            running = sorted(n for n, s in states.items() if s == "RUNNING")
+            assert len(running) == 1, states
+            chain.instance = running[0]
 
 
 def test_deprovision(chain, live_run):

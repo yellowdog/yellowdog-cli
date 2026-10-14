@@ -7,8 +7,17 @@ from pathlib import Path
 
 import pytest
 from harness import capabilities
-from harness.capabilities import ACTIONS, CAPABILITIES, PROVIDERS, Unsupported, perform
+from harness.capabilities import (
+    ACTIONS,
+    CAPABILITIES,
+    PROVIDERS,
+    KnownFault,
+    KnownFaultWarning,
+    Unsupported,
+    perform,
+)
 from harness.config import SCHEMA
+from harness.yd import Result
 from live_fake_yd import FakeYd, result
 
 PROVIDERS_MODULE = Path(__file__).with_name("test_live_providers.py")
@@ -24,10 +33,21 @@ def test_every_entry_is_an_action_the_chain_runs_with_a_reason():
     for provider, entries in CAPABILITIES.items():
         for action, entry in entries.items():
             assert action in ACTIONS, (provider, action)
-            assert isinstance(entry, Unsupported) and entry.reason.strip(), (
-                provider,
-                action,
-            )
+            if isinstance(entry, KnownFault):
+                assert entry.issue.startswith("https://"), (provider, action)
+                assert entry.symptom.strip() and entry.wait_seconds > 0
+            else:
+                assert isinstance(entry, Unsupported) and entry.reason.strip(), (
+                    provider,
+                    action,
+                )
+
+
+def test_gcps_resize_down_is_a_known_fault():
+    fault = capabilities.known_fault("gcp", "resize-down")
+    assert fault is not None
+    assert fault.issue.endswith("/YEL-15298")
+    assert capabilities.unsupported("gcp", "resize-down") is None
 
 
 def test_every_action_is_performed_by_the_provider_chain():
@@ -89,4 +109,37 @@ def test_a_supported_action_that_was_skipped_fails():
 def test_a_supported_action_that_recorded_nothing_fails():
     yd = FakeYd(lambda args: result(args, document=[]))
     with pytest.raises(AssertionError):
+        perform(yd, "aws", "stop", "instance", "stop", "x", "--json")
+
+
+@pytest.fixture
+def stop_faulty(monkeypatch):
+    monkeypatch.setitem(
+        CAPABILITIES,
+        "aws",
+        {"stop": KnownFault("https://example.com/BUG-1", "1 of 0 running", 60)},
+    )
+
+
+def _failing(stderr: str):
+    return lambda args: Result(tuple(args), 1, "[]", stderr)
+
+
+def test_a_known_fault_showing_its_symptom_warns_naming_the_issue(stop_faulty):
+    yd = FakeYd(_failing("ERROR : Timed out: 'x' 1 of 0 running"))
+    with pytest.warns(KnownFaultWarning, match="BUG-1"):
+        assert perform(yd, "aws", "stop", "instance", "stop", "x", "--json") is False
+
+
+def test_a_known_fault_that_no_longer_occurs_fails(stop_faulty):
+    yd = FakeYd(lambda args: result(args, document=[{"outcome": "stopped"}]))
+    with pytest.raises(AssertionError, match=r"BUG-1.*update the capability table"):
+        perform(yd, "aws", "stop", "instance", "stop", "x", "--json")
+
+
+def test_a_known_fault_failing_some_other_way_fails(stop_faulty):
+    # The failure is described as 'yd' describes it (the real one adds its
+    # output, masked)
+    yd = FakeYd(_failing("ERROR : quota exceeded"))
+    with pytest.raises(AssertionError, match="exited 1"):
         perform(yd, "aws", "stop", "instance", "stop", "x", "--json")

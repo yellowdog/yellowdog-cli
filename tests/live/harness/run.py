@@ -190,8 +190,7 @@ class Run:
         """
         The run's secret variables, named 'secret_<provider>_<key>' so that
         'yd variables' redacts every one by its name; a key file's as its
-        contents, under the key's name less '_file'
-        ('secret_gcp_service_account_key').
+        contents, under the key's name less '_file' ('secret_oci_private_key').
         """
         found: dict[str, str] = {}
         for provider, section in self.config.providers.items():

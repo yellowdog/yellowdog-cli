@@ -17,8 +17,8 @@ from live_samples import (
     PLATFORM,
     SERVICE_ACCOUNT_KEY,
     gcp,
-    key_files,
     oci,
+    oci_key_file,
     write_config,
 )
 
@@ -54,14 +54,8 @@ def _no_default_file(monkeypatch, tmp_path):
 
 @pytest.fixture
 def run(tmp_path):
-    gcp_key, oci_key = key_files(tmp_path)
-    text = (
-        PLATFORM
-        + AWS
-        + gcp(gcp_key)
-        + oci(oci_key)
-        + '[run]\nprimary_provider = "aws"\n'
-    )
+    oci_key = oci_key_file(tmp_path)
+    text = PLATFORM + AWS + gcp() + oci(oci_key) + '[run]\nprimary_provider = "aws"\n'
     return Run.start(load_live_config(write_config(tmp_path, text)), tmp_path / "runs")
 
 
@@ -156,7 +150,7 @@ def test_a_secret_on_stderr_fails_the_call(yd):
 def test_a_service_account_key_line_fails_the_call(yd):
     with pytest.raises(SecretInOutput) as raised:
         yd("fail", "line: MIIEdummyDummyDummyDummyDummy", check=False)
-    assert "[gcp] service_account_key_file" in str(raised.value)
+    assert "[gcp] service_account_key_json" in str(raised.value)
 
 
 def test_a_secret_in_output_is_a_yd_error_with_the_output_masked(yd):

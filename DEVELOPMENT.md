@@ -171,7 +171,8 @@ iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: 
 # vm_size = "Standard_B2s"
 # ssh_public_key = "..."
 
-# [gcp]                           # required: service_account_key_file (a path), project, region
+# [gcp]                           # required: service_account_key_json, project, region
+# service_account_key_json = '''{"type": "service_account", ...}'''  # the key file's contents
 # zone = "europe-west2-a"
 # network = "default"
 # subnetwork = "default"

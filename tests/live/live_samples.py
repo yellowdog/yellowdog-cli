@@ -45,13 +45,14 @@ SERVICE_ACCOUNT_KEY = (
 PRIVATE_KEY_PEM = "-----BEGIN PRIVATE KEY-----\nMIIEociDummyDummyDummyDummyDummy\n-----END PRIVATE KEY-----\n"
 
 
-def gcp(key_file: Path) -> str:
+def gcp(key_json: str = SERVICE_ACCOUNT_KEY) -> str:
     """
-    A [gcp] section whose service-account key is the given file.
+    A [gcp] section with its service-account key inline, as a literal
+    string (whose backslashes TOML leaves alone).
     """
     return f"""
 [gcp]
-service_account_key_file = "{key_file}"
+service_account_key_json = '''{key_json}'''
 project = "yd-dummy-project"
 region = "europe-west2"
 """
@@ -84,15 +85,13 @@ def write_config(tmp_path: Path, text: str) -> dict[str, str]:
     return {"YDST_CONFIG": str(path)}
 
 
-def key_files(tmp_path: Path) -> tuple[Path, Path]:
+def oci_key_file(tmp_path: Path) -> Path:
     """
-    The GCP service-account key and the OCI private key, as files.
+    The OCI private key, as a file.
     """
-    gcp_key = tmp_path / "gcp.json"
-    gcp_key.write_text(SERVICE_ACCOUNT_KEY, encoding="utf-8")
     oci_key = tmp_path / "oci.pem"
     oci_key.write_text(PRIVATE_KEY_PEM, encoding="utf-8")
-    return gcp_key, oci_key
+    return oci_key
 
 
 DATA = """

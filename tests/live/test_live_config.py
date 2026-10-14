@@ -5,7 +5,16 @@ The live suite's configuration: loading, environment overrides, validation.
 import pytest
 from harness import config
 from harness.config import LiveConfigError, load_live_config
-from live_samples import AWS, AZURE, PLATFORM, gcp, key_files, oci, write_config
+from live_samples import (
+    AWS,
+    AZURE,
+    PLATFORM,
+    SERVICE_ACCOUNT_KEY,
+    gcp,
+    oci,
+    oci_key_file,
+    write_config,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -158,18 +167,42 @@ def test_no_provider_is_an_error(tmp_path):
     assert problems[0].startswith("no provider is configured")
 
 
-def test_a_key_file_must_exist(tmp_path):
-    problems = _problems(write_config(tmp_path, PLATFORM + gcp(tmp_path / "none.json")))
+def test_an_oci_key_file_must_exist(tmp_path):
+    problems = _problems(write_config(tmp_path, PLATFORM + oci(tmp_path / "none.pem")))
+    assert any("private_key_file" in p and "not a readable file" in p for p in problems)
+
+
+def test_a_service_account_key_must_be_a_json_object(tmp_path):
+    problems = _problems(write_config(tmp_path, PLATFORM + gcp("not json")))
     assert any(
-        "service_account_key_file" in p and "not a readable file" in p for p in problems
+        p.startswith("[gcp] service_account_key_json is not a JSON object")
+        for p in problems
     )
+    problems = _problems(write_config(tmp_path, PLATFORM + gcp("[1, 2]")))
+    assert any("service_account_key_json is not a JSON object" in p for p in problems)
 
 
-def test_the_secrets_include_key_file_contents(tmp_path):
-    gcp_key, oci_key = key_files(tmp_path)
-    text = PLATFORM + gcp(gcp_key) + oci(oci_key) + '[run]\nprimary_provider = "gcp"\n'
+def test_a_key_with_newlines_in_its_strings_is_accepted(tmp_path):
+    # In a basic string (three double quotes), TOML turns the private key's
+    # backslash-n into a newline; the Platform takes the key as it is
+    text = PLATFORM + gcp().replace("'''", '"' * 3)
+    loaded = load_live_config(write_config(tmp_path, text))
+    assert "\n" in loaded.providers["gcp"]["service_account_key_json"]
+
+
+def test_a_service_account_key_can_come_from_the_environment(tmp_path):
+    text = PLATFORM + gcp().replace(SERVICE_ACCOUNT_KEY, "")
+    environ = write_config(tmp_path, text)
+    environ["YDST_GCP_SERVICE_ACCOUNT_KEY_JSON"] = SERVICE_ACCOUNT_KEY
+    loaded = load_live_config(environ)
+    assert loaded.providers["gcp"]["service_account_key_json"] == SERVICE_ACCOUNT_KEY
+
+
+def test_the_secrets_include_the_key_and_key_file_contents(tmp_path):
+    oci_key = oci_key_file(tmp_path)
+    text = PLATFORM + gcp() + oci(oci_key) + '[run]\nprimary_provider = "gcp"\n'
     secrets = load_live_config(write_config(tmp_path, text)).secrets()
-    assert gcp_key.read_text(encoding="utf-8") in secrets
+    assert SERVICE_ACCOUNT_KEY in secrets
     assert oci_key.read_text(encoding="utf-8") in secrets
     assert "app-secret-abcdefghijklmnop" in secrets
     assert "ocid1.tenancy.oc1..dummy" not in secrets

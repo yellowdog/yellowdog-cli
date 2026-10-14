@@ -17,6 +17,7 @@ so an incomplete one is an error. Every problem is reported at once.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -42,7 +43,8 @@ DUMMY_CREDENTIALS_MARKER = "YD_TEST_DUMMY_CREDENTIALS"
 class Key:
     """
     One configuration key: its type, and whether it is required, a secret,
-    or a path to a file whose contents are the value. A 'shown' secret is one
+    a path to a file whose contents are the value, or a JSON object given
+    inline. A 'shown' secret is one
     the CLI prints on purpose (the Application key ID, in 'yd doctor'): it
     is masked in what the harness shows, but printing it does not fail a
     call.
@@ -52,6 +54,7 @@ class Key:
     required: bool = False
     secret: bool = False
     file: bool = False
+    json: bool = False
     default: Any = None
     shown: bool = False
 
@@ -99,7 +102,8 @@ SCHEMA: dict[str, dict[str, Key]] = {
         "ssh_public_key": Key(str),
     },
     "gcp": {
-        "service_account_key_file": Key(str, required=True, secret=True, file=True),
+        # The key file's contents, inline
+        "service_account_key_json": Key(str, required=True, secret=True, json=True),
         "project": Key(str, required=True),
         "region": Key(str, required=True),
         "zone": Key(str),
@@ -361,7 +365,7 @@ def _is_kind(value: Any, kind: type) -> bool:
 def _section(name: str, raw: dict, problems: list[str]) -> Section:
     """
     One section, checked against its schema: unknown keys, types, required
-    keys and key files.
+    keys, key files and inline JSON.
     """
     schema = SCHEMA[name]
     values: dict[str, Any] = {}
@@ -386,7 +390,20 @@ def _section(name: str, raw: dict, problems: list[str]) -> Section:
             if not (path.is_file() and os.access(path, os.R_OK)):
                 problems.append(f"[{name}] {key}: '{path}' is not a readable file")
             values[key] = path
+        elif spec.json and not _is_json_object(values[key]):
+            problems.append(f"[{name}] {key} is not a JSON object")
     return Section(name, MappingProxyType(values))
+
+
+def _is_json_object(text: str) -> bool:
+    """
+    Whether the text is a JSON object, allowing newlines and other control
+    characters inside its strings, as the Platform does.
+    """
+    try:
+        return isinstance(json.loads(text, strict=False), dict)
+    except ValueError:
+        return False
 
 
 def _primary(

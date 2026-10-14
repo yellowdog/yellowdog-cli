@@ -7,8 +7,8 @@
     credential: {
       type: 'co.yellowdog.platform.account.credentials.GoogleCloudCredential',
       name: '{{gcp_credential_name}}',
-      // The key file's contents, escaped for this string by the Jsonnet pass
-      serviceAccountKeyJson: '{{secret_gcp_service_account_key}}',
+      // The key, escaped for this string by the Jsonnet pass
+      serviceAccountKeyJson: '{{secret_gcp_service_account_key_json}}',
     },
   },
   {

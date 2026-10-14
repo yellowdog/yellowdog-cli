@@ -13,7 +13,7 @@ import pytest
 from harness import config
 from harness.config import load_live_config
 from harness.run import INSTALLER, SPECS, Run
-from live_samples import AWS, AZURE, PLATFORM, gcp, key_files, oci, write_config
+from live_samples import AWS, AZURE, PLATFORM, gcp, oci, oci_key_file, write_config
 
 # The jsonnet extra; tox installs it, a bare environment may not. (Not
 # resource_corpus.require_jsonnet(): tests/ is not on sys.path when only
@@ -27,14 +27,14 @@ def _no_default_file(monkeypatch, tmp_path):
 
 
 def _run(tmp_path, extra: str = "", aws_extra: str = "") -> Run:
-    gcp_key, oci_key = key_files(tmp_path)
+    oci_key = oci_key_file(tmp_path)
     text = (
         PLATFORM
         + AWS
         + aws_extra
         + AZURE
         + extra
-        + gcp(gcp_key)
+        + gcp()
         + oci(oci_key)
         + '[run]\nprimary_provider = "aws"\n'
     )
@@ -215,7 +215,7 @@ def test_multi_line_and_json_secrets_arrive_intact(tmp_path):
     secrets = run.secret_variables()
     assert (
         credentials[run.credential_name("gcp")]["serviceAccountKeyJson"]
-        == (secrets["secret_gcp_service_account_key"])
+        == (secrets["secret_gcp_service_account_key_json"])
     )
     assert (
         credentials[run.credential_name("oci")]["privateKey"]

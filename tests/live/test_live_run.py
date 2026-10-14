@@ -13,7 +13,7 @@ import pytest
 from harness import config
 from harness.config import load_live_config
 from harness.run import SPECS, Run, new_run_id, run_id_of, run_started
-from live_samples import AWS, PLATFORM, gcp, key_files, oci, write_config
+from live_samples import AWS, PLATFORM, gcp, oci, oci_key_file, write_config
 
 STARTED = datetime(2026, 10, 12, 15, 30, tzinfo=timezone.utc)
 
@@ -25,14 +25,8 @@ def _no_default_file(monkeypatch, tmp_path):
 
 @pytest.fixture
 def every_provider(tmp_path):
-    gcp_key, oci_key = key_files(tmp_path)
-    text = (
-        PLATFORM
-        + AWS
-        + gcp(gcp_key)
-        + oci(oci_key)
-        + '[run]\nprimary_provider = "aws"\n'
-    )
+    oci_key = oci_key_file(tmp_path)
+    text = PLATFORM + AWS + gcp() + oci(oci_key) + '[run]\nprimary_provider = "aws"\n'
     return load_live_config(write_config(tmp_path, text))
 
 
@@ -116,7 +110,7 @@ def test_no_secret_is_written_to_the_cli_config(every_provider, tmp_path):
 def test_secret_variables_carry_key_file_contents(every_provider, tmp_path):
     run = Run.start(every_provider, tmp_path / "runs")
     secrets = run.secret_variables()
-    assert secrets["secret_gcp_service_account_key"].startswith(
+    assert secrets["secret_gcp_service_account_key_json"].startswith(
         '{"type": "service_account"'
     )
     assert secrets["secret_oci_private_key"].startswith("-----BEGIN PRIVATE KEY-----")
