@@ -18,11 +18,17 @@ from yellowdog_client.model import Allowance
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_ALLOWANCES
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.results import record_action, record_failure_cause
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 
@@ -32,11 +38,13 @@ def _record(
     outcome: str,
     error: str | None = None,
     allowance: Allowance | None = None,
+    cause: int = ExitCode.FAILURE,
     **extra: Any,
 ) -> None:
     """
     Record an outcome for '--json', with the Allowance's description once
-    it has been fetched.
+    it has been fetched; a failure with its cause, so that a run whose
+    failures share one exits with it (results.failure_exit_code()).
     """
     if allowance is not None:
         extra = {"description": allowance.description, **extra}
@@ -49,6 +57,8 @@ def _record(
         hours=ctx.args.boost_hours,
         **extra,
     )
+    if outcome == "failed":
+        record_failure_cause(cause)
 
 
 def _hours(hours: float) -> str:
@@ -134,7 +144,8 @@ def main(ctx: RunContext) -> None:
         except Exception as e:
             error = "not found" if is_http_not_found(e) else str(e)
             print_error(f"Unable to boost Allowance {allowance_id}: {error}")
-            _record(ctx, allowance_id, "failed", error)
+            advise(e)
+            _record(ctx, allowance_id, "failed", error, cause=classify(e))
             _stop(
                 ctx,
                 e,
@@ -161,7 +172,8 @@ def main(ctx: RunContext) -> None:
             print_error(
                 f"Unable to boost Allowance {_label(allowance_id, allowance)}: {e}"
             )
-            _record(ctx, allowance_id, "failed", str(e), allowance)
+            advise(e)
+            _record(ctx, allowance_id, "failed", str(e), allowance, classify(e))
             failed += 1
             _stop(ctx, e, list(found[index + 1 :]))
             continue

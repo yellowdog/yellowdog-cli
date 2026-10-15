@@ -37,8 +37,8 @@ class ExitCode(IntEnum):
     where main() itself returns normally (results.any_failed(), checked by
     both wrappers straight after a successful run), unless every failure was
     recorded with its cause and all share one (results.failure_exit_code(),
-    as the action commands on action_runner.py record them), when it exits
-    with that.
+    as the action commands on action_runner.py, yd-shutdown, yd-abort,
+    yd-boost and yd-nodeaction record them), when it exits with that.
     """
 
     SUCCESS = 0

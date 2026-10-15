@@ -594,6 +594,41 @@ class TestAbort:
             _action(TASK_ID_2, "t2", "tasks", "abort", "failed", error="x"),
         ]
 
+    def test_tasks_not_found_exit_6(self, run):
+        client = self._client()
+        client.work_client.get_task_by_id.side_effect = HTTPError(
+            "404", response=_response(404)
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
+        assert [r["outcome"] for r in out] == ["failed", "failed"]
+        assert run.exit_code == 6
+
+    def test_a_named_target_naming_nothing_exits_6(self, run, wrs):
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["no-such"])
+        assert [r["outcome"] for r in out] == ["failed"]
+        assert run.exit_code == 6
+
+    def test_a_refused_abort_exits_5(self, run):
+        client = self._client(by_id={TASK_ID: _task()})
+        client.work_client.cancel_task.side_effect = HTTPError(
+            "403", response=_response(403)
+        )
+        _, err, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert run.exit_code == 5
+        # What to check, as the other action commands say it
+        assert "required permissions" in err
+
+    def test_failures_of_different_causes_exit_1(self, run):
+        client = self._client(
+            by_id={TASK_ID: _task(), TASK_ID_2: _task(TASK_ID_2, "t2")}
+        )
+        client.work_client.cancel_task.side_effect = [
+            HTTPError("403", response=_response(403)),
+            RuntimeError("x"),
+        ]
+        run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
+        assert run.exit_code == 1
+
     @pytest.mark.parametrize(
         "status", [TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.COMPLETED]
     )
@@ -662,7 +697,7 @@ class TestAbort:
         assert out == [
             _action(TASK_ID, None, "tasks", "abort", "failed", error="not found")
         ]
-        assert run.exit_code == 1
+        assert run.exit_code == 6
 
     def test_declined_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
@@ -1217,7 +1252,23 @@ class TestBoost:
             (ALLOWANCE_ID, "boosted"),
         ]
         assert out[0]["error"] == "not found"
-        assert run.exit_code == 1
+        # Its one failure's cause
+        assert run.exit_code == 6
+
+    def test_a_refused_boost_exits_5(self, run):
+        def refused(allowance_id, hours):
+            raise HTTPError("403", response=_response(403))
+
+        out, err, _ = run(
+            yd_boost,
+            client=self._client(boost=refused),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert [r["outcome"] for r in out] == ["failed", "failed"]
+        assert run.exit_code == 5
+        # What to check, said once for both
+        assert err.count("required permissions") == 1
 
     def test_one_confirmation_shows_the_descriptions(self):
         found = [
@@ -1297,7 +1348,8 @@ class TestBoost:
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
         )
         assert [item["outcome"] for item in out] == ["failed", "boosted"]
-        assert run.exit_code == 1
+        # Its one failure's cause: the Platform's (5xx)
+        assert run.exit_code == 7
 
     @pytest.mark.parametrize(
         "hours, shown",
@@ -3621,6 +3673,17 @@ class TestNodeActionOutcomes:
         assert out[0]["outcome"] == "failed"
         assert out[0]["error"] == "Failed to submit: boom"
         assert "boom" in err
+        assert run.exit_code == 1
+
+    def test_a_refused_submission_exits_5(self, run, monkeypatch):
+        client = MagicMock()
+        client.worker_pool_client.add_node_actions_for_node_by_id.side_effect = (
+            HTTPError("403", response=_response(403))
+        )
+        out, err, _ = self._submit(run, monkeypatch, client=client)
+        assert out[0]["outcome"] == "failed"
+        assert run.exit_code == 5
+        assert "required permissions" in err
 
 
 # ---------------------------------------------------------------------------
