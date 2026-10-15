@@ -12,8 +12,9 @@ before did, except that a run whose compute may still be alive keeps its
 Keyring, without whose Credential the Platform cannot terminate it, and its
 Allowance, which still caps it. The sweep uses the same teardown on every
 run of its namespace older than its age guard, which is what keeps one run's
-sweep away from another's live resources; a Keyring or Allowance, which are
-not in a namespace, counts only when it names the sweep's.
+sweep away from another's live resources; a Keyring, Application, Group or
+Allowance, which are not in a namespace, counts only when it names the
+sweep's.
 """
 
 from __future__ import annotations
@@ -36,11 +37,19 @@ REMOVAL_ORDER = (
     # After the Compute Source Templates, which name them
     "image-families",
     "keyrings",
+    # Not in a namespace, and nothing refers to them; a Group after the
+    # Applications in it
+    "applications",
+    "groups",
 )
 # Listed as active only, so a long-terminated one does not count
 ACTIVE_TYPES = ("work-requirements", "worker-pools", "compute-requirements")
 # Not in a namespace: listed with '--namespace ""'
-ACCOUNT_WIDE = frozenset({"keyrings", "allowances"})
+ACCOUNT_WIDE = frozenset({"keyrings", "allowances", "applications", "groups"})
+# Not in a namespace: the sweep counts one only when its description names
+# the sweep's namespace, as a run's does (specs/common.jsonnet,
+# specs/limited-app.jsonnet)
+DESCRIBED_ACCOUNT_WIDE = ("keyrings", "applications", "groups")
 # What a run keeps while its compute may still be alive
 KEPT_WHILE_COMPUTE_LIVES = ("allowances", "keyrings")
 # The end of a run's Keyring's description (specs/common.jsonnet)
@@ -54,6 +63,8 @@ DISCOVERY_TYPES = (
     "compute-requirement-templates",
     "image-families",
     "keyrings",
+    "applications",
+    "groups",
     "allowances",
     *ACTIVE_TYPES,
 )
@@ -278,8 +289,8 @@ def stale_runs(
 ) -> list[str]:
     """
     Every run of the namespace that left something behind and started more
-    than 'older_than' ago, found by the names of what it made; a Keyring or
-    Allowance only when it names the namespace.
+    than 'older_than' ago, found by the names of what it made; a Keyring,
+    Application, Group or Allowance only when it names the namespace.
     """
     names: list[str] = []
     for entity_type in DISCOVERY_TYPES:
@@ -309,7 +320,7 @@ def stale_runs(
                 if (p.get("type") or "").endswith(CONFIGURED_POOL_TYPE)
                 and p.get("status") not in FINISHED_POOL_STATUSES
             ]
-        elif entity_type == "keyrings":
+        elif entity_type in DESCRIBED_ACCOUNT_WIDE:
             listed = _listed(yd, entity_type, scope, "", "--name", f"{RUN_PREFIX}-*")
             ending = KEYRING_NAMESPACE.format(namespace=namespace)
             names += [

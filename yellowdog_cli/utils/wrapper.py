@@ -31,6 +31,7 @@ from yellowdog_cli.utils.exit_codes import (
     ExitCode,
     classify,
 )
+from yellowdog_cli.utils.failure_advice import AUTHENTICATION_ADVICE, PERMISSION_ADVICE
 from yellowdog_cli.utils.lazy import built, lazy
 from yellowdog_cli.utils.load_config import (
     ensure_config_loaded,
@@ -129,14 +130,9 @@ def _describe(error: Exception) -> str:
     """
     code = classify(error)
     if code == ExitCode.PERMISSION:
-        return (
-            "Your Application does not have the required permissions to"
-            " perform the requested operation. Please check that the"
-            " Application belongs to the required group(s), e.g.,"
-            f" 'administrators', with roles in the required namespace(s): {error}"
-        )
+        return f"{PERMISSION_ADVICE}: {error}"
     if code == ExitCode.AUTHENTICATION:
-        return f"Your Application Key ID and SECRET are not recognised: {error}"
+        return f"{AUTHENTICATION_ADVICE}: {error}"
     if code == ExitCode.CONNECTION:
         return (
             # Loaded: a connection is attempted only once it has been

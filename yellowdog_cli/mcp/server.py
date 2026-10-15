@@ -33,6 +33,7 @@ from yellowdog_cli.mcp.tools import (
     to_argv,
     tool_named,
 )
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES
 from yellowdog_cli.utils.settings import MCP_SERVER_NAME
 
 LOG = logging.getLogger("yd-mcp")
@@ -77,9 +78,9 @@ def _error(text: str, **structured: Any) -> types.CallToolResult:
 def _records_a_failure(document: Any) -> bool:
     """
     Whether 'document' is a list holding a record whose 'outcome' or 'action'
-    is 'failed': the CLI's per-item failure (results.any_failed()), the one
-    exit 1 that is still a result rather than an error. Both wrappers flush
-    '[]' on every failure path, so a document alone proves nothing.
+    is 'failed': the CLI's per-item failure (results.any_failed()), a
+    non-zero exit that is still a result rather than an error. Both wrappers
+    flush '[]' on every failure path, so a document alone proves nothing.
     """
     return isinstance(document, list) and any(
         isinstance(item, dict)
@@ -114,7 +115,9 @@ def _result_of(
     succeeded = (
         result.stopped
         or result.exit_code == 0
-        or (result.exit_code == 1 and _records_a_failure(document))
+        # The command reported its own per-item failures, exiting with their
+        # shared cause (6, 5) or 1; a session failure (4, 8) stopped it
+        or (result.exit_code not in SESSION_FAILURES and _records_a_failure(document))
     )
     if not succeeded:
         return _error(

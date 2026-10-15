@@ -30,6 +30,7 @@ from yellowdog_cli.utils.action_runner import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_TASK_GROUPS, ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import FINISHED_WORK_REQUIREMENT_STATUSES
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_dry_run, print_info
 from yellowdog_cli.utils.results import record_action
@@ -175,7 +176,9 @@ def _resolve(ctx: RunContext, target: str, priority: float) -> Item:
             (g for g in work_requirement.taskGroups or [] if g.id == target), None
         )
         if task_group is None:
-            raise Unresolved(f"Task Group '{target}' not found")
+            raise Unresolved(
+                f"Task Group '{target}' not found", code=ExitCode.NOT_FOUND
+            )
         resolved = _target(work_requirement, task_group)
     elif ydid_type is not None:
         raise Unresolved(

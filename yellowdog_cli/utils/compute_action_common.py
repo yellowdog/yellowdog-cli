@@ -63,7 +63,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_instance_by_id,
     namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
@@ -639,7 +639,8 @@ def _resolve_instance(
     instance: Instance | None = get_instance_by_id(ctx.client, cr_id, instance_id)
     if instance is None:
         raise Unresolved(
-            f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"
+            f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}",
+            code=ExitCode.NOT_FOUND,
         )
     if instance.status not in action.valid_instance_statuses:
         raise Unresolved(

@@ -472,6 +472,13 @@ class TestInstances:
         _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
         assert platform.outcomes() == [(f"{CR_ID}.i-unknown", "instances", "failed")]
 
+    def test_an_unknown_instance_is_charged_not_found(self, platform, monkeypatch):
+        from yellowdog_cli.utils import results
+
+        _run(platform, COMPUTE_STOP, [f"{CR_ID}.i-unknown"])
+        # Its cause, for the exit code (results.failure_exit_code())
+        assert results._FAILURE_CAUSES == [6]
+
     def test_an_unknown_cr_fails_as_not_found(self, platform, monkeypatch):
         _run(platform, COMPUTE_STOP, [f"{CR_ID_2}.{INSTANCE_ID}"])
         assert "Cannot find Compute Requirement" in platform.records[0]["error"]

@@ -50,7 +50,8 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_summaries,
     namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ExitCode, classify
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
@@ -61,7 +62,7 @@ from yellowdog_cli.utils.printing import (
     print_info,
     print_warning,
 )
-from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.results import record_action, record_failure_cause
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -329,7 +330,9 @@ def _resolve(ctx: RunContext, target: str) -> Item:
             ctx.client, target, ctx.config.namespace
         )
         if worker_pool_id is None:
-            raise Unresolved(f"Cannot find Worker Pool '{target}'")
+            raise Unresolved(
+                f"Cannot find Worker Pool '{target}'", code=ExitCode.NOT_FOUND
+            )
     try:
         worker_pool = get_worker_pool_by_id(ctx.client, cast(str, worker_pool_id))
     except Exception as e:
@@ -422,7 +425,9 @@ def _failed(target: object, entity_type: str, message: str, e: Exception):
     succeed.
     """
     print_error(f"{message}: {e}")
+    advise(e)
     _record(target, "failed", str(e), entity_type)
+    record_failure_cause(classify(e))
     if classify(e) in SESSION_FAILURES:
         raise SessionStop(e) from e
 
@@ -467,7 +472,9 @@ def _shut_down_pool(ctx: RunContext, pool: _Pool, shut_down_pool_ids: list[str])
                 "Unable to find the Compute Requirement of Worker Pool"
                 f" '{pool.name}': {e}"
             )
+            advise(e)
             _record_termination({"id": None, "name": None}, pool_id, "failed", str(e))
+            record_failure_cause(classify(e))
             if classify(e) in SESSION_FAILURES:
                 raise SessionStop(e) from e
         return
@@ -500,9 +507,11 @@ def _terminate_compute_requirement(ctx: RunContext, worker_pool: WorkerPool):
             f"Failed to terminate Compute Requirement {cr_id} of Worker Pool"
             f" '{worker_pool.name}': {e}"
         )
+        advise(e)
         _record_termination(
             {"id": cr_id, "name": None}, worker_pool.id, "failed", str(e)
         )
+        record_failure_cause(classify(e))
         if classify(e) in SESSION_FAILURES:
             raise SessionStop(e) from e
         return

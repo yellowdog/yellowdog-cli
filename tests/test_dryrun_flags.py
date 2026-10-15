@@ -167,9 +167,9 @@ class TestRealPathRecordsThroughARealParse:
                 "error": "Cannot find Work Requirement 'nonesuch-wr' in namespace 'ns'",
             }
         ]
-        # A recorded 'failed' outcome exits 1 even though main() itself
-        # raised nothing (the failed-record rule).
-        assert exit_info.value.code == ExitCode.FAILURE
+        # A recorded 'failed' outcome fails the run even though main() itself
+        # raised nothing (the failed-record rule), with its cause's code
+        assert exit_info.value.code == ExitCode.NOT_FOUND
         reset_results()
 
     def test_yd_delete(self, monkeypatch, capsys):

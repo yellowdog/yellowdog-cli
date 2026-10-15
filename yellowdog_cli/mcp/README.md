@@ -149,7 +149,7 @@ A successful call's `content` is one text block holding the command's `--json` d
 
 `yd_show` and `yd_variables` are the two exceptions to `--json`: their commands have no such option, since they print their JSON document whatever they are given, so the server runs them with `--quiet` instead, which leaves the document alone on stdout; the warnings those two commands would print, such as an undefined variable in `yd_variables`, are suppressed by `--quiet` rather than sent to stderr.
 
-A run that exits 1 is still a success when its document holds a record whose `outcome` or `action` is `failed` — the CLI's own per-item failure convention — since the command completed and reported what went wrong itself.
+A run that exits non-zero is still a success when its document holds a record whose `outcome` or `action` is `failed` — the CLI's own per-item failure convention — since the command completed and reported what went wrong itself; its exit code is then the cause the failures share (6 when every target was not found, 5 when each was refused) or 1. An authentication (4) or connection (8) failure, which stops the command part-way, is an error whatever it recorded.
 
 Every other non-zero exit is an error: `isError` is true, `content` carries the command's stderr (the wrapper's friendly message, `Missing configuration data`, an argparse usage error) followed by the document as compact JSON when stdout held one, and `structuredContent` adds `"exitCode"` and `"stderr"` beside `"result"` (`null` when stdout held no document at all).
 

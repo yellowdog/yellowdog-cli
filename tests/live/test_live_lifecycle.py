@@ -131,6 +131,8 @@ def test_compute_still_alive_is_a_problem_but_the_templates_are_still_removed():
         "compute-requirement-templates",
         "compute-source-templates",
         "image-families",
+        "applications",
+        "groups",
     ]
 
 
@@ -440,3 +442,38 @@ def test_a_shut_down_configured_pool_does_not_make_a_run_stale():
         )
     )
     assert stale_runs(yd, "ns", timedelta(minutes=10), now=NOW) == []
+
+
+def test_applications_then_groups_are_removed_last():
+    assert REMOVAL_ORDER[-3:] == ("keyrings", "applications", "groups")
+
+
+def test_applications_and_groups_are_listed_account_wide():
+    yd = FakeYd(_quiet_platform)
+    teardown(yd, "ns", RUN, 15)
+    for entity_type in ("applications", "groups"):
+        (listing,) = [c for c in yd.calls if c[:2] == ("list", entity_type)]
+        assert listing[listing.index("--namespace") + 1] == ""
+
+
+def test_the_sweep_counts_an_application_or_group_only_when_it_names_the_namespace():
+    def respond(args):
+        if args[0] == "list" and args[1] in ("applications", "groups"):
+            return result(
+                args,
+                document=[
+                    {
+                        "id": "a",
+                        "name": f"{RUN}-limited",
+                        "description": "Live system tests, run x, namespace ns",
+                    },
+                    {
+                        "id": "b",
+                        "name": f"{OTHER}-limited",
+                        "description": "Live system tests, run y, namespace other",
+                    },
+                ],
+            )
+        return result(args, document=[])
+
+    assert stale_runs(FakeYd(respond), "ns", timedelta(minutes=10), NOW) == [RUN]

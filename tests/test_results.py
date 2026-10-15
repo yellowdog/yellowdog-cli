@@ -20,9 +20,11 @@ import yellowdog_cli.utils.printing as printing_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.results import (
     any_failed,
+    failure_exit_code,
     flush_results,
     record,
     record_document,
+    record_failure_cause,
     reset_results,
 )
 
@@ -167,6 +169,41 @@ class TestFlush:
         record_document({"b": 2})
         with pytest.raises(RuntimeError):
             flush_results()
+
+
+class TestFailureExitCode:
+    """
+    The exit code of a run that recorded failures: the cause they share, or
+    1 when they differ or any failure's cause is unknown.
+    """
+
+    def test_failures_sharing_a_cause_exit_with_it(self, json_mode):
+        json_mode(True)
+        for name in ("a", "b"):
+            record({"id": name, "outcome": "failed"})
+            record_failure_cause(6)
+        assert failure_exit_code() == 6
+
+    def test_failures_with_different_causes_exit_1(self, json_mode):
+        json_mode(True)
+        for name, cause in (("a", 6), ("b", 5)):
+            record({"id": name, "outcome": "failed"})
+            record_failure_cause(cause)
+        assert failure_exit_code() == 1
+
+    def test_a_failure_of_unknown_cause_exits_1(self, json_mode):
+        json_mode(True)
+        record({"id": "a", "outcome": "failed"})
+        record_failure_cause(6)
+        record({"id": "b", "action": "failed"})
+        assert failure_exit_code() == 1
+
+    def test_reset_forgets_the_causes(self, json_mode):
+        json_mode(True)
+        record_failure_cause(6)
+        reset_results()
+        record({"id": "a", "outcome": "failed"})
+        assert failure_exit_code() == 1
 
 
 class TestAnyFailed:

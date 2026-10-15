@@ -29,6 +29,7 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.results import (
     any_failed,
+    failure_exit_code,
     flush_results,
     flush_results_after_failure,
 )
@@ -143,7 +144,7 @@ def run_command(
             finally:
                 flush_results()
             if any_failed():
-                sys.exit(ExitCode.FAILURE)
+                sys.exit(failure_exit_code())
             if not args.print_pid:
                 print_info("Done")
             sys.exit(ExitCode.SUCCESS)
@@ -157,8 +158,9 @@ def run_command(
         flush_results()
         if any_failed():
             # The command handled the error itself and recorded it; main()
-            # raised nothing, but a failed record still fails the run
-            exit_code = ExitCode.FAILURE
+            # raised nothing, but a failed record still fails the run, with
+            # the cause its failures share, else 1
+            exit_code = failure_exit_code()
     except SystemExit as e:
         # An explicit exit code raised by the command is kept
         exit_code = exit_code_of(e)

@@ -388,3 +388,31 @@ def test_one_signal_stops_the_server_quietly(signal_name, clean_env, tmp_path):
     assert process.returncode == 0, stderr.decode(errors="replace")
     assert b"Traceback" not in stderr
     assert b"stopped" in stderr
+
+
+_FAILED_RECORD = [{"id": "x", "outcome": "failed", "error": "e"}]
+
+
+@pytest.mark.parametrize("exit_code", [1, 5, 6, 7])
+def test_a_per_item_failure_by_its_cause_is_a_result(exit_code):
+    # An action command exits with its failures' shared cause (6 for a target
+    # that does not exist, 5 for one refused): still the command's own report
+    from yellowdog_cli.mcp.runner import Run
+    from yellowdog_cli.mcp.server import _result_of
+
+    tool = next(t for t in build_tools() if t.name == "yd_workrequirement_cancel")
+    run = Run(exit_code, json.dumps(_FAILED_RECORD), "", False)
+    result = _result_of(tool, run, 300)
+    assert result.is_error is False
+    assert result.structured_content["exitCode"] == exit_code
+
+
+@pytest.mark.parametrize("exit_code", [4, 8])
+def test_a_session_failure_with_records_is_an_error(exit_code):
+    # An authentication or connection failure stopped the command part-way
+    from yellowdog_cli.mcp.runner import Run
+    from yellowdog_cli.mcp.server import _result_of
+
+    tool = next(t for t in build_tools() if t.name == "yd_workrequirement_cancel")
+    run = Run(exit_code, json.dumps(_FAILED_RECORD), "refused", False)
+    assert _result_of(tool, run, 300).is_error is True

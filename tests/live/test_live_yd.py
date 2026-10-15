@@ -8,7 +8,7 @@ import json
 import sys
 
 import pytest
-from harness import config
+from harness import config, coverage
 from harness.config import load_live_config
 from harness.run import Run
 from harness.yd import MASK, Result, SecretInOutput, Yd, YdError, mask_variants
@@ -36,12 +36,18 @@ if args[0] == "silent":
 if args[0] == "sleep":
     import time
     time.sleep(10)
+if "--exit-with" in args:
+    sys.exit(int(args[args.index("--exit-with") + 1]))
+if "--print-env" in args:
+    print(os.environ.get(args[args.index("--print-env") + 1], ""))
+    sys.exit(0)
 print(json.dumps({
     "args": args,
     "cwd": os.getcwd(),
     # The key's hash: the key itself in the output is a SecretInOutput
     "key_sha256": hashlib.sha256(os.environ.get("YD_KEY", "").encode()).hexdigest(),
     "namespace": os.environ.get("YD_NAMESPACE"),
+    "url": os.environ.get("YD_URL"),
 }))
 """
 
@@ -169,3 +175,63 @@ def test_the_application_key_is_masked_but_does_not_fail_the_call(yd):
     assert not isinstance(raised.value, SecretInOutput)
     assert "app-key-1234567890" not in str(raised.value)
     assert yd("echo", "app-key-1234567890").exit_code == 0
+
+
+def test_with_credentials_replaces_the_key_and_secret(yd):
+    other = yd.with_credentials("other-key-abcdefgh", "other-secret-abcdefgh")
+    seen = other("x").document
+    assert seen["key_sha256"] == hashlib.sha256(b"other-key-abcdefgh").hexdigest()
+    # Raw output: the secret is not registered, and expect_secret keeps this
+    # honest should it ever be
+    shown = other("x", "--print-env", "YD_SECRET", expect_secret=True)
+    assert shown.stdout.strip() == "other-secret-abcdefgh"
+    # The run's own runner is unchanged
+    assert (
+        yd("x").document["key_sha256"]
+        == hashlib.sha256(b"app-key-1234567890").hexdigest()
+    )
+
+
+def test_with_credentials_keeps_the_runs_url_unless_given_one(yd):
+    kept = yd.with_credentials("k" * 10, "s" * 10)("x").document["url"]
+    assert kept == yd("x").document["url"]
+    moved = yd.with_credentials("k" * 10, "s" * 10, url="https://127.0.0.1:9")
+    assert moved("x").document["url"] == "https://127.0.0.1:9"
+
+
+def test_a_learned_secret_fails_a_later_call_naming_its_label(yd):
+    yd.add_secret("the limited Application's secret", "learned-secret-0123456789")
+    with pytest.raises(SecretInOutput, match="limited Application's secret"):
+        yd("echo", "learned-secret-0123456789")
+    assert yd.mask("x learned-secret-0123456789 y") == f"x {MASK} y"
+
+
+def test_a_secret_added_to_a_derived_runner_reaches_its_parent(yd):
+    derived = yd.with_credentials("k" * 10, "s" * 10)
+    derived.add_secret("learned", "learned-secret-0123456789")
+    with pytest.raises(SecretInOutput):
+        yd("echo", "learned-secret-0123456789")
+
+
+def test_expect_secret_skips_the_check_for_its_call_alone(yd):
+    yd.add_secret("learned", "learned-secret-0123456789")
+    shown = yd("echo", "learned-secret-0123456789", expect_secret=True)
+    assert "learned-secret-0123456789" in shown.stdout
+    with pytest.raises(SecretInOutput):
+        yd("echo", "learned-secret-0123456789")
+
+
+def test_an_expected_failure_earns_no_coverage(yd, tmp_path, monkeypatch):
+    monkeypatch.setattr(coverage, "_DIRECTORY", tmp_path)
+    yd("wr", "show", "--exit-with", "6", ok=(6,), expected_failure=True)
+    assert coverage.recorded(tmp_path) == set()
+    yd("wr", "show", "--exit-with", "6", ok=(6,))
+    assert coverage.recorded(tmp_path) == {"yd workrequirement show"}
+
+
+def test_an_expected_failure_that_succeeds_still_earns_coverage(
+    yd, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(coverage, "_DIRECTORY", tmp_path)
+    yd("wr", "show", ok=(0, 6), expected_failure=True)
+    assert coverage.recorded(tmp_path) == {"yd workrequirement show"}

@@ -5,7 +5,7 @@ Command to show the JSON details of YellowDog entities via their IDs.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sys import exit as sys_exit
 from typing import Any, cast
 
@@ -46,6 +46,7 @@ from yellowdog_cli.utils.exit_codes import (
     ReportedFailure,
     classify,
 )
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
@@ -87,25 +88,30 @@ def main(ctx: RunContext):
 @dataclass
 class _Tally:
     """
-    The IDs not shown because their entity does not exist.
+    The exit code of each ID not shown: why it was not.
     """
 
-    not_found: int = 0
+    codes: list[ExitCode] = field(default_factory=list)
 
 
 _TALLY = _Tally()
 
 
-def _report_not_found(message: str) -> None:
+def _report_failure(message: str, code: ExitCode) -> None:
     print_error(message)
-    _TALLY.not_found += 1
+    _TALLY.codes.append(code)
+
+
+def _report_not_found(message: str) -> None:
+    _report_failure(message, ExitCode.NOT_FOUND)
 
 
 def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     """
     Resolve and print the details of each of the supplied YellowDog IDs, and
-    return the exit code: 0 if all were shown; 6 (NOT_FOUND) if those that
-    were not all named nothing; 1 otherwise. The IDs that were resolved are
+    return the exit code: 0 if all were shown; the one cause's code if
+    those that were not all failed for the same reason (6 NOT_FOUND, 5
+    PERMISSION); 1 otherwise. The IDs that were resolved are
     printed whatever the code. A failure every later lookup would repeat
     (authentication, connection) stops the run: what was resolved is printed
     and the failure raised with its own exit code.
@@ -113,7 +119,7 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     if ctx.args.strip_ids:
         print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
-    _TALLY.not_found = 0
+    _TALLY.codes.clear()
     items: list[ShowItem] = []
     failures = 0
     # Whenever more than one object is to be printed, it's printed as a JSON
@@ -128,6 +134,7 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
             resolved = resolve_details(ctx, ydid)
         except Exception as e:  # Re-raised by the resolvers only if SESSION_FAILURES
             print_error(f"Unable to show details for '{ydid}': {e}")
+            advise(e)
             if remaining := len(ydids) - index - 1:
                 print_warning(
                     f"Not attempting the remaining {remaining} ID(s), which would"
@@ -144,7 +151,11 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
 
     if not failures:
         return ExitCode.SUCCESS
-    return ExitCode.NOT_FOUND if _TALLY.not_found == failures else ExitCode.FAILURE
+    codes = set(_TALLY.codes)
+    # Each failure's cause recorded, and every one the same
+    if len(_TALLY.codes) == failures and len(codes) == 1:
+        return codes.pop()
+    return ExitCode.FAILURE
 
 
 def _print_items(ctx: RunContext, items: list[ShowItem], as_json_array: bool):
@@ -191,7 +202,7 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
         )
 
     if (ydid_type := get_ydid_type(ydid)) is None:
-        print_error(f"Invalid YellowDog ID '{ydid}'")
+        _report_failure(f"Invalid YellowDog ID '{ydid}'", ExitCode.FAILURE)
         return None
 
     resolver = _RESOLVERS[ydid_type]
@@ -204,7 +215,8 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
         if is_http_not_found(e) or isinstance(e, NotFoundError):
             _report_not_found(f"{ydid_type.value} ID '{ydid}' not found")
         else:
-            print_error(f"Unable to show details for '{ydid}': {e}")
+            _report_failure(f"Unable to show details for '{ydid}': {e}", classify(e))
+            advise(e)
         return None
 
 
@@ -578,7 +590,10 @@ def _resolve_instance_details(
         if is_http_not_found(e):
             _report_not_found(f"Compute Requirement ID '{cr_id}' not found")
         else:
-            print_error(f"Unable to find Compute Requirement ID '{cr_id}': {e}")
+            _report_failure(
+                f"Unable to find Compute Requirement ID '{cr_id}': {e}", classify(e)
+            )
+            advise(e)
         return None
 
     try:
@@ -586,7 +601,10 @@ def _resolve_instance_details(
     except Exception as e:
         if classify(e) in SESSION_FAILURES:
             raise  # For show_ydids(), which stops
-        print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
+        _report_failure(
+            f"Unable to show details for '{cr_id}.{instance_id}': {e}", classify(e)
+        )
+        advise(e)
         return None
 
     if instance is None:

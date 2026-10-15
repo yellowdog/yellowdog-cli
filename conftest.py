@@ -130,6 +130,17 @@ def _fresh_json_results():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _fresh_failure_advice():
+    """
+    Start every test with no failure advice given (utils/failure_advice.py),
+    which is said once per run.
+    """
+    if "yellowdog_cli.utils.failure_advice" in sys.modules:
+        sys.modules["yellowdog_cli.utils.failure_advice"].reset_advice()
+    yield
+
+
 @pytest.fixture(scope="session")
 def _schema_cache_root(tmp_path_factory):
     return tmp_path_factory.mktemp("schema-cache")

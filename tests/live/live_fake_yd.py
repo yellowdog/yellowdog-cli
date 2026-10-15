@@ -25,6 +25,8 @@ class FakeYd:
     def __init__(self, respond: Callable[[tuple[str, ...]], Result]) -> None:
         self.respond = respond
         self.calls: list[tuple[str, ...]] = []
+        self.secrets: list[tuple[str, str]] = []
+        self.credentials: tuple[str, str] | None = None
 
     def __call__(
         self,
@@ -32,12 +34,23 @@ class FakeYd:
         check: bool = True,
         ok: Iterable[int] = (0,),
         timeout: float | None = None,
+        expect_secret: bool = False,
+        expected_failure: bool = False,
     ) -> Result:
         self.calls.append(args)
         answer = self.respond(args)
         if check and answer.exit_code not in tuple(ok):
             raise YdError(self.describe(answer))
         return answer
+
+    def add_secret(self, label: str, value: str) -> None:
+        self.secrets.append((label, value))
+
+    def with_credentials(
+        self, key: str, secret: str, url: str | None = None
+    ) -> "FakeYd":
+        self.credentials = (key, secret)
+        return self
 
     def describe(self, answer: Result) -> str:
         return f"yd {' '.join(answer.args)} exited {answer.exit_code}"

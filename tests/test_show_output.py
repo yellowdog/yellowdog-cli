@@ -429,7 +429,8 @@ class TestDiagnostics:
             _http_error(500)
         )
         exit_code, _ = _run([cr_id], client, _args(show_source_report=True), capsys)
-        assert exit_code == ExitCode.FAILURE
+        # Its one cause's code: the Platform's failure
+        assert exit_code == ExitCode.PLATFORM
 
     def test_a_session_failure_stops_the_run(self, capsys):
         from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
@@ -600,6 +601,23 @@ class TestExitCodes:
         client = MagicMock()
         client.work_client.get_task_by_id.side_effect = _http_error(404)
         exit_code, _ = _run([_ydid("task"), "not-a-ydid"], client, _args(), capsys)
+        assert exit_code == ExitCode.FAILURE
+
+    def test_every_failure_a_missing_permission_exits_5(self, capsys):
+        # A Task in a namespace the Application cannot read
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = _http_error(403)
+        exit_code, output = _run([_ydid("task")], client, _args(), capsys)
+        assert exit_code == ExitCode.PERMISSION
+        assert output.strip() == ""
+
+    def test_a_missing_permission_and_a_not_found_exit_1(self, capsys):
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = [
+            _http_error(403),
+            _http_error(404),
+        ]
+        exit_code, _ = _run([_ydid("task"), _ydid("task")], client, _args(), capsys)
         assert exit_code == ExitCode.FAILURE
 
     def test_a_not_found_found_by_search_counts_as_not_found(self, capsys):

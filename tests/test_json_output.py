@@ -2173,9 +2173,15 @@ class TestWait:
         )
         return client
 
-    def _follow(self, monkeypatch, exit_code=0):
+    def _follow(self, monkeypatch, codes=None):
+        """
+        Following stubbed: each ID's stream failed with its code in 'codes'.
+        """
+        codes = codes or {}
         monkeypatch.setattr(yd_wait, "follow_ids", lambda _ctx, ids, timeout=None: ids)
-        monkeypatch.setattr(yd_wait, "follow_exit_code", lambda: exit_code)
+        monkeypatch.setattr(
+            yd_wait, "follow_exit_code_of", lambda ydid: codes.get(ydid, 0)
+        )
 
     def test_each_id_is_recorded_with_its_status(self, run, monkeypatch):
         self._follow(monkeypatch)
@@ -2226,7 +2232,7 @@ class TestWait:
         self, run, monkeypatch
     ):
         # The stream was lost for good (8): that is why it is still running
-        self._follow(monkeypatch, exit_code=8)
+        self._follow(monkeypatch, codes={WR_ID_1: 8})
         run(
             yd_wait,
             client=self._client(WorkRequirementStatus.RUNNING),
@@ -2234,6 +2240,27 @@ class TestWait:
             yellowdog_ids=[WR_ID_1],
         )
         assert run.exit_code == 8
+
+    def test_a_timeout_is_not_charged_with_another_ids_stream_failure(
+        self, run, monkeypatch
+    ):
+        # WR_ID_1 is still running when the timeout ends following, its own
+        # stream sound; WR_ID_2's stream failed because it does not exist.
+        # Two causes, so 1, never WR_ID_2's 6 for both
+        self._follow(monkeypatch, codes={WR_ID_2: 6})
+        client = self._client(WorkRequirementStatus.RUNNING)
+        response = Response()
+        response.status_code = 404
+        found = SimpleNamespace(name="wr", status=WorkRequirementStatus.RUNNING)
+
+        def fetch(ydid):
+            if ydid == WR_ID_2:
+                raise HTTPError("404", response=response)
+            return found
+
+        client.work_client.get_work_requirement_by_id.side_effect = fetch
+        run(yd_wait, client=client, timeout=10, yellowdog_ids=[WR_ID_1, WR_ID_2])
+        assert run.exit_code == 1
 
     def test_an_unfetchable_status_is_null_with_its_exit_code(self, run, monkeypatch):
         self._follow(monkeypatch)
