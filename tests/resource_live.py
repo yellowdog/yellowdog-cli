@@ -50,6 +50,45 @@ SECRET_EMITTING = {
     "applications.jsonnet",
 }
 
+
+def _updated_attribute_definition(spec: dict) -> dict:
+    """
+    An Attribute Definition with every property 'yd resource create' sends on
+    an update (create_attribute_definition()'s PUT) changed but its name: the
+    title and description always, and whichever of 'options', 'range' and
+    'units' it has; a Numeric one's rank order reversed.
+    """
+    updated = {
+        **spec,
+        "title": f"{spec['title']} (updated)",
+        "description": "updated description",
+    }
+    if "options" in spec:
+        updated["options"] = list(spec["options"])[:-1]
+    if "range" in spec:
+        updated["range"] = {
+            "min": spec["range"]["min"] + 1,
+            "max": spec["range"]["max"] * 2,
+        }
+    if "units" in spec:
+        updated["units"] = "GBP"
+    if "defaultRankOrder" in spec:
+        updated["defaultRankOrder"] = (
+            "PREFER_LOWER"
+            if spec["defaultRankOrder"] == "PREFER_HIGHER"
+            else "PREFER_HIGHER"
+        )
+    return updated
+
+
+# Corpus files the lifecycle test also updates, each with how a specification
+# is changed for the second 'yd resource create': the same names, so each one
+# is updated rather than created. A file is added here when 'yd resource
+# create' has an update path for its resource type worth holding live.
+UPDATES = {
+    "attributes.jsonnet": _updated_attribute_definition,
+}
+
 # Corpus files with at least one specification that cannot be created standalone:
 # requirement-templates.jsonnet's staticMin/dynamicMin and configured-worker-pools.
 # jsonnet's poolMin (see each file's own header comment). create_compute_requirement

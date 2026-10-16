@@ -12,6 +12,7 @@ dummy infrastructure values, and deliberately carries no credentials of any kind
 see tests/resource_live.py's module docstring.
 """
 
+import json
 from collections import defaultdict
 
 import pytest
@@ -306,6 +307,52 @@ def _remove_args(corpus_file) -> list[str]:
     return []
 
 
+def _check_update(
+    corpus_file, specs: list[dict], created: list[tuple[str, str]], tmp_path
+) -> None:
+    """
+    Update what was just created ('created': each entity type and key): every
+    specification changed as resource_live.UPDATES says, keeping its name,
+    and created again with 'yd resource create -y'. Each must be recorded as
+    updated, nothing new created, and the Platform must return the changed
+    properties, each matched to its specification as the round trip is.
+    """
+    entity_types = {entity for entity, _ in created}
+    update = resource_live.UPDATES[corpus_file.name]
+    updated = [
+        {"resource": spec["resource"], **update(resource_corpus.spec_properties(spec))}
+        for spec in specs
+    ]
+    path = tmp_path / f"{corpus_file.stem}-updated.json"
+    path.write_text(json.dumps(updated), encoding="utf-8")
+    before = {entity: resource_live.current_keys(entity) for entity in entity_types}
+
+    result = resource_live.yd("yd resource create", "-y", "--json", "-q", str(path))
+    assert result.exit_code == 0, (
+        f"updating {corpus_file.name} failed:\n{result.stdout}"
+    )
+    actions = [(r["name"], r["action"]) for r in json.loads(result.stdout)]
+    assert actions == [(spec["name"], "updated") for spec in updated]
+    assert {e: resource_live.current_keys(e) for e in entity_types} == before, (
+        f"updating {corpus_file.name} created something"
+    )
+
+    problems: list[str] = []
+    for entity, key in created:
+        returned = resource_live.fetch(entity, key)
+        spec = _spec_for(updated, returned)
+        if spec is None:
+            problems.append(f"{entity}/{key}: matches no updated specification")
+            continue
+        problems += [
+            f"{entity}/{key}: {problem}"
+            for problem in resource_live.mismatches(spec, returned)
+        ]
+    assert not problems, "the platform did not return the update:\n" + "\n".join(
+        problems
+    )
+
+
 def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
     """
     Attribute every property name in 'returned' (one live response) to the
@@ -347,7 +394,7 @@ def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
     "corpus_file",
     [pytest.param(path, id=path.stem) for path in resource_corpus.live_corpus_files()],
 )
-def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
+def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup, tmp_path):
     """
     Create every specification in one live corpus file, confirm each one round-trips
     through yd show/yd list with no property silently dropped or mangled, then remove
@@ -373,6 +420,10 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     cleanly proves both. 'groups'/'keyrings' are excluded from the round-trip
     comparison (see resource_live.LIVE_ONLY_EXCLUSIONS): yd show's own 'groups'
     key is a live membership listing, not an echo of what was sent.
+
+    A file in resource_live.UPDATES is then updated before it is removed: its
+    specifications changed as UPDATES says, keeping their names, and sent to
+    'yd resource create -y' a second time (see _check_update()).
     """
     cleanup(
         resource_live.command_line(
@@ -444,6 +495,9 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     assert not problems, "the platform did not return what was sent:\n" + "\n".join(
         problems
     )
+
+    if corpus_file.name in resource_live.UPDATES:
+        _check_update(corpus_file, specs, list(returned_by_key), tmp_path)
 
     result = resource_live.yd(
         "yd resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)

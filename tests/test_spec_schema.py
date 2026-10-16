@@ -742,6 +742,31 @@ def _known_partial_failure(file_name: str, resource_name: str) -> bool:
 
 
 class TestCorpusAndExamples:
+    def test_every_corpus_update_changes_each_specification_and_validates(self):
+        """
+        resource_live.UPDATES: what the live lifecycle test sends a second time
+        to update what it created. Each update keeps the specification's name
+        (so it updates, not creates), changes it, and is still valid.
+        """
+        import resource_corpus
+        import resource_live
+
+        resource_corpus.require_jsonnet()
+        validate = compile_schema(Family.RESOURCES)
+        assert resource_live.UPDATES
+        previous = resource_corpus.install_variables()
+        try:
+            for file_name, update in resource_live.UPDATES.items():
+                path = resource_corpus.CORPUS_DIR / file_name
+                for resource in resource_corpus.load_corpus_file(path):
+                    sent = resource_corpus.spec_properties(resource)
+                    updated = update(sent)
+                    assert updated["name"] == sent["name"], file_name
+                    assert updated != sent, f"{file_name}: {sent['name']} unchanged"
+                    validate({"resource": resource["resource"], **updated})
+        finally:
+            resource_corpus.remove_variables(previous)
+
     def test_every_corpus_specification_validates(self):
         import resource_corpus
 
