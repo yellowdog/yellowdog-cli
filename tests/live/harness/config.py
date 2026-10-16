@@ -12,7 +12,11 @@ the '--run-system' tests too (platform_environment()), so every test that
 talks to the Platform does so as the one Application.
 
 A provider with no section is skipped; one with a section is to be tested,
-so an incomplete one is an error. Every problem is reported at once.
+so an incomplete one is an error. Every problem is reported at once. An
+unknown key is a problem, since a misspelt optional one would otherwise
+quietly take its default; a key the tests once read and no longer do
+(RETIRED) is ignored with a warning saying why, so a file that predates its
+retirement still loads.
 """
 
 from __future__ import annotations
@@ -130,6 +134,24 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
 }
 
+# Keys the tests no longer read, each with what to do instead: ignored with a
+# warning, never an error
+RETIRED: dict[tuple[str, str], str] = {
+    ("run", "namespace"): (
+        "the namespace is fixed as yd-cli-system-tests (harness/run.py)"
+    ),
+    ("azure", "client_secret"): "renamed 'key', as the Platform's Credential names it",
+    ("azure", "network_resource_group"): "renamed 'network_resource_group_name'",
+    ("gcp", "service_account_key_file"): (
+        "the key file's contents are given inline, as 'service_account_key_json'"
+    ),
+    ("oci", "tenancy_id"): "renamed 'tenant_id'",
+    ("oci", "private_key_file"): "the PEM text is given inline, as 'private_key'",
+    ("oci", "availability_domain"): "the instances' availability domain is not set",
+    ("oci", "flex_ocpus"): "the shape alone sizes an instance",
+    ("oci", "flex_ram"): "the shape alone sizes an instance",
+}
+
 _KIND_NAMES = {
     str: "a string",
     int: "an integer",
@@ -184,6 +206,8 @@ class LiveConfig:
     providers: Mapping[str, Section]
     primary: str
     data: Section | None
+    # Retired keys found, each with what to do instead
+    warnings: tuple[str, ...] = ()
 
     def labelled_secrets(self, *, shown: bool = True) -> dict[str, str]:
         """
@@ -240,8 +264,9 @@ def load_live_config(environ: Mapping[str, str] | None = None) -> LiveConfig:
     """
     environ = os.environ if environ is None else environ
     problems: list[str] = []
+    warnings: list[str] = []
     path, document = _read_document(environ, problems)
-    _apply_environment(document, environ, problems)
+    _apply_environment(document, environ, problems, warnings)
 
     sections: dict[str, Section] = {}
     for name, raw in document.items():
@@ -250,7 +275,7 @@ def load_live_config(environ: Mapping[str, str] | None = None) -> LiveConfig:
         elif not isinstance(raw, dict):
             problems.append(f"[{name}] must be a table")
         else:
-            sections[name] = _section(name, raw, problems)
+            sections[name] = _section(name, raw, problems, warnings)
 
     platform = sections.get("platform") or _section("platform", {}, problems)
     run = sections.get("run") or _section("run", {}, problems)
@@ -265,6 +290,7 @@ def load_live_config(environ: Mapping[str, str] | None = None) -> LiveConfig:
         providers=MappingProxyType(providers),
         primary=primary,
         data=sections.get("data"),
+        warnings=tuple(warnings),
     )
 
 
@@ -276,7 +302,7 @@ def load_platform(environ: Mapping[str, str] | None = None) -> Section:
     environ = os.environ if environ is None else environ
     problems: list[str] = []
     _, document = _read_document(environ, problems)
-    _apply_environment(document, environ, problems)
+    _apply_environment(document, environ, problems, [])
     raw = document.get("platform", {})
     if not isinstance(raw, dict):
         problems.append("[platform] must be a table")
@@ -323,16 +349,23 @@ def _read_document(
 
 
 def _apply_environment(
-    document: dict, environ: Mapping[str, str], problems: list[str]
+    document: dict,
+    environ: Mapping[str, str],
+    problems: list[str],
+    warnings: list[str],
 ) -> None:
     """
-    Apply every YDST_<SECTION>_<KEY> override.
+    Apply every YDST_<SECTION>_<KEY> override; one naming a retired key is
+    left out, with a warning.
     """
     for variable in sorted(environ):
         if not variable.startswith(OVERRIDE_PREFIX) or variable == CONFIG_ENV:
             continue
         name, _, key = variable[len(OVERRIDE_PREFIX) :].lower().partition("_")
         spec = SCHEMA.get(name, {}).get(key)
+        if (name, key) in RETIRED:
+            warnings.append(_retired(variable, name, key))
+            continue
         if spec is None:
             problems.append(f"{variable} names no configuration key")
             continue
@@ -372,16 +405,26 @@ def _is_kind(value: Any, kind: type) -> bool:
     return isinstance(value, kind)
 
 
-def _section(name: str, raw: dict, problems: list[str]) -> Section:
+def _retired(where: str, name: str, key: str) -> str:
+    return f"{where} is no longer used: {RETIRED[(name, key)]}; remove it"
+
+
+def _section(
+    name: str, raw: dict, problems: list[str], warnings: list[str] | None = None
+) -> Section:
     """
     One section, checked against its schema: unknown keys, types, required
-    keys, inline JSON and PEM private keys.
+    keys, inline JSON and PEM private keys. A retired key is left out, with
+    a warning.
     """
     schema = SCHEMA[name]
     values: dict[str, Any] = {}
     for key, value in raw.items():
         spec = schema.get(key)
-        if spec is None:
+        if (name, key) in RETIRED:
+            if warnings is not None:
+                warnings.append(_retired(f"[{name}] {key}", name, key))
+        elif spec is None:
             problems.append(f"[{name}] has no key '{key}'")
         elif value == "":
             continue  # Unset

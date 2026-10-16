@@ -164,6 +164,8 @@ class LiveSession:
             except LiveConfigError as error:
                 pytest.exit(str(error), returncode=pytest.ExitCode.USAGE_ERROR)
             self._write_line(self._live_config.summary())
+            for warning in self._live_config.warnings:
+                self._write_line(f"live config: warning: {warning}")
         return self._live_config
 
     def live_run(self) -> LiveRun:

@@ -77,12 +77,6 @@ def test_an_unknown_section_or_key_is_an_error(tmp_path):
     assert "unknown section [azur]" in problems
 
 
-def test_the_namespace_is_not_configurable(tmp_path):
-    # Fixed (harness/run.py): a namespace can never be deleted once populated
-    text = PLATFORM + AWS + '[run]\nnamespace = "elsewhere"\n'
-    assert "[run] has no key 'namespace'" in _problems(write_config(tmp_path, text))
-
-
 def test_an_override_replaces_the_file_value(tmp_path):
     environ = write_config(tmp_path, PLATFORM + AWS)
     environ["YDST_AWS_REGION"] = "us-east-1"
@@ -265,3 +259,35 @@ def test_every_problem_is_reported_at_once(tmp_path):
 def test_a_named_file_that_does_not_exist_is_an_error(tmp_path):
     problems = _problems({"YDST_CONFIG": str(tmp_path / "missing.toml")})
     assert problems[0].startswith("YDST_CONFIG names")
+
+
+def test_a_retired_key_is_ignored_with_a_warning(tmp_path):
+    text = PLATFORM + AWS + '[run]\nnamespace = "elsewhere"\n'
+    loaded = load_live_config(write_config(tmp_path, text))
+    assert "namespace" not in loaded.run.values
+    (warning,) = loaded.warnings
+    assert warning.startswith("[run] namespace is no longer used")
+    assert "yd-cli-system-tests" in warning
+
+
+def test_a_retired_key_set_in_the_environment_is_ignored_with_a_warning(tmp_path):
+    environ = write_config(tmp_path, PLATFORM + AWS)
+    environ["YDST_RUN_NAMESPACE"] = "elsewhere"
+    loaded = load_live_config(environ)
+    assert [w.split(" is ")[0] for w in loaded.warnings] == ["YDST_RUN_NAMESPACE"]
+
+
+def test_an_unknown_key_is_still_an_error(tmp_path):
+    text = PLATFORM + AWS + "[run]\nkeep_on_failre = true\n"
+    assert "[run] has no key 'keep_on_failre'" in _problems(
+        write_config(tmp_path, text)
+    )
+
+
+def test_every_retired_key_is_of_a_section_and_no_longer_in_it():
+    from harness.config import RETIRED, SCHEMA
+
+    for (section, key), reason in RETIRED.items():
+        assert section in SCHEMA
+        assert key not in SCHEMA[section]
+        assert reason.strip()

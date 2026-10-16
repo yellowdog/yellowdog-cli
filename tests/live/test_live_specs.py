@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 from harness import config
-from harness.config import LiveConfigError, load_live_config
+from harness.config import load_live_config
 from harness.run import INSTALLER, SPECS, Run
 from live_samples import AWS, AZURE, PLATFORM, gcp, oci, write_config
 
@@ -296,13 +296,16 @@ def test_oci_takes_no_flex_sizes_or_availability_domain(tmp_path):
         + oci()
         + 'flex_ocpus = 1.0\nflex_ram = 8.0\navailability_domain = "AD-1"\n'
     )
-    with pytest.raises(LiveConfigError) as caught:
-        load_live_config(write_config(tmp_path, text))
-    assert {
-        "[oci] has no key 'flex_ocpus'",
-        "[oci] has no key 'flex_ram'",
-        "[oci] has no key 'availability_domain'",
-    } <= set(caught.value.problems)
+    # Retired: ignored, each with a warning
+    loaded = load_live_config(write_config(tmp_path, text))
+    assert [w.split(" is ")[0] for w in loaded.warnings] == [
+        "[oci] flex_ocpus",
+        "[oci] flex_ram",
+        "[oci] availability_domain",
+    ]
+    assert not {"flex_ocpus", "flex_ram", "availability_domain"} & set(
+        loaded.providers["oci"].values
+    )
 
 
 def test_ocis_credential_takes_every_value_inline(tmp_path):

@@ -287,3 +287,13 @@ def test_a_passing_gate_says_so(tmp_path, capsys):
         coverage.record(tuple(command.split()[1:]))
     _finish(session)
     assert "coverage gate: passed" in capsys.readouterr().out
+
+
+def test_the_configurations_warnings_are_shown_with_its_summary(tmp_path, capsys):
+    text = PLATFORM + AWS + '[run]\nnamespace = "elsewhere"\n'
+    live = load_live_config(write_config(tmp_path, text))
+    session = LiveSession(_pytest_config(workers=0), load_config=lambda: live)
+    session.live_config()
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("live config:")
+    assert lines[1].startswith("live config: warning: [run] namespace")
