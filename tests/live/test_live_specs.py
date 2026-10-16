@@ -536,3 +536,12 @@ def test_the_node_actions_write_a_file_and_read_it_back(tmp_path):
     write, check = spec["actions"]
     assert write["type"] == "writeFile" and write["content"] == run.run_id
     assert check["type"] == "runCommand" and check["arguments"][-1] == write["path"]
+
+
+def test_the_stuck_work_requirement_is_named_by_its_wr(tmp_path):
+    # Pending for good: one Task for Workers nothing has
+    run = _run(tmp_path)
+    assert _load_one_wr(run, "stuck-wr.jsonnet")["name"] == f"{run.run_id}-stuck"
+    spec = _load_one_wr(run, "stuck-wr.jsonnet", wr="control-hold")
+    assert spec["name"] == f"{run.run_id}-control-hold"
+    assert spec["workerTags"] == [f"{run.run_id}-nobody"]

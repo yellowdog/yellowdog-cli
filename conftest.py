@@ -2,9 +2,7 @@ import atexit
 import contextlib
 import io
 import os
-import secrets
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -397,47 +395,13 @@ def qapp():
         pytest.skip(f"Qt platform unavailable: {exc}")
 
 
-def _session_tag() -> str:
-    """
-    A tag no other session's is, nor contains, nor is contained in (e.g.
-    'pytest-1741880400-3fa9c2'): under 'pytest -n' every worker is a
-    session, and the seconds alone were shared by workers starting together,
-    so one's yd-cancel or yd-finish, selecting by tag, acted on another's
-    Work Requirement. The tag filters match a tag containing the text
-    given, so the suffix is random and of fixed length, never a process ID.
-    """
-    return f"pytest-{int(time.time())}-{secrets.token_hex(3)}"
-
-
-@pytest.fixture(scope="session")
-def system_tag() -> str:
-    """
-    Session-unique tag for the live system tests (see _session_tag()). A test
-    whose commands select by tag (yd-cancel, yd-finish) narrows it to one of
-    its own, '<tag>-<name>', which the clean-up below still matches.
-
-    Belt-and-braces: registers an atexit handler that cancels any outstanding
-    Work Requirements and terminates any Worker Pools carrying the tag, so
-    cloud resources are cleaned up even if a test crashes without teardown.
-    """
-    tag = _session_tag()
-
-    def _cleanup() -> None:
-        shell(f"yd-cancel -y -t={tag} -n=pytest-system")
-        shell(f"yd-terminate -y -t={tag} -n=pytest-system")
-
-    atexit.register(_cleanup)
-    return tag
-
-
 @pytest.fixture(scope="session")
 def run_id() -> str:
     """
     The run-unique suffix every corpus resource name carries.
 
-    Also registers a belt-and-braces atexit sweep, mirroring system_tag's own
-    pattern above: a live test's in-process teardown (the 'cleanup' fixture, or a
-    try/finally) does not run at all if the process is killed rather than exiting
+    Also registers a belt-and-braces atexit sweep: a live test's in-process
+    teardown (the 'cleanup' fixture, or a try/finally) does not run at all if the process is killed rather than exiting
     normally, and this fixture backs tests against a production account. Sweeping
     every live corpus file with 'yd-remove' is safe to do speculatively --
     remove_resources() (remove.py) reports a resource it can't find and moves on
