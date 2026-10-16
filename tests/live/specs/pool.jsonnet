@@ -3,8 +3,7 @@
 // '<run>-<provider>'. Idle timeouts are the crash guard, so the Platform
 // shuts the pool down even if the harness dies; they are 30 minutes because
 // the cloud-action steps leave the node idle for longer than 10. The Agent
-// installer (install-agent.sh, vendored from python-examples-demos at
-// b811a73) is given on the command line as '--property
+// installer (install-agent.sh) is given on the command line as '--property
 // workerPool.userDataFile=...', since a JSON specification's own
 // 'userDataFile' is not read. Worker Pool specifications substitute as
 // __{{name}}__.

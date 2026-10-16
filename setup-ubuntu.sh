@@ -314,13 +314,9 @@ uv is at $(command -v uv); if it was installed just now, open a new shell (or ad
 
 The test categories not covered above need more than this script installs:
 
-    --run-dryruns             # needs the python-examples-demos repo checked out
-                              # alongside this one, at $(dirname "$CHECKOUT")/python-examples-demos
-    --run-system              # needs real credentials (YD_KEY / YD_SECRET, or a
-                              # config.toml)
+    --run-system              # needs the live system tests' configuration, for
+                              # its [platform] credentials (see DEVELOPMENT.md)
     --run-live                # needs its own configuration (see DEVELOPMENT.md),
-                              # and will provision cloud compute
-    --run-demos               # needs real credentials, plus python-examples-demos,
                               # and will provision cloud compute
 
 If the Commander tests ever report themselves skipped with 'Qt is unavailable', the

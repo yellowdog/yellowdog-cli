@@ -380,11 +380,11 @@ def _load_one_wr(run: Run, name: str, **variables: str) -> dict:
         )
 
 
-# Upstream: python-examples-demos/userdata-scripts/install-agent.sh at b811a73
+# The Agent installer, pinned: a change to it is made on purpose, with this hash
 INSTALLER_SHA256 = "c4eacd0358b9fa981cef0ef1edd36ea69fd4739707aafd0ac0242ee03b4e3699"
 
 
-def test_the_installer_is_the_pinned_upstream_script():
+def test_the_installer_is_the_pinned_script():
     assert hashlib.sha256(INSTALLER.read_bytes()).hexdigest() == INSTALLER_SHA256
 
 
