@@ -65,7 +65,6 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
     "run": {
         "primary_provider": Key(str),
-        "namespace": Key(str, default="yd-cli-system-tests"),
         "max_instances_per_provider": Key(int, default=2),
         "max_instance_hours": Key(int, default=4),
         "provision_timeout_minutes": Key(int, default=15),

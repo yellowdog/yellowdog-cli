@@ -40,7 +40,6 @@ def test_a_minimal_aws_configuration_loads_with_its_defaults(tmp_path):
     loaded = load_live_config(write_config(tmp_path, PLATFORM + AWS))
     assert list(loaded.providers) == ["aws"]
     assert loaded.primary == "aws"
-    assert loaded.run["namespace"] == "yd-cli-system-tests"
     assert loaded.run["max_instance_hours"] == 4
     assert loaded.providers["aws"]["instance_type"] == "t3a.small"
     assert loaded.providers["aws"]["subnet_id"] == "subnet-00000000000000000"
@@ -76,6 +75,12 @@ def test_an_unknown_section_or_key_is_an_error(tmp_path):
     problems = _problems(write_config(tmp_path, text))
     assert "[aws] has no key 'secret_acess_key'" in problems
     assert "unknown section [azur]" in problems
+
+
+def test_the_namespace_is_not_configurable(tmp_path):
+    # Fixed (harness/run.py): a namespace can never be deleted once populated
+    text = PLATFORM + AWS + '[run]\nnamespace = "elsewhere"\n'
+    assert "[run] has no key 'namespace'" in _problems(write_config(tmp_path, text))
 
 
 def test_an_override_replaces_the_file_value(tmp_path):

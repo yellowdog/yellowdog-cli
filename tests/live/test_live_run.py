@@ -194,3 +194,12 @@ def test_the_configured_pool_and_actions_standalone_are_named(every_provider, tm
     assert (
         run.actions_standalone_name() == "ydst-2610121530-ab12-aws-actions-standalone"
     )
+
+
+def test_a_run_uses_the_fixed_namespaces(every_provider, tmp_path):
+    from harness.limited import LIMITED_NAMESPACE
+    from harness.run import NAMESPACE
+
+    run = Run.start(every_provider, tmp_path / "runs")
+    assert run.namespace == NAMESPACE == "yd-cli-system-tests"
+    assert LIMITED_NAMESPACE == "yd-cli-system-tests-limited"

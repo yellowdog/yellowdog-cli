@@ -27,6 +27,12 @@ from harness import data
 from harness.config import SCHEMA, LiveConfig
 
 RUN_PREFIX = "ydst"
+# The namespaces, fixed rather than configured: the Platform never deletes a
+# namespace that has been populated, so each name used is permanent. Runs
+# share NAMESPACE, kept apart by their run IDs; the failure tests' limited
+# Application reads LIMITED_NAMESPACE alone, which stays empty
+NAMESPACE = "yd-cli-system-tests"
+LIMITED_NAMESPACE = "yd-cli-system-tests-limited"
 SPECS = Path(__file__).resolve().parent.parent / "specs"
 INSTALLER = SPECS / "install-agent.sh"  # The Agent installer, user data for every pool
 _ALPHABET = string.digits + string.ascii_lowercase
@@ -86,7 +92,7 @@ class Run:
 
     @property
     def namespace(self) -> str:
-        return self.config.run["namespace"]
+        return NAMESPACE
 
     @property
     def tag(self) -> str:

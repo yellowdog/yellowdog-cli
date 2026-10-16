@@ -130,7 +130,7 @@ See [`tests/README.md`](tests/README.md) for the full test matrix — including 
 
 ### Live System Tests
 
-`tests/live/` is an end-to-end suite that creates everything a run needs with `yd resource create`, provisions real compute on each configured cloud provider, and tears it all down with `yd resource remove`. It depends on nothing in `../python-examples-demos` and nothing already on the Platform except its namespace, which it creates if missing and never removes, since the Platform will not delete a namespace that has been populated. It creates real resources and real instances, so it never runs under `make test` or `tox`: it needs `--run-live`.
+`tests/live/` is an end-to-end suite that creates everything a run needs with `yd resource create`, provisions real compute on each configured cloud provider, and tears it all down with `yd resource remove`. It depends on nothing in `../python-examples-demos` and nothing already on the Platform except its namespace, `yd-cli-system-tests`, which it creates if missing and never removes, since the Platform will not delete a namespace that has been populated; the name is fixed (`tests/live/harness/run.py`'s `NAMESPACE`), not configured, so that no run can leave another permanent namespace behind. It creates real resources and real instances, so it never runs under `make test` or `tox`: it needs `--run-live`.
 
 Its configuration is its own, never the CLI's `config.toml`: the file `YDST_CONFIG` names, else `~/.config/yellowdog/system-tests.toml`, outside the repository so that its secrets cannot be committed. Every key can be set or overridden in the environment as `YDST_<SECTION>_<KEY>` (`YDST_AWS_SECRET_ACCESS_KEY`), so a CI job needs no file, and an empty value counts as unset. The Platform's key, secret and URL come from `[platform]` alone, never from `YD_KEY`, `YD_SECRET` or `YD_URL`. A provider with no section is skipped; a section present but incomplete is an error. Every problem is reported at once, before anything remote is touched.
 
@@ -144,7 +144,6 @@ url = "https://api.yellowdog.ai"
 
 [run]                           # every key optional
 primary_provider = "aws"        # needed with more than one provider
-namespace = "yd-cli-system-tests"
 max_instance_hours = 4          # the run's Allowance
 provision_timeout_minutes = 15
 teardown_timeout_minutes = 15

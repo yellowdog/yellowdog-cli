@@ -13,10 +13,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from harness.lifecycle import NOT_FOUND
-from harness.run import SPECS, Run
+from harness.run import LIMITED_NAMESPACE, SPECS, Run
 from harness.yd import Yd, YdError
 
-LIMITED_NAMESPACE = "yd-cli-system-tests-limited"
 LIMITED_SPEC = SPECS / "limited-app.jsonnet"
 # What the limited Application may do: list Work Requirements in its namespace
 CONTROL = ("wr", "list", "--namespace", LIMITED_NAMESPACE, "--json", "--quiet")
