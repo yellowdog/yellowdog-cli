@@ -12,6 +12,7 @@ worker. The root conftest.py registers this plugin under '--run-live'.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import tempfile
 import warnings
@@ -122,8 +123,22 @@ class LiveSession:
         self._coverage_dir: Path | None = None
 
     def _write_line(self, text: str) -> None:
-        reporter = self._config.pluginmanager.get_plugin("terminalreporter")
-        (reporter.write_line if reporter is not None else print)(text)
+        """
+        Write a line to the terminal with pytest's capture suspended: the
+        run is set up, and the configuration first read, inside the first
+        live test's setup, whose output pytest captures, so in a terminal
+        the lines vanished.
+        """
+        plugins = self._config.pluginmanager
+        reporter = plugins.get_plugin("terminalreporter")
+        capture = plugins.get_plugin("capturemanager")
+        suspended = (
+            capture.global_and_fixture_disabled()
+            if capture is not None
+            else contextlib.nullcontext()
+        )
+        with suspended:
+            (reporter.write_line if reporter is not None else print)(text)
 
     def configure(self) -> None:
         """

@@ -297,3 +297,33 @@ def test_the_configurations_warnings_are_shown_with_its_summary(tmp_path, capsys
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].startswith("live config:")
     assert lines[1].startswith("live config: warning: [run] namespace")
+
+
+def test_a_line_is_written_with_capture_suspended(tmp_path):
+    """
+    The session's lines are written from inside the first live test's setup,
+    where pytest captures output: in a terminal they vanished (2026-10-16).
+    """
+    import contextlib
+
+    events: list[str] = []
+
+    @contextlib.contextmanager
+    def suspended():
+        events.append("suspend")
+        yield
+        events.append("resume")
+
+    plugins = {
+        "terminalreporter": SimpleNamespace(
+            write_line=lambda text: events.append(text)
+        ),
+        "capturemanager": SimpleNamespace(global_and_fixture_disabled=suspended),
+    }
+    config = _pytest_config(workers=0)
+    config.pluginmanager = SimpleNamespace(get_plugin=plugins.get)
+    live = load_live_config(write_config(tmp_path, PLATFORM + AWS))
+    LiveSession(config, load_config=lambda: live).live_config()
+    assert events[0] == "suspend"
+    assert events[1].startswith("live config:")
+    assert events[2] == "resume"
