@@ -6,14 +6,12 @@ The unit tests need no configuration at all: `conftest.py` loads the configurati
 
 ## Test Categories
 
-Five categories of test exist, controlled by pytest flags:
+Three categories of test exist, controlled by pytest flags:
 
 | Flag | Marker | Description |
 |---|---|---|
 | *(none)* | — | Unit tests; no platform connectivity, configuration file or credentials required |
-| `--run-dryruns` | `dryruns` | Demo dry-runs (no platform calls); requires `../python-examples-demos` |
-| `--run-demos` | `demos` | Full live demo runs on the platform |
-| `--run-system` | `system` | System tests (resource CRUD, error handling, WR control); requires credentials |
+| `--run-system` | `system` | System tests (resource CRUD, error handling, dry-run listings); requires credentials |
 | `--run-live` | `live` | The [live system tests](#live-system-tests---run-live-provisions-real-cloud-instances) under `tests/live/`: everything a run needs created from their own configuration, real compute provisioned, everything torn down; never part of `make test` or `tox` |
 | `--run-crash-tests` | `crashes` | Not a category: on macOS, runs the tests that crash a child interpreter on purpose, which are skipped there without it because each crash puts up the system's "quit unexpectedly" dialog (Homebrew's Python runs as `Python.app`). Elsewhere they always run |
 | `--update-parser-snapshots` | — | Not a category: regenerates `parser_snapshots.json` for `test_parser_snapshots.py`, which then passes, rather than running any extra tests. Regenerate on the oldest supported interpreter, or check the test on one, because a newer argparse can derive values differently |
@@ -26,29 +24,22 @@ Around 350 of the unit tests are [Commander GUI tests](#commander-gui-tests). Th
 # Unit tests only (no credentials needed)
 pytest -v
 
-# Add demo dry-runs (requires ../python-examples-demos)
-pytest -v --run-dryruns
-
 # Add system tests (credentials required)
 pytest -v --run-system
-
-# Add live demos
-pytest -v --run-demos
 
 # The live system tests (their own configuration; provisions real compute)
 pytest -v --run-live -n 4 tests/live/       # providers in parallel, one worker each
 python tests/live/sweep.py --dry-run   # what a sweep after dead runs would tear down
 
-# Everything
-pytest -v --run-dryruns --run-system --run-demos
+# Unit and system tests
+pytest -v --run-system
 
 # Run a single file or pattern
 pytest -v tests/test_ydid_utils.py
 pytest -v -k test_variable
 
 # Parallel execution
-pytest -v -n 4 --run-dryruns
-pytest -v -n 4 --run-demos
+pytest -v -n 8
 ```
 
 ## Test Files
@@ -234,12 +225,6 @@ These are supported by four non-test modules and by fixtures in the root `confte
 | `mcp_guard.py` | `require_mcp()` — the same module-level skip for `test_mcp_server.py`, when the `mcp` extra is not installed or cannot be imported |
 | `conftest.py` | `_fresh_json_results` (autouse: nothing recorded for `--json` at the start of every test, since the action commands record whether or not `--json` is set), `_output_settings_restored` (autouse: `utils/output_settings.OUTPUT` as each test found it, since a command run through its wrapper, or the test itself, configures it), `_no_config_snapshot` (autouse: no configuration file snapshot, so a wrapped command run in-process never warns of the developer's own `config.toml`, loaded as the test process started), `pytest_configure()` (builds the command line, the configuration and `CONFIG_COMMON` before any test module is imported, as importing once did, with dummy credentials where none load; see `utils/lazy.py`), `qapp` (one offscreen `QApplication`), `_gui_harness_guard` (surfaces what happened inside Qt callbacks), `_no_config_discovery` (stubs `ConfigDiscovery._parse_yd_config`, so no test spawns `yd-variables`; opt out with `@pytest.mark.real_config_parse`), `commander_dialog_settings` (points `dialog_settings()` at an ini file of the test's own, so no test reads or writes the developer's real file-dialog preferences), and `qt_sidebar_width` with `_preserve_qt_sidebar_width` (set what *Qt* remembers for its sidebar width — the one case that proves Commander ignores it — and put the machine's own value back afterwards) |
 
-### Dry-run Tests (`--run-dryruns`, requires `../python-examples-demos`)
-
-| File | What it tests |
-|---|---|
-| `test_dryruns.py` | All standard demos in `--dry-run` mode (no platform calls); GUI starts and stays up |
-
 ### Other No-Flag Tests (no credentials needed)
 
 | File | What it tests |
@@ -266,19 +251,13 @@ These are supported by four non-test modules and by fixtures in the root `confte
 
 Beyond the general platform-test prerequisites below, the resource corpus needs only `YD_KEY` and `YD_SECRET` in the environment (plus `YD_URL` for a non-default platform). It requires no configuration file of your own and no cloud credentials: `tests/resources/test-config.toml` supplies the namespace and the dummy infrastructure values, and deliberately carries no credentials and imports none — see `tests/resources/README.md`.
 
-### Demo Tests (`--run-demos`, provisions real cloud instances)
+### Maintainer's Tests
 
-| File | What it tests                                                  |
-|---|----------------------------------------------------------------|
-| `test_demos.py` | Full live runs of all standard python-examples-demos workloads |
-
-Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT` (15 minutes), because a demo can hang rather than fail: a Work Requirement that is never allocated — an image carrying an Agent version the platform will not schedule to, say — sits WAITING indefinitely, and neither `yd-submit -E` nor a WR `taskTimeout` ever fires, since no task reaches EXECUTING. An expired command exits 124, which distinguishes a hang from a failed WR, and cleanup runs either way.
-
-`test_demos.py` also holds `TestDemoCommandHarness`, which is deliberately **unmarked** and so runs in the standard suite: it exercises the two shell idioms the demo commands are built from (`_timed` and `_with_cleanup`) using stub commands, provisioning nothing. It is what guards the coreutils `timeout` dependency — standard on Linux, but on macOS it comes from Homebrew coreutils — so a machine without it fails one fast test, naming the cause, rather than every demo at exit 127.
+`test_dryruns.py` and `test_demos.py` hold the maintainer's own checks against a separate repository, skipped unless enabled; nothing in development needs them. `test_demos.py`'s `TestDemoCommandHarness` is unmarked and so runs in the standard suite: it exercises two shell idioms (`_timed` and `_with_cleanup`) with stub commands, provisioning nothing, and needs coreutils' `timeout` (standard on Linux; Homebrew's `coreutils` on macOS).
 
 ### Live System Tests (`--run-live`, provisions real cloud instances)
 
-`tests/live/` sets up everything a run needs with `yd resource create`, provisions on each configured provider, and tears it all down, depending on nothing in `../python-examples-demos` or already on the Platform but its namespace, which it creates if missing and never removes. Its configuration is its own, never `config.toml`: `YDST_CONFIG`, else `~/.config/yellowdog/system-tests.toml`, with every key overridable as `YDST_<SECTION>_<KEY>` — see [DEVELOPMENT.md](../DEVELOPMENT.md#live-system-tests). Everything a run makes is named `ydst-<yymmddhhmm>-<4 base36>-...` and tagged with that run ID, so runs may overlap, and `python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]` tears down runs that died. The run is set up once, by xdist's controller (or, without `-n`, by the first live test), and torn down when every worker has finished. A whole-suite session ends with the coverage gate, which fails on any CLI verb neither exercised nor listed, with its reason, in `harness/coverage.py`'s `NOT_EXERCISED`; and every `yd` call fails if its output holds a configured secret. Every file but `test_live_setup.py`, `test_live_providers.py` and `test_live_marker.py`'s one test runs offline in the default suite.
+`tests/live/` sets up everything a run needs with `yd resource create`, provisions on each configured provider, and tears it all down, depending on nothing outside the repository or already on the Platform but its namespace, which it creates if missing and never removes. Its configuration is its own, never `config.toml`: `YDST_CONFIG`, else `~/.config/yellowdog/system-tests.toml`, with every key overridable as `YDST_<SECTION>_<KEY>` — see [DEVELOPMENT.md](../DEVELOPMENT.md#live-system-tests). Everything a run makes is named `ydst-<yymmddhhmm>-<4 base36>-...` and tagged with that run ID, so runs may overlap, and `python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]` tears down runs that died. The run is set up once, by xdist's controller (or, without `-n`, by the first live test), and torn down when every worker has finished. A whole-suite session ends with the coverage gate, which fails on any CLI verb neither exercised nor listed, with its reason, in `harness/coverage.py`'s `NOT_EXERCISED`; and every `yd` call fails if its output holds a configured secret. Every file but `test_live_setup.py`, `test_live_providers.py` and `test_live_marker.py`'s one test runs offline in the default suite.
 
 | File | What it holds or tests |
 |---|---|
@@ -355,17 +334,14 @@ secret = "..."
 url = "..."   # optional, defaults to production
 ```
 
-Under `--run-system`, `conftest.py` sets `YD_KEY`, `YD_SECRET` and `YD_URL` from it before anything runs, in place of the shell's, so every `yd` a test starts uses them; a missing key or secret stops the session. A configuration file of your own is never read for them. `--run-demos` is the exception: the demos run against the `python-examples-demos` repository's own configuration.
+Under `--run-system`, `conftest.py` sets `YD_KEY`, `YD_SECRET` and `YD_URL` from it before anything runs, in place of the shell's, so every `yd` a test starts uses them; a missing key or secret stops the session. A configuration file of your own is never read for them.
 
 ## Parallel Execution
 
-Unit, dry-run, and demo tests support parallel execution via `pytest-xdist`:
+The tests support parallel execution via `pytest-xdist`:
 
 ```shell
 pytest -v -n 4                                         # 4 workers, unit tests only
-pytest -v -n 4 --run-dryruns tests/test_dryruns.py    # parallel dry-runs (target file directly)
-pytest -v -n 12 --run-demos tests/test_demos.py       # parallel live demos (target file directly)
-pytest -v -n 4 --run-demos tests/test_demos.py -k 'bash or primes'
 ```
 
 > Targeting the test file directly avoids unit tests consuming all workers before the slower tests are scheduled.

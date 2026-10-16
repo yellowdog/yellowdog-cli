@@ -32,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 16 09:11:45 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 16 15:11:10 BST 2026 -->
 
 <!--te-->
 
@@ -44,7 +44,7 @@
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
 - On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
-- On macOS, `coreutils` — provides `timeout`, which the demo tests put every `yd-*` command under; `brew install coreutils`. Standard on Linux, so nothing to install there, and needed only by `pytest --run-demos`
+- On macOS, `coreutils` — provides `timeout`, which one test of the standard suite needs; `brew install coreutils`. Standard on Linux, so nothing to install there
 
 ## Getting Started
 
@@ -124,13 +124,13 @@ Unit tests require no credentials, no configuration file and no network access:
 pytest -v
 ```
 
-`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, `--run-demos` or `--run-live`, which need genuine credentials.
+`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system` or `--run-live`, which need genuine credentials.
 
-See [`tests/README.md`](tests/README.md) for the full test matrix — including dry-run, system, live and demo test categories, credentials setup, and parallel execution options.
+See [`tests/README.md`](tests/README.md) for the full test matrix — including the system and live test categories, credentials setup, and parallel execution options.
 
 ### Live System Tests
 
-`tests/live/` is an end-to-end suite that creates everything a run needs with `yd resource create`, provisions real compute on each configured cloud provider, and tears it all down with `yd resource remove`. It depends on nothing in `../python-examples-demos` and nothing already on the Platform except its namespace, `yd-cli-system-tests`, which it creates if missing and never removes, since the Platform will not delete a namespace that has been populated; the name is fixed (`tests/live/harness/run.py`'s `NAMESPACE`), not configured, so that no run can leave another permanent namespace behind. It creates real resources and real instances, so it never runs under `make test` or `tox`: it needs `--run-live`.
+`tests/live/` is an end-to-end suite that creates everything a run needs with `yd resource create`, provisions real compute on each configured cloud provider, and tears it all down with `yd resource remove`. It depends on nothing outside the repository and nothing already on the Platform except its namespace, `yd-cli-system-tests`, which it creates if missing and never removes, since the Platform will not delete a namespace that has been populated; the name is fixed (`tests/live/harness/run.py`'s `NAMESPACE`), not configured, so that no run can leave another permanent namespace behind. It creates real resources and real instances, so it never runs under `make test` or `tox`: it needs `--run-live`.
 
 Its configuration is its own, never the CLI's `config.toml`: the file `YDST_CONFIG` names, else `~/.config/yellowdog/system-tests.toml`, outside the repository so that its secrets cannot be committed. Every key can be set or overridden in the environment as `YDST_<SECTION>_<KEY>` (`YDST_AWS_SECRET_ACCESS_KEY`), so a CI job needs no file, and an empty value counts as unset. The Platform's key, secret and URL come from `[platform]` alone, never from `YD_KEY`, `YD_SECRET` or `YD_URL`. A provider with no section is skipped; a section present but incomplete is an error. An unknown key is an error too, since a misspelt optional key would otherwise quietly take its default; a key the tests no longer read (`RETIRED` in `tests/live/harness/config.py`, such as `[run] namespace`) is ignored, with a warning under the session's `live config:` line saying what replaced it. Every problem is reported at once, before anything remote is touched.
 
@@ -223,7 +223,7 @@ Line and branch coverage of the unit tests, from `pytest-cov` (in the `dev` extr
 make coverage
 ```
 
-It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks, the demo dry runs) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
+It prints a summary per file, leaving out those fully covered, and writes the detail, line by line and branch by branch, to `htmlcov/index.html`. Its settings are in `pyproject.toml` under `[tool.coverage.*]`. Only code run inside the pytest process is counted: what a test runs in a subprocess (`yd schema`'s command-line tests, the Commander stderr filter, the fresh-interpreter import checks) shows as uncovered though it is tested. Use it to find untested paths, failure branches above all, rather than as a target to reach.
 
 ### Complexity
 
@@ -265,12 +265,11 @@ tox -e py310            # single version
 tox -e py310,py315      # just the bounds
 ```
 
-To pass extra pytest arguments (e.g. to run demos or system tests), call `tox` directly using `--` as a separator — `make tox` cannot forward arguments this way. A `-n` given there overrides the default of eight workers, and `-n 0` runs without xdist:
+To pass extra pytest arguments (e.g. to run the system tests), call `tox` directly using `--` as a separator — `make tox` cannot forward arguments this way. A `-n` given there overrides the default of eight workers, and `-n 0` runs without xdist:
 
 ```shell
-tox -- --run-demos
-tox -- --run-system --run-demos
-tox -e py310,py315 -- --run-demos tests/test_demos.py -n 12
+tox -- --run-system
+tox -e py310,py315 -- --run-system tests/test_system_resources.py -n 4
 ```
 
 #### Python Pre-Releases
