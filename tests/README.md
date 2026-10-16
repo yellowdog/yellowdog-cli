@@ -256,7 +256,6 @@ These are supported by four non-test modules and by fixtures in the root `confte
 | `test_system_error_handling.py` | Hard failures (exit 1, or `ExitCode.CONFIGURATION` for a configuration error) and per-item failures (the error reported, the rest processed, and the failures' exit code: `NOT_FOUND` for a nonexistent YDID, 1 for an invalid one or for mixed causes) for bad input, unknown YDIDs, missing resources |
 | `test_system_resources.py` | Create → `yd-show`/`yd-list --details` → remove lifecycle for every file in the resource corpus (`tests/resources/`), parametrized one case per file, comparing what the platform returns against what was sent, and for a file in `resource_live.UPDATES` an update between: each specification changed but its name, or left out, and created again with `-y`, every one sent recorded `updated`, nothing new created, and the changes returned (the Attribute Definitions' every property; an Application's description set, and cleared to `''`); and an Application's description left out of an update removed (`xfail` for YEL-15305 alone, strict, so the fix fails it and the mark comes off); also the read gate, confirming every property the write-side coverage gate excludes as platform-assigned actually comes back from a live response at least once |
 | `test_system_cancel_hold_finish.py` | Work Requirement control commands: hold, start, finish, cancel (WR stays PENDING — no compute provisioned) |
-| `test_system_dataclient.py` | Data client commands (`yd-upload`, `yd-ls`, `yd-download`, `yd-delete`): upload/list/delete cycle, upload→download round-trip, recursive upload and listing, wildcard list and delete, dry-run enforcement for upload/download/delete (the `DRY-RUN :` marker printed, nothing transferred or deleted); a path that does not exist on the real remote (a bucket-based one answers rclone's stat of it as a directory) an error to download, skipped by a deletion, and an empty listing |
 
 `test_system_resources.py` is built on the resource corpus and shares its three supporting modules with the offline `test_resource_specs.py`/`test_resource_property_coverage.py` above:
 
@@ -325,7 +324,7 @@ Every `yd-*` command in a demo runs under a wall-clock timeout of `DEMO_TIMEOUT`
 | `test_live_cloud_info.py` | Live: `yd cloudinfo regions`, `sub-regions`, `instance-types` and `prices` for the primary's region and instance type |
 | `test_live_utilities.py` | Live: `yd doctor` with nothing failing, `yd variables` redacting every configured secret, `yd application`, `yd resource create --validate` on the run's specifications (`yd schema`, which never reaches the Platform, is left to the unit tests) |
 | `test_live_allowance.py` | Live: the run's Allowance listed, shown and boosted, its remaining hours rising |
-| `test_live_data.py` | Live (with `[data]`, AWS as the primary and an instance profile): `yd data upload`, `ls`, `download` (the bytes unchanged), `copy` and `delete` under the run's prefix |
+| `test_live_data.py` | Live (with `[data]`, AWS as the primary and an instance profile): `yd data upload`, `ls`, `download` (the bytes unchanged), `copy` and `delete` under the run's prefix; and a path that does not exist on the bucket, which S3 answers as an empty directory: listed as empty, a download failing and naming it, a deletion `skipped` |
 | `test_live_work.py` | The work helpers over canned `yd` answers: submitting with variables, a Work Requirement's Tasks, waiting for a Task's or a Work Requirement's status, follow events read as the indented documents the CLI prints, cancelling ignoring what is finished; following alongside an action that ends the entity, failing when the follow overruns; a Node verb's records required to show it done, neither failed nor skipped; waiting for a new Worker on a restarted Node |
 | `test_live_actions_10_task_io.py` | Live, on the actions pool (all `test_live_actions_*` share the `ydst-actions` group and run in file order): a Task reads an uploaded input and writes its SHA-256 as an output through the keyless Task remote (`taskDataInputs`, `taskDataOutputs`), the output downloaded and checked |
 | `test_live_actions_11_lifecycle.py` | Live: hold, start, Work Requirement and Task Group priority, a running Task aborted, a Task Group added with `--add-to`, finish |
@@ -358,8 +357,6 @@ url = "..."   # optional, defaults to production
 ```
 
 Under `--run-system`, `conftest.py` sets `YD_KEY`, `YD_SECRET` and `YD_URL` from it before anything runs, in place of the shell's, so every `yd` a test starts uses them; a missing key or secret stops the session. A configuration file of your own is never read for them. `--run-demos` is the exception: the demos run against the `python-examples-demos` repository's own configuration.
-
-`test_system_dataclient.py` additionally requires a `[dataClient]` section in `tests/system/config.toml` (rclone connection string and remote path).
 
 ## Parallel Execution
 

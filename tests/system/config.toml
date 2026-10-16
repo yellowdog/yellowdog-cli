@@ -12,10 +12,4 @@
     taskType = "bash"
     workerTags = ["{{worker_tag}}"]
 
-[dataClient]  ##################################################################
-
-    remote = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2"
-    bucket = "tech.yellowdog.devsandbox.dev-platform"
-    prefix = "yd-cli-test"
-
 ################################################################################
