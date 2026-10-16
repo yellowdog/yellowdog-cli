@@ -1,8 +1,8 @@
 """
 Flag/guard tests for the dry-run mode on yd workrequirement cancel,
 yd workerpool shutdown and yd computerequirement terminate. These exercise
-argument parsing only (the by-name guard errors at parse time, before any
-platform contact), so they need no credentials.
+argument parsing only (a glob mixed with literal names is refused at parse
+time, before any platform contact), so they need no credentials.
 """
 
 from json import loads as json_loads

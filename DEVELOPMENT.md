@@ -32,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 16 15:20:07 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 16 16:53:12 BST 2026 -->
 
 <!--te-->
 
@@ -123,7 +123,7 @@ Unit tests require no credentials, no configuration file and no network access:
 pytest -v
 ```
 
-`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system` or `--run-live`, which need genuine credentials.
+`conftest.py` loads the configuration as the test run starts (as importing a yd-* command module once did), so without a key and secret the run would stop before collection. Where no usable configuration is found, `conftest.py` substitutes a dummy key and secret and says so in the pytest header. A working configuration is never overridden — an environment variable outranks both `config.toml` and `.env`, so a dummy set over a real credential would shadow it — and nothing is substituted for `--run-system`, which takes genuine credentials from the live tests' `[platform]`; `--run-live` gives `yd` its credentials itself.
 
 See [`tests/README.md`](tests/README.md) for the full test matrix — including the system and live test categories, credentials setup, and parallel execution options.
 
@@ -186,7 +186,7 @@ It lists the functions whose McCabe complexity is over the threshold (15 by defa
 
 ### Commander GUI Tests
 
-Around 290 of the unit tests exercise the Commander GUI. They run offscreen with no display, so a headless node is fine, but they do need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against. Where either is missing, those test modules skip and the rest of the suite runs normally — installing them is only necessary to test Commander itself.
+Around 700 of the unit tests exercise the Commander GUI. They run offscreen with no display, so a headless node is fine, but they do need PyQt6 (the `commander` extra) and the Qt runtime libraries it links against. Where either is missing, those test modules skip and the rest of the suite runs normally — installing them is only necessary to test Commander itself.
 
 On a minimal Linux image the libraries are the part that is usually absent, and the skip message names the missing one, e.g. `Qt is unavailable, so Commander cannot be tested here: libGL.so.1: cannot open shared object file`. They are dependencies of Qt itself rather than of the display, so offscreen needs them too — text is still laid out, just never shown. On a fresh Ubuntu node the following was enough to run the whole suite:
 
@@ -352,7 +352,7 @@ Human-readable output goes through `printing.py`, never `print()`, and tables th
 
 ### Rules held by tests
 
-Many of the conventions above are enforced by the test suite rather than left to review: that importing any module has no side effects, that the SDK-free commands never load the SDK, that the registry matches the entry points and the README, that every option is either an MCP tool parameter or deliberately excluded, that every broad exception handler routes or re-raises authentication and connection failures, that every text file is opened as UTF-8, and that each command's option shapes match a recorded snapshot. When one of these tests fails after a change, it is usually pointing at the rule rather than at a fault in the test; [`tests/README.md`](tests/README.md) lists them.
+Many of the conventions above are enforced by the test suite rather than left to review: that importing any module has no side effects, that the SDK-free commands never load the SDK, that the registry matches the entry points and the Command List (`docs/commands.md`), that every option is either an MCP tool parameter or deliberately excluded, that every broad exception handler routes or re-raises authentication and connection failures, that every text file is opened as UTF-8, and that each command's option shapes match a recorded snapshot. When one of these tests fails after a change, it is usually pointing at the rule rather than at a fault in the test; [`tests/README.md`](tests/README.md) lists them.
 
 ## Project Structure
 
