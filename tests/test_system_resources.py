@@ -311,25 +311,28 @@ def _check_update(
     corpus_file, specs: list[dict], created: list[tuple[str, str]], tmp_path
 ) -> None:
     """
-    Update what was just created ('created': each entity type and key): every
+    Update what was just created ('created': each entity type and key): each
     specification changed as resource_live.UPDATES says, keeping its name,
-    and created again with 'yd resource create -y'. Each must be recorded as
-    updated, nothing new created, and the Platform must return the changed
-    properties, each matched to its specification as the round trip is.
+    or left out where it says None, and created again with 'yd resource
+    create -y'. Each one sent must be recorded as updated, nothing new
+    created, and the Platform must return the changed properties, each
+    matched to its specification as the round trip is.
     """
     entity_types = {entity for entity, _ in created}
     update = resource_live.UPDATES[corpus_file.name]
-    updated = [
-        {"resource": spec["resource"], **update(resource_corpus.spec_properties(spec))}
-        for spec in specs
-    ]
+    updated = []
+    for spec in specs:
+        changed = update(spec["resource"], resource_corpus.spec_properties(spec))
+        if changed is not None:
+            updated.append({"resource": spec["resource"], **changed})
     path = tmp_path / f"{corpus_file.stem}-updated.json"
     path.write_text(json.dumps(updated), encoding="utf-8")
     before = {entity: resource_live.current_keys(entity) for entity in entity_types}
 
     result = resource_live.yd("yd resource create", "-y", "--json", "-q", str(path))
-    assert result.exit_code == 0, (
-        f"updating {corpus_file.name} failed:\n{result.stdout}"
+    secret_emitting = corpus_file.name in resource_live.SECRET_EMITTING
+    assert result.exit_code == 0, f"updating {corpus_file.name} failed" + (
+        "" if secret_emitting else f":\n{result.stdout}"
     )
     actions = [(r["name"], r["action"]) for r in json.loads(result.stdout)]
     assert actions == [(spec["name"], "updated") for spec in updated]
@@ -338,16 +341,19 @@ def _check_update(
     )
 
     problems: list[str] = []
+    compared = 0
     for entity, key in created:
         returned = resource_live.fetch(entity, key)
         spec = _spec_for(updated, returned)
         if spec is None:
-            problems.append(f"{entity}/{key}: matches no updated specification")
-            continue
+            continue  # Not updated
+        compared += 1
         problems += [
             f"{entity}/{key}: {problem}"
             for problem in resource_live.mismatches(spec, returned)
         ]
+    if compared != len(updated):
+        problems.append(f"read back {compared} of the {len(updated)} updated")
     assert not problems, "the platform did not return the update:\n" + "\n".join(
         problems
     )
@@ -642,3 +648,53 @@ def test_read_gate_exclusions_are_evidenced():
             f"READ_GATE_EXCLUSIONS names {(name, cls)}, but resource_models."
             f"SERVER_ASSIGNED_COVERAGE[{name!r}] does not evidence {cls!r}"
         )
+
+
+class _DescriptionKept(AssertionError):
+    """
+    YEL-15305's symptom, and only it, for the xfail below: any other failure
+    of the test still fails it.
+    """
+
+
+@pytest.mark.system
+@pytest.mark.xfail(
+    strict=True,
+    raises=_DescriptionKept,
+    reason="YEL-15305: PUT /account/applications/{id} keeps a description the"
+    " update leaves out; remove this mark once the Platform clears it",
+)
+def test_an_application_description_left_out_is_removed(run_id, cleanup, tmp_path):
+    """
+    An Application updated from a specification without a 'description' has
+    none afterwards: the specification is the whole resource, as for a Group
+    or a Keyring. The SDK leaves an absent (None) field out of the request,
+    so this holds the Platform to treating an absent description as none.
+    Creation prints the Application's key and secret, so no output is quoted.
+    """
+    name = f"yd-test-{run_id}-application-description"
+
+    def spec_file(label: str, application: dict) -> str:
+        path = tmp_path / f"{label}.json"
+        path.write_text(
+            json.dumps([{"resource": "Application", **application}]), encoding="utf-8"
+        )
+        return str(path)
+
+    created = spec_file("created", {"name": name, "description": "to be removed"})
+    cleanup(resource_live.command_line("yd resource remove", "-y", created))
+    result = resource_live.yd("yd resource create", "-y", "--json", "-q", created)
+    assert result.exit_code == 0, f"creating Application {name} failed"
+    (record,) = json.loads(result.stdout)
+    app_id = record["id"]
+    assert resource_live.show(app_id).get("description") == "to be removed"
+
+    result = resource_live.yd(
+        "yd resource create", "-y", "--json", "-q", spec_file("updated", {"name": name})
+    )
+    assert result.exit_code == 0, f"updating Application {name} failed"
+    assert [r["action"] for r in json.loads(result.stdout)] == ["updated"]
+
+    description = resource_live.show(app_id).get("description")
+    if description is not None:
+        raise _DescriptionKept(f"Application {name} kept its description")

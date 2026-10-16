@@ -22,6 +22,11 @@
 // Application whatever the order here), so the live layer, which creates
 // each corpus file on its own, creates the Application with both grants
 // made: its Group membership and its access to the Keyring.
+//
+// The live layer then updates both Applications (resource_live.UPDATES):
+// application-min gains a description and application-max's is cleared to
+// ''. Removing a description by leaving it out is YEL-15305, held by
+// test_system_resources.py's test_an_application_description_left_out_is_removed.
 
 local base = import 'lib/base.libsonnet';
 

@@ -51,7 +51,7 @@ SECRET_EMITTING = {
 }
 
 
-def _updated_attribute_definition(spec: dict) -> dict:
+def _updated_attribute_definition(resource: str, spec: dict) -> dict:
     """
     An Attribute Definition with every property 'yd resource create' sends on
     an update (create_attribute_definition()'s PUT) changed but its name: the
@@ -81,12 +81,30 @@ def _updated_attribute_definition(spec: dict) -> dict:
     return updated
 
 
+def _updated_application(resource: str, spec: dict) -> dict | None:
+    """
+    An Application with its description changed: set where it had none,
+    cleared to '' where it had one ('description' left out does not remove
+    it, YEL-15305, which test_an_application_description_left_out_is_removed
+    holds). Its Keyring grants are left out, since an update makes them only
+    with a regenerated key, which would print a new secret. The file's Group
+    and Keyring are not updated.
+    """
+    if resource != "Application":
+        return None
+    updated = {k: v for k, v in spec.items() if k != "keyrings"}
+    updated["description"] = "" if spec.get("description") else "added by the update"
+    return updated
+
+
 # Corpus files the lifecycle test also updates, each with how a specification
-# is changed for the second 'yd resource create': the same names, so each one
-# is updated rather than created. A file is added here when 'yd resource
+# is changed for the second 'yd resource create' (given its 'resource' and its
+# properties): the same names, so each one is updated rather than created, or
+# None to leave it out of the update. A file is added here when 'yd resource
 # create' has an update path for its resource type worth holding live.
 UPDATES = {
     "attributes.jsonnet": _updated_attribute_definition,
+    "applications.jsonnet": _updated_application,
 }
 
 # Corpus files with at least one specification that cannot be created standalone:

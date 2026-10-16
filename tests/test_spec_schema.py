@@ -746,7 +746,8 @@ class TestCorpusAndExamples:
         """
         resource_live.UPDATES: what the live lifecycle test sends a second time
         to update what it created. Each update keeps the specification's name
-        (so it updates, not creates), changes it, and is still valid.
+        (so it updates, not creates), changes it, and is still valid; one it
+        leaves out (None) is not updated, but every file updates something.
         """
         import resource_corpus
         import resource_live
@@ -758,14 +759,48 @@ class TestCorpusAndExamples:
         try:
             for file_name, update in resource_live.UPDATES.items():
                 path = resource_corpus.CORPUS_DIR / file_name
+                count = 0
                 for resource in resource_corpus.load_corpus_file(path):
                     sent = resource_corpus.spec_properties(resource)
-                    updated = update(sent)
+                    updated = update(resource["resource"], sent)
+                    if updated is None:
+                        continue
+                    count += 1
                     assert updated["name"] == sent["name"], file_name
                     assert updated != sent, f"{file_name}: {sent['name']} unchanged"
                     validate({"resource": resource["resource"], **updated})
+                assert count, f"{file_name}: the update leaves everything out"
         finally:
             resource_corpus.remove_variables(previous)
+
+    def test_the_applications_update_sets_and_clears_a_description(self):
+        """
+        The Applications' update: application-min gains a description and
+        application-max's is cleared to '' (removing it by leaving it out is
+        YEL-15305); the Group and Keyring are left out, and so are the
+        Keyring grants, which an update makes only with a regenerated key.
+        """
+        import resource_corpus
+        import resource_live
+
+        resource_corpus.require_jsonnet()
+        update = resource_live.UPDATES["applications.jsonnet"]
+        previous = resource_corpus.install_variables()
+        try:
+            path = resource_corpus.CORPUS_DIR / "applications.jsonnet"
+            updated = {
+                resource["name"].removeprefix("yd-test-offline-"): update(
+                    resource["resource"], resource_corpus.spec_properties(resource)
+                )
+                for resource in resource_corpus.load_corpus_file(path)
+            }
+        finally:
+            resource_corpus.remove_variables(previous)
+        assert updated["application-group"] is None
+        assert updated["application-keyring"] is None
+        assert updated["application-min"]["description"]
+        assert updated["application-max"]["description"] == ""
+        assert "keyrings" not in updated["application-max"]
 
     def test_every_corpus_specification_validates(self):
         import resource_corpus
