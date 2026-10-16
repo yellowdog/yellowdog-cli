@@ -83,6 +83,11 @@ coverage:
 tox:
 	tox
 
+# The live system tests' configuration, checked as a run loads it, with
+# nothing remote: its summary and warnings, or every problem (exit 2)
+live_config:
+	python tests/live/check_config.py
+
 update:
 	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
 

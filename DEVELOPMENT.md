@@ -189,9 +189,10 @@ iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: 
 # bucket = "my-bucket"           # an S3 bucket the [aws] keys can write; Tasks reach it through the instance profile
 ```
 
-Run it, and clear up after runs that died:
+Check the configuration on its own (it loads it as a run does, prints the session's summary line and any warnings, or lists every problem and exits 2, and contacts nothing), run the suite, and clear up after runs that died:
 
 ```shell
+make live_config                # python tests/live/check_config.py
 pytest -v --run-live -n 4 tests/live/
 python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]
 ```
