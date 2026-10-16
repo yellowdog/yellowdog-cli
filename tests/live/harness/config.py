@@ -3,7 +3,9 @@ The live system tests' configuration: a TOML file, with an environment
 override for every key, validated once before anything remote is touched.
 
 The file is YDST_CONFIG, else ~/.config/yellowdog/system-tests.toml: outside
-the repository, so that the secrets it holds cannot be committed. Every key
+the repository, so that the secrets it holds cannot be committed;
+tests/live/system-tests.example.toml is its template, held to SCHEMA by
+test_live_example_config.py, so a key added here is added there too. Every key
 can be set or overridden as YDST_<SECTION>_<KEY> (YDST_AWS_SECRET_ACCESS_KEY),
 so a CI job can supply everything with no file at all; an empty value counts
 as unset. The Platform's key, secret and URL come from [platform] alone,

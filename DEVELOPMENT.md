@@ -32,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 16 15:11:10 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 16 15:20:07 BST 2026 -->
 
 <!--te-->
 
@@ -135,58 +135,7 @@ Its configuration is its own, never the CLI's `config.toml`: the file `YDST_CONF
 
 Every instance is given a public IP address, because its Agent installs from the internet and reports to the Platform over it, so the network each provider is configured with must allow that: on AWS a subnet that routes to an internet gateway and a security group allowing outbound HTTPS, and on Azure, GCP and OCI their equivalents (OCI's subnet must be public, since a private one refuses a public IP). An instance that cannot reach the Platform shows as RUNNING but never registers as a Worker.
 
-```toml
-[platform]                      # also the --run-system tests' credentials; never YD_KEY etc.
-key = "..."                     # required
-secret = "..."                  # required
-url = "https://api.yellowdog.ai"
-
-[run]                           # every key optional
-primary_provider = "aws"        # needed with more than one provider
-max_instance_hours = 4          # the run's Allowance
-provision_timeout_minutes = 15
-teardown_timeout_minutes = 15
-sweep_age_hours = 24
-sweep_on_start = true
-keep_on_failure = false
-terminate_on_keep = true
-
-[aws]
-access_key_id = "..."           # required
-secret_access_key = "..."       # required
-region = "eu-west-2"            # required
-security_group_id = "sg-..."    # required
-subnet_id = "subnet-..."        # required
-availability_zone = "eu-west-2a"  # required: the subnet's
-image_id = "ami-..."            # required
-instance_type = "t3a.small"
-iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # optional: the instances' role, e.g. for S3 data
-
-# A section enables its provider, so leave a provider you are not testing commented out
-
-# [azure]                         # required: tenant_id, client_id, key (the client secret), subscription_id,
-#                                 # region, network_resource_group_name, network_name, subnet_name, image_id
-# vm_size = "Standard_B2s"
-# ssh_public_key = "..."
-
-# [gcp]                           # required: service_account_key_json, project, region
-# service_account_key_json = '''{"type": "service_account", ...}'''  # the key file's contents
-# zone = "europe-west2-a"
-# network = "default"
-# subnetwork = "default"
-# machine_type = "e2-small"
-# image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
-
-# [oci]                           # required: tenant_id, user_id, fingerprint, private_key,
-#                                 # region, compartment_id, subnet_id, shape, image_id
-# private_key = '''-----BEGIN PRIVATE KEY-----
-# ...
-# -----END PRIVATE KEY-----'''    # the PEM text, inline
-# passphrase = "..."              # optional: the private key's, if it is encrypted
-
-# [data]                        # the data scenarios: AWS as the primary, with iam_instance_profile_arn
-# bucket = "my-bucket"           # an S3 bucket the [aws] keys can write; Tasks reach it through the instance profile
-```
+The template is [`tests/live/system-tests.example.toml`](tests/live/system-tests.example.toml): copy it to `~/.config/yellowdog/system-tests.toml` and fill it in. It names every key, the required ones marked and the optional ones with their defaults, the providers but AWS commented out; `tests/live/test_live_example_config.py` holds it to the schema, so it is never missing a key or naming a retired one, and `make live_config` checks your copy.
 
 Check the configuration on its own (it loads it as a run does, prints the session's summary line and any warnings, or lists every problem and exits 2, and contacts nothing), run the suite, and clear up after runs that died:
 
