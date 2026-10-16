@@ -32,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct 15 16:35:04 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 16 09:11:45 BST 2026 -->
 
 <!--te-->
 
@@ -196,6 +196,16 @@ make live_config                # python tests/live/check_config.py
 pytest -v --run-live -n 4 tests/live/
 python tests/live/sweep.py [--older-than HOURS] [--run RUN_ID] [--dry-run]
 ```
+
+To run one provider's chain alone, select it by name in `tests/live/test_live_providers.py`, whose step IDs carry the provider (`test_provision[oci]` to `test_shutdown[oci]`); keep the path, since `-k oci` over all of `tests/live` also picks up the offline OCI tests. One step alone needs its exact ID, as `-k provision` also matches `reprovision` and `deprovision`. Setup still creates every configured provider's Credential, templates and Image Family, but only the selected provider gets compute, the primary's scenarios (the actions pool, the work, data and failure tests) are not run, and the coverage gate is skipped. To run the whole suite as if only one provider were configured, its chain and the primary's scenarios, leave that provider's section alone in the configuration, which makes it the primary, and check with `make live_config`.
+
+```shell
+pytest -v --run-live tests/live/test_live_providers.py -k oci                  # OCI's chain
+pytest -v --run-live -n 2 tests/live/test_live_providers.py -k "oci or gcp"    # two chains side by side
+pytest -v --run-live "tests/live/test_live_providers.py::test_provision[oci]"  # one step
+```
+
+Each provider's chain is one xdist group (`ydst-<provider>`, with `--dist=loadgroup` in `pyproject.toml`'s `addopts`), so its steps run in order on one worker, each acting on what the one before left: `-n` gains nothing for a single provider, and pays when several groups run at once, several providers' chains or, in a whole-suite run, a provider's chain beside the actions pool's scenarios, the failure tests and the smaller groups (reading, Cloud Info, utilities).
 
 A run provisions, on every configured provider, a Worker Pool of one instance from the run's static template, whose source names an Image Family the run creates to hold the configured image, with the Agent installed at boot by `tests/live/specs/install-agent.sh` (vendored from `python-examples-demos`, and run whatever the image), and takes it through a smoke Task and the cloud actions: resize up, reprovision, resize down, deprovision, and shut down; stop, start, restart and terminating an instance act on a separate one-instance Compute Requirement that no pool manages, since a Worker Pool takes a stopped node's instance away. Each provider runs two or three small instances for roughly 15 to 25 minutes, within the run's Allowance; the pools also shut themselves down after 30 idle minutes, should the harness die. With `-n` the providers run in parallel, one worker each (`--dist loadgroup` is in `pyproject.toml`'s `addopts`); the run is set up once, by xdist's controller, and torn down when every worker has finished.
 
