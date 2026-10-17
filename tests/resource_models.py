@@ -18,9 +18,9 @@ without any test noticing, since there would be nothing to check them against.
 The SDK-model knowledge this gate shares with the specification schemas -- which
 model each resource type builds (MODEL_FOR_RESOURCE, DYNAMIC, DYNAMIC_MODELS), the
 evidenced exclusions (SERVER_ASSIGNED_COVERAGE, NOT_SETTABLE, NOT_TESTED) and
-settable_properties() -- now lives in yellowdog_cli/utils/specs/sdk_models.py, with the
-reasoning behind each registry. It is re-exported here under its old names, so
-the corpus tests keep reading it from this module; the registries are the same
+settable_properties() -- lives in yellowdog_cli/utils/specs/sdk_models.py, with the
+reasoning behind each registry. It is re-exported here under the names the
+corpus tests use, so they read it from this module; the registries are the same
 objects, so a test mutating one here mutates what settable_properties() reads.
 What stays here is what only the corpus gate uses: build_models(), comparable(),
 the nested-model walk behind models_in_scope(), and record_covered_properties().
@@ -43,7 +43,7 @@ _model_class = sdk_models.model_class
 _nested_model_class = sdk_models.nested_model_class
 
 # Prefix on a fully-qualified SDK class name -- e.g. 'co.yellowdog.platform.model.
-# AwsInstancesComputeSource'. A live probe found 'source.type' comes back
+# AwsInstancesComputeSource'. 'source.type' comes back
 # from yd-show fully qualified even where a specification sent the short name
 # ('AwsInstancesComputeSource'); comparable() strips exactly this prefix, and only
 # this prefix, so an unrelated string that merely contains a dot (a hostname, a
@@ -124,7 +124,7 @@ def build_models(resource: dict) -> list[tuple[object, dict]]:
     Keyring to add it to and is passed straight to put_credential_by_name() (see
     create_credential()), never becoming a field of the credential model.
 
-    An Application's 'groups' and 'keyrings' are the same shape of bug as
+    An Application's 'groups' and 'keyrings' are the same case as
     Credential's keyringName, and are scoped out the same way: create_application()
     (create.py:1108-1109) pops both before building AddApplicationRequest, which
     has only 'name'/'description' fields, because each drives a separate API call
@@ -159,9 +159,9 @@ def build_models(resource: dict) -> list[tuple[object, dict]]:
         # source_model object, so the wrapper's own 'source' field is not
         # silently absent from every pair -- comparable() -- comparable(wrapper_
         # model.source) against comparable(source_model) -- trivially agrees,
-        # since they are the identical object, but "trivially" is the fix: before
-        # this, ComputeSourceTemplate.source could never appear in a coverage
-        # pair at all, so no corpus file could ever close that gap.
+        # since they are the identical object, but "trivially" is the point:
+        # without it, ComputeSourceTemplate.source could never appear in a
+        # coverage pair at all, so no corpus file could ever close that gap.
         wrapper_properties = dict(properties, source=source_model)
         return [(source_model, source_properties), (wrapper_model, wrapper_properties)]
 
@@ -184,9 +184,8 @@ def build_models(resource: dict) -> list[tuple[object, dict]]:
         # returns None for a string it cannot parse, and without raising here an
         # unparseable date would flow into the model as None, come back out as
         # None, and compare equal to itself -- a corpus file with a garbled date
-        # would pass every offline check while 'yd-create' rejected it. Diverging
-        # from create.py by one behaviour is exactly how this module's earlier
-        # defects worked.
+        # would pass every offline check while 'yd-create' rejected it. Any
+        # divergence from create.py's behaviour opens a gap of exactly this kind.
         for date_property in ("effectiveFrom", "effectiveUntil"):
             raw_date = properties.get(date_property)
             if raw_date is not None:
@@ -237,8 +236,8 @@ def _nested_settable_models(cls: type) -> set[type]:
     judgement of what a specification can populate -- rather than field.init:
     field.init is not evidence of specification-level settability (see
     settable_properties()'s docstring), so filtering reachability by it would
-    reintroduce the exact mistake SERVER_ASSIGNED now fixes on purpose, just one
-    layer removed. A field this module has excluded on live-probed evidence
+    make the very mistake SERVER_ASSIGNED exists to avoid, just one layer
+    removed. A field this module has excluded on live-probed evidence
     (instanceSummary, exhaustion) correctly stops the walk from pulling its type
     into scope; a field left in the gate because no evidence excludes it is
     still followed, since a specification can genuinely author a dict there for

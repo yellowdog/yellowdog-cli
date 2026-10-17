@@ -98,7 +98,7 @@ class TestJsonnetDryRun:
 
     @pytest.mark.parametrize("path", ["wr.json", "wp.spec"])
     def test_a_file_that_is_not_jsonnet_is_refused_unread(self, loaders, path, capsys):
-        # '--json-raw' used to ignore it for a JSON file; '-r' refused it
+        # Refused for a JSON file under '--json-raw' as for any other file
         with pytest.raises(ValueError, match="'--jsonnet-dry-run' can only be used"):
             _loaded(path, jsonnet_dry_run=True, other_extensions_as_json=True)
         for loader in LOADERS:

@@ -1,7 +1,6 @@
 """
 yd-list: the filtering options refused where they do not apply
-(check_list_options), and the listings' behaviour the review of list.py
-changed: PROVISIONING is active, '--details' fetches full Compute
+(check_list_options), and the listings' behaviour: PROVISIONING is active, '--details' fetches full Compute
 Requirements, '--ids-only' lists every parent's children without asking (an
 Instance as 'cr_id.instance_id'), the raw calls carry a timeout and keep
 their exit codes, Groups and Roles are not fetched just for their IDs, and
@@ -263,9 +262,9 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
 
 class TestActiveInstancesAndWorkers:
     """
-    '--active-only' filtered Instances' Compute Requirements but not the
-    Instances themselves, so terminated ones were listed; and a Worker on a
-    Node without details was dropped, its append indented under the details.
+    '--active-only' filters the Instances themselves as well as their Compute
+    Requirements, so terminated ones are not listed; and a Worker on a Node
+    without details is listed, not dropped.
     """
 
     @staticmethod
@@ -327,8 +326,8 @@ class TestActiveInstancesAndWorkers:
 def test_sort_and_reverse_apply_to_every_listing(
     listing, monkeypatch, lister, entity_type, fetcher
 ):
-    # These sorted by name whatever --sort or --reverse said (and Namespaces
-    # and Namespace Policies not at all), outside the interactive selection
+    # These follow --sort and --reverse outside the interactive selection too,
+    # rather than a fixed sort by name
     monkeypatch.setattr(
         wrapper_module, "ARGS_PARSER", _args(entity_type, json_output=True)
     )

@@ -60,7 +60,7 @@ def actions_pool(live_run) -> ActionsPool:
     """
     The primary's actions pool, provisioned on first use (on the worker
     running the 'ydst-actions' group) once its four Workers are up; left for
-    plan 3c and teardown to shut down.
+    test_live_actions_23_pool_end.py and teardown to shut down.
     """
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]

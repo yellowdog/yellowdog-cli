@@ -1,7 +1,7 @@
 """
 '--hide-user-data': every 'userData' value in what yd-show, yd-list and the
 dry runs of yd-provision, yd-instantiate and yd-create print is replaced by a
-one-line summary, so a long boot script no longer swamps the output. Only the
+one-line summary, so a long boot script does not swamp the output. Only the
 copy shown is changed, never what is sent; and the three creators refuse the
 option without '--dry-run', where they print no User Data at all.
 """

@@ -3,6 +3,7 @@
 // instance profile giving the access: the Task reads input.bin and writes
 // its SHA-256 to output.txt, uploaded beside it. Variables: 'worker_tag'.
 // The Platform requires 'rclone:' on the remote side and 'local:' on the Task's
+// side.
 local at(path) = 'rclone:{{task_data_remote}}:{{dataClient.bucket}}/{{dataClient.prefix}}/task-io/' + path;
 {
   name: '{{run_id}}-task-io',

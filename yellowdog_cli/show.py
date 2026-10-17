@@ -188,11 +188,10 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
     Resolve a YellowDog ID to the object(s) to be shown. Returns None if the ID
     could not be resolved, having already reported why.
 
-    Resolution is deliberately separated from printing: the JSON array's
-    indentation and commas were previously threaded through each entity type's
-    branch, applied to some of them and forgotten on the rest, which left the
-    array unparseable for most entity types. Each type's resolution is now an
-    entry in _RESOLVERS.
+    Resolution is deliberately separated from printing: threaded through each
+    entity type's branch, the JSON array's indentation and commas would be
+    applied to some of them and forgotten on the rest, leaving the array
+    unparseable. Each type's resolution is an entry in _RESOLVERS.
     """
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form

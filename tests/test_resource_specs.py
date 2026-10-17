@@ -53,16 +53,17 @@ def test_keyring_specs_load_with_substitutions_applied():
 
 def test_install_variables_forces_the_corpus_value_and_restores_what_it_found():
     """
-    Regression test for both halves of the install/remove contract, in the
-    direction each has already failed once.
+    Holds both halves of the install/remove contract, each in the direction it
+    can fail.
 
-    Forcing: an earlier version merged without overwriting, so a key that already
-    had a value kept it -- and 'namespace' and 'tag' always do, because conftest's
-    credential probe imports wrapper, which registers the ambient configuration's
-    values. The corpus then resolved '{{namespace}}' to whatever config.toml said
-    while the live layer resolved it to the test config's namespace, and nothing
-    noticed, because the offline comparison checks a specification against a model
-    built from that same specification.
+    Forcing: the corpus values overwrite what is there. Merged without
+    overwriting, a key that already had a value would keep it -- and 'namespace'
+    and 'tag' always do, because conftest.py's pytest_configure() loads the
+    ambient configuration, which registers its values, before any test runs. The corpus would then
+    resolve '{{namespace}}' to whatever config.toml said while the live layer
+    resolved it to the test config's namespace, and nothing would notice, because
+    the offline comparison checks a specification against a model built from that
+    same specification.
 
     Restoring: remove_variables() must put back exactly what was there, since
     VARIABLE_SUBSTITUTIONS is process-global. Deleting a key that held some other
@@ -111,14 +112,14 @@ def test_install_variables_forces_the_corpus_value_and_restores_what_it_found():
 
 def test_a_corpus_load_uses_the_test_config_namespace_not_the_ambient_one():
     """
-    The guard that would have caught the bug above where it actually mattered.
+    The guard on the forcing above where it actually matters.
 
     The previous test checks the registry; this one checks the consequence a reader
     cares about: that a loaded specification carries the test config's namespace
     even when the process already has a different one registered, as it always does
-    under pytest. Without forcing, this resolved to the ambient config's namespace
-    ('yd-demo' on the machine where it was found) while the live layer, passing
-    '-c test-config.toml' to a subprocess, used 'yd-cli-tests'.
+    under pytest. Without forcing, this would resolve to the ambient config's
+    namespace ('yd-demo', say) while the live layer, passing '-c test-config.toml'
+    to a subprocess, uses 'yd-cli-tests'.
     """
     from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 
@@ -183,8 +184,8 @@ def test_no_property_is_dropped_when_building_a_model(capsys):
     dynamic template) produces no warning at all.
 
     The value comparison is what actually protects those: the model's nested
-    object, structured on the way in and dumped again by comparable(), no longer
-    carries the renamed key, so it no longer equals what the specification sent.
+    object, structured on the way in and dumped again by comparable(), does not
+    carry the renamed key, so it does not equal what the specification sent.
     The same comparison is also the only thing that catches a property surviving
     under the right name with a mangled value.
     """
@@ -209,14 +210,13 @@ def test_no_property_is_dropped_when_building_a_model(capsys):
 
 def test_compute_source_template_wrapper_and_source_properties_go_to_the_right_model():
     """
-    Regression test for the defect that motivated build_models() returning pairs:
-    a ComputeSourceTemplate specification's top-level properties (namespace,
-    description, attributes) are fields of the wrapper, not of the source class --
-    see create.py's create_compute_source_template(), which builds the source and
-    passes it as a keyword to build the wrapper. Comparing the whole specification
-    against a single model let those three properties be silently dropped, since
-    AwsInstancesComputeSource has none of them. Written inline rather than as a
-    corpus file: corpus files belong to Tasks 5-6.
+    Why build_models() returns pairs: a ComputeSourceTemplate specification's
+    top-level properties (namespace, description, attributes) are fields of the
+    wrapper, not of the source class -- see create.py's
+    create_compute_source_template(), which builds the source and passes it as a
+    keyword to build the wrapper. Comparing the whole specification against a
+    single model would let those three properties be silently dropped, since
+    AwsInstancesComputeSource has none of them.
     """
     resource = {
         "resource": "ComputeSourceTemplate",
@@ -301,9 +301,9 @@ def test_allowance_natural_language_date_is_parsed_before_the_model_is_built():
 #
 # Everything above builds models through resource_models.build_models(), which
 # *mirrors* create.py rather than calling it: it re-implements which properties
-# each model owns, and which keys are popped before construction. Six defects on
-# this branch were that mirror drifting from the original. A dry run closes the
-# gap from the other side, because create.py deliberately calls
+# each model owns, and which keys are popped before construction, and that
+# mirror can drift from the original. A dry run closes the gap from the other
+# side, because create.py deliberately calls
 # _get_model_object() on the dry-run path for the three resource types whose
 # construction needs pre-processing -- Compute Source Templates (create.py's
 # create_compute_source_template), Compute Requirement Templates and Allowances
@@ -331,9 +331,8 @@ def test_allowance_natural_language_date_is_parsed_before_the_model_is_built():
 #
 # The client it is given is _OfflineClient, never the real one: the dry run is
 # meant to make no Platform call at all, and with the real client a dry run that
-# was not one created the corpus's resources in the account the checkout's
-# config.toml names (it happened once, mid-refactor, while the dry-run setting
-# moved from the command line to CreateOptions).
+# was not one would create the corpus's resources in the account the checkout's
+# config.toml names.
 _DRY_RUN_FAKE_CST_ID = "ydid:cst:000000:00000000-0000-0000-0000-000000000000"
 _DRY_RUN_FAKE_CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
 
@@ -345,7 +344,7 @@ _DRY_RUN_FAKE_CRT_ID = "ydid:crt:000000:00000000-0000-0000-0000-000000000000"
 #
 # requirement-templates.jsonnet's staticMin/dynamicMin omit 'namespace', and
 # create_compute_requirement_template() reads it with a bare subscript before
-# any model is built: the dry run reproduces that live finding with no platform
+# any model is built: the dry run reproduces that live failure with no platform
 # at all. configured-worker-pools.jsonnet's poolMin, the third entry in that
 # registry, is deliberately absent here: create_configured_worker_pool() has no
 # dry-run branch of its own, so create_resources()' generic branch prints the

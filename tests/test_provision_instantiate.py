@@ -207,8 +207,8 @@ class TestProvisionSpecificationNodeCounts:
         assert document["provisionedProperties"]["maxNodes"] == 4
 
     def test_unset_toml_counts_are_not_reported_as_adjusted(self, run, wp_file):
-        # ConfigWorkerPool()'s maxNodes of 0 used to be 'increased' to 1, in a
-        # message, though the value was never sent
+        # ConfigWorkerPool()'s maxNodes of 0 is not reported as 'increased' to
+        # 1, since the value is never sent
         path = wp_file({"targetInstanceCount": 2}, {"maxNodes": 3})
         out, _ = run(
             yd_provision,

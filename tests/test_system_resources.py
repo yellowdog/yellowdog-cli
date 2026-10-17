@@ -69,12 +69,12 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # templates/sources, never a real cloud instance -- rather than a gap in the
 # corpus or the CLI. Keyed by (property, class), never by property name alone:
 # resource_models.SERVER_ASSIGNED_COVERAGE exists specifically because name-level
-# exclusion silently swallowed AwsCapacityReservation.id/SourcesAllowance.
+# exclusion would silently swallow AwsCapacityReservation.id/SourcesAllowance.
 # provider/MachineImage.provider (see that module's own docstring) -- the same
 # mistake here would let one class's confirmed absence excuse every other
-# class sharing the property name, undetected. Every entry was seen, directly,
-# to still be absent from that specific class's live response after this run
-# created one -- listed individually, not derived from SERVER_ASSIGNED_COVERAGE's
+# class sharing the property name, undetected. Every entry is seen, directly,
+# to be absent from that specific class's live response after a run creates
+# one -- listed individually, not derived from SERVER_ASSIGNED_COVERAGE's
 # own class sets, so an exclusion here can never silently absorb a class that
 # registry adds in future without this suite ever having re-verified it against
 # that class specifically. test_read_gate_exclusions_are_evidenced (below)
@@ -83,8 +83,7 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # stops creating the class, or that registry changes) cannot rot here
 # unnoticed either.
 #
-# The tightened, per-class read gate (this task's own second pass, after
-# review) found 66 such pairs -- large, and worth reading as a finding about
+# The per-class read gate finds 66 such pairs -- large, and worth reading as a finding about
 # the platform in its own right, not a weakness in the test: every compute
 # source's own nested object (as opposed to the ComputeSourceTemplate wrapper
 # around it, whose 'id' does come back -- see 'id' below) is far less
@@ -94,15 +93,11 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # Six properties, each confirmed absent for all nine compute source classes
 # source-templates.jsonnet creates. The *observation* is identical for all six; the
 # reason text is not shared, because what can honestly be said beyond the
-# observation differs per property. An earlier version gave all of them one
-# "only ever populated once a compute source is actually provisioning real
-# instances" reason, which was an argument dressed as an observation for at
-# least two of them: 'createdFromId' is template lineage, fixed at creation and
-# nothing to do with provisioning, and 'credentials' (a derived aggregate of
-# 'credential') was not provisioning-related either -- it has since left the read
-# gate altogether, having moved from SERVER_ASSIGNED_COVERAGE to
-# resource_models.NOT_SETTABLE, which carries no read-gate obligation. Where
-# only the observation is available, only the observation is recorded.
+# observation differs per property. One "only ever populated once a compute
+# source is actually provisioning real instances" reason for all of them would
+# be an argument dressed as an observation for some: 'createdFromId', for one,
+# is template lineage, fixed at creation and nothing to do with provisioning.
+# Where only the observation is available, only the observation is recorded.
 _NEVER_RETURNED_OBSERVATION = (
     "created live (source-templates.jsonnet exercises all nine compute source classes), "
     "but the platform never returned this property for this class"
@@ -123,11 +118,11 @@ _COMPUTE_SOURCE_READ_GATE_REASONS: dict[str, str] = {
     "instanceSummary": _ONLY_WHEN_PROVISIONING,
     "exhaustion": _ONLY_WHEN_PROVISIONING,
     # A message qualifying 'status'. Plausibly the same reason as 'status'
-    # itself, but that was never separately observed, so it is not asserted.
+    # itself, but that is not separately observed, so it is not asserted.
     "statusMessage": _OBSERVED_ABSENT_ONLY,
     # Template lineage, set when the source is created: the provisioning reason
     # above does not apply to it at all. Why the platform does not echo it for a
-    # source nested in the very template it came from was not established.
+    # source nested in the very template it came from is not established.
     "createdFromId": (
         f"{_OBSERVED_ABSENT_ONLY} -- note that it is template lineage, set at "
         "creation, so the 'only while provisioning' reason given for status/"
@@ -183,7 +178,7 @@ READ_GATE_EXCLUSIONS.update(
             "actually launches, which this suite never does"
         ),
         # provider/instancePricing on SimulatorComputeSource specifically --
-        # confirmed live, on a second pass: every other compute source
+        # confirmed live: every other compute source
         # class returns both with real values (AWS/Azure/GCE/OCI templates all
         # echo 'provider'; AwsInstancesComputeSource also echoes
         # 'instancePricing') -- SimulatorComputeSource, not being a real cloud
@@ -199,9 +194,8 @@ READ_GATE_EXCLUSIONS.update(
             "simulated source has no real pricing model to report"
         ),
         # supportingResourceCreated -- confirmed absent for exactly these seven
-        # classes, live, by direct re-probe on a second pass: re-created
-        # source-templates.jsonnet by hand and checked 'source.supportingResourceCreated'
-        # in each yd show response directly. OciInstancesComputeSource and
+        # classes, live, by checking 'source.supportingResourceCreated' in each
+        # yd show response of source-templates.jsonnet's templates directly. OciInstancesComputeSource and
         # SimulatorComputeSource are deliberately NOT here: both return a real
         # boolean ('False' and 'True' respectively, confirmed the same way) --
         # a genuine, surprising difference from the other seven, including
@@ -560,8 +554,8 @@ def test_every_server_assigned_property_came_back_in_a_live_run():
     evidenced for many classes (e.g. 'id', evidenced for twenty) is only
     confirmed for the classes that actually returned it, not for all twenty the
     moment any single one does -- the same per-class rigour
-    SERVER_ASSIGNED_COVERAGE's own write-side entries already have, now applied
-    to the read side too.
+    SERVER_ASSIGNED_COVERAGE's own write-side entries have, applied to the read
+    side too.
 
     Four outcomes per pair, not two, because an exclusion
     (READ_GATE_EXCLUSIONS) is itself a claim that needs its own evidence, in

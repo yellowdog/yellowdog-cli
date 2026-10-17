@@ -131,7 +131,7 @@ def run(monkeypatch, capsys):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
         output_settings.configure_output(args)
         # A command taking a RunContext gets these from the wrapper's own;
-        # one not yet migrated imports them by name
+        # one importing them by name has its own patched as well
         if hasattr(module, "CLIENT"):
             monkeypatch.setattr(module, "CLIENT", client)
             monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
@@ -728,7 +728,7 @@ class TestAbort:
 
     def test_namespace_work_requirement_and_task_group(self, run, wrs):
         """
-        'ns/wr/tg' used to raise ValueError from the namespace split.
+        'ns/wr/tg' is read without the namespace split raising ValueError.
         """
         client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-a/tg-1"])
@@ -761,7 +761,7 @@ class TestAbort:
 
     def test_nothing_executing_keeps_stdout_a_document(self, run, wrs):
         """
-        The message printed despite --quiet used to land on stdout too.
+        The message printed despite --quiet does not land on stdout too.
         """
         out, _, _ = run(
             yd_abort, client=self._client(), quiet=True, task_id_list=["wr-a"]
@@ -929,8 +929,8 @@ class TestResize:
         )
 
     def test_a_followed_pool_is_followed_until_resized(self, run, monkeypatch):
-        # A resized pool stays alive, so '--follow' ran until Ctrl-C: each
-        # stream (the pool's, and with -a its Compute Requirement's) now ends
+        # A resized pool stays alive, so '--follow' would run until Ctrl-C:
+        # each stream (the pool's, and with -a its Compute Requirement's) ends
         # once that Compute Requirement is at its target again
         from yellowdog_cli.utils import capacity_wait
 
@@ -2266,7 +2266,7 @@ class TestWait:
 
     def test_a_non_terminal_state_is_a_failure_not_a_success(self, run, monkeypatch):
         # Following ended (a timeout, a stream not followed) with the Work
-        # Requirement still running: that used to exit 0
+        # Requirement still running: that must not exit 0
         self._follow(monkeypatch)
         out, err, _ = run(
             yd_wait,
@@ -2381,10 +2381,9 @@ class TestFollow:
             ("yd-submit", ["--follow", "--raw-events"]),
         ],
     )
-    def test_raw_events_is_no_longer_an_option(self, command, argv, capsys):
-        # The raw event stream is yd-follow's '--json'; the option that
-        # duplicated it, on yd-follow and on every command taking '--follow',
-        # is gone
+    def test_raw_events_is_not_an_option(self, command, argv, capsys):
+        # The raw event stream is yd-follow's '--json'; '--raw-events' is not
+        # an option, on yd-follow or on any command taking '--follow'
         from yellowdog_cli.utils.args import CLIParser
 
         with pytest.raises(SystemExit) as exit_info:
@@ -3178,8 +3177,8 @@ class TestCopy:
     def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
         self, remote, run_dc
     ):
-        # Once taken for a directory, having no '/', and copied into the
-        # destination instead
+        # Having no '/', it must not be taken for a directory and copied into
+        # the destination instead
         (remote / "top.txt").write_text("t")
         _, _, code = run_dc(yd_copy, src_path="loc:top.txt", dst_path="loc:renamed.txt")
         assert code == 0
@@ -3259,8 +3258,8 @@ class TestDelete:
         self, remote, run_dc, name
     ):
         # rclone reads a '--files-from' list's '#' and ';' lines as comments,
-        # and trims leading spaces: a file so named was recorded as deleted
-        # and left in place
+        # and trims leading spaces: a file so named would be recorded as
+        # deleted and left in place
         (remote / "remote" / name).write_text("x", encoding="utf-8")
         out, _, code = run_dc(yd_delete, remote_paths=[f"loc:remote/{name}"])
         assert [r["action"] for r in out] == ["deleted"]

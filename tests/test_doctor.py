@@ -304,7 +304,7 @@ def _row(name: str, result: dc.Result) -> tuple[dc.Check, dc.Result]:
 class TestRenderingRegressions:
     @pytest.mark.parametrize("no_format", [True, False])
     def test_details_line_up_across_statuses(self, monkeypatch, capsys, no_format):
-        # with formatting on, the markup is what once pushed the columns apart
+        # with formatting on, the markup is what would push the columns apart
         _args(monkeypatch, no_format=no_format)
         doctor.render_table(
             [
@@ -1569,7 +1569,7 @@ class TestEntryPoint:
 class TestLogging:
     def test_rclone_api_cannot_put_log_records_on_stdout(self):
         # rclone_api installs a stdout handler on the root logger at import
-        # unless one exists; urllib3's retry warnings then broke --json
+        # unless one exists; urllib3's retry warnings would then break --json
         script = (
             "import logging\n"
             "from yellowdog_cli import doctor\n"

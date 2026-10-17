@@ -1,4 +1,4 @@
-// The primary's actions pool, on which plans 3b and 3c run work and act:
+// The primary's actions pool, on which the action scenarios run work and act:
 // two instances from the primary's static template, two Workers on each,
 // room for a third node. Variables: 'provider' (the primary). Idle timeouts
 // are the crash guard, as in pool.jsonnet; the Agent installer is given on

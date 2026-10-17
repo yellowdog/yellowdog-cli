@@ -73,18 +73,19 @@ def install_variables() -> dict[str, str | None]:
     each key held beforehand so remove_variables() can put it back exactly.
 
     Set directly rather than through YD_VAR_* environment variables:
-    variable_substitution.py scans the environment at import, which has already
-    happened by the time a fixture runs.
+    variable_substitution.py reads the environment when the configuration is
+    first loaded, which conftest.py's pytest_configure() does before any test
+    runs.
 
-    *Forcing* rather than merging, and that distinction is the whole point. An
-    earlier version used add_substitutions_without_overwriting(), which skips a key
-    that already has a value -- and 'namespace' and 'tag' always do by the time a
-    test runs, because conftest's credential probe imports wrapper, which loads the
-    ambient configuration and registers them. The corpus therefore resolved
-    '{{namespace}}' to whatever config.toml happened to say (observed: 'yd-demo')
-    while the live layer, which passes '-c test-config.toml' to a subprocess,
-    resolved it to 'yd-cli-tests'. The two layers disagreed about what the corpus
-    said and nothing caught it, since the offline comparison checks a specification
+    *Forcing* rather than merging, and that distinction is the whole point.
+    add_substitutions_without_overwriting() skips a key that already has a value
+    -- and 'namespace' and 'tag' always do by the time a test runs, because
+    conftest.py's pytest_configure() loads the ambient configuration, which
+    registers them, before any test runs. Merged, the corpus would resolve
+    '{{namespace}}' to whatever config.toml happens to say while the live layer,
+    which passes '-c test-config.toml' to a subprocess, resolves it to
+    'yd-cli-tests'. The two layers would disagree about what the corpus says and
+    nothing would catch it, since the offline comparison checks a specification
     against a model built from that same specification.
 
     Forcing here gives the test config the precedence the CLI itself gives an

@@ -449,8 +449,8 @@ def check_shell_completion(ctx: Context) -> Result:
     """
     Whether the shell's start-up file loads 'yd completion'. The file is read,
     not run, so a line it does not hold (a file it sources, a framework) is
-    reported as not set up, never as a failure; the pre-release
-    'yd-completion', which no longer exists, is a warning.
+    reported as not set up, never as a failure; a line loading the
+    pre-release 'yd-completion', which does not exist, is a warning.
     """
     if _on_windows():
         return Result(
@@ -1078,7 +1078,7 @@ CHECKS: tuple[Check, ...] = (
         "Variable references", "Configuration", Need.CONFIG, check_variable_references
     ),
     Check(".env file", "Configuration", Need.CONFIG, check_dotenv),
-    # The spec lists it under Platform, but it needs no network
+    # Under Configuration rather than Platform, since it needs no network
     Check(
         "Tag is a legal name", "Configuration", Need.CONFIG, check_tag_is_a_legal_name
     ),

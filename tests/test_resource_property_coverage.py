@@ -6,10 +6,6 @@ specification, or excluded with a stated reason. An SDK upgrade that adds a prop
 therefore fails this test until the corpus covers it -- which is also how a serde
 regression surfaces, since the offline layer round-trips every covered property
 through model construction (see resource_models.build_models()).
-
-Tasks 5 and 6 completed the corpus (compute sources, then everything else); the
-xfail(strict=True) marker that guarded this test while the corpus was still being
-built has been removed now that it passes for real.
 """
 
 import dataclasses
@@ -84,19 +80,18 @@ def test_exclusions_reference_real_model_fields():
     A property can only be excluded from a model it actually belongs to, and
     that this gate actually checks.
 
-    Two ways an exclusion can be a no-op that still misdescribes the model, both
-    found by review:
+    Two ways an exclusion can be a no-op that still misdescribes the model:
 
-    - Naming a property that isn't a field of the named model at all (the
-      original AddApplicationRequest.groups/keyrings bug -- neither is a field
-      of any model, so the exclusion did nothing).
+    - Naming a property that isn't a field of the named model at all (e.g.
+      AddApplicationRequest.groups/keyrings -- neither is a field of any
+      model, so such an exclusion does nothing).
     - Naming a real field of a model that is not in models_in_scope() at all
-      (the *other* form of the same bug: re-adding
-      NOT_SETTABLE["Keyring"] = {"credentials": ..., "accessors": ...} passes
-      the first check -- both are genuine Keyring fields -- but Keyring is
+      (the *other* form of the same mistake: adding
+      NOT_SETTABLE["Keyring"] = {"credentials": ..., "accessors": ...} would
+      pass the first check -- both are genuine Keyring fields -- but Keyring is
       never reachable from a MODEL_FOR_RESOURCE/DYNAMIC_MODELS root, so
-      settable_properties("Keyring") is never even called and the exclusion is
-      still inert).
+      settable_properties("Keyring") is never even called and the exclusion
+      would be inert).
 
     "*" in NOT_TESTED is exempt from both checks: it is a deliberate
     cross-cutting rule (the polymorphic 'type' discriminator, popped before any
@@ -133,7 +128,7 @@ def test_server_assigned_does_not_bleed_into_an_unrelated_same_named_field():
     different, genuinely author-settable field that happens to share the name
     on some other model.
 
-    All three cases below were found by exactly this mistake during review:
+    All three cases below are exactly this mistake:
     'id'/'provider' are also plain (init=True) fields on models where they mean
     something the SERVER_ASSIGNED probe never tested -- an existing AWS capacity
     reservation to target, and an allowance/image's own author-supplied provider
@@ -157,11 +152,10 @@ def test_server_assigned_coverage_does_not_infer_an_unprobed_class():
     verified must not be excluded just because the SDK happens to declare the
     field init=False there too.
 
-    All seven pairs below were exactly this mistake, found by review of the
-    first version of SERVER_ASSIGNED_COVERAGE (then a plain field.init check):
-    each is a different resource family that merely happens to declare 'id' or
-    'createdTime' the same way a probed class does. All seven are now settled
-    by a direct live probe (a create-then-show round trip) and belong in the gate as
+    A plain field.init check would make exactly this mistake for all seven
+    pairs below: each is a different resource family that merely happens to
+    declare 'id' or 'createdTime' the same way a probed class does. All seven
+    are settled by a direct live probe (a create-then-show round trip) and belong in the gate as
     excluded -- this test is the regression guard, not a statement that they
     are still open questions.
     """
@@ -191,9 +185,8 @@ def test_a_server_assigned_name_is_not_excluded_from_an_unrecorded_class():
     outcomes for seven settled pairs, so it catches a class being *deleted* from
     the registry -- a safe direction, since the property becomes visibly
     uncovered again. It says nothing about a fallback that re-derives exclusion
-    from dataclasses.field.init, which is the criterion three earlier rounds of
-    this task each established to be false (the SDK structures with
-    _cattrs_include_init_false=True, so an init=False field is populated from a
+    from dataclasses.field.init, which is a false criterion (the SDK structures
+    with _cattrs_include_init_false=True, so an init=False field is populated from a
     specification like any other). Such a fallback is inert today only because
     the registry is complete for the installed SDK: a *future* SDK class sharing
     a name with a SERVER_ASSIGNED entry and declaring it init=False, with no
@@ -274,7 +267,7 @@ def test_withdrawing_registry_evidence_puts_the_property_back_in_the_gate():
     synthesised one: SERVER_ASSIGNED_COVERAGE is the *only* thing keeping
     MachineImageGroup.createdTime out of the gate.
 
-    The pair is chosen because the discredited criterion still holds for it --
+    The pair is chosen because the rejected field.init criterion holds for it --
     the SDK really does declare this field init=False (asserted below, so this
     test stops being a discriminator loudly rather than silently if that
     changes) -- so any fallback re-deriving exclusion from field.init keeps the

@@ -218,9 +218,9 @@ def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
 
     Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
-    the interaction queued into it. This used to replace exec() with a stub, which
-    is how a button box that was never connected went unnoticed: with exec() faked,
-    a click that did nothing looked identical to one that worked.
+    the interaction queued into it. With exec() replaced by a stub, a button box
+    that is never connected would go unnoticed: a click that does nothing looks
+    identical to one that works.
     """
     commander_dialogs.drive_confirmation(
         window,

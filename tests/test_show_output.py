@@ -1,21 +1,18 @@
 """
 The shape of yd-show's output, and its exit status.
 
-Every branch of resolve_details() used to print its own object, and only ten of
-the nineteen passed on the JSON array's indentation and separating commas. The
-other nine produced an array whose elements ran together without commas: not
-parseable, for Compute Requirements, Compute Sources, Nodes, Workers, Work
-Requirements, Task Groups, Tasks, Image Groups and Images. Nothing caught it,
-because the tests asserted the arguments handed to print_yd_object() rather
-than what came out.
+A branch of resolve_details() printing its own object without the JSON array's
+indentation and separating commas would produce an array whose elements run
+together without commas, which does not parse; a test asserting the arguments
+handed to print_yd_object() rather than what comes out would not see it.
 
 Also '--show-source-report' and '--show-exhaustion', the reports on a Compute
 Requirement (or a Provisioned Worker Pool's) that follow it in the array.
 
-These tests therefore parse the output. Resolution and printing are now
-separate, so the framing is applied in one place and cannot be forgotten in a
-branch -- but the guard is 'json.loads() succeeds', which holds however the
-code is arranged.
+These tests therefore parse the output. Resolution and printing are separate,
+so the framing is applied in one place and cannot be forgotten in a branch --
+but the guard is 'json.loads() succeeds', which holds however the code is
+arranged.
 """
 
 from json import loads
@@ -189,7 +186,7 @@ def _keyring(client: MagicMock) -> tuple[str, _Obj]:
     return _ydid("keyring"), obj
 
 
-# The nine that dropped the array framing, plus two that kept it, as controls
+# One setup per resolution branch, each shown in the array framing
 SETUPS = [
     _compute_requirement,
     _compute_source,
@@ -276,8 +273,7 @@ def test_one_id_produces_a_bare_object(setup, capsys):
 
 
 def test_mixed_types_produce_a_parseable_array(capsys):
-    # The real mixed case: one branch that used to carry the framing and one
-    # that used to drop it, in the same array
+    # The real mixed case: two different branches' objects in the same array
     client = MagicMock()
     family_id, family = _image_family(client)
     task_id, task = _task(client)
@@ -290,7 +286,7 @@ def test_mixed_types_produce_a_parseable_array(capsys):
 
 def test_show_token_yields_an_array_from_a_single_id(capsys):
     # A Configured Worker Pool shown with '--show-token' is the one case where
-    # a single ID produces two objects; concatenated, they did not parse
+    # a single ID produces two objects; concatenated, they would not parse
     client = MagicMock()
     pool = _FakeConfiguredWorkerPool("configured-pool")
     token = _Obj("token")

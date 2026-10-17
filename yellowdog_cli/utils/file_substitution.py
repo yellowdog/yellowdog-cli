@@ -76,10 +76,10 @@ def load_json_file_with_variable_substitutions(
 
     The file is parsed first and its values substituted after, as a TOML
     file's are, rather than its text substituted before it is parsed: there a
-    value was read through JSON's escapes (a default's '\\"' was not a
-    quote) and inserted without them (a Windows path's '\\t' became a tab,
-    a quote ended the string). So a substitution goes inside a JSON string,
-    and in a value, not a property name.
+    value would be read through JSON's escapes (a default's '\\"' would not
+    be a quote) and inserted without them (a Windows path's '\\t' would
+    become a tab, a quote would end the string). So a substitution goes
+    inside a JSON string, and in a value, not a property name.
     """
     result = parse_json_file(filename, prefix, postfix)
     resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
@@ -338,9 +338,10 @@ def _substitute_file_contents_pass(
     One substitution pass over the raw contents of a complete file.
     """
     # Found one expression at a time: a match running from the first opening
-    # delimiter on a line to the last closing one took every expression on
-    # the line as one, which lost a type-tagged value's type and, where the
-    # line went on to close a JSON object ('}}'), failed on the delimiters
+    # delimiter on a line to the last closing one would take every expression
+    # on the line as one, which would lose a type-tagged value's type and,
+    # where the line goes on to close a JSON object ('}}'), fail on the
+    # delimiters
     v_expressions = dict.fromkeys(
         find_delimited_expressions(
             file_contents,
@@ -362,8 +363,7 @@ def _substitute_file_contents_pass(
             # quotes go with it, so that a JSON or Jsonnet string becomes the
             # value itself (both quote styles, for Jsonnet); anywhere else --
             # a shell script's 'N={{num:count}}' -- it is text, written as a
-            # typed expression within a longer string is, where it used to be
-            # left as it was, neither substituted nor warned of. Either way a
+            # typed expression within a longer string is. Either way a
             # number keeps the form it was written in ('1.10' stays '1.10'),
             # and the rest are their JSON ('true', double quotes)
             opening = prefix + VAR_OPENING_DELIMITER

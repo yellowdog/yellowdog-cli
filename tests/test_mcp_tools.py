@@ -50,7 +50,7 @@ class TestCatalogue:
 
     def test_the_noun_verbs_replace_the_old_commands_tools(self):
         # One tool per noun verb that replaces a command, named for it; the
-        # old command has none, and a noun's list/show/follow/wait is left
+        # command it replaces has none, and a noun's list/show/follow/wait is left
         # to the generic command's own tool
         assert "yd_workrequirement_submit" in TOOLS
         assert "yd_submit" not in TOOLS
@@ -377,7 +377,7 @@ class TestToArgv:
     def test_a_flag_as_a_value_stays_a_value(self, tmp_path):
         # A value is one argv entry joined to its long flag, so argparse
         # cannot take a value that looks like a flag as that flag: as two
-        # entries, '--tag --debug' on a nargs='?' option turned --debug on
+        # entries, '--tag --debug' on a nargs='?' option would turn --debug on
         argv, _ = to_argv(
             TOOLS["yd_workrequirement_cancel"],
             {"tag": "--debug", "all_in_scope": True},
@@ -549,7 +549,7 @@ class TestInlineSpecificationFiles:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks and modes")
     def test_a_pre_placed_symlink_is_not_followed(self, tmp_path):
-        # Symlinks at every name the old '<pid>-<n>' scheme could have chosen
+        # Symlinks at every name a predictable '<pid>-<n>' scheme could choose
         # in this run: an exclusive create at a random name follows none
         target = tmp_path / "target.txt"
         target.write_text("untouched")
@@ -646,9 +646,10 @@ def test_a_launch_value_beginning_with_a_dash_stays_a_value():
 class TestSpecificationFileExclusionsAreTheirCommandsOwn:
     """
     The specification-file options are excluded from the commands they are
-    files on: by name alone, yd_workerpool_resize lost '--compute-requirement'
-    (a flag saying the name is a Compute Requirement's) and yd_node_action lost
-    '--worker-pool' (the target Worker Pool's name).
+    files on: excluded by name alone, yd_workerpool_resize would lose
+    '--compute-requirement' (a flag saying the name is a Compute Requirement's)
+    and yd_node_action would lose '--worker-pool' (the target Worker Pool's
+    name).
     """
 
     @pytest.mark.parametrize(
@@ -693,9 +694,9 @@ class TestSpecificationFileExclusionsAreTheirCommandsOwn:
 
 class TestActingOnTheWholeScopeIsOptedInto:
     """
-    The server passes --yes, so an action tool given no targets acted on
+    The server passes --yes, so an action tool given no targets would act on
     everything matching the namespace and tag (yd_task_abort: every executing
-    Task), as an omission. It now needs 'all_in_scope': true to do that.
+    Task) by omission; it needs 'all_in_scope': true to do that.
     """
 
     SCOPE_TOOLS = sorted(name for name, tool in TOOLS.items() if tool.scope_target)
@@ -758,7 +759,7 @@ class TestActingOnTheWholeScopeIsOptedInto:
 
 def test_a_submit_never_waits_for_enter():
     # '-P 0' waits for Enter between batches, which no tool call can press:
-    # it failed on the prompt once the Work Requirement existed
+    # it would fail on the prompt once the Work Requirement existed
     schema = TOOLS["yd_workrequirement_submit"].input_schema["properties"][
         "pause_between_batches"
     ]

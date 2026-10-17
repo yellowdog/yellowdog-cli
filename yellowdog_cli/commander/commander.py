@@ -254,8 +254,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # in the config file's directory (see _working_dir), while Commander's
         # own directory is wherever it was launched from — and Show reads them
         # in this process. A path relative to either base is wrong for the
-        # other, so 'yd workrequirement submit -r ../demos/bash/x.json' went
-        # looking for it under the config directory and failed. The config file
+        # other, so 'yd workrequirement submit -r ../demos/bash/x.json' would
+        # look for it under the config directory and fail. The config file
         # needs no such care: its consumers take _config_dir() and
         # _config_basename() from it rather than passing it on.
         self._wr_file: str | None = None
@@ -323,9 +323,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # A depth counter rather than a flag, because nested loops really do
         # nest: the config parse deferred below with singleShot(0) runs in the
         # first event loop to spin, which can be one an enumeration has already
-        # entered — observed reaching depth 2 for a single enumeration. A flag
+        # entered, so depth 2 for a single enumeration is normal. A flag
         # cleared by the inner parse finishing would unlock the window while the
-        # outer loop was still blocking, which is the bug this avoids.
+        # outer loop is still blocking.
         self._nested_depth = 0
         self.stdin_input.textChanged.connect(
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
@@ -432,8 +432,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         other in separate grid rows.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
-        across layouts, so each field began wherever its own label happened to
-        end — at 110, 110 and 56. Measured here rather than set as a width in
+        across layouts, so each field would begin wherever its own label happens
+        to end — at 110, 110 and 56. Measured here rather than set as a width in
         commander.ui, because a width in pixels is a width for one font: these
         labels are the widest under this one, and need not be under the next.
         """
@@ -468,7 +468,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         platform, so it cannot be reproduced offscreen — even under the macOS style
         a headless button reports its bevel flush. Verified by measuring the painted
         pixels of a real window, where the buttons start at x=22 and the checkboxes
-        did at x=20.
+        at x=20 without the indent.
         """
         checkboxes = (
             self.dry_run,
@@ -808,7 +808,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         currently-selected file, labelled with its type and path and carrying
         the full path as a tooltip, plus Cancel / Deselect buttons (default
         Deselect). Every file starts checked, so accepting the dialog unchanged
-        deselects all of them, as the button did before it asked.
+        deselects all of them.
 
         Each row is phrased as an action ('Deselect Worker Pool: ...') rather
         than as state ('Worker Pool: ...'), because a checked row stating only

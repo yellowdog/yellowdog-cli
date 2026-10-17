@@ -768,8 +768,8 @@ class TestSubmitOrAddToDispatch:
         assert self._route(add_to="my-wr", dry_run=False) == "add_to"
 
     def test_add_to_with_dry_run_routes_there_too(self):
-        # Previously this fell through to a plain submission, silently
-        # ignoring '--add-to' and dry-running a freshly named Work Requirement
+        # Falling through to a plain submission here would silently ignore
+        # '--add-to' and dry-run a freshly named Work Requirement
         assert self._route(add_to="my-wr", dry_run=True) == "add_to"
 
     def test_without_add_to_a_new_work_requirement_is_submitted(self):

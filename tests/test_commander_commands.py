@@ -335,9 +335,9 @@ def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
     "method, listed_with",
     [
         ("_cancel_work_requirements_action", []),
-        # Its listing asked 'yd workrequirement cancel -D' without '--abort',
-        # which leaves out a Work Requirement already CANCELLING, the very kind
-        # Cancel & Abort is for once Cancel has run: it found nothing to abort
+        # Listed by 'yd workrequirement cancel -D' without '--abort', it would
+        # leave out a Work Requirement already CANCELLING, the very kind Cancel
+        # & Abort is for once Cancel has run, and find nothing to abort
         ("_cancel_work_requirements_and_abort_action", ["--abort"]),
     ],
 )
@@ -460,10 +460,9 @@ def test_destructive_enumeration_failure_falls_back_to_scope(
 
 
 def test_build_destructive_dialog_without_rows_has_no_listing(window):
-    # The read-only 'names' listing this used to also cover is gone: object
-    # deletion now uses the same selectable 'rows' listing as every other
+    # Object deletion uses the same selectable 'rows' listing as every other
     # destructive action, so 'rows=None' (nothing individually selectable) is
-    # the only no-listing case left. See test_commander_entity_selection.py /
+    # the only no-listing case. See test_commander_entity_selection.py /
     # test_commander_object_selection.py for the selectable-listing coverage.
     from PyQt6.QtWidgets import QListWidget, QPlainTextEdit
 
@@ -654,7 +653,7 @@ def test_scope_phrase_generic_when_unknown(window):
 
 def test_download(window, captured, monkeypatch):
     # Destination and path assembly, exercised through the enumeration-failure
-    # fallback (which downloads the whole pattern, as this action always did).
+    # fallback (which downloads the whole pattern).
     # The chooser path is covered in tests/test_commander_download_selection.py.
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: None
@@ -816,7 +815,7 @@ def test_a_command_is_one_word_with_yd(window, captured):
 
 def test_a_noun_with_no_verb_is_given_nothing(window):
     # Its help, or its usage error, is the dispatcher's: '--nc' added after
-    # 'yd wr' was refused as an option before the verb
+    # 'yd wr' would be refused as an option before the verb
     assert window._build_command_args("yd wr", ["--help"], False) == ["--help"]
 
 
@@ -872,8 +871,8 @@ def test_object_path_uses_override(window):
 
 
 def test_object_path_is_unknown_without_a_tag_or_override(window):
-    # It used to interpolate the missing tag, producing the literal 'None*' and
-    # handing that to yd data download / yd data delete as the scope to act on.
+    # Interpolating the missing tag would produce the literal 'None*' and hand
+    # that to yd data download / yd data delete as the scope to act on.
     window._discovery.tag = None
     assert window._object_path() is None
 
@@ -904,7 +903,7 @@ def test_delete_refuses_when_no_object_path_can_be_worked_out(window, captured):
 
 def test_delete_refuses_even_with_confirmations_suppressed(window, captured):
     # The dangerous combination: '--yes' skips the confirmation, so 'None*' would
-    # have gone straight to 'yd data delete -Ry', deleting anything named 'None...'.
+    # go straight to 'yd data delete -Ry', deleting anything named 'None...'.
     window._discovery.tag = None
     window._confirmations_disabled = True
 
@@ -993,8 +992,8 @@ def test_build_args_any_yd_command_respects_user_config_flag(window):
 
 def test_a_typed_standalone_yd_command_is_given_only_nf(window, captured):
     # yd-version takes none of the configuration options added to the others,
-    # and used to be handed to the shell for that reason, which failed where
-    # the shell did; it does take '--nf', and the output window has no colour
+    # but is not handed to the shell for that reason, which would fail where
+    # the shell does; it does take '--nf', and the output window has no colour
     window._config_file = "d/config.toml"
     window.namespace_override.setPlainText("ns")
     window.properties.setPlainText("common.tag='unclosed")  # not its concern
@@ -1122,8 +1121,8 @@ class TestConfigDataFile:
     def test_the_child_is_given_commanders_environment(
         self, window, monkeypatch, tmp_path
     ):
-        # It was subprocess.run() with the inherited environment, decoding
-        # strictly in the locale's encoding
+        # Not subprocess.run() with the inherited environment, which would
+        # decode strictly in the locale's encoding
         window._config_file = self._config(tmp_path)
         self._children(
             monkeypatch,
@@ -1139,8 +1138,8 @@ class TestConfigDataFile:
     sorted(name for name in COMMANDS if name not in UNDECORATED_YD_COMMANDS),
 )
 def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
-    # The Namespace, Tag, User-Defined Variables and Properties fields were
-    # added to every typed command, so 'yd-show <id>' failed with
+    # Added to every typed command, the Namespace, Tag, User-Defined Variables
+    # and Properties fields would make 'yd-show <id>' fail with
     # "unrecognized arguments: -n", and 'yd cloudinfo instance-types' read
     # the namespace as its type
     window._config_file = None

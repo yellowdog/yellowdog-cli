@@ -25,7 +25,7 @@ BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for ea
 
 # (connect, read) for the CLI's direct Platform requests ('--json-raw', and
 # yd-provision's and yd-instantiate's raw paths): the read allows for a large
-# Task batch, while a silently dropped connection no longer hangs forever
+# Task batch, while a silently dropped connection does not hang forever
 RAW_REQUEST_TIMEOUT = (10.0, 300.0)  # Seconds
 
 CR_MAX_INSTANCES = (

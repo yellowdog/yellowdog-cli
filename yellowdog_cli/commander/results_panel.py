@@ -20,7 +20,7 @@ from yellowdog_cli.commander.window_dialogs import WindowDialogs
 RESULTS_DIR = "results"
 # Shown when the Path field is empty and the tag is unknown, so there is nothing
 # to derive a default object path from. Better than acting on a guess: the tag is
-# interpolated into the default path, and a missing one used to produce 'None*'.
+# interpolated into the default path, and a missing one would produce 'None*'.
 # Two ways to have no tag, so the wording covers both: no configuration file is
 # selected, in which case none is discovered at all, or one is and discovery of
 # it failed.
@@ -44,10 +44,10 @@ class ResultsPanel(WindowDialogs):
         discovered tag.
 
         None when neither is available — the Path field is empty and no tag has
-        been discovered. Callers must refuse rather than carry on: this used to
-        interpolate the missing tag and return the literal 'None*', which was
-        then handed to 'yd data download' and 'yd data delete' as the scope to
-        act on.
+        been discovered. Callers must refuse rather than carry on: interpolating
+        the missing tag would give the literal 'None*', which would then be
+        handed to 'yd data download' and 'yd data delete' as the scope to act
+        on.
         """
         override = self.object_path_override.toPlainText().strip()
         if override:
@@ -85,7 +85,7 @@ class ResultsPanel(WindowDialogs):
 
         Enumerates via 'yd data download -D --json' first: with nothing matching, log
         and do nothing; when the enumeration fails there are no paths to choose
-        between, so fall back to downloading the whole pattern as before.
+        between, so fall back to downloading the whole pattern.
 
         The dry-run-checkbox preview fetches nothing, so it runs directly with no
         enumeration or chooser.
@@ -239,7 +239,7 @@ class ResultsPanel(WindowDialogs):
         """
         Browse the results directory, saying so in a dialog when there is not one
         yet — the commonest reason this button appears to do nothing, and a log
-        line alone was missed. The check is repeated in _open_file_viewer, which
+        line alone is easily missed. The check is repeated in _open_file_viewer, which
         keeps its log-only report for the config-directory button and for the
         directory disappearing between here and there.
         """

@@ -200,8 +200,8 @@ class TestReservedNamesAtTheCommandSources:
         assert "set by the configuration" in output
 
     def test_command_line(self, tmp_path):
-        # The case that prompted the rule: '{{::}}' used to be defined again
-        # from the configuration, silently
+        # The case behind the rule: unset with '{{::}}', a reserved variable
+        # would be defined again from the configuration, silently
         self._refused(_yd_variables("--nc", "-v", "tag={{::}}", cwd=tmp_path), "tag")
 
     def test_command_line_value(self, tmp_path):

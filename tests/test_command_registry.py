@@ -175,7 +175,7 @@ def _entry_points() -> set[str]:
 
 class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
-        # yd-completion, never released, is 'yd completion' alone
+        # yd-completion has no script: it is 'yd completion' alone
         assert set(COMMANDS) - {"yd-completion"} == (
             _entry_points() - {"yd", "yd-commander", "yd-mcp"}
         )
@@ -578,7 +578,7 @@ class TestArgsProperties:
 
     @pytest.mark.parametrize("command", ["yd-delete", "yd-wait", "yd-copy"])
     def test_docs_is_answered_before_anything_is_checked(self, command, capsys):
-        # A required argument missing, or a validator's refusal, used to stand
+        # Neither a required argument missing nor a validator's refusal stands
         # in the way of '--docs'
         from yellowdog_cli.utils.args import CLIParser
 
@@ -635,9 +635,9 @@ class TestRemotePathsWithParentSegments:
 
 class TestCountsAreRangeChecked:
     """
-    yd-submit's counts and yd-provision/yd-instantiate's --target took any
-    integer: '-C 0' quietly became 1, and '-l 0' crashed once the Work
-    Requirement existed. Each is now refused as parsed.
+    yd-submit's counts and yd-provision/yd-instantiate's --target are range-
+    checked as parsed: taken as any integer, '-C 0' would quietly become 1,
+    and '-l 0' would crash once the Work Requirement existed.
     """
 
     @pytest.mark.parametrize(
@@ -676,8 +676,8 @@ class TestCountsAreRangeChecked:
 
 class TestANamespaceOrTagThatIsAFileName:
     """
-    -n and -t take an optional value, so 'yd-submit -t wr.json' made the
-    tag 'wr.json' and submitted no specification, failing with a message
+    -n and -t take an optional value, so 'yd-submit -t wr.json' would make
+    the tag 'wr.json' and submit no specification, failing with a message
     about Task Types. A namespace or tag naming a specification or
     configuration file is refused as parsed.
     """

@@ -904,9 +904,9 @@ class TestStatesAreWholeWords:
 
 class TestHighlightingAsBefore:
     """
-    The highlighters' regexes were reworked for speed -- one per style rather
-    than one per state, and the table's outline and content as '+' rather
-    than '*' -- and must colour exactly as the originals did.
+    For speed, the highlighters use one regex per style rather than one per
+    state, and match the table's outline and content as '+' rather than '*';
+    they must colour exactly as the per-state, '*' regexes built here do.
     """
 
     STATES = tuple(state for states in _STATES_BY_STYLE.values() for state in states)
@@ -932,7 +932,7 @@ class TestHighlightingAsBefore:
     def _render(highlighter) -> list[tuple[str, object]]:
         """
         Each character with the style it is printed in: a run of one style
-        may be split where the old regexes matched 'MAYBE MATCHING' as two
+        may be split where the per-state regexes match 'MAYBE MATCHING' as two
         words, which changes the escape codes but not what is seen.
         """
         console = Console(
@@ -983,8 +983,8 @@ def test_the_consoles_came_up_without_colour():
     The test session builds printing.py's consoles before pytest captures
     output (conftest.py's pytest_configure()), with stdout redirected, so that
     in a terminal they are created as for captured output: created on the
-    terminal, they coloured everything, and every test reading what was
-    printed found escape codes in it. Only a run in a terminal can fail this.
+    terminal, they would colour everything, and every test reading what was
+    printed would find escape codes in it. Only a run in a terminal can fail this.
     """
     for console in (
         printing_module.CONSOLE,

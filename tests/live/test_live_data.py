@@ -51,9 +51,9 @@ def test_a_missing_path_on_the_bucket(data_run, tmp_path):
     """
     S3 answers rclone's stat of any path that is not an object with an
     unnamed directory, whether anything is stored under it or not
-    (operations.remote_stat()), which read once as an empty directory to
-    all three commands. Listing it is an empty listing, as an empty prefix
-    is; downloading it fails, naming it; deleting it is nothing to do.
+    (operations.remote_stat()), so that answer alone does not make it an
+    empty directory. Listing it is an empty listing, as an empty prefix is;
+    downloading it fails, naming it; deleting it is nothing to do.
     """
     yd = data_run.yd
     missing = f"no-such-path-{secrets.token_hex(4)}"

@@ -421,8 +421,8 @@ class TestAtCommandStart:
         result = _run(
             ["yd-ls", "--nf"],
             # A misplaced key, not a wrong type: load_config_data_client()
-            # runs at import and may exit on a value it cannot use, before
-            # the wrapper has a chance to warn
+            # runs as the command starts and may exit on a value it cannot
+            # use, before the wrapper has a chance to warn
             GOOD_COMMON
             + '[dataClient]\nremote = ":local:"\nnamespace = "x"\n'
             + BAD_POOL,

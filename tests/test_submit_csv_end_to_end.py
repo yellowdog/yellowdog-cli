@@ -3,8 +3,7 @@
 run with '--dry-run --json', turns a prototype Task and a CSV file into one
 Task per row, each with its row's values, and a '{{...}}' variable in a cell
 substituted afterwards. The pieces are unit tested on their own
-(test_csv_data.py, test_submit_inputs.py); this holds them together, as the
-removed compute-provisioning CSV test once did against the Platform.
+(test_csv_data.py, test_submit_inputs.py); this holds them together.
 """
 
 import json

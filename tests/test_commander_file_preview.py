@@ -2,7 +2,7 @@
 Tests for the preview column in Commander's directory-browsing dialog, and for
 what the dialog does with the file the user picks.
 
-The preview replaces what the platform's own file viewer used to provide (on
+The preview stands in for what the platform's own file viewer provides (on
 macOS, Finder and Quick Look), so the cases that matter are the ones a viewer
 handles without being asked: an image, a log file, a binary, a directory, and a
 file that has gone away. Each has its own branch here, because each of them
@@ -22,7 +22,7 @@ qt_guard.require_qt()
 # Every test here shows a Qt file dialog, which reads and writes the width
 # Qt remembers for its sidebar in the user's own settings (a plist on macOS),
 # which no test can redirect: on several pytest-xdist workers at once, one
-# test's dialog changed the width another had just cleared to measure a
+# test's dialog would change the width another has just cleared to measure a
 # stock dialog against. One worker for the whole file ('--dist loadgroup',
 # set in pyproject.toml's addopts) keeps them from overlapping.
 pytestmark = pytest.mark.xdist_group("qt_file_dialog_settings")
@@ -278,8 +278,7 @@ class MacButtonLayout(QProxyStyle):
     Needed because the offscreen platform's own style puts an ActionRole button
     first whatever the code does, so without this the placement is untestable
     here — the assertion would pass whether or not Commander places the button
-    itself. Which is exactly how 'on the Mac it sits below Open' got past a green
-    suite once already.
+    itself, and 'on the Mac it sits below Open' would get past a green suite.
     """
 
     def styleHint(self, hint, option=None, widget=None, returnData=None):
@@ -440,7 +439,7 @@ def test_a_byte_capped_preview_says_how_much_of_the_file_it_read(preview, tmp_pa
 
 def test_a_very_long_line_is_cut_rather_than_laid_out_whole(preview, tmp_path):
     # Not cosmetic: QPlainTextEdit lays a single line out at superlinear cost, so
-    # the head of a minified JSON file — one line, no newlines — took 110ms to
+    # the head of a minified JSON file — one line, no newlines — takes 110ms to
     # show, and show_path runs on every arrow-key move through the listing. Cut to
     # PREVIEW_MAX_LINE_CHARS it is 1.4ms even when every line is at the cap.
     target = tmp_path / "minified.json"
@@ -860,8 +859,8 @@ def test_the_save_dialog_has_no_preview_and_still_suggests_its_name(
 ):
     # The one dialog deliberately without a pane: it names a file that does not
     # exist yet, so a preview could only show one the user is not saving to. It
-    # is built directly now rather than through getSaveFileName, though, and the
-    # suggested timestamped filename is what that helper used to pre-fill.
+    # is built directly rather than through getSaveFileName, though, and must
+    # still pre-fill the suggested timestamped filename as that helper would.
     suggested = tmp_path / "commander-output-20260818-120000.txt"
     seen = {}
 
@@ -994,7 +993,7 @@ def test_the_listing_shows_names_only_by_default(
     assert seen["view"] == "treeView"
     assert seen["visible_columns"] == [0], "only the name column should be shown"
     assert seen["header_hidden"], "a one-column listing needs no header"
-    # The name takes the width the other columns are no longer using; left at its
+    # The name takes the width the hidden columns leave; left at its
     # own width it elides with empty space beside it, which is the worst of both.
     assert seen["name_width"] == seen["viewport"]
 
@@ -1022,21 +1021,21 @@ def test_a_nested_file_is_reachable_without_leaving_the_directory(
 
 
 # --- The order the listing puts a level in ------------------------------------
-# Turning expansion on made levels below the dialog's own directory visible for
-# the first time, and QFileSystemModel sorts only the level it opens at: a
-# directory expanded in place arrived in filesystem order, which on APFS and on
-# ext4 is a hash order. So a task group listed its tasks as 005, 002, 003, 004,
-# 010 — and no header click sorts it, the header having been the one thing that
-# could and this listing having none.
+# With expansion on, levels below the dialog's own directory are visible, and
+# QFileSystemModel sorts only the level it opens at: a directory expanded in
+# place arrives in filesystem order, which on APFS and on ext4 is a hash order.
+# So a task group would list its tasks as 005, 002, 003, 004, 010 — and no
+# header click sorts it, the header being the one thing that could and this
+# listing having none.
 
 # Deliberately mixed padding, since it separates the two orderings a listing
 # could plausibly be in: 'task_2' before 'task_10' is the natural order Qt's own
 # file model and the platform's file viewer both use, and 'task_10' before
 # 'task_2' is a plain string sort. A filesystem that happened to hand its entries
-# over already sorted would therefore still fail this without the fix, rather
-# than passing by luck.
+# over already sorted would therefore still fail this without the natural-order
+# sort, rather than passing by luck.
 NUMBERED_TASKS = ["task_1", "task_2", "task_3", "task_10", "task_20", "task_100"]
-# Padded the way yd data download names them, which is the case the user hit.
+# Padded the way yd data download names them.
 PADDED_TASKS = [f"task_{n:03d}" for n in range(1, 13)]
 
 
@@ -1133,7 +1132,7 @@ def test_the_directory_the_dialog_opens_at_is_still_in_order(
 ):
     # The level Qt already ordered, and ordered naturally. Whatever orders the
     # expanded levels must not reorder this one — a plain string sort would list
-    # 'task_10' before 'task_2' here, which is a regression rather than a fix.
+    # 'task_10' before 'task_2' here, which would make it worse, not better.
     for name in NUMBERED_TASKS:
         (tmp_path / name).mkdir()
     seen = {}
@@ -1273,8 +1272,8 @@ def test_a_sidebar_width_commander_remembers_is_used_as_it_stands(
 
     assert measured["sidebar"] == remembered
     # A width that happens to be the pane's minimum is the one width a squashed
-    # sidebar also lands on, so it would prove nothing: that is how this case
-    # first passed against code that discarded the remembered width entirely.
+    # sidebar also lands on, so it would prove nothing: with it this case would
+    # pass against code that discarded the remembered width entirely.
     assert remembered != measured["minimum"]
 
 
@@ -1311,9 +1310,9 @@ def test_qts_own_remembered_sidebar_width_is_ignored(
     window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
 ):
     # Qt writes its own remembered width whenever one of these dialogs closes, so
-    # every machine that has ever opened one carries a value — 90 on any that ran
-    # the version which squashed the sidebar to its minimum. Reading it was how
-    # the widening came to be a no-op everywhere except a brand-new profile.
+    # every machine that has ever opened one carries a value — 90, say, for a
+    # sidebar squashed to its minimum. Reading it would make the widening a
+    # no-op everywhere except a brand-new profile.
     qt_sidebar_width(90)
     measured = {}
 
@@ -1357,7 +1356,7 @@ def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
 ):
     # The dialog must make room for the sidebar whether Commander is setting the
     # width for the first time or applying a remembered one. Uncompensated, the
-    # listing was 84px narrower from the second dialog of the session onwards.
+    # listing would be narrower from the second dialog of the session onwards.
     qt_sidebar_width(None)
     _, plain_listing = plain_dialog_widths(tmp_path)
     commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, SIDEBAR_PANE_WIDTH)
@@ -1498,8 +1497,8 @@ def test_the_platform_viewer_button_comes_ahead_of_the_accept_button(
     window, tmp_path, monkeypatch, mac_button_layout
 ):
     # Under the macOS button layout, Qt appends an ActionRole button after Cancel,
-    # so it trailed the dialog's own answers. Commander places it first instead —
-    # above Open in a vertical column, leftmost in a horizontal row.
+    # so it would trail the dialog's own answers. Commander places it first
+    # instead — above Open in a vertical column, leftmost in a horizontal row.
     corners: dict = {}
 
     def interact(dialog):

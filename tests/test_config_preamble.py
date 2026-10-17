@@ -12,7 +12,7 @@ platform, and the PAC lookup itself is never performed.
 Each scenario provokes a different part of the preamble, and is checked in
 both directions: silence by default, and — under '--debug' — output in which
 every line carries the DEBUG marker. The second half is what catches a message
-that was left as print_info(), whether or not this file names it.
+left as print_info(), whether or not this file names it.
 """
 
 import os
@@ -146,9 +146,10 @@ def test_whole_preamble_is_marked_and_shown_under_debug(config_dir, _name, args,
 
 def test_the_messages_themselves_are_unchanged(config_dir):
     """
-    The wording is carried over intact: only the gating changed.
+    The messages' wording is their own: '--debug' decides only whether they
+    are printed.
     """
-    # '--tag' given, for its message: yd-list no longer defaults it to ''
+    # '--tag' given, for its message: yd-list does not default it to ''
     output = _import_wrapper(
         config_dir, ["--debug", "--tag", "t"], {"YD_DATA_CLIENT": "myprofile"}
     )

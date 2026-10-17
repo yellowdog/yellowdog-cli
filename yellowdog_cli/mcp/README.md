@@ -75,7 +75,7 @@ claude mcp add yellowdog -- yd mcp /path/to/config.toml
 
 A desktop client launches the server with a minimal `PATH`, so give the full path to `yd` if it is not found there once configured.
 
-A client configured with `yd mcp`, the command's name in earlier releases, keeps working for now; the server then warns on stderr that the name is deprecated.
+A client configured with `yd-mcp`, the command's deprecated name, also works; the server then warns on stderr that the name is deprecated.
 
 Every command the server runs is launched under the same Python interpreter as the server itself (`python -m yellowdog_cli.yd <command>`, or `python -m yellowdog_cli.yd <noun> <verb>`), not through the `yd` console script, because a client's `PATH` cannot be relied on to hold them.
 
@@ -129,8 +129,6 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_variables` | read-only | `yd variables` | Report the processed values of variable substitutions |
 | `yd_version` | read-only | `yd version` | Report version information |
 | `yd_wait` | acting | `yd wait` | Wait for entities to reach a terminal state |
-
-A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
 | `yd_workerpool_provision` | acting | `yd workerpool provision` | Provision a Worker Pool |
 | `yd_workerpool_resize` | destructive | `yd workerpool resize` | Resize a Worker Pool |
 | `yd_workerpool_shutdown` | destructive | `yd workerpool shutdown` | Shut down Worker Pools |
@@ -142,6 +140,8 @@ A tool is named for the command it runs, `yd_workrequirement_submit` for `yd wor
 | `yd_workrequirement_priority` | destructive | `yd workrequirement priority` | Change the priority of Work Requirements and Task Groups |
 | `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
 | `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
+
+A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
 
 ## Results and Errors
 

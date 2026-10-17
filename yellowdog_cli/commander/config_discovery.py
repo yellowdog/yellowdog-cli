@@ -171,9 +171,9 @@ class ConfigDiscovery:
 
         Held back while any variable in the box is not yet 'name=value'. Every
         variable is typed through states that are not — 'instances' on the way
-        to 'instances=3' — and 'yd variables' rejects one and exits 1, so the reparse
-        landing on such a keystroke reported "Error in variable substitution
-        'instances'" against a mistake the user had not made. Nothing is said
+        to 'instances=3' — and 'yd variables' rejects one and exits 1, so a reparse
+        landing on such a keystroke would report "Error in variable substitution
+        'instances'" against a mistake the user has not made. Nothing is said
         about it, because at 600ms after a keystroke there is nothing to say: an
         unfinished variable and a wrong one are the same text. The parse stays
         marked invalid, so the edit that completes the variable reparses as
@@ -203,10 +203,10 @@ class ConfigDiscovery:
 
         Only after a *timeout*: a non-zero exit or a program that cannot be
         started will fail again the same way, so retrying would only be noise. A
-        timeout is different — the incident this exists for was a first 'yd variables'
-        on Windows that needed longer than its budget to start, where the second
-        one is warm and finishes at once. Before this, the placeholders stayed
-        blank until Commander was restarted, which is what the user had to do.
+        timeout is different — a first 'yd variables' on Windows can need longer
+        than its budget to start, where the second one is warm and finishes at
+        once. Without the retry, the placeholders would stay blank until Commander
+        was restarted.
         """
         if (
             self._shutting_down()
@@ -229,7 +229,7 @@ class ConfigDiscovery:
         """
         Say why namespace/tag discovery failed. Logged however quiet the parse
         was: blank placeholders with nothing in the output window to explain them
-        is what left a Windows incident with no evidence to diagnose.
+        leave no evidence to diagnose.
 
         Consecutive identical messages are suppressed, because the user-variables
         box reparses 600ms after every edit and a broken configuration would
@@ -249,10 +249,9 @@ class ConfigDiscovery:
         The viewport repaints are scheduled with update() rather than forced
         with repaint(): callers reach this immediately after _parse_yd_config
         has run a nested event loop, and control returns to the event loop
-        directly afterwards, so the placeholders still appear at once. (This
-        was once thought to cause macOS's 'TSMSendMessageToUIServer ...
-        FAILED(-1)' lines; it did not stop them, and stderr_filter.py drops
-        them instead.)
+        directly afterwards, so the placeholders still appear at once. (Forcing
+        repaint() does not stop macOS's 'TSMSendMessageToUIServer ...
+        FAILED(-1)' lines; stderr_filter.py drops them.)
         It has to be the viewport, not the widget: QPlainTextEdit is a scroll
         area, and the placeholder text is painted by its viewport.
         """

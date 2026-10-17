@@ -69,11 +69,9 @@ class WindowDialogs(CommandRunning):
         supplied, where an empty list means the user deselected everything and
         the caller must act on nothing at all.
 
-        'rows' is keyword-only because 'names' — a second, positionally
-        adjacent listing parameter — used to sit here too; a positional call
-        would have silently landed the wrong argument in this slot. Now there
-        is only one listing parameter, but the call stays keyword-only so a
-        future one can't reintroduce the hazard.
+        'rows' is keyword-only so that a second, positionally adjacent listing
+        parameter added later cannot have a positional call silently land the
+        wrong argument in this slot.
 
         'Yes to All (Don't Ask Again)' confirms and suppresses future
         confirmations for this same action (identified by action_key) for the
@@ -125,10 +123,10 @@ class WindowDialogs(CommandRunning):
         instead of growing the dialog past the screen.
 
         The horizontal scrollbar is turned off explicitly, and the height is
-        fixed rather than merely capped, because of one bug in each direction. A
+        fixed rather than merely capped, because of one failure in each direction. A
         scrollbar appears when a name overflows a narrow dialog and then eats the
-        height budgeted for the rows — on Windows that left a 1px viewport, so the
-        list showed nothing but the scrollbar. And a bare maximum lets the layout
+        height budgeted for the rows — on Windows that leaves a 1px viewport, so the
+        list shows nothing but the scrollbar. And a bare maximum lets the layout
         squeeze the list towards nothing when the dialog is short of space, which
         is platform- and font-dependent. Eliding plus the tooltip is the intended
         way to cope with a long name, not scrolling sideways.
@@ -175,8 +173,8 @@ class WindowDialogs(CommandRunning):
         dialog's layout, which reparents it: the height is fitted using the
         frame width, and the macOS style frames a widget with no parent — a
         prospective window of its own — 1px narrower than one inside a window.
-        Fitted unparented, every list came out 2px short of its rows, so a
-        confirmation showed a scrollbar and clipped its last row. The offscreen
+        Fitted unparented, every list comes out 2px short of its rows, so a
+        confirmation shows a scrollbar and clips its last row. The offscreen
         platform frames both alike, so no test here can see it; measured on
         macOS, 6px unparented against 7px in a dialog.
         """

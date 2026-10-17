@@ -53,7 +53,7 @@ pip install -U "yellowdog-cli[commander]"
 yd commander
 ```
 
-`yd-commander`, the command's name in earlier releases, still works for now, with a warning that it is deprecated.
+`yd-commander`, the command's deprecated name, also works, with a warning that it is deprecated.
 
 Optionally pass a configuration file as the first argument:
 

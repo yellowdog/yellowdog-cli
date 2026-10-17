@@ -1,10 +1,10 @@
 """
 Commander's dialogs exercised as dialogs: real exec(), real clicks, real geometry.
 
-These cover the bug classes that reached a user rather than the tests — buttons
-that did nothing, a default button quietly stolen by another, and a list squeezed
-until no row could be seen. Each was invisible to tests that stubbed exec() and
-asserted on arguments, so nothing here does either.
+These cover the bug classes that reach a user rather than the tests — buttons
+that do nothing, a default button quietly stolen by another, and a list squeezed
+until no row can be seen. Each is invisible to tests that stub exec() and
+assert on arguments, so nothing here does either.
 """
 
 import pytest
@@ -130,7 +130,7 @@ def test_chooser_cancel_rejects_the_dialog(window):
 def test_a_confirmation_defaults_to_no(window):
     # Return must not confirm an irreversible action. All / None are the first
     # focusable widgets, and an autoDefault button that gains focus takes the
-    # default over — which is how this was silently defeated once.
+    # default over — which would silently defeat this.
     dialog, _yes, _skip = window._build_destructive_dialog(
         "Cancel", "Cancel?", rows=entity_listing_rows()
     )
@@ -152,9 +152,9 @@ def test_a_chooser_defaults_to_its_accept_button(window):
 
 @pytest.mark.parametrize("width", [260, 320, 480, 900])
 def test_confirmation_rows_stay_visible_at_every_width(window, width):
-    # The Windows failure: a long name overflowed a narrow dialog, Qt added a
-    # horizontal scrollbar, and the scrollbar consumed the height budgeted for the
-    # rows. The arithmetic still looked right; nothing could be seen.
+    # The Windows failure: a long name overflows a narrow dialog, Qt adds a
+    # horizontal scrollbar, and the scrollbar consumes the height budgeted for the
+    # rows. The arithmetic still looks right; nothing can be seen.
     rows = entity_rows(
         [
             EntitySummary(

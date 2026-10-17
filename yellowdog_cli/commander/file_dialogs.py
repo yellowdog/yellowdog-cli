@@ -54,7 +54,7 @@ PREVIEW_READ_BYTES = 262_144  # bytes read from the head of a file to preview it
 PREVIEW_MAX_LINES = 500  # lines of that head shown before the preview is elided
 # Characters of any one of those lines shown before it is cut. A performance cap
 # rather than a cosmetic one: QPlainTextEdit lays a single line out at superlinear
-# cost, so the 256kB head of a minified JSON file — one line, no newlines — took
+# cost, so the 256kB head of a minified JSON file — one line, no newlines — takes
 # 110ms to show, on a preview that is refilled at every arrow-key press. Cut to
 # this it is 1.4ms even with every line at the cap, and 2,000 characters is some
 # fifty screenfuls of a pane this wide.
@@ -104,7 +104,7 @@ def dialog_settings() -> QSettings:
     Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
     those whenever one of these dialogs closes, so every machine that has ever
     opened one carries a value and there is no telling a width the user chose from
-    a default written back — which made a default conditional on 'nothing
+    a default written back — which makes a default conditional on 'nothing
     remembered' a no-op everywhere but a brand-new profile. Keeping our own
     removes the guess: the stored value is one a user set, and its absence means
     they have set nothing.
@@ -129,8 +129,8 @@ class FilePreview(QWidget):
     than the bare listing says.
 
     This exists because Qt's own file dialog has no preview, and Commander's
-    directory buttons no longer hand the directory to the platform's file
-    viewer, so Finder's Quick Look is not there to fall back on. It is a plain
+    directory buttons open that dialog rather than the platform's file viewer,
+    so Finder's Quick Look is not there to fall back on. It is a plain
     widget driven by the dialog's currentChanged signal rather than a
     QFileDialog subclass, so the dialog itself stays the stock one.
 
@@ -161,8 +161,9 @@ class FilePreview(QWidget):
         # Pinned to the top, and to the height their own text needs. A label
         # defaults to taking a share of any spare height and centring its text in
         # it, and a directory — named and kinded, with no body to show — leaves
-        # the pane nothing but spare height: the two headings ended up a third
-        # and two thirds of the way down, reading as two unrelated captions.
+        # the pane nothing but spare height: the two headings would end up a
+        # third and two thirds of the way down, reading as two unrelated
+        # captions.
         for label in (self.name_label, self.meta_label):
             label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -390,8 +391,8 @@ class NaturalOrderProxy(QSortFilterProxyModel):
     order on APFS and on ext4, so 'task_005, task_002, task_003' — and stays in
     it: verified that neither sort() on the model nor the header's own sort
     indicator reorders such a level, and that it is still unsorted twelve seconds
-    later, so it is not a race that settles. Commander turned expansion on, which
-    is what made those levels reachable and the ordering visible; the behaviour
+    later, so it is not a race that settles. Commander turns expansion on, which
+    is what makes those levels reachable and the ordering visible; the behaviour
     beneath is Qt's, and the same in a stock dialog.
 
     Interposing a proxy is Qt's own answer to it (QFileDialog.setProxyModel), and
@@ -403,8 +404,8 @@ class NaturalOrderProxy(QSortFilterProxyModel):
     compare, because that is what QFileSystemModel itself does for the level it
     sorts: 'task_1, task_2, task_10', never 'task_1, task_10, task_2'. A plain
     sort would put every expanded level in a different order from the directory
-    above it — worse than the bug — and would disagree with the platform's file
-    viewer, which the browse dialog hands over to.
+    above it — worse than leaving it unsorted — and would disagree with the
+    platform's file viewer, which the browse dialog hands over to.
 
     Except where the collator will not order numerically, which is under the C
     locale — what a Linux session with LANG unset runs in, a headless test node
@@ -709,8 +710,8 @@ class FileDialogs:
 
         Qt ships the tree flat — `rootIsDecorated` and `itemsExpandable` both off —
         though the model under it (`QFileSystemModel`) has always been hierarchical.
-        Turning them on is all the hierarchy needs, and it costs nothing that was
-        there before: double-clicking a directory still navigates into it, so the
+        Turning them on is all the hierarchy needs, and it takes nothing away:
+        double-clicking a directory still navigates into it, so the
         triangle and the double-click each keep their own job. A file picked inside
         an expanded directory comes back with its full path, since the selection is
         the model's, not the listed directory's.
@@ -840,8 +841,8 @@ class FileDialogs:
 
         # Placed explicitly at the head of the box rather than left where the
         # style put it: each style appends an ActionRole button somewhere of its
-        # own choosing — macOS after Cancel, Fusion before Open — so the button
-        # moved about between platforms. First means above Open in the vertical
+        # own choosing — macOS after Cancel, Fusion before Open — so left there
+        # the button would move about between platforms. First means above Open in the vertical
         # column macOS lays out, and leftmost in the row Windows and Linux do,
         # which in both cases keeps it clear of the accept and reject buttons
         # rather than trailing after them. The button stays a member of the box

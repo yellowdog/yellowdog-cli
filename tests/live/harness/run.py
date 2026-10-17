@@ -143,7 +143,7 @@ class Run:
 
     def actions_pool_name(self) -> str:
         """
-        The primary's actions pool, on which plans 3b and 3c run work.
+        The primary's actions pool, on which the action scenarios run work.
         """
         return self.name(self.config.primary, "actions", "pool")
 

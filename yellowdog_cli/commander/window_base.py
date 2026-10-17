@@ -265,7 +265,7 @@ class WindowBase(QMainWindow):
         neither, since there is then no scope to name; callers must refuse,
         with NO_LISTING_TAG.
 
-        The tag is passed even though 'yd list' now takes the configured tag
+        The tag is passed even though 'yd list' takes the configured tag
         for Work Requirements, Worker Pools and Compute Requirements: the
         Tag field overrides the configuration, and the dialog names the scope
         it lists.
@@ -407,8 +407,8 @@ class WindowBase(QMainWindow):
         '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
         variable and '--property' for each property override. Given the
         'command', only those it takes: typed into the command box, a
-        command without '-n' (yd show) failed on it, and one without '-v'
-        (yd cloudinfo) read the namespace as its own positional.
+        command without '-n' (yd show) would fail on it, and one without '-v'
+        (yd cloudinfo) would read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',
         so a value that begins with '-' is never taken for an option. Raises
@@ -500,7 +500,7 @@ class WindowBase(QMainWindow):
 
         # Only a command the registry knows: a noun with no verb ('yd wr
         # --help'), a word 'yd' refuses and yd commander take none of the
-        # options, and given them failed on the first
+        # options, and given them would fail on the first
         if (
             command_named(command) is not None
             and command not in UNDECORATED_YD_COMMANDS

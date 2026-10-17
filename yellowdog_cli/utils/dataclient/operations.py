@@ -661,8 +661,7 @@ def remote_stat(
     empty one is None, as it is to the storage itself. A listing passes
     'confirm_directory=False', for which such a path is the empty directory
     rclone says it is, and lists as one: an empty prefix, a namespace's
-    before anything is uploaded to it among them, is no error to list, as it
-    was not in v12.1.1.
+    before anything is uploaded to it among them, is no error to list.
     """
     result = _run_quietly(rclone, ["lsjson", "--stat", "--no-mimetype", remote_path])
     if result.returncode == 3:
@@ -905,8 +904,8 @@ def _files_of_matches(
 
     Each directory costs one recursive listing, so they are listed
     concurrently, DATA_CLIENT_LISTING_WORKERS at a time; a file's entry is
-    in hand and costs none. Listing the parent recursively once instead was
-    rejected: Commander's pattern is '<tag>*' under the namespace directory,
+    in hand and costs none. A single recursive listing of the parent is not
+    used: Commander's pattern is '<tag>*' under the namespace directory,
     so it would list every tag's results to find this one's.
     """
 
@@ -1270,7 +1269,7 @@ def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
     # 'rclone deletefile', not rclone_api's delete_files(), which lists the
     # file in a '--files-from' file: rclone reads a name there beginning with
     # '#' or ';' as a comment, trims leading spaces, and drops an absolute
-    # path's leading '/', so the file was left, or the deletion failed. Both
+    # path's leading '/', so the file would be left, or the deletion fail. Both
     # are run unchecked, so that a failure is recorded rather than raised
     if is_dir:
         print_info(f"Deleting directory '{path}'")

@@ -108,7 +108,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 
 The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs alone. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
-The `yd-*` commands of earlier releases, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
+The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
 Help is available for every command with the `--help` or `-h` option. The two tables below describe the options shared across commands; the sections that follow describe each command individually, along with its own command-specific options.
 
@@ -1643,7 +1643,7 @@ yd variables -v instances=5 instances  # report a variable set on the command li
 
 The report redacts the values of `key` and `secret`, replacing each with `<REDACTED>`, and shows an inline data client remote (`dataClient.remote`, or a profile's `dataClient.<name>.remote`) with its name, type and provider only, every other parameter's value withheld as `<N parameters redacted>`, because those parameters are where an inline remote's credentials go; a named remote such as `myremote:` is shown as it is.
 
-This applies whether the variables are named or not, and only `--show-secrets` reports their values; naming `key` or `secret` prints a line saying they were redacted. (Naming a variable once reported it in full; it no longer does, so that a caller unable to pass `--show-secrets`, such as the [MCP server](../yellowdog_cli/mcp/README.md)'s tools, cannot ask for a credential by name.)
+This applies whether the variables are named or not, and only `--show-secrets` reports their values; naming `key` or `secret` prints a line saying they were redacted. Naming a variable does not report it in full, so that a caller unable to pass `--show-secrets`, such as the [MCP server](../yellowdog_cli/mcp/README.md)'s tools, cannot ask for a credential by name.
 
 ```shell
 yd variables                 # 'key' and 'secret' are reported as <REDACTED>
@@ -1695,7 +1695,7 @@ It checks, in order:
 - each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"
 - the rclone version
 - whether the `yd` first on your `PATH` is this installation's: another `yd`, such as a different tool of the same name, would run in its place, and Tab completion would ask it
-- whether your shell's start-up file (`~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, or fish's `config.fish`) loads [`yd completion`](#yd-completion), or still runs the pre-release `yd-completion`, which no longer exists. The file is read, not run, so a line in a file it sources is reported as not set up
+- whether your shell's start-up file (`~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, or fish's `config.fish`) loads [`yd completion`](#yd-completion), or runs `yd-completion` instead, which is not a command. The file is read, not run, so a line in a file it sources is reported as not set up
 - the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks, the PyPI one included, then use that proxy)
 - whether a newer CLI is on PyPI
 - whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](configuration.md)), and where each of the key, secret, namespace, tag and URL came from
@@ -1844,9 +1844,9 @@ The script asks `yd completion` what completes the word on each Tab, so it follo
 
 ## Deprecated Commands
 
-The `yd-*` commands of earlier releases are replaced by `yd` and the words after it, and will be removed in a future release. Until then each runs as it always has, with a warning on stderr naming what to use instead (`--quiet` suppresses it where the command has it); the warning is not given when Commander or the MCP server runs a command. `yd help --deprecated` gives the same table.
+The `yd-*` commands are deprecated in favour of `yd` and the words after it, and will be removed in a future release. Until then each still runs, with a warning on stderr naming what to use instead (`--quiet` suppresses it where the command has it); the warning is not given when Commander or the MCP server runs a command. `yd help --deprecated` gives the same table.
 
-Where a command acted on more than one kind of object, each kind has a verb of its own: `yd-terminate` took Compute Requirements, Instances and Nodes, which `yd computerequirement terminate`, `yd instance terminate` and `yd node terminate` now take, and `yd-resize -C` is `yd computerequirement resize`.
+Where a command acts on more than one kind of object, each kind has a verb of its own: `yd-terminate` takes Compute Requirements, Instances and Nodes, which `yd computerequirement terminate`, `yd instance terminate` and `yd node terminate` take between them, and `yd-resize -C` is `yd computerequirement resize`.
 
 | Deprecated command | Use instead |
 |---|---|

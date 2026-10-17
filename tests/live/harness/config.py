@@ -16,9 +16,9 @@ talks to the Platform does so as the one Application.
 A provider with no section is skipped; one with a section is to be tested,
 so an incomplete one is an error. Every problem is reported at once. An
 unknown key is a problem, since a misspelt optional one would otherwise
-quietly take its default; a key the tests once read and no longer do
-(RETIRED) is ignored with a warning saying why, so a file that predates its
-retirement still loads.
+quietly take its default; a retired key (RETIRED), which the tests do not
+read, is ignored with a warning saying what to use instead, so a file that
+still sets one loads.
 """
 
 from __future__ import annotations
@@ -136,8 +136,8 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
 }
 
-# Keys the tests no longer read, each with what to do instead: ignored with a
-# warning, never an error
+# Retired keys, which the tests do not read, each with what to do instead:
+# ignored with a warning, never an error
 RETIRED: dict[tuple[str, str], str] = {
     ("run", "namespace"): (
         "the namespace is fixed as yd-cli-system-tests (harness/run.py)"

@@ -112,8 +112,8 @@ UPDATES = {
 # jsonnet's poolMin (see each file's own header comment). create_compute_requirement
 # _template() and create_configured_worker_pool() (create.py) read 'namespace' out
 # of the resource dict with a plain subscript before any model is ever built, which
-# is stricter than the SDK model's own optional field -- a known finding from
-# Tasks 5/6, not a bug for the live layer to work around. create_resources()
+# is stricter than the SDK model's own optional field -- a known limitation,
+# not a bug for the live layer to work around. create_resources()
 # (create.py) catches each resource's exception, continues to the next resource in
 # the same file, and only raises (a single ReportedFailure, after the whole file) if
 # at least one failed -- so running one of these files live still creates every
@@ -202,9 +202,9 @@ NO_YDID_KEY_FIELD: dict[str, str] = {
 #     entries)/'sourceCreatedFromId' (a SourcesAllowance): each names a
 #     Compute Source Template by name in the specification, and
 #     create_compute_requirement_template()/create_allowance() (create.py)
-#     resolve that name to a YellowDog ID before the request is sent -- live
-#     evidence that the corpus's own header comments anticipated
-#     ("the raw name round-trips as a plain string" offline, but not live).
+#     resolve that name to a YellowDog ID before the request is sent, so the
+#     raw name round-trips as a plain string offline (as the corpus's own
+#     header comments say) but not live.
 LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
     "tokenTtl": "AddConfiguredWorkerPoolRequest's own field, not a field of the "
     "ConfiguredWorkerPool entity yd-show reads",
@@ -223,8 +223,8 @@ LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
 # above, none of which collides with a different, correctly-behaving property
 # of the same name elsewhere in the corpus), only within one specific
 # polymorphic class's own properties. 'userData' is the reason this exists --
-# it is a real, correctly-echoed field on every other compute source class
-# (confirmed live by this same run), so excluding it globally the way the flat
+# it is a real, correctly-echoed field on every other compute source class,
+# so excluding it globally the way the flat
 # dict above does would also hide a real regression on, say,
 # AwsInstancesComputeSource.userData. _compare_dict() only consults this when
 # the dict it is comparing carries its own 'type' (i.e. is itself the
@@ -232,17 +232,16 @@ LIVE_ONLY_EXCLUSIONS: dict[str, str] = {
 # for an unrelated ancestor dict that merely contains one.
 #
 # SimulatorComputeSource.userData/subregion: addComputeSourceTemplate accepts
-# either being set, but yd-show never echoes them back afterwards (probed
-# live) -- accepted-then-silently-dropped, not rejected outright. This
+# either being set, but yd-show never echoes them back afterwards --
+# accepted-then-silently-dropped, not rejected outright. This
 # is NOT recorded in resource_models.SERVER_ASSIGNED_COVERAGE: that registry's
 # contract is "the platform assigns this" (a genuinely server-assigned
-# property comes back -- see 'provider'/'traits'/'id', confirmed by this same
-# run), not "this suite cannot confirm it landed". Recording it there would
+# property comes back -- see 'provider'/'traits'/'id'), not "this suite cannot confirm it landed". Recording it there would
 # also silently drop both out of the write gate's demand forever, with no way
 # to notice a future platform fix. Both stay in the corpus
 # (source-templates.jsonnet's simulatorMax still sets them, so the write gate still
 # demands and exercises them) and are skipped here, live-comparison only, with
-# the observation recorded verbatim.
+# the reason recorded beside each.
 LIVE_ONLY_EXCLUSIONS_BY_CLASS: dict[str, dict[str, str]] = {
     "SimulatorComputeSource": {
         "userData": "addComputeSourceTemplate accepts it, but yd-show never "
@@ -274,11 +273,9 @@ def command_line(command: str, *args: str) -> str:
     by teardown time -- which is not reliably CORPUS_DIR, since a test that
     chdir's for the duration of a call (load_corpus_file(), the atexit sweep in
     conftest.py's own run_id fixture) always restores the original directory
-    afterwards. (Nine of the ten live corpus files import
-    'lib/base.libsonnet', which once resolved against the process's cwd rather
-    than beside the importing file, so a create/remove run from anywhere else
-    failed with "couldn't open import"; imports now resolve beside the file,
-    so that reason is gone, and the prefix stays for the convention.)
+    afterwards. (The live corpus files' import of 'lib/base.libsonnet' resolves
+    beside the importing file whatever the cwd, so for those the prefix is a
+    convention rather than a need.)
     CORPUS_DIR is absolute (built from Path(__file__).parent),
     so this is safe to prepend unconditionally, including for a command (like
     yd-list/yd-show) that never touches a corpus file at all.
@@ -327,7 +324,7 @@ def list_details(entity_type: str, namespace: str | None = None) -> list[dict]:
     """
     namespace_arg = "-n=''" if namespace is None else f"-n={namespace}"
     result = yd("yd list", entity_type, "--details", "-J", "-q", namespace_arg, "-t=''")
-    # Live evidence: '--json' prints nothing at all -- not even '[]' --
+    # '--json' prints nothing at all -- not even '[]' --
     # when nothing matches, unlike a normal, non-empty result.
     return json.loads(result.stdout) if result.stdout.strip() else []
 
@@ -405,7 +402,7 @@ def mismatches(spec: dict, returned: dict, path: str = "") -> list[str]:
     property is visible rather than assumed fine. Uses resource_models.comparable()
     for the actual leaf-level value comparison -- the same normalisation the
     offline model checks use, rather than a second one -- which is also where the
-    fully-qualified 'type' suffix match (a live-probe finding: 'source.type' comes back
+    fully-qualified 'type' suffix match ('source.type' comes back
     as 'co.yellowdog.platform.model.AwsInstancesComputeSource' where the
     specification sent the short name) lives, so both directions of comparison
     share one rule, including for a 'type' discriminator nested inside a list
@@ -465,12 +462,11 @@ def _compare_dict(expected: dict, actual: dict, path: str) -> list[str]:
     return problems
 
 
-# Properties whose list order is not semantic, each because live evidence
-# showed the platform actually reordering it: an Allowance's
-# monitoredStatuses came back ['RUNNING', 'PENDING'] where the specification
-# sent ['PENDING', 'RUNNING'], and a Group's roles came back with
-# 'work-manager' before 'work-viewer' where the specification sent the other
-# way round -- both plain, unordered sets from the specification's own point
+# Properties whose list order is not semantic, each because the platform
+# reorders it: an Allowance's monitoredStatuses comes back
+# ['RUNNING', 'PENDING'] where the specification sends ['PENDING', 'RUNNING'],
+# and a Group's roles come back with 'work-manager' before 'work-viewer' where
+# the specification sends them the other way round -- both plain, unordered sets from the specification's own point
 # of view. Deliberately narrow, not "every list at every depth": a dynamic
 # template's ranked 'preferences' (weight/rankOrder only mean anything in a
 # specific order), a static template's 'sources', and a ComputeSourceTemplate's
@@ -536,12 +532,12 @@ def _compare_natural_language_date(
     effectiveFrom/effectiveUntil are natural-language strings in the corpus
     ('Now', 'After six months'), not ISO datetimes -- create_allowance() feeds
     each through dateparser at the exact moment 'yd-create' sends the request,
-    so the instant it resolves to depends on wall-clock time. Live evidence:
-    re-resolving the same string here, when this comparison runs
-    (necessarily some seconds after creation), does not reproduce that exact
-    instant even for a spec-side bug-free round trip, so exact string equality
-    (what the general leaf-level comparison would do) fails every single
-    Allowance on clock drift alone, never on an actual bug.
+    so the instant it resolves to depends on wall-clock time. Re-resolving the
+    same string here, when this comparison runs (necessarily some seconds
+    after creation), does not reproduce that exact instant even for a
+    spec-side bug-free round trip, so exact string equality (what the general
+    leaf-level comparison would do) would fail every single Allowance on clock
+    drift alone, never on an actual bug.
 
     A five-minute tolerance -- comfortably above how long a single corpus
     file's create-then-show takes -- is used instead: a real bug (the wrong
@@ -591,8 +587,8 @@ def _compare(expected: object, actual: object, where: str) -> list[str]:
     in this corpus (a dynamic template's ranked 'preferences', a static
     template's 'sources', a ComputeSourceTemplate's 'attributes'), so this is
     the correct default -- see _ORDER_INSENSITIVE_PROPERTIES and
-    _compare_order_insensitive_list() above for the two properties live
-    evidence showed the platform actually reordering, which _compare_dict()
+    _compare_order_insensitive_list() above for the two properties the
+    platform reorders, which _compare_dict()
     routes to that function instead of here before this is ever reached. A
     length mismatch is still reported on its own, once, rather than only
     surfacing as a misleading element-by-element diff past the shorter list's

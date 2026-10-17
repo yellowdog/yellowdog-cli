@@ -44,9 +44,9 @@ def test_dry_run_flag_in_help(cmd):
     ],
 )
 def test_dry_run_with_explicit_names_is_accepted(cmd):
-    # It was refused at parse time, leaving the most destructive commands the
-    # only ones unable to preview a named target; it now reports what it would
-    # do (tests/test_cancel.py, test_shutdown.py, test_compute_action_common.py)
+    # Refused at parse time, it would leave the most destructive commands the
+    # only ones unable to preview a named target; it reports what it would do
+    # (tests/test_cancel.py, test_shutdown.py, test_compute_action_common.py)
     result = shell(cmd)
     assert result.exit_code != 2
     assert "not supported with explicit names" not in (result.stderr + result.stdout)
@@ -67,8 +67,8 @@ def test_dry_run_with_explicit_names_is_accepted(cmd):
     ],
 )
 def test_json_without_dry_run_is_accepted(cmd):
-    # '--json' no longer requires '--dry-run': it now also shapes the real,
-    # acting path (spec point 4). It must not fail at parse time; whatever it
+    # '--json' does not require '--dry-run': it also shapes the real, acting
+    # path. It must not fail at parse time; whatever it
     # fails on afterwards (missing credentials here) is a different error.
     result = shell(f"{cmd} --json")
     assert result.exit_code != 2
@@ -117,7 +117,7 @@ def test_mixing_glob_and_literal_errors(cmd):
     ],
 )
 def test_json_without_dry_run_parses(cmd, argv):
-    # The parser itself (not a subprocess) no longer refuses '--json' without
+    # The parser itself (not a subprocess) does not refuse '--json' without
     # '--dry-run' on any of the five destructive commands.
     parser = CLIParser(command=cmd, argv=argv)
     assert parser.json_output is True
@@ -125,10 +125,9 @@ def test_json_without_dry_run_parses(cmd, argv):
 
 class TestRealPathRecordsThroughARealParse:
     """
-    'command_registry.check_json_requires_dry_run' used to make this
-    combination a parse-time error; these drive main() through a real
-    CLIParser (not a MagicMock standing in for one) and the real wrapper, to
-    prove the lifted restriction reaches the acting path end to end.
+    '--json' without '--dry-run' is not a parse-time error; these drive main()
+    through a real CLIParser (not a MagicMock standing in for one) and the real
+    wrapper, to prove the combination reaches the acting path end to end.
     """
 
     def test_yd_cancel(self, monkeypatch, capsys):

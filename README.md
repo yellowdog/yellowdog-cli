@@ -64,7 +64,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
 - **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-The `yd-*` commands of earlier releases, such as `yd-submit` and `yd-list`, still run, with a warning, until a future release; `yd help --deprecated` says what replaces each.
+The `yd-*` commands, such as `yd-submit` and `yd-list`, are deprecated: they still run, with a warning, until a future release; `yd help --deprecated` says what replaces each.
 
 The operation of the commands is controlled using TOML configuration files and/or environment variables and command-line arguments. In addition, Work Requirements and Worker Pools can be defined using JSON files providing extensive configurability.
 

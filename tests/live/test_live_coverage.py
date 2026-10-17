@@ -143,12 +143,6 @@ def test_yd_schema_is_left_to_the_unit_tests():
     assert "yd schema" in coverage.NOT_EXERCISED
 
 
-def test_no_entry_waits_for_plan_3b():
-    assert not [
-        c for c, reason in coverage.NOT_EXERCISED.items() if "plan 3b" in reason
-    ]
-
-
 PERMANENT = {
     "yd node restart",
     "yd cloudwizard",

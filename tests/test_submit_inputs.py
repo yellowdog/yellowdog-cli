@@ -67,7 +67,7 @@ class TestCsvFiles:
             return submit_module._csv_files(_submission())
 
     def test_an_empty_list_in_the_configuration_names_none(self):
-        # 'csvFiles = []' used to reach csv_files[0]: 'list index out of range'
+        # 'csvFiles = []' must not reach csv_files[0]: 'list index out of range'
         assert self._csv_files([], None) is None
 
     def test_the_configurations_files(self):
@@ -80,7 +80,7 @@ class TestCsvFiles:
 class TestWorkRequirementFromCsv:
     def test_more_than_one_csv_file_is_an_error(self):
         # Without a specification there is one Task Group, so the files after
-        # the first used to be ignored without a word
+        # the first would otherwise be ignored without a word
         with pytest.raises(ValueError, match=r"Number of CSV files \(2\) exceeds"):
             submit_module._work_requirement_from_csv(
                 _submission(), ["a.csv", "b.csv"], "."
@@ -103,8 +103,8 @@ class TestWorkRequirementFromCsv:
 
 class TestCheckTaskGroups:
     """
-    A missing 'tasks' used to be reported as "ERROR : 'tasks'", and a
-    missing 'taskGroups' submitted a Work Requirement with no Task Groups.
+    A missing 'tasks' or 'taskGroups' is named, rather than reported as
+    "ERROR : 'tasks'" or submitted as a Work Requirement with no Task Groups.
     """
 
     def test_missing_task_groups_is_named(self):
@@ -227,11 +227,11 @@ class TestTaskTypeOf:
         assert _task_type_of({}, _task_group(["bash", "docker"], "bash")) is None
 
     def test_a_configured_type_the_task_group_disallows_is_an_error(self):
-        # It used to be sent, for the Platform to refuse
+        # Rather than sent, for the Platform to refuse
         with pytest.raises(ValueError, match="has no 'taskType'"):
             _task_type_of({}, _task_group(["bash", "docker"]), config_type="python")
 
     def test_no_type_to_be_had_is_an_error_naming_the_task(self):
-        # It used to be sent as None
+        # Rather than sent as None
         with pytest.raises(ValueError, match=r"Task 1 \('t1'\) in Task Group 'tg'"):
             _task_type_of({}, _task_group(["bash", "docker"]))

@@ -2,7 +2,7 @@
 The run every wrapped command shares: main_wrapper (wrapper.py) and
 dataclient_wrapper (dataclient/wrapper.py) differ only in what they set up
 and tear down around the command, and in how an error is described, which
-they pass in. Once in one place, a fix to how a command is run, flushed and
+they pass in. Being in one place, a fix to how a command is run, flushed and
 exited is made once.
 
 It imports neither wrapper, nor anything that builds a Platform client: the
@@ -41,14 +41,13 @@ from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_
 def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     """
     Build what a command will use, before it runs and outside run_command()'s
-    handling, in the order importing once did: the command line ('args'),
-    which the output settings are then configured from and the configuration
-    loaded under, the configuration file, 'values' (the wrapper's own, such as
-    CONFIG_COMMON), then every lazy value the command's module holds that is
-    marked to be prepared (its configuration sections; not CLIENT). So an
-    argument error or a broken configuration is reported, and exits, before
-    the command starts, as it did when these were built at import. A test's
-    stand-in is left alone.
+    handling, in this order: the command line ('args'), which the output
+    settings are then configured from and the configuration loaded under, the
+    configuration file, 'values' (the wrapper's own, such as CONFIG_COMMON),
+    then every lazy value the command's module holds that is marked to be
+    prepared (its configuration sections; not CLIENT). So an argument error or
+    a broken configuration is reported, and exits, before the command starts.
+    A test's stand-in is left alone.
     """
     prepare(args)
     configure_output(args)

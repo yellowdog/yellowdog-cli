@@ -353,8 +353,8 @@ def ensure_config_loaded(args: Any = None) -> None:
     '-v'), which the file's substitutions use, then the file. Every public
     loader calls it, and the command wrappers before a command runs, so a
     broken configuration is reported, and exits, before the command starts.
-    It was done at import, which therefore parsed the command line and could
-    exit; a load that exits is tried again on next use.
+    Importing the module does none of this; a load that exits is tried again
+    on next use.
 
     'args' is the command line the configuration is loaded under, given by
     whoever runs the command (prepare_run(), yd-doctor) and kept for the
@@ -683,8 +683,8 @@ def _resolved_url(common_section: dict, strict: bool = True) -> str:
         str,
         _resolve_value(common_section.get(URL, DEFAULT_URL), f"{COMMON_SECTION}.{URL}"),
     )
-    # Refused here, as a configuration error: requests refused it only once
-    # the command ran, with 'No connection adapters were found'
+    # Refused here, as a configuration error: requests would refuse it only
+    # once the command ran, with 'No connection adapters were found'
     if strict and not url.lower().startswith(("https://", "http://")):
         print_error(
             f"The YellowDog API URL '{url}' must begin with 'https://' (or"
@@ -1215,8 +1215,8 @@ def _number(
     section: dict, key: str, kind: type[int] | type[float], default=None
 ) -> int | float | None:
     """
-    A section's numeric property, converted as it always has been (int() or
-    float(), which also take a string of digits), or 'default' when it is
+    A section's numeric property, converted by int() or float() (which also
+    take a string of digits), or 'default' when it is
     not set; one that will not convert exits, naming the property, which
     the conversion's own error does not.
     """

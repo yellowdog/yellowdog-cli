@@ -106,8 +106,8 @@ class Confirmation:
         """
         Refuse truthiness. Both 'act over the whole scope' and 'act on nothing'
         are legitimate outcomes, so a bare 'if confirmation:' cannot mean
-        anything safe — and unlike the list sentinel this replaced, an always-
-        truthy object would proceed even when the user declined. Callers must
+        anything safe — and an always-truthy object would proceed even when
+        the user declined. Callers must
         read .proceed explicitly.
         """
         raise TypeError("check Confirmation.proceed explicitly, not truthiness")

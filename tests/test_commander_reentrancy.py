@@ -103,8 +103,8 @@ def test_a_second_destructive_action_during_an_enumeration_is_refused(
 def test_the_depth_is_a_counter_not_a_flag(window):
     # Nested loops really do nest. The config parse deferred at construction with
     # singleShot(0) runs in the first event loop to spin, which can be one an
-    # enumeration has already entered — driving the real _run_nested once was
-    # observed reaching depth 2. A flag cleared when the inner parse finished
+    # enumeration has already entered — driving the real _run_nested can reach
+    # depth 2. A flag cleared when the inner parse finished
     # would unlock the window while the outer loop was still blocking, so the
     # guard must stay closed until the depth is back to zero.
     window._nested_depth = 2
@@ -154,7 +154,7 @@ def test_the_guard_precedes_the_dry_run_shortcut(window, captured, monkeypatch):
 
 
 def test_normal_operation_is_unaffected(window, captured, monkeypatch):
-    # With no nested loop in flight, every action proceeds as before.
+    # With no nested loop in flight, every action proceeds as normal.
     objects = [ObjectSummary(path="S3:b/pfx/o", name="o", is_dir=False)]
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: objects

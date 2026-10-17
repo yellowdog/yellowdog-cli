@@ -1,8 +1,8 @@
 """
 The 'yd-*' scripts released before 'yd': each still runs, warning on stderr
 of the 'yd' form that replaces it; 'yd <word>' and 'python -m' never warn;
-'--quiet' silences the warning. The noun scripts and yd-completion, never
-released, are gone.
+'--quiet' silences the warning. There are no noun scripts and no yd-completion
+script.
 """
 
 import subprocess
@@ -37,7 +37,7 @@ def test_the_forms():
     assert "yd-completion" not in SCRIPT_FORMS
 
 
-def test_the_unreleased_scripts_are_gone():
+def test_no_unreleased_script_is_installed():
     scripts = _scripts()
     for gone in ("yd-wr", "yd-workrequirement", "yd-data", "yd-completion"):
         assert gone not in scripts

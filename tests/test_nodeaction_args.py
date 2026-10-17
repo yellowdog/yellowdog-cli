@@ -50,7 +50,7 @@ class TestNodeActionActionsArg:
 
     def test_spec_flag_not_recognised(self):
         """
-        --spec must no longer be a valid flag.
+        --spec is not a valid flag.
         """
         with pytest.raises(SystemExit):
             _make_parser("--spec", "actions.json")
