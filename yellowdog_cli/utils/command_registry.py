@@ -386,8 +386,16 @@ LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
 LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
 # Those that record errors of their own
 LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
-# Those listed from within one Work Requirement or Task Group
-LIST_WITHIN_TYPES = frozenset({ET_TASK_GROUPS, ET_TASKS})
+# Those listed from within one parent, with the kinds of parent '--within'
+# takes for each (YDIDType values: ydid_utils.py is imported only to check)
+LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
+    ET_TASK_GROUPS: ("Work Requirement", "Task Group"),
+    ET_TASKS: ("Work Requirement", "Task Group"),
+    ET_INSTANCES: ("Compute Requirement",),
+    ET_NODES: ("Worker Pool",),
+    ET_WORKERS: ("Worker Pool", "Node"),
+}
+LIST_WITHIN_TYPES = frozenset(LIST_WITHIN_KINDS)
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2675,9 +2683,12 @@ WITHIN = option(
     metavar="<target>",
     required=False,
     help=(
-        "list the task groups or tasks of one work requirement or task group,"
-        " without asking which: its ID, or its name as 'wr', 'wr/tg',"
-        " 'namespace/wr' or 'namespace/wr/tg'"
+        "list the items of one parent without asking which: the task groups or"
+        " tasks of a work requirement or task group ('wr', 'wr/tg',"
+        " 'namespace/wr', 'namespace/wr/tg' or its ID), the instances of a"
+        " compute requirement, the nodes of a worker pool, or the workers of a"
+        " worker pool or node (its name, 'namespace/name' or its ID; a node by"
+        " its ID)"
     ),
 )
 PUBLIC_IPS_ONLY = option(
@@ -2721,14 +2732,14 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
                 + ", ".join(sorted(types))
             )
     within = getattr(args, "within_target", None)
-    if within:
-        from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+    if within and entity_type in LIST_WITHIN_KINDS:
+        from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
+        kinds = LIST_WITHIN_KINDS[entity_type]
         ydid_type = get_ydid_type(within)
-        if ydid_type not in (None, YDIDType.WORK_REQUIREMENT, YDIDType.TASK_GROUP):
+        if ydid_type is not None and ydid_type.value not in kinds:
             parser.error(
-                "--within takes a Work Requirement or Task Group, not a"
-                f" {ydid_type.value}"
+                f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
             )
     if args.public_ips_only:
         for dest, flag in (

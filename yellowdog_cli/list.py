@@ -8,7 +8,7 @@ import fnmatch
 from collections.abc import Callable
 from json import loads as json_loads
 from os.path import exists
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from requests import HTTPError, get
 from yellowdog_client.common import SearchClient
@@ -41,6 +41,7 @@ from yellowdog_client.model import (
     TaskStatus,
     User,
     Worker,
+    WorkerPool,
     WorkerPoolStatus,
     WorkerPoolSummary,
     WorkerStatus,
@@ -86,6 +87,7 @@ from yellowdog_cli.utils.entity_names import (
 from yellowdog_cli.utils.entity_utils import (
     filter_phrase,
     filter_summaries_by_name_glob,
+    find_compute_requirement_by_name,
     get_all_applications,
     get_all_groups,
     get_all_roles,
@@ -98,6 +100,8 @@ from yellowdog_cli.utils.entity_utils import (
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
     get_user_groups,
+    get_worker_pool_by_id,
+    get_worker_pool_id_by_name,
     get_worker_pool_summaries,
     namespace_scope,
     resolve_name_glob,
@@ -110,6 +114,7 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
+from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_info,
@@ -588,6 +593,23 @@ def _tasks_of(ctx: RunContext, task_groups: list) -> tuple[int, list]:
     return summarised, tasks
 
 
+_Fetched = TypeVar("_Fetched")
+
+
+def _fetched_within(kind: str, target: str, fetch: Callable[[], _Fetched]) -> _Fetched:
+    """
+    What fetching the '--within' target by its ID returns, a 404 raised as
+    NotFoundError naming it ("Worker Pool '<id>' not found") rather than as
+    the Platform's response.
+    """
+    try:
+        return fetch()
+    except HTTPError as error:
+        if not is_http_not_found(error):
+            raise
+        raise NotFoundError(f"{kind} '{target}' not found") from error
+
+
 def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
     """
     The Task Groups '--within' names: a Work Requirement's, or one Task
@@ -598,15 +620,20 @@ def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
     target = cast(str, ctx.args.within_target)
     match get_ydid_type(target):
         case YDIDType.WORK_REQUIREMENT:
-            return get_task_groups_from_wr_by_id(ctx.client, target)
+            return _fetched_within(
+                "Work Requirement",
+                target,
+                lambda: get_task_groups_from_wr_by_id(ctx.client, target),
+            )
         case YDIDType.TASK_GROUP:
-            found = [
-                tg
-                for tg in get_task_groups_from_wr_by_id(
+            task_groups = _fetched_within(
+                "Task Group",
+                target,
+                lambda: get_task_groups_from_wr_by_id(
                     ctx.client, work_requirement_id_of_task_group(target)
-                )
-                if tg.id == target
-            ]
+                ),
+            )
+            found = [tg for tg in task_groups if tg.id == target]
             if not found:
                 raise NotFoundError(f"Task Group '{target}' not found")
             return found
@@ -698,7 +725,51 @@ def list_tasks(
         print_numbered_object_list(ctx.client, tasks)
 
 
+def _worker_pool_within(ctx: RunContext, target: str) -> WorkerPool:
+    """
+    The Worker Pool '--within' names: by its ID, or by its name, in the
+    configured namespace unless given as 'namespace/name'. A name that
+    names nothing raises NotFoundError.
+    """
+    if get_ydid_type(target) != YDIDType.WORKER_POOL:
+        worker_pool_id = get_worker_pool_id_by_name(
+            ctx.client, target, ctx.config.namespace
+        )
+        if worker_pool_id is None:
+            raise NotFoundError(f"Worker Pool '{target}' not found")
+        target = worker_pool_id
+    return _fetched_within(
+        "Worker Pool", target, lambda: get_worker_pool_by_id(ctx.client, target)
+    )
+
+
+def _list_nodes_within(ctx: RunContext) -> None:
+    """
+    '--within' for Nodes and Workers: the Nodes of a Worker Pool, or for
+    Workers those of a Worker Pool or of one Node, listed without searching
+    for Worker Pools or asking which.
+    """
+    target = cast(str, ctx.args.within_target)
+    print_info(f"Listing {ctx.args.entity_type} within '{target}'")
+    if get_ydid_type(target) == YDIDType.NODE:
+        node: Node = _fetched_within(
+            "Node",
+            target,
+            lambda: ctx.client.worker_pool_client.get_node_by_id(target),
+        )
+        node.workerPoolName = get_worker_pool_by_id(  # type: ignore[attr-defined]
+            ctx.client, cast(str, node.workerPoolId)
+        ).name
+        list_workers(ctx, [node])
+        return
+    list_nodes(ctx, [_worker_pool_within(ctx, target)])  # type: ignore[list-item]
+
+
 def list_worker_pools(ctx: RunContext):
+    if ctx.args.within_target:
+        _list_nodes_within(ctx)
+        return
+
     worker_pool_summaries: list[WorkerPoolSummary]
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
@@ -802,18 +873,81 @@ def list_worker_pools(ctx: RunContext):
         print_numbered_object_list(ctx.client, sorted_objects(worker_pool_summaries))
 
 
+# A Compute Requirement still provisioning counts as active
+_ACTIVE_CR_STATUSES: tuple[ComputeRequirementStatus, ...] = (
+    ComputeRequirementStatus.NEW,
+    ComputeRequirementStatus.PROVISIONING,
+    ComputeRequirementStatus.STARTING,
+    ComputeRequirementStatus.RUNNING,
+    ComputeRequirementStatus.STOPPING,
+    ComputeRequirementStatus.STOPPED,
+    ComputeRequirementStatus.TERMINATING,
+)
+
+
+def _list_instances_within(ctx: RunContext) -> None:
+    """
+    '--within' for Instances: those of one Compute Requirement, by its ID or
+    by its name (found as the actions find one, in the configured namespace
+    unless given as 'namespace/name'), listed without searching for Compute
+    Requirements or asking which.
+    """
+    target = cast(str, ctx.args.within_target)
+    print_info(f"Listing instances within '{target}'")
+    if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
+        # Fetched, since an Instance search for an ID that names nothing
+        # finds nothing rather than failing
+        _fetched_within(
+            "Compute Requirement",
+            target,
+            lambda: ctx.client.compute_client.get_compute_requirement_by_id(target),
+        )
+        compute_requirement_id = target
+    else:
+        compute_requirement_id = cast(
+            str,
+            find_compute_requirement_by_name(
+                ctx.client,
+                target,
+                ctx.config.namespace,
+                _ACTIVE_CR_STATUSES,
+            ).id,
+        )
+    if _listing_all(ctx):
+        _print_all_instances(ctx, [compute_requirement_id])
+    else:
+        list_instances(ctx, compute_requirement_id)
+
+
+def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) -> None:
+    """
+    The Instances of the Compute Requirements, for the non-interactive
+    modes: each named as 'cr_id.instance_id' for '--ids-only', the form the
+    commands taking an Instance accept.
+    """
+    all_instances: list[tuple[str, Instance]] = []
+    for compute_requirement_id in compute_requirement_ids:
+        all_instances.extend(
+            (compute_requirement_id, instance)
+            for instance in _instances_of(ctx, compute_requirement_id)
+        )
+    if ctx.args.ids_only:
+        for cr_id, instance in all_instances:
+            print(f"{cr_id}.{instance.id.instanceId}")  # type: ignore[union-attr]
+    else:
+        _print_json_or_count(ctx, [instance for _, instance in all_instances])
+
+
 def list_compute_requirements(ctx: RunContext):
+    if ctx.args.within_target:
+        _list_instances_within(ctx)
+        return
+
     if ctx.args.active_only:
         print_info("Listing active Compute Requirements only")
-        included_statuses = [
-            ComputeRequirementStatus.NEW,
-            ComputeRequirementStatus.PROVISIONING,
-            ComputeRequirementStatus.STARTING,
-            ComputeRequirementStatus.RUNNING,
-            ComputeRequirementStatus.STOPPING,
-            ComputeRequirementStatus.STOPPED,
-            ComputeRequirementStatus.TERMINATING,
-        ]
+        included_statuses: list[ComputeRequirementStatus] | None = list(
+            _ACTIVE_CR_STATUSES
+        )
     else:
         included_statuses = None
 
@@ -860,20 +994,9 @@ def list_compute_requirements(ctx: RunContext):
 
     if ctx.args.entity_type == ET_INSTANCES:
         if _listing_all(ctx):
-            # Each with its Compute Requirement's ID, for '--ids-only': an
-            # Instance is named as 'cr_id.instance_id' by the commands that
-            # take one
-            all_instances: list[tuple[str, Instance]] = []
-            for cr_summary in compute_requirement_summaries:
-                all_instances.extend(
-                    (cast(str, cr_summary.id), instance)
-                    for instance in _instances_of(ctx, cast(str, cr_summary.id))
-                )
-            if ctx.args.ids_only:
-                for cr_id, instance in all_instances:
-                    print(f"{cr_id}.{instance.id.instanceId}")  # type: ignore[union-attr]
-            else:
-                _print_json_or_count(ctx, [instance for _, instance in all_instances])
+            _print_all_instances(
+                ctx, [cast(str, cr.id) for cr in compute_requirement_summaries]
+            )
             return
         for compute_requirement_summary in select(
             ctx.client, compute_requirement_summaries, single_result=True
@@ -987,10 +1110,11 @@ def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
             node.workerPoolName = worker_pool_summary.name  # type: ignore[attr-defined]
         nodes_all += nodes
 
+    # '--status' is the Workers' own when Workers are listed, not their Nodes'
+    if ctx.args.entity_type == ET_NODES:
+        nodes_all = _apply_status_filter(ctx, nodes_all)
     nodes_all = _apply_provider_filter(
-        ctx,
-        _apply_status_filter(ctx, nodes_all),
-        lambda node: node.details.provider if node.details else None,
+        ctx, nodes_all, lambda node: node.details.provider if node.details else None
     )
     if not nodes_all:
         _print_empty(ctx, "No Nodes to display")

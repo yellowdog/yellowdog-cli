@@ -129,6 +129,22 @@ def listing(monkeypatch):
             ["tasks", "--within", CR_ID],
             "--within takes a Work Requirement or Task Group, not a Compute Requirement",
         ),
+        (
+            ["instances", "--within", CR_ID.replace("compreq", "wrkrpool")],
+            "--within takes a Compute Requirement, not a Worker Pool",
+        ),
+        (
+            ["nodes", "--within", CR_ID],
+            "--within takes a Worker Pool, not a Compute Requirement",
+        ),
+        (
+            ["workers", "--within", CR_ID],
+            "--within takes a Worker Pool or Node, not a Compute Requirement",
+        ),
+        (
+            ["compute-requirements", "--within", "cr"],
+            "--within does not apply to compute-requirements",
+        ),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -157,6 +173,11 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["tasks", "--with-errors", "--status", "COMPLETED"],
         ["tasks", "--within", "my-wr/tg-1", "--status", "failed"],
         ["task-groups", "--within", CR_ID.replace("compreq", "workreq")],
+        ["instances", "--within", CR_ID, "--status", "running"],
+        ["instances", "--within", "ns/my-cr", "--public-ips-only"],
+        ["nodes", "--within", "my-pool", "--provider", "aws"],
+        ["workers", "--within", CR_ID.replace("compreq", "node")],
+        ["workers", "--within", CR_ID.replace("compreq", "wrkrpool")],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -799,3 +820,193 @@ class TestWithin:
             f"{TG2}-t1",
             f"{TG2}-t2",
         ]
+
+
+WP_ID = CR_ID.replace("compreq", "wrkrpool")
+NODE_ID = CR_ID.replace("compreq", "node")
+
+
+class TestWithinCompute:
+    """
+    '--within' for Instances (a Compute Requirement), Nodes (a Worker Pool)
+    and Workers (a Worker Pool or a Node): listed without searching the
+    namespace or asking which.
+    """
+
+    @staticmethod
+    def _no_search(monkeypatch):
+        for searched in (
+            "get_compute_requirement_summaries",
+            "get_worker_pool_summaries",
+        ):
+            monkeypatch.setattr(
+                yd_list, searched, MagicMock(side_effect=AssertionError(searched))
+            )
+
+    def test_the_instances_within_a_compute_requirement_id(
+        self, listing, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_INSTANCES, within_target=CR_ID, ids_only=True),
+        )
+        self._no_search(monkeypatch)
+        listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+            SimpleNamespace(id=SimpleNamespace(instanceId="i-1"), status=None)
+        ]
+        yd_list.list_compute_requirements(_ctx())
+        assert capsys.readouterr().out.split() == [f"{CR_ID}.i-1"]
+
+    def test_a_compute_requirement_name_is_found_as_the_actions_find_it(
+        self, listing, monkeypatch
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_INSTANCES, within_target="other/my-cr", json_output=True),
+        )
+        self._no_search(monkeypatch)
+        seen = []
+
+        def find(client, name, namespace, statuses):
+            seen.append((name, namespace))
+            return SimpleNamespace(id=CR_ID)
+
+        monkeypatch.setattr(yd_list, "find_compute_requirement_by_name", find)
+        listing.client.compute_client.get_instances.return_value.list_all.return_value = []
+        yd_list.list_compute_requirements(_ctx())
+        assert seen == [("other/my-cr", "ns")]
+        assert listing.printed == [[]]
+
+    def test_the_nodes_within_a_worker_pool_id(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("nodes", within_target=WP_ID, json_output=True),
+        )
+        self._no_search(monkeypatch)
+        pool = SimpleNamespace(id=WP_ID, name="pool")
+        monkeypatch.setattr(yd_list, "get_worker_pool_by_id", lambda c, wp_id: pool)
+        listed = []
+        monkeypatch.setattr(
+            yd_list, "list_nodes", lambda _c, pools: listed.append(pools)
+        )
+        yd_list.list_worker_pools(_ctx())
+        assert listed == [[pool]]
+
+    def test_a_worker_pool_name_that_names_nothing_is_not_found(
+        self, listing, monkeypatch
+    ):
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("nodes", within_target="no-pool", json_output=True),
+        )
+        self._no_search(monkeypatch)
+        monkeypatch.setattr(
+            yd_list, "get_worker_pool_id_by_name", lambda c, name, namespace: None
+        )
+        with pytest.raises(NotFoundError, match="no-pool"):
+            yd_list.list_worker_pools(_ctx())
+
+    def test_the_workers_within_a_node_id(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_WORKERS, within_target=NODE_ID, json_output=True),
+        )
+        self._no_search(monkeypatch)
+        node = SimpleNamespace(id=NODE_ID, workerPoolId=WP_ID, workers=[])
+        listing.client.worker_pool_client.get_node_by_id.return_value = node
+        monkeypatch.setattr(
+            yd_list,
+            "get_worker_pool_by_id",
+            lambda c, wp_id: SimpleNamespace(id=wp_id, name="pool"),
+        )
+        listed = []
+        monkeypatch.setattr(
+            yd_list, "list_workers", lambda _c, nodes: listed.append(nodes)
+        )
+        yd_list.list_worker_pools(_ctx())
+        assert listed == [[node]]
+        assert node.workerPoolName == "pool"
+
+
+def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
+    # A Node is RUNNING while its Workers are DOING_TASK: '--status' is the
+    # Workers'
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        _args(ET_WORKERS, status_filter=["DOING_TASK"], json_output=True),
+    )
+    worker = SimpleNamespace(status="DOING_TASK")
+    node = SimpleNamespace(details=None, workers=[worker], status="RUNNING")
+    listing.client.worker_pool_client.get_nodes.return_value.list_all.return_value = [
+        node
+    ]
+    printed: list = []
+    monkeypatch.setattr(
+        yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+    )
+    yd_list.list_nodes(_ctx(), [SimpleNamespace(id=WP_ID, name="pool")])
+    assert printed == [[worker]]
+
+
+def _not_found(*_args, **_kwargs):
+    response = Response()
+    response.status_code = 404
+    raise HTTPError("404 Client Error", response=response)
+
+
+@pytest.mark.parametrize(
+    "entity_type, target, patch, kind",
+    [
+        (
+            ET_INSTANCES,
+            CR_ID,
+            ("client", "compute_client.get_compute_requirement_by_id"),
+            "Compute Requirement",
+        ),
+        ("nodes", WP_ID, ("module", "get_worker_pool_by_id"), "Worker Pool"),
+        (ET_WORKERS, NODE_ID, ("client", "worker_pool_client.get_node_by_id"), "Node"),
+        (
+            ET_TASKS,
+            CR_ID.replace("compreq", "workreq"),
+            ("module", "get_task_groups_from_wr_by_id"),
+            "Work Requirement",
+        ),
+    ],
+)
+def test_an_id_within_that_names_nothing_is_not_found(
+    listing, monkeypatch, entity_type, target, patch, kind
+):
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        _args(entity_type, within_target=target, json_output=True),
+    )
+    where, name = patch
+    if where == "module":
+        monkeypatch.setattr(yd_list, name, _not_found)
+    else:
+        owner, method = name.split(".")
+        setattr(
+            getattr(listing.client, owner), method, MagicMock(side_effect=_not_found)
+        )
+    listing.client.compute_client.get_instances.return_value.list_all.return_value = []
+    lister = {
+        ET_INSTANCES: yd_list.list_compute_requirements,
+        "nodes": yd_list.list_worker_pools,
+        ET_WORKERS: yd_list.list_worker_pools,
+        ET_TASKS: yd_list.list_work_requirements,
+    }[entity_type]
+    with pytest.raises(NotFoundError) as raised:
+        lister(_ctx())
+    assert str(raised.value) == f"{kind} '{target}' not found"
+    assert isinstance(raised.value.__cause__, HTTPError)
