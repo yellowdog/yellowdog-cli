@@ -611,6 +611,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "details",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -3542,6 +3555,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null
@@ -8149,6 +8175,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "details",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -10750,6 +10789,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null
@@ -13433,6 +13485,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "details",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -14774,6 +14839,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "details",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -15749,6 +15827,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null
@@ -16783,6 +16874,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "details",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -17775,6 +17879,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null
@@ -21577,6 +21694,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null
@@ -30089,6 +30219,19 @@
       "nargs": 0,
       "option_strings": [
         "--public-ips-only"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "deletable",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--deletable"
       ],
       "required": false,
       "type": null

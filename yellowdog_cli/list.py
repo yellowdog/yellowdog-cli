@@ -4,6 +4,7 @@
 Command to list YellowDog entities.
 """
 
+import fnmatch
 from collections.abc import Callable
 from json import loads as json_loads
 from os.path import exists
@@ -1212,12 +1213,26 @@ def list_attribute_definitions(ctx: RunContext):
 
 def list_namespaces(ctx: RunContext):
     """
-    List namespaces.
+    List namespaces: with '--name', those whose name matches the glob (the
+    search narrowed to names containing its literal prefix, since the
+    Platform matches a substring); with '--deletable', only those the
+    Platform can delete, never having been populated.
     """
-
+    name_glob = ctx.args.name_glob
     namespaces: list[Namespace] = ctx.client.namespaces_client.get_namespaces(
-        NamespaceSearch()
+        NamespaceSearch(
+            namespaceContains=(glob_search_prefix(name_glob) or None)
+            if name_glob
+            else None,
+            deletable=True if ctx.args.deletable else None,
+        )
     ).list_all()
+    if name_glob:
+        namespaces = [
+            ns
+            for ns in namespaces
+            if ns.namespace is not None and fnmatch.fnmatchcase(ns.namespace, name_glob)
+        ]
 
     if not namespaces:
         _print_empty(ctx, "No Namespaces found")

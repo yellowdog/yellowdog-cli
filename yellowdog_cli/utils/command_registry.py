@@ -338,6 +338,7 @@ ENTITY_TYPES = [
 # is refused for any other (check_list_options), rather than ignored
 LIST_NAME_TYPES = frozenset(
     {
+        ET_NAMESPACES,
         ET_WORK_REQUIREMENTS,
         ET_WORKER_POOLS,
         ET_COMPUTE_REQUIREMENTS,
@@ -368,6 +369,8 @@ LIST_STATUS_TYPES = frozenset(
 # Those listed from active Work Requirements, Worker Pools or Compute
 # Requirements, or themselves active or not
 LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Those the Platform can say are deletable: a namespace never populated
+LIST_DELETABLE_TYPES = frozenset({ET_NAMESPACES})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2581,7 +2584,7 @@ NAME = option(
     required=False,
     help=(
         "list only entities whose name matches the given glob "
-        "pattern (e.g. 'proj-*'); applies to work requirements, "
+        "pattern (e.g. 'proj-*'); applies to namespaces, work requirements, "
         "worker pools, compute requirements, compute requirement/source "
         "templates, image families, users, applications, groups, "
         "roles, keyrings and permissions; not supported for other "
@@ -2600,6 +2603,15 @@ STATUS = option(
         "(case-insensitive); may be repeated to allow multiple statuses"
     ),
     metavar="<status>",
+)
+DELETABLE = option(
+    "--deletable",
+    action="store_true",
+    required=False,
+    help=(
+        "when used with 'namespaces', lists only those that can be deleted"
+        " (never populated)"
+    ),
 )
 PUBLIC_IPS_ONLY = option(
     "--public-ips-only",
@@ -2629,6 +2641,7 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("ids_only", "--ids-only", LIST_ID_TYPES),
         ("substitute_ids", "--substitute-ids", LIST_SUBSTITUTE_TYPES),
         ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
+        ("deletable", "--deletable", LIST_DELETABLE_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
@@ -2664,6 +2677,7 @@ COMMANDS["yd-list"] = Command(
         NAME,
         STATUS,
         PUBLIC_IPS_ONLY,
+        DELETABLE,
         DETAILS,
         AUTO_SELECT_ALL,
         SUBSTITUTE_IDS,

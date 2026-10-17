@@ -57,6 +57,7 @@ def _args(entity_type: str, **values) -> Any:
         status_filter=None,
         public_ips_only=False,
         substitute_ids=False,
+        deletable=False,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -103,6 +104,7 @@ def listing(monkeypatch):
         (["nodes", "--public-ips-only"], "--public-ips-only does not apply to nodes"),
         (["instances", "--public-ips-only", "--json"], "cannot be used with --json"),
         (["nodes", "--name", "x*"], "--name does not apply to nodes"),
+        (["keyrings", "--deletable"], "--deletable does not apply to keyrings"),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -120,6 +122,7 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["compute-requirement-templates", "--substitute-ids"],
         ["tasks", "--ids-only", "--status", "FAILED"],
         ["worker-pools", "--name", "wp-*", "--active-only"],
+        ["namespaces", "--name", "yd-*", "--deletable"],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -370,3 +373,61 @@ def test_namespaces_and_policies_are_sorted(
     )
     getattr(yd_list, lister)(_ctx())
     assert [e.name for e in listing.printed[0]] == ["b", "a"]
+
+
+class TestNamespaceFilters:
+    """
+    'yd list namespaces --name <glob>' and '--deletable': the Platform asked
+    for names containing the glob's literal prefix and, with '--deletable',
+    only namespaces that can be deleted; the glob applied to the namespace's
+    name in what comes back.
+    """
+
+    def _listed(self, listing, monkeypatch, names, **values):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("namespaces", json_output=True, **values),
+        )
+        get = listing.client.namespaces_client.get_namespaces
+        get.return_value.list_all.return_value = [
+            SimpleNamespace(id=f"id-{n}", namespace=n, deletable=True) for n in names
+        ]
+        yd_list.list_namespaces(_ctx())
+        (search,) = get.call_args.args
+        return search, listing.printed
+
+    def test_nothing_given_asks_for_every_namespace(self, listing, monkeypatch):
+        search, printed = self._listed(listing, monkeypatch, ["a", "b"])
+        assert search.namespaceContains is None
+        assert search.deletable is None
+        assert sorted(n.namespace for n in printed[0]) == ["a", "b"]
+
+    def test_a_name_glob_narrows_the_search_and_is_matched_exactly(
+        self, listing, monkeypatch
+    ):
+        # The Platform matches a substring: the glob decides
+        search, printed = self._listed(
+            listing,
+            monkeypatch,
+            ["yd-cli-tests", "my-yd-cli-x", "yd-cli-system-tests"],
+            name_glob="yd-cli-*",
+        )
+        assert search.namespaceContains == "yd-cli-"
+        assert sorted(n.namespace for n in printed[0]) == [
+            "yd-cli-system-tests",
+            "yd-cli-tests",
+        ]
+
+    def test_a_name_without_wildcards_is_that_namespace_alone(
+        self, listing, monkeypatch
+    ):
+        search, printed = self._listed(
+            listing, monkeypatch, ["ns", "ns-2"], name_glob="ns"
+        )
+        assert search.namespaceContains == "ns"
+        assert [n.namespace for n in printed[0]] == ["ns"]
+
+    def test_deletable_asks_for_deletable_namespaces(self, listing, monkeypatch):
+        search, _ = self._listed(listing, monkeypatch, ["a"], deletable=True)
+        assert search.deletable is True

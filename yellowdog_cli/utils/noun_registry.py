@@ -25,6 +25,7 @@ from typing import Any
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     LIST_ACTIVE_TYPES,
+    LIST_DELETABLE_TYPES,
     LIST_ID_TYPES,
     LIST_NAME_TYPES,
     LIST_STATUS_TYPES,
@@ -218,6 +219,7 @@ def _list(entity_type: str, noun_plural: str) -> Verb:
             ("--ids-only", LIST_ID_TYPES),
             ("--substitute-ids", LIST_SUBSTITUTE_TYPES),
             ("--public-ips-only", frozenset({ET_INSTANCES})),
+            ("--deletable", LIST_DELETABLE_TYPES),
         )
         if entity_type not in types
     ]

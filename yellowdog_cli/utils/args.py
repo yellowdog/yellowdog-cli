@@ -406,6 +406,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def deletable(self) -> bool | None:
+        return self.args.deletable
+
+    @property
+    @allow_missing_attribute
     def details(self) -> bool | None:
         return self.args.details
 
