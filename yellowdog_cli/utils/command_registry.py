@@ -386,6 +386,8 @@ LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
 LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
 # Those that record errors of their own
 LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
+# Those listed from within one Work Requirement or Task Group
+LIST_WITHIN_TYPES = frozenset({ET_TASK_GROUPS, ET_TASKS})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2667,6 +2669,17 @@ WITH_ERRORS = option(
         " (a task can complete after an error, on a retry)"
     ),
 )
+WITHIN = option(
+    "--within",
+    dest="within_target",
+    metavar="<target>",
+    required=False,
+    help=(
+        "list the task groups or tasks of one work requirement or task group,"
+        " without asking which: its ID, or its name as 'wr', 'wr/tg',"
+        " 'namespace/wr' or 'namespace/wr/tg'"
+    ),
+)
 PUBLIC_IPS_ONLY = option(
     "--public-ips-only",
     action="store_true",
@@ -2700,11 +2713,22 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("provider", "--provider", LIST_PROVIDER_TYPES),
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
         ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
+        ("within_target", "--within", LIST_WITHIN_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
                 f"{flag} does not apply to {entity_type}; it applies to "
                 + ", ".join(sorted(types))
+            )
+    within = getattr(args, "within_target", None)
+    if within:
+        from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+        ydid_type = get_ydid_type(within)
+        if ydid_type not in (None, YDIDType.WORK_REQUIREMENT, YDIDType.TASK_GROUP):
+            parser.error(
+                "--within takes a Work Requirement or Task Group, not a"
+                f" {ydid_type.value}"
             )
     if args.public_ips_only:
         for dest, flag in (
@@ -2738,6 +2762,7 @@ COMMANDS["yd-list"] = Command(
         PROVIDER,
         DESCRIPTION,
         WITH_ERRORS,
+        WITHIN,
         PUBLIC_IPS_ONLY,
         DELETABLE,
         DETAILS,

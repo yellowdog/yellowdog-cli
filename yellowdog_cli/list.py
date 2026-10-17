@@ -106,6 +106,7 @@ from yellowdog_cli.utils.entity_utils import (
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
@@ -120,7 +121,13 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_names import PROP_GROUPS, PROP_RESOURCE
 from yellowdog_cli.utils.tables import print_numbered_object_list, sorted_objects
+from yellowdog_cli.utils.work_targets import resolve_named_target
 from yellowdog_cli.utils.wrapper import main_wrapper
+from yellowdog_cli.utils.ydid_utils import (
+    YDIDType,
+    get_ydid_type,
+    work_requirement_id_of_task_group,
+)
 
 
 def _filter_by_name_glob_with_warning(
@@ -429,6 +436,10 @@ def list_work_requirements(ctx: RunContext):
     This function falls through from WRs to TGs to Tasks, depending on the
     options chosen.
     """
+    if ctx.args.within_target:
+        _list_within(ctx)
+        return
+
     if ctx.args.active_only:
         print_info("Listing active Work Requirements only")
 
@@ -520,33 +531,11 @@ def list_work_requirements(ctx: RunContext):
                 get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
             )
             if ctx.args.entity_type == ET_TASK_GROUPS:
-                all_objects.extend(
-                    _apply_name_filter(
-                        ctx, _apply_status_filter(ctx, tgs), ET_TASK_GROUPS
-                    )
-                )
+                all_objects.extend(_filtered_task_groups(ctx, tgs))
                 continue
-            for tg in tgs:
-                if (counted := _summary_task_count(ctx, tg)) is not None:
-                    summarised += counted
-                    continue
-                all_objects.extend(
-                    _apply_errors_filter(
-                        ctx,
-                        _apply_name_filter(
-                            ctx,
-                            _apply_status_filter(
-                                ctx,
-                                get_all_tasks_in_task_group(
-                                    ctx.client,
-                                    cast(str, tg.id),
-                                    **_task_search_terms(ctx),
-                                ),
-                            ),
-                            ET_TASKS,
-                        ),
-                    )
-                )
+            counted, tasks = _tasks_of(ctx, tgs)
+            summarised += counted
+            all_objects.extend(tasks)
         if ctx.args.count_only:
             print(summarised + len(all_objects))
         else:
@@ -558,6 +547,111 @@ def list_work_requirements(ctx: RunContext):
         for work_summary in selected_work_summaries:
             print_info(f"Work Requirement '{work_summary.name}'")
             list_task_groups(ctx, work_summary)
+
+
+def _filtered_task_groups(ctx: RunContext, task_groups: list) -> list:
+    """
+    The Task Groups that '--name' and '--status' leave.
+    """
+    return _apply_name_filter(
+        ctx, _apply_status_filter(ctx, task_groups), ET_TASK_GROUPS
+    )
+
+
+def _tasks_of(ctx: RunContext, task_groups: list) -> tuple[int, list]:
+    """
+    The Tasks of the given Task Groups that the filters leave: the number
+    counted from Task Groups' summaries under '--count' (see
+    _summary_task_count()), and the Tasks fetched from the rest.
+    """
+    summarised = 0
+    tasks: list = []
+    for tg in task_groups:
+        if (counted := _summary_task_count(ctx, tg)) is not None:
+            summarised += counted
+            continue
+        tasks.extend(
+            _apply_errors_filter(
+                ctx,
+                _apply_name_filter(
+                    ctx,
+                    _apply_status_filter(
+                        ctx,
+                        get_all_tasks_in_task_group(
+                            ctx.client, cast(str, tg.id), **_task_search_terms(ctx)
+                        ),
+                    ),
+                    ET_TASKS,
+                ),
+            )
+        )
+    return summarised, tasks
+
+
+def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
+    """
+    The Task Groups '--within' names: a Work Requirement's, or one Task
+    Group, given by YDID or by name as yd-abort takes it ('wr', 'wr/tg',
+    'namespace/wr', 'namespace/wr/tg'). A target that names nothing raises
+    NotFoundError.
+    """
+    target = cast(str, ctx.args.within_target)
+    match get_ydid_type(target):
+        case YDIDType.WORK_REQUIREMENT:
+            return get_task_groups_from_wr_by_id(ctx.client, target)
+        case YDIDType.TASK_GROUP:
+            found = [
+                tg
+                for tg in get_task_groups_from_wr_by_id(
+                    ctx.client, work_requirement_id_of_task_group(target)
+                )
+                if tg.id == target
+            ]
+            if not found:
+                raise NotFoundError(f"Task Group '{target}' not found")
+            return found
+        case None:
+            named = resolve_named_target(ctx.client, target, ctx.config.namespace)
+            if named.task_group is not None:
+                return [named.task_group]
+            return get_task_groups_from_wr_by_id(
+                ctx.client, cast(str, named.work_requirement.id)
+            )
+        case other:
+            raise ValueError(
+                f"'{target}' is a {other.value} ID, not a Work Requirement or"
+                " Task Group ID"
+            )
+
+
+def _list_within(ctx: RunContext) -> None:
+    """
+    '--within': the Task Groups or Tasks of one Work Requirement or Task
+    Group, listed without asking which Work Requirement or Task Group.
+    """
+    print_info(f"Listing {ctx.args.entity_type} within '{ctx.args.within_target}'")
+    task_groups = sorted_objects(_task_groups_within(ctx))
+    summarised = 0
+    if ctx.args.entity_type == ET_TASK_GROUPS:
+        objects = _filtered_task_groups(ctx, task_groups)
+    else:
+        # Grouped by Task Group, each group's Tasks in order: Tasks sort by
+        # their number, which every Task Group's Tasks share
+        objects = []
+        for task_group in task_groups:
+            counted, tasks = _tasks_of(ctx, [task_group])
+            summarised += counted
+            objects.extend(sorted_objects(tasks))
+    if ctx.args.count_only:
+        print(summarised + len(objects))
+    elif _listing_all(ctx):
+        _print_all(ctx, objects)
+    elif not objects:
+        print_info(f"No matching {ctx.args.entity_type}")
+    elif ctx.args.details:
+        print_yd_object_list([(obj, None) for obj in select(ctx.client, objects)])
+    else:
+        print_numbered_object_list(ctx.client, objects)
 
 
 def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):

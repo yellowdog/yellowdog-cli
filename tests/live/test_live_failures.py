@@ -189,6 +189,52 @@ def test_not_found_one_of_two_shown(live_run, stuck_wr):
     assert [r["id"] for r in result.records] == [stuck_wr]
 
 
+def test_not_found_within_name(live_run):
+    name = live_run.run.name("no-such-wr")
+    _fails(
+        live_run.yd,
+        "not-found-within-name",
+        6,
+        name,
+        "task",
+        "list",
+        "--within",
+        name,
+        *_JSON,
+    )
+
+
+def test_not_found_within_wr_id(live_run, stuck_wr):
+    missing = fake_ydid(stuck_wr, "workreq")
+    _fails(
+        live_run.yd,
+        "not-found-within-wr-id",
+        6,
+        missing,
+        "task",
+        "list",
+        "--within",
+        missing,
+        *_JSON,
+    )
+
+
+def test_not_found_within_task_group_id(live_run, stuck_wr):
+    # The stuck Work Requirement's, by a number none of its Task Groups has
+    missing = stuck_wr.replace("ydid:workreq:", "ydid:taskgrp:") + ":99"
+    _fails(
+        live_run.yd,
+        "not-found-within-task-group-id",
+        6,
+        missing,
+        "task",
+        "list",
+        "--within",
+        missing,
+        *_JSON,
+    )
+
+
 # Authentication: the limited Application's key with a wrong secret
 
 
@@ -292,6 +338,20 @@ def test_permission_show_other_namespace(as_limited, stuck_wr):
         "show",
         stuck_wr,
         "--quiet",
+    )
+
+
+def test_permission_within(as_limited, stuck_wr):
+    _fails(
+        as_limited,
+        "permission-within",
+        5,
+        PERMISSION,
+        "task",
+        "list",
+        "--within",
+        stuck_wr,
+        *_JSON,
     )
 
 

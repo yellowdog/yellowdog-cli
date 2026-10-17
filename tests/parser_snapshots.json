@@ -654,6 +654,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -3658,6 +3671,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null
@@ -8334,6 +8360,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -11008,6 +11047,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null
@@ -13760,6 +13812,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -15172,6 +15237,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -16220,6 +16298,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null
@@ -17323,6 +17414,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -18388,6 +18492,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null
@@ -22261,6 +22378,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null
@@ -30844,6 +30974,19 @@
       "nargs": 0,
       "option_strings": [
         "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "within_target",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--within"
       ],
       "required": false,
       "type": null

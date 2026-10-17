@@ -1442,7 +1442,7 @@ Valid entity types are:
 | `worker-pools` | `P` | Worker Pools |
 | `workers` | `F` | Workers (interactive: select a Worker Pool first) |
 
-The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking.
+The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the Task Groups or Tasks of one Work Requirement or Task Group directly, name it with `--within` (below).
 
 Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
 
@@ -1464,6 +1464,7 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 | `--provider <aws\|azure\|google\|oci\|on-premise>` | List only the Instances, Nodes or Compute Source Templates of that cloud provider, e.g. `yd list instances --provider google` |
 | `--description <glob>` | List only the Allowances whose description matches the glob (they have no name), e.g. `yd list allowances --description 'gpu-*'`; a value without wildcards matches the description exactly |
 | `--with-errors` | List only the Tasks that recorded an error, whatever their status: not the same as `--status FAILED`, since a Task can complete after an error (on a retry), e.g. `yd list tasks --with-errors --status COMPLETED` |
+| `--within <target>` | List the Task Groups or Tasks of one Work Requirement or Task Group, without asking which: its YellowDog ID, or its name as `wr`, `wr/tg`, `namespace/wr` or `namespace/wr/tg` (as `yd workrequirement abort` takes it; a name without a namespace is looked for in the configured one), e.g. `yd list tasks --within my-wr/tg-1 --status failed`. Tasks are listed Task Group by Task Group. It combines with the other filters and with `--json`, `--count` and `--ids-only`; a target that does not exist exits 6, and the ID of anything else is refused (exit 2) |
 | `--deletable` | With `namespaces`, list only the namespaces the Platform can delete: those never populated, e.g. `yd list namespaces --name 'yd-*' --deletable` |
 | `--hide-user-data` | With `--details` or `--json`, show each `userData` value (in Compute Source Templates, Compute Requirement Templates and Compute Requirements) as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full. It applies to `--output-file` too, whose JSON can then no longer be used with `yd resource create` as it is |
 
@@ -1473,7 +1474,7 @@ yd list work-requirements --name 'myproject-*' --active-only
 
 For Tasks, which can number in the millions, `--status`, `--with-errors` and `--name` are passed to the Platform with the search, so only the matching Tasks are fetched: `--name` as the longest literal part of its pattern (the Platform matches it as a case-sensitive substring), the pattern itself then applied to what comes back. `--count` fetches no Tasks at all where it can: each Task Group's own summary gives its count, or with `--status` the count of each status, so only `--name` and `--with-errors` need the Tasks themselves.
 
-An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provider`, `--description`, `--with-errors`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
+An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provider`, `--description`, `--with-errors`, `--within`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
 

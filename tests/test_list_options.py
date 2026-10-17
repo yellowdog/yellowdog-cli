@@ -62,6 +62,7 @@ def _args(entity_type: str, **values) -> Any:
         provider=None,
         description_glob=None,
         with_errors=False,
+        within_target=None,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -120,6 +121,14 @@ def listing(monkeypatch):
             ["task-groups", "--with-errors"],
             "--with-errors does not apply to task-groups",
         ),
+        (
+            ["work-requirements", "--within", "wr"],
+            "--within does not apply to work-requirements",
+        ),
+        (
+            ["tasks", "--within", CR_ID],
+            "--within takes a Work Requirement or Task Group, not a Compute Requirement",
+        ),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -146,6 +155,8 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["compute-source-templates", "--provider", "aws"],
         ["allowances", "--description", "*-allowance"],
         ["tasks", "--with-errors", "--status", "COMPLETED"],
+        ["tasks", "--within", "my-wr/tg-1", "--status", "failed"],
+        ["task-groups", "--within", CR_ID.replace("compreq", "workreq")],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -632,3 +643,159 @@ def test_the_task_search_carries_the_terms():
     assert search.hasErrors is True
     assert search.name == "row-"
     entity_utils.get_all_tasks_in_task_group.cache_clear()
+
+
+WR = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+TG1 = WR.replace("workreq", "taskgrp") + ":1"
+TG2 = WR.replace("workreq", "taskgrp") + ":2"
+
+
+class TestWithin:
+    """
+    '--within <target>': the Task Groups or Tasks of one Work Requirement or
+    Task Group, named as yd-abort names one ('wr', 'wr/tg', 'namespace/wr',
+    'namespace/wr/tg') or by its YDID, listed without asking which.
+    """
+
+    @staticmethod
+    def _groups():
+        return [
+            SimpleNamespace(id=TG1, name="tg-1", status=None, taskSummary=None),
+            SimpleNamespace(id=TG2, name="tg-2", status=None, taskSummary=None),
+        ]
+
+    def _ctx(self, monkeypatch, entity_type, target, **values):
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: self._groups(),
+        )
+        return RunContext(
+            args=_args(entity_type, within_target=target, **values),
+            config=SimpleNamespace(namespace="ns"),
+            client=MagicMock(),
+        )
+
+    def test_a_work_requirement_id_gives_its_task_groups(self, monkeypatch):
+        ctx = self._ctx(monkeypatch, "task-groups", WR)
+        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1, TG2]
+
+    def test_a_task_group_id_gives_that_task_group(self, monkeypatch):
+        ctx = self._ctx(monkeypatch, "tasks", TG2)
+        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG2]
+
+    def test_a_task_group_id_not_in_its_work_requirement_is_not_found(
+        self, monkeypatch
+    ):
+        from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
+
+        ctx = self._ctx(monkeypatch, "tasks", WR.replace("workreq", "taskgrp") + ":9")
+        with pytest.raises(NotFoundError) as raised:
+            yd_list._task_groups_within(ctx)
+        assert classify(raised.value) == ExitCode.NOT_FOUND
+
+    def test_another_kind_of_id_is_refused(self, monkeypatch):
+        ctx = self._ctx(monkeypatch, "tasks", CR_ID)
+        with pytest.raises(ValueError, match="not a Work Requirement or Task Group"):
+            yd_list._task_groups_within(ctx)
+
+    def test_a_name_is_resolved_as_yd_abort_resolves_it(self, monkeypatch):
+        from yellowdog_cli.utils.work_targets import NamedTarget
+
+        ctx = self._ctx(monkeypatch, "tasks", "my-wr/tg-1")
+        seen = []
+
+        def resolve(client, target, namespace):
+            seen.append((target, namespace))
+            return NamedTarget(SimpleNamespace(id=WR), self._groups()[0])
+
+        monkeypatch.setattr(yd_list, "resolve_named_target", resolve)
+        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1]
+        assert seen == [("my-wr/tg-1", "ns")]
+
+    def test_the_tasks_within_are_listed_without_asking(
+        self, listing, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("tasks", within_target=TG1, ids_only=True),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: self._groups(),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_all_tasks_in_task_group",
+            lambda client, tg_id, **terms: [
+                SimpleNamespace(
+                    id=f"{tg_id}-t{i}", name=f"t{i}", status=None, errors=None
+                )
+                for i in (1, 2)
+            ],
+        )
+        monkeypatch.setattr(yd_list, "select", MagicMock(side_effect=AssertionError))
+        monkeypatch.setattr(
+            yd_list,
+            "get_filtered_work_requirement_summaries",
+            MagicMock(side_effect=AssertionError),
+        )
+        yd_list.list_work_requirements(_ctx())
+        assert capsys.readouterr().out.split() == [f"{TG1}-t1", f"{TG1}-t2"]
+
+    def test_nothing_within_is_an_empty_array_under_json(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("tasks", within_target=TG1, json_output=True),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: self._groups(),
+        )
+        monkeypatch.setattr(
+            yd_list, "get_all_tasks_in_task_group", lambda client, tg_id, **terms: []
+        )
+        yd_list.list_work_requirements(_ctx())
+        assert listing.printed == [[]]
+
+    def test_the_tasks_within_a_work_requirement_are_grouped_by_task_group(
+        self, listing, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("tasks", within_target=WR, ids_only=True),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: self._groups(),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_all_tasks_in_task_group",
+            lambda client, tg_id, **terms: [
+                SimpleNamespace(
+                    id=f"{tg_id}-t{i}", number=i, name=f"t{i}", status=None, errors=None
+                )
+                for i in (2, 1)
+            ],
+        )
+        # Tasks sort by their number, which a Task Group's tasks share with
+        # every other's
+        monkeypatch.setattr(
+            yd_list,
+            "sorted_objects",
+            lambda objects: sorted(objects, key=lambda o: getattr(o, "number", 0)),
+        )
+        yd_list.list_work_requirements(_ctx())
+        assert capsys.readouterr().out.split() == [
+            f"{TG1}-t1",
+            f"{TG1}-t2",
+            f"{TG2}-t1",
+            f"{TG2}-t2",
+        ]

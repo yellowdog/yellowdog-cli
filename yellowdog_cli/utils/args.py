@@ -443,6 +443,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def within_target(self) -> str | None:
+        return self.args.within_target
+
+    @property
+    @allow_missing_attribute
     def details(self) -> bool | None:
         return self.args.details
 
