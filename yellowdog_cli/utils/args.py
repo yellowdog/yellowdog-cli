@@ -16,6 +16,7 @@ from yellowdog_cli.utils.command_registry import (
 )
 from yellowdog_cli.utils.invocation import invoked_name, selected
 from yellowdog_cli.utils.lazy import lazy
+from yellowdog_cli.utils.limits import DEFAULT_LIST_LIMIT
 from yellowdog_cli.utils.noun_registry import command_named
 from yellowdog_cli.utils.top_level import SCRIPT_FORMS
 from yellowdog_cli.utils.version_info import DOCS_URL
@@ -445,6 +446,16 @@ class CLIParser:
     @allow_missing_attribute
     def within_target(self) -> str | None:
         return self.args.within_target
+
+    @property
+    @allow_missing_attribute
+    def list_limit(self) -> int:
+        """
+        The most Tasks, Instances, Nodes or Workers to list: '--limit', else
+        the default; 0 for no limit.
+        """
+        limit = self.args.list_limit
+        return DEFAULT_LIST_LIMIT if limit is None else limit
 
     @property
     @allow_missing_attribute

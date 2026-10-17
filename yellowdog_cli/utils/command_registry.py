@@ -59,6 +59,7 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
+    DEFAULT_LIST_LIMIT,
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DOCTOR_DEFAULT_TIMEOUT,
 )
@@ -396,6 +397,9 @@ LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
     ET_WORKERS: ("Worker Pool", "Node"),
 }
 LIST_WITHIN_TYPES = frozenset(LIST_WITHIN_KINDS)
+# Those whose listing is limited, since they can number in the tens of
+# thousands (Instances, Nodes, Workers) or the millions (Tasks)
+LIST_LIMIT_TYPES = frozenset({ET_TASKS, ET_INSTANCES, ET_NODES, ET_WORKERS})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2691,6 +2695,18 @@ WITHIN = option(
         " its ID)"
     ),
 )
+LIST_LIMIT = option(
+    "--limit",
+    dest="list_limit",
+    metavar="<n>",
+    type=non_negative_int,
+    required=False,
+    help=(
+        "list at most this many tasks, instances, nodes or workers, warning"
+        " when more match (default"
+        f" {DEFAULT_LIST_LIMIT}; 0 lists them all)"
+    ),
+)
 PUBLIC_IPS_ONLY = option(
     "--public-ips-only",
     action="store_true",
@@ -2725,12 +2741,16 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
         ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
         ("within_target", "--within", LIST_WITHIN_TYPES),
+        ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
                 f"{flag} does not apply to {entity_type}; it applies to "
                 + ", ".join(sorted(types))
             )
+    # '--count' is exact, read from the Task Groups' own counts where it can
+    if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
+        parser.error("--limit cannot be used with --count, which is never limited")
     within = getattr(args, "within_target", None)
     if within and entity_type in LIST_WITHIN_KINDS:
         from yellowdog_cli.utils.ydid_utils import get_ydid_type
@@ -2774,6 +2794,7 @@ COMMANDS["yd-list"] = Command(
         DESCRIPTION,
         WITH_ERRORS,
         WITHIN,
+        LIST_LIMIT,
         PUBLIC_IPS_ONLY,
         DELETABLE,
         DETAILS,

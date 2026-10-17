@@ -5,7 +5,8 @@ Command to list YellowDog entities.
 """
 
 import fnmatch
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from itertools import chain, islice
 from json import loads as json_loads
 from os.path import exists
 from typing import Any, TypeVar, cast
@@ -15,6 +16,7 @@ from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
     Allowance,
     AllowanceSearch,
+    CloudProvider,
     ComputeRequirementStatus,
     ComputeRequirementSummary,
     ComputeRequirementTemplateSummary,
@@ -91,7 +93,6 @@ from yellowdog_cli.utils.entity_utils import (
     get_all_applications,
     get_all_groups,
     get_all_roles,
-    get_all_tasks_in_task_group,
     get_all_users,
     get_application_group_summaries,
     get_compute_requirement_summaries,
@@ -103,6 +104,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    iterate_tasks_in_task_group,
     namespace_scope,
     resolve_name_glob,
     search_namespaces,
@@ -531,20 +533,24 @@ def list_work_requirements(ctx: RunContext):
         # from it rather than fetched
         all_objects: list = []
         summarised = 0
+        limit = _ListLimit(ctx)
         for work_summary in work_requirement_summaries:
+            if limit.more:
+                break
             tgs = sorted_objects(
                 get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
             )
             if ctx.args.entity_type == ET_TASK_GROUPS:
                 all_objects.extend(_filtered_task_groups(ctx, tgs))
                 continue
-            counted, tasks = _tasks_of(ctx, tgs)
+            counted, tasks = _tasks_of(ctx, tgs, limit)
             summarised += counted
             all_objects.extend(tasks)
         if ctx.args.count_only:
             print(summarised + len(all_objects))
         else:
             _print_all(ctx, all_objects)
+        limit.warn()
     else:
         selected_work_summaries = select(
             ctx.client, work_requirement_summaries, single_result=True
@@ -563,37 +569,103 @@ def _filtered_task_groups(ctx: RunContext, task_groups: list) -> list:
     )
 
 
-def _tasks_of(ctx: RunContext, task_groups: list) -> tuple[int, list]:
+_Fetched = TypeVar("_Fetched")
+_Item = TypeVar("_Item")
+
+# The types '--limit' applies to: as named in its warning (in the singular),
+# and the options
+# that narrow their listing
+_LIMITED = {
+    ET_TASKS: ("Task", "--status, --name or --within"),
+    ET_INSTANCES: ("Instance", "--status, --provider, --active-only or --within"),
+    ET_NODES: ("Node", "--status, --provider, --active-only or --within"),
+    ET_WORKERS: ("Worker", "--status, --active-only or --within"),
+}
+
+
+class _ListLimit:
     """
-    The Tasks of the given Task Groups that the filters leave: the number
-    counted from Task Groups' summaries under '--count' (see
-    _summary_task_count()), and the Tasks fetched from the rest.
+    The Tasks, Instances, Nodes or Workers a listing may still list
+    ('--limit'; none under '--count', which is exact, or for another type),
+    and whether more matched than it listed. A
+    search is read only as far as one item past the limit, to know whether
+    more match.
+    """
+
+    def __init__(self, ctx: RunContext):
+        self._limited = _LIMITED.get(ctx.args.entity_type or "")
+        self.limit = (
+            ctx.args.list_limit if self._limited and not ctx.args.count_only else 0
+        )
+        self._left = self.limit or None
+        self.more = False
+
+    def take(self, items: Iterable[_Item]) -> list[_Item]:
+        """
+        As many of the items as the limit leaves room for.
+        """
+        if self._left is None:
+            return list(items)
+        if self.more:
+            return []
+        taken = list(islice(items, self._left + 1))
+        if len(taken) > self._left:
+            self.more = True
+            taken = taken[: self._left]
+        self._left -= len(taken)
+        return taken
+
+    def warn(self) -> None:
+        """
+        Say that more matched than were listed, on stderr, '--quiet' or not:
+        the listing is incomplete.
+        """
+        if self.more and self._limited:
+            noun, narrowing = self._limited
+            listed = noun if self.limit == 1 else f"{self.limit} {noun}s"
+            print_warning(
+                f"Listed the first {listed}; more match. Narrow the listing"
+                f" with {narrowing}, or give --limit 0 to list them all",
+                override_quiet=True,
+                stderr=True,
+            )
+
+
+def _matching_tasks(ctx: RunContext, task_group: Any) -> Iterator[Task]:
+    """
+    A Task Group's Tasks that the filters leave, read from its search as they
+    are wanted: the Platform applies the filters, '--name' as a substring,
+    and its glob is applied here, Task by Task.
+    """
+    for task in iterate_tasks_in_task_group(
+        ctx.client, cast(str, task_group.id), **_task_search_terms(ctx)
+    ):
+        if _apply_errors_filter(
+            ctx,
+            _apply_name_filter(ctx, _apply_status_filter(ctx, [task]), ET_TASKS),
+        ):
+            yield task
+
+
+def _tasks_of(
+    ctx: RunContext, task_groups: list, limit: _ListLimit
+) -> tuple[int, list]:
+    """
+    The Tasks of the given Task Groups that the filters leave, as many as
+    'limit' allows: the number counted from Task Groups' summaries under
+    '--count' (see _summary_task_count()), and the Tasks fetched from the
+    rest.
     """
     summarised = 0
     tasks: list = []
     for tg in task_groups:
+        if limit.more:
+            break
         if (counted := _summary_task_count(ctx, tg)) is not None:
             summarised += counted
             continue
-        tasks.extend(
-            _apply_errors_filter(
-                ctx,
-                _apply_name_filter(
-                    ctx,
-                    _apply_status_filter(
-                        ctx,
-                        get_all_tasks_in_task_group(
-                            ctx.client, cast(str, tg.id), **_task_search_terms(ctx)
-                        ),
-                    ),
-                    ET_TASKS,
-                ),
-            )
-        )
+        tasks.extend(limit.take(_matching_tasks(ctx, tg)))
     return summarised, tasks
-
-
-_Fetched = TypeVar("_Fetched")
 
 
 def _fetched_within(kind: str, target: str, fetch: Callable[[], _Fetched]) -> _Fetched:
@@ -659,6 +731,7 @@ def _list_within(ctx: RunContext) -> None:
     print_info(f"Listing {ctx.args.entity_type} within '{ctx.args.within_target}'")
     task_groups = sorted_objects(_task_groups_within(ctx))
     summarised = 0
+    limit = _ListLimit(ctx)
     if ctx.args.entity_type == ET_TASK_GROUPS:
         objects = _filtered_task_groups(ctx, task_groups)
     else:
@@ -666,7 +739,7 @@ def _list_within(ctx: RunContext) -> None:
         # their number, which every Task Group's Tasks share
         objects = []
         for task_group in task_groups:
-            counted, tasks = _tasks_of(ctx, [task_group])
+            counted, tasks = _tasks_of(ctx, [task_group], limit)
             summarised += counted
             objects.extend(sorted_objects(tasks))
     if ctx.args.count_only:
@@ -679,6 +752,7 @@ def _list_within(ctx: RunContext) -> None:
         print_yd_object_list([(obj, None) for obj in select(ctx.client, objects)])
     else:
         print_numbered_object_list(ctx.client, objects)
+    limit.warn()
 
 
 def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
@@ -707,15 +781,8 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
 def list_tasks(
     ctx: RunContext, task_group: TaskGroup, _work_summary: WorkRequirementSummary
 ):
-    tasks: list[Task] = get_all_tasks_in_task_group(
-        ctx.client, cast(str, task_group.id), **_task_search_terms(ctx)
-    )
-    tasks = _apply_errors_filter(
-        ctx,
-        _apply_name_filter(
-            ctx, _apply_status_filter(ctx, sorted_objects(tasks)), ET_TASKS
-        ),
-    )
+    limit = _ListLimit(ctx)
+    tasks = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
     if ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
     elif ctx.args.ids_only:
@@ -723,6 +790,7 @@ def list_tasks(
             print(task.id)
     else:
         print_numbered_object_list(ctx.client, tasks)
+    limit.warn()
 
 
 def _worker_pool_within(ctx: RunContext, target: str) -> WorkerPool:
@@ -925,17 +993,21 @@ def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) ->
     modes: each named as 'cr_id.instance_id' for '--ids-only', the form the
     commands taking an Instance accept.
     """
+    limit = _ListLimit(ctx)
     all_instances: list[tuple[str, Instance]] = []
     for compute_requirement_id in compute_requirement_ids:
+        if limit.more:
+            break
         all_instances.extend(
             (compute_requirement_id, instance)
-            for instance in _instances_of(ctx, compute_requirement_id)
+            for instance in limit.take(_matching_instances(ctx, compute_requirement_id))
         )
     if ctx.args.ids_only:
         for cr_id, instance in all_instances:
             print(f"{cr_id}.{instance.id.instanceId}")  # type: ignore[union-attr]
     else:
         _print_json_or_count(ctx, [instance for _, instance in all_instances])
+    limit.warn()
 
 
 def list_compute_requirements(ctx: RunContext):
@@ -1037,29 +1109,76 @@ def list_compute_requirements(ctx: RunContext):
         print_numbered_object_list(ctx.client, compute_requirement_summaries)
 
 
-def _instances_of(ctx: RunContext, compute_requirement_id: str) -> list[Instance]:
+def _searched_statuses(
+    ctx: RunContext, entity_type: str, active: frozenset[str] | None
+) -> list[str] | None:
     """
-    A Compute Requirement's Instances, as --status and --active-only filter
-    them: an Instance's own status, since its Compute Requirement's says
-    nothing of it (a RUNNING one holds TERMINATED Instances once scaled
-    down). Active is any status but TERMINATED, as TERMINATING is an active
-    Compute Requirement's.
+    The statuses to send with a search, by name: those '--status' gives that
+    the type has, and under '--active-only' only the 'active' ones among them
+    (all of them without '--status'). None to send none, and [] when nothing
+    can match, so nothing need be searched.
     """
-    search_client: SearchClient = ctx.client.compute_client.get_instances(
-        instance_search=InstanceSearch(computeRequirementId=compute_requirement_id)
-    )
-    instances: list[Instance] = _apply_provider_filter(
-        ctx,
-        _apply_status_filter(ctx, search_client.list_all()),
-        lambda instance: getattr(instance, "provider", None),
-    )
-    if ctx.args.active_only:
-        instances = [
-            instance
-            for instance in instances
-            if _status_name(instance) != InstanceStatus.TERMINATED.value
+    statuses: set[str] | None = None
+    if ctx.args.status_filter:
+        statuses = {s.upper() for s in ctx.args.status_filter} & _KNOWN_STATUSES[
+            entity_type
         ]
-    return instances
+    if active is not None and ctx.args.active_only:
+        statuses = set(active) if statuses is None else statuses & active
+    return None if statuses is None else sorted(statuses)
+
+
+def _searched_providers(ctx: RunContext) -> list[CloudProvider] | None:
+    """
+    '--provider' as a search sends it: 'on-premise' as ON_PREMISE.
+    """
+    if not ctx.args.provider:
+        return None
+    return [CloudProvider[ctx.args.provider.upper().replace("-", "_")]]
+
+
+# The Instance statuses that are active: any but TERMINATED, as TERMINATING
+# is an active Compute Requirement's
+_ACTIVE_INSTANCE_STATUSES = frozenset(
+    status.value for status in InstanceStatus if status != InstanceStatus.TERMINATED
+)
+
+
+def _matching_instances(
+    ctx: RunContext, compute_requirement_id: str
+) -> Iterator[Instance]:
+    """
+    A Compute Requirement's Instances, as --status, --provider and
+    --active-only filter them (the Platform first, then here), read from its
+    search as they are wanted: an
+    Instance's own status, since its Compute Requirement's says nothing of it
+    (a RUNNING one holds TERMINATED Instances once scaled down). Active is
+    any status but TERMINATED, as TERMINATING is an active Compute
+    Requirement's.
+    """
+    statuses = _searched_statuses(ctx, ET_INSTANCES, _ACTIVE_INSTANCE_STATUSES)
+    if statuses == []:
+        return
+    search_client: SearchClient = ctx.client.compute_client.get_instances(
+        instance_search=InstanceSearch(
+            computeRequirementId=compute_requirement_id,
+            statuses=None
+            if statuses is None
+            else [InstanceStatus(s) for s in statuses],
+            providers=_searched_providers(ctx),
+        )
+    )
+    for instance in search_client.iterate():
+        if ctx.args.active_only and (
+            _status_name(instance) == InstanceStatus.TERMINATED.value
+        ):
+            continue
+        if _apply_provider_filter(
+            ctx,
+            _apply_status_filter(ctx, [instance]),
+            lambda instance: getattr(instance, "provider", None),
+        ):
+            yield instance
 
 
 def _status_name(entity: Any) -> str | None:
@@ -1074,7 +1193,8 @@ def list_instances(ctx: RunContext, compute_requirement_id: str):
     """
     List the instances within a Compute Requirement.
     """
-    instances = _instances_of(ctx, compute_requirement_id)
+    limit = _ListLimit(ctx)
+    instances = limit.take(_matching_instances(ctx, compute_requirement_id))
     if not instances:
         print_info("No instances to list")
         return
@@ -1084,44 +1204,37 @@ def list_instances(ctx: RunContext, compute_requirement_id: str):
         for instance in instances:
             if instance.publicIpAddress is not None:
                 print(instance.publicIpAddress)
-        return
-
-    if ctx.args.details:
+    elif ctx.args.details:
         print_yd_object_list(
             [(instance, None) for instance in select(ctx.client, instances)]
         )
     else:
         print_numbered_object_list(ctx.client, instances)
+    limit.warn()
 
 
 def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
     """
     List the Nodes in a list of Worker Pools.
     """
-    nodes_all: list[Node] = []
-    for worker_pool_summary in worker_pool_summaries:
-        nodes_search = NodeSearch(
-            worker_pool_summary.id,
-            statuses=[NodeStatus.RUNNING] if ctx.args.active_only else None,
+    if ctx.args.entity_type == ET_WORKERS:
+        list_workers(
+            ctx,
+            chain.from_iterable(
+                _matching_nodes(ctx, worker_pool_summary)
+                for worker_pool_summary in worker_pool_summaries
+            ),
         )
-        search_client = ctx.client.worker_pool_client.get_nodes(search=nodes_search)
-        nodes: list[Node] = search_client.list_all()
-        for node in nodes:
-            node.workerPoolName = worker_pool_summary.name  # type: ignore[attr-defined]
-        nodes_all += nodes
-
-    # '--status' is the Workers' own when Workers are listed, not their Nodes'
-    if ctx.args.entity_type == ET_NODES:
-        nodes_all = _apply_status_filter(ctx, nodes_all)
-    nodes_all = _apply_provider_filter(
-        ctx, nodes_all, lambda node: node.details.provider if node.details else None
-    )
-    if not nodes_all:
-        _print_empty(ctx, "No Nodes to display")
         return
 
-    if ctx.args.entity_type == ET_WORKERS:
-        list_workers(ctx, nodes_all)
+    limit = _ListLimit(ctx)
+    nodes_all: list[Node] = []
+    for worker_pool_summary in worker_pool_summaries:
+        if limit.more:
+            break
+        nodes_all += limit.take(_matching_nodes(ctx, worker_pool_summary))
+    if not nodes_all:
+        _print_empty(ctx, "No Nodes to display")
         return
 
     if _listing_all(ctx):
@@ -1130,13 +1243,50 @@ def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
         print_yd_object_list([(node, None) for node in select(ctx.client, nodes_all)])
     else:
         print_numbered_object_list(ctx.client, nodes_all)
+    limit.warn()
 
 
-def list_workers(ctx: RunContext, nodes: list[Node]):
+# The Node status that is active
+_ACTIVE_NODE_STATUSES = frozenset({NodeStatus.RUNNING.value})
+
+
+def _matching_nodes(ctx: RunContext, worker_pool_summary: Any) -> Iterator[Node]:
     """
-    Display a list of workers across all nodes in a worker pool.
+    A Worker Pool's Nodes, as --active-only, --status and --provider filter
+    them (the Platform first, then here), read from its search as they are
+    wanted, each given its Worker Pool's name. '--status' is the Workers' own
+    when Workers are listed, not their Nodes'.
     """
-    workers_all: list[Worker] = []
+    if ctx.args.entity_type == ET_NODES:
+        statuses = _searched_statuses(ctx, ET_NODES, _ACTIVE_NODE_STATUSES)
+    else:
+        statuses = sorted(_ACTIVE_NODE_STATUSES) if ctx.args.active_only else None
+    if statuses == []:
+        return
+    search_client = ctx.client.worker_pool_client.get_nodes(
+        search=NodeSearch(
+            worker_pool_summary.id,
+            statuses=None if statuses is None else [NodeStatus(s) for s in statuses],
+            providers=_searched_providers(ctx),
+        )
+    )
+    for node in search_client.iterate():
+        node.workerPoolName = worker_pool_summary.name  # type: ignore[attr-defined]
+        kept = [node]
+        if ctx.args.entity_type == ET_NODES:
+            kept = _apply_status_filter(ctx, kept)
+        if _apply_provider_filter(
+            ctx, kept, lambda node: node.details.provider if node.details else None
+        ):
+            yield node
+
+
+def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker]:
+    """
+    The Workers on the Nodes, as --active-only and --status filter them,
+    each given its Node's Worker tag, task types and Worker Pool name; the
+    Nodes read only as far as the Workers are wanted.
+    """
     for node in nodes:
         for worker in node.workers or []:
             if ctx.args.active_only:
@@ -1155,9 +1305,16 @@ def list_workers(ctx: RunContext, nodes: list[Node]):
                     node.workerPoolName  # type: ignore[attr-defined]
                 )  # This property is added by the caller
             # Listed whether or not its Node reports details
-            workers_all.append(worker)
+            if _apply_status_filter(ctx, [worker]):
+                yield worker
 
-    workers_all = _apply_status_filter(ctx, workers_all)
+
+def list_workers(ctx: RunContext, nodes: Iterable[Node]):
+    """
+    List the Workers on the Nodes, as many as '--limit' allows.
+    """
+    limit = _ListLimit(ctx)
+    workers_all = limit.take(_matching_workers(ctx, nodes))
     if not workers_all:
         _print_empty(ctx, "No Workers to display")
         return
@@ -1170,6 +1327,7 @@ def list_workers(ctx: RunContext, nodes: list[Node]):
         )
     else:
         print_numbered_object_list(ctx.client, workers_all)
+    limit.warn()
 
 
 def _shared_tag(ctx: RunContext) -> str:

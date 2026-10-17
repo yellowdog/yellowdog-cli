@@ -80,6 +80,7 @@ def _args_parser(**overrides) -> MagicMock:
         deletable=False,
         with_errors=False,
         within_target=None,
+        list_limit=0,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -214,7 +215,7 @@ class TestCountOption:
             ),
             patch.object(
                 yd_list,
-                "get_all_tasks_in_task_group",
+                "iterate_tasks_in_task_group",
                 side_effect=lambda client, tg_id: (
                     [MagicMock()] * (3 if tg_id == "tg_1" else 2)
                 ),
@@ -266,7 +267,7 @@ class TestTaskCountsFromSummaries:
                 return_value=[MagicMock(id="wr")],
             ),
             patch.object(yd_list, "get_task_groups_from_wr_by_id", return_value=groups),
-            patch.object(yd_list, "get_all_tasks_in_task_group", side_effect=tasks),
+            patch.object(yd_list, "iterate_tasks_in_task_group", side_effect=tasks),
             patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
             patch.object(yd_list, "print_info"),
         ):

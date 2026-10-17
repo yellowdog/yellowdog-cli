@@ -3,7 +3,7 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import cast
@@ -756,20 +756,21 @@ def remove_allowances_matching_description(
     return remove_allowances(client, allowances_to_remove(client, description))
 
 
-@lru_cache
-def get_all_tasks_in_task_group(
+def iterate_tasks_in_task_group(
     client: PlatformClient,
     task_group_id: str,
     statuses: tuple[str, ...] | None = None,
     has_errors: bool | None = None,
     name_contains: str | None = None,
-) -> list[Task]:
+) -> Iterator[Task]:
     """
-    Return the tasks in a task group, with caching: where given, only those
+    The tasks in a task group, fetched a page at a time as they are read, so
+    a caller reading only some fetches only those: where given, only those
     with one of 'statuses' (TaskStatus values), with errors ('has_errors'),
     and whose name contains 'name_contains' (a case-sensitive substring, as
     the Platform matches it). The Platform filters, so a task group of
-    millions of tasks sends only what is asked for.
+    millions of tasks sends only what is asked for. Not cached, being read
+    lazily.
     """
     return client.work_client.get_tasks(
         TaskSearch(
@@ -778,7 +779,7 @@ def get_all_tasks_in_task_group(
             hasErrors=True if has_errors else None,
             name=name_contains or None,
         )
-    ).list_all()
+    ).iterate()
 
 
 def split_namespace_and_name(

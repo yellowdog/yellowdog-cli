@@ -667,6 +667,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -3687,6 +3700,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -8373,6 +8399,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -11063,6 +11102,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -13825,6 +13877,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -15250,6 +15315,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -16314,6 +16392,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -17427,6 +17518,19 @@
     },
     {
       "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
+    },
+    {
+      "choices": null,
       "const": true,
       "default": false,
       "dest": "public_ips_only",
@@ -18508,6 +18612,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -22394,6 +22511,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,
@@ -30990,6 +31120,19 @@
       ],
       "required": false,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "list_limit",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--limit"
+      ],
+      "required": false,
+      "type": "non_negative_int"
     },
     {
       "choices": null,

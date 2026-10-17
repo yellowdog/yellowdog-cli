@@ -53,3 +53,10 @@ DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
 # pass that changes nothing ends them. Real chains of references settle in two
 # or three, so reaching this means a circular one.
 VAR_SUBSTITUTION_MAX_PASSES = 10
+
+# The Tasks, Instances, Nodes or Workers 'yd list' lists by default: enough
+# that an ordinary listing never reaches it, few enough that a mistaken one
+# returns in seconds rather than reading tens of thousands, or millions of
+# Tasks
+# ('--limit 0' lists them all)
+DEFAULT_LIST_LIMIT = 1000

@@ -63,6 +63,7 @@ def _args(entity_type: str, **values) -> Any:
         description_glob=None,
         with_errors=False,
         within_target=None,
+        list_limit=0,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -145,6 +146,14 @@ def listing(monkeypatch):
             ["compute-requirements", "--within", "cr"],
             "--within does not apply to compute-requirements",
         ),
+        (["task-groups", "--limit", "5"], "--limit does not apply to task-groups"),
+        (["worker-pools", "--limit", "5"], "--limit does not apply to worker-pools"),
+        (
+            ["instances", "--limit", "5", "--count"],
+            "--limit cannot be used with --count",
+        ),
+        (["tasks", "--limit", "5", "--count"], "--limit cannot be used with --count"),
+        (["tasks", "--limit", "-1"], "argument --limit"),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -178,6 +187,11 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["nodes", "--within", "my-pool", "--provider", "aws"],
         ["workers", "--within", CR_ID.replace("compreq", "node")],
         ["workers", "--within", CR_ID.replace("compreq", "wrkrpool")],
+        ["tasks", "--limit", "10", "--json"],
+        ["tasks", "--limit", "0"],
+        ["instances", "--limit", "50", "--ids-only"],
+        ["nodes", "--limit", "0", "--json"],
+        ["workers", "--limit", "20", "--status", "doing_task"],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -234,7 +248,7 @@ def test_ids_only_lists_every_work_requirements_tasks_without_asking(
     )
     monkeypatch.setattr(
         yd_list,
-        "get_all_tasks_in_task_group",
+        "iterate_tasks_in_task_group",
         lambda client, tg_id: [SimpleNamespace(id=f"{tg_id}-t", status=None)],
     )
     yd_list.list_work_requirements(_ctx())
@@ -252,7 +266,7 @@ def test_ids_only_names_an_instance_by_its_compute_requirement(
         "get_compute_requirement_summaries",
         lambda *a, **k: [SimpleNamespace(id=CR_ID, name="cr", status=None)],
     )
-    listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+    listing.client.compute_client.get_instances.return_value.iterate.return_value = [
         SimpleNamespace(id=SimpleNamespace(instanceId="i-1"), status=None)
     ]
     yd_list.list_compute_requirements(_ctx())
@@ -335,7 +349,7 @@ class TestActiveInstancesAndWorkers:
             "get_compute_requirement_summaries",
             lambda *a, **k: [SimpleNamespace(id=CR_ID, name="cr", status=None)],
         )
-        listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+        listing.client.compute_client.get_instances.return_value.iterate.return_value = [
             SimpleNamespace(id=SimpleNamespace(instanceId="i-up"), status="RUNNING"),
             SimpleNamespace(
                 id=SimpleNamespace(instanceId="i-gone"), status="TERMINATED"
@@ -618,7 +632,7 @@ class TestTaskSearchTerms:
         fetched = []
         monkeypatch.setattr(
             yd_list,
-            "get_all_tasks_in_task_group",
+            "iterate_tasks_in_task_group",
             lambda client, tg_id, **terms: fetched.append(terms) or [],
         )
         ctx = RunContext(
@@ -654,16 +668,17 @@ def test_the_task_search_carries_the_terms():
     from yellowdog_cli.utils import entity_utils
 
     client = MagicMock()
-    entity_utils.get_all_tasks_in_task_group.cache_clear()
-    entity_utils.get_all_tasks_in_task_group(
-        client, "tg", statuses=("FAILED",), has_errors=True, name_contains="row-"
+    client.work_client.get_tasks.return_value.iterate.return_value = iter(())
+    list(
+        entity_utils.iterate_tasks_in_task_group(
+            client, "tg", statuses=("FAILED",), has_errors=True, name_contains="row-"
+        )
     )
     (search,) = client.work_client.get_tasks.call_args.args
     assert search.taskGroupId == "tg"
     assert search.statuses == [TaskStatus.FAILED]
     assert search.hasErrors is True
     assert search.name == "row-"
-    entity_utils.get_all_tasks_in_task_group.cache_clear()
 
 
 WR = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -749,7 +764,7 @@ class TestWithin:
         )
         monkeypatch.setattr(
             yd_list,
-            "get_all_tasks_in_task_group",
+            "iterate_tasks_in_task_group",
             lambda client, tg_id, **terms: [
                 SimpleNamespace(
                     id=f"{tg_id}-t{i}", name=f"t{i}", status=None, errors=None
@@ -778,7 +793,7 @@ class TestWithin:
             lambda client, wr_id: self._groups(),
         )
         monkeypatch.setattr(
-            yd_list, "get_all_tasks_in_task_group", lambda client, tg_id, **terms: []
+            yd_list, "iterate_tasks_in_task_group", lambda client, tg_id, **terms: []
         )
         yd_list.list_work_requirements(_ctx())
         assert listing.printed == [[]]
@@ -798,7 +813,7 @@ class TestWithin:
         )
         monkeypatch.setattr(
             yd_list,
-            "get_all_tasks_in_task_group",
+            "iterate_tasks_in_task_group",
             lambda client, tg_id, **terms: [
                 SimpleNamespace(
                     id=f"{tg_id}-t{i}", number=i, name=f"t{i}", status=None, errors=None
@@ -852,7 +867,7 @@ class TestWithinCompute:
             _args(ET_INSTANCES, within_target=CR_ID, ids_only=True),
         )
         self._no_search(monkeypatch)
-        listing.client.compute_client.get_instances.return_value.list_all.return_value = [
+        listing.client.compute_client.get_instances.return_value.iterate.return_value = [
             SimpleNamespace(id=SimpleNamespace(instanceId="i-1"), status=None)
         ]
         yd_list.list_compute_requirements(_ctx())
@@ -874,7 +889,7 @@ class TestWithinCompute:
             return SimpleNamespace(id=CR_ID)
 
         monkeypatch.setattr(yd_list, "find_compute_requirement_by_name", find)
-        listing.client.compute_client.get_instances.return_value.list_all.return_value = []
+        listing.client.compute_client.get_instances.return_value.iterate.return_value = []
         yd_list.list_compute_requirements(_ctx())
         assert seen == [("other/my-cr", "ns")]
         assert listing.printed == [[]]
@@ -945,7 +960,7 @@ def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
     )
     worker = SimpleNamespace(status="DOING_TASK")
     node = SimpleNamespace(details=None, workers=[worker], status="RUNNING")
-    listing.client.worker_pool_client.get_nodes.return_value.list_all.return_value = [
+    listing.client.worker_pool_client.get_nodes.return_value.iterate.return_value = [
         node
     ]
     printed: list = []
@@ -999,7 +1014,7 @@ def test_an_id_within_that_names_nothing_is_not_found(
         setattr(
             getattr(listing.client, owner), method, MagicMock(side_effect=_not_found)
         )
-    listing.client.compute_client.get_instances.return_value.list_all.return_value = []
+    listing.client.compute_client.get_instances.return_value.iterate.return_value = []
     lister = {
         ET_INSTANCES: yd_list.list_compute_requirements,
         "nodes": yd_list.list_worker_pools,
@@ -1010,3 +1025,489 @@ def test_an_id_within_that_names_nothing_is_not_found(
         lister(_ctx())
     assert str(raised.value) == f"{kind} '{target}' not found"
     assert isinstance(raised.value.__cause__, HTTPError)
+
+
+def test_the_limit_defaults_to_1000_and_0_lifts_it():
+    assert CLIParser(command="yd-list", argv=["tasks"]).list_limit == 1000
+    assert CLIParser(command="yd-list", argv=["nodes"]).list_limit == 1000
+    assert CLIParser(command="yd-list", argv=["tasks", "--limit", "0"]).list_limit == 0
+    assert CLIParser(command="yd-list", argv=["tasks", "--limit", "7"]).list_limit == 7
+
+
+class TestTaskLimit:
+    """
+    '--limit': at most N Tasks across the listing, the search read only as
+    far as N + 1 matches (to know whether more match), a warning on stderr
+    when more do, and '--count' never limited.
+    """
+
+    @staticmethod
+    def _run(listing, monkeypatch, groups, **values):
+        """
+        List the Tasks of one Work Requirement whose Task Groups' searches
+        are 'groups' (a Task Group ID to its Tasks), counting how far each
+        search was read; return the Tasks listed, the reads and the warnings.
+        """
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_TASKS, within_target=WR, json_output=True, **values),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: [
+                SimpleNamespace(id=tg_id, name=tg_id, status=None, taskSummary=None)
+                for tg_id in groups
+            ],
+        )
+        reads = {tg_id: 0 for tg_id in groups}
+
+        def search(client, tg_id, **terms):
+            for task in groups[tg_id]:
+                reads[tg_id] += 1
+                yield task
+
+        monkeypatch.setattr(yd_list, "iterate_tasks_in_task_group", search)
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            yd_list, "print_warning", lambda text, **k: warnings.append(text)
+        )
+        yd_list.list_work_requirements(_ctx())
+        (listed,) = listing.printed
+        return [t.name for t in listed], reads, warnings
+
+    @staticmethod
+    def _tasks(prefix, count, **values):
+        return [
+            SimpleNamespace(
+                id=f"{prefix}-{i}",
+                name=f"{prefix}-{i}",
+                status=None,
+                **{"errors": None, **values},
+            )
+            for i in range(1, count + 1)
+        ]
+
+    def test_the_search_stops_one_past_the_limit(self, listing, monkeypatch):
+        listed, reads, warnings = self._run(
+            listing,
+            monkeypatch,
+            {TG1: self._tasks("a", 1000), TG2: self._tasks("b", 1000)},
+            list_limit=3,
+        )
+        assert listed == ["a-1", "a-2", "a-3"]
+        assert reads == {TG1: 4, TG2: 0}
+        (warning,) = warnings
+        assert "first 3 Tasks" in warning and "--limit 0" in warning
+
+    def test_the_limit_is_across_task_groups(self, listing, monkeypatch):
+        listed, reads, warnings = self._run(
+            listing,
+            monkeypatch,
+            {TG1: self._tasks("a", 2), TG2: self._tasks("b", 5)},
+            list_limit=3,
+        )
+        assert listed == ["a-1", "a-2", "b-1"]
+        assert reads == {TG1: 2, TG2: 2}
+        assert len(warnings) == 1
+
+    def test_the_limit_reached_exactly_with_no_more_is_no_warning(
+        self, listing, monkeypatch
+    ):
+        listed, reads, warnings = self._run(
+            listing,
+            monkeypatch,
+            {TG1: self._tasks("a", 3), TG2: []},
+            list_limit=3,
+        )
+        assert listed == ["a-1", "a-2", "a-3"]
+        assert reads == {TG1: 3, TG2: 0}
+        assert warnings == []
+
+    def test_more_in_the_next_task_group_is_found(self, listing, monkeypatch):
+        listed, reads, warnings = self._run(
+            listing,
+            monkeypatch,
+            {TG1: self._tasks("a", 3), TG2: self._tasks("b", 2)},
+            list_limit=3,
+        )
+        assert listed == ["a-1", "a-2", "a-3"]
+        assert reads == {TG1: 3, TG2: 1}
+        assert len(warnings) == 1
+
+    def test_0_lists_them_all(self, listing, monkeypatch):
+        listed, reads, warnings = self._run(
+            listing, monkeypatch, {TG1: self._tasks("a", 1500)}, list_limit=0
+        )
+        assert len(listed) == 1500
+        assert reads == {TG1: 1500}
+        assert warnings == []
+
+    def test_the_limit_counts_only_the_tasks_a_name_glob_keeps(
+        self, listing, monkeypatch
+    ):
+        # The Platform matches '--name' as a substring; the glob is applied
+        # as the search is read, so the limit is of matching Tasks
+        tasks = [
+            SimpleNamespace(id=str(i), name=name, status=None, errors=None)
+            for i, name in enumerate(
+                ["xrow-1", "row-1", "xrow-2", "xrow-3", "row-2", "row-3"]
+            )
+        ]
+        listed, reads, warnings = self._run(
+            listing, monkeypatch, {TG1: tasks}, list_limit=2, name_glob="row-*"
+        )
+        assert listed == ["row-1", "row-2"]
+        assert reads == {TG1: 6}
+        assert len(warnings) == 1
+
+    def test_count_is_never_limited(self, listing, monkeypatch, capsys):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(
+                ET_TASKS,
+                within_target=WR,
+                count_only=True,
+                with_errors=True,
+                list_limit=1000,
+            ),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: [
+                SimpleNamespace(id=TG1, name="tg", status=None, taskSummary=None)
+            ],
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "iterate_tasks_in_task_group",
+            lambda client, tg_id, **terms: iter(
+                self._tasks("a", 1200, errors=[SimpleNamespace(message="boom")])
+            ),
+        )
+        yd_list.list_work_requirements(_ctx())
+        assert capsys.readouterr().out.strip() == "1200"
+
+
+class TestInstanceAndNodeLimit:
+    """
+    '--limit' for Instances and Nodes, which can number in the tens of
+    thousands: across Compute Requirements or Worker Pools, each search read
+    one past it, the filters applied as it is read; never for Workers (whose
+    Nodes are all read) or '--count'.
+    """
+
+    @staticmethod
+    def _searches(owner, method, groups):
+        """
+        Fake a search per parent ('groups', a parent ID to its items),
+        counting how far each is read.
+        """
+        reads = {parent: 0 for parent in groups}
+
+        def search(**kwargs):
+            (criteria,) = kwargs.values()
+            parent = getattr(criteria, "computeRequirementId", None) or getattr(
+                criteria, "workerPoolId", None
+            )
+
+            def read():
+                for item in groups[parent]:
+                    reads[parent] += 1
+                    yield item
+
+            return SimpleNamespace(iterate=read)
+
+        setattr(owner, method, search)
+        return reads
+
+    @staticmethod
+    def _warnings(monkeypatch):
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            yd_list, "print_warning", lambda text, **k: warnings.append(text)
+        )
+        return warnings
+
+    @staticmethod
+    def _instances(prefix, count, status="RUNNING"):
+        return [
+            SimpleNamespace(
+                id=SimpleNamespace(instanceId=f"{prefix}-{i}"),
+                status=status,
+                provider=None,
+            )
+            for i in range(1, count + 1)
+        ]
+
+    def test_instances_across_compute_requirements(self, listing, monkeypatch, capsys):
+        cr2 = CR_ID.replace("aaaa-aaaa-aaaaaaaaaaaa", "bbbb-bbbb-bbbbbbbbbbbb")
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_INSTANCES, ids_only=True, list_limit=3),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_compute_requirement_summaries",
+            lambda *a, **k: [
+                SimpleNamespace(id=cr, name=cr, status=None) for cr in (CR_ID, cr2)
+            ],
+        )
+        reads = self._searches(
+            listing.client.compute_client,
+            "get_instances",
+            {CR_ID: self._instances("a", 2), cr2: self._instances("b", 50)},
+        )
+        warnings = self._warnings(monkeypatch)
+        yd_list.list_compute_requirements(_ctx())
+        assert capsys.readouterr().out.split() == [
+            f"{CR_ID}.a-1",
+            f"{CR_ID}.a-2",
+            f"{cr2}.b-1",
+        ]
+        assert reads == {CR_ID: 2, cr2: 2}
+        (warning,) = warnings
+        assert "first 3 Instances" in warning
+
+    def test_the_instance_limit_counts_what_the_filters_keep(
+        self, listing, monkeypatch
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(
+                ET_INSTANCES,
+                within_target=CR_ID,
+                json_output=True,
+                list_limit=2,
+                active_only=True,
+            ),
+        )
+        instances = [
+            *self._instances("gone", 5, status="TERMINATED"),
+            *self._instances("up", 3),
+        ]
+        reads = self._searches(
+            listing.client.compute_client, "get_instances", {CR_ID: instances}
+        )
+        warnings = self._warnings(monkeypatch)
+        yd_list.list_compute_requirements(_ctx())
+        (listed,) = listing.printed
+        assert [i.id.instanceId for i in listed] == ["up-1", "up-2"]
+        assert reads == {CR_ID: 8}
+        assert len(warnings) == 1
+
+    def test_nodes_across_worker_pools(self, listing, monkeypatch):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("nodes", json_output=True, list_limit=3),
+        )
+        wp2 = WP_ID.replace("aaaa-aaaa-aaaaaaaaaaaa", "bbbb-bbbb-bbbbbbbbbbbb")
+        nodes = {
+            wp: [
+                SimpleNamespace(id=f"{wp}-{i}", status="RUNNING", details=None)
+                for i in range(4)
+            ]
+            for wp in (WP_ID, wp2)
+        }
+        reads = self._searches(listing.client.worker_pool_client, "get_nodes", nodes)
+        warnings = self._warnings(monkeypatch)
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_nodes(
+            _ctx(),
+            [SimpleNamespace(id=WP_ID, name="a"), SimpleNamespace(id=wp2, name="b")],
+        )
+        (listed,) = printed
+        assert [n.id for n in listed] == [f"{WP_ID}-{i}" for i in range(3)]
+        assert reads == {WP_ID: 4, wp2: 0}
+        (warning,) = warnings
+        assert "first 3 Nodes" in warning
+
+    def test_workers_read_their_nodes_only_as_far_as_the_limit(
+        self, listing, monkeypatch
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_WORKERS, json_output=True, list_limit=3),
+        )
+        nodes = [
+            SimpleNamespace(
+                id=str(i),
+                status="RUNNING",
+                details=None,
+                workers=[
+                    SimpleNamespace(id=f"w{i}-{j}", status="SLEEPING") for j in range(2)
+                ],
+            )
+            for i in range(5)
+        ]
+        reads = self._searches(
+            listing.client.worker_pool_client, "get_nodes", {WP_ID: nodes}
+        )
+        warnings = self._warnings(monkeypatch)
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_nodes(_ctx(), [SimpleNamespace(id=WP_ID, name="a")])
+        (listed,) = printed
+        assert [w.id for w in listed] == ["w0-0", "w0-1", "w1-0"]
+        assert reads == {WP_ID: 2}
+        (warning,) = warnings
+        assert "first 3 Workers" in warning
+
+    def test_counting_instances_is_never_limited(self, listing, monkeypatch, capsys):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_INSTANCES, within_target=CR_ID, count_only=True, list_limit=1000),
+        )
+        self._searches(
+            listing.client.compute_client,
+            "get_instances",
+            {CR_ID: self._instances("a", 1200)},
+        )
+        monkeypatch.setattr(
+            yd_list, "_print_json_or_count", lambda _c, objects: print(len(objects))
+        )
+        yd_list.list_compute_requirements(_ctx())
+        assert capsys.readouterr().out.strip() == "1200"
+
+
+class TestPlatformSideFilters:
+    """
+    '--status', '--provider' and '--active-only' sent with the Instance and
+    Node searches, so the Platform sends only what can match; nothing
+    searched when nothing can.
+    """
+
+    @staticmethod
+    def _search(owner, method, monkeypatch, entity_type, **values):
+        from yellowdog_cli.utils.output_settings import configured
+
+        args = _args(entity_type, **values)
+        client = MagicMock()
+        getattr(client, owner).__getattr__(
+            method
+        ).return_value.iterate.return_value = []
+        ctx = RunContext(args=args, config=None, client=client)
+        with configured(args):
+            if entity_type == ET_INSTANCES:
+                list(yd_list._matching_instances(ctx, CR_ID))
+            else:
+                list(yd_list._matching_nodes(ctx, SimpleNamespace(id=WP_ID, name="a")))
+        calls = getattr(getattr(client, owner), method).call_args_list
+        return calls[0].kwargs.popitem()[1] if calls else None
+
+    def test_an_instance_search_carries_statuses_and_provider(self, monkeypatch):
+        from yellowdog_client.model import CloudProvider, InstanceStatus
+
+        search = self._search(
+            "compute_client",
+            "get_instances",
+            monkeypatch,
+            ET_INSTANCES,
+            status_filter=["running", "bogus"],
+            provider="aws",
+        )
+        assert search.computeRequirementId == CR_ID
+        assert search.statuses == [InstanceStatus.RUNNING]
+        assert search.providers == [CloudProvider.AWS]
+
+    def test_active_instances_are_any_but_terminated(self, monkeypatch):
+        from yellowdog_client.model import InstanceStatus
+
+        search = self._search(
+            "compute_client",
+            "get_instances",
+            monkeypatch,
+            ET_INSTANCES,
+            active_only=True,
+        )
+        assert set(search.statuses) == set(InstanceStatus) - {InstanceStatus.TERMINATED}
+        assert search.providers is None
+
+    def test_no_instance_can_match_so_none_is_searched(self, monkeypatch):
+        for values in (
+            {"status_filter": ["terminated"], "active_only": True},
+            {"status_filter": ["bogus"]},
+        ):
+            assert (
+                self._search(
+                    "compute_client",
+                    "get_instances",
+                    monkeypatch,
+                    ET_INSTANCES,
+                    **values,
+                )
+                is None
+            ), values
+
+    def test_a_node_search_carries_statuses_and_provider(self, monkeypatch):
+        from yellowdog_client.model import CloudProvider, NodeStatus
+
+        search = self._search(
+            "worker_pool_client",
+            "get_nodes",
+            monkeypatch,
+            "nodes",
+            status_filter=["lost"],
+            provider="on-premise",
+        )
+        assert search.workerPoolId == WP_ID
+        assert search.statuses == [NodeStatus.LOST]
+        assert search.providers == [CloudProvider.ON_PREMISE]
+
+    def test_active_nodes_are_running(self, monkeypatch):
+        from yellowdog_client.model import NodeStatus
+
+        search = self._search(
+            "worker_pool_client", "get_nodes", monkeypatch, "nodes", active_only=True
+        )
+        assert search.statuses == [NodeStatus.RUNNING]
+        assert (
+            self._search(
+                "worker_pool_client",
+                "get_nodes",
+                monkeypatch,
+                "nodes",
+                active_only=True,
+                status_filter=["lost"],
+            )
+            is None
+        )
+
+    def test_a_workers_status_is_not_sent_for_their_nodes(self, monkeypatch):
+        from yellowdog_client.model import NodeStatus
+
+        search = self._search(
+            "worker_pool_client",
+            "get_nodes",
+            monkeypatch,
+            ET_WORKERS,
+            status_filter=["doing_task"],
+            active_only=True,
+        )
+        assert search.statuses == [NodeStatus.RUNNING]
+
+
+def test_a_limit_of_one_is_worded_in_the_singular(monkeypatch):
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        yd_list, "print_warning", lambda text, **k: warnings.append(text)
+    )
+    ctx = RunContext(args=_args(ET_INSTANCES, list_limit=1), config=None, client=None)
+    limit = yd_list._ListLimit(ctx)
+    assert limit.take(iter(["a", "b"])) == ["a"]
+    limit.warn()
+    (warning,) = warnings
+    assert warning.startswith("Listed the first Instance; more match.")

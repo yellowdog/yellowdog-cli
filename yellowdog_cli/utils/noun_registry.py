@@ -28,6 +28,7 @@ from yellowdog_cli.utils.command_registry import (
     LIST_DELETABLE_TYPES,
     LIST_DESCRIPTION_TYPES,
     LIST_ID_TYPES,
+    LIST_LIMIT_TYPES,
     LIST_NAME_TYPES,
     LIST_PROVIDER_TYPES,
     LIST_STATUS_TYPES,
@@ -230,6 +231,7 @@ def _list(entity_type: str, noun_plural: str) -> Verb:
             ("--description", LIST_DESCRIPTION_TYPES),
             ("--with-errors", LIST_WITH_ERRORS_TYPES),
             ("--within", LIST_WITHIN_TYPES),
+            ("--limit", LIST_LIMIT_TYPES),
         )
         if entity_type not in types
     ]
