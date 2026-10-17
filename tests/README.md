@@ -4,6 +4,31 @@ Tests are run using [pytest](https://docs.pytest.org/).
 
 The unit tests need no configuration at all: `conftest.py` loads the configuration as the run starts, and the common section's missing key or secret would stop it, so it substitutes a dummy key and secret where none can be found, and reports that in the pytest header. Anything already working is left alone, and no substitution is made under `--run-system`, which takes real credentials of its own; `--run-live` gives `yd` its credentials itself, so a dummy set may still stand in for the CLI's own configuration.
 
+## Quick Start
+
+Set up as [Getting Started](../DEVELOPMENT.md#getting-started) describes, which installs the `dev` extra (pytest and its plugins) with the rest; the unit tests need nothing else. Then pick the row for what you want to test:
+
+| To test | Run | Needs |
+|---|---|---|
+| Everything offline, as before a commit | `make test` | Nothing |
+| One file, or tests matching a name | `pytest -v tests/test_ydid_utils.py`, `pytest -v -k test_variable` | Nothing |
+| Every supported Python (3.10 to 3.15) | `make tox` | `uv` |
+| Commander's GUI | `pytest -v -n 8 tests/test_commander_*.py` | The `commander` extra and Qt's runtime libraries; skipped without them |
+| The MCP server | `pytest -v tests/test_mcp_*.py` | The `mcp` extra for `test_mcp_server.py`; skipped without it |
+| A command's options, after changing them on purpose | `pytest tests/test_parser_snapshots.py --update-parser-snapshots` | Nothing |
+| Types | `make pyright` | Nothing |
+| Which lines the unit tests reach | `make coverage` (detail in `htmlcov/index.html`) | Nothing |
+| The tests that crash a child interpreter, on macOS | `pytest -v --run-crash-tests` | Nothing (they run anyway elsewhere) |
+| Resource specifications against the Platform | `pytest -v --run-system tests/test_system_resources.py` | `[platform]` in `~/.config/yellowdog/system-tests.toml`, copied from [`live/system-tests.example.toml`](live/system-tests.example.toml) |
+| Every system test | `pytest -v --run-system` | The same |
+| The live tests' configuration, offline | `make live_config` | A filled-in `system-tests.toml` |
+| Failure handling and Work Requirement control, live but with no compute | `pytest -v --run-live tests/live/test_live_failures.py tests/live/test_live_work_control.py` | The same; a few minutes |
+| One provider's chain, live | `pytest -v --run-live tests/live/test_live_providers.py -k aws` (or `azure`, `gcp`, `oci`) | That provider's section; real compute, about 20 minutes |
+| The whole live suite, every configured provider | `pytest -v --run-live -n 4 tests/live/` | Every provider's section; real compute, about 30 minutes |
+| What a dead live run left behind, and clearing it | `python tests/live/sweep.py --dry-run`, then without `--dry-run` | A filled-in `system-tests.toml` |
+
+The live tests provision real cloud instances and cost money: run them when you mean to. A live run tears down everything it made, and the sweep catches what a killed run left.
+
 ## Test Categories
 
 Three categories of test exist, controlled by pytest flags:
@@ -17,27 +42,6 @@ Three categories of test exist, controlled by pytest flags:
 | `--update-parser-snapshots` | — | Not a category: regenerates `parser_snapshots.json` for `test_parser_snapshots.py`, which then passes, rather than running any extra tests. Regenerate on the oldest supported interpreter, or check the test on one, because a newer argparse can derive values differently |
 
 Around 700 of the unit tests are [Commander GUI tests](#commander-gui-tests). They are controlled by no flag, but they skip where PyQt6 or Qt's runtime libraries are unavailable, so a run without them reports fewer passes and more skips rather than any failure.
-
-## Quick Reference
-
-```shell
-# Unit tests only (no credentials needed)
-pytest -v
-
-# Add system tests (credentials required)
-pytest -v --run-system
-
-# The live system tests (their own configuration; provisions real compute)
-pytest -v --run-live -n 4 tests/live/       # providers in parallel, one worker each
-python tests/live/sweep.py --dry-run   # what a sweep after dead runs would tear down
-
-# Run a single file or pattern
-pytest -v tests/test_ydid_utils.py
-pytest -v -k test_variable
-
-# Parallel execution
-pytest -v -n 8
-```
 
 ## Test Files
 
