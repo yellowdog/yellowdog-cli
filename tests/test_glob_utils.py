@@ -15,7 +15,11 @@ from yellowdog_cli.utils.entity_utils import (
     namespace_scope,
     resolve_name_glob,
 )
-from yellowdog_cli.utils.glob_utils import contains_glob_chars, glob_search_prefix
+from yellowdog_cli.utils.glob_utils import (
+    contains_glob_chars,
+    glob_literal_hint,
+    glob_search_prefix,
+)
 
 # A client the scope phrases are given; what the Application can read comes
 # from the 'readable' fixture's stand-in for its details
@@ -226,3 +230,21 @@ def test_namespace_scope_with_none_readable_is_unscoped(readable):
 )
 def test_filter_phrase_is_empty_for_an_empty_filter(value, expected):
     assert filter_phrase("with '{}' in tag", value) == expected
+
+
+@pytest.mark.parametrize(
+    "pattern, hint",
+    [
+        ("row-*", "row-"),
+        ("*-1", "-1"),
+        ("a*bcd?e", "bcd"),
+        ("row-[12]*", "row-"),
+        ("[ab]c", "c"),
+        ("first-1", "first-1"),
+        ("*", ""),
+        ("*?*", ""),
+    ],
+)
+def test_the_literal_hint_is_the_longest_literal_run(pattern, hint):
+    # A substring every name the glob matches contains, outside any '[...]'
+    assert glob_literal_hint(pattern) == hint

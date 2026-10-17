@@ -30,6 +30,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd list` has more filters**: `--name <glob>` now applies to Tasks and Task Groups too (matching their own names); `--unhealthy` lists only the Work Requirements, Worker Pools or Compute Requirements the Platform marks unhealthy; `--provider` (`aws`, `azure`, `google`, `oci`, `on-premise`) only the Instances, Nodes or Compute Source Templates of that provider; and `--description <glob>` only the Allowances whose description matches. Each is refused for the types it does not apply to.
 - **`yd list tasks --with-errors`** lists only the Tasks that recorded an error, whatever their status: a Task can complete after an error, on a retry, so it is not the same as `--status FAILED`.
 - **`yd list --status` takes several statuses separated by commas** (`--status failed,aborted,cancelled`), as well as repeated.
+- **Listing Tasks fetches only the matching ones**: `yd list tasks` passes `--status`, `--with-errors` and `--name` to the Platform with its search, where it used to fetch every Task of each Task Group and filter them itself, which on a Task Group of millions of Tasks is the difference between a quick listing and a very long one; and `--count`, alone or with `--status`, takes each Task Group's own counts and fetches no Tasks at all. The results are the same.
 
 ## 13.4.0 — 2026-10-09
 

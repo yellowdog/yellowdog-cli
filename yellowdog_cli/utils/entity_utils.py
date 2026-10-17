@@ -48,6 +48,7 @@ from yellowdog_client.model import (
     Task,
     TaskGroup,
     TaskSearch,
+    TaskStatus,
     User,
     UserSearch,
     WorkerPool,
@@ -757,13 +758,26 @@ def remove_allowances_matching_description(
 
 @lru_cache
 def get_all_tasks_in_task_group(
-    client: PlatformClient, task_group_id: str
+    client: PlatformClient,
+    task_group_id: str,
+    statuses: tuple[str, ...] | None = None,
+    has_errors: bool | None = None,
+    name_contains: str | None = None,
 ) -> list[Task]:
     """
-    Return all the tasks in a task group, with caching.
+    Return the tasks in a task group, with caching: where given, only those
+    with one of 'statuses' (TaskStatus values), with errors ('has_errors'),
+    and whose name contains 'name_contains' (a case-sensitive substring, as
+    the Platform matches it). The Platform filters, so a task group of
+    millions of tasks sends only what is asked for.
     """
     return client.work_client.get_tasks(
-        TaskSearch(taskGroupId=task_group_id)
+        TaskSearch(
+            taskGroupId=task_group_id,
+            statuses=[TaskStatus(status) for status in statuses] if statuses else None,
+            hasErrors=True if has_errors else None,
+            name=name_contains or None,
+        )
     ).list_all()
 
 

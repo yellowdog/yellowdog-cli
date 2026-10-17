@@ -106,7 +106,7 @@ from yellowdog_cli.utils.entity_utils import (
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
-from yellowdog_cli.utils.glob_utils import glob_search_prefix
+from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.output_settings import configure_output
@@ -294,6 +294,57 @@ def _apply_description_filter(ctx: RunContext, objects: list) -> list:
     ]
 
 
+def _task_search_terms(ctx: RunContext) -> dict[str, Any]:
+    """
+    The Task filters the Platform can apply itself, so a Task Group of
+    millions of Tasks sends only what is asked for: '--status' as the Task
+    statuses among those given, '--with-errors', and '--name' as a substring
+    every match contains (its longest literal run; the Platform's name search
+    is a case-sensitive substring, with no wildcards). Empty when there are
+    none, or Tasks are not what is listed; the client-side filters still
+    decide either way.
+    """
+    if ctx.args.entity_type != ET_TASKS:
+        return {}
+    terms: dict[str, Any] = {}
+    if ctx.args.status_filter:
+        known = _KNOWN_STATUSES[ET_TASKS]
+        statuses = {s.upper() for s in ctx.args.status_filter} & known
+        if statuses:
+            terms["statuses"] = tuple(sorted(statuses))
+    if ctx.args.with_errors:
+        terms["has_errors"] = True
+    if ctx.args.name_glob and (hint := glob_literal_hint(ctx.args.name_glob)):
+        terms["name_contains"] = hint
+    return terms
+
+
+def _summary_task_count(ctx: RunContext, task_group: Any) -> int | None:
+    """
+    Under '--count', a Task Group's own count of the Tasks listed, from its
+    'taskSummary' ('taskCount', or with '--status' the matching
+    'statusCounts'), so its Tasks, which can number in the millions, are
+    not fetched to be counted. None where the summary cannot answer: with
+    '--name' or '--with-errors', which it does not count by, or a summary
+    that is absent or not numbers.
+    """
+    if not ctx.args.count_only or ctx.args.name_glob or ctx.args.with_errors:
+        return None
+    summary = getattr(task_group, "taskSummary", None)
+    total = getattr(summary, "taskCount", None)
+    counts = getattr(summary, "statusCounts", None)
+    if not isinstance(total, int) or not isinstance(counts, dict):
+        return None
+    if not ctx.args.status_filter:
+        return total
+    wanted = {status.upper() for status in ctx.args.status_filter}
+    return sum(
+        count
+        for status, count in counts.items()
+        if getattr(status, "value", str(status)).upper() in wanted
+    )
+
+
 def _apply_errors_filter(ctx: RunContext, objects: list) -> list:
     """
     '--with-errors': only the Tasks that recorded an error, whatever their
@@ -459,8 +510,11 @@ def list_work_requirements(ctx: RunContext):
         else:
             print_numbered_object_list(ctx.client, work_requirement_summaries)
     elif _listing_all(ctx):
-        # Collect all task groups / tasks across all work requirements
+        # Collect all task groups / tasks across all work requirements; under
+        # '--count', a Task Group whose summary can say how many is counted
+        # from it rather than fetched
         all_objects: list = []
+        summarised = 0
         for work_summary in work_requirement_summaries:
             tgs = sorted_objects(
                 get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
@@ -471,24 +525,32 @@ def list_work_requirements(ctx: RunContext):
                         ctx, _apply_status_filter(ctx, tgs), ET_TASK_GROUPS
                     )
                 )
-            else:
-                for tg in tgs:
-                    all_objects.extend(
-                        _apply_errors_filter(
+                continue
+            for tg in tgs:
+                if (counted := _summary_task_count(ctx, tg)) is not None:
+                    summarised += counted
+                    continue
+                all_objects.extend(
+                    _apply_errors_filter(
+                        ctx,
+                        _apply_name_filter(
                             ctx,
-                            _apply_name_filter(
+                            _apply_status_filter(
                                 ctx,
-                                _apply_status_filter(
-                                    ctx,
-                                    get_all_tasks_in_task_group(
-                                        ctx.client, cast(str, tg.id)
-                                    ),
+                                get_all_tasks_in_task_group(
+                                    ctx.client,
+                                    cast(str, tg.id),
+                                    **_task_search_terms(ctx),
                                 ),
-                                ET_TASKS,
                             ),
-                        )
+                            ET_TASKS,
+                        ),
                     )
-        _print_all(ctx, all_objects)
+                )
+        if ctx.args.count_only:
+            print(summarised + len(all_objects))
+        else:
+            _print_all(ctx, all_objects)
     else:
         selected_work_summaries = select(
             ctx.client, work_requirement_summaries, single_result=True
@@ -525,7 +587,7 @@ def list_tasks(
     ctx: RunContext, task_group: TaskGroup, _work_summary: WorkRequirementSummary
 ):
     tasks: list[Task] = get_all_tasks_in_task_group(
-        ctx.client, cast(str, task_group.id)
+        ctx.client, cast(str, task_group.id), **_task_search_terms(ctx)
     )
     tasks = _apply_errors_filter(
         ctx,

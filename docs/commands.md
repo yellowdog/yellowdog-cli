@@ -1471,6 +1471,8 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 yd list work-requirements --name 'myproject-*' --active-only
 ```
 
+For Tasks, which can number in the millions, `--status`, `--with-errors` and `--name` are passed to the Platform with the search, so only the matching Tasks are fetched: `--name` as the longest literal part of its pattern (the Platform matches it as a case-sensitive substring), the pattern itself then applied to what comes back. `--count` fetches no Tasks at all where it can: each Task Group's own summary gives its count, or with `--status` the count of each status, so only `--name` and `--with-errors` need the Tasks themselves.
+
 An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provider`, `--description`, `--with-errors`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).

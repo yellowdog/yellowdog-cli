@@ -570,3 +570,65 @@ def test_with_errors_keeps_only_tasks_that_recorded_an_error():
 )
 def test_a_status_list_may_be_comma_separated(argv, statuses):
     assert CLIParser(command="yd-list", argv=argv).status_filter == statuses
+
+
+class TestTaskSearchTerms:
+    """
+    The Task filters the Platform applies itself, so a Task Group of millions
+    of Tasks sends only what is asked for: '--status' as 'statuses' (the
+    Task statuses among those given), '--with-errors' as 'hasErrors', and
+    '--name' as a substring every match contains (the Platform's 'name' is a
+    case-sensitive substring, with no wildcards). The client-side filters
+    still decide.
+    """
+
+    def _terms(self, monkeypatch, entity_type="tasks", **values):
+        fetched = []
+        monkeypatch.setattr(
+            yd_list,
+            "get_all_tasks_in_task_group",
+            lambda client, tg_id, **terms: fetched.append(terms) or [],
+        )
+        ctx = RunContext(
+            args=_args(entity_type, **values), config=None, client=MagicMock()
+        )
+        yd_list.list_tasks(ctx, SimpleNamespace(id="tg"), None)
+        (terms,) = fetched
+        return terms
+
+    def test_nothing_given_sends_nothing(self, monkeypatch):
+        assert self._terms(monkeypatch) == {}
+
+    def test_the_filters_go_to_the_platform(self, monkeypatch):
+        terms = self._terms(
+            monkeypatch,
+            status_filter=["failed", "Aborted", "bogus"],
+            with_errors=True,
+            name_glob="*-1",
+        )
+        assert terms == {
+            "statuses": ("ABORTED", "FAILED"),
+            "has_errors": True,
+            "name_contains": "-1",
+        }
+
+    def test_a_glob_with_no_literal_run_sends_no_name(self, monkeypatch):
+        assert self._terms(monkeypatch, name_glob="*") == {}
+
+
+def test_the_task_search_carries_the_terms():
+    from yellowdog_client.model import TaskStatus
+
+    from yellowdog_cli.utils import entity_utils
+
+    client = MagicMock()
+    entity_utils.get_all_tasks_in_task_group.cache_clear()
+    entity_utils.get_all_tasks_in_task_group(
+        client, "tg", statuses=("FAILED",), has_errors=True, name_contains="row-"
+    )
+    (search,) = client.work_client.get_tasks.call_args.args
+    assert search.taskGroupId == "tg"
+    assert search.statuses == [TaskStatus.FAILED]
+    assert search.hasErrors is True
+    assert search.name == "row-"
+    entity_utils.get_all_tasks_in_task_group.cache_clear()

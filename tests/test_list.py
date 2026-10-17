@@ -73,6 +73,12 @@ def _args_parser(**overrides) -> MagicMock:
         active_only=False,
         entity_type=None,
         name_glob=None,
+        # The listing filters, unset as parsed: a MagicMock's would be truthy
+        unhealthy=False,
+        provider=None,
+        description_glob=None,
+        deletable=False,
+        with_errors=False,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -221,6 +227,95 @@ class TestCountOption:
             yd_list.list_work_requirements(_ctx())
         assert capsys.readouterr().out.strip() == "5"
         mock_select.assert_not_called()
+
+
+class TestTaskCountsFromSummaries:
+    """
+    '--count' over Tasks takes each Task Group's own counts ('taskSummary':
+    'taskCount', or with '--status' the matching 'statusCounts') rather
+    than fetching its Tasks, which can number in the millions; it fetches
+    them only where the summary cannot answer: '--name' or '--with-errors',
+    or a Task Group with no summary.
+    """
+
+    @staticmethod
+    def _count(capsys, groups, fetched, **overrides):
+
+        import yellowdog_cli.list as yd_list
+
+        def tasks(client, tg_id, **terms):
+            fetched.append(tg_id)
+            return [MagicMock(status=None, errors=["e"], name="t-1")] * 4
+
+        with (
+            patch.object(wrapper_module, "CLIENT", MagicMock()),
+            patch.object(
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(namespace="ns", name_tag="tag"),
+            ),
+            patch.object(
+                wrapper_module,
+                "ARGS_PARSER",
+                _args_parser(entity_type=ET_TASKS, **overrides),
+            ),
+            patch.object(
+                yd_list,
+                "get_filtered_work_requirement_summaries",
+                return_value=[MagicMock(id="wr")],
+            ),
+            patch.object(yd_list, "get_task_groups_from_wr_by_id", return_value=groups),
+            patch.object(yd_list, "get_all_tasks_in_task_group", side_effect=tasks),
+            patch.object(yd_list, "sorted_objects", side_effect=lambda o: o),
+            patch.object(yd_list, "print_info"),
+        ):
+            yd_list.list_work_requirements(_ctx())
+        return capsys.readouterr().out.strip()
+
+    @staticmethod
+    def _group(tg_id, counts):
+        from yellowdog_client.model import TaskStatus, TaskSummary
+
+        return MagicMock(
+            id=tg_id,
+            status=None,
+            taskSummary=TaskSummary(
+                statusCounts={TaskStatus[k]: v for k, v in counts.items()},
+                taskCount=sum(counts.values()),
+            ),
+        )
+
+    def test_the_count_is_the_summaries_and_no_task_is_fetched(self, capsys):
+        groups = [
+            self._group("tg-1", {"FAILED": 2, "COMPLETED": 5}),
+            self._group("tg-2", {"ABORTED": 1}),
+        ]
+        fetched = []
+        assert self._count(capsys, groups, fetched) == "8"
+        assert fetched == []
+
+    def test_a_status_counts_the_matching_statuses(self, capsys):
+        groups = [
+            self._group("tg-1", {"FAILED": 2, "COMPLETED": 5}),
+            self._group("tg-2", {"ABORTED": 1}),
+        ]
+        fetched = []
+        out = self._count(capsys, groups, fetched, status_filter=["failed", "aborted"])
+        assert out == "3"
+        assert fetched == []
+
+    def test_errors_or_a_name_are_counted_from_the_tasks(self, capsys):
+        groups = [self._group("tg-1", {"FAILED": 2})]
+        fetched = []
+        assert self._count(capsys, groups, fetched, with_errors=True) == "4"
+        assert fetched == ["tg-1"]
+
+    def test_a_group_without_a_summary_is_counted_from_its_tasks(self, capsys):
+        no_summary = MagicMock(id="tg-2", status=None, taskSummary=None)
+        groups = [self._group("tg-1", {"FAILED": 2}), no_summary]
+        fetched = []
+        assert self._count(capsys, groups, fetched) == "6"
+        assert fetched == ["tg-2"]
 
 
 def test_every_entity_type_has_a_lister():
