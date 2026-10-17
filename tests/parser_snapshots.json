@@ -643,6 +643,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -3632,6 +3645,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null
@@ -8297,6 +8323,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -10956,6 +10995,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null
@@ -13697,6 +13749,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -15096,6 +15161,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -16129,6 +16207,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null
@@ -17221,6 +17312,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -18271,6 +18375,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null
@@ -22131,6 +22248,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null
@@ -30701,6 +30831,19 @@
       "nargs": null,
       "option_strings": [
         "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "with_errors",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--with-errors"
       ],
       "required": false,
       "type": null

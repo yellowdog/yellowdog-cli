@@ -384,6 +384,8 @@ LIST_PROVIDER_TYPES = frozenset({ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPL
 LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
 # Those named by a description rather than a name
 LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
+# Those that record errors of their own
+LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2614,9 +2616,10 @@ STATUS = option(
     required=False,
     help=(
         "include only entities whose status matches the given value "
-        "(case-insensitive); may be repeated to allow multiple statuses"
+        "(case-insensitive); several may be given separated by commas "
+        "('failed,aborted'), or by repeating the option"
     ),
-    metavar="<status>",
+    metavar="<status>[,...]",
 )
 DELETABLE = option(
     "--deletable",
@@ -2655,6 +2658,15 @@ DESCRIPTION = option(
         " pattern; a value without wildcards matches the description exactly"
     ),
 )
+WITH_ERRORS = option(
+    "--with-errors",
+    action="store_true",
+    required=False,
+    help=(
+        "list only the tasks that recorded an error, whatever their status"
+        " (a task can complete after an error, on a retry)"
+    ),
+)
 PUBLIC_IPS_ONLY = option(
     "--public-ips-only",
     action="store_true",
@@ -2687,6 +2699,7 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("unhealthy", "--unhealthy", LIST_UNHEALTHY_TYPES),
         ("provider", "--provider", LIST_PROVIDER_TYPES),
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
+        ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
@@ -2724,6 +2737,7 @@ COMMANDS["yd-list"] = Command(
         UNHEALTHY,
         PROVIDER,
         DESCRIPTION,
+        WITH_ERRORS,
         PUBLIC_IPS_ONLY,
         DELETABLE,
         DETAILS,

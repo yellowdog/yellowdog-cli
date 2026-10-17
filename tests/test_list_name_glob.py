@@ -62,6 +62,7 @@ def _args(**overrides):
         provider=None,
         description_glob=None,
         deletable=False,
+        with_errors=False,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)

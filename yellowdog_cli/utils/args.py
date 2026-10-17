@@ -397,7 +397,19 @@ class CLIParser:
     @property
     @allow_missing_attribute
     def status_filter(self) -> list[str] | None:
-        return self.args.status_filter
+        """
+        The statuses given, each '--status' a status or several separated by
+        commas ('--status failed,aborted'), blanks dropped.
+        """
+        given = self.args.status_filter
+        if not given:
+            return given
+        return [
+            status.strip()
+            for entry in given
+            for status in entry.split(",")
+            if status.strip()
+        ]
 
     @property
     @allow_missing_attribute
@@ -423,6 +435,11 @@ class CLIParser:
     @allow_missing_attribute
     def description_glob(self) -> str | None:
         return self.args.description_glob
+
+    @property
+    @allow_missing_attribute
+    def with_errors(self) -> bool | None:
+        return self.args.with_errors
 
     @property
     @allow_missing_attribute

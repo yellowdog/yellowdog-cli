@@ -61,6 +61,7 @@ def _args(entity_type: str, **values) -> Any:
         unhealthy=False,
         provider=None,
         description_glob=None,
+        with_errors=False,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -115,6 +116,10 @@ def listing(monkeypatch):
             "--description does not apply to keyrings",
         ),
         (["instances", "--provider", "nimbus"], "invalid choice"),
+        (
+            ["task-groups", "--with-errors"],
+            "--with-errors does not apply to task-groups",
+        ),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -140,6 +145,7 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["nodes", "--provider", "on-premise"],
         ["compute-source-templates", "--provider", "aws"],
         ["allowances", "--description", "*-allowance"],
+        ["tasks", "--with-errors", "--status", "COMPLETED"],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -536,3 +542,31 @@ class TestTheNewFilters:
         yd_list.list_work_requirements(_ctx())
         (kwargs,) = calls
         assert "name" not in kwargs
+
+
+def test_with_errors_keeps_only_tasks_that_recorded_an_error():
+    tasks = [
+        SimpleNamespace(id=1, errors=[SimpleNamespace(message="boom")]),
+        SimpleNamespace(id=2, errors=[]),
+        SimpleNamespace(id=3, errors=None),
+    ]
+    ctx = RunContext(args=_args("tasks", with_errors=True), config=None, client=None)
+    assert [t.id for t in yd_list._apply_errors_filter(ctx, tasks)] == [1]
+    unset = RunContext(args=_args("tasks"), config=None, client=None)
+    assert yd_list._apply_errors_filter(unset, tasks) == tasks
+
+
+@pytest.mark.parametrize(
+    "argv, statuses",
+    [
+        (["tasks", "--status", "failed,aborted"], ["failed", "aborted"]),
+        (
+            ["tasks", "--status", "failed, aborted", "--status", "completed"],
+            ["failed", "aborted", "completed"],
+        ),
+        (["tasks", "--status", "FAILED"], ["FAILED"]),
+        (["tasks", "--status", "failed,,"], ["failed"]),
+    ],
+)
+def test_a_status_list_may_be_comma_separated(argv, statuses):
+    assert CLIParser(command="yd-list", argv=argv).status_filter == statuses

@@ -294,6 +294,16 @@ def _apply_description_filter(ctx: RunContext, objects: list) -> list:
     ]
 
 
+def _apply_errors_filter(ctx: RunContext, objects: list) -> list:
+    """
+    '--with-errors': only the Tasks that recorded an error, whatever their
+    status.
+    """
+    if not ctx.args.with_errors:
+        return objects
+    return [obj for obj in objects if getattr(obj, "errors", None)]
+
+
 @main_wrapper
 def main(ctx: RunContext):
     _adjust_output_options(ctx)
@@ -464,15 +474,18 @@ def list_work_requirements(ctx: RunContext):
             else:
                 for tg in tgs:
                     all_objects.extend(
-                        _apply_name_filter(
+                        _apply_errors_filter(
                             ctx,
-                            _apply_status_filter(
+                            _apply_name_filter(
                                 ctx,
-                                get_all_tasks_in_task_group(
-                                    ctx.client, cast(str, tg.id)
+                                _apply_status_filter(
+                                    ctx,
+                                    get_all_tasks_in_task_group(
+                                        ctx.client, cast(str, tg.id)
+                                    ),
                                 ),
+                                ET_TASKS,
                             ),
-                            ET_TASKS,
                         )
                     )
         _print_all(ctx, all_objects)
@@ -514,8 +527,11 @@ def list_tasks(
     tasks: list[Task] = get_all_tasks_in_task_group(
         ctx.client, cast(str, task_group.id)
     )
-    tasks = _apply_name_filter(
-        ctx, _apply_status_filter(ctx, sorted_objects(tasks)), ET_TASKS
+    tasks = _apply_errors_filter(
+        ctx,
+        _apply_name_filter(
+            ctx, _apply_status_filter(ctx, sorted_objects(tasks)), ET_TASKS
+        ),
     )
     if ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])

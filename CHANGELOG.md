@@ -28,6 +28,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **MCP: an action tool whose targets were not found or refused still returns its result**, now that those commands exit 6 or 5: a run reporting its own per-item failures is a result whatever its exit code, bar an authentication (4) or connection (8) failure, which stopped it and is an error.
 - **`yd list namespaces` takes `--name` and `--deletable`**: `--name <glob>` lists the namespaces whose name matches, as it does for other types, and `--deletable` only those the Platform can delete, never having been populated.
 - **`yd list` has more filters**: `--name <glob>` now applies to Tasks and Task Groups too (matching their own names); `--unhealthy` lists only the Work Requirements, Worker Pools or Compute Requirements the Platform marks unhealthy; `--provider` (`aws`, `azure`, `google`, `oci`, `on-premise`) only the Instances, Nodes or Compute Source Templates of that provider; and `--description <glob>` only the Allowances whose description matches. Each is refused for the types it does not apply to.
+- **`yd list tasks --with-errors`** lists only the Tasks that recorded an error, whatever their status: a Task can complete after an error, on a retry, so it is not the same as `--status FAILED`.
+- **`yd list --status` takes several statuses separated by commas** (`--status failed,aborted,cancelled`), as well as repeated.
 
 ## 13.4.0 — 2026-10-09
 
