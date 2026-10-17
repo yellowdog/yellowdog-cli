@@ -235,6 +235,81 @@ def test_not_found_within_task_group_id(live_run, stuck_wr):
     )
 
 
+def test_not_found_within_cr_name(live_run):
+    target = live_run.run.name("no-such-cr")
+    _fails(
+        live_run.yd,
+        "not-found-within-cr-name",
+        6,
+        target,
+        "instance",
+        "list",
+        "--within",
+        target,
+        *_JSON,
+    )
+
+
+def test_not_found_within_cr_id(live_run, stuck_wr):
+    target = fake_ydid(stuck_wr, "compreq")
+    _fails(
+        live_run.yd,
+        "not-found-within-cr-id",
+        6,
+        target,
+        "instance",
+        "list",
+        "--within",
+        target,
+        *_JSON,
+    )
+
+
+def test_not_found_within_pool_name(live_run):
+    target = live_run.run.name("no-such-pool")
+    _fails(
+        live_run.yd,
+        "not-found-within-pool-name",
+        6,
+        target,
+        "node",
+        "list",
+        "--within",
+        target,
+        *_JSON,
+    )
+
+
+def test_not_found_within_pool_id(live_run, stuck_wr):
+    target = fake_ydid(stuck_wr, "wrkrpool")
+    _fails(
+        live_run.yd,
+        "not-found-within-pool-id",
+        6,
+        target,
+        "node",
+        "list",
+        "--within",
+        target,
+        *_JSON,
+    )
+
+
+def test_not_found_within_node_id(live_run, stuck_wr):
+    target = fake_ydid(stuck_wr, "node")
+    _fails(
+        live_run.yd,
+        "not-found-within-node-id",
+        6,
+        target,
+        "worker",
+        "list",
+        "--within",
+        target,
+        *_JSON,
+    )
+
+
 # Authentication: the limited Application's key with a wrong secret
 
 
@@ -351,6 +426,22 @@ def test_permission_within(as_limited, stuck_wr):
         "list",
         "--within",
         stuck_wr,
+        *_JSON,
+    )
+
+
+def test_permission_within_pool(live_run, as_limited):
+    # A Worker Pool looked up by name in a namespace the Application may not
+    # read: refused, whether or not the Worker Pool exists
+    _fails(
+        as_limited,
+        "permission-within-pool",
+        5,
+        PERMISSION,
+        "node",
+        "list",
+        "--within",
+        f"{live_run.run.namespace}/{live_run.run.name('no-such-pool')}",
         *_JSON,
     )
 
