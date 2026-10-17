@@ -28,11 +28,13 @@ from harness.config import SCHEMA, LiveConfig
 
 RUN_PREFIX = "ydst"
 # The namespaces, fixed rather than configured: the Platform never deletes a
-# namespace that has been populated, so each name used is permanent. Runs
-# share NAMESPACE, kept apart by their run IDs; the failure tests' limited
-# Application reads LIMITED_NAMESPACE alone, which stays empty
+# namespace that has been populated, so each name used is permanent (see
+# tests/README.md's Namespaces). Runs share NAMESPACE, kept apart by their run
+# IDs, as the resource system tests do (tests/resources/test-config.toml); the
+# failure tests' limited Application may read LIMITED_NAMESPACE alone, a
+# namespace no test puts work in, so its listing there is empty
 NAMESPACE = "yd-cli-system-tests"
-LIMITED_NAMESPACE = "yd-cli-system-tests-limited"
+LIMITED_NAMESPACE = "yd-cli-tests"
 SPECS = Path(__file__).resolve().parent.parent / "specs"
 INSTALLER = SPECS / "install-agent.sh"  # The Agent installer, user data for every pool
 _ALPHABET = string.digits + string.ascii_lowercase

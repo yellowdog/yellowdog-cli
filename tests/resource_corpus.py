@@ -84,8 +84,8 @@ def install_variables() -> dict[str, str | None]:
     registers them, before any test runs. Merged, the corpus would resolve
     '{{namespace}}' to whatever config.toml happens to say while the live layer,
     which passes '-c test-config.toml' to a subprocess, resolves it to
-    'yd-cli-tests'. The two layers would disagree about what the corpus says and
-    nothing would catch it, since the offline comparison checks a specification
+    'yd-cli-system-tests'. The two layers would disagree about what the corpus
+    says and nothing would catch it, since the offline comparison checks a specification
     against a model built from that same specification.
 
     Forcing here gives the test config the precedence the CLI itself gives an

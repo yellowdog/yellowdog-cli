@@ -119,7 +119,7 @@ def test_a_corpus_load_uses_the_test_config_namespace_not_the_ambient_one():
     even when the process already has a different one registered, as it always does
     under pytest. Without forcing, this would resolve to the ambient config's
     namespace ('yd-demo', say) while the live layer, passing '-c test-config.toml'
-    to a subprocess, uses 'yd-cli-tests'.
+    to a subprocess, uses 'yd-cli-system-tests'.
     """
     from yellowdog_cli.utils.variable_substitution import VARIABLE_SUBSTITUTIONS
 

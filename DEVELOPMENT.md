@@ -32,7 +32,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 16 16:53:12 BST 2026 -->
+<!-- Added by: pwt, at: Sat Oct 17 11:05:37 BST 2026 -->
 
 <!--te-->
 
@@ -159,7 +159,7 @@ A run provisions, on every configured provider, a Worker Pool of one instance fr
 
 The primary also runs an actions pool (two instances, two Workers each, growing to three for the Node verbs) for the work and compute scenarios, and a standalone Compute Requirement of one instance, for roughly 30 to 40 minutes; a whole-suite run takes about 25 minutes on AWS alone. The data scenarios, and a Task's inputs and outputs through S3, need `[data]`, AWS as the primary and `iam_instance_profile_arn`; both data remotes are built from `[aws]`, the run's files live under `<bucket>/<namespace>/<run ID>/`, and teardown deletes them. A whole-suite session (`pytest --run-live -n 4 tests/live/`) ends with the coverage gate, which fails on any CLI verb neither exercised nor listed, with its reason, in `tests/live/harness/coverage.py`'s `NOT_EXERCISED`; a narrower session skips it. Every `yd` call fails if its output holds a configured secret.
 
-`tests/live/test_live_failures.py` fails on purpose and provisions nothing, so it runs alone in a few minutes (`pytest -v --run-live tests/live/test_live_failures.py`): not found, authentication (a wrong secret, and a key revoked by removing its Application, which can take up to 6 minutes to stop working), permission, connection and timeout, each held to its exit code, a message without a traceback, a `--json` document that parses and no secret in its output. The permission cases act as a limited Application the module creates and removes, in a Group with `work-viewer` in `yd-cli-system-tests-limited` alone, a second namespace the module creates if missing and leaves empty in the account. An outcome only the Platform decides is pinned, with its reason, in `tests/live/harness/failures.py`'s `PINNED`.
+`tests/live/test_live_failures.py` fails on purpose and provisions nothing, so it runs alone in a few minutes (`pytest -v --run-live tests/live/test_live_failures.py`): not found, authentication (a wrong secret, and a key revoked by removing its Application, which can take up to 6 minutes to stop working), permission, connection and timeout, each held to its exit code, a message without a traceback, a `--json` document that parses and no secret in its output. The permission cases act as a limited Application the module creates and removes, in a Group with `work-viewer` in `yd-cli-tests` alone, a namespace no test puts work in (see [Namespaces](tests/README.md#namespaces)). An outcome only the Platform decides is pinned, with its reason, in `tests/live/harness/failures.py`'s `PINNED`.
 
 Everything a run makes is named `ydst-<yymmddhhmm>-<4 base36>-...` and tagged with that run ID, so runs may overlap; the sweep tears down only runs of its namespace older than `--older-than` (`sweep_age_hours` by default), or those named with `--run`. A run whose compute may still be alive when teardown ends keeps its Keyring, without whose Credential the Platform cannot terminate it, and its Allowance, and the session fails saying how to tear it down again. A session sweeps first unless `sweep_on_start` is false. Secrets reach `yd` only through its environment, never the `config.toml` each run generates. See [`tests/README.md`](tests/README.md#live-system-tests---run-live-provisions-real-cloud-instances) for the files.
 

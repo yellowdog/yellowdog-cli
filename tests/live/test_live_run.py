@@ -202,4 +202,4 @@ def test_a_run_uses_the_fixed_namespaces(every_provider, tmp_path):
 
     run = Run.start(every_provider, tmp_path / "runs")
     assert run.namespace == NAMESPACE == "yd-cli-system-tests"
-    assert LIMITED_NAMESPACE == "yd-cli-system-tests-limited"
+    assert LIMITED_NAMESPACE == "yd-cli-tests"
