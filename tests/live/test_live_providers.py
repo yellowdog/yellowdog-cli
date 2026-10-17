@@ -129,6 +129,93 @@ def test_resize_up(chain, live_run):
             _settle(chain, live_run)
 
 
+# 'yd list --provider' as each chain's provider is named
+_CLI_PROVIDER = {"aws": "aws", "azure": "azure", "gcp": "google", "oci": "oci"}
+
+
+def _within(yd, noun: str, target: str, *extra: str):
+    return yd(noun, "list", "--within", target, *extra, "--json", "--quiet")
+
+
+def _limited_to_one(yd, noun: str, target: str, total: int, singular: str) -> None:
+    """
+    '--limit 1' lists one of the 'total' (none of none), and warns, on
+    stderr, only when there are more.
+    """
+    result = _within(yd, noun, target, "--limit", "1")
+    assert len(result.records) == min(1, total), result.records
+    warned = f"Listed the first {singular}; more match" in result.stderr
+    assert warned == (total > 1), result.stderr
+
+
+def test_listing(chain, live_run):
+    """
+    The pool's Instances, Nodes and Workers listed '--within' their parent,
+    by ID and by name, as the namespace-wide listings list them; '--limit'
+    and its warning; '--status' and '--provider' sent with the search.
+    """
+    run, yd = live_run.run, live_run.yd
+    with chain.step("listing"):
+        cr_name = compute.compute_requirement(yd, chain.cr_id)["name"]
+        expected = compute.instances(yd, run.namespace, run.run_id, chain.cr_id)
+        expected_ids = sorted(name.split(".", 1)[1] for name in expected)
+        for target in (chain.cr_id, cr_name, f"{run.namespace}/{cr_name}"):
+            listed = _within(yd, "instance", target, "--limit", "0").records
+            assert sorted(i["id"]["instanceId"] for i in listed) == expected_ids
+        _limited_to_one(yd, "instance", chain.cr_id, len(expected), "Instance")
+        running = sum(status == "RUNNING" for status in expected.values())
+        provider = _CLI_PROVIDER[chain.provider]
+        assert (
+            len(
+                _within(
+                    yd,
+                    "instance",
+                    chain.cr_id,
+                    "--status",
+                    "running",
+                    "--provider",
+                    provider,
+                ).records
+            )
+            == running
+        )
+        assert (
+            _within(yd, "instance", chain.cr_id, "--provider", "on-premise").records
+            == []
+        )
+
+        pool_nodes = compute.nodes(yd, run.namespace, run.run_id, chain.pool_id)
+        expected_nodes = sorted(node["id"] for node in pool_nodes)
+        for target in (chain.pool_id, run.pool_name(chain.provider)):
+            listed = _within(yd, "node", target, "--limit", "0").records
+            assert sorted(node["id"] for node in listed) == expected_nodes
+        _limited_to_one(yd, "node", chain.pool_id, len(expected_nodes), "Node")
+        running_nodes = sum(node.get("status") == "RUNNING" for node in pool_nodes)
+        assert (
+            len(
+                _within(
+                    yd,
+                    "node",
+                    chain.pool_id,
+                    "--status",
+                    "running",
+                    "--provider",
+                    provider,
+                ).records
+            )
+            == running_nodes
+        )
+
+        workers = _within(yd, "worker", chain.pool_id, "--limit", "0").records
+        assert workers, "the pool has no Workers"
+        _limited_to_one(yd, "worker", chain.pool_id, len(workers), "Worker")
+        node = next(node for node in pool_nodes if node.get("workers"))
+        on_node = _within(yd, "worker", node["id"], "--limit", "0").records
+        assert sorted(w["id"] for w in on_node) == sorted(
+            w["id"] for w in node["workers"]
+        )
+
+
 def test_instantiate_standalone(chain, live_run):
     """
     A Compute Requirement of one instance that no Worker Pool manages, for
