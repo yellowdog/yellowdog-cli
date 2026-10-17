@@ -235,6 +235,65 @@ def _apply_status_filter(ctx: RunContext, objects: list) -> list:
     return result
 
 
+def _apply_name_filter(ctx: RunContext, objects: list, entity_type: str) -> list:
+    """
+    '--name' on the objects' own names, where they are the type listed: a
+    Task's or a Task Group's, never then the Work Requirements or Task Groups
+    walked to reach them.
+    """
+    glob = ctx.args.name_glob
+    if not glob or ctx.args.entity_type != entity_type:
+        return objects
+    return [
+        obj
+        for obj in objects
+        if getattr(obj, "name", None) is not None
+        and fnmatch.fnmatchcase(obj.name, glob)
+    ]
+
+
+def _apply_health_filter(ctx: RunContext, objects: list) -> list:
+    """
+    '--unhealthy': only what the Platform marks unhealthy ('healthy' false).
+    """
+    if not ctx.args.unhealthy:
+        return objects
+    return [obj for obj in objects if getattr(obj, "healthy", None) is False]
+
+
+def _apply_provider_filter(
+    ctx: RunContext, objects: list, provider_of: Callable[[Any], Any]
+) -> list:
+    """
+    '--provider': only those whose cloud provider ('provider_of' gives it, a
+    CloudProvider or None) is the one named, 'on-premise' for ON_PREMISE.
+    """
+    if not ctx.args.provider:
+        return objects
+    wanted = ctx.args.provider.upper().replace("-", "_")
+    return [
+        obj
+        for obj in objects
+        if (provider := provider_of(obj)) is not None
+        and getattr(provider, "name", str(provider)) == wanted
+    ]
+
+
+def _apply_description_filter(ctx: RunContext, objects: list) -> list:
+    """
+    '--description': only those whose description matches the glob.
+    """
+    glob = ctx.args.description_glob
+    if not glob:
+        return objects
+    return [
+        obj
+        for obj in objects
+        if getattr(obj, "description", None) is not None
+        and fnmatch.fnmatchcase(obj.description, glob)
+    ]
+
+
 @main_wrapper
 def main(ctx: RunContext):
     _adjust_output_options(ctx)
@@ -322,7 +381,7 @@ def list_work_requirements(ctx: RunContext):
         else []
     )
     work_requirement_summaries: list[WorkRequirementSummary]
-    if ctx.args.name_glob:
+    if ctx.args.name_glob and ctx.args.entity_type == ET_WORK_REQUIREMENTS:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
             f"Listing Work Requirements {namespace_scope(ctx.client, namespace)} "
@@ -354,8 +413,8 @@ def list_work_requirements(ctx: RunContext):
 
     work_requirement_summaries = sorted_objects(work_requirement_summaries)
     if ctx.args.entity_type == ET_WORK_REQUIREMENTS:
-        work_requirement_summaries = _apply_status_filter(
-            ctx, work_requirement_summaries
+        work_requirement_summaries = _apply_health_filter(
+            ctx, _apply_status_filter(ctx, work_requirement_summaries)
         )
         if not work_requirement_summaries:
             _print_empty(ctx, "No matching Work Requirements")
@@ -397,13 +456,23 @@ def list_work_requirements(ctx: RunContext):
                 get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
             )
             if ctx.args.entity_type == ET_TASK_GROUPS:
-                all_objects.extend(_apply_status_filter(ctx, tgs))
+                all_objects.extend(
+                    _apply_name_filter(
+                        ctx, _apply_status_filter(ctx, tgs), ET_TASK_GROUPS
+                    )
+                )
             else:
                 for tg in tgs:
                     all_objects.extend(
-                        _apply_status_filter(
+                        _apply_name_filter(
                             ctx,
-                            get_all_tasks_in_task_group(ctx.client, cast(str, tg.id)),
+                            _apply_status_filter(
+                                ctx,
+                                get_all_tasks_in_task_group(
+                                    ctx.client, cast(str, tg.id)
+                                ),
+                            ),
+                            ET_TASKS,
                         )
                     )
         _print_all(ctx, all_objects)
@@ -420,7 +489,9 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
     task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
         ctx.client, cast(str, work_summary.id)
     )
-    task_groups = _apply_status_filter(ctx, sorted_objects(task_groups))
+    task_groups = _apply_name_filter(
+        ctx, _apply_status_filter(ctx, sorted_objects(task_groups)), ET_TASK_GROUPS
+    )
     if ctx.args.entity_type != ET_TASKS:
         if ctx.args.details:
             print_yd_object_list(
@@ -443,7 +514,9 @@ def list_tasks(
     tasks: list[Task] = get_all_tasks_in_task_group(
         ctx.client, cast(str, task_group.id)
     )
-    tasks = _apply_status_filter(ctx, sorted_objects(tasks))
+    tasks = _apply_name_filter(
+        ctx, _apply_status_filter(ctx, sorted_objects(tasks)), ET_TASKS
+    )
     if ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
     elif ctx.args.ids_only:
@@ -506,7 +579,7 @@ def list_worker_pools(ctx: RunContext):
     worker_pool_summaries = (
         worker_pools
         if ctx.args.entity_type in (ET_NODES, ET_WORKERS)
-        else _apply_status_filter(ctx, worker_pools)
+        else _apply_health_filter(ctx, _apply_status_filter(ctx, worker_pools))
     )
 
     if not worker_pool_summaries:
@@ -606,8 +679,8 @@ def list_compute_requirements(ctx: RunContext):
     # A Compute Requirement's own status filters Compute Requirements, not
     # their Instances, which are filtered on theirs
     if ctx.args.entity_type != ET_INSTANCES:
-        compute_requirement_summaries = _apply_status_filter(
-            ctx, compute_requirement_summaries
+        compute_requirement_summaries = _apply_health_filter(
+            ctx, _apply_status_filter(ctx, compute_requirement_summaries)
         )
     if not compute_requirement_summaries:
         _print_empty(ctx, "No matching Compute Requirements")
@@ -680,7 +753,11 @@ def _instances_of(ctx: RunContext, compute_requirement_id: str) -> list[Instance
     search_client: SearchClient = ctx.client.compute_client.get_instances(
         instance_search=InstanceSearch(computeRequirementId=compute_requirement_id)
     )
-    instances: list[Instance] = _apply_status_filter(ctx, search_client.list_all())
+    instances: list[Instance] = _apply_provider_filter(
+        ctx,
+        _apply_status_filter(ctx, search_client.list_all()),
+        lambda instance: getattr(instance, "provider", None),
+    )
     if ctx.args.active_only:
         instances = [
             instance
@@ -738,7 +815,11 @@ def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
             node.workerPoolName = worker_pool_summary.name  # type: ignore[attr-defined]
         nodes_all += nodes
 
-    nodes_all = _apply_status_filter(ctx, nodes_all)
+    nodes_all = _apply_provider_filter(
+        ctx,
+        _apply_status_filter(ctx, nodes_all),
+        lambda node: node.details.provider if node.details else None,
+    )
     if not nodes_all:
         _print_empty(ctx, "No Nodes to display")
         return
@@ -923,6 +1004,9 @@ def list_compute_source_templates(ctx: RunContext):
             ctx.client, namespace=ctx.config.namespace, name=_shared_tag(ctx)
         )
 
+    cs_templates = _apply_provider_filter(
+        ctx, cs_templates, lambda template: template.provider
+    )
     if not cs_templates:
         _print_empty(ctx, "No matching Compute Source Templates found")
         return
@@ -1105,7 +1189,9 @@ def list_allowances(ctx: RunContext):
     search_client: SearchClient = ctx.client.allowances_client.get_allowances(
         allowances_search
     )
-    allowances: list[Allowance] = sorted_objects(search_client.list_all())
+    allowances: list[Allowance] = _apply_description_filter(
+        ctx, sorted_objects(search_client.list_all())
+    )
     if not allowances:
         _print_empty(ctx, "No Allowances to display")
         return

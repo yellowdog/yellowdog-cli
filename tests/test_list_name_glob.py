@@ -57,6 +57,11 @@ def _args(**overrides):
         strip_ids=False,
         substitute_ids=False,
         output_file=None,
+        # The listing filters, unset as parsed: a MagicMock's would be truthy
+        unhealthy=False,
+        provider=None,
+        description_glob=None,
+        deletable=False,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)

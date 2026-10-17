@@ -598,6 +598,51 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -3542,6 +3587,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null
@@ -8162,6 +8252,51 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -10776,6 +10911,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null
@@ -13472,6 +13652,51 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -14826,6 +15051,51 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -15814,6 +16084,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null
@@ -16861,6 +17176,51 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "public_ips_only",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -17866,6 +18226,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null
@@ -21681,6 +22086,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null
@@ -30206,6 +30656,51 @@
       "nargs": null,
       "option_strings": [
         "--status"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "unhealthy",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": [
+        "aws",
+        "azure",
+        "google",
+        "oci",
+        "on-premise"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "provider",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--provider"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "description_glob",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--description"
       ],
       "required": false,
       "type": null

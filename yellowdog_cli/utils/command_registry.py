@@ -340,6 +340,8 @@ LIST_NAME_TYPES = frozenset(
     {
         ET_NAMESPACES,
         ET_WORK_REQUIREMENTS,
+        ET_TASK_GROUPS,
+        ET_TASKS,
         ET_WORKER_POOLS,
         ET_COMPUTE_REQUIREMENTS,
         ET_COMPUTE_REQUIREMENT_TEMPLATES,
@@ -371,6 +373,17 @@ LIST_STATUS_TYPES = frozenset(
 LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
 # Those the Platform can say are deletable: a namespace never populated
 LIST_DELETABLE_TYPES = frozenset({ET_NAMESPACES})
+# Those the Platform says are healthy or not
+LIST_UNHEALTHY_TYPES = frozenset(
+    {ET_WORK_REQUIREMENTS, ET_WORKER_POOLS, ET_COMPUTE_REQUIREMENTS}
+)
+# Those with a cloud provider of their own
+LIST_PROVIDER_TYPES = frozenset({ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES})
+# '--provider''s values: the Platform's CloudProvider names, lower-case and
+# hyphenated
+LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
+# Those named by a description rather than a name
+LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -2585,6 +2598,7 @@ NAME = option(
     help=(
         "list only entities whose name matches the given glob "
         "pattern (e.g. 'proj-*'); applies to namespaces, work requirements, "
+        "task groups, tasks, "
         "worker pools, compute requirements, compute requirement/source "
         "templates, image families, users, applications, groups, "
         "roles, keyrings and permissions; not supported for other "
@@ -2611,6 +2625,34 @@ DELETABLE = option(
     help=(
         "when used with 'namespaces', lists only those that can be deleted"
         " (never populated)"
+    ),
+)
+UNHEALTHY = option(
+    "--unhealthy",
+    action="store_true",
+    required=False,
+    help=(
+        "list only the entities the Platform marks unhealthy: work"
+        " requirements, worker pools and compute requirements"
+    ),
+)
+PROVIDER = option(
+    "--provider",
+    choices=LIST_PROVIDERS,
+    required=False,
+    help=(
+        "list only those of the given cloud provider: instances, nodes and"
+        " compute source templates"
+    ),
+)
+DESCRIPTION = option(
+    "--description",
+    dest="description_glob",
+    metavar="<glob>",
+    required=False,
+    help=(
+        "list only allowances whose description matches the given glob"
+        " pattern; a value without wildcards matches the description exactly"
     ),
 )
 PUBLIC_IPS_ONLY = option(
@@ -2642,6 +2684,9 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("substitute_ids", "--substitute-ids", LIST_SUBSTITUTE_TYPES),
         ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
         ("deletable", "--deletable", LIST_DELETABLE_TYPES),
+        ("unhealthy", "--unhealthy", LIST_UNHEALTHY_TYPES),
+        ("provider", "--provider", LIST_PROVIDER_TYPES),
+        ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
@@ -2676,6 +2721,9 @@ COMMANDS["yd-list"] = Command(
         ACTIVE_ONLY,
         NAME,
         STATUS,
+        UNHEALTHY,
+        PROVIDER,
+        DESCRIPTION,
         PUBLIC_IPS_ONLY,
         DELETABLE,
         DETAILS,

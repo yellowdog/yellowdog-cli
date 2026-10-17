@@ -26,10 +26,13 @@ from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     LIST_ACTIVE_TYPES,
     LIST_DELETABLE_TYPES,
+    LIST_DESCRIPTION_TYPES,
     LIST_ID_TYPES,
     LIST_NAME_TYPES,
+    LIST_PROVIDER_TYPES,
     LIST_STATUS_TYPES,
     LIST_SUBSTITUTE_TYPES,
+    LIST_UNHEALTHY_TYPES,
     Command,
     Exclusive,
     Option,
@@ -220,6 +223,9 @@ def _list(entity_type: str, noun_plural: str) -> Verb:
             ("--substitute-ids", LIST_SUBSTITUTE_TYPES),
             ("--public-ips-only", frozenset({ET_INSTANCES})),
             ("--deletable", LIST_DELETABLE_TYPES),
+            ("--unhealthy", LIST_UNHEALTHY_TYPES),
+            ("--provider", LIST_PROVIDER_TYPES),
+            ("--description", LIST_DESCRIPTION_TYPES),
         )
         if entity_type not in types
     ]

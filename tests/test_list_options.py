@@ -58,6 +58,9 @@ def _args(entity_type: str, **values) -> Any:
         public_ips_only=False,
         substitute_ids=False,
         deletable=False,
+        unhealthy=False,
+        provider=None,
+        description_glob=None,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -105,6 +108,13 @@ def listing(monkeypatch):
         (["instances", "--public-ips-only", "--json"], "cannot be used with --json"),
         (["nodes", "--name", "x*"], "--name does not apply to nodes"),
         (["keyrings", "--deletable"], "--deletable does not apply to keyrings"),
+        (["keyrings", "--unhealthy"], "--unhealthy does not apply to keyrings"),
+        (["tasks", "--provider", "aws"], "--provider does not apply to tasks"),
+        (
+            ["keyrings", "--description", "x*"],
+            "--description does not apply to keyrings",
+        ),
+        (["instances", "--provider", "nimbus"], "invalid choice"),
     ],
 )
 def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
@@ -123,6 +133,13 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["tasks", "--ids-only", "--status", "FAILED"],
         ["worker-pools", "--name", "wp-*", "--active-only"],
         ["namespaces", "--name", "yd-*", "--deletable"],
+        ["tasks", "--name", "row-*"],
+        ["task-groups", "--name", "tg-*"],
+        ["worker-pools", "--unhealthy"],
+        ["instances", "--provider", "google"],
+        ["nodes", "--provider", "on-premise"],
+        ["compute-source-templates", "--provider", "aws"],
+        ["allowances", "--description", "*-allowance"],
     ],
 )
 def test_an_option_that_applies_is_accepted(argv):
@@ -431,3 +448,91 @@ class TestNamespaceFilters:
     def test_deletable_asks_for_deletable_namespaces(self, listing, monkeypatch):
         search, _ = self._listed(listing, monkeypatch, ["a"], deletable=True)
         assert search.deletable is True
+
+
+class TestTheNewFilters:
+    """
+    The filters applied as each listing is built: '--name' on a Task's or
+    Task Group's own name (never then on the Work Requirements walked to reach
+    them), '--unhealthy' on 'healthy', '--provider' on an Instance's, a Node's
+    or a Compute Source Template's provider, '--description' on an Allowance's.
+    """
+
+    @staticmethod
+    def _ctx(entity_type, **values):
+        return RunContext(args=_args(entity_type, **values), config=None, client=None)
+
+    def test_a_name_glob_filters_the_type_listed_alone(self):
+        tasks = [SimpleNamespace(name=n) for n in ("row-1", "row-2", "other", None)]
+        ctx = self._ctx("tasks", name_glob="row-*")
+        assert [t.name for t in yd_list._apply_name_filter(ctx, tasks, "tasks")] == [
+            "row-1",
+            "row-2",
+        ]
+        # The Task Groups walked to reach the Tasks are not filtered by it
+        groups = [SimpleNamespace(name="tg")]
+        assert yd_list._apply_name_filter(ctx, groups, "task-groups") == groups
+
+    def test_unhealthy_keeps_only_what_the_platform_marks_unhealthy(self):
+        entities = [
+            SimpleNamespace(id=i, healthy=h)
+            for i, h in ((1, True), (2, False), (3, None))
+        ]
+        ctx = self._ctx("worker-pools", unhealthy=True)
+        assert [e.id for e in yd_list._apply_health_filter(ctx, entities)] == [2]
+        assert (
+            yd_list._apply_health_filter(self._ctx("worker-pools"), entities)
+            == entities
+        )
+
+    def test_a_provider_is_matched_by_its_platform_name(self):
+        from yellowdog_client.model import CloudProvider
+
+        nodes = [
+            SimpleNamespace(
+                id=1, details=SimpleNamespace(provider=CloudProvider.GOOGLE)
+            ),
+            SimpleNamespace(id=2, details=SimpleNamespace(provider=CloudProvider.AWS)),
+            SimpleNamespace(id=3, details=None),
+        ]
+        ctx = self._ctx("nodes", provider="google")
+        kept = yd_list._apply_provider_filter(
+            ctx, nodes, lambda n: n.details.provider if n.details else None
+        )
+        assert [n.id for n in kept] == [1]
+        on_premise = [SimpleNamespace(provider=CloudProvider.ON_PREMISE)]
+        ctx = self._ctx("instances", provider="on-premise")
+        assert (
+            yd_list._apply_provider_filter(ctx, on_premise, lambda i: i.provider)
+            == on_premise
+        )
+
+    def test_a_description_glob_filters_allowances(self):
+        allowances = [
+            SimpleNamespace(id=i, description=d)
+            for i, d in ((1, "ydst-x-allowance"), (2, "budget"), (3, None))
+        ]
+        ctx = self._ctx("allowances", description_glob="*-allowance")
+        assert [a.id for a in yd_list._apply_description_filter(ctx, allowances)] == [1]
+
+    def test_tasks_by_name_search_the_work_requirements_unfiltered(
+        self, listing, monkeypatch
+    ):
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args("tasks", json_output=True, name_glob="row-*"),
+        )
+        calls = []
+
+        def summaries(client, **kwargs):
+            calls.append(kwargs)
+            return []
+
+        monkeypatch.setattr(
+            yd_list, "get_filtered_work_requirement_summaries", summaries
+        )
+        monkeypatch.setattr(yd_list, "_print_empty", lambda *a, **k: None)
+        yd_list.list_work_requirements(_ctx())
+        (kwargs,) = calls
+        assert "name" not in kwargs

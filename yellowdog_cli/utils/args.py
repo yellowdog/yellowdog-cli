@@ -411,6 +411,21 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def unhealthy(self) -> bool | None:
+        return self.args.unhealthy
+
+    @property
+    @allow_missing_attribute
+    def provider(self) -> str | None:
+        return self.args.provider
+
+    @property
+    @allow_missing_attribute
+    def description_glob(self) -> str | None:
+        return self.args.description_glob
+
+    @property
+    @allow_missing_attribute
     def details(self) -> bool | None:
         return self.args.details
 
