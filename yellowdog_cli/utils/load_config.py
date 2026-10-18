@@ -208,7 +208,7 @@ def config_file_explicitly_selected() -> bool:
     return _config_file_explicitly_selected(_ARGS)
 
 
-def _parse_property_value(value_str: str, property_name: str | None = None):
+def parse_property_value(value_str: str, property_name: str | None = None):
     """
     Parse a property value string into a Python object.
     Tries JSON first (handles bool, int, float, list, dict), falls back to str.
@@ -268,7 +268,7 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             )
             exit(ExitCode.CONFIGURATION)
         path = rest.split(".")
-        value = _parse_property_value(value_str, path[-1])
+        value = parse_property_value(value_str, path[-1])
         if section not in config:
             config[section] = {}
         target = config[section]

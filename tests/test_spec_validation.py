@@ -854,6 +854,8 @@ class TestCreate:
                 also=(load_resources_module, create_command),
                 **{
                     "resource_specifications": files,
+                    "resource_type": None,
+                    "resource_properties": [],
                     "no_resequence": False,
                     "show_keyring_passwords": False,
                     "regenerate_app_keys": False,
@@ -923,6 +925,7 @@ class TestCreate:
         one = _write(tmp_path, "one.json", {"resource": "Keyring", "name": "k"})
         args = MagicMock(
             resource_specifications=[one],
+            resource_type=None,
             jsonnet_dry_run=False,
             no_resequence=False,
             validate=None,

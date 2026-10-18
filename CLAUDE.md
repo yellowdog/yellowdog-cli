@@ -110,8 +110,9 @@ yellowdog_cli/
     ├── glob_utils.py            # contains_glob_chars(), glob_search_prefix()
     ├── resource_processing.py   # process_each()/process_resources(): the yd-create/yd-remove run, failures printed once and recorded
     ├── resource_creation.py     # yd-create as a library: create_resources(ctx, ..., CreateOptions); also the Cloud Wizard's
-    ├── resource_removal.py      # yd-remove as a library: remove_resources(), remove_resources_by_id(), _removable_by_id()
-    ├── load_resources.py        # Resource spec loading, substitution, dependency ordering (RESOURCE_CREATION_ORDER, test-held to sdk_models)
+    ├── resource_removal.py      # yd-remove as a library: remove_resources(), remove_resources_by_id(), remove_resources_by_name_or_id() (--type with names or IDs, one run), _removable_by_id()
+    ├── resource_targets.py      # How 'yd resource remove --type' names each type: specification_for_name(), ID_TYPES, NAMED_TYPES, USER_TYPES, name_problem(); constants and the YDID parser only, for the registry's check
+    ├── load_resources.py        # Resource spec loading, substitution, dependency ordering (RESOURCE_CREATION_ORDER, test-held to sdk_models); '-' read from standard input, and the resource '--type' and '--set' give (each value as load_config.parse_property_value() reads a '--property' one), through the same checks as a file's
     ├── provision_utils.py       # User Data reading, template/image lookup, shown_value(); requirement_name()/requirement_tag(), shared by yd-provision and yd-instantiate; specification_model(): a JSON specification's part as its SDK model (yd-create's _get_model_object), so both paths provision through the SDK; report_on_usage(), the '--report' of both
     ├── follow_utils.py          # follow_ids(ctx, ...): SSE streams in threads, reconnection with backoff, timeout, a per-stream 'settled' test to end on, follow_exit_code()
     ├── cloud_info.py            # yd-cloud-info as a library: CloudInfoQuery, the four Cloud Info searches filtered exactly here (the service's text filters match substrings), the --prices join (PricedInstanceType), local sorting; ctx first, never the command line

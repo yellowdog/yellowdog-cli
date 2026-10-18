@@ -2,7 +2,7 @@
 Unit tests for load_config.py helpers not already covered by other test files.
 
 Already covered elsewhere:
-  - _parse_property_value / _apply_property_overrides → test_property_overrides.py
+  - parse_property_value / _apply_property_overrides → test_property_overrides.py
   - _build_dc_substitutions                          → test_build_dc_substitutions.py
   - _select_dc_section                               → test_select_dc_section.py
 

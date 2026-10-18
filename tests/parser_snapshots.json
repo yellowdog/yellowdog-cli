@@ -13378,10 +13378,52 @@
       "default": [],
       "dest": "resource_specifications",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "resource_properties",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--set"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -14248,10 +14290,52 @@
       "default": [],
       "dest": "resource_specifications",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "resource_properties",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--set"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -28428,10 +28512,52 @@
       "default": [],
       "dest": "resource_specifications",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "resource_properties",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--set"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -32884,10 +33010,52 @@
       "default": [],
       "dest": "resource_specifications",
       "kind": "_StoreAction",
-      "nargs": "+",
+      "nargs": "*",
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "resource_properties",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--set"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,

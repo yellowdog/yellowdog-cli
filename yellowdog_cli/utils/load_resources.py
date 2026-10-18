@@ -2,6 +2,8 @@
 Load data for resource creation/update/removal requests.
 """
 
+import sys
+from os import getcwd
 from os.path import abspath, dirname
 from sys import exit
 from typing import Any
@@ -25,9 +27,11 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.file_substitution import (
     load_json_file_with_variable_substitutions,
+    load_json_text_with_variable_substitutions,
     load_jsonnet_file_with_variable_substitutions,
     load_toml_file_with_variable_substitutions,
 )
+from yellowdog_cli.utils.load_config import parse_property_value
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.property_names import (
     PROP_CREDENTIAL,
@@ -48,6 +52,13 @@ from yellowdog_cli.utils.specs.validation import (
 )
 from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+# A resource specification read from standard input, as given on the command
+# line, and how a message names it
+STDIN_SPECIFICATION = "-"
+_STDIN_SOURCE = "standard input"
+# How a message names a resource given with '--type' and '--set'
+_COMMAND_LINE_SOURCE = "the command line"
 
 # Internal key stamped onto each resource dict to record the directory of the
 # spec file it came from. Consumed by create.py; never reaches _get_model_object.
@@ -82,13 +93,30 @@ def load_resource_specifications(
     """
     Load and return a list of resource specifications assembled from the
     resources described in a set of resource description files: those the
-    command line 'args' names, with its '--jsonnet-dry-run', '--validate'
-    and '--no-resequence'.
+    command line 'args' names ('-' standard input's), and the resource it
+    gives with '--type' and '--set', with its '--jsonnet-dry-run',
+    '--validate' and '--no-resequence'.
     """
     resources = []
     to_validate: list[tuple[object, str]] = []  # Under '--validate'
-    for resource_spec in args.resource_specifications:
-        if resource_spec.lower().endswith(".jsonnet"):
+    sources = [
+        *args.resource_specifications,
+        *([_COMMAND_LINE_SOURCE] if getattr(args, "resource_type", None) else []),
+    ]
+    for position, resource_spec in enumerate(sources):
+        shown = resource_spec
+        if position == len(args.resource_specifications):
+            # The resource '--type' and '--set' give
+            resources_loaded = _inline_resource(
+                args.resource_type, getattr(args, "resource_properties", None) or []
+            )
+            shown = _COMMAND_LINE_SOURCE
+        elif resource_spec == STDIN_SPECIFICATION:
+            resources_loaded = load_json_text_with_variable_substitutions(
+                sys.stdin.read(), _STDIN_SOURCE
+            )
+            shown = _STDIN_SOURCE
+        elif resource_spec.lower().endswith(".jsonnet"):
             resources_loaded = load_jsonnet_file_with_variable_substitutions(
                 resource_spec,
                 exit_on_dry_run=False,
@@ -117,9 +145,13 @@ def load_resource_specifications(
         document = resources_loaded
         if isinstance(resources_loaded, dict):
             resources_loaded = [resources_loaded]
-        _check_specifications(resources_loaded, resource_spec)
+        _check_specifications(resources_loaded, shown)
 
-        spec_dir = dirname(abspath(resource_spec))
+        # A file a specification names is found from its directory; from the
+        # current one for standard input and the command line
+        spec_dir = (
+            dirname(abspath(resource_spec)) if shown == resource_spec else getcwd()
+        )
 
         # Secondary variable processing pass
         for resource in resources_loaded:
@@ -131,16 +163,17 @@ def load_resource_specifications(
         if creation_or_update:
             strip_schema_key(resources_loaded)
             if args.validate:
-                to_validate.append((document, resource_spec))
+                to_validate.append((document, shown))
                 continue
-            warn_of_violations(Family.RESOURCES, document, resource_spec)
+            warn_of_violations(Family.RESOURCES, document, shown)
 
         # Source-dir stamp
         for resource in resources_loaded:
             resource[RESOURCE_SOURCE_DIR] = spec_dir
 
         print_info(
-            f"Including {len(resources_loaded)} resource(s) from '{resource_spec}'"
+            f"Including {len(resources_loaded)} resource(s) from "
+            + (f"'{shown}'" if shown == resource_spec else shown)
         )
         resources += resources_loaded
 
@@ -150,7 +183,7 @@ def load_resource_specifications(
     if args.jsonnet_dry_run:
         exit(0)
 
-    if len(args.resource_specifications) > 1:
+    if len(sources) > 1:
         print_info(f"Including {len(resources)} resources in total")
 
     return _resequence_resources(
@@ -158,6 +191,20 @@ def load_resource_specifications(
         creation_or_update=creation_or_update,
         resequence=not args.no_resequence,
     )
+
+
+def _inline_resource(resource_type: str, properties: list[str]) -> dict:
+    """
+    The resource '--type' and '--set' give: each 'property=value' read as a
+    '--property' value is, JSON where it parses (a string property keeping
+    its text), and its values' variables substituted as a file's are.
+    """
+    resource: dict = {PROP_RESOURCE: resource_type}
+    for given in properties:
+        name, _, value = given.partition("=")
+        resource[name] = parse_property_value(value, name)
+    resolve_variables_insitu(resource)
+    return resource
 
 
 _JSON_TYPE_NAMES = {

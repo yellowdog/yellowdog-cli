@@ -9,6 +9,7 @@
    * [Resource Specification Definitions](#resource-specification-definitions)
    * [Generating Resource Specifications using yd list](#generating-resource-specifications-using-yd-list)
       * [Usage Scenario: Moving or Copying Resources to a New Namespace](#usage-scenario-moving-or-copying-resources-to-a-new-namespace)
+   * [Specifying a Resource on the Command Line](#specifying-a-resource-on-the-command-line)
    * [Preprocessing Resource Specifications](#preprocessing-resource-specifications)
    * [Keyrings](#keyrings)
    * [Credentials](#credentials)
@@ -29,7 +30,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:02:12 BST 2026 -->
+<!-- Added by: pwt, at: Sun Oct 18 09:32:37 BST 2026 -->
 
 <!--te-->
 
@@ -183,6 +184,36 @@ yd resource create -y csts.json crts.json ifs.json
 
 Once the resources have been created successfully, the JSON files can be deleted (or retained for your records).
 
+
+## Specifying a Resource on the Command Line
+
+A resource with only a few properties can be given on the command line instead of in a file: `--type` names its resource type (any of those above, in any case), and each `--set property=value` gives one of its properties. `yd resource remove` takes them too, removing the resource they name.
+
+```shell
+yd resource create --type Namespace --set name=dev-team
+yd resource create --type Keyring --set name=team-keys --set description="Team keys"
+yd resource create --type StringAttributeDefinition --set name=gpu --set title="GPU type" \
+    --set 'options=["a100", "h100"]'
+yd resource remove --type Keyring --set name=team-keys
+```
+
+A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object, and as text otherwise; a property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`). A property is given once, and the type with `--type` alone, not as `--set resource=...`. A resource given this way is checked against the schema, processed, reported and recorded exactly as one in a file is, and can be given with files too.
+
+`yd resource remove` also takes the names or IDs of resources of the `--type` given, as its arguments, in place of specification files:
+
+```shell
+yd resource remove --type Keyring team-keys old-keys
+yd resource remove --type ComputeRequirementTemplate other-ns/big-gpu ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove --type Credential team-keys/aws-creds
+```
+
+A namespaced resource (a Compute Source or Requirement Template, an Image Family, a Configured Worker Pool) is named `namespace/name`, or by its name alone in the configured namespace; a Credential as `keyring/credential`; a Namespace Policy by its namespace. An Allowance has no name, so is removed by its ID (or with `--set description=...` and `--match-allowances-by-description`); a Namespace, Namespace Policy, Attribute Definition or Credential has no ID that removes it, so is removed by name; and Users are not removed by the CLI. An argument of the wrong kind, such as another type's ID, is refused before anything is removed. Names and IDs can be mixed, each is removed once, and one that fails does not stop the rest.
+
+A specification can also be read from standard input, as JSON, by giving `-` in place of a file name, for a script that writes one:
+
+```shell
+generate-keyrings | yd resource create -
+```
 
 ## Preprocessing Resource Specifications
 

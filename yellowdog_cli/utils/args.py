@@ -444,6 +444,16 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def resource_type(self) -> str | None:
+        return self.args.resource_type
+
+    @property
+    @allow_missing_attribute
+    def resource_properties(self) -> list[str]:
+        return self.args.resource_properties or []
+
+    @property
+    @allow_missing_attribute
     def within_target(self) -> str | None:
         return self.args.within_target
 

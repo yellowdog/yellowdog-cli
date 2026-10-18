@@ -69,6 +69,7 @@ from yellowdog_cli.utils.property_names import (
     PROP_KEYRING_NAME,
     PROP_NAME,
     PROP_NAMESPACE,
+    PROP_RESOURCE,
     PROP_SOURCE,
     PROP_USERNAME,
 )
@@ -77,6 +78,7 @@ from yellowdog_cli.utils.resource_processing import (
     process_each,
     process_resources,
 )
+from yellowdog_cli.utils.resource_targets import specification_for_name
 from yellowdog_cli.utils.results import record_resource
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType, get_ydid_type
@@ -125,6 +127,46 @@ def remove_resources_by_id(ctx: RunContext, resource_ids: list[str]):
         functools.partial(_record_by_id, ctx),
         "remove",
     )
+
+
+def remove_resources_by_name_or_id(
+    ctx: RunContext,
+    resource_type: str,
+    targets: list[str],
+    options: RemoveOptions | None = None,
+):
+    """
+    Remove resources of one type by their names or IDs, each once, in the
+    order given, in one run: an ID as remove_resources_by_id() removes it, a
+    name as the specification it stands for (resource_targets.py) is
+    removed, the configured namespace for a namespaced type's name given
+    without one.
+    """
+    global _OPTIONS
+    previous, _OPTIONS = _OPTIONS, options or RemoveOptions()
+
+    def _act(target: str) -> None:
+        if get_ydid_type(target) is not None:
+            _remove_and_record_by_id(ctx, target)
+            return
+        specification = specification_for_name(
+            resource_type, target, ctx.config.namespace
+        )
+        specification.pop(PROP_RESOURCE)
+        _remove_resource(ctx, resource_type, specification)
+
+    def _record(target: str, action: str, error: str) -> None:
+        if get_ydid_type(target) is not None:
+            _record_by_id(ctx, target, action, error)
+        else:
+            record_resource(resource_type, target, None, action, error)
+
+    try:
+        process_each(
+            list(dict.fromkeys(targets)), _act, lambda target: target, _record, "remove"
+        )
+    finally:
+        _OPTIONS = previous
 
 
 def _remove_resource(ctx: RunContext, resource_type: str, resource: dict) -> None:

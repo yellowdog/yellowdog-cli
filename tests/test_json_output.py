@@ -99,6 +99,9 @@ _DEFAULTS = {
     "sort": None,
     "validate": False,
     "jsonnet_dry_run": False,
+    # yd-create's and yd-remove's resource given on the command line
+    "resource_type": None,
+    "resource_properties": [],
 }
 
 

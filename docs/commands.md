@@ -1065,13 +1065,16 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 
 ### yd resource create
 
-The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, or `-` for one read from standard input as JSON. Each file can contain one or more resources. A resource can also be given on the command line, with `--type` and `--set`, in place of a file or as well as files (see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line)).
 
 ```shell
 yd resource create [options] <resource-specification> [<resource-specification> ...]
+yd resource create [options] --type <resource-type> --set <property=value> [--set ...]
 ```
 
 Key options:
+- `--type <resource-type>` — the type of a resource given on the command line, such as `Keyring` or `Namespace`, in any case
+- `--set <property=value>` — a property of that resource, the value read as JSON where it can be (a number, a list, an object, `true`, `null`) and as text otherwise; repeatable, each property once; needs `--type`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
@@ -1084,20 +1087,23 @@ Key options:
 
 ```shell
 yd resource create my_keyring.json my_compute_templates.jsonnet
+yd resource create --type Keyring --set name=team-keys --set description="Team keys"
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for the full resource specification reference.
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line. Each file can contain one or more resources.
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources.
 
 ```shell
 yd resource remove [options] <resource-specification> [<resource-specification> ...]
+yd resource remove [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
 
 Key options:
-- `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files; cannot be combined with `--match-allowances-by-description` or `--jsonnet-dry-run`
+- `--type <resource-type>` — with arguments, they are the names or YellowDog IDs of resources of that type to remove, such as `--type Keyring team-keys` (`namespace/name` for a namespaced type, `keyring/credential` for a Credential; see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line) for which types take names and which IDs); with `--set <property=value>` instead, a resource given on the command line, as for `yd resource create`
+- `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
@@ -1105,6 +1111,7 @@ Key options:
 ```shell
 yd resource remove my_compute_templates.jsonnet
 yd resource remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove --type Keyring team-keys old-keys
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for details.

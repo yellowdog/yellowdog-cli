@@ -86,6 +86,17 @@ def load_json_file_with_variable_substitutions(
     return result
 
 
+def load_json_text_with_variable_substitutions(text: str, shown: str) -> Any:
+    """
+    JSON text, such as a specification read from standard input, parsed and
+    its values substituted as a JSON file's are; 'shown' names its source in
+    a message ("standard input").
+    """
+    result = parse_json_text(text, shown)
+    resolve_variables_insitu(result)
+    return result
+
+
 def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
     """
     A JSON specification parsed, with no substitution made yet: a parse
@@ -94,9 +105,17 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
     substitutions are made in values only. Shared with the CSV loader,
     which expands the Tasks before substituting.
     """
+    return parse_json_text(_read_text(filename), f"'{filename}'", prefix, postfix)
+
+
+def parse_json_text(text: str, shown: str, prefix: str = "", postfix: str = "") -> Any:
+    """
+    JSON text parsed as parse_json_file() parses a file's, 'shown' naming
+    its source in a message: the file's name, quoted, or "standard input".
+    """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
-    file_contents = _read_text(filename)
+    file_contents = text.removeprefix("\ufeff")
     try:
         result = json_loads(file_contents)
     except JSONDecodeError as e:
@@ -111,22 +130,23 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
             if opening in around_error
             else ""
         )
-        raise ValueError(f"Invalid JSON in '{filename}': {e}{hint}") from e
+        raise ValueError(f"Invalid JSON in {shown}: {e}{hint}") from e
 
-    _check_document(result, filename)
+    _check_document(result, shown, quoted=True)
     names = _substituted_property_names(result, opening, closing)
     if names:
         raise ValueError(
             "Variable substitutions are made in property values, not property"
-            f" names, in '{filename}': {_list_paths(names)}"
+            f" names, in {shown}: {_list_paths(names)}"
         )
     return result
 
 
-def _check_document(document: object, filename: str) -> None:
+def _check_document(document: object, filename: str, quoted: bool = False) -> None:
     """
     Refuse a specification document that is neither an object nor a list
-    (a bare number, say), naming the file, before anything walks it.
+    (a bare number, say), naming the file (already quoted, or a source such
+    as standard input, if 'quoted'), before anything walks it.
     """
     if not isinstance(document, (dict, list)):
         kind = (
@@ -140,9 +160,9 @@ def _check_document(document: object, filename: str) -> None:
             if isinstance(document, str)
             else type(document).__name__
         )
+        shown = filename if quoted else f"'{filename}'"
         raise ValueError(
-            f"'{filename}' holds {kind}, not a specification (an object, or a"
-            " list of them)"
+            f"{shown} holds {kind}, not a specification (an object, or a list of them)"
         )
 
 

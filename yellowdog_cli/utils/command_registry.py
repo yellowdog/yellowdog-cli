@@ -56,6 +56,21 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
+    RN_GROUP,
+    RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
@@ -63,6 +78,7 @@ from yellowdog_cli.utils.limits import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DOCTOR_DEFAULT_TIMEOUT,
 )
+from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
 from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
@@ -713,6 +729,10 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         "worker_pool_file_positional",
         "compute_requirement_file_positional",
         "resource_specifications",
+        # A resource given on the command line: the tools take the
+        # specification itself, which says the same
+        "--type",
+        "--set",
     }
 )
 
@@ -953,18 +973,115 @@ WORK_REQUIREMENTS = option(
         " pattern (e.g. 'proj-*')"
     ),
 )
-RESOURCE_SPECIFICATIONS = option(
-    "resource_specifications",
-    nargs="+",
-    default=[],
-    completes=Completes.FILE,
-    metavar="<resource-specification>",
-    type=str,
+# Optional to argparse, for '--type' and '--set'; an MCP tool, which takes
+# the specification itself, needs one
+RESOURCE_SPECIFICATIONS = replace(
+    option(
+        "resource_specifications",
+        nargs="*",
+        default=[],
+        completes=Completes.FILE,
+        metavar="<resource-specification>",
+        type=str,
+        help=(
+            "the resource specifications to process, '-' reading one from"
+            " standard input as JSON (or resource IDs if used with"
+            " 'yd resource remove --ids')"
+        ),
+    ),
+    tool_required=True,
+)
+# The resource types '--type' takes: those yd-create creates, which
+# tests/test_resource_inline.py holds to load_resources.RESOURCE_CREATION_ORDER
+RESOURCE_TYPE_CHOICES = (
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
+    RN_GROUP,
+    RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+)
+
+
+def resolve_resource_type(value: str) -> str:
+    """
+    A resource type as '--type' takes it, whatever its case.
+    """
+    for resource_type in RESOURCE_TYPE_CHOICES:
+        if resource_type.lower() == value.lower():
+            return resource_type
+    raise ArgumentTypeError(
+        f"invalid resource type: '{value}' (choose from"
+        f" {', '.join(RESOURCE_TYPE_CHOICES)})"
+    )
+
+
+RESOURCE_TYPE = option(
+    "--type",
+    dest="resource_type",
+    metavar="<resource-type>",
+    type=resolve_resource_type,
+    choices=RESOURCE_TYPE_CHOICES,
+    required=False,
     help=(
-        "the resource specifications to process (or resource IDs if used"
-        " with 'yd resource remove --ids')"
+        "the type of a resource specified on the command line with --set,"
+        " in place of a specification file, e.g. 'Keyring' (any case)"
     ),
 )
+RESOURCE_SET = option(
+    "--set",
+    dest="resource_properties",
+    action="append",
+    metavar="<property=value>",
+    required=False,
+    help=(
+        "a property of the resource --type specifies; the value is read as"
+        " JSON where it can be (a number, a list, an object, true, null),"
+        " else as text; can be supplied multiple times, e.g."
+        " --type Keyring --set name=team-keys --set description='Team keys'"
+    ),
+)
+
+
+def check_resource_inputs(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-create and yd-remove: something to act on (a specification, '-' for
+    standard input, or a resource given with --type and --set), '-' at most
+    once, and each --set a 'property=value' naming a property once, the
+    resource type given by --type alone.
+    """
+    specifications = args.resource_specifications or []
+    properties = args.resource_properties or []
+    if properties and not args.resource_type:
+        parser.error("--set needs --type, the type of the resource it specifies")
+    if not specifications and not args.resource_type:
+        parser.error(
+            "give a resource specification, '-' to read one from standard input,"
+            " or a resource's --type and --set"
+        )
+    if specifications.count("-") > 1:
+        parser.error("'-' (standard input) can be given once")
+    seen: set[str] = set()
+    for given in properties:
+        name, equals, _ = given.partition("=")
+        if not equals or not name.strip():
+            parser.error(f"--set '{given}' is not of the form 'property=value'")
+        if name == PROP_RESOURCE:
+            parser.error("give the resource type with --type, not --set resource=...")
+        if name in seen:
+            parser.error(f"--set {name} is given twice")
+        seen.add(name)
+
+
 YES_ALLOW_UPDATES = YES.variant(help="allow updates without user confirmation")
 MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     "--match-allowances-by-description",
@@ -1979,6 +2096,8 @@ COMMANDS["yd-create"] = Command(
         VALIDATE,
         CREATE_JSON,
         RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
         YES_ALLOW_UPDATES,
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         SHOW_KEYRING_PASSWORDS,
@@ -1986,7 +2105,7 @@ COMMANDS["yd-create"] = Command(
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
-    validators=(check_hide_user_data_requires_dry_run,),
+    validators=(check_resource_inputs, check_hide_user_data_requires_dry_run),
     tool=ToolKind.ACTING,
     tool_description=(
         "Create or update resources from specifications (each a file path,"
@@ -2004,6 +2123,36 @@ IDS = option(
 )
 
 
+def _check_removal_by_name(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-remove --type with arguments: each the name or the ID of a resource
+    of that type, which can be removed that way, and not with --set.
+    """
+    from yellowdog_cli.utils.resource_targets import ID_TYPES, name_problem
+    from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+    resource_type = args.resource_type
+    if not (resource_type and args.resource_specifications):
+        return
+    if args.resource_properties:
+        parser.error(
+            "give the names or IDs of the resources to remove, or one with --set,"
+            " not both"
+        )
+    for target in args.resource_specifications:
+        if target == "-":
+            parser.error(
+                f"'-' (standard input) is not a name: with --type the arguments are"
+                f" the names or IDs of the {resource_type} resources to remove"
+            )
+        ydid_type = get_ydid_type(target)
+        if ydid_type is not None:
+            if ID_TYPES.get(resource_type) != ydid_type:
+                parser.error(f"'{target}' is not the ID of a {resource_type}")
+        elif (problem := name_problem(resource_type, target)) is not None:
+            parser.error(problem)
+
+
 def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-remove --ids: each argument the ID of a resource it can remove,
@@ -2013,7 +2162,10 @@ def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
 
     if not args.ids:
+        _check_removal_by_name(args, parser)
         return
+    if args.resource_type or args.resource_properties:
+        parser.error("--type and --set specify a resource, not --ids")
     for option, given in (
         ("--match-allowances-by-description", args.match_allowances_by_description),
         ("--jsonnet-dry-run", args.jsonnet_dry_run),
@@ -2039,11 +2191,13 @@ COMMANDS["yd-remove"] = Command(
         JSONNET_DRY_RUN,
         RESOURCES_JSON,
         RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
         YES.variant(help="remove without user confirmation"),
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
-    validators=(check_remove_ids,),
+    validators=(check_resource_inputs, check_remove_ids),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
