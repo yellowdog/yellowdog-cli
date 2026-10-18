@@ -23,9 +23,11 @@ from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
+from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.printing import print_json_text
+from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 
 _GLOB_CHARS = frozenset("*?[")
 
@@ -46,7 +48,7 @@ def _as_json(json_text: str) -> str:
 
 def main():
     parser = ArgumentParser(
-        prog="yd-jsonnet2json",
+        prog=selected_prog("yd-jsonnet2json"),
         description=(
             "Convert Jsonnet files to JSON: one file to stdout, or several (or"
             " a glob pattern) each to <name>.json beside it."
@@ -73,6 +75,7 @@ def main():
     args = parser.parse_args()
     # --no-format, for print_json_text(), and --yes, for confirmed()
     configure_output(args)
+    warn_if_deprecated_script("yd-jsonnet2json")
 
     # This command has no @main_wrapper to catch and print an exception, so the
     # guard's message is presented here; otherwise advice about how to install

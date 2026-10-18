@@ -1,21 +1,18 @@
 """
 The shape of yd-show's output, and its exit status.
 
-Every branch of resolve_details() used to print its own object, and only ten of
-the nineteen passed on the JSON array's indentation and separating commas. The
-other nine produced an array whose elements ran together without commas: not
-parseable, for Compute Requirements, Compute Sources, Nodes, Workers, Work
-Requirements, Task Groups, Tasks, Image Groups and Images. Nothing caught it,
-because the tests asserted the arguments handed to print_yd_object() rather
-than what came out.
+A branch of resolve_details() printing its own object without the JSON array's
+indentation and separating commas would produce an array whose elements run
+together without commas, which does not parse; a test asserting the arguments
+handed to print_yd_object() rather than what comes out would not see it.
 
 Also '--show-source-report' and '--show-exhaustion', the reports on a Compute
 Requirement (or a Provisioned Worker Pool's) that follow it in the array.
 
-These tests therefore parse the output. Resolution and printing are now
-separate, so the framing is applied in one place and cannot be forgotten in a
-branch -- but the guard is 'json.loads() succeeds', which holds however the
-code is arranged.
+These tests therefore parse the output. Resolution and printing are separate,
+so the framing is applied in one place and cannot be forgotten in a branch --
+but the guard is 'json.loads() succeeds', which holds however the code is
+arranged.
 """
 
 from json import loads
@@ -89,6 +86,7 @@ def _args(**overrides) -> MagicMock:
     args.show_source_report = False
     args.show_exhaustion = False
     args.show_members = False
+    args.resource_type = None
     args.output_file = None
     args.quiet = True  # Keep the status messages out of the parsed output
     args.json_output = False
@@ -189,7 +187,7 @@ def _keyring(client: MagicMock) -> tuple[str, _Obj]:
     return _ydid("keyring"), obj
 
 
-# The nine that dropped the array framing, plus two that kept it, as controls
+# One setup per resolution branch, each shown in the array framing
 SETUPS = [
     _compute_requirement,
     _compute_source,
@@ -276,8 +274,7 @@ def test_one_id_produces_a_bare_object(setup, capsys):
 
 
 def test_mixed_types_produce_a_parseable_array(capsys):
-    # The real mixed case: one branch that used to carry the framing and one
-    # that used to drop it, in the same array
+    # The real mixed case: two different branches' objects in the same array
     client = MagicMock()
     family_id, family = _image_family(client)
     task_id, task = _task(client)
@@ -290,7 +287,7 @@ def test_mixed_types_produce_a_parseable_array(capsys):
 
 def test_show_token_yields_an_array_from_a_single_id(capsys):
     # A Configured Worker Pool shown with '--show-token' is the one case where
-    # a single ID produces two objects; concatenated, they did not parse
+    # a single ID produces two objects; concatenated, they would not parse
     client = MagicMock()
     pool = _FakeConfiguredWorkerPool("configured-pool")
     token = _Obj("token")
@@ -429,7 +426,8 @@ class TestDiagnostics:
             _http_error(500)
         )
         exit_code, _ = _run([cr_id], client, _args(show_source_report=True), capsys)
-        assert exit_code == ExitCode.FAILURE
+        # Its one cause's code: the Platform's failure
+        assert exit_code == ExitCode.PLATFORM
 
     def test_a_session_failure_stops_the_run(self, capsys):
         from yellowdog_cli.utils.exit_codes import ReportedFailure, classify
@@ -602,6 +600,23 @@ class TestExitCodes:
         exit_code, _ = _run([_ydid("task"), "not-a-ydid"], client, _args(), capsys)
         assert exit_code == ExitCode.FAILURE
 
+    def test_every_failure_a_missing_permission_exits_5(self, capsys):
+        # A Task in a namespace the Application cannot read
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = _http_error(403)
+        exit_code, output = _run([_ydid("task")], client, _args(), capsys)
+        assert exit_code == ExitCode.PERMISSION
+        assert output.strip() == ""
+
+    def test_a_missing_permission_and_a_not_found_exit_1(self, capsys):
+        client = MagicMock()
+        client.work_client.get_task_by_id.side_effect = [
+            _http_error(403),
+            _http_error(404),
+        ]
+        exit_code, _ = _run([_ydid("task"), _ydid("task")], client, _args(), capsys)
+        assert exit_code == ExitCode.FAILURE
+
     def test_a_not_found_found_by_search_counts_as_not_found(self, capsys):
         # A Task Group absent from its (existing) Work Requirement
         client = MagicMock()
@@ -697,3 +712,228 @@ def test_hide_user_data_summarises_a_compute_source_template(tmp_path, capsys):
     assert loads(output)["source"]["userData"] == summary
     written = loads(output_file.read_text(encoding="utf-8"))
     assert written["source"]["userData"] == summary
+
+
+# ---------------------------------------------------------------------------
+# A resource shown by name: '--type <type> <name>'
+# ---------------------------------------------------------------------------
+
+
+class TestByName:
+    def test_a_name_is_shown_as_its_id_is(self, capsys):
+        client = MagicMock()
+        ydid, obj = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
+            SimpleNamespace(name="team-keys", id=ydid)
+        ]
+        code, out = _run(["team-keys"], client, _args(resource_type="Keyring"), capsys)
+        assert code == 0
+        assert _names(loads(out)) == [obj.payload["name"]]
+        client.keyring_client.get_keyring.assert_called_once()
+
+    def test_names_and_ids_are_shown_together(self, capsys):
+        client = MagicMock()
+        ydid, _ = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
+            SimpleNamespace(name="team-keys", id=ydid)
+        ]
+        code, out = _run(
+            ["team-keys", ydid], client, _args(resource_type="Keyring"), capsys
+        )
+        assert code == 0
+        assert _names(loads(out)) == ["keyring", "keyring"]
+
+    def test_a_name_that_names_nothing_is_not_found(self, capsys):
+        client = MagicMock()
+        ydid, _ = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = []
+        code, out = _run(
+            ["nothing", ydid], client, _args(resource_type="Keyring"), capsys
+        )
+        assert code == ExitCode.NOT_FOUND
+        assert _names(loads(out)) == ["keyring"]
+
+    @pytest.mark.parametrize(
+        "resource_type, lookup, expected_call",
+        [
+            (
+                "ComputeSourceTemplate",
+                "get_compute_source_template_id_by_name",
+                ("other/t", "ns"),
+            ),
+            (
+                "ComputeRequirementTemplate",
+                "get_compute_requirement_template_id_by_name",
+                ("other/t", "ns"),
+            ),
+            ("ConfiguredWorkerPool", "get_worker_pool_id_by_name", ("other/t", "ns")),
+            ("Group", "get_group_id_by_name", ("other/t",)),
+            ("Application", "get_application_id_by_name", ("other/t",)),
+        ],
+    )
+    def test_each_type_is_found_by_its_lookup(
+        self, monkeypatch, resource_type, lookup, expected_call
+    ):
+        calls = []
+        monkeypatch.setattr(
+            show_module,
+            lookup,
+            lambda client, *args: calls.append(args) or "ydid:x:000000:" + UUID,
+        )
+        ctx = RunContext(
+            args=_args(resource_type=resource_type),
+            config=SimpleNamespace(namespace="ns"),
+            client=MagicMock(),
+        )
+        assert show_module._id_for_name(ctx, resource_type, "other/t") == (
+            "ydid:x:000000:" + UUID
+        )
+        assert calls == [expected_call]
+
+    def test_an_image_family_is_found_in_its_namespace(self):
+        client = MagicMock()
+        client.images_client.get_image_family_by_name.return_value = SimpleNamespace(
+            id="ydid:imgfam:000000:" + UUID
+        )
+        ctx = RunContext(
+            args=_args(), config=SimpleNamespace(namespace="ns"), client=client
+        )
+        assert show_module._id_for_name(ctx, "MachineImageFamily", "fam") == (
+            "ydid:imgfam:000000:" + UUID
+        )
+        client.images_client.get_image_family_by_name.assert_called_once_with(
+            namespace="ns", family_name="fam"
+        )
+
+    def test_a_user_is_found_by_name_or_username(self, monkeypatch):
+        monkeypatch.setattr(
+            show_module,
+            "get_user_by_name_or_id",
+            lambda client, name: SimpleNamespace(id="ydid:user:000000:" + UUID),
+        )
+        ctx = RunContext(
+            args=_args(), config=SimpleNamespace(namespace="ns"), client=None
+        )
+        assert show_module._id_for_name(ctx, "InternalUser", "someone") == (
+            "ydid:user:000000:" + UUID
+        )
+
+    def test_an_ambiguous_name_fails_that_name_alone(self, capsys, monkeypatch):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def ambiguous(client, name, namespace):
+            raise AmbiguousNameError("two")
+
+        monkeypatch.setattr(
+            show_module, "get_compute_requirement_template_id_by_name", ambiguous
+        )
+        client = MagicMock()
+        code, out = _run(
+            ["t"], client, _args(resource_type="ComputeRequirementTemplate"), capsys
+        )
+        assert code == ExitCode.FAILURE
+        assert out.strip() == ""
+
+
+class TestWithoutId:
+    """
+    The resource types with no ID to show, found by name: a Namespace, a
+    Namespace Policy (by its namespace), an Attribute Definition, and a
+    Credential as 'keyring/credential'; shown as 'yd resource list --details'
+    shows them, with 'resource' added.
+    """
+
+    def test_a_namespace(self, capsys):
+        client = MagicMock()
+        dev, other = _Obj("dev"), _Obj("dev-team")
+        dev.namespace, other.namespace = "dev", "dev-team"
+        client.namespaces_client.get_namespaces.return_value.list_all.return_value = [
+            other,
+            dev,
+        ]
+        code, out = _run(["dev"], client, _args(resource_type="Namespace"), capsys)
+        assert code == 0
+        assert loads(out) == {"name": "dev", "resource": "Namespace"}
+
+    def test_a_namespace_policy(self, capsys):
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.return_value = _Obj("policy")
+        code, out = _run(
+            ["dev"], client, _args(resource_type="NamespacePolicy"), capsys
+        )
+        assert code == 0
+        assert loads(out) == {"name": "policy", "resource": "NamespacePolicy"}
+        client.namespaces_client.get_namespace_policy.assert_called_once_with(
+            namespace="dev"
+        )
+
+    def test_a_namespace_policy_not_there_is_not_found(self, capsys):
+        response = Response()
+        response.status_code = 404
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.side_effect = HTTPError(
+            response=response
+        )
+        code, _ = _run(["dev"], client, _args(resource_type="NamespacePolicy"), capsys)
+        assert code == ExitCode.NOT_FOUND
+
+    @pytest.mark.parametrize(
+        "resource_type, found",
+        [("StringAttributeDefinition", True), ("NumericAttributeDefinition", False)],
+    )
+    def test_an_attribute_definition_of_its_type(
+        self, monkeypatch, capsys, resource_type, found
+    ):
+        monkeypatch.setattr(
+            show_module,
+            "get_user_attribute_definitions",
+            lambda config: [
+                {"name": "gpu", "type": "co.yellowdog.StringAttributeDefinition"},
+                {"name": "other", "type": "co.yellowdog.StringAttributeDefinition"},
+            ],
+        )
+        code, out = _run(
+            ["gpu"], MagicMock(), _args(resource_type=resource_type), capsys
+        )
+        if found:
+            assert code == 0
+            assert loads(out) == {
+                "name": "gpu",
+                "type": "co.yellowdog.StringAttributeDefinition",
+                "resource": "StringAttributeDefinition",
+            }
+        else:
+            assert code == ExitCode.NOT_FOUND
+
+    @pytest.mark.parametrize(
+        "target, keyring_found, shown",
+        [("kr/aws", True, True), ("kr/gcp", True, False), ("nokr/aws", False, False)],
+    )
+    def test_a_credential_in_its_keyring(
+        self, monkeypatch, capsys, target, keyring_found, shown
+    ):
+        credential = _Obj("aws")
+        credential.name = "aws"
+        client = MagicMock()
+        client.keyring_client.get_keyring.return_value = SimpleNamespace(
+            credentials=[credential]
+        )
+        monkeypatch.setattr(
+            show_module,
+            "get_keyring_summary_by_name",
+            lambda client, name: (
+                SimpleNamespace(id="ydid:keyring:000000:" + UUID)
+                if keyring_found and name == "kr"
+                else None
+            ),
+        )
+        code, out = _run([target], client, _args(resource_type="Credential"), capsys)
+        if shown:
+            assert code == 0
+            assert loads(out) == {
+                "name": "aws",
+                "resource": "Credential",
+                "keyringName": "kr",
+            }
+        else:
+            assert code == ExitCode.NOT_FOUND

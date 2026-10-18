@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# pre-push — Refuse to push unsigned commits to 'main'.
+#
+# Install (once per clone): make pre_push_hook
+#
+# GitHub's ruleset on 'main' requires verified signatures, but an account
+# allowed to bypass it is only warned, after the push. This checks every
+# commit a push would add to 'main' first (scripts/unsigned_commits.sh).
+# Pushes to any other branch, and of tags, are not checked. Override with
+# 'git push --no-verify'.
+
+set -euo pipefail
+
+ZERO=0000000000000000000000000000000000000000
+REPO_ROOT=$(git rev-parse --show-toplevel)
+remote="$1"
+status=0
+
+# One line per ref pushed: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref local_sha remote_ref remote_sha; do
+    [[ "$remote_ref" == "refs/heads/main" ]] || continue
+    [[ "$local_sha" == "$ZERO" ]] && continue  # a deletion
+
+    # What the push adds: everything since the remote's 'main', or, if that
+    # commit is not here (or 'main' is new there), everything the remote's
+    # branches do not already hold
+    if [[ "$remote_sha" != "$ZERO" ]] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+        range=("$remote_sha..$local_sha")
+    else
+        range=("$local_sha" --not "--remotes=$remote")
+    fi
+
+    if ! unsigned=$("$REPO_ROOT/scripts/unsigned_commits.sh" "${range[@]}"); then
+        echo "pre-push: refusing to push unsigned commits to 'main':" >&2
+        echo "$unsigned" >&2
+        echo "Re-sign them (e.g. 'git rebase --exec \"git commit --amend --no-edit -S\" <base>')," >&2
+        echo "or push with --no-verify to let GitHub's bypass take them." >&2
+        status=1
+    fi
+done
+
+exit "$status"

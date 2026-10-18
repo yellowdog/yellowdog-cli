@@ -300,16 +300,17 @@ def print_warning(
     warning: str,
     override_quiet: bool = False,
     no_fill: bool = False,
+    stderr: bool = False,
 ):
     """
-    Print a warning: to stdout, or to stderr under '--json'.
+    Print a warning: to stdout, or to stderr under '--json' or if asked.
     """
     if warnings_suppressed() and override_quiet is False:
         return
 
     # Under '--json' stdout is the result document alone, so a warning goes
     # to stderr rather than being dropped
-    to_stderr = bool(OUTPUT.json_output)
+    to_stderr = stderr or bool(OUTPUT.json_output)
 
     if OUTPUT.no_format:
         print(

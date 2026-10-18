@@ -26,13 +26,14 @@ def test_check_commander_imports_raises_when_pyqt6_absent(monkeypatch):
 
 def test_check_commander_imports_explains_a_missing_system_library(monkeypatch):
     """
-    The case that used to produce a raw traceback: PyQt6 installed, but Qt's own
-    shared libraries missing, as on a minimal server image.
+    PyQt6 installed, but Qt's own shared libraries missing, as on a minimal
+    server image.
 
-    The guard used to probe the top-level 'PyQt6' package, which imports without
-    touching those libraries — so it passed, and the failure surfaced from
-    commander.py's own 'from PyQt6.QtGui import ...' as an unhandled ImportError.
-    Probing QtWidgets moves the failure to where it can be explained.
+    The top-level 'PyQt6' package imports without touching those libraries, so a
+    guard probing it would pass, and the failure would surface from
+    commander.py's own 'from PyQt6.QtGui import ...' as an unhandled ImportError
+    with a raw traceback. Probing QtWidgets moves the failure to where it can be
+    explained.
     """
     module = types.ModuleType("PyQt6")
     module.__path__ = []  # a package, so a submodule import is attempted

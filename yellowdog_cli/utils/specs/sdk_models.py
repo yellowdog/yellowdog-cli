@@ -23,15 +23,15 @@ name, so extending it by pattern-matching can't conflate them:
 StringAttributeDefinition/NumericAttributeDefinition are a special case:
 create_attribute_definition() builds a raw payload dict and POSTs it directly --
 there is no '_get_model_object("StringAttributeDefinition", ...)' call anywhere in
-create.py. Building the SDK model anyway is still a valid check because the
+utils/resource_creation.py. Building the SDK model anyway is still a valid check because the
 model's field names coincide with the payload's keys, but the mapping does not
 reflect a real code path, unlike every other non-None, non-DYNAMIC entry.
 
-This module must not import create.py, which imports wrapper.py and so builds a
-Platform client at import: model_class() resolves through yellowdog_client.model
-directly, which is all create._get_model_class() does, and imports it only
-there: the configuration file's [common] and [dataClient] schemas need no
-SDK, and nor should the commands that check only those.
+This module must not import utils/resource_creation.py, which imports the SDK
+at module level: model_class() resolves through yellowdog_client.model
+directly, which is all resource_creation._get_model_class() does, and imports
+it only there: the configuration file's [common] and [dataClient] schemas need
+no SDK, and nor should the commands that check only those.
 """
 
 import dataclasses
@@ -59,6 +59,9 @@ MODEL_FOR_RESOURCE: dict[str, str | None] = {
     "Namespace": None,  # CreateNamespaceRequest(namespace=...)
     "NamespacePolicy": None,  # NamespacePolicy(namespace, autoscalingMaxNodes)
     "Group": None,  # AddGroupRequest(name, description)
+    # update_user(): the User found by name, username or ID, its Groups set
+    "InternalUser": None,
+    "ExternalUser": None,
 }
 
 # ---------------------------------------------------------------------------
@@ -150,14 +153,14 @@ ALLOWANCE_CLASSES = frozenset(
 # identically to a probed class. A class *not* listed for a given property is
 # simply not excluded for it here, regardless of anything the SDK's own
 # dataclass declares (see settable_properties()'s docstring for why that
-# matters): the first version of this registry excluded a SERVER_ASSIGNED name
-# from *any* class where the SDK happened to mark that field init=False, which
-# silently covered seven class/property pairs -- ComputeSourceTemplate.id,
-# ComputeRequirementStaticTemplate.id, ComputeRequirementDynamicTemplate.id,
-# MachineImage.id/createdTime, MachineImageGroup.id/createdTime -- that had
-# never actually been reasoned about, let alone probed. All seven are now
-# either probed directly (a live create-then-show round trip) or a recorded,
-# verified-identical inference, as the comments below say of each.
+# matters): excluding a SERVER_ASSIGNED name from *any* class where the SDK
+# happens to mark that field init=False would silently cover class/property
+# pairs such as ComputeSourceTemplate.id, ComputeRequirementStaticTemplate.id,
+# ComputeRequirementDynamicTemplate.id, MachineImage.id/createdTime and
+# MachineImageGroup.id/createdTime without anyone reasoning about them, let
+# alone probing them. Each of those seven is either probed directly (a live
+# create-then-show round trip) or a recorded, verified-identical inference, as
+# the comments below say of each.
 SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # ComputeSourceTemplate's source (AwsInstancesComputeSource probed live):
     # addComputeSourceTemplate rejects a request with any of these set
@@ -165,11 +168,11 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # 'provider'/'instancePricing'/'traits' were accepted but the value
     # returned did not match what was sent, in a live create-then-show.
     #
-    # 'credentials' was here too, on the evidence "sent a value, the raw model
-    # came back None". That is the *same* evidence shape this registry rejects
+    # 'credentials' is not here, although a value sent for it comes back None
+    # in the raw model. That is the *same* evidence shape this registry rejects
     # for SimulatorComputeSource.userData/subregion below (accepted-then-dropped
-    # is not "the platform assigns it"), so it has been moved to NOT_SETTABLE,
-    # where its actual reason -- a derived aggregate of 'credential' that no
+    # is not "the platform assigns it"), so it is in NOT_SETTABLE, where its
+    # actual reason -- a derived aggregate of 'credential' that no
     # specification would ever author -- belongs. See NOT_SETTABLE.
     "status": COMPUTE_SOURCE_CLASSES,
     "statusMessage": COMPUTE_SOURCE_CLASSES,
@@ -194,7 +197,7 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # specifying either, and yd-show simply never echoes them afterwards
     # (probed live). That is not evidence the platform assigns them --
     # a genuinely server-assigned property comes back (see 'provider'/
-    # 'traits'/'id' above, all confirmed live by this same task) -- it is
+    # 'traits'/'id' above, all confirmed live) -- it is
     # evidence the platform accepts and then silently drops them, a candidate
     # platform bug. SERVER_ASSIGNED_COVERAGE's contract is "the platform
     # assigns this", not "this suite cannot verify it landed"; excluding a
@@ -211,8 +214,8 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # 'id' recurs across unrelated resource families and cannot be assumed to
     # behave the same way on all of them (see settable_properties()'s
     # docstring for the AwsCapacityReservation/SourcesAllowance/MachineImage.
-    # provider collisions this exact assumption produced for 'provider'). The
-    # two shared frozensets carry their own per-class probed/verified
+    # provider collisions this exact assumption would produce for 'provider').
+    # The two shared frozensets carry their own per-class probed/verified
     # annotations where they are defined above (the compute source's own 'id'
     # was probed on AwsInstancesComputeSource, the allowance's on
     # AccountAllowance); the classes listed here are the resource families
@@ -243,13 +246,13 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
 # a specification for a reason *other* than "the platform assigns it"
 # (SERVER_ASSIGNED_COVERAGE covers that case, per class, above).
 #
-# 'credentials' is the one entry, on all nine compute source classes. It was
-# previously in SERVER_ASSIGNED_COVERAGE on the evidence "a value was sent and
-# the raw SDK model's field (fetched directly via compute_client, bypassing
-# yd-show's rendering) came back None" -- but that is precisely the evidence
-# shape that was *rejected* for SimulatorComputeSource.userData/subregion, on
-# the ruling that accepted-then-dropped is not the same claim as
-# server-assigned. What actually disqualifies it is a different, stronger fact,
+# 'credentials' is the one entry, on all nine compute source classes. It is not
+# in SERVER_ASSIGNED_COVERAGE: the evidence for that, "a value was sent and the
+# raw SDK model's field (fetched directly via compute_client, bypassing
+# yd-show's rendering) came back None", is precisely the evidence shape that is
+# *rejected* for SimulatorComputeSource.userData/subregion, on the ruling that
+# accepted-then-dropped is not the same claim as server-assigned. What actually
+# disqualifies it is a different, stronger fact,
 # checked directly against the installed SDK: alongside the plural, init=False
 # 'credentials: Set[str] | None', every one of these classes declares a
 # singular, required, author-settable 'credential: str' -- which the corpus does
@@ -259,8 +262,8 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
 # registry is for, and unlike SERVER_ASSIGNED_COVERAGE it carries no read-gate
 # obligation (test_system_resources.py's read gate reads SERVER_ASSIGNED, the
 # set of SERVER_ASSIGNED_COVERAGE's names in tests/resource_models.py, only),
-# so the move also retires nine READ_GATE_EXCLUSIONS entries that were waiving a
-# demand nothing should have made in the first place.
+# so it needs no READ_GATE_EXCLUSIONS entries waiving a demand nothing should
+# make.
 _CREDENTIALS_IS_A_DERIVED_AGGREGATE = (
     "the plural, init=False aggregate of the singular, required, author-settable "
     "'credential: str' this class also declares (checked directly against the "
@@ -344,8 +347,9 @@ RESOURCE_TYPES: tuple[str, ...] = (
 
 def model_class(model_name: str) -> type:
     """
-    The SDK model class of this name, resolved as create._get_model_class()
-    resolves it, without importing create.py (see the module docstring).
+    The SDK model class of this name, resolved as
+    resource_creation._get_model_class() resolves it, without importing
+    utils/resource_creation.py (see the module docstring).
     """
     # Imported here: importing the SDK at all builds the whole Platform
     # client, and a schema with no SDK-backed section never gets this far
@@ -409,24 +413,22 @@ def settable_properties(model_name: str) -> set[str]:
     other. NOT_SETTABLE/NOT_TESTED (evidenced per entry, cited in the module
     docstring or comments) remove a property here -- never a dataclass metadata
     flag, and never an argument from a docstring's tone: 'traits' and
-    'instancePricing' read exactly as read-oriented as the properties that
-    turned out to be genuinely server-assigned, and only a live create-then-show
-    round trip told them apart.
+    'instancePricing' read exactly as read-oriented as the properties that are
+    genuinely server-assigned, and only a live create-then-show round trip
+    tells them apart.
 
     A SERVER_ASSIGNED name is excluded here *only* for the exact classes listed
     against it in SERVER_ASSIGNED_COVERAGE -- never for a class merely because
     the SDK happens to declare that field init=False there too. That distinction
-    is load-bearing, not cosmetic: this module's own first cut at this scoping
-    used "any class where the field is init=False", which is what let
-    AwsCapacityReservation.id, SourcesAllowance.provider, and MachineImage.
-    provider (all plain, author-settable fields on classes nobody had reasoned
-    about) get silently excluded alongside the classes that were actually
-    probed. Fixing that the same way again -- inferring instead of recording --
-    would have covered those three cases and reintroduced the identical bug for
-    any other unprobed class, in either direction: a class that happens to
-    share both the property name *and* the init=False declaration would still
-    be swept in on no evidence of its own. SERVER_ASSIGNED_COVERAGE is the fix
-    that generalises to neither direction: only a class explicitly recorded
+    is load-bearing, not cosmetic: scoping by "any class where the field is
+    init=False" would let AwsCapacityReservation.id, SourcesAllowance.provider,
+    and MachineImage.provider (all plain, author-settable fields on classes
+    nobody has reasoned about) be silently excluded alongside the classes that
+    are actually probed. Any other inference in place of a record would do the
+    same for some unprobed class, in either direction: a class that happens to
+    share both the property name *and* the init=False declaration would be
+    swept in on no evidence of its own. SERVER_ASSIGNED_COVERAGE errs in
+    neither direction: only a class explicitly recorded
     there -- because it was itself probed, or because it was checked directly
     against a probed sibling's identical field declaration and that check is
     recorded in a comment -- is ever excluded.

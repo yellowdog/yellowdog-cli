@@ -78,11 +78,11 @@ class CommandRunning(WindowBase):
         """
         Run '<command> <flags>' (quiet, no formatting) with the current config
         source and namespace/tag/user variables, then 'extra_args', and return
-        the parsed JSON array; 'flags' must ask for JSON. None on any failure: a
-        process error, a non-zero exit, or output that is not a JSON array.
+        the parsed JSON array; 'flags' must ask for JSON. None on any failure:
+        a process error, a non-zero exit, or output that is not a JSON array.
         With 'failures_recorded', an exit 1 still returns the array, for a
-        command (yd-download) that records what failed -- a path that matched
-        nothing -- in it, for the caller to read.
+        command (yd data download) that records what failed -- a path that
+        matched nothing -- in it, for the caller to read.
         """
         parsed = self._capture_json_document(
             command, flags, extra_args, failures_recorded
@@ -98,7 +98,7 @@ class CommandRunning(WindowBase):
     ) -> Any:
         """
         _capture_json(), returning the parsed JSON document whatever its shape
-        (yd-variables prints an object); None on any failure.
+        (yd variables prints an object); None on any failure.
         """
         yd_process = QProcess()
         event_loop = QEventLoop()
@@ -143,7 +143,7 @@ class CommandRunning(WindowBase):
         Extract the value of workRequirementData or workerPoolData directly
         from the config TOML text, resolving template variable defaults and
         checking user_variables overrides. Each variable is resolved by
-        yd-variables, run as every child is (_capture_json_document()); one it
+        yd variables, run as every child is (_capture_json_document()); one it
         cannot resolve takes its default.
         """
         if self._config_file is None or not exists(self._config_file):
@@ -163,7 +163,7 @@ class CommandRunning(WindowBase):
         # Resolve template variables iteratively, innermost first, to support up
         # to three levels of nesting (e.g. {{file_{{xxx}}:={{def_file}}}}).
         # Each pass finds the deepest {{...}} with no further {{ inside it,
-        # resolves that single variable via yd-variables, and substitutes the result.
+        # resolves that single variable via yd variables, and substitutes the result.
         for _ in range(3):
             if "{{" not in value:
                 break
@@ -174,7 +174,7 @@ class CommandRunning(WindowBase):
             var_name, default = (
                 fragment.split(":=", 1) if ":=" in fragment else (fragment, "")
             )
-            variables = self._capture_json_document("yd-variables", [var_name])
+            variables = self._capture_json_document("yd variables", [var_name])
             if self._shutting_down:
                 return None
             resolved = variables.get(var_name) if isinstance(variables, dict) else None
@@ -214,11 +214,11 @@ class CommandRunning(WindowBase):
         enumeration failed or did not carry paths, which drops the caller back to
         acting over the whole pattern.
 
-        'command' is 'yd-delete' or 'yd-download', which offer the same
-        selection: yd-delete's '--dry-run --json' records one row per item,
-        yd-download's one per file, naming the item each belongs to.
+        'command' is 'yd data delete' or 'yd data download', which offer the same
+        selection: yd data delete's '--dry-run --json' records one row per item,
+        yd data download's one per file, naming the item each belongs to.
         """
-        downloading = command == "yd-download"
+        downloading = command == "yd data download"
         parsed = self._capture_dry_run_json(
             command, extra_args, failures_recorded=downloading
         )
@@ -244,7 +244,7 @@ class CommandRunning(WindowBase):
             ]
         summaries = (
             parse_download_summaries(parsed)
-            if command == "yd-download"
+            if command == "yd data download"
             else parse_object_summaries(parsed)
         )
         if summaries is None:

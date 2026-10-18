@@ -99,6 +99,9 @@ _DEFAULTS = {
     "sort": None,
     "validate": False,
     "jsonnet_dry_run": False,
+    # yd-create's and yd-remove's resource given on the command line
+    "resource_type": None,
+    "resource_properties": [],
 }
 
 
@@ -131,7 +134,7 @@ def run(monkeypatch, capsys):
                 monkeypatch.setattr(target, "ARGS_PARSER", args)
         output_settings.configure_output(args)
         # A command taking a RunContext gets these from the wrapper's own;
-        # one not yet migrated imports them by name
+        # one importing them by name has its own patched as well
         if hasattr(module, "CLIENT"):
             monkeypatch.setattr(module, "CLIENT", client)
             monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
@@ -594,6 +597,41 @@ class TestAbort:
             _action(TASK_ID_2, "t2", "tasks", "abort", "failed", error="x"),
         ]
 
+    def test_tasks_not_found_exit_6(self, run):
+        client = self._client()
+        client.work_client.get_task_by_id.side_effect = HTTPError(
+            "404", response=_response(404)
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
+        assert [r["outcome"] for r in out] == ["failed", "failed"]
+        assert run.exit_code == 6
+
+    def test_a_named_target_naming_nothing_exits_6(self, run, wrs):
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["no-such"])
+        assert [r["outcome"] for r in out] == ["failed"]
+        assert run.exit_code == 6
+
+    def test_a_refused_abort_exits_5(self, run):
+        client = self._client(by_id={TASK_ID: _task()})
+        client.work_client.cancel_task.side_effect = HTTPError(
+            "403", response=_response(403)
+        )
+        _, err, _ = run(yd_abort, client=client, task_id_list=[TASK_ID])
+        assert run.exit_code == 5
+        # What to check, as the other action commands say it
+        assert "required permissions" in err
+
+    def test_failures_of_different_causes_exit_1(self, run):
+        client = self._client(
+            by_id={TASK_ID: _task(), TASK_ID_2: _task(TASK_ID_2, "t2")}
+        )
+        client.work_client.cancel_task.side_effect = [
+            HTTPError("403", response=_response(403)),
+            RuntimeError("x"),
+        ]
+        run(yd_abort, client=client, task_id_list=[TASK_ID, TASK_ID_2])
+        assert run.exit_code == 1
+
     @pytest.mark.parametrize(
         "status", [TaskStatus.PENDING, TaskStatus.DOWNLOADING, TaskStatus.COMPLETED]
     )
@@ -662,7 +700,7 @@ class TestAbort:
         assert out == [
             _action(TASK_ID, None, "tasks", "abort", "failed", error="not found")
         ]
-        assert run.exit_code == 1
+        assert run.exit_code == 6
 
     def test_declined_is_skipped(self, run, monkeypatch):
         monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
@@ -693,7 +731,7 @@ class TestAbort:
 
     def test_namespace_work_requirement_and_task_group(self, run, wrs):
         """
-        'ns/wr/tg' used to raise ValueError from the namespace split.
+        'ns/wr/tg' is read without the namespace split raising ValueError.
         """
         client = self._client([_task()])
         out, _, _ = run(yd_abort, client=client, task_id_list=["ns/wr-a/tg-1"])
@@ -726,7 +764,7 @@ class TestAbort:
 
     def test_nothing_executing_keeps_stdout_a_document(self, run, wrs):
         """
-        The message printed despite --quiet used to land on stdout too.
+        The message printed despite --quiet does not land on stdout too.
         """
         out, _, _ = run(
             yd_abort, client=self._client(), quiet=True, task_id_list=["wr-a"]
@@ -894,8 +932,8 @@ class TestResize:
         )
 
     def test_a_followed_pool_is_followed_until_resized(self, run, monkeypatch):
-        # A resized pool stays alive, so '--follow' ran until Ctrl-C: each
-        # stream (the pool's, and with -a its Compute Requirement's) now ends
+        # A resized pool stays alive, so '--follow' would run until Ctrl-C:
+        # each stream (the pool's, and with -a its Compute Requirement's) ends
         # once that Compute Requirement is at its target again
         from yellowdog_cli.utils import capacity_wait
 
@@ -1217,7 +1255,23 @@ class TestBoost:
             (ALLOWANCE_ID, "boosted"),
         ]
         assert out[0]["error"] == "not found"
-        assert run.exit_code == 1
+        # Its one failure's cause
+        assert run.exit_code == 6
+
+    def test_a_refused_boost_exits_5(self, run):
+        def refused(allowance_id, hours):
+            raise HTTPError("403", response=_response(403))
+
+        out, err, _ = run(
+            yd_boost,
+            client=self._client(boost=refused),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert [r["outcome"] for r in out] == ["failed", "failed"]
+        assert run.exit_code == 5
+        # What to check, said once for both
+        assert err.count("required permissions") == 1
 
     def test_one_confirmation_shows_the_descriptions(self):
         found = [
@@ -1297,7 +1351,8 @@ class TestBoost:
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
         )
         assert [item["outcome"] for item in out] == ["failed", "boosted"]
-        assert run.exit_code == 1
+        # Its one failure's cause: the Platform's (5xx)
+        assert run.exit_code == 7
 
     @pytest.mark.parametrize(
         "hours, shown",
@@ -2173,9 +2228,15 @@ class TestWait:
         )
         return client
 
-    def _follow(self, monkeypatch, exit_code=0):
+    def _follow(self, monkeypatch, codes=None):
+        """
+        Following stubbed: each ID's stream failed with its code in 'codes'.
+        """
+        codes = codes or {}
         monkeypatch.setattr(yd_wait, "follow_ids", lambda _ctx, ids, timeout=None: ids)
-        monkeypatch.setattr(yd_wait, "follow_exit_code", lambda: exit_code)
+        monkeypatch.setattr(
+            yd_wait, "follow_exit_code_of", lambda ydid: codes.get(ydid, 0)
+        )
 
     def test_each_id_is_recorded_with_its_status(self, run, monkeypatch):
         self._follow(monkeypatch)
@@ -2208,7 +2269,7 @@ class TestWait:
 
     def test_a_non_terminal_state_is_a_failure_not_a_success(self, run, monkeypatch):
         # Following ended (a timeout, a stream not followed) with the Work
-        # Requirement still running: that used to exit 0
+        # Requirement still running: that must not exit 0
         self._follow(monkeypatch)
         out, err, _ = run(
             yd_wait,
@@ -2226,7 +2287,7 @@ class TestWait:
         self, run, monkeypatch
     ):
         # The stream was lost for good (8): that is why it is still running
-        self._follow(monkeypatch, exit_code=8)
+        self._follow(monkeypatch, codes={WR_ID_1: 8})
         run(
             yd_wait,
             client=self._client(WorkRequirementStatus.RUNNING),
@@ -2234,6 +2295,27 @@ class TestWait:
             yellowdog_ids=[WR_ID_1],
         )
         assert run.exit_code == 8
+
+    def test_a_timeout_is_not_charged_with_another_ids_stream_failure(
+        self, run, monkeypatch
+    ):
+        # WR_ID_1 is still running when the timeout ends following, its own
+        # stream sound; WR_ID_2's stream failed because it does not exist.
+        # Two causes, so 1, never WR_ID_2's 6 for both
+        self._follow(monkeypatch, codes={WR_ID_2: 6})
+        client = self._client(WorkRequirementStatus.RUNNING)
+        response = Response()
+        response.status_code = 404
+        found = SimpleNamespace(name="wr", status=WorkRequirementStatus.RUNNING)
+
+        def fetch(ydid):
+            if ydid == WR_ID_2:
+                raise HTTPError("404", response=response)
+            return found
+
+        client.work_client.get_work_requirement_by_id.side_effect = fetch
+        run(yd_wait, client=client, timeout=10, yellowdog_ids=[WR_ID_1, WR_ID_2])
+        assert run.exit_code == 1
 
     def test_an_unfetchable_status_is_null_with_its_exit_code(self, run, monkeypatch):
         self._follow(monkeypatch)
@@ -2302,10 +2384,9 @@ class TestFollow:
             ("yd-submit", ["--follow", "--raw-events"]),
         ],
     )
-    def test_raw_events_is_no_longer_an_option(self, command, argv, capsys):
-        # The raw event stream is yd-follow's '--json'; the option that
-        # duplicated it, on yd-follow and on every command taking '--follow',
-        # is gone
+    def test_raw_events_is_not_an_option(self, command, argv, capsys):
+        # The raw event stream is yd-follow's '--json'; '--raw-events' is not
+        # an option, on yd-follow or on any command taking '--follow'
         from yellowdog_cli.utils.args import CLIParser
 
         with pytest.raises(SystemExit) as exit_info:
@@ -3099,8 +3180,8 @@ class TestCopy:
     def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
         self, remote, run_dc
     ):
-        # Once taken for a directory, having no '/', and copied into the
-        # destination instead
+        # Having no '/', it must not be taken for a directory and copied into
+        # the destination instead
         (remote / "top.txt").write_text("t")
         _, _, code = run_dc(yd_copy, src_path="loc:top.txt", dst_path="loc:renamed.txt")
         assert code == 0
@@ -3180,8 +3261,8 @@ class TestDelete:
         self, remote, run_dc, name
     ):
         # rclone reads a '--files-from' list's '#' and ';' lines as comments,
-        # and trims leading spaces: a file so named was recorded as deleted
-        # and left in place
+        # and trims leading spaces: a file so named would be recorded as
+        # deleted and left in place
         (remote / "remote" / name).write_text("x", encoding="utf-8")
         out, _, code = run_dc(yd_delete, remote_paths=[f"loc:remote/{name}"])
         assert [r["action"] for r in out] == ["deleted"]
@@ -3594,6 +3675,17 @@ class TestNodeActionOutcomes:
         assert out[0]["outcome"] == "failed"
         assert out[0]["error"] == "Failed to submit: boom"
         assert "boom" in err
+        assert run.exit_code == 1
+
+    def test_a_refused_submission_exits_5(self, run, monkeypatch):
+        client = MagicMock()
+        client.worker_pool_client.add_node_actions_for_node_by_id.side_effect = (
+            HTTPError("403", response=_response(403))
+        )
+        out, err, _ = self._submit(run, monkeypatch, client=client)
+        assert out[0]["outcome"] == "failed"
+        assert run.exit_code == 5
+        assert "required permissions" in err
 
 
 # ---------------------------------------------------------------------------
@@ -3603,7 +3695,7 @@ class TestNodeActionOutcomes:
 
 class TestVersion:
     def _run(self, monkeypatch, capsys, *argv):
-        monkeypatch.setattr(_sys, "argv", ["yd-version", *argv])
+        monkeypatch.setattr(_sys, "argv", ["yd", *argv])
         yd_version.main()
         return json_loads(capsys.readouterr().out)
 
@@ -3648,7 +3740,7 @@ class TestVersion:
 
     def test_mcp_alone_prints_the_bare_version_or_exits_1(self, monkeypatch, capsys):
         monkeypatch.setattr(yd_version, "_mcp_version", lambda: "2.9.9")
-        monkeypatch.setattr(_sys, "argv", ["yd-version", "--mcp"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--mcp"])
         yd_version.main()
         assert capsys.readouterr().out.strip() == "2.9.9"
         monkeypatch.setattr(yd_version, "_mcp_version", lambda: "Not installed")
@@ -3665,7 +3757,7 @@ class TestVersion:
         with open(_Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
             declared = tomli.load(f)["project"]["license"]
         assert yd_version.cli_licence() == declared
-        monkeypatch.setattr(_sys, "argv", ["yd-version"])
+        monkeypatch.setattr(_sys, "argv", ["yd"])
         yd_version.main()
         assert f"Licence: {declared}" in capsys.readouterr().out
 
@@ -3681,7 +3773,7 @@ class TestVersion:
         assert self._run(monkeypatch, capsys, "--json")["rclone"] is None
 
     def test_json_excludes_the_single_version_options(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-version", "--json", "--cli"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json", "--cli"])
         with pytest.raises(SystemExit) as exit_info:
             yd_version.main()
         assert exit_info.value.code == 2
@@ -3694,17 +3786,25 @@ class TestVersion:
 
 class TestHelp:
     def test_the_command_list(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-help", "--json"])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json"])
         yd_help.main()
         out = json_loads(capsys.readouterr().out)
         assert {
-            "command": "yd-help",
+            "command": "help",
             "summary": yd_help.COMMANDS["yd-help"].summary,
         } in out
-        assert [r["command"] for r in out] == sorted(r["command"] for r in out)
+        # The nouns, then the other commands, then the deprecated ones, each
+        # in order of name
+        groups = [
+            [r["command"] for r in out if "verbs" in r],
+            [r["command"] for r in out if "verbs" not in r and "deprecated" not in r],
+            [r["command"] for r in out if "deprecated" in r],
+        ]
+        assert [r["command"] for r in out] == [c for group in groups for c in group]
+        assert all(group == sorted(group) and group for group in groups)
 
     def test_without_json_the_listing_is_text(self, monkeypatch, capsys):
-        monkeypatch.setattr(_sys, "argv", ["yd-help"])
+        monkeypatch.setattr(_sys, "argv", ["yd"])
         yd_help.main()
         assert "available commands" in capsys.readouterr().out
 
@@ -3731,7 +3831,7 @@ class TestHelp:
                 emoji=False,
             ),
         )
-        monkeypatch.setattr(_sys, "argv", ["yd-help", "--json", *argv])
+        monkeypatch.setattr(_sys, "argv", ["yd", "--json", *argv])
         yd_help.main()
         out = capsys.readouterr().out
         if coloured:

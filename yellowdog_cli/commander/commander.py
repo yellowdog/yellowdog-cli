@@ -82,6 +82,7 @@ from yellowdog_cli.commander.window_base import (
     WINDOW_TITLE,
 )
 from yellowdog_cli.commander.work_panel import WorkPanel
+from yellowdog_cli.utils.noun_registry import typed_command
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.paths import relative_if_possible
 
@@ -144,6 +145,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             bar=self.output_filter_bar,
             bar_label=self.output_filter_label,
             show_all_button=self.output_filter_show_all,
+            text_filter=self.output_text_filter,
             copy_button=self.copy_command_output,
             save_button=self.save_command_output,
             build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(
@@ -249,12 +251,13 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # changes (see _show_config_selection)
         self.select_config_label.installEventFilter(self)
         # Absolute, deliberately: these are handed to a child process that runs
-        # in the config file's directory (see _working_dir), while Commander's own
-        # directory is wherever it was launched from — and Show reads them in this
-        # process. A path relative to either base is wrong for the other, so
-        # 'yd-submit -r ../demos/bash/x.json' went looking for it under the config
-        # directory and failed. The config file needs no such care: its consumers
-        # take _config_dir() and _config_basename() from it rather than passing it on.
+        # in the config file's directory (see _working_dir), while Commander's
+        # own directory is wherever it was launched from — and Show reads them
+        # in this process. A path relative to either base is wrong for the
+        # other, so 'yd workrequirement submit -r ../demos/bash/x.json' would
+        # look for it under the config directory and fail. The config file
+        # needs no such care: its consumers take _config_dir() and
+        # _config_basename() from it rather than passing it on.
         self._wr_file: str | None = None
         self._wp_file: str | None = None
         self._skip_confirmations: set[str] = set()
@@ -297,7 +300,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._set_wp_file(settings.wp_file)
 
         # Defer config parse until after the window is shown, so the GUI is
-        # visible before yd-variables runs
+        # visible before yd variables runs
         QTimer.singleShot(0, lambda: self._set_config_file(settings.config_file))
 
         self._any_command_history = CommandHistory()
@@ -320,9 +323,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # A depth counter rather than a flag, because nested loops really do
         # nest: the config parse deferred below with singleShot(0) runs in the
         # first event loop to spin, which can be one an enumeration has already
-        # entered — observed reaching depth 2 for a single enumeration. A flag
+        # entered, so depth 2 for a single enumeration is normal. A flag
         # cleared by the inner parse finishing would unlock the window while the
-        # outer loop was still blocking, which is the bug this avoids.
+        # outer loop is still blocking.
         self._nested_depth = 0
         self.stdin_input.textChanged.connect(
             functools_partial(self._edit_box_keypress_handler, self.stdin_input)
@@ -429,8 +432,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         other in separate grid rows.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
-        across layouts, so each field began wherever its own label happened to
-        end — at 110, 110 and 56. Measured here rather than set as a width in
+        across layouts, so each field would begin wherever its own label happens
+        to end — at 110, 110 and 56. Measured here rather than set as a width in
         commander.ui, because a width in pixels is a width for one font: these
         labels are the widest under this one, and need not be under the next.
         """
@@ -465,7 +468,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         platform, so it cannot be reproduced offscreen — even under the macOS style
         a headless button reports its bevel flush. Verified by measuring the painted
         pixels of a real window, where the buttons start at x=22 and the checkboxes
-        did at x=20.
+        at x=20 without the indent.
         """
         checkboxes = (
             self.dry_run,
@@ -805,7 +808,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         currently-selected file, labelled with its type and path and carrying
         the full path as a tooltip, plus Cancel / Deselect buttons (default
         Deselect). Every file starts checked, so accepting the dialog unchanged
-        deselects all of them, as the button did before it asked.
+        deselects all of them.
 
         Each row is phrased as an action ('Deselect Worker Pool: ...') rather
         than as state ('Worker Pool: ...'), because a checked row stating only
@@ -906,12 +909,18 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._output.log("No command to run")
             return
         self._any_command_history.save_command(command_text)
-        if words[0].startswith("yd-"):
+        if words[0] == "yd" or words[0].startswith("yd-"):
             # Split with quoting, as a shell would: the non-yd branch below
             # hands the text to one, so the two agree about what a quote means
-            command_and_args = self._split_text(command_text, "command")
-            if command_and_args is None:
+            split = self._split_text(command_text, "command")
+            if split is None:
                 return
+            # A noun and its verb are one command ('yd wr submit'), as is
+            # 'yd list', so that what Commander adds comes after them
+            # ('yd wr submit -c config.toml ...'). Never the shell's: another
+            # 'yd' on the PATH would run
+            command_and_args = typed_command(split)
+            assert command_and_args is not None
             # The standalone ones are given at most '--nf'
             # (UNDECORATED_YD_COMMANDS), so the Properties field has nothing
             # to do with them
@@ -920,7 +929,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
                 and not self._properties_are_usable()
             ):
                 return
-            # yd- commands: inject UI namespace/tag/user vars as normal
+            # yd commands: inject UI namespace/tag/user vars as normal
             self._run_command_in_subprocess(
                 command=command_and_args[0],
                 args=command_and_args[1:],

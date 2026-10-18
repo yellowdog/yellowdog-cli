@@ -2,7 +2,7 @@
 The run every wrapped command shares: main_wrapper (wrapper.py) and
 dataclient_wrapper (dataclient/wrapper.py) differ only in what they set up
 and tear down around the command, and in how an error is described, which
-they pass in. Once in one place, a fix to how a command is run, flushed and
+they pass in. Being in one place, a fix to how a command is run, flushed and
 exited is made once.
 
 It imports neither wrapper, nor anything that builds a Platform client: the
@@ -21,33 +21,56 @@ from yellowdog_cli.utils.load_config import (
     warn_of_undefined_config_variables,
 )
 from yellowdog_cli.utils.output_settings import configure_output
-from yellowdog_cli.utils.printing import print_debug, print_error, print_info
+from yellowdog_cli.utils.printing import (
+    print_debug,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.results import (
     any_failed,
+    failure_exit_code,
     flush_results,
     flush_results_after_failure,
 )
 from yellowdog_cli.utils.specs.schema_cache import report_problems_to
+from yellowdog_cli.utils.top_level import deprecation_message
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
 
 
 def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     """
     Build what a command will use, before it runs and outside run_command()'s
-    handling, in the order importing once did: the command line ('args'),
-    which the output settings are then configured from and the configuration
-    loaded under, the configuration file, 'values' (the wrapper's own, such as
-    CONFIG_COMMON), then every lazy value the command's module holds that is
-    marked to be prepared (its configuration sections; not CLIENT). So an
-    argument error or a broken configuration is reported, and exits, before
-    the command starts, as it did when these were built at import. A test's
-    stand-in is left alone.
+    handling, in this order: the command line ('args'), which the output
+    settings are then configured from and the configuration loaded under, the
+    configuration file, 'values' (the wrapper's own, such as CONFIG_COMMON),
+    then every lazy value the command's module holds that is marked to be
+    prepared (its configuration sections; not CLIENT). So an argument error or
+    a broken configuration is reported, and exits, before the command starts.
+    A test's stand-in is left alone.
     """
     prepare(args)
     configure_output(args)
+    warn_if_deprecated(args)
     ensure_config_loaded(args)
     prepare(*values)
     prepare(*func.__globals__.values())
+
+
+def warn_if_deprecated(args: Any) -> None:
+    """
+    Warn, on stderr, of a command invoked by a deprecated script's name
+    ('yd-submit' for 'yd workrequirement submit', 'yd-list' for 'yd list'):
+    once the output
+    settings are configured, so '--quiet' suppresses it, and before anything
+    else is printed. 'python -m' (Commander, the MCP server) is not warned.
+    """
+    # A test's stand-in for the command line may be a mock: only a list of
+    # 'yd' forms is a deprecation
+    replaced_by = getattr(args, "replaced_by", None)
+    if not isinstance(replaced_by, list) or not replaced_by:
+        return
+    print_warning(deprecation_message(args.command_name, replaced_by), stderr=True)
 
 
 def describe_error(error: Exception) -> str:
@@ -120,7 +143,7 @@ def run_command(
             finally:
                 flush_results()
             if any_failed():
-                sys.exit(ExitCode.FAILURE)
+                sys.exit(failure_exit_code())
             if not args.print_pid:
                 print_info("Done")
             sys.exit(ExitCode.SUCCESS)
@@ -134,8 +157,9 @@ def run_command(
         flush_results()
         if any_failed():
             # The command handled the error itself and recorded it; main()
-            # raised nothing, but a failed record still fails the run
-            exit_code = ExitCode.FAILURE
+            # raised nothing, but a failed record still fails the run, with
+            # the cause its failures share, else 1
+            exit_code = failure_exit_code()
     except SystemExit as e:
         # An explicit exit code raised by the command is kept
         exit_code = exit_code_of(e)

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := no_op
 
-SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/utils/*/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/spec_data/*.py
+SRC = yellowdog_cli/*.py yellowdog_cli/utils/*.py yellowdog_cli/utils/*/*.py yellowdog_cli/commander/*.py yellowdog_cli/mcp/*.py yellowdog_cli/nouns/*.py yellowdog_cli/spec_data/*.py
 SCRIPTS = scripts/*.py
 TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
@@ -19,6 +19,11 @@ install: build
 
 uninstall:
 	uv pip uninstall yellowdog-cli
+
+# scripts/pre-push, which refuses unsigned commits headed for 'main', as this
+# clone's pre-push hook (pre-commit's own hook is 'pre-commit install')
+pre_push_hook:
+	ln -sf "$$(git rev-parse --show-toplevel)/scripts/pre-push" "$$(git rev-parse --git-path hooks)/pre-push"
 
 format: $(SRC) $(TESTS) $(SCRIPTS)
 	ruff check --fix $(SRC) $(TESTS) $(SCRIPTS)
@@ -77,6 +82,11 @@ coverage:
 
 tox:
 	tox
+
+# The live system tests' configuration, checked as a run loads it, with
+# nothing remote: its summary and warnings, or every problem (exit 2)
+live_config:
+	python tests/live/check_config.py
 
 update:
 	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"

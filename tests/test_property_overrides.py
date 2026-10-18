@@ -11,7 +11,7 @@ from yellowdog_cli.utils import load_config, property_names
 from yellowdog_cli.utils import variable_substitution as var_module
 from yellowdog_cli.utils.load_config import (
     _apply_property_overrides,
-    _parse_property_value,
+    parse_property_value,
 )
 from yellowdog_cli.utils.property_names import (
     ALL_KEYS,
@@ -26,7 +26,7 @@ from yellowdog_cli.utils.property_names import (
 
 class TestParsePropertyValue:
     """
-    Tests for _parse_property_value: value string → Python object.
+    Tests for parse_property_value: value string → Python object.
     """
 
     @pytest.mark.parametrize(
@@ -45,7 +45,7 @@ class TestParsePropertyValue:
         ],
     )
     def test_parse(self, s, expected):
-        assert _parse_property_value(s) == expected
+        assert parse_property_value(s) == expected
 
 
 class TestApplyPropertyOverrides:
@@ -127,19 +127,19 @@ class TestStringPropertiesKeepTheirText:
         ],
     )
     def test_string_property_keeps_its_text(self, property_name, value_str):
-        result = _parse_property_value(value_str, property_name)
+        result = parse_property_value(value_str, property_name)
         assert isinstance(result, str)
         assert result == value_str
 
     def test_quoted_value_is_still_unwrapped(self):
         # JSON that already yields a string is used as such, so the explicit
         # form keeps working
-        assert _parse_property_value('"123"', "name") == "123"
+        assert parse_property_value('"123"', "name") == "123"
 
     def test_null_still_unsets_a_string_property(self):
         # 'null' is the only way to clear a property set in the TOML file,
         # and is not a name anyone means to use
-        assert _parse_property_value("null", "name") is None
+        assert parse_property_value("null", "name") is None
 
     @pytest.mark.parametrize(
         "property_name,value_str,expected",
@@ -152,7 +152,7 @@ class TestStringPropertiesKeepTheirText:
         ],
     )
     def test_other_properties_are_unaffected(self, property_name, value_str, expected):
-        assert _parse_property_value(value_str, property_name) == expected
+        assert parse_property_value(value_str, property_name) == expected
 
     def test_numeric_name_override_end_to_end(self):
         config = {}

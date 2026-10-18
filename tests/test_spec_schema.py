@@ -514,8 +514,10 @@ class TestWrapping:
     def test_descriptions_sit_beside_the_wrapping(self):
         schema = build_schema(Family.WORK_REQUIREMENT)
         retry = schema["properties"]["retryPolicy"]
-        assert retry["description"] and "description" not in _unwrapped(retry)
-        assert _unwrapped(retry) == {"$ref": "#/$defs/RetryPolicy"}
+        # Never beside the $ref, where draft-07 ignores it; null, which stops
+        # its inheritance, is admitted around it
+        assert retry["description"]
+        assert _non_null(_unwrapped(retry)) == {"$ref": "#/$defs/RetryPolicy"}
         assert schema["$defs"]["taskGroup"]["properties"]["dependentOn"]["deprecated"]
 
 
@@ -582,6 +584,40 @@ class TestFamilies:
         _rejects(validate, {"resource": "Keyring", "name": "k"})
         _rejects(validate, {"resource": "Nonsense", "name": "k"})
         _rejects(validate, {"resource": "Application", "name": "a", "bogus": 1})
+
+    def test_null_is_accepted_where_it_stops_inheritance(self):
+        # Null at a level stops the property being inherited from above
+        validate = compile_schema(Family.WORK_REQUIREMENT)
+        validate(
+            {
+                "priority": None,
+                "retryPolicy": None,
+                "taskGroups": [
+                    {
+                        "arguments": None,
+                        "taskTypes": None,
+                        "failurePolicy": None,
+                        "tasks": [{"environment": None, "timeout": None}],
+                    }
+                ],
+            }
+        )
+        # Nothing to inherit: 'taskTypes' has no level above the Work
+        # Requirement, nor 'dependencies' above the Task Group
+        _rejects(validate, {"taskTypes": None, "taskGroups": [{"tasks": [{}]}]})
+        _rejects(validate, {"taskGroups": [{"dependencies": None, "tasks": [{}]}]})
+        # Not inherited, and a Task must have a type
+        _rejects(validate, {"taskGroups": [{"name": None, "tasks": [{}]}]})
+        _rejects(validate, {"taskGroups": [{"tasks": [{"taskType": None}]}]})
+
+    def test_max_retries_is_optional_as_the_sdk_and_platform_make_it(self):
+        # Both default it to 0; so does generate_retry_policy()
+        validate = compile_schema(Family.WORK_REQUIREMENT)
+        tasks = [{"tasks": [{}]}]
+        validate({"retryPolicy": {"maxRetries": 0}, "taskGroups": tasks})
+        validate({"retryPolicy": {"maxRetries": "{{retries}}"}, "taskGroups": tasks})
+        validate({"retryPolicy": {}, "taskGroups": tasks})
+        validate({"retryPolicy": {"retryErrors": None}, "taskGroups": tasks})
 
     def test_namespace_is_required_where_yd_create_demands_it(self):
         validate = compile_schema(Family.RESOURCES)
@@ -706,6 +742,66 @@ def _known_partial_failure(file_name: str, resource_name: str) -> bool:
 
 
 class TestCorpusAndExamples:
+    def test_every_corpus_update_changes_each_specification_and_validates(self):
+        """
+        resource_live.UPDATES: what the live lifecycle test sends a second time
+        to update what it created. Each update keeps the specification's name
+        (so it updates, not creates), changes it, and is still valid; one it
+        leaves out (None) is not updated, but every file updates something.
+        """
+        import resource_corpus
+        import resource_live
+
+        resource_corpus.require_jsonnet()
+        validate = compile_schema(Family.RESOURCES)
+        assert resource_live.UPDATES
+        previous = resource_corpus.install_variables()
+        try:
+            for file_name, update in resource_live.UPDATES.items():
+                path = resource_corpus.CORPUS_DIR / file_name
+                count = 0
+                for resource in resource_corpus.load_corpus_file(path):
+                    sent = resource_corpus.spec_properties(resource)
+                    updated = update(resource["resource"], sent)
+                    if updated is None:
+                        continue
+                    count += 1
+                    assert updated["name"] == sent["name"], file_name
+                    assert updated != sent, f"{file_name}: {sent['name']} unchanged"
+                    validate({"resource": resource["resource"], **updated})
+                assert count, f"{file_name}: the update leaves everything out"
+        finally:
+            resource_corpus.remove_variables(previous)
+
+    def test_the_applications_update_sets_and_clears_a_description(self):
+        """
+        The Applications' update: application-min gains a description and
+        application-max's is cleared to '' (removing it by leaving it out is
+        YEL-15305); the Group and Keyring are left out, and so are the
+        Keyring grants, which an update makes only with a regenerated key.
+        """
+        import resource_corpus
+        import resource_live
+
+        resource_corpus.require_jsonnet()
+        update = resource_live.UPDATES["applications.jsonnet"]
+        previous = resource_corpus.install_variables()
+        try:
+            path = resource_corpus.CORPUS_DIR / "applications.jsonnet"
+            updated = {
+                resource["name"].removeprefix("yd-test-offline-"): update(
+                    resource["resource"], resource_corpus.spec_properties(resource)
+                )
+                for resource in resource_corpus.load_corpus_file(path)
+            }
+        finally:
+            resource_corpus.remove_variables(previous)
+        assert updated["application-group"] is None
+        assert updated["application-keyring"] is None
+        assert updated["application-min"]["description"]
+        assert updated["application-max"]["description"] == ""
+        assert "keyrings" not in updated["application-max"]
+
     def test_every_corpus_specification_validates(self):
         import resource_corpus
 

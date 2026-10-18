@@ -56,7 +56,7 @@ def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
 
 def newest_entity_id(parsed: list) -> str | None:
     """
-    The 'id' of the row with the latest 'createdTime' in a parsed 'yd-list
+    The 'id' of the row with the latest 'createdTime' in a parsed 'yd list
     --json' array, or None when no row carries both. The times are compared as
     the ISO 8601 text they are serialised as, which orders them correctly
     because every row comes from the same serialiser and the same platform.
@@ -106,8 +106,8 @@ class Confirmation:
         """
         Refuse truthiness. Both 'act over the whole scope' and 'act on nothing'
         are legitimate outcomes, so a bare 'if confirmation:' cannot mean
-        anything safe — and unlike the list sentinel this replaced, an always-
-        truthy object would proceed even when the user declined. Callers must
+        anything safe — and an always-truthy object would proceed even when
+        the user declined. Callers must
         read .proceed explicitly.
         """
         raise TypeError("check Confirmation.proceed explicitly, not truthiness")
@@ -135,7 +135,7 @@ def entity_rows(entities: list[EntitySummary]) -> list[SelectableRow]:
     ]
 
 
-# The 'type' 'yd-list --details --json' gives a Worker Pool that can be resized:
+# The 'type' 'yd list --details --json' gives a Worker Pool that can be resized:
 # a Configured Worker Pool's nodes are the ones that registered with it, not a
 # number the platform can be asked to change.
 PROVISIONED_WORKER_POOL_TYPE = "co.yellowdog.platform.model.ProvisionedWorkerPool"
@@ -146,7 +146,7 @@ AWAITING_NODES_TOOLTIP = "The platform cannot resize a Worker Pool awaiting node
 @dataclass(frozen=True)
 class ResizablePool:
     """
-    One Provisioned Worker Pool in a 'yd-list worker-pools --details --json'
+    One Provisioned Worker Pool in a 'yd list worker-pools --details --json'
     listing: the YDID to resize it by, the name and status shown, the node
     count it currently expects, the bounds a resize must keep within (maximum
     None when the pool sets none), and whether it is awaiting nodes, in which
@@ -165,7 +165,7 @@ class ResizablePool:
 
 def parse_resizable_pools(parsed: list) -> tuple[list[ResizablePool], int] | None:
     """
-    The Provisioned Worker Pools in a parsed 'yd-list worker-pools --details
+    The Provisioned Worker Pools in a parsed 'yd list worker-pools --details
     --json' array, and how many Configured ones were left out. None if any
     row is not a dict or lacks an 'id' or a 'name', for the reason
     parse_entity_summaries() gives: without a YDID a pool cannot be targeted,
@@ -242,7 +242,7 @@ def pool_rows(pools: list[ResizablePool]) -> list[SelectableRow]:
 @dataclass(frozen=True)
 class ObjectSummary:
     """
-    One item in a 'yd-delete -D --json' enumeration: the resolved remote path
+    One item in a 'yd data delete -D --json' enumeration: the resolved remote path
     used to delete it, its display name (directories carry a trailing '/'), and
     whether it is a directory — which decides whether the confirmation warns
     that a tick takes the directory's whole contents.
@@ -255,7 +255,7 @@ class ObjectSummary:
 
 def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
     """
-    Convert a parsed 'yd-delete -D --json' array into ObjectSummary objects.
+    Convert a parsed 'yd data delete -D --json' array into ObjectSummary objects.
     Returns None if any row is not a dict or lacks a 'path' or a 'name': without
     a path the object cannot be targeted, and guessing one would delete
     something other than what the user ticked. A missing 'isDir' defaults to
@@ -277,7 +277,7 @@ def parse_object_summaries(parsed: list) -> list[ObjectSummary] | None:
 
 def parse_download_summaries(parsed: list) -> list[ObjectSummary] | None:
     """
-    Convert a parsed 'yd-download -D --json' array -- one record per file,
+    Convert a parsed 'yd data download -D --json' array -- one record per file,
     each naming in 'match' the top-level item it belongs to -- into one
     ObjectSummary per top-level item, in the order first seen. An item is a
     directory when any of its files is not the item itself. Returns None if
@@ -297,7 +297,7 @@ def parse_download_summaries(parsed: list) -> list[ObjectSummary] | None:
     return [
         ObjectSummary(
             path=match,
-            name=match.rsplit("/", 1)[-1].split(":", 1)[-1] + ("/" if dir_ else ""),
+            name=match.split(":", 1)[-1].rsplit("/", 1)[-1] + ("/" if dir_ else ""),
             is_dir=dir_,
         )
         for match, dir_ in is_dir.items()
@@ -322,14 +322,15 @@ def object_rows(objects: list[ObjectSummary]) -> list[SelectableRow]:
 
 def path_would_be_globbed(remote_path: str) -> bool:
     """
-    Whether 'yd-delete' would treat this remote path as a wildcard pattern
+    Whether 'yd data delete' would treat this remote path as a wildcard pattern
     rather than a literal object. Mirrors dataclient.operations.is_glob (which
     Commander cannot import, since that module pulls in rclone_api): strip a
     leading 'remote:' prefix, then look for glob metacharacters.
 
     This matters because an object whose own name contains '*', '?' or '['
-    cannot be targeted by path at all — 'yd-delete' would expand it and act on
-    whatever it matched instead, which for 'a[1].txt' is the sibling 'a1.txt'.
+    cannot be targeted by path at all — 'yd data delete' would expand it and
+    act on whatever it matched instead, which for 'a[1].txt' is the sibling
+    'a1.txt'.
     """
     path_part = remote_path.split(":", 1)[-1] if ":" in remote_path else remote_path
     return contains_glob_chars(path_part)

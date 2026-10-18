@@ -153,8 +153,8 @@ def test_a_missing_property_is_named_without_quotes_round_it(env):
 @pytest.mark.parametrize(
     "argv, message",
     [
-        (["--ids", "not-an-id"], "not the ID of a resource yd-remove can remove"),
-        (["--ids", TASK_ID], "not the ID of a resource yd-remove can remove"),
+        (["--ids", "not-an-id"], "not the ID of a resource that can be removed"),
+        (["--ids", TASK_ID], "not the ID of a resource that can be removed"),
         (["--ids", "-M", GROUP_ID], "--match-allowances-by-description applies"),
         (["--ids", "-J", GROUP_ID], "--jsonnet-dry-run applies"),
     ],

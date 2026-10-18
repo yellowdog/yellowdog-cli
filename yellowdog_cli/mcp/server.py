@@ -33,6 +33,7 @@ from yellowdog_cli.mcp.tools import (
     to_argv,
     tool_named,
 )
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES
 from yellowdog_cli.utils.settings import MCP_SERVER_NAME
 
 LOG = logging.getLogger("yd-mcp")
@@ -41,7 +42,7 @@ LOG = logging.getLogger("yd-mcp")
 USAGE_EXIT_CODE = 2
 
 INSTRUCTIONS = (
-    "These tools are the YellowDog CLI's yd-* commands, one tool per command, run"
+    "These tools are the YellowDog CLI's yd commands, one tool per command, run"
     " with --json: a tool's result is the command's JSON document, as the CLI's"
     " 'Machine-readable Output and Exit Codes' page (docs/json-output.md)"
     " describes, and a"
@@ -50,7 +51,7 @@ INSTRUCTIONS = (
     " prompt, so confirm with the user first; every acting or destructive tool"
     " that has dry_run can enumerate what it would do. Every tool takes"
     " timeout_seconds and returns what it had if stopped. Specifications may be"
-    " given inline. yd-mcp's own README documents the server."
+    " given inline. yd mcp's own README documents the server."
 )
 
 
@@ -77,9 +78,9 @@ def _error(text: str, **structured: Any) -> types.CallToolResult:
 def _records_a_failure(document: Any) -> bool:
     """
     Whether 'document' is a list holding a record whose 'outcome' or 'action'
-    is 'failed': the CLI's per-item failure (results.any_failed()), the one
-    exit 1 that is still a result rather than an error. Both wrappers flush
-    '[]' on every failure path, so a document alone proves nothing.
+    is 'failed': the CLI's per-item failure (results.any_failed()), a
+    non-zero exit that is still a result rather than an error. Both wrappers
+    flush '[]' on every failure path, so a document alone proves nothing.
     """
     return isinstance(document, list) and any(
         isinstance(item, dict)
@@ -91,7 +92,7 @@ def _records_a_failure(document: Any) -> bool:
 def _error_text(tool: ToolSpec, result: Run, document: Any) -> str:
     """
     A failed run's text content: its stderr, then its document as compact
-    JSON when it left one (yd-doctor's failing checks and yd-wait's failed
+    JSON when it left one (yd doctor's failing checks and yd wait's failed
     Work Requirement exit 1 with the document alone), so the text says as
     much as structuredContent does.
     """
@@ -108,13 +109,15 @@ def _result_of(
 ) -> types.CallToolResult:
     document = (
         parse_event_documents(result.stdout)
-        if tool.command.name == "yd-follow"
+        if tool.command.internal_name == "yd-follow"
         else result.document
     )
     succeeded = (
         result.stopped
         or result.exit_code == 0
-        or (result.exit_code == 1 and _records_a_failure(document))
+        # The command reported its own per-item failures, exiting with their
+        # shared cause (6, 5) or 1; a session failure (4, 8) stopped it
+        or (result.exit_code not in SESSION_FAILURES and _records_a_failure(document))
     )
     if not succeeded:
         return _error(
@@ -157,9 +160,7 @@ def call_tool(
         timeout_seconds = timeout_of(tool, arguments)
         own_args, written = to_argv(tool, arguments, settings.working_dir)
         argv = (
-            command_argv(tool.command.name)
-            + fixed_args(tool.command, settings)
-            + own_args
+            command_argv(tool.program) + fixed_args(tool.command, settings) + own_args
         )
         LOG.info("%s: %s", name, " ".join(argv[2:]))
         result = run(argv, settings.working_dir, environment, timeout_seconds)

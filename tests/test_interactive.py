@@ -196,8 +196,8 @@ def test_an_answer_with_spaces_is_understood():
 
 def test_interactive_imports_no_sdk():
     """
-    yd-delete imports this module for confirmed(): the SDK it once imported
-    at module level, for an annotation, cost every yd-delete its ~140ms.
+    yd-delete imports this module for confirmed(): the SDK, imported at
+    module level for an annotation, would cost every yd-delete ~140ms.
     """
     import subprocess
     import sys

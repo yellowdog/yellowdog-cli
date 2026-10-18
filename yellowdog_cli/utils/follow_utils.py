@@ -59,17 +59,27 @@ Settled = Callable[[dict], bool]
 _EVENT_DATA_PREFIX = "data:"
 
 # The exit code of each failure to follow an event stream (an invalid YDID,
-# an entity not found, a refused or broken connection), recorded from the
-# daemon threads that follow the streams. Consulted by yd-follow for its exit
-# code; other commands that follow after their primary action ignore it.
-_FOLLOW_FAILURES: list[ExitCode] = []
+# an entity not found, a refused or broken connection), with the ID whose
+# stream it was, recorded from the daemon threads that follow the streams.
+# Consulted by yd-follow for its exit code, and by yd-wait for why each
+# entity it waited for may still be live; other commands that follow after
+# their primary action ignore it.
+_FOLLOW_FAILURES: list[tuple[str | None, ExitCode]] = []
 _FOLLOW_FAILURES_LOCK = Lock()
 
 
-def _record_follow_failure(failure: BaseException | ExitCode) -> None:
+def _record_follow_failure(
+    failure: BaseException | ExitCode, ydid: str | None = None
+) -> None:
     code = failure if isinstance(failure, ExitCode) else classify(failure)
     with _FOLLOW_FAILURES_LOCK:
-        _FOLLOW_FAILURES.append(code)
+        _FOLLOW_FAILURES.append((ydid, code))
+
+
+def _exit_code_of(codes: set[ExitCode]) -> ExitCode:
+    if not codes:
+        return ExitCode.SUCCESS
+    return codes.pop() if len(codes) == 1 else ExitCode.FAILURE
 
 
 def follow_errors_occurred() -> bool:
@@ -87,10 +97,19 @@ def follow_exit_code() -> ExitCode:
     CONNECTION and so on); FAILURE if their causes differed.
     """
     with _FOLLOW_FAILURES_LOCK:
-        codes = set(_FOLLOW_FAILURES)
-    if not codes:
-        return ExitCode.SUCCESS
-    return codes.pop() if len(codes) == 1 else ExitCode.FAILURE
+        codes = {code for _, code in _FOLLOW_FAILURES}
+    return _exit_code_of(codes)
+
+
+def follow_exit_code_of(ydid: str) -> ExitCode:
+    """
+    follow_exit_code() for the one ID's stream alone, so that an entity
+    still live once following ended is charged with its own stream's
+    failure, never another's.
+    """
+    with _FOLLOW_FAILURES_LOCK:
+        codes = {code for failed, code in _FOLLOW_FAILURES if failed == ydid}
+    return _exit_code_of(codes)
 
 
 def reset_follow_errors() -> None:
@@ -282,7 +301,7 @@ def _fetch_for_progress(ctx: RunContext, ydid: str) -> _FetchedWorkRequirement |
             # Fail fast with a plain error rather than starting the live
             # progress display around an event stream that will just 404
             print_error(f"Work Requirement '{ydid}' not found")
-            _record_follow_failure(ExitCode.NOT_FOUND)
+            _record_follow_failure(ExitCode.NOT_FOUND, ydid)
             return None
         # Other fetch errors may be transient; leave them to the event stream
         return _FetchedWorkRequirement()
@@ -482,7 +501,7 @@ def follow_ids(
                 f"Invalid YellowDog ID '{ydid}' (Must be valid YDID for Work"
                 " Requirement, Worker Pool or Compute Requirement)"
             )
-            _record_follow_failure(ExitCode.FAILURE)
+            _record_follow_failure(ExitCode.FAILURE, ydid)
             continue
 
         kwargs: dict = {}
@@ -497,7 +516,7 @@ def follow_ids(
             thread.start()
         except RuntimeError as e:
             print_error(f"Unable to start event thread for '{ydid}': ({e})")
-            _record_follow_failure(e)
+            _record_follow_failure(e, ydid)
             continue
         threads.append(thread)
 
@@ -556,7 +575,7 @@ def _compute_requirement_of_worker_pool(
             f"Unable to find the Compute Requirement of Worker Pool"
             f" '{worker_pool_id}': {e}"
         )
-        _record_follow_failure(e)
+        _record_follow_failure(e, worker_pool_id)
         return None
     if isinstance(worker_pool, ProvisionedWorkerPool):
         return worker_pool.computeRequirementId
@@ -588,7 +607,7 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | 
                 f"The event stream for '{ydid}' closed, and its status could not be"
                 f" checked: {e}"
             )
-            _record_follow_failure(e)
+            _record_follow_failure(e, ydid)
             return None
         print_warning(
             f"The event stream for '{ydid}' closed, and its status could not be"
@@ -713,7 +732,7 @@ def follow_events(
                 f"Unable to {'reconnect' if connected else 'connect'} to the event"
                 f" stream for '{ydid}': {e}"
             )
-            _record_follow_failure(e)
+            _record_follow_failure(e, ydid)
             break
 
         with response:
@@ -725,7 +744,7 @@ def follow_events(
                 print_error(f"'{ydid}': {error_text}")
                 # An HTTPError carrying the response, classified by its status
                 _record_follow_failure(
-                    requests.HTTPError(error_text, response=response)
+                    requests.HTTPError(error_text, response=response), ydid
                 )
                 break
 
@@ -769,12 +788,12 @@ def follow_events(
                 if outage.wait():
                     continue
                 print_error(f"Unable to reconnect to the event stream for '{ydid}'")
-                _record_follow_failure(ExitCode.CONNECTION)
+                _record_follow_failure(ExitCode.CONNECTION, ydid)
                 break
 
             except Exception as e:
                 print_error(f"Event stream error: {e}")
-                _record_follow_failure(e)
+                _record_follow_failure(e, ydid)
                 break
 
         # Closed cleanly: by the Platform once the entity has finished, or by

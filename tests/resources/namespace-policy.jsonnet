@@ -8,12 +8,14 @@
 // Namespace Policies are matched by their 'namespace' property, and there is
 // only one namespace shared across a run (see namespace.jsonnet) -- so, like
 // that file, this one targets '{{namespace}}' directly rather than a
-// run-unique name.
+// run-unique name. The namespace is the live system tests' too, so the
+// limit is set well above anything a live run provisions: the policy is
+// read back, never relied on to cap anything.
 
 [
   {
     resource: 'NamespacePolicy',
     namespace: '{{namespace}}',
-    autoscalingMaxNodes: 5,
+    autoscalingMaxNodes: 100,
   },
 ]

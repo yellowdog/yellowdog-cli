@@ -13,7 +13,9 @@ from yellowdog_cli.utils.dataclient.operations import (
     config_glob_matches,
     download_files,
     is_glob,
+    names_remote,
     record_transfer,
+    remote_basename,
     resolve_remote_path,
 )
 from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
@@ -30,6 +32,7 @@ def local_destination_for(
     remote_path_str: str,
     into_dir: str | None = None,
     explicit_destination: str | None = None,
+    names_remote: bool = False,
 ) -> Path:
     """
     The local path a single remote item is downloaded to.
@@ -46,9 +49,18 @@ def local_destination_for(
       item, so a directory's contents land directly in it. Unchanged behaviour.
     - With neither, a pattern expands into the current directory and a literal item
       mirrors its own name, so downloading 'mydir' creates './mydir/'.
+
+    'names_remote' says the path begins with the remote's name, which is
+    split off: at the remote's root ('loc:a.txt') there is no '/' to split
+    on. A relative path's ':' is its own, and one naming the prefix itself
+    ('/') has no name, so is the current directory.
     """
     is_pattern = is_glob(remote_path_str)
-    basename = remote_path_str.rstrip("/").rsplit("/", 1)[-1]
+    basename = (
+        remote_basename(remote_path_str)
+        if names_remote
+        else remote_path_str.rstrip("/").rsplit("/", 1)[-1]
+    )
 
     if into_dir:
         return Path(into_dir) if is_pattern else Path(into_dir) / basename
@@ -113,6 +125,7 @@ def main(ctx: DataClientContext):
                 remote_path_str,
                 into_dir=into_dir,
                 explicit_destination=explicit_destination,
+                names_remote=names_remote(CONFIG_DATA_CLIENT, remote_path_str),
             ),
             destination_is_item(
                 remote_path_str,
@@ -124,6 +137,9 @@ def main(ctx: DataClientContext):
     ]
     unchecked = _refuse_unsafe_syncs(downloads, explicit_destination) if sync else {}
 
+    # Shared by every argument, so that a flattened file landing on one an
+    # earlier argument fetched is warned of, as one within an argument is
+    flattened: dict[str, str] = {}
     failed = 0
     for download in downloads:
         if (error := unchecked.get(download.argument)) is not None:
@@ -152,6 +168,7 @@ def main(ctx: DataClientContext):
                 sync=sync,
                 dry_run=dry_run,
                 destination_is_item=download.destination_is_item,
+                flattened=flattened,
             )
         except Exception as e:
             # Not found, matching nothing, or not reachable: the argument

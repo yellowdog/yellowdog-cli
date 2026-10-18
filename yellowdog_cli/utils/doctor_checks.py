@@ -19,7 +19,9 @@ import importlib.util
 import io
 import os
 import re
+import shutil
 import sys
+import sysconfig
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -368,11 +370,112 @@ def check_rclone(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             "not found",
-            "yd-upload, yd-download, yd-delete, yd-ls and yd-copy need it; run"
-            " yd-submit --upgrade-rclone or install rclone on PATH",
+            "the yd data commands need it; run 'yd data ls --upgrade-rclone'"
+            " or install rclone on PATH",
         )
     path, source = found
     return Result(Status.OK, f"{rclone_version()} ({path}, {source})")
+
+
+def _on_windows() -> bool:
+    return os.name == "nt"
+
+
+def _own_yd() -> str:
+    """
+    This installation's 'yd' script: the one beside its interpreter.
+    """
+    name = "yd.exe" if _on_windows() else "yd"
+    return os.path.join(sysconfig.get_path("scripts"), name)
+
+
+def check_yd_on_path(ctx: Context) -> Result:
+    """
+    Whether the 'yd' first on the PATH is this installation's, a link to it
+    included (pipx's): another, such as YellowDog's internal CLI of the
+    same name, runs in its place, and Tab completion asks it.
+    """
+    own = _own_yd()
+    if not os.path.exists(own):
+        return Result(Status.SKIP, "this installation has no yd script")
+    remedy = (
+        f"put {os.path.dirname(own)} first on PATH, or activate the virtual"
+        " environment the CLI is installed in"
+    )
+    found = shutil.which("yd")
+    if found is None:
+        return Result(Status.WARN, "no yd on PATH", remedy)
+    if os.path.realpath(found) != os.path.realpath(own):
+        return Result(
+            Status.WARN,
+            f"{found} comes first, not this installation's {own}",
+            f"{remedy}; until then '{found}' runs for 'yd', and Tab completion asks it",
+        )
+    return Result(Status.OK, found)
+
+
+# Where each shell 'yd completion' supports reads its start-up commands, and
+# the line that loads completion there
+_COMPLETION_SETUP = {
+    "zsh": 'eval "$(yd completion zsh)"',
+    "bash": 'eval "$(yd completion bash)"',
+    "fish": "yd completion fish | source",
+}
+
+
+def _startup_files(shell: str) -> list[str]:
+    home = os.path.expanduser("~")
+    if shell == "zsh":
+        return [os.path.join(os.environ.get("ZDOTDIR") or home, ".zshrc")]
+    if shell == "bash":
+        return [os.path.join(home, ".bashrc"), os.path.join(home, ".bash_profile")]
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    return [os.path.join(config, "fish", "config.fish")]
+
+
+def _active_lines(path: str) -> list[str]:
+    """
+    A start-up file's lines, less comments; none if it cannot be read.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return []
+    return [line for line in lines if not line.lstrip().startswith("#")]
+
+
+def check_shell_completion(ctx: Context) -> Result:
+    """
+    Whether the shell's start-up file loads 'yd completion'. The file is read,
+    not run, so a line it does not hold (a file it sources, a framework) is
+    reported as not set up, never as a failure; a line loading the
+    pre-release 'yd-completion', which does not exist, is a warning.
+    """
+    if _on_windows():
+        return Result(
+            Status.SKIP,
+            "not checked on Windows; see 'yd completion powershell'",
+        )
+    shell = os.path.basename(os.environ.get("SHELL", ""))
+    if shell not in _COMPLETION_SETUP:
+        return Result(
+            Status.SKIP,
+            f"shell '{shell or 'unknown'}' is not one 'yd completion' supports",
+        )
+    setup = _COMPLETION_SETUP[shell]
+    files = _startup_files(shell)
+    for path in files:
+        lines = _active_lines(path)
+        if any("yd-completion" in line for line in lines):
+            return Result(
+                Status.WARN,
+                f"{path} runs yd-completion, which 'yd completion' replaced",
+                f"replace that line with: {setup}",
+            )
+        if any(re.search(r"\byd completion\b", line) for line in lines):
+            return Result(Status.OK, f"set up in {path}")
+    return Result(Status.OK, f"not set up in {files[0]}: add {setup}")
 
 
 _PAC_REMEDY = (
@@ -520,7 +623,7 @@ def check_config_schema(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             f"the schema could not be built: {e}",
-            "Run 'yd-schema config' to see why; the configuration may be fine",
+            "Run 'yd schema config' to see why; the configuration may be fine",
         )
     if not violations:
         return Result(Status.OK, "no violations")
@@ -533,7 +636,7 @@ def check_config_schema(ctx: Context) -> Result:
         Status.WARN,
         f"{count}: {shown}" + (f"; and {more} more" if more > 0 else ""),
         "Every one is reported as a warning when a command runs;"
-        " 'yd-schema config' prints the schema",
+        " 'yd schema config' prints the schema",
     )
 
 
@@ -957,6 +1060,8 @@ CHECKS: tuple[Check, ...] = (
     Check("Commander", "Installation", Need.NOTHING, check_extra_commander),
     Check("MCP Server", "Installation", Need.NOTHING, check_extra_mcp),
     Check("rclone", "Installation", Need.NOTHING, check_rclone),
+    Check("yd on PATH", "Installation", Need.NOTHING, check_yd_on_path),
+    Check("Shell completion", "Installation", Need.NOTHING, check_shell_completion),
     # Ahead of the PyPI check, so that the proxy PAC resolves, kept in
     # HTTPS_PROXY, is the one it goes through
     Check("Proxy", "Installation", Need.NOTHING, check_proxy),
@@ -973,7 +1078,7 @@ CHECKS: tuple[Check, ...] = (
         "Variable references", "Configuration", Need.CONFIG, check_variable_references
     ),
     Check(".env file", "Configuration", Need.CONFIG, check_dotenv),
-    # The spec lists it under Platform, but it needs no network
+    # Under Configuration rather than Platform, since it needs no network
     Check(
         "Tag is a legal name", "Configuration", Need.CONFIG, check_tag_is_a_legal_name
     ),

@@ -2,6 +2,8 @@
 
 The following table outlines all the properties available for defining Work Requirements, and the levels at which they are allowed to be used. So, for example, the `providers` property can be set in the TOML file, at the Work Requirement Level or at the Task Group Level, but not at the Task level, and property `dependencies` can only be set at the Task Group level.
 
+A property set at one level is inherited by the levels below it unless they set it themselves, except where its description says it is not inherited; setting it to `null` at a level stops the inheritance there, giving it its default. See [Property Inheritance](work-requirements.md#property-inheritance).
+
 
 | Property Name               | Description                                                                                                                                                                                                                         | TOML | WR  | TGrp | Task |
 |:----------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----|:----|:-----|:-----|

@@ -35,7 +35,10 @@ class ExitCode(IntEnum):
     commands that catch a failure themselves exit FAILURE. So does any
     command whose recorded results include a 'failed' outcome/action, even
     where main() itself returns normally (results.any_failed(), checked by
-    both wrappers straight after a successful run).
+    both wrappers straight after a successful run), unless every failure was
+    recorded with its cause and all share one (results.failure_exit_code(),
+    as the action commands on action_runner.py, yd-shutdown, yd-abort,
+    yd-boost and yd-nodeaction record them), when it exits with that.
     """
 
     SUCCESS = 0

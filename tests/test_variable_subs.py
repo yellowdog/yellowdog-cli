@@ -846,9 +846,9 @@ class TestUnsetSuffix:
     # Nested: an unset expression inside another one. The property is removed
     # when the unset expression's value would be needed -- to build a
     # variable's name, or as a default that is used -- and kept when it would
-    # not. Its token used to be left in place instead, so the outer
-    # expression looked up a name with '{{missing::}}' in it, found nothing,
-    # and the whole expression reached the specification unresolved
+    # not. Left in place instead, its token would make the outer expression
+    # look up a name with '{{missing::}}' in it, find nothing, and reach the
+    # specification unresolved
 
     def test_nested_unset_in_a_variable_name(self):
         var_module.VARIABLE_SUBSTITUTIONS["template_hello"] = "T"
@@ -986,8 +986,8 @@ class TestAddSubstitutionsWithoutOverwriting:
 
     def test_unset_var_removed_from_substitutions(self):
         # zzz = "{{missing::}}" — 'missing' not defined → zzz should be deleted,
-        # not stored as the _UNSET sentinel (regression test for the bug that
-        # produced "<object object at 0x...>" in yd-show output)
+        # not stored as the _UNSET sentinel, which would show as
+        # "<object object at 0x...>" in yd-show output
         var_module.add_substitutions_without_overwriting({"zzz": "{{missing::}}"})
         assert "zzz" not in var_module.VARIABLE_SUBSTITUTIONS
 
@@ -1125,7 +1125,7 @@ class TestProcessVariableSubstitutionsInFileContents:
     # Several expressions on one line, which is what compact (unindented)
     # JSON puts them on. Each has to be found as the expression it is: taken
     # together, as one match from the first '{{' to the last '}}', a type-
-    # tagged one was substituted as text and its value came back a string
+    # tagged one would be substituted as text and its value come back a string
 
     def test_typed_expressions_on_one_line(self):
         content = '{"a":"{{num:num_var}}","b":"{{bool:bool_var}}"}'
@@ -1139,7 +1139,8 @@ class TestProcessVariableSubstitutionsInFileContents:
         assert json.loads(result) == {"env": {"n": 42}}
 
     def test_untyped_expression_followed_by_closing_braces(self):
-        # This one raised 'Mismatched variable delimiters' outright
+        # Matched with the object's '}}', this one would raise 'Mismatched
+        # variable delimiters' outright
         content = '{"env":{"A":"{{myvar}}"}}'
         result = file_module.process_variable_substitutions_in_file_contents(content)
         assert json.loads(result) == {"env": {"A": "hello"}}
@@ -1437,14 +1438,14 @@ class TestNestedVariablesInEveryFormat:
 
     def test_value_substituting_in_further_references(self, load_spec, monkeypatch):
         # Each reference is only revealed by resolving the one before it,
-        # about a link a pass. A fixed three passes stopped at three or four
+        # about a link a pass. A fixed three passes would stop at three or four
         # links, leaving '{{env:YD_TEST_n}}' in the specification
         _chain_env_vars(monkeypatch, 8)
         assert load_spec({"t": "{{env:YD_TEST_0}}"}) == {"t": "phoenix"}
 
     def test_undefined_variable_is_not_a_cycle(self, load_spec):
         # Unchanged after the first pass, so the passes stop and it is passed
-        # through as it always was
+        # through
         assert load_spec({"t": "{{undefined}}"}) == {"t": "{{undefined}}"}
 
     def test_mutually_referring_variables_are_an_error(self, load_spec, monkeypatch):
@@ -1887,7 +1888,7 @@ class TestFileContentsPasses:
         assert result == '{"name": "42-hello"}'
 
     def test_an_unquoted_typed_expression_in_a_script_is_substituted(self):
-        # It used to be left as written, and not warned of
+        # Substituted, rather than left as written and not warned of
         var_module.VARIABLE_SUBSTITUTIONS["count"] = "1.10"
         var_module.VARIABLE_SUBSTITUTIONS["flag"] = "true"
         text = 'N={{num:count}}\nM="{{num:count}}"\nF={{bool:flag}}\n'
@@ -1917,9 +1918,9 @@ class TestStringResolution:
     """
     resolve_variables_in_string() is resolve_variables_insitu() for a single
     value: the configuration values and data client paths substituted one at
-    a time. It used to be a single process_variable_substitutions() call,
-    which stopped a chain after a link and let the undefined-variable warning
-    call a defined variable undefined.
+    a time. A single process_variable_substitutions() call would stop a chain
+    after a link and let the undefined-variable warning call a defined
+    variable undefined.
     """
 
     @pytest.fixture(autouse=True)
@@ -1985,7 +1986,7 @@ class TestStringResolution:
     def test_no_single_value_substitution_outside_variable_substitution_py(self):
         # Every value substituted outside variable_substitution.py goes
         # through a resolving call; a bare process_variable_substitutions()
-        # brings the one-link chains, and the misreported variables, back.
+        # would stop chains at one link and misreport variables.
         # file_substitution.py is the engine's own: its text passes repeat
         # until the text settles and apply the circular check themselves
         from pathlib import Path
@@ -2004,8 +2005,8 @@ class TestStringResolution:
 
 class TestReviewedSubstitutionErrors:
     """
-    What the review of variable_substitution.py changed beyond text files:
-    a Jsonnet runtime error keeps its location, a typed variable is held as
+    variable_substitution.py beyond text files: a Jsonnet runtime error keeps
+    its location, a typed variable is held as
     text, and two malformed definitions say what is wanted.
     """
 

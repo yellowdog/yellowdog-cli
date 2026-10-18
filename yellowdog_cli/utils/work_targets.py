@@ -16,6 +16,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_task_groups_from_wr_by_id,
     get_work_requirement_summary_by_name_or_id,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
@@ -33,11 +34,11 @@ class NamedTarget:
     task_group: TaskGroup | None = None
 
 
-class TargetNotFound(LookupError):
+class TargetNotFound(NotFoundError):
     """
     A named target that names nothing: 'what' says what was looked for
     ("Task Group 'tg' in Work Requirement 'wr'"), and 'entity_type' the type
-    it is recorded as.
+    it is recorded as. A NotFoundError, so it exits NOT_FOUND.
     """
 
     def __init__(self, what: str, entity_type: str):

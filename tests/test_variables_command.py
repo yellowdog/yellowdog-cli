@@ -97,8 +97,8 @@ class TestSelection:
         assert _reported(["tag", "tag"]) == {"tag": "my-tag"}
 
     def test_all_is_not_a_keyword(self, substitutions):
-        # Under 'yd-show -r', 'all' meant every variable. Empty now means that,
-        # so the name is an ordinary one and may be used as a variable name
+        # Naming no variable selects every one, so 'all' is an ordinary name
+        # and may be used as a variable name
         assert _reported(["all"]) == {"all": SUBSTITUTIONS["all"]}
 
     def test_all_is_not_a_keyword_when_undefined(self, monkeypatch):
@@ -533,7 +533,7 @@ class TestInlineRemoteNote:
         assert "USERSECRET" not in result.stdout
 
     def test_no_note_for_the_clis_own_remote(self, tmp_path):
-        # {{dataClient.remote}} is withheld as it always was, without a note
+        # {{dataClient.remote}} is withheld without a note
         result = _run("--property", f"dataClient.remote={self.REMOTE}", cwd=tmp_path)
 
         assert result.returncode == 0, result.stderr
@@ -759,10 +759,11 @@ class TestExplainUnsetVariable:
 
 class TestUnsetIsNotTransitive:
     # A plain reference to an unset variable is left unsubstituted, as one to
-    # any undefined variable is. It once unset the referring variable too,
-    # but only one resolved in the same sweep as the unset one, which took in
-    # its '{{::}}' as text before it was removed: a '[common]' value referring
-    # to it, or a specification property, was left unsubstituted instead
+    # any undefined variable is. It does not unset the referring variable:
+    # the unset one is removed before anything in its sweep can take in its
+    # '{{::}}' as text, which would unset only a variable resolved in the same
+    # sweep while a '[common]' value referring to it, or a specification
+    # property, is left unsubstituted
 
     def test_a_plain_reference_is_left_unsubstituted(self, definitions):
         definitions(site="{{::}}", pool="{{site}}-p", summary="{{pool}} s")

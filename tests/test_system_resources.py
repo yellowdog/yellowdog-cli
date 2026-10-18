@@ -4,13 +4,15 @@ corpus (resource_corpus.py) and the live harness (resource_live.py) built for it
 
 Run with: pytest --run-system tests/test_system_resources.py
 
-Prerequisites: YD_KEY and YD_SECRET in the environment (plus YD_URL for a
-non-default platform). Nothing else -- no configuration file of your own, and no
+Prerequisites: [platform] in the live system tests' configuration
+(~/.config/yellowdog/system-tests.toml), which conftest.py gives every
+'--run-system' test. Nothing else -- no configuration file of your own, and no
 cloud credentials. tests/resources/test-config.toml supplies the namespace and the
 dummy infrastructure values, and deliberately carries no credentials of any kind;
 see tests/resource_live.py's module docstring.
 """
 
+import json
 from collections import defaultdict
 
 import pytest
@@ -20,17 +22,17 @@ import resource_models
 
 resource_corpus.require_jsonnet()
 
-# One worker under 'pytest -n', shared with test_create_remove.py: a
-# lifecycle test compares every resource of its type in the account before
-# and after, so another's creations read as its own left behind; and the
-# read gate reads what this process's lifecycle tests recorded
+# One worker under 'pytest -n': a lifecycle test compares every resource of
+# its type in the account before and after, so another's creations read as
+# its own left behind; and the read gate reads what this process's lifecycle
+# tests recorded
 pytestmark = pytest.mark.xdist_group("live_resources")
 
 # Resource type (a corpus specification's own 'resource' property) -> the
-# yd-list/yd-remove entity type it becomes. One entry per resource type the live
-# corpus can create (resource_corpus.OFFLINE_ONLY's two files -- credentials and
-# the shared namespace -- never reach this module at all, so neither needs an
-# entry here).
+# entity type yd list and yd resource remove use for it. One entry per resource
+# type the live corpus can create (resource_corpus.OFFLINE_ONLY's three files --
+# credentials, the shared namespace and the Users -- never reach this module at
+# all, so none needs an entry here).
 ENTITY_TYPE_FOR_RESOURCE = {
     "Keyring": "keyrings",
     "NamespacePolicy": "namespace-policies",
@@ -52,7 +54,7 @@ ENTITY_TYPE_FOR_RESOURCE = {
 _FINISHED_WORKER_POOL_STATUSES = {"SHUTDOWN", "TERMINATED"}
 
 # The read gate's raw material: every property name actually seen in a live
-# 'yd-show'/'yd-list --details' response, per model class, accumulated across every
+# 'yd show'/'yd list --details' response, per model class, accumulated across every
 # test_resource_lifecycle case in this session by _record_read_gate_evidence().
 # Keyed the same way resource_models.SERVER_ASSIGNED_COVERAGE is (a concrete SDK
 # class name, e.g. 'AwsInstancesComputeSource', 'AccountAllowance',
@@ -67,12 +69,12 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # templates/sources, never a real cloud instance -- rather than a gap in the
 # corpus or the CLI. Keyed by (property, class), never by property name alone:
 # resource_models.SERVER_ASSIGNED_COVERAGE exists specifically because name-level
-# exclusion silently swallowed AwsCapacityReservation.id/SourcesAllowance.
+# exclusion would silently swallow AwsCapacityReservation.id/SourcesAllowance.
 # provider/MachineImage.provider (see that module's own docstring) -- the same
 # mistake here would let one class's confirmed absence excuse every other
-# class sharing the property name, undetected. Every entry was seen, directly,
-# to still be absent from that specific class's live response after this run
-# created one -- listed individually, not derived from SERVER_ASSIGNED_COVERAGE's
+# class sharing the property name, undetected. Every entry is seen, directly,
+# to be absent from that specific class's live response after a run creates
+# one -- listed individually, not derived from SERVER_ASSIGNED_COVERAGE's
 # own class sets, so an exclusion here can never silently absorb a class that
 # registry adds in future without this suite ever having re-verified it against
 # that class specifically. test_read_gate_exclusions_are_evidenced (below)
@@ -81,8 +83,7 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # stops creating the class, or that registry changes) cannot rot here
 # unnoticed either.
 #
-# The tightened, per-class read gate (this task's own second pass, after
-# review) found 66 such pairs -- large, and worth reading as a finding about
+# The per-class read gate finds 66 such pairs -- large, and worth reading as a finding about
 # the platform in its own right, not a weakness in the test: every compute
 # source's own nested object (as opposed to the ComputeSourceTemplate wrapper
 # around it, whose 'id' does come back -- see 'id' below) is far less
@@ -92,15 +93,11 @@ _SEEN_PROPERTIES: dict[str, set[str]] = defaultdict(set)
 # Six properties, each confirmed absent for all nine compute source classes
 # source-templates.jsonnet creates. The *observation* is identical for all six; the
 # reason text is not shared, because what can honestly be said beyond the
-# observation differs per property. An earlier version gave all of them one
-# "only ever populated once a compute source is actually provisioning real
-# instances" reason, which was an argument dressed as an observation for at
-# least two of them: 'createdFromId' is template lineage, fixed at creation and
-# nothing to do with provisioning, and 'credentials' (a derived aggregate of
-# 'credential') was not provisioning-related either -- it has since left the read
-# gate altogether, having moved from SERVER_ASSIGNED_COVERAGE to
-# resource_models.NOT_SETTABLE, which carries no read-gate obligation. Where
-# only the observation is available, only the observation is recorded.
+# observation differs per property. One "only ever populated once a compute
+# source is actually provisioning real instances" reason for all of them would
+# be an argument dressed as an observation for some: 'createdFromId', for one,
+# is template lineage, fixed at creation and nothing to do with provisioning.
+# Where only the observation is available, only the observation is recorded.
 _NEVER_RETURNED_OBSERVATION = (
     "created live (source-templates.jsonnet exercises all nine compute source classes), "
     "but the platform never returned this property for this class"
@@ -121,11 +118,11 @@ _COMPUTE_SOURCE_READ_GATE_REASONS: dict[str, str] = {
     "instanceSummary": _ONLY_WHEN_PROVISIONING,
     "exhaustion": _ONLY_WHEN_PROVISIONING,
     # A message qualifying 'status'. Plausibly the same reason as 'status'
-    # itself, but that was never separately observed, so it is not asserted.
+    # itself, but that is not separately observed, so it is not asserted.
     "statusMessage": _OBSERVED_ABSENT_ONLY,
     # Template lineage, set when the source is created: the provisioning reason
     # above does not apply to it at all. Why the platform does not echo it for a
-    # source nested in the very template it came from was not established.
+    # source nested in the very template it came from is not established.
     "createdFromId": (
         f"{_OBSERVED_ABSENT_ONLY} -- note that it is template lineage, set at "
         "creation, so the 'only while provisioning' reason given for status/"
@@ -166,7 +163,7 @@ READ_GATE_EXCLUSIONS.update(
         ("fleetId", "AwsFleetComputeSource"): (
             "creation itself is rejected (see source-templates.jsonnet's own comment on "
             "why the corpus no longer sets it) -- never even reaches a "
-            "yd-show to be confirmed or not"
+            "yd show to be confirmed or not"
         ),
         # rootDeviceName: only ever populated from real AMI metadata once an
         # AWS instance actually launches, which this suite never does; the two
@@ -181,7 +178,7 @@ READ_GATE_EXCLUSIONS.update(
             "actually launches, which this suite never does"
         ),
         # provider/instancePricing on SimulatorComputeSource specifically --
-        # confirmed live, on a second pass: every other compute source
+        # confirmed live: every other compute source
         # class returns both with real values (AWS/Azure/GCE/OCI templates all
         # echo 'provider'; AwsInstancesComputeSource also echoes
         # 'instancePricing') -- SimulatorComputeSource, not being a real cloud
@@ -197,9 +194,8 @@ READ_GATE_EXCLUSIONS.update(
             "simulated source has no real pricing model to report"
         ),
         # supportingResourceCreated -- confirmed absent for exactly these seven
-        # classes, live, by direct re-probe on a second pass: re-created
-        # source-templates.jsonnet by hand and checked 'source.supportingResourceCreated'
-        # in each yd-show response directly. OciInstancesComputeSource and
+        # classes, live, by checking 'source.supportingResourceCreated' in each
+        # yd show response of source-templates.jsonnet's templates directly. OciInstancesComputeSource and
         # SimulatorComputeSource are deliberately NOT here: both return a real
         # boolean ('False' and 'True' respectively, confirmed the same way) --
         # a genuine, surprising difference from the other seven, including
@@ -294,15 +290,67 @@ def _expected_creation_failures(corpus_file, run_id: str) -> set[tuple[str, str]
 
 def _remove_args(corpus_file) -> list[str]:
     """
-    Extra 'yd-remove' arguments a corpus file needs beyond '-y' and the shared
-    '-c'/'-v run_id=...'. Only allowances.jsonnet needs one: '-M' (see
-    remove.py's remove_allowance()) opts into matching Allowances by their
-    'description' property, without which yd-remove only warns and does
-    nothing for every Allowance in the file.
+    Extra 'yd resource remove' arguments a corpus file needs beyond '-y' and
+    the shared '-c'/'-v run_id=...'. Only allowances.jsonnet needs one: '-M'
+    (see remove.py's remove_allowance()) opts into matching Allowances by their
+    'description' property, without which yd resource remove only warns and
+    does nothing for every Allowance in the file.
     """
     if corpus_file.name == "allowances.jsonnet":
         return ["-M"]
     return []
+
+
+def _check_update(
+    corpus_file, specs: list[dict], created: list[tuple[str, str]], tmp_path
+) -> None:
+    """
+    Update what was just created ('created': each entity type and key): each
+    specification changed as resource_live.UPDATES says, keeping its name,
+    or left out where it says None, and created again with 'yd resource
+    create -y'. Each one sent must be recorded as updated, nothing new
+    created, and the Platform must return the changed properties, each
+    matched to its specification as the round trip is.
+    """
+    entity_types = {entity for entity, _ in created}
+    update = resource_live.UPDATES[corpus_file.name]
+    updated = []
+    for spec in specs:
+        changed = update(spec["resource"], resource_corpus.spec_properties(spec))
+        if changed is not None:
+            updated.append({"resource": spec["resource"], **changed})
+    path = tmp_path / f"{corpus_file.stem}-updated.json"
+    path.write_text(json.dumps(updated), encoding="utf-8")
+    before = {entity: resource_live.current_keys(entity) for entity in entity_types}
+
+    result = resource_live.yd("yd resource create", "-y", "--json", "-q", str(path))
+    secret_emitting = corpus_file.name in resource_live.SECRET_EMITTING
+    assert result.exit_code == 0, f"updating {corpus_file.name} failed" + (
+        "" if secret_emitting else f":\n{result.stdout}"
+    )
+    actions = [(r["name"], r["action"]) for r in json.loads(result.stdout)]
+    assert actions == [(spec["name"], "updated") for spec in updated]
+    assert {e: resource_live.current_keys(e) for e in entity_types} == before, (
+        f"updating {corpus_file.name} created something"
+    )
+
+    problems: list[str] = []
+    compared = 0
+    for entity, key in created:
+        returned = resource_live.fetch(entity, key)
+        spec = _spec_for(updated, returned)
+        if spec is None:
+            continue  # Not updated
+        compared += 1
+        problems += [
+            f"{entity}/{key}: {problem}"
+            for problem in resource_live.mismatches(spec, returned)
+        ]
+    if compared != len(updated):
+        problems.append(f"read back {compared} of the {len(updated)} updated")
+    assert not problems, "the platform did not return the update:\n" + "\n".join(
+        problems
+    )
 
 
 def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
@@ -346,41 +394,40 @@ def _record_read_gate_evidence(entity_type: str, returned: dict) -> None:
     "corpus_file",
     [pytest.param(path, id=path.stem) for path in resource_corpus.live_corpus_files()],
 )
-def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
+def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup, tmp_path):
     """
     Create every specification in one live corpus file, confirm each one round-trips
-    through yd-show/yd-list with no property silently dropped or mangled, then remove
+    through yd show/yd list with no property silently dropped or mangled, then remove
     everything and confirm removal.
 
-    requirement-templates.jsonnet, configured-worker-pools.jsonnet and
-    applications.jsonnet are exactly the three files resource_live.KNOWN_PARTIAL_FAILURES
-    documents as unable to create every one of their specifications standalone
+    requirement-templates.jsonnet and configured-worker-pools.jsonnet are exactly
+    the two files resource_live.KNOWN_PARTIAL_FAILURES documents as unable to
+    create every one of their specifications standalone
     (create_compute_requirement_template()/create_configured_worker_pool() read
-    'namespace' with a bare KeyError check before any model is built; application-max
-    names a Group and a Keyring that only groups.jsonnet and keyrings.jsonnet create).
-    For those, 'yd-create' is expected to exit non-zero, and so is 'yd-remove' for the
-    first two (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) -- create_resources()/
-    remove_resources() (create.py/remove.py) each continue past one resource's failure
-    and only raise once the whole file is done -- and this test demands the *specific* specifications
-    named in resource_live.KNOWN_PARTIAL_FAILURE_NAMES are the ones missing, not merely
-    that the exit code is non-zero: an unrelated regression elsewhere in the same file
-    would otherwise hide behind the already-expected failure.
+    'namespace' with a bare KeyError check before any model is built). For those,
+    'yd resource create' and 'yd resource remove' are expected to exit non-zero
+    (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) -- create_resources()/
+    remove_resources() (create.py/remove.py) each continue past one resource's
+    failure and only raise once the whole file is done -- and this test demands
+    the *specific* specifications named in resource_live.KNOWN_PARTIAL_FAILURE_NAMES
+    are the ones missing, not merely that the exit code is non-zero: an unrelated
+    regression elsewhere in the same file would otherwise hide behind the
+    already-expected failure.
 
-    applications.jsonnet's Application specifications name a Group and a Keyring by
-    name (created by groups.jsonnet/keyrings.jsonnet respectively) to grant. Run here
-    alone, neither exists, and create_application() (create.py) refuses the missing
-    Group before creating anything -- so this proves the CLI refuses an absent grant
-    target rather than reconciling memberships against it, but does *not* prove the
-    grant itself succeeds when the target exists. 'groups'/
-    'keyrings' are excluded from the round-trip comparison entirely (see
-    resource_live.LIVE_ONLY_EXCLUSIONS) for exactly this reason: yd-show's own
-    'groups' key is a live membership listing (empty here), not an echo of what was
-    sent, and comparing it would fail for a reason that has nothing to do with
-    whether the CLI transmitted anything correctly.
+    applications.jsonnet creates the Group and the Keyring its application-max is
+    granted, so the grants are made here: a Group that does not exist is refused,
+    and a Keyring grant that fails fails the resource, so the file creating
+    cleanly proves both. 'groups'/'keyrings' are excluded from the round-trip
+    comparison (see resource_live.LIVE_ONLY_EXCLUSIONS): yd show's own 'groups'
+    key is a live membership listing, not an echo of what was sent.
+
+    A file in resource_live.UPDATES is then updated before it is removed: its
+    specifications changed as UPDATES says, keeping their names, and sent to
+    'yd resource create -y' a second time (see _check_update()).
     """
     cleanup(
         resource_live.command_line(
-            "yd-remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+            "yd resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
         )
     )
 
@@ -391,15 +438,16 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     known_partial_failure = corpus_file.name in resource_live.KNOWN_PARTIAL_FAILURES
     secret_emitting = corpus_file.name in resource_live.SECRET_EMITTING
 
-    result = resource_live.yd("yd-create", str(corpus_file))
+    result = resource_live.yd("yd resource create", str(corpus_file))
     if known_partial_failure:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_FAILURES) "
-            "to partially fail creation, but yd-create exited 0"
+            "to partially fail creation, but yd resource create exited 0"
         )
     else:
-        assert result.exit_code == 0, f"yd-create {corpus_file.name} failed" + (
-            "" if secret_emitting else f":\n{result.stdout}"
+        assert result.exit_code == 0, (
+            f"yd resource create {corpus_file.name} failed"
+            + ("" if secret_emitting else f":\n{result.stdout}")
         )
 
     created: dict[str, set[str]] = {
@@ -408,7 +456,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
     }
     # Fetched once per (entity, key) and reused below for both the missing-
     # identities check and the mismatches loop -- fetch() is a subprocess
-    # ('yd-show', or a full 'yd-list --details' for a NO_YDID_ENTITY_TYPES
+    # ('yd show', or a full 'yd list --details' for a NO_YDID_ENTITY_TYPES
     # entity), so re-fetching each one a second time would double the
     # subprocess count (and the wall-clock time) of every live run for no
     # reason: the entity does not change between the two uses.
@@ -448,17 +496,20 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
         problems
     )
 
+    if corpus_file.name in resource_live.UPDATES:
+        _check_update(corpus_file, specs, list(returned_by_key), tmp_path)
+
     result = resource_live.yd(
-        "yd-remove", "-y", *_remove_args(corpus_file), str(corpus_file)
+        "yd resource remove", "-y", *_remove_args(corpus_file), str(corpus_file)
     )
     if corpus_file.name in resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES:
         assert result.exit_code != 0, (
             f"{corpus_file.name} is documented (resource_live.KNOWN_PARTIAL_REMOVAL_FAILURES) "
             "to partially fail removal too (the same specifications that could never "
-            "be created cannot be removed either), but yd-remove exited 0"
+            "be created cannot be removed either), but yd resource remove exited 0"
         )
     else:
-        assert result.exit_code == 0, f"yd-remove {corpus_file.name} failed"
+        assert result.exit_code == 0, f"yd resource remove {corpus_file.name} failed"
 
     for entity in entity_types:
         if entity == "worker-pools":
@@ -472,7 +523,7 @@ def test_resource_lifecycle(corpus_file, live_namespace, run_id, cleanup):
             for key in created[entity]:
                 status = resource_live.fetch(entity, key).get("status")
                 assert status in _FINISHED_WORKER_POOL_STATUSES, (
-                    f"{entity}/{key}: expected a finished status after yd-remove, "
+                    f"{entity}/{key}: expected a finished status after yd resource remove, "
                     f"got {status!r}"
                 )
             continue
@@ -503,8 +554,8 @@ def test_every_server_assigned_property_came_back_in_a_live_run():
     evidenced for many classes (e.g. 'id', evidenced for twenty) is only
     confirmed for the classes that actually returned it, not for all twenty the
     moment any single one does -- the same per-class rigour
-    SERVER_ASSIGNED_COVERAGE's own write-side entries already have, now applied
-    to the read side too.
+    SERVER_ASSIGNED_COVERAGE's own write-side entries have, applied to the read
+    side too.
 
     Four outcomes per pair, not two, because an exclusion
     (READ_GATE_EXCLUSIONS) is itself a claim that needs its own evidence, in
@@ -591,3 +642,53 @@ def test_read_gate_exclusions_are_evidenced():
             f"READ_GATE_EXCLUSIONS names {(name, cls)}, but resource_models."
             f"SERVER_ASSIGNED_COVERAGE[{name!r}] does not evidence {cls!r}"
         )
+
+
+class _DescriptionKept(AssertionError):
+    """
+    YEL-15305's symptom, and only it, for the xfail below: any other failure
+    of the test still fails it.
+    """
+
+
+@pytest.mark.system
+@pytest.mark.xfail(
+    strict=True,
+    raises=_DescriptionKept,
+    reason="YEL-15305: PUT /account/applications/{id} keeps a description the"
+    " update leaves out; remove this mark once the Platform clears it",
+)
+def test_an_application_description_left_out_is_removed(run_id, cleanup, tmp_path):
+    """
+    An Application updated from a specification without a 'description' has
+    none afterwards: the specification is the whole resource, as for a Group
+    or a Keyring. The SDK leaves an absent (None) field out of the request,
+    so this holds the Platform to treating an absent description as none.
+    Creation prints the Application's key and secret, so no output is quoted.
+    """
+    name = f"yd-test-{run_id}-application-description"
+
+    def spec_file(label: str, application: dict) -> str:
+        path = tmp_path / f"{label}.json"
+        path.write_text(
+            json.dumps([{"resource": "Application", **application}]), encoding="utf-8"
+        )
+        return str(path)
+
+    created = spec_file("created", {"name": name, "description": "to be removed"})
+    cleanup(resource_live.command_line("yd resource remove", "-y", created))
+    result = resource_live.yd("yd resource create", "-y", "--json", "-q", created)
+    assert result.exit_code == 0, f"creating Application {name} failed"
+    (record,) = json.loads(result.stdout)
+    app_id = record["id"]
+    assert resource_live.show(app_id).get("description") == "to be removed"
+
+    result = resource_live.yd(
+        "yd resource create", "-y", "--json", "-q", spec_file("updated", {"name": name})
+    )
+    assert result.exit_code == 0, f"updating Application {name} failed"
+    assert [r["action"] for r in json.loads(result.stdout)] == ["updated"]
+
+    description = resource_live.show(app_id).get("description")
+    if description is not None:
+        raise _DescriptionKept(f"Application {name} kept its description")

@@ -60,10 +60,10 @@ def test_rows_are_padded_off_the_frame(window):
 
 
 def test_rows_stay_visible_in_a_narrow_dialog(window):
-    # Regression (reported on Windows): a long name overflowed a narrow dialog, Qt
-    # added a horizontal scrollbar, and the scrollbar ate the height budgeted for
-    # the rows — leaving a 1px viewport showing nothing but the scrollbar. The
-    # earlier height test asserted the arithmetic but never that a row can be seen.
+    # On Windows a long name can overflow a narrow dialog, Qt adds a horizontal
+    # scrollbar, and the scrollbar eats the height budgeted for the rows —
+    # leaving a 1px viewport showing nothing but the scrollbar. A height test
+    # asserting the arithmetic alone never shows that a row can be seen.
     long_rows = entity_rows(
         [
             EntitySummary(
@@ -99,7 +99,7 @@ def test_the_horizontal_scrollbar_is_off_so_it_cannot_steal_height(window):
 def test_height_cap_accounts_for_the_padding(window):
     # The cap must be computed from the padded frame. Derived from an unpadded
     # one it would be short by 2 * ENTITY_LIST_PADDING, clipping the last
-    # visible row — the specific way this padding could have gone wrong.
+    # visible row — the specific way this padding can go wrong.
     many = [
         EntitySummary(id=f"ydid:workreq:{n}", name=f"wr-{n}", status="RUNNING")
         for n in range(MAX_DIALOG_LIST_ROWS + 5)
@@ -188,7 +188,8 @@ def test_all_and_none_buttons_set_every_row(window):
 def test_no_is_the_default_button_on_a_confirmation(window):
     # Safety property: Return must not confirm a destructive action. The All / None
     # buttons are the first focusable widgets, and an autoDefault QPushButton that
-    # gains focus takes over as the dialog's default — which silently defeated this.
+    # gains focus takes over as the dialog's default — which would silently
+    # defeat this.
     dialog, yes_btn, _skip = window._build_destructive_dialog(
         "Cancel", "Cancel?", rows=entity_rows(entities())
     )
@@ -225,12 +226,11 @@ def test_no_listing_at_all_when_rows_not_given(window):
 
 
 def test_confirmation_truthiness_is_refused():
-    # The old return value here was a list-or-None sentinel, where both '[]'
-    # and 'None' were falsy — a truthiness slip failed *safe* by declining.
-    # 'Confirmation' is a dataclass, which pyright treats as always truthy, so
-    # the same slip would now fail *dangerously*, proceeding even when the
-    # user clicked No. Raising on __bool__ turns that into a loud, immediate
-    # failure instead of a silent one.
+    # With a list-or-None sentinel here, where both '[]' and 'None' are falsy,
+    # a truthiness slip would fail *safe* by declining. 'Confirmation' is a
+    # dataclass, which pyright treats as always truthy, so the same slip would
+    # fail *dangerously*, proceeding even when the user clicked No. Raising on
+    # __bool__ turns that into a loud, immediate failure instead of a silent one.
     with pytest.raises(TypeError):
         bool(Confirmation(proceed=False, handles=None))
     with pytest.raises(TypeError):
@@ -243,9 +243,9 @@ def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
 
     Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
-    the interaction queued into it. This used to replace exec() with a stub, which
-    is how a button box that was never connected went unnoticed: with exec() faked,
-    a click that did nothing looked identical to one that worked.
+    the interaction queued into it. With exec() replaced by a stub, a button box
+    that is never connected would go unnoticed: a click that does nothing looks
+    identical to one that works.
     """
     commander_dialogs.drive_confirmation(
         window,
@@ -283,8 +283,7 @@ def test_skip_acts_on_all_ignoring_ticks_and_registers_bypass(window, monkeypatc
 
 
 def test_no_listing_returns_none_when_dismissed(window, monkeypatch):
-    # 'rows=None' (nothing individually selectable — the sole listing case
-    # left now that the read-only 'names' listing is gone) still reports
+    # 'rows=None' (nothing individually selectable) still reports
     # 'handles=None' when dismissed.
     drive_dialog(window, monkeypatch, None)
     result = window._confirm_destructive("delete", "t", "b")
@@ -385,7 +384,7 @@ def test_action_targets_only_the_selected_ydids(window, captured, monkeypatch):
     )
     window._cancel_work_requirements_action()
     command, args, _kwargs = captured[0]
-    assert (command, args) == ("yd-cancel", ["-y", "ydid:workreq:22"])
+    assert (command, args) == ("yd workrequirement cancel", ["-y", "ydid:workreq:22"])
 
 
 def test_all_four_actions_pass_ydids_with_their_own_flags(
@@ -397,10 +396,18 @@ def test_all_four_actions_pass_ydids_with_their_own_flags(
         window, monkeypatch, all_entities, Confirmation(proceed=True, handles=ids)
     )
     for method, command, flags in [
-        ("_cancel_work_requirements_action", "yd-cancel", ["-y"]),
-        ("_cancel_work_requirements_and_abort_action", "yd-cancel", ["-ay"]),
-        ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y"]),
-        ("_terminate_all_compute_requirements_action", "yd-terminate", ["-y"]),
+        ("_cancel_work_requirements_action", "yd workrequirement cancel", ["-y"]),
+        (
+            "_cancel_work_requirements_and_abort_action",
+            "yd workrequirement cancel",
+            ["-ay"],
+        ),
+        ("_shutdown_all_worker_pools_action", "yd workerpool shutdown", ["-y"]),
+        (
+            "_terminate_all_compute_requirements_action",
+            "yd computerequirement terminate",
+            ["-y"],
+        ),
     ]:
         captured.clear()
         getattr(window, method)()

@@ -25,7 +25,7 @@ BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for ea
 
 # (connect, read) for the CLI's direct Platform requests ('--json-raw', and
 # yd-provision's and yd-instantiate's raw paths): the read allows for a large
-# Task batch, while a silently dropped connection no longer hangs forever
+# Task batch, while a silently dropped connection does not hang forever
 RAW_REQUEST_TIMEOUT = (10.0, 300.0)  # Seconds
 
 CR_MAX_INSTANCES = (
@@ -53,3 +53,10 @@ DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
 # pass that changes nothing ends them. Real chains of references settle in two
 # or three, so reaching this means a circular one.
 VAR_SUBSTITUTION_MAX_PASSES = 10
+
+# The Tasks, Instances, Nodes or Workers 'yd list' lists by default: enough
+# that an ordinary listing never reaches it, few enough that a mistaken one
+# returns in seconds rather than reading tens of thousands, or millions of
+# Tasks
+# ('--limit 0' lists them all)
+DEFAULT_LIST_LIMIT = 1000

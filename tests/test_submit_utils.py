@@ -345,6 +345,18 @@ class TestGetTaskDataProperty:
         result = su.get_task_data_property(config, {}, {}, {}, "t1")
         assert result == "config-level"
 
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_a_level_setting_null_or_empty_stops_the_search(
+        self, empty_config_wr, value
+    ):
+        # It sets the Task Data, to none, as for every inherited property
+        tg_data = {TASK_DATA_FILE: value}
+        wr_data = {TASK_DATA: "wr-level"}
+        assert (
+            su.get_task_data_property(empty_config_wr, wr_data, tg_data, {}, "t1")
+            is None
+        )
+
     def test_raises_when_both_task_data_and_file_set_at_same_level(
         self, empty_config_wr
     ):

@@ -7,7 +7,6 @@ import sys
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.command_registry import (
-    COMMANDS,
     Command,
     build_parser,
     check_namespace_and_tag_are_no_files,
@@ -15,7 +14,11 @@ from yellowdog_cli.utils.command_registry import (
     parse_range,
     resize_targets_compute_requirement,
 )
+from yellowdog_cli.utils.invocation import invoked_name, selected
 from yellowdog_cli.utils.lazy import lazy
+from yellowdog_cli.utils.limits import DEFAULT_LIST_LIMIT
+from yellowdog_cli.utils.noun_registry import command_named
+from yellowdog_cli.utils.top_level import SCRIPT_FORMS
 from yellowdog_cli.utils.version_info import DOCS_URL
 
 
@@ -49,13 +52,24 @@ class CLIParser:
         the arguments from the rest. An unknown command gets the common
         options only.
         """
-        self.command_name = (
-            command_from_argv0(sys.argv[0]) if command is None else command
+        prog: str | None = None
+        if command is None and (selection := selected()) is not None:
+            command, prog = selection
+        name = command_from_argv0(sys.argv[0]) if command is None else command
+        self.command: Command | None = command_named(name)
+        # The registry command run: a noun verb's, or the command itself
+        self.command_name = name if self.command is None else self.command.internal_name
+        # The 'yd' forms that replace a deprecated script it was invoked by
+        # ('yd-submit' typed, not 'yd wr submit' or 'python -m')
+        self.replaced_by: list[str] = (
+            SCRIPT_FORMS.get(self.command_name, [])
+            if command is None and invoked_name(sys.argv[0]) == self.command_name
+            else []
         )
-        self.command: Command | None = COMMANDS.get(self.command_name)
         # prog is the name invoked
         self.parser = build_parser(
-            self.command, prog=self.command_name if self.command else None
+            self.command,
+            prog=prog or (self.command.name if self.command else None),
         )
         argv = sys.argv[1:] if argv is None else argv
 
@@ -384,12 +398,74 @@ class CLIParser:
     @property
     @allow_missing_attribute
     def status_filter(self) -> list[str] | None:
-        return self.args.status_filter
+        """
+        The statuses given, each '--status' a status or several separated by
+        commas ('--status failed,aborted'), blanks dropped.
+        """
+        given = self.args.status_filter
+        if not given:
+            return given
+        return [
+            status.strip()
+            for entry in given
+            for status in entry.split(",")
+            if status.strip()
+        ]
 
     @property
     @allow_missing_attribute
     def public_ips_only(self) -> bool | None:
         return self.args.public_ips_only
+
+    @property
+    @allow_missing_attribute
+    def deletable(self) -> bool | None:
+        return self.args.deletable
+
+    @property
+    @allow_missing_attribute
+    def unhealthy(self) -> bool | None:
+        return self.args.unhealthy
+
+    @property
+    @allow_missing_attribute
+    def provider(self) -> str | None:
+        return self.args.provider
+
+    @property
+    @allow_missing_attribute
+    def description_glob(self) -> str | None:
+        return self.args.description_glob
+
+    @property
+    @allow_missing_attribute
+    def with_errors(self) -> bool | None:
+        return self.args.with_errors
+
+    @property
+    @allow_missing_attribute
+    def resource_type(self) -> str | None:
+        return self.args.resource_type
+
+    @property
+    @allow_missing_attribute
+    def resource_properties(self) -> list[str]:
+        return self.args.resource_properties or []
+
+    @property
+    @allow_missing_attribute
+    def within_target(self) -> str | None:
+        return self.args.within_target
+
+    @property
+    @allow_missing_attribute
+    def list_limit(self) -> int:
+        """
+        The most Tasks, Instances, Nodes or Workers to list: '--limit', else
+        the default; 0 for no limit.
+        """
+        limit = self.args.list_limit
+        return DEFAULT_LIST_LIMIT if limit is None else limit
 
     @property
     @allow_missing_attribute

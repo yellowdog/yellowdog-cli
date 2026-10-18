@@ -76,13 +76,24 @@ def load_json_file_with_variable_substitutions(
 
     The file is parsed first and its values substituted after, as a TOML
     file's are, rather than its text substituted before it is parsed: there a
-    value was read through JSON's escapes (a default's '\\"' was not a
-    quote) and inserted without them (a Windows path's '\\t' became a tab,
-    a quote ended the string). So a substitution goes inside a JSON string,
-    and in a value, not a property name.
+    value would be read through JSON's escapes (a default's '\\"' would not
+    be a quote) and inserted without them (a Windows path's '\\t' would
+    become a tab, a quote would end the string). So a substitution goes
+    inside a JSON string, and in a value, not a property name.
     """
     result = parse_json_file(filename, prefix, postfix)
     resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
+    return result
+
+
+def load_json_text_with_variable_substitutions(text: str, shown: str) -> Any:
+    """
+    JSON text, such as a specification read from standard input, parsed and
+    its values substituted as a JSON file's are; 'shown' names its source in
+    a message ("standard input").
+    """
+    result = parse_json_text(text, shown)
+    resolve_variables_insitu(result)
     return result
 
 
@@ -94,9 +105,17 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
     substitutions are made in values only. Shared with the CSV loader,
     which expands the Tasks before substituting.
     """
+    return parse_json_text(_read_text(filename), f"'{filename}'", prefix, postfix)
+
+
+def parse_json_text(text: str, shown: str, prefix: str = "", postfix: str = "") -> Any:
+    """
+    JSON text parsed as parse_json_file() parses a file's, 'shown' naming
+    its source in a message: the file's name, quoted, or "standard input".
+    """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
-    file_contents = _read_text(filename)
+    file_contents = text.removeprefix("\ufeff")
     try:
         result = json_loads(file_contents)
     except JSONDecodeError as e:
@@ -111,22 +130,23 @@ def parse_json_file(filename: str, prefix: str = "", postfix: str = "") -> Any:
             if opening in around_error
             else ""
         )
-        raise ValueError(f"Invalid JSON in '{filename}': {e}{hint}") from e
+        raise ValueError(f"Invalid JSON in {shown}: {e}{hint}") from e
 
-    _check_document(result, filename)
+    _check_document(result, shown, quoted=True)
     names = _substituted_property_names(result, opening, closing)
     if names:
         raise ValueError(
             "Variable substitutions are made in property values, not property"
-            f" names, in '{filename}': {_list_paths(names)}"
+            f" names, in {shown}: {_list_paths(names)}"
         )
     return result
 
 
-def _check_document(document: object, filename: str) -> None:
+def _check_document(document: object, filename: str, quoted: bool = False) -> None:
     """
     Refuse a specification document that is neither an object nor a list
-    (a bare number, say), naming the file, before anything walks it.
+    (a bare number, say), naming the file (already quoted, or a source such
+    as standard input, if 'quoted'), before anything walks it.
     """
     if not isinstance(document, (dict, list)):
         kind = (
@@ -140,9 +160,9 @@ def _check_document(document: object, filename: str) -> None:
             if isinstance(document, str)
             else type(document).__name__
         )
+        shown = filename if quoted else f"'{filename}'"
         raise ValueError(
-            f"'{filename}' holds {kind}, not a specification (an object, or a"
-            " list of them)"
+            f"{shown} holds {kind}, not a specification (an object, or a list of them)"
         )
 
 
@@ -338,9 +358,10 @@ def _substitute_file_contents_pass(
     One substitution pass over the raw contents of a complete file.
     """
     # Found one expression at a time: a match running from the first opening
-    # delimiter on a line to the last closing one took every expression on
-    # the line as one, which lost a type-tagged value's type and, where the
-    # line went on to close a JSON object ('}}'), failed on the delimiters
+    # delimiter on a line to the last closing one would take every expression
+    # on the line as one, which would lose a type-tagged value's type and,
+    # where the line goes on to close a JSON object ('}}'), fail on the
+    # delimiters
     v_expressions = dict.fromkeys(
         find_delimited_expressions(
             file_contents,
@@ -362,8 +383,7 @@ def _substitute_file_contents_pass(
             # quotes go with it, so that a JSON or Jsonnet string becomes the
             # value itself (both quote styles, for Jsonnet); anywhere else --
             # a shell script's 'N={{num:count}}' -- it is text, written as a
-            # typed expression within a longer string is, where it used to be
-            # left as it was, neither substituted nor warned of. Either way a
+            # typed expression within a longer string is. Either way a
             # number keeps the form it was written in ('1.10' stays '1.10'),
             # and the rest are their JSON ('true', double quotes)
             opening = prefix + VAR_OPENING_DELIMITER

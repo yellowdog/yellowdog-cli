@@ -17,6 +17,7 @@ from sys import exit
 from yellowdog_cli._version import __version__ as cli_version
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.atomic_write import write_text_atomically
+from yellowdog_cli.utils.command_runner import warn_if_deprecated
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_error,
@@ -102,7 +103,7 @@ def _check(directory: str) -> int:
     if written_cli != cli_version or written_sdk != sdk_version:
         print_error(
             f"written for CLI {written_cli} / SDK {written_sdk}, now {cli_version} /"
-            f" {sdk_version}: run yd-schema --write {directory}"
+            f" {sdk_version}: run yd schema --write {directory}"
         )
         return 1
     stale = []
@@ -119,7 +120,7 @@ def _check(directory: str) -> int:
     if stale:
         print_error(
             f"not what CLI {cli_version} / SDK {sdk_version} build:"
-            f" {', '.join(stale)}: run yd-schema --write {directory}"
+            f" {', '.join(stale)}: run yd schema --write {directory}"
         )
         return 1
     print_simple(
@@ -130,6 +131,7 @@ def _check(directory: str) -> int:
 
 def main() -> None:
     configure_output(ARGS_PARSER)
+    warn_if_deprecated(ARGS_PARSER)
     try:
         if ARGS_PARSER.schema_list:
             for family in Family:

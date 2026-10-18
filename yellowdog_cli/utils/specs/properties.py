@@ -115,7 +115,7 @@ TASK_DATA_INPUT: dict[str, Any] = {
         "localPath": {
             **STR,
             "description": (
-                "a local file yd-submit uploads to 'uploadPath' (or 'source')"
+                "a local file yd workrequirement submit uploads to 'uploadPath' (or 'source')"
                 " before the Work Requirement is submitted"
             ),
         },
@@ -472,6 +472,28 @@ def properties_at(level: Level) -> tuple[Property, ...]:
     return tuple(p for p in WORK_REQUIREMENT_PROPERTIES if level in p.levels)
 
 
+# The levels from the top: a property is inherited down this order
+_INHERITANCE_ORDER = (T, W, G, K)
+
+# Inherited properties that take no null: a Task must have a type, so a null
+# 'taskType' is taken as no setting at all, and at the Work Requirement or
+# Task Group level the property is a shorthand for 'taskTypes'
+NULL_NOT_ACCEPTED = frozenset({"taskType"})
+
+
+def null_stops_inheritance(prop: Property, level: Level) -> bool:
+    """
+    Whether the property may be set to null at 'level', which stops it being
+    inherited from the levels above, giving it its default: so for an
+    inherited property with a level above 'level' to inherit from
+    (utils/property_cascade.py).
+    """
+    if not prop.inherited or prop.name in NULL_NOT_ACCEPTED:
+        return False
+    above = _INHERITANCE_ORDER[: _INHERITANCE_ORDER.index(level)]
+    return any(upper in prop.levels for upper in above)
+
+
 # --- the configuration file ------------------------------------------------
 #
 # The [common], [dataClient] and [workerPool] (or [computeRequirement])
@@ -611,7 +633,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         "maintainInstanceCount",
         BOOL,
         description=(
-            "replace instances to keep the target number RUNNING (yd-instantiate"
+            "replace instances to keep the target number RUNNING (yd computerequirement instantiate"
             " only; a Worker Pool's is always false)"
         ),
     ),

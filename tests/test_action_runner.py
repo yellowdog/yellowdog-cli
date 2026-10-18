@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from requests import ConnectionError as RequestsConnectionError
 
-from yellowdog_cli.utils import action_runner
+from yellowdog_cli.utils import action_runner, results
 from yellowdog_cli.utils.action_runner import (
     Item,
     SessionStop,
@@ -26,7 +26,12 @@ from yellowdog_cli.utils.action_runner import (
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    ExitCode,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
 
 
 @pytest.fixture
@@ -204,3 +209,53 @@ def test_main_wrapper_gives_main_a_run_context(monkeypatch):
         main()
     assert exit_info.value.code == 0
     assert given == [RunContext(args, config, client)]  # type: ignore[arg-type]
+
+
+class TestFailureCauses:
+    """
+    Each failure recorded with its cause, so that a run whose failures share
+    one exits with it (results.failure_exit_code()).
+    """
+
+    @staticmethod
+    def _record(entity, entity_type, outcome, error):
+        results.record_action(entity, entity_type, "act", outcome, error)
+
+    def test_a_target_not_found_is_charged_not_found(self):
+        def resolve(target):
+            raise Unresolved(f"Cannot find {target}") from NotFoundError(target)
+
+        resolve_targets(
+            ["a", "b"], resolve, lambda t: (t, "x"), self._record, "act", list
+        )
+        assert results.failure_exit_code() == ExitCode.NOT_FOUND
+
+    def test_an_unresolved_target_may_name_its_cause(self):
+        def resolve(target):
+            raise Unresolved(f"Cannot find {target}", code=ExitCode.NOT_FOUND)
+
+        resolve_targets(["a"], resolve, lambda t: (t, "x"), self._record, "act", list)
+        assert results.failure_exit_code() == ExitCode.NOT_FOUND
+
+    def test_an_unresolved_target_without_a_cause_is_a_failure(self):
+        def resolve(target):
+            raise Unresolved(f"'{target}' is not an ID")
+
+        resolve_targets(["a"], resolve, lambda t: (t, "x"), self._record, "act", list)
+        assert results.failure_exit_code() == ExitCode.FAILURE
+
+    def test_failed_units_sharing_a_cause_exit_with_it(self):
+        from requests import HTTPError, Response
+
+        response = Response()
+        response.status_code = 403
+
+        def refused():
+            raise HTTPError("403", response=response)
+
+        units = [
+            Unit([_item("a"), _item("b")], refused, str),
+            Unit([_item("c")], refused, str),
+        ]
+        carry_out(units, self._record)
+        assert results.failure_exit_code() == ExitCode.PERMISSION

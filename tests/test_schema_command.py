@@ -23,7 +23,7 @@ def _clean_env() -> dict[str, str]:
 
 def _run(*args, cwd=None):
     return subprocess.run(
-        ["yd-schema", *args],
+        ["yd", "schema", *args],
         cwd=cwd,
         env=_clean_env(),
         capture_output=True,

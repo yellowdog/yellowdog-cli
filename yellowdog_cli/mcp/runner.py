@@ -1,5 +1,5 @@
 """
-Runs one yd-* command line as a child process with a bound, and parses what
+Runs one yd command line as a child process with a bound, and parses what
 it wrote. Imports nothing from the 'mcp' package, the SDK, wrapper.py,
 args.py or printing.py.
 """
@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 from json import JSONDecodeError, JSONDecoder
 
-from yellowdog_cli.utils.command_registry import command_module
+from yellowdog_cli.utils.noun_registry import module_invocation
 
 
 @dataclass(frozen=True)
@@ -37,16 +37,18 @@ class Run:
 
 def command_argv(command_name: str) -> list[str]:
     """
-    The command line that runs 'yd-<name>' under this interpreter: the
-    console script may not be on the client's PATH (a desktop client launches
-    the server with a minimal environment), and the module is what the
-    script runs (command_registry.command_module(), which Commander shares);
-    command_from_argv0() resolves the module's file name to the command.
+    The command line that runs a command ('yd instance terminate', 'yd list',
+    or a 'yd-*' name) under this interpreter: the console script may not be
+    on the client's PATH (a desktop client launches the server with a minimal
+    environment), so the module is run, with the arguments that come first
+    (noun_registry.module_invocation(), which Commander shares): the 'yd'
+    dispatcher and the command's words.
     """
-    module = command_module(command_name)
-    if module is None:
+    invocation = module_invocation(command_name)
+    if invocation is None:
         raise ValueError(f"'{command_name}' is not a command of this installation")
-    return [sys.executable, "-m", module]
+    module, leading = invocation
+    return [sys.executable, "-m", module, *leading]
 
 
 # Set in every child's environment, and how its output is read: a Python

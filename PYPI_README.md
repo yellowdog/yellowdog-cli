@@ -8,44 +8,27 @@
 
 This is a set of Python CLI commands for interacting with the YellowDog Platform, also providing examples of usage of the [YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html).
 
-The commands support:
+The CLI is one command, `yd`. Most of what it does names the object acted on, then what to do to it — `yd workrequirement submit`, `yd instance terminate` — and `yd <noun> --help` lists a noun's verbs; `yd help` lists everything. The commands support:
 
-- **Aborting** running Tasks with the **`yd-abort`** command
-- **Boosting** Allowances with the **`yd-boost`** command
-- **Cancelling** Work Requirements with the **`yd-cancel`** command
-- **Cloud provider setup** (AWS, Azure, GCP) with the **`yd-cloudwizard`** command
-- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with the **`yd-cloud-info`** command
-- **Comparing** whether Worker Pools are a match for Task Groups with the **`yd-compare`** command
-- **Copying** files between remote data stores with the **`yd-copy`** command
-- **Creating, Updating and Removing** Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with the **`yd-create`** and **`yd-remove`** commands
-- **Deleting** files from a remote data store with the **`yd-delete`** command
-- **Downloading** files from a remote data store with the **`yd-download`** command
-- **Finishing** Work Requirements with the **`yd-finish`** command
-- **Following Event Streams** for Work Requirements, Worker Pools and Compute Requirements with the **`yd-follow`** command
-- **Instantiating** Compute Requirements with the **`yd-instantiate`** command
-- **Listing** YellowDog items using the **`yd-list`** command
-- **Listing** remote data store contents with the **`yd-ls`** command
-- **Prioritising** Work Requirements and Task Groups after submission with the **`yd-priority`** command
-- **Provisioning** Worker Pools with the **`yd-provision`** command
-- **Refreshing** and **Regenerating** the tokens of Configured Worker Pools with the **`yd-token`** command
-- **Resizing** Worker Pools and Compute Requirements with the **`yd-resize`** command
-- **Showing** the details of any YellowDog entity using its YellowDog ID with the **`yd-show`** command
-- **Showing** the details of the current Application with the **`yd-application`** command
-- **Shutting Down** Worker Pools and Nodes with the **`yd-shutdown`** command
-- **Starting** HELD Work Requirements and **Holding** (or pausing) RUNNING Work Requirements with the **`yd-start`** and **`yd-hold`** commands
-- **Stopping**, **Starting** and **Restarting** Compute Requirements and Instances with the **`yd-compute-stop`**, **`yd-compute-start`** and **`yd-compute-restart`** commands
-- **Deprovisioning** Instances, reducing their Compute Requirements' target counts, with the **`yd-compute-deprovision`** command
-- **Reprovisioning** Compute Requirements, restoring their target instance counts, with the **`yd-compute-reprovision`** command
-- **Submitting** Work Requirements with the **`yd-submit`** command
-- **Submitting Node Actions** to Worker Pool nodes with the **`yd-nodeaction`** command
-- **Terminating** Compute Requirements with the **`yd-terminate`** command
-- **Uploading** files to a remote data store with the **`yd-upload`** command
-- **Reporting** the processed values of variable substitutions with the **`yd-variables`** command
-- **Waiting** for Work Requirements, Worker Pools or Compute Requirements to reach a terminal state with the **`yd-wait`** command
+- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd workrequirement`** (short form `yd wr`)
+- **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and aborting running Tasks with **`yd task`**
+- **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
+- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd computerequirement`** (`yd cr`)
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
+- **Allowances** — boosting them with **`yd allowance`**
+- **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
+- **Cloud provider setup** (AWS, Azure, GCP) with the **`yd cloudwizard`** command
+- **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
+- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun also has `list` and `show` verbs for its own objects
+- **Showing** the details of the current Application with the **`yd application`** command
+- **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
+- **Reporting** the processed values of variable substitutions with the **`yd variables`** command
+- **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-Utility commands are also provided: **`yd-doctor`**, **`yd-format-json`**, **`yd-help`**, **`yd-jsonnet2json`**, **`yd-schema`**, and **`yd-version`**. For a full list of commands run **`yd-help`**.
+Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
 
-The remote data store commands — `yd-upload`, `yd-download`, `yd-delete`, `yd-ls` and `yd-copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
+The remote data store commands — the `yd data` verbs `upload`, `download`, `delete`, `ls` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 
 ## Installation
 
@@ -78,9 +61,9 @@ Four optional extras are available:
 | Extra         | Provides                                                         |
 |---------------|------------------------------------------------------------------|
 | `jsonnet`     | Jsonnet templating of resource specifications                    |
-| `commander`   | The `yd-commander` desktop GUI, described below                  |
-| `cloudwizard` | The cloud provider SDKs required by the `yd-cloudwizard` command |
-| `mcp`         | The `yd-mcp` MCP server, described below                         |
+| `commander`   | The `yd commander` desktop GUI, described below                  |
+| `cloudwizard` | The cloud provider SDKs required by the `yd cloudwizard` command |
+| `mcp`         | The `yd mcp` MCP server, described below                         |
 
 List the ones you need in square brackets at installation time, e.g. to install all four:
 
@@ -94,25 +77,25 @@ An extra can also be added to an existing pipx installation without reinstalling
 
 ### Commander GUI
 
-**`yd-commander`** is an optional cross-platform desktop GUI for driving the CLI, installed via the `commander` extra above:
+**`yd commander`** is an optional cross-platform desktop GUI for driving the CLI, installed via the `commander` extra above:
 
 ```shell
 pip install -U "yellowdog-cli[commander]"
-yd-commander
+yd commander
 ```
 
-It works by invoking the `yd-*` commands on your behalf and displaying their output. See the [Commander documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/commander/README.md) for details.
+It works by running `yd` commands on your behalf and displaying their output. See the [Commander documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/commander/README.md) for details.
 
 ### MCP Server
 
-**`yd-mcp`** is an optional MCP server exposing the `yd-*` commands as tools for an agent, installed via the `mcp` extra above:
+**`yd mcp`** is an optional MCP server exposing the `yd` commands as tools for an agent, installed via the `mcp` extra above:
 
 ```shell
 pip install -U "yellowdog-cli[mcp]"
-yd-mcp config.toml
+yd mcp config.toml
 ```
 
-It runs the `yd-*` commands on an agent's behalf, with `--json`, and returns their results. See the [MCP server documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/mcp/README.md) for details.
+It runs `yd` commands on an agent's behalf, with `--json`, and returns their results. See the [MCP server documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/yellowdog_cli/mcp/README.md) for details.
 
 ## Documentation
 

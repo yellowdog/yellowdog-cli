@@ -1,13 +1,12 @@
 """
 Keyrings through the SDK's own client calls -- get_keyrings(search),
-get_keyring(id) and update_keyring(id, request) -- in place of the
-deprecated find_all_keyrings() and the raw HTTP fetch that stood in for a
-missing SDK call.
+get_keyring(id) and update_keyring(id, request) -- rather than the
+deprecated find_all_keyrings() or a raw HTTP fetch.
 
 - entity_utils.get_keyring_summary_by_name() resolves a name to its summary
   with an exact match, the search's 'name' being a partial match.
-- yd-create updates an existing Keyring's description in place; it no longer
-  offers to delete and recreate it (which lost the credentials).
+- yd-create updates an existing Keyring's description in place; it does not
+  offer to delete and recreate it (which would lose the credentials).
 - yd-remove by YDID fetches the Keyring by ID rather than listing every one.
 """
 

@@ -60,7 +60,7 @@ class TestValidateSpecification:
     def test_every_violation_is_reported_with_its_path(self):
         violations = validate_specification(Family.WORK_REQUIREMENT, BAD, "wr.json")
         assert violations == [
-            Violation("taskGroups[0].maxWorkers", "must be integer"),
+            Violation("taskGroups[0].maxWorkers", "must be integer or null"),
             Violation("taskGroups[0].tasks[0].taskType", "must be string"),
             Violation("taskGroups[1]", "unknown property 'nope'"),
         ]
@@ -219,7 +219,7 @@ class TestWarnings:
         out = " ".join(capsys.readouterr().out.split())  # Unwrapped
         assert out.count("WARNING") == 3
         assert "'wr.json': taskGroups[0].maxWorkers: must be integer" in out
-        assert "yd-schema work-requirement" in out
+        assert "yd schema work-requirement" in out
 
     def test_under_json_the_warnings_go_to_stderr(self, args, capsys):
         args.json_output = True
@@ -243,7 +243,7 @@ class TestWarnings:
         assert out.count("WARNING") == 1
         assert (
             "cannot check 'wr.json' against the work-requirement schema:"
-            " bad definition; run 'yd-schema work-requirement' to see why"
+            " bad definition; run 'yd schema work-requirement' to see why"
         ) in out
 
     def test_a_fault_in_the_check_is_one_warning_not_a_refusal(
@@ -662,7 +662,7 @@ class TestSubmit:
         text = " ".join(out.split())  # Unwrapped
         assert text.count("WARNING") == 1
         assert "cannot check" in text and "RetryPolicy.maxRetries" in text
-        assert "run 'yd-schema work-requirement' to see why" in text
+        assert "run 'yd schema work-requirement' to see why" in text
         client.work_client.add_work_requirement.assert_called_once()
 
     def test_an_unbuildable_schema_stops_validate(self, submit, tmp_path, unbuildable):
@@ -854,6 +854,8 @@ class TestCreate:
                 also=(load_resources_module, create_command),
                 **{
                     "resource_specifications": files,
+                    "resource_type": None,
+                    "resource_properties": [],
                     "no_resequence": False,
                     "show_keyring_passwords": False,
                     "regenerate_app_keys": False,
@@ -923,6 +925,7 @@ class TestCreate:
         one = _write(tmp_path, "one.json", {"resource": "Keyring", "name": "k"})
         args = MagicMock(
             resource_specifications=[one],
+            resource_type=None,
             jsonnet_dry_run=False,
             no_resequence=False,
             validate=None,

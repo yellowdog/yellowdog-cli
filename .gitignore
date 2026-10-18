@@ -54,3 +54,8 @@ README_CLOUDWIZARD.md.*
 
 # Superpowers subagent-driven-development scratch (ledger, briefs, reports, review packages)
 .superpowers/
+
+# A local copy of the live system tests' configuration: it holds secrets.
+# The template, which holds none, is the exception
+tests/live/*.toml
+!tests/live/system-tests.example.toml

@@ -1,0 +1,82 @@
+# The live system tests' configuration (tests/live, '--run-live'), whose
+# [platform] is also the '--run-system' tests' credentials. Copy it to
+# ~/.config/yellowdog/system-tests.toml (or to the file YDST_CONFIG names),
+# outside the repository so that its secrets cannot be committed, and fill it
+# in. Every key can be set or overridden as YDST_<SECTION>_<KEY>, and an empty
+# value counts as unset; 'make live_config' checks the result.
+#
+# Every key is here: the required ones marked so, the optional ones with
+# their defaults. tests/live/test_live_example_config.py holds this file to
+# tests/live/harness/config.py's SCHEMA.
+
+[platform]
+key = "..."                       # required
+secret = "..."                    # required
+url = "https://api.yellowdog.ai"  # the Platform to test; this default when unset
+
+[run]
+primary_provider = "aws"          # needed with more than one provider
+max_instances_per_provider = 2
+max_instance_hours = 4            # the run's Allowance
+provision_timeout_minutes = 15
+teardown_timeout_minutes = 15
+sweep_age_hours = 24              # the sweep's age guard
+sweep_on_start = true
+keep_on_failure = false
+terminate_on_keep = true
+
+# A section enables its provider: leave a provider you are not testing
+# commented out. Every instance gets a public IP address, so each provider's
+# network must let it reach the internet (on AWS, a subnet routed to an
+# internet gateway and a security group allowing outbound HTTPS).
+
+[aws]
+access_key_id = "..."             # required
+secret_access_key = "..."         # required
+region = "eu-west-2"              # required
+security_group_id = "sg-..."      # required
+subnet_id = "subnet-..."          # required
+availability_zone = "eu-west-2a"  # required: the subnet's
+image_id = "ami-..."              # required
+instance_type = "t3a.small"
+iam_instance_profile_arn = "arn:aws:iam::...:instance-profile/..."  # the instances' role, e.g. for S3 data
+
+# [azure]
+# tenant_id = "..."                 # required
+# client_id = "..."                 # required
+# key = "..."                       # required: the client secret
+# subscription_id = "..."           # required
+# region = "northeurope"            # required
+# network_resource_group_name = "..."  # required
+# network_name = "..."              # required
+# subnet_name = "..."               # required
+# image_id = "market:Canonical:ubuntu-26_04-lts:server:latest"  # required
+# vm_size = "Standard_B2s"
+# ssh_public_key = "..."
+
+# [gcp]
+# service_account_key_json = '''{"type": "service_account", ...}'''  # required: the key file's contents
+# project = "..."                   # required
+# region = "europe-west2"           # required
+# zone = "europe-west2-a"           # unset, the Platform chooses one in the region
+# network = "default"
+# subnetwork = "default"
+# machine_type = "e2-small"
+# image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
+
+# [oci]
+# tenant_id = "ocid1.tenancy.oc1..."    # required
+# user_id = "ocid1.user.oc1..."         # required
+# fingerprint = "..."                   # required
+# private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"  # required: the PEM text, inline (or in '''...''' with its lines as they are)
+# passphrase = "..."                    # the private key's, if it is encrypted
+# region = "uk-london-1"                # required
+# compartment_id = "ocid1.compartment.oc1..."  # required
+# subnet_id = "ocid1.subnet.oc1..."     # required: a public subnet
+# shape = "VM.Standard.E2.1"            # required: matching the image's architecture
+# image_id = "ocid1.image.oc1..."       # required
+
+# The data scenarios, and a Task's inputs and outputs through S3: AWS as the
+# primary, with iam_instance_profile_arn
+# [data]
+# bucket = "my-bucket"              # required: an S3 bucket the [aws] keys can write

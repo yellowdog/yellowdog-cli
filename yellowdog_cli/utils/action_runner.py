@@ -22,7 +22,10 @@ A Unit that reports and records its own failures, as yd-shutdown's do,
 raises SessionStop to stop the run the same way.
 
 Recording is the command's own: every function takes a Record, called as
-record(entity, entity_type, outcome, error), which names the action.
+record(entity, entity_type, outcome, error), which names the action. Each
+failure's cause is recorded beside it (results.record_failure_cause()), so
+that a run whose failures share one exits with it: 6 when every target was
+not found, 5 when each was refused.
 """
 
 from __future__ import annotations
@@ -31,9 +34,16 @@ from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 from typing import Any, NoReturn
 
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_warning
+from yellowdog_cli.utils.results import record_failure_cause
 
 # record(entity, entity_type, outcome, error): the command's '--json' record
 Record = Callable[[object, str, str, "str | None"], None]
@@ -74,13 +84,30 @@ class Unresolved(Exception):
     A target that cannot be acted on, for a reason the user should see: the
     message is printed and recorded. 'outcome' is 'failed' unless the target
     exists but is in another state ('skipped'), in which case 'entity' is
-    what was found, to be recorded by its ID and name.
+    what was found, to be recorded by its ID and name. A failure's exit
+    code is 'code', else its cause's ('raise Unresolved(...) from e'), else
+    FAILURE.
     """
 
-    def __init__(self, message: str, outcome: str = FAILED, entity: object = None):
+    def __init__(
+        self,
+        message: str,
+        outcome: str = FAILED,
+        entity: object = None,
+        code: ExitCode | None = None,
+    ):
         super().__init__(message)
         self.outcome = outcome
         self.entity = entity
+        self._code = code
+
+    @property
+    def code(self) -> ExitCode:
+        if self._code is not None:
+            return self._code
+        if self.__cause__ is not None:
+            return classify(self.__cause__)
+        return ExitCode.FAILURE
 
 
 class SessionStop(Exception):
@@ -155,10 +182,14 @@ def resolve_targets(
         except Unresolved as e:
             (print_warning if e.outcome == SKIPPED else print_error)(str(e))
             record(e.entity or entity, entity_type, e.outcome, str(e))
+            if e.outcome == FAILED:
+                record_failure_cause(e.code)
             continue
         except Exception as e:
             print_error(f"Unable to {verb} '{target}': {e}")
+            advise(e)
             record(entity, entity_type, FAILED, str(e))
+            record_failure_cause(classify(e))
             if classify(e) in SESSION_FAILURES:
                 remaining = unique[index + 1 :]
                 warn_not_attempted(len(remaining) + len(resolution.items))
@@ -203,8 +234,10 @@ def carry_out(units: list[Unit], record: Record) -> list[Unit]:
             _stop(units[index + 1 :], stop.cause, record)
         except Exception as e:
             print_error(unit.failure(e))
+            advise(e)
             for item in unit.items:
                 record(item.entity, item.entity_type, FAILED, str(e))
+                record_failure_cause(classify(e))
             if classify(e) in SESSION_FAILURES:
                 _stop(units[index + 1 :], e, record)
         else:

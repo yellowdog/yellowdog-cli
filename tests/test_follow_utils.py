@@ -509,6 +509,8 @@ class TestReconnection:
         assert clock.now >= 300
         assert clock.now < 300 + 30
         assert fu.follow_exit_code() == fu.ExitCode.CONNECTION
+        # Recorded against the stream's own ID
+        assert fu.follow_exit_code_of(WR) == fu.ExitCode.CONNECTION
 
     def test_a_connection_that_keeps_dropping_at_once_is_given_up(
         self, clock, monkeypatch
@@ -1034,3 +1036,13 @@ class TestFollowingEndsOnceSettled:
         tests = {WR: lambda data: True}
         fu.follow_ids(_ctx(), [WR], settled=tests.get)
         assert calls == [(WR, tests[WR])]
+
+
+def test_each_ids_follow_failures_are_its_own():
+    fu._record_follow_failure(fu.ExitCode.NOT_FOUND, "a")
+    fu._record_follow_failure(fu.ExitCode.CONNECTION, "b")
+    assert fu.follow_exit_code_of("a") == fu.ExitCode.NOT_FOUND
+    assert fu.follow_exit_code_of("b") == fu.ExitCode.CONNECTION
+    assert fu.follow_exit_code_of("c") == fu.ExitCode.SUCCESS
+    # Across every stream, two causes
+    assert fu.follow_exit_code() == fu.ExitCode.FAILURE

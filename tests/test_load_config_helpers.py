@@ -2,7 +2,7 @@
 Unit tests for load_config.py helpers not already covered by other test files.
 
 Already covered elsewhere:
-  - _parse_property_value / _apply_property_overrides → test_property_overrides.py
+  - parse_property_value / _apply_property_overrides → test_property_overrides.py
   - _build_dc_substitutions                          → test_build_dc_substitutions.py
   - _select_dc_section                               → test_select_dc_section.py
 
@@ -442,8 +442,8 @@ class TestLoadConfigWorkRequirement:
 
     @pytest.mark.parametrize("value", [0, 10_001, -1, "100", 2.5, True])
     def test_a_task_batch_size_out_of_range_is_a_configuration_error(self, value):
-        # Checked as the configuration is loaded (exit 3), not when yd-submit
-        # runs (which exited 1)
+        # Checked as the configuration is loaded (exit 3), not later when
+        # yd-submit runs (exit 1)
         with pytest.raises(SystemExit) as raised:
             self._call(toml_wr_section={TASK_BATCH_SIZE: value})
         assert raised.value.code == 3
@@ -508,9 +508,9 @@ class TestLoadConfigWorkRequirement:
     @pytest.mark.parametrize("property_name,attribute", NAME_PROPERTIES)
     @pytest.mark.parametrize("value", [123, 1.5, True, ["a"]])
     def test_non_string_name_is_rejected(self, property_name, attribute, value):
-        # A name that isn't a String used to reach format_yd_name() and fail
-        # there with an AttributeError; it's a configuration error, and is
-        # reported as one
+        # A name that isn't a String is a configuration error, and is reported
+        # as one rather than reaching format_yd_name() and failing there with
+        # an AttributeError
         with (
             patch.object(lc_module, "print_error") as print_error,
             pytest.raises(SystemExit),
@@ -581,7 +581,7 @@ class TestLoadConfigWorkerPool:
 
     @pytest.mark.parametrize("value, expected", [(5, 5), ("5", 5), (2.5, 2)])
     def test_max_nodes_is_cast_as_min_nodes_is(self, value, expected):
-        # Left uncast, 2.5 crashed yd-provision formatting it with ':,d'
+        # Left uncast, 2.5 would crash yd-provision formatting it with ':,d'
         result = self._call(toml_wp_section={"maxNodes": value})
         assert result.max_nodes == expected
         assert isinstance(result.max_nodes, int)
@@ -592,8 +592,9 @@ class TestLoadConfigWorkerPool:
 
     @pytest.mark.parametrize("value", [0, -1])
     def test_batch_size_below_one_is_a_configuration_error(self, value):
-        # 0 was a bare 'division by zero'; a negative size made no batches,
-        # so nothing was provisioned and the command still reported Done
+        # Unchecked, 0 would be a bare 'division by zero', and a negative size
+        # would make no batches, so nothing would be provisioned and the
+        # command would still report Done
         with (
             patch.object(lc_module, "print_error") as print_error,
             pytest.raises(SystemExit) as exc,
@@ -648,15 +649,15 @@ class TestResolveSectionVariables:
 
 class TestWorkerPoolUndefinedVariables:
     """
-    The Worker Pool sections are resolved at import, before the undefined-
-    variable warnings are enabled, so yd-provision and yd-instantiate re-check
+    The Worker Pool sections are resolved as the configuration loads, before
+    the undefined-variable warnings are enabled, so yd-provision and yd-instantiate re-check
     them as they start: each section as written, the Compute Requirement
     synonym not listed twice for having been merged into 'workerPool'.
     """
 
     @pytest.fixture()
     def warnings(self, monkeypatch):
-        # Off while the configuration loads, as it is at import
+        # Off while the configuration loads, as it is when a command starts
         monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
         monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLES_REPORTED", set())
         warning = MagicMock()
@@ -719,8 +720,7 @@ class TestResolveValue:
 
 class TestReviewedLoaderErrors:
     """
-    What the review of load_config.py changed: a profile's misspelt key is
-    an error, a number that will not convert names its property, the
+    load_config.py's error reporting: a profile's misspelt key is an error, a number that will not convert names its property, the
     duplicate-keys error names the keys plainly, and '--debug' shows a
     loader's own fault rather than a configuration error.
     """

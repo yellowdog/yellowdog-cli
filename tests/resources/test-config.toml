@@ -13,7 +13,7 @@
 # precedence over YD_VAR_* environment variables. Override by editing here.
 
 [common]
-    namespace = "yd-cli-tests"
+    namespace = "yd-cli-system-tests"  # shared with the live system tests
     tag = "yd-cli-tests"
 
 [common.variables]

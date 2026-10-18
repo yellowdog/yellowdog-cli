@@ -5,13 +5,14 @@ Command to show the JSON details of YellowDog entities via their IDs.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sys import exit as sys_exit
 from typing import Any, cast
 
 from yellowdog_client.model import (
     ComputeRequirement,
     ConfiguredWorkerPool,
+    NamespaceSearch,
     ProvisionedWorkerPool,
 )
 
@@ -21,20 +22,36 @@ from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
     RN_GROUP,
     RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
     RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
+    get_application_id_by_name,
+    get_compute_requirement_template_id_by_name,
+    get_compute_source_template_id_by_name,
     get_group_applications,
+    get_group_id_by_name,
     get_group_users,
     get_instance_by_id,
+    get_keyring_summary_by_name,
     get_role_groups,
+    get_user_attribute_definitions,
+    get_user_by_name_or_id,
     get_user_groups,
+    get_worker_pool_id_by_name,
+    split_namespace_and_name,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -46,6 +63,7 @@ from yellowdog_cli.utils.exit_codes import (
     ReportedFailure,
     classify,
 )
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
     print_error,
@@ -54,7 +72,8 @@ from yellowdog_cli.utils.printing import (
     print_warning,
     print_yd_object,
 )
-from yellowdog_cli.utils.property_names import PROP_GROUPS
+from yellowdog_cli.utils.property_names import PROP_GROUPS, PROP_KEYRING_NAME
+from yellowdog_cli.utils.resource_targets import SHOWN_WITHOUT_ID
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,
@@ -87,25 +106,30 @@ def main(ctx: RunContext):
 @dataclass
 class _Tally:
     """
-    The IDs not shown because their entity does not exist.
+    The exit code of each ID not shown: why it was not.
     """
 
-    not_found: int = 0
+    codes: list[ExitCode] = field(default_factory=list)
 
 
 _TALLY = _Tally()
 
 
-def _report_not_found(message: str) -> None:
+def _report_failure(message: str, code: ExitCode) -> None:
     print_error(message)
-    _TALLY.not_found += 1
+    _TALLY.codes.append(code)
+
+
+def _report_not_found(message: str) -> None:
+    _report_failure(message, ExitCode.NOT_FOUND)
 
 
 def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     """
     Resolve and print the details of each of the supplied YellowDog IDs, and
-    return the exit code: 0 if all were shown; 6 (NOT_FOUND) if those that
-    were not all named nothing; 1 otherwise. The IDs that were resolved are
+    return the exit code: 0 if all were shown; the one cause's code if
+    those that were not all failed for the same reason (6 NOT_FOUND, 5
+    PERMISSION); 1 otherwise. The IDs that were resolved are
     printed whatever the code. A failure every later lookup would repeat
     (authentication, connection) stops the run: what was resolved is printed
     and the failure raised with its own exit code.
@@ -113,7 +137,7 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     if ctx.args.strip_ids:
         print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
-    _TALLY.not_found = 0
+    _TALLY.codes.clear()
     items: list[ShowItem] = []
     failures = 0
     # Whenever more than one object is to be printed, it's printed as a JSON
@@ -123,11 +147,28 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     # Pool with '--show-token', or a Compute Requirement or Provisioned Worker
     # Pool with '--show-source-report' or '--show-exhaustion'.
     as_json_array = len(ydids) > 1
+    resource_type = ctx.args.resource_type
     for index, ydid in enumerate(ydids):
         try:
+            if resource_type in SHOWN_WITHOUT_ID:
+                # A name of a type with no ID: fetched by it
+                shown = _without_id(ctx, cast(str, resource_type), ydid)
+                if shown is None:  # The reason has already been reported
+                    failures += 1
+                else:
+                    items += shown
+                continue
+            if resource_type is not None and get_ydid_type(ydid) is None:
+                # A name, with '--type': shown as its ID is
+                found = _named_id(ctx, resource_type, ydid)
+                if found is None:  # The reason has already been reported
+                    failures += 1
+                    continue
+                ydid = found
             resolved = resolve_details(ctx, ydid)
         except Exception as e:  # Re-raised by the resolvers only if SESSION_FAILURES
             print_error(f"Unable to show details for '{ydid}': {e}")
+            advise(e)
             if remaining := len(ydids) - index - 1:
                 print_warning(
                     f"Not attempting the remaining {remaining} ID(s), which would"
@@ -144,7 +185,151 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
 
     if not failures:
         return ExitCode.SUCCESS
-    return ExitCode.NOT_FOUND if _TALLY.not_found == failures else ExitCode.FAILURE
+    codes = set(_TALLY.codes)
+    # Each failure's cause recorded, and every one the same
+    if len(_TALLY.codes) == failures and len(codes) == 1:
+        return codes.pop()
+    return ExitCode.FAILURE
+
+
+def _named_id(ctx: RunContext, resource_type: str, name: str) -> str | None:
+    """
+    The ID a name of the type stands for, or None having reported why there
+    is none: nothing has the name (not found), or the lookup failed for this
+    name alone (an ambiguous name, a refused search). A session failure is
+    raised, as it is for an ID, to stop the run.
+    """
+    try:
+        found = _id_for_name(ctx, resource_type, name)
+    except Exception as e:
+        code = classify(e)
+        if code in SESSION_FAILURES:
+            raise
+        _report_failure(f"Unable to find {resource_type} '{name}': {e}", code)
+        advise(e)
+        return None
+    if found is None:
+        _report_not_found(f"Cannot find {resource_type} '{name}'")
+    return found
+
+
+def _without_id(
+    ctx: RunContext, resource_type: str, name: str
+) -> list[ShowItem] | None:
+    """
+    A resource of a type with no ID, found by its name, or None having
+    reported why not, as _named_id() reports it.
+    """
+    try:
+        found = _shown_without_id(ctx, resource_type, name)
+    except Exception as e:
+        code = classify(e)
+        if code in SESSION_FAILURES:
+            raise
+        _report_failure(f"Unable to find {resource_type} '{name}': {e}", code)
+        advise(e)
+        return None
+    if found is None:
+        _report_not_found(f"Cannot find {resource_type} '{name}'")
+        return None
+    return [found]
+
+
+def _shown_without_id(
+    ctx: RunContext, resource_type: str, name: str
+) -> ShowItem | None:
+    """
+    The resource of a type with no ID that has the name, as 'yd resource
+    list --details' shows it, with 'resource' added, or None: a Namespace by
+    its name, a Namespace Policy by its namespace, an Attribute Definition of
+    the type by its name, a Credential as 'keyring/credential' (shown as its
+    Keyring holds it, with 'keyringName' added). The types are
+    resource_targets.SHOWN_WITHOUT_ID's.
+    """
+    client = ctx.client
+    added = {RESOURCE_PROPERTY_NAME: resource_type}
+    if resource_type == RN_NAMESPACE:
+        namespaces = client.namespaces_client.get_namespaces(
+            NamespaceSearch(namespaceContains=name)
+        ).list_all()
+        found = next((ns for ns in namespaces if ns.namespace == name), None)
+        return None if found is None else (found, added)
+    if resource_type == RN_NAMESPACE_POLICY:
+        try:
+            return (
+                client.namespaces_client.get_namespace_policy(namespace=name),
+                added,
+            )
+        except Exception as e:
+            if is_http_not_found(e):
+                return None
+            raise
+    if resource_type in (
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    ):
+        for definition in get_user_attribute_definitions(ctx.config):
+            numeric = "Numeric" in str(definition.get("type", ""))
+            definition_type = (
+                RN_NUMERIC_ATTRIBUTE_DEFINITION
+                if numeric
+                else RN_STRING_ATTRIBUTE_DEFINITION
+            )
+            if definition.get("name") == name and definition_type == resource_type:
+                return (definition, added)
+        return None
+    if resource_type == RN_CREDENTIAL:
+        keyring_name, _, credential_name = name.partition("/")
+        summary = get_keyring_summary_by_name(client, keyring_name)
+        if summary is None:
+            return None
+        keyring = client.keyring_client.get_keyring(cast(str, summary.id))
+        credential = next(
+            (c for c in keyring.credentials or [] if c.name == credential_name), None
+        )
+        if credential is None:
+            return None
+        return (credential, {**added, PROP_KEYRING_NAME: keyring_name})
+    raise ValueError(f"a {resource_type} cannot be shown without an ID")
+
+
+def _id_for_name(ctx: RunContext, resource_type: str, name: str) -> str | None:
+    """
+    The ID of the resource of the type with the name, found as the commands
+    acting on one find it, or None: 'namespace/name' for a namespaced type,
+    the configured namespace without one; a User by its name or username.
+    The types are resource_targets.SHOWN_BY_NAME's.
+    """
+    client, namespace = ctx.client, ctx.config.namespace
+    match resource_type:
+        case _ if resource_type == RN_KEYRING:
+            summary = get_keyring_summary_by_name(client, name)
+            return None if summary is None else summary.id
+        case _ if resource_type == RN_SOURCE_TEMPLATE:
+            return get_compute_source_template_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_REQUIREMENT_TEMPLATE:
+            return get_compute_requirement_template_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_CONFIGURED_POOL:
+            return get_worker_pool_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_GROUP:
+            return get_group_id_by_name(client, name)
+        case _ if resource_type == RN_APPLICATION:
+            return get_application_id_by_name(client, name)
+        case _ if resource_type == RN_IMAGE_FAMILY:
+            family_namespace, family_name = split_namespace_and_name(name)
+            try:
+                return client.images_client.get_image_family_by_name(
+                    namespace=family_namespace or namespace,
+                    family_name=family_name or name,
+                ).id
+            except Exception as e:
+                if is_http_not_found(e):
+                    return None
+                raise
+        case _ if resource_type in (RN_INTERNAL_USER, RN_EXTERNAL_USER):
+            user = get_user_by_name_or_id(client, name)
+            return None if user is None else user.id
+    raise ValueError(f"a {resource_type} cannot be shown by name")
 
 
 def _print_items(ctx: RunContext, items: list[ShowItem], as_json_array: bool):
@@ -177,11 +362,10 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
     Resolve a YellowDog ID to the object(s) to be shown. Returns None if the ID
     could not be resolved, having already reported why.
 
-    Resolution is deliberately separated from printing: the JSON array's
-    indentation and commas were previously threaded through each entity type's
-    branch, applied to some of them and forgotten on the rest, which left the
-    array unparseable for most entity types. Each type's resolution is now an
-    entry in _RESOLVERS.
+    Resolution is deliberately separated from printing: threaded through each
+    entity type's branch, the JSON array's indentation and commas would be
+    applied to some of them and forgotten on the rest, leaving the array
+    unparseable. Each type's resolution is an entry in _RESOLVERS.
     """
     # Instances have no YDID of their own: they're identified by their Compute
     # Requirement plus an instance ID, in 'cr_id.instance_id' form
@@ -191,7 +375,7 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
         )
 
     if (ydid_type := get_ydid_type(ydid)) is None:
-        print_error(f"Invalid YellowDog ID '{ydid}'")
+        _report_failure(f"Invalid YellowDog ID '{ydid}'", ExitCode.FAILURE)
         return None
 
     resolver = _RESOLVERS[ydid_type]
@@ -204,7 +388,8 @@ def resolve_details(ctx: RunContext, ydid: str) -> list[ShowItem] | None:
         if is_http_not_found(e) or isinstance(e, NotFoundError):
             _report_not_found(f"{ydid_type.value} ID '{ydid}' not found")
         else:
-            print_error(f"Unable to show details for '{ydid}': {e}")
+            _report_failure(f"Unable to show details for '{ydid}': {e}", classify(e))
+            advise(e)
         return None
 
 
@@ -578,7 +763,10 @@ def _resolve_instance_details(
         if is_http_not_found(e):
             _report_not_found(f"Compute Requirement ID '{cr_id}' not found")
         else:
-            print_error(f"Unable to find Compute Requirement ID '{cr_id}': {e}")
+            _report_failure(
+                f"Unable to find Compute Requirement ID '{cr_id}': {e}", classify(e)
+            )
+            advise(e)
         return None
 
     try:
@@ -586,7 +774,10 @@ def _resolve_instance_details(
     except Exception as e:
         if classify(e) in SESSION_FAILURES:
             raise  # For show_ydids(), which stops
-        print_error(f"Unable to show details for '{cr_id}.{instance_id}': {e}")
+        _report_failure(
+            f"Unable to show details for '{cr_id}.{instance_id}': {e}", classify(e)
+        )
+        advise(e)
         return None
 
     if instance is None:

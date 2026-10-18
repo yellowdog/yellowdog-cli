@@ -115,14 +115,14 @@ class TestFormatYdName:
         assert len(format_yd_name("a" * 70)) == 60
 
     def test_prefix_is_a_visible_prefix(self):
-        # 'yd' alone merged into the name it was fixing; the underscore is what
+        # 'yd' alone would merge into the name it fixes; the underscore is what
         # makes it legible as something the CLI added
         assert NAME_START_PREFIX == "yd_"
 
     @pytest.mark.parametrize("yd_name", [123, 1.5, True, ["a"]])
     def test_non_string_name_is_a_type_error(self, yd_name):
         # Reached from a specification file, which nothing else type-checks;
-        # without this it failed with an AttributeError from str.replace()
+        # without this it would fail with an AttributeError from str.replace()
         with pytest.raises(TypeError, match="String"):
             format_yd_name(yd_name)
 
@@ -139,9 +139,9 @@ class TestFormatYdName:
 class TestNameChangesAreWarnedOf:
     """
     A name cut to 60 characters, or stripped of characters a YellowDog name
-    cannot hold, was changed without a word, so that long Task names became
-    one name and 'Café' became 'caf'. Each kind of change is warned of once
-    per run, naming the first name so changed: Task names are formatted per
+    cannot hold, is warned of, since otherwise long Task names could become
+    one name and 'Café' become 'caf' without a word. Each kind of change is
+    warned of once per run, naming the first name so changed: Task names are formatted per
     Task. The documented substitutions (case, ' ', '.', '/') are not.
     """
 
@@ -228,8 +228,8 @@ class TestGenerateId:
         assert generate_id(prefix="test").endswith(f"-{expected}")
 
     def test_concurrent_launches_generate_distinct_ids(self):
-        # The regression: three commands launched together used to reach the
-        # UTCNOW import within the same millisecond and mint the same name
+        # Three commands launched together can reach the UTCNOW import within
+        # the same millisecond, and without the PID would mint the same name
         snippet = (
             "from yellowdog_cli.utils.misc_utils import generate_id; "
             "print(generate_id('test'))"
@@ -281,9 +281,9 @@ class TestRandomBase36:
         assert all(character in BASE36_DIGITS for character in random_base36(1000))
 
     def test_draws_from_the_whole_base36_alphabet(self):
-        # The hexadecimal implementation this replaced could only ever produce
-        # '0'-'9' and 'a'-'f', so a draw this large landing entirely inside
-        # that range would mean the alphabet had narrowed again
+        # A hexadecimal alphabet produces only '0'-'9' and 'a'-'f', so a draw
+        # this large landing entirely inside that range would mean the
+        # alphabet had narrowed to hexadecimal
         beyond_hexadecimal = set(BASE36_DIGITS) - set("0123456789abcdef")
         assert beyond_hexadecimal & set(random_base36(1000))
 

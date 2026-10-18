@@ -3,6 +3,8 @@ Tests that run the standard demos.
 Use 'pytest --run-demos', otherwise these will be skipped.
 """
 
+import shutil
+
 import pytest
 from cli_test_helpers import shell
 
@@ -41,13 +43,14 @@ def _with_cleanup(work: str, cleanup: str) -> str:
 
 
 # Terminate the Worker Pool and delete the objects the demo uploaded.
-CLEANUP = "yd-terminate -y; yd-delete -Ry '{{tag}}*'"
+CLEANUP = "yd computerequirement terminate -y; yd data delete -Ry '{{tag}}*'"
 
 # Provision, then submit and follow with '-E' (--exit-on-failure), which exits
 # non-zero if the WR ends FAILED/CANCELLED, so a WR that does not complete
 # successfully fails the test. The WR's exit code is surfaced via 'exit $rc'.
 CMD_SEQ = _with_cleanup(
-    f"{_timed('yd-provision')} && {_timed('yd-submit -f -E')}", CLEANUP
+    f"{_timed('yd workerpool provision')} && {_timed('yd workrequirement submit -f -E')}",
+    CLEANUP,
 )
 
 _STANDARD_DEMOS = [
@@ -73,15 +76,16 @@ class TestDemos:
 
     def test_cmd_modelled_on_premise(self):
         cmd_seq = _with_cleanup(
-            f"{_timed('yd-instantiate')} && sleep 120", "yd-terminate -y"
+            f"{_timed('yd computerequirement instantiate')} && sleep 120",
+            "yd computerequirement terminate -y",
         )
         result = shell(f"cd {DEMO_DIR}/modelled-on-premise && {cmd_seq}")
         assert result.exit_code == 0
 
     def test_video_demo(self):
         cmd_seq = _with_cleanup(
-            f"{_timed('yd-provision -v instances=1 -v max_nodes=1')} && "
-            f"{_timed('yd-submit -C 1 -f -E')}",
+            f"{_timed('yd workerpool provision -v instances=1 -v max_nodes=1')} && "
+            f"{_timed('yd workrequirement submit -C 1 -f -E')}",
             CLEANUP,
         )
         result = shell(f"cd {DEMO_DIR}/video-demo && {cmd_seq}")
@@ -102,12 +106,19 @@ class TestDemos:
     #     assert result.exit_code == 0
 
 
+# coreutils' 'timeout': standard on Linux, Homebrew's 'coreutils' on macOS
+_needs_timeout = pytest.mark.skipif(
+    shutil.which("timeout") is None, reason="needs coreutils' 'timeout'"
+)
+
+
 class TestDemoCommandHarness:
     """
     The shell idioms the demo commands are built from, exercised with stub
     commands rather than 'yd-*' ones. Deliberately unmarked, so these run in the
-    standard suite: they provision nothing, and they guard both the coreutils
-    'timeout' dependency and the contract that cleanup always runs.
+    standard suite: they provision nothing, and they guard the contract that
+    cleanup always runs. The two that time a command out skip where there is
+    no 'timeout', which only the demos themselves require.
     """
 
     def test_cleanup_runs_when_work_fails(self):
@@ -120,12 +131,14 @@ class TestDemoCommandHarness:
         assert result.exit_code == 0
         assert "CLEANED" in result.stdout
 
+    @_needs_timeout
     def test_hung_work_times_out_and_still_cleans_up(self):
         result = shell(_with_cleanup(_timed("sleep 30", timeout=1), "echo CLEANED"))
         # 124 rather than 1, so a hang is distinguishable from a failed WR
         assert result.exit_code == 124
         assert "CLEANED" in result.stdout
 
+    @_needs_timeout
     def test_timed_out_command_short_circuits_the_rest_of_the_work(self):
         work = f"{_timed('sleep 30', timeout=1)} && echo SUBMITTED"
         result = shell(_with_cleanup(work, "echo CLEANED"))

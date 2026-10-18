@@ -487,7 +487,7 @@ def create_keyring(ctx: RunContext, resource: dict, show_secrets: bool = False):
     Create a Keyring, or update the description of an existing one in place.
     The description is the only thing the Platform lets a Keyring change; the
     name is what an existing one is matched on. Credentials and accessors are
-    untouched by an update -- the Keyring is no longer deleted and recreated.
+    untouched by an update -- the Keyring is not deleted and recreated.
     """
     try:
         name = resource[PROP_NAME]
@@ -1584,7 +1584,7 @@ def _get_model_object(class_name: str, resource: dict, **kwargs):
     # Normalize all values to their JSON-compatible representations so that
     # Json.load can properly structure nested typed fields (e.g. enums,
     # timedeltas, and nested model objects) — necessary because the SDK's
-    # proxy now calls Json.dump on every outbound request.
+    # proxy calls Json.dump on every outbound request.
     merged = {}
     for k, v in {**resource, **kwargs}.items():
         if isinstance(v, (str, int, float, bool, type(None))):

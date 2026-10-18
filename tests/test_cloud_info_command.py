@@ -406,24 +406,21 @@ class TestRegistry:
         }
         assert set(CLOUD_INFO_PRICED_SORT_KEYS) == set(PRICED_SORT_KEYS)
 
-    def test_it_is_a_read_only_mcp_tool_with_the_types_as_an_enum(self):
+    def test_each_type_is_a_read_only_mcp_tool_of_its_own(self):
         from yellowdog_cli.mcp.tools import build_tools
 
-        tool = {t.name: t for t in build_tools()}["yd_cloud_info"]
-        assert tool.annotations.get("readOnlyHint") is True
-        schema = tool.input_schema
-        assert schema["properties"]["cloud_info_type"]["enum"] == [
-            "regions",
-            "sub-regions",
-            "instance-types",
-            "prices",
-        ]
-        assert "cloud_info_type" in schema["required"]
+        tools = {t.name: t for t in build_tools()}
+        for name in ("regions", "sub_regions", "instance_types", "prices"):
+            tool = tools[f"yd_cloudinfo_{name}"]
+            assert tool.annotations.get("readOnlyHint") is True
+            # The type is the verb's, so no argument
+            assert "cloud_info_type" not in tool.input_schema["properties"]
+        assert "yd_cloud_info" not in tools
 
     def test_the_tool_description_names_only_the_tools_arguments(self):
         from yellowdog_cli.mcp.tools import build_tools
 
-        tool = {t.name: t for t in build_tools()}["yd_cloud_info"]
+        tool = {t.name: t for t in build_tools()}["yd_cloudinfo_prices"]
         properties = set(tool.input_schema["properties"])
         # Each argument the description tells a client to pass
         for argument in ("name_glob", "os_licence", "providers", "sub_region"):

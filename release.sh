@@ -9,7 +9,9 @@
 # with a clean working tree, and with this release's notes under
 # '## Unreleased' in CHANGELOG.md, which the version bump stamps with the
 # version and date; they are the release tag's message, and are printed at
-# the end for the release ticket.
+# the end for the release ticket. It asks whether 'make tox' has passed and
+# whether to run the tests, carrying on without either if told to, and
+# refuses to release unsigned commits, which 'main' requires to be signed.
 
 set -euo pipefail
 
@@ -42,6 +44,21 @@ _confirm() {
     case "$answer" in
         [yY][eE][sS]|[yY]) return 0 ;;
         *) echo "Aborted."; exit 1 ;;
+    esac
+}
+
+# A yes/no question whose answer is the return status, yes by default; unlike
+# _confirm, 'no' carries on
+_ask() {
+    local prompt="$1"
+    if $DRY_RUN; then
+        echo "[dry-run] Would ask: $prompt → assuming yes"
+        return 0
+    fi
+    read -r -p "$prompt [Y/n] " answer
+    case "$answer" in
+        [nN][oO]|[nN]) return 1 ;;
+        *) return 0 ;;
     esac
 }
 
@@ -86,6 +103,22 @@ fi
 echo "Pulling latest 'next-version' from origin..."
 _run git pull origin next-version
 
+# Every commit being released must be signed: 'main' requires it, and an
+# account allowed to bypass that is only warned, once the push has happened
+# (the pre-push hook, scripts/pre-push, refuses too, but only after the
+# merge and the tag below)
+echo
+echo "Checking that every commit to be released is signed..."
+_run git fetch origin main
+if ! unsigned=$(scripts/unsigned_commits.sh origin/main..HEAD); then
+    echo "$unsigned"
+    if $DRY_RUN; then
+        echo "[dry-run] WARNING: Unsigned commits (ignored in dry-run)"
+    else
+        _die "Unsigned commits would go to 'main': re-sign them first (see scripts/unsigned_commits.sh)."
+    fi
+fi
+
 # The release notes: written as the changes landed, under '## Unreleased'
 [[ -f "$CHANGELOG" ]] || _die "No $CHANGELOG."
 if [[ -z "$(_changelog_section Unreleased | tr -d '[:space:]')" ]]; then
@@ -100,13 +133,15 @@ echo "--- Release notes (## Unreleased in $CHANGELOG) ---"
 _changelog_section Unreleased
 
 # The tests below run in this venv alone, with every extra installed, which
-# can hide a failure: 'make tox' runs them on every supported Python version,
-# with only the dev, commander and mcp extras
+# can hide a failure: 'make tox' runs them on every supported Python version.
+# Asked, not required: a release may go without it, said so
 echo
-echo "REMINDER: run 'make tox' on this commit before releasing. The tests this"
-echo "script runs use this venv only, which can hide failures on other Python"
-echo "versions or without the optional extras."
-_confirm "Has 'make tox' passed on this commit?"
+echo "REMINDER: 'make tox' on this commit is the fullest check before releasing."
+echo "The tests this script can run use this venv only, which can hide failures"
+echo "on other Python versions or without the optional extras."
+if ! _ask "Has 'make tox' passed on this commit?"; then
+    echo "--- Releasing without a 'make tox' run ---"
+fi
 
 # ---------------------------------------------------------------------------
 # Determine new version
@@ -186,8 +221,12 @@ echo "--- Build and distribution check ---"
 _run make pypi_check
 
 echo
-echo "--- Running tests ---"
-_run pytest -v -n 8
+if _ask "Run the tests (pytest -v -n 8)?"; then
+    echo "--- Running tests ---"
+    _run pytest -v -n 8
+else
+    echo "--- Skipping the tests ---"
+fi
 
 # ---------------------------------------------------------------------------
 # Commit version bump

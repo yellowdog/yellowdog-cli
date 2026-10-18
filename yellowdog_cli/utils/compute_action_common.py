@@ -57,11 +57,13 @@ from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     find_compute_requirement_by_name,
     get_compute_requirement_summaries,
     get_instance_by_id,
+    namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
@@ -302,7 +304,7 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
     if globs:
         print_info(
             f"{action.gerund} Compute Requirements "
-            f"{describe_glob_scope(globs, ctx.config.namespace)}"
+            f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
         compute_requirement_summaries: list[ComputeRequirementSummary] = (
             expand_name_globs(
@@ -319,9 +321,9 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
         )
     else:
         print_info(
-            f"{action.gerund} Compute Requirements in "
-            f"namespace '{ctx.config.namespace}' with tags "
-            f"including '{ctx.config.name_tag}'"
+            f"{action.gerund} Compute Requirements "
+            f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with tags including '{}'", ctx.config.name_tag)
         )
         compute_requirement_summaries = get_compute_requirement_summaries(
             ctx.client,
@@ -637,7 +639,8 @@ def _resolve_instance(
     instance: Instance | None = get_instance_by_id(ctx.client, cr_id, instance_id)
     if instance is None:
         raise Unresolved(
-            f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}"
+            f"Cannot find Instance ID '{instance_id}' in Compute Requirement {cr_id}",
+            code=ExitCode.NOT_FOUND,
         )
     if instance.status not in action.valid_instance_statuses:
         raise Unresolved(

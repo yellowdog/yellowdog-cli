@@ -32,6 +32,9 @@ _DOCUMENT: Any = None  # Set by record_document(); wins over _ITEMS
 _HAS_DOCUMENT = False
 _FLUSHED = False
 _STREAMED = False  # Set by results_are_streamed()
+# The exit code of each failure recorded with its cause
+# (record_failure_cause()), for failure_exit_code()
+_FAILURE_CAUSES: list[int] = []
 
 
 def record(item: dict | Any) -> None:
@@ -165,6 +168,12 @@ def json_requested() -> bool:
     return bool(OUTPUT.json_output)
 
 
+def _is_failure(item: Any) -> bool:
+    return isinstance(item, dict) and (
+        item.get("outcome") == "failed" or item.get("action") == "failed"
+    )
+
+
 def any_failed() -> bool:
     """
     Whether any recorded item's 'outcome' or 'action' is 'failed', regardless
@@ -172,11 +181,28 @@ def any_failed() -> bool:
     raised nothing, since the command handled the error itself and recorded
     it.
     """
-    return any(
-        isinstance(item, dict)
-        and (item.get("outcome") == "failed" or item.get("action") == "failed")
-        for item in _ITEMS
-    )
+    return any(_is_failure(item) for item in _ITEMS)
+
+
+def record_failure_cause(code: int) -> None:
+    """
+    Record the exit code of a failure just recorded as 'failed' (one call per
+    failed record), so that a run whose failures share a cause exits with it.
+    """
+    _FAILURE_CAUSES.append(code)
+
+
+def failure_exit_code() -> int:
+    """
+    The exit code of a run that recorded failures: the cause every one of
+    them shares (6 if each target was not found, 5 if each was refused), or
+    1 if their causes differ or any failure's cause was not recorded.
+    """
+    failures = sum(1 for item in _ITEMS if _is_failure(item))
+    causes = set(_FAILURE_CAUSES)
+    if failures and len(_FAILURE_CAUSES) == failures and len(causes) == 1:
+        return causes.pop()
+    return 1
 
 
 def results_are_streamed() -> None:
@@ -285,6 +311,7 @@ def reset_results() -> None:
     """
     global _DOCUMENT, _HAS_DOCUMENT, _FLUSHED, _STREAMED
     _ITEMS.clear()
+    _FAILURE_CAUSES.clear()
     _DOCUMENT_PARTS.clear()
     _DOCUMENT = None
     _HAS_DOCUMENT = False

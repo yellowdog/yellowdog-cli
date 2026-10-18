@@ -12,6 +12,13 @@ from pathlib import Path
 import pytest
 
 from yellowdog_cli.utils.command_registry import COMMANDS, CommandKind
+from yellowdog_cli.utils.noun_registry import (
+    GENERIC_COMMANDS,
+    NOUN_COMMANDS,
+    NOUNS,
+    REPLACED_BY_VERBS,
+)
+from yellowdog_cli.utils.top_level import SCRIPT_FORMS, yd_form
 
 COMMAND_LIST = Path(__file__).parent.parent / "docs" / "commands.md"
 
@@ -44,7 +51,7 @@ def _command_list() -> str:
 
 def _heading(text: str, heading: str) -> re.Match[str] | None:
     """
-    The heading's line: '### yd-delete'.
+    The heading's line: '### yd list'.
     """
     return re.search(rf"^{re.escape(heading)}$", _outside_fences(text), re.M)
 
@@ -133,8 +140,8 @@ class TestUniversalOptions:
         standalone = {
             n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
         }
-        named = set(re.findall(r"`(yd-[\w-]+)`", self.section.split("\n\n")[1]))
-        assert named == standalone | {"yd-commander", "yd-mcp"}
+        named = set(re.findall(r"`(yd [\w-]+)`", self.section.split("\n\n")[1]))
+        assert named == {yd_form(n) for n in standalone | {"yd-commander", "yd-mcp"}}
 
     def test_preamble_names_the_withheld_options(self):
         assert (
@@ -164,11 +171,23 @@ class TestSharedOptions:
             assert set(aliases) == set(registered.aliases), name
 
 
-DOCUMENTED = sorted(n for n in CLI_COMMANDS if n != "yd-cloudwizard")
+# The registry commands with sections of their own: those no noun replaces
+# (yd-cloudwizard has its own README)
+DOCUMENTED = sorted(
+    n for n in CLI_COMMANDS if n != "yd-cloudwizard" and n not in REPLACED_BY_VERBS
+)
 
 
 STANDALONE_DOCUMENTED = sorted(
     n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
+)
+
+# The noun verbs with sections of their own: every one but a generic command
+# restricted to the noun, which its noun's table points to that command for
+VERBS_DOCUMENTED = sorted(
+    name
+    for name, command in NOUN_COMMANDS.items()
+    if command.internal_name not in GENERIC_COMMANDS
 )
 
 
@@ -177,16 +196,70 @@ class TestCommandSections:
 
     @pytest.mark.parametrize("name", DOCUMENTED)
     def test_every_command_has_a_section(self, name):
-        assert _heading(self.text, f"### {name}") is not None
+        assert _heading(self.text, f"### {yd_form(name)}") is not None
 
     @pytest.mark.parametrize("name", STANDALONE_DOCUMENTED)
     def test_every_standalone_command_has_a_section(self, name):
-        assert _heading(self.text, f"### {name}") is not None
+        assert _heading(self.text, f"### {yd_form(name)}") is not None
 
     @pytest.mark.parametrize("name", DOCUMENTED)
     def test_every_option_bullet_names_an_option_of_the_command(self, name):
-        section = _section(self.text, f"### {name}")
+        section = _section(self.text, f"### {yd_form(name)}")
         command = CLI_COMMANDS[name]
         known = {f for o in command.flat_options() for f in o.flags}
         unknown = [f for f in _bullet_flags(section) if f not in known]
         assert unknown == [], f"{name} bullets name options it does not take: {unknown}"
+
+    def test_no_deprecated_script_has_a_section(self):
+        for name in [*SCRIPT_FORMS, "yd-completion"]:
+            assert _heading(self.text, f"### {name}") is None, name
+
+
+class TestNounSections:
+    text = _command_list()
+
+    @pytest.mark.parametrize("noun", [n.name for n in NOUNS])
+    def test_every_noun_has_a_section_listing_its_verbs(self, noun):
+        section = _section(self.text, f"## yd {noun}")
+        verbs = next(n for n in NOUNS if n.name == noun).verbs
+        rows = [
+            line
+            for line in _outside_fences(section).splitlines()
+            if line.startswith("| ")
+        ]
+        for verb in verbs:
+            assert any(
+                re.match(rf"\| \[?`{re.escape(verb.name)}( <type>)?`", row)
+                for row in rows
+            ), f"{noun}'s table has no row for {verb.name}"
+
+    @pytest.mark.parametrize("name", VERBS_DOCUMENTED)
+    def test_every_verb_has_a_section(self, name):
+        assert _heading(self.text, f"### {name}") is not None
+
+    @pytest.mark.parametrize("name", VERBS_DOCUMENTED)
+    def test_every_option_bullet_names_an_option_the_verb_offers(self, name):
+        section = _section(self.text, f"### {name}")
+        command = NOUN_COMMANDS[name]
+        offered = {
+            f for o in command.flat_options() if command.offers(o) for f in o.flags
+        }
+        unknown = [f for f in _bullet_flags(section) if f not in offered]
+        assert unknown == [], (
+            f"{name} bullets name options it does not offer: {unknown}"
+        )
+
+    def test_the_deprecated_table_names_every_replacement(self):
+        section = _section(self.text, "## Deprecated Commands")
+        for name, forms in SCRIPT_FORMS.items():
+            row = next(
+                (
+                    line
+                    for line in section.splitlines()
+                    if line.startswith(f"| `{name}` |")
+                ),
+                None,
+            )
+            assert row is not None, name
+            for form in forms:
+                assert f"`{form}`" in row, (name, form)

@@ -1,8 +1,9 @@
 """
-Tests for Commander's Resize button: 'yd-resize' on a Worker Pool chosen from a
-list, with the target node count given in the same dialog. The listing is
-stubbed at _capture_json and the command at _run_command_in_subprocess; the
-dialog is the real one, driven inside its real modal loop.
+Tests for Commander's Resize button: 'yd workerpool resize' on a Worker Pool
+chosen from a list, with the target node count given in the same dialog. The
+listing is stubbed at _capture_json and the command at
+_run_command_in_subprocess; the dialog is the real one, driven inside its real
+modal loop.
 """
 
 import sys
@@ -108,7 +109,7 @@ def test_lists_the_active_worker_pools_in_full(window, captured, monkeypatch):
     window._resize_worker_pool_action()
     assert asked == [
         (
-            "yd-list",
+            "yd list",
             ["--json"],
             ["worker-pools", "--active-only", "--details", "-t", "pwt"],
         )
@@ -139,7 +140,7 @@ def test_resizing_runs_yd_resize_with_the_ydid_and_count(window, captured, monke
         window, monkeypatch, commander_dialogs.ACCEPT, choose=0, nodes=5
     )
     window._resize_worker_pool_action()
-    assert captured == [("yd-resize", ["-y", OLDER["id"], "5"])]
+    assert captured == [("yd workerpool resize", ["-y", OLDER["id"], "5"])]
 
 
 def test_the_newest_is_chosen_with_its_own_count_and_bounds(
@@ -266,7 +267,7 @@ def test_the_panel_3_checkboxes_do_not_apply(window, captured, monkeypatch):
         window, monkeypatch, commander_dialogs.ACCEPT, nodes=5
     )
     window._resize_worker_pool_action()
-    assert captured == [("yd-resize", ["-y", OLDER["id"], "5"])]
+    assert captured == [("yd workerpool resize", ["-y", OLDER["id"], "5"])]
 
 
 def test_yes_still_shows_the_dialog(qapp, monkeypatch):
@@ -283,7 +284,7 @@ def test_yes_still_shows_the_dialog(qapp, monkeypatch):
         window, monkeypatch, commander_dialogs.ACCEPT, nodes=2
     )
     window._resize_worker_pool_action()
-    assert calls == [("yd-resize", ["-y", OLDER["id"], "2"])]
+    assert calls == [("yd workerpool resize", ["-y", OLDER["id"], "2"])]
 
 
 # --- Room for the text -----------------------------------------------------------
@@ -402,9 +403,10 @@ def test_when_every_pool_is_awaiting_nodes_no_dialog_opens(
 def test_a_pool_that_starts_awaiting_nodes_after_the_listing_reports_the_error(
     qapp, monkeypatch
 ):
-    # The listing said it could be resized; by the time 'yd-resize' ran it was
-    # awaiting nodes. Nothing Commander can check prevents that, so the platform's
-    # refusal has to reach the output window, from a real child process.
+    # The listing said it could be resized; by the time 'yd workerpool resize'
+    # ran it was awaiting nodes. Nothing Commander can check prevents that, so
+    # the platform's refusal has to reach the output window, from a real child
+    # process.
     window = make_window()
     listed(window, monkeypatch, [OLDER])
     real_run = window._run_command_in_subprocess
@@ -437,7 +439,7 @@ def test_a_pool_that_starts_awaiting_nodes_after_the_listing_reports_the_error(
         loop.exec()
     QApplication.processEvents()
 
-    assert ran == [("yd-resize", ["-y", OLDER["id"], "5"])]
+    assert ran == [("yd workerpool resize", ["-y", OLDER["id"], "5"])]
     assert AWAITING_ERROR in log(window)
 
 

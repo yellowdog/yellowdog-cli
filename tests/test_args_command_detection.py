@@ -27,8 +27,8 @@ class TestCommandDetectionUsesBasename:
         ],
     )
     def test_command_names_in_path_ignored(self, poisoned_path):
-        # Would previously register download/list/create/submit arguments
-        # (including conflicting positionals) and fail to parse
+        # Matching on the whole path would register download/list/create/submit
+        # arguments (including conflicting positionals) and fail to parse
         parser = _make_parser(poisoned_path)
         assert parser.worker_pool_name is None
 
@@ -68,7 +68,7 @@ class TestExplicitConstruction:
     def test_validators_run(self):
         with pytest.raises(SystemExit):
             CLIParser(command="yd-cancel", argv=["literal-name", "glob-*"])
-        # '--json' no longer requires '--dry-run' on yd-delete: this must
+        # '--json' does not require '--dry-run' on yd-delete: this must
         # parse rather than raise.
         assert (
             CLIParser(command="yd-delete", argv=["--json", "some/path"]).json_output

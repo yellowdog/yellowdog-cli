@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from typing import TypeVar
 
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
@@ -58,6 +59,7 @@ def process_each(
             raise
         except Exception as e:
             print_error(f"Failed to {verb} {describe(item)}: {e}")
+            advise(e)
             record(item, "failed", str(e))
             failures.append(e)
             if classify(e) in SESSION_FAILURES:

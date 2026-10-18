@@ -23,15 +23,27 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
 )
 from yellowdog_cli.utils.entity_utils import (
+    filter_phrase,
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
+    namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
-from yellowdog_cli.utils.results import json_requested, record_action
+from yellowdog_cli.utils.results import (
+    json_requested,
+    record_action,
+    record_failure_cause,
+)
 from yellowdog_cli.utils.work_targets import (
     MalformedTarget,
     TargetNotFound,
@@ -99,8 +111,15 @@ def _record(
     outcome: str,
     error: str | None = None,
     entity_type: str = ET_TASKS,
+    cause: int = ExitCode.FAILURE,
 ) -> None:
+    """
+    Record an outcome for '--json'; a failure with its cause, so that a run
+    whose failures share one exits with it (results.failure_exit_code()).
+    """
     record_action(entity, entity_type, "abort", outcome, error)
+    if outcome == "failed":
+        record_failure_cause(cause)
 
 
 def _label(entity: object) -> str:
@@ -159,7 +178,8 @@ def _run_units(units: list[_Unit], run: _Run) -> None:
                 if entity in run.handled:  # a Task ID already recorded
                     continue
                 print_error(f"Unable to abort Tasks for '{_label(entity)}': {e}")
-                _record(entity, "failed", str(e), entity_type)
+                advise(e)
+                _record(entity, "failed", str(e), entity_type, classify(e))
                 if entity_type == ET_TASKS:
                     run.failed += 1
             if classify(e) not in SESSION_FAILURES:
@@ -248,9 +268,9 @@ def _interactive_units(run: _Run) -> list[_Unit]:
     The Work Requirements in the namespace and tag the user selects.
     """
     print_info(
-        "Finding active Work Requirements in "
-        f"namespace '{run.ctx.config.namespace}' with tags "
-        f"including '{run.ctx.config.name_tag}'"
+        "Finding active Work Requirements "
+        f"{namespace_scope(run.ctx.client, run.ctx.config.namespace)}"
+        + filter_phrase("with tags including '{}'", run.ctx.config.name_tag)
     )
 
     # The Work Requirements, and then their Tasks, are chosen from lists,
@@ -397,7 +417,7 @@ def _abort_task_group_by_id(task_group_id: str, run: _Run) -> None:
 
 def _not_found(what: str, entity: object, entity_type: str) -> None:
     print_error(f"{what} not found")
-    _record(entity, "failed", "not found", entity_type)
+    _record(entity, "failed", "not found", entity_type, ExitCode.NOT_FOUND)
 
 
 def _abort_named_target(target: str, run: _Run) -> None:
@@ -441,7 +461,8 @@ def _abort_tasks_by_id(task_ids: list[str], run: _Run) -> None:
         except Exception as e:
             error = "not found" if is_http_not_found(e) else str(e)
             print_error(f"Unable to abort Task '{task_id}': {error}")
-            _record(task_id, "failed", error)
+            advise(e)
+            _record(task_id, "failed", error, cause=classify(e))
             run.failed += 1
             run.handled.add(task_id)
             _stop_if_session_failure(e, [*tasks, *task_ids[index + 1 :]], run)
@@ -510,7 +531,8 @@ def _abort_tasks(
             run.ctx.client.work_client.cancel_task(task, abort=True)
         except Exception as e:
             print_error(f"Unable to abort Task '{task.name}': {e}")
-            _record(task, "failed", str(e))
+            advise(e)
+            _record(task, "failed", str(e), cause=classify(e))
             run.failed += 1
             _stop_if_session_failure(e, tasks[index + 1 :], run)
             continue

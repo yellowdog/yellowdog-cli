@@ -1,6 +1,6 @@
 """
 Tests for selecting which objects a Commander deletion removes: parsing the
-enumeration, rendering object rows, and the paths that reach yd-delete.
+enumeration, rendering object rows, and the paths that reach yd data delete.
 """
 
 import pytest
@@ -86,7 +86,7 @@ def test_capture_objects_parses_enumeration(window, monkeypatch):
             {"name": "pyex-001", "path": "S3:b/pfx/pyex-001", "isDir": False}
         ],
     )
-    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+    assert window._capture_dry_run_objects("yd data delete", ["-R", "pyex*"]) == [
         objects()[0]
     ]
 
@@ -102,7 +102,7 @@ def _download_record(source: str, match: str) -> dict:
 
 
 def test_capture_objects_groups_download_records_into_items(window, monkeypatch):
-    # yd-download records one row per file; the chooser offers the top-level
+    # yd data download records one row per file; the chooser offers the top-level
     # items they belong to. Delete's parser would reject these rows (no
     # 'path'), so a swapped dispatch fails here.
     seen: list = []
@@ -116,12 +116,12 @@ def test_capture_objects_groups_download_records_into_items(window, monkeypatch)
         ]
 
     monkeypatch.setattr(window, "_capture_dry_run_json", enumerate_files)
-    assert window._capture_dry_run_objects("yd-download", ["pyex*"]) == objects()
-    assert seen == ["yd-download"]
+    assert window._capture_dry_run_objects("yd data download", ["pyex*"]) == objects()
+    assert seen == ["yd data download"]
 
 
 def test_capture_objects_does_not_group_delete_records(window, monkeypatch):
-    # yd-delete's rows are per item already, and carry no 'match'
+    # yd data delete's rows are per item already, and carry no 'match'
     monkeypatch.setattr(
         window,
         "_capture_dry_run_json",
@@ -129,7 +129,7 @@ def test_capture_objects_does_not_group_delete_records(window, monkeypatch):
             {"path": "S3:b/pfx/pyex-logs", "name": "pyex-logs/", "isDir": True}
         ],
     )
-    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+    assert window._capture_dry_run_objects("yd data delete", ["-R", "pyex*"]) == [
         objects()[1]
     ]
 
@@ -158,7 +158,7 @@ def test_capture_objects_logs_when_download_records_lack_matches(window, monkeyp
         ],
     )
     window.log_output.setPlainText("")
-    assert window._capture_dry_run_objects("yd-download", ["pyex*"]) is None
+    assert window._capture_dry_run_objects("yd data download", ["pyex*"]) is None
     assert "did not include paths" in window.log_output.toPlainText()
 
 
@@ -168,7 +168,7 @@ def test_capture_objects_none_on_enumeration_failure(window, monkeypatch):
         "_capture_dry_run_json",
         lambda command, extra_args=None, failures_recorded=False: None,
     )
-    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None
+    assert window._capture_dry_run_objects("yd data delete", ["-R", "pyex*"]) is None
 
 
 def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
@@ -180,7 +180,7 @@ def test_capture_objects_logs_when_paths_missing(window, monkeypatch):
         ],
     )
     window.log_output.setPlainText("")
-    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) is None
+    assert window._capture_dry_run_objects("yd data delete", ["-R", "pyex*"]) is None
     assert "did not include paths" in window.log_output.toPlainText()
 
 
@@ -218,9 +218,9 @@ def drive_dialog(window, monkeypatch, choose: str | None, uncheck: tuple = ()):
     'choose' — 'yes', 'skip', or None to dismiss without pressing anything.
 
     Delegates to commander_dialogs, which lets the dialog run its REAL exec() with
-    the interaction queued into it. This used to replace exec() with a stub, which
-    is how a button box that was never connected went unnoticed: with exec() faked,
-    a click that did nothing looked identical to one that worked.
+    the interaction queued into it. With exec() replaced by a stub, a button box
+    that is never connected would go unnoticed: a click that does nothing looks
+    identical to one that works.
     """
     commander_dialogs.drive_confirmation(
         window,
@@ -245,7 +245,7 @@ def test_unticked_object_is_not_deleted(window, captured, monkeypatch):
     window._discovery.tag = "pyex"
     window._delete_objects_action()
     command, args, _kwargs = captured[0]
-    assert (command, args) == ("yd-delete", ["-Ry", "S3:b/pfx/pyex-logs"])
+    assert (command, args) == ("yd data delete", ["-Ry", "S3:b/pfx/pyex-logs"])
 
 
 def test_delete_targets_only_the_selected_paths(window, captured, monkeypatch):
@@ -260,7 +260,7 @@ def test_delete_targets_only_the_selected_paths(window, captured, monkeypatch):
     window._delete_objects_action()
     command, args, _kwargs = captured[0]
     # the glob is replaced by the chosen paths, not appended to them
-    assert (command, args) == ("yd-delete", ["-Ry", "S3:b/pfx/pyex-logs"])
+    assert (command, args) == ("yd data delete", ["-Ry", "S3:b/pfx/pyex-logs"])
     assert "pyex*" not in args
 
 
@@ -362,7 +362,7 @@ def test_delete_refuses_a_selection_with_glob_metacharacters(
     window, captured, monkeypatch
 ):
     # 'a[1].txt' is a legitimate object name, but fnmatch treats '[1]' as a
-    # character class, so 'yd-delete' would expand it and delete the sibling
+    # character class, so 'yd data delete' would expand it and delete the sibling
     # 'a1.txt' instead of the object the user actually ticked.
     unsafe_objects = [
         ObjectSummary(path="S3:b/pfx/a[1].txt", name="a[1].txt", is_dir=False),
@@ -427,7 +427,7 @@ def test_delete_runs_when_selected_paths_have_no_glob_metacharacters(
 
 
 def test_capture_objects_offers_only_what_would_be_deleted(window, monkeypatch):
-    # A path already gone is recorded 'skipped' by yd-delete's dry run, and is
+    # A path already gone is recorded 'skipped' by yd data delete's dry run, and is
     # nothing to offer
     monkeypatch.setattr(
         window,
@@ -447,6 +447,14 @@ def test_capture_objects_offers_only_what_would_be_deleted(window, monkeypatch):
             },
         ],
     )
-    assert window._capture_dry_run_objects("yd-delete", ["-R", "pyex*"]) == [
+    assert window._capture_dry_run_objects("yd data delete", ["-R", "pyex*"]) == [
         objects()[0]
+    ]
+
+
+def test_parse_download_summaries_names_an_item_by_its_own_name():
+    # A ':' in the name is the name's; the remote's is split off first
+    rows = [_download_record("loc:a:b.txt", "loc:a:b.txt")]
+    assert parse_download_summaries(rows) == [
+        ObjectSummary(path="loc:a:b.txt", name="a:b.txt", is_dir=False)
     ]

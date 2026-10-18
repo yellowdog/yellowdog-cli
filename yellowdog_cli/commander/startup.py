@@ -1,5 +1,5 @@
 """
-What yd-commander was asked to start with. Kept free of PyQt6, like
+What yd commander was asked to start with. Kept free of PyQt6, like
 launcher.py, which builds a StartupSettings before any Qt import is attempted;
 commander.py then applies it to the window.
 """

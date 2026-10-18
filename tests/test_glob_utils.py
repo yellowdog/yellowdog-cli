@@ -10,10 +10,38 @@ from yellowdog_cli.utils.dataclient.operations import is_glob
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     filter_summaries_by_name_glob,
+    namespace_scope,
     resolve_name_glob,
 )
-from yellowdog_cli.utils.glob_utils import contains_glob_chars, glob_search_prefix
+from yellowdog_cli.utils.glob_utils import (
+    contains_glob_chars,
+    glob_literal_hint,
+    glob_search_prefix,
+)
+
+# A client the scope phrases are given; what the Application can read comes
+# from the 'readable' fixture's stand-in for its details
+CLIENT = object()
+
+
+@pytest.fixture
+def readable(monkeypatch):
+    """
+    Set the namespaces the Application can read: None for all of them, else
+    the list of those it can.
+    """
+    import yellowdog_cli.utils.entity_utils as eu
+
+    def set_readable(namespaces: list[str] | None):
+        details = SimpleNamespace(
+            allNamespacesReadable=namespaces is None,
+            readableNamespaces=namespaces or [],
+        )
+        monkeypatch.setattr(eu, "get_application_details", lambda client: details)
+
+    return set_readable
 
 
 @pytest.mark.parametrize(
@@ -123,15 +151,34 @@ def test_expand_name_globs_dedupes_and_filters():
             "yd-demo",
             "matching 'yd-demo/wp-*', 'otherns/prod-*'",
         ),
+        # No namespace searches them all, which the phrase must say rather
+        # than quoting an empty namespace.
+        (["wp-*"], "", "in all namespaces matching 'wp-*'"),
+        (
+            ["wp-*", "otherns/prod-*"],
+            "",
+            "matching 'wp-*' in all namespaces, 'otherns/prod-*'",
+        ),
     ],
 )
-def test_describe_glob_scope(patterns, default_namespace, expected):
-    assert describe_glob_scope(patterns, default_namespace) == expected
+def test_describe_glob_scope(patterns, default_namespace, expected, readable):
+    readable(None)  # the Application can read every namespace
+    assert describe_glob_scope(CLIENT, patterns, default_namespace) == expected
+
+
+def test_describe_glob_scope_names_the_namespaces_readable(readable):
+    readable(["a", "b"])
+    assert describe_glob_scope(CLIENT, ["wp-*"], "") == (
+        "in namespaces 'a', 'b' matching 'wp-*'"
+    )
+    assert describe_glob_scope(CLIENT, ["wp-*", "c/x-*"], "") == (
+        "matching 'wp-*' in namespaces 'a', 'b', 'c/x-*'"
+    )
 
 
 def test_describe_glob_scope_rejects_wildcard_namespace():
     with pytest.raises(ValueError, match="namespace"):
-        describe_glob_scope(["*/proj-1"], "yd-demo")
+        describe_glob_scope(CLIENT, ["*/proj-1"], "yd-demo")
 
 
 def test_get_compute_requirement_summaries_passes_name():
@@ -151,3 +198,53 @@ def test_get_compute_requirement_summaries_passes_name():
         eu.get_compute_requirement_summaries(client, namespace="ns", name="proj-")
     assert captured["name"] == "proj-"
     assert captured["namespaces"] == ["ns"]
+
+
+@pytest.mark.parametrize(
+    "namespace, readable_namespaces, expected",
+    [
+        ("yd-demo", ["a", "b"], "in namespace 'yd-demo'"),
+        # No namespace is every namespace the Application can read, as
+        # search_namespaces() scopes the search: all of them, or those named
+        ("", None, "in all namespaces"),
+        (None, None, "in all namespaces"),
+        ("", ["a", "b"], "in namespaces 'a', 'b'"),
+        ("", ["a"], "in namespace 'a'"),
+    ],
+)
+def test_namespace_scope(namespace, readable_namespaces, expected, readable):
+    readable(readable_namespaces)
+    assert namespace_scope(CLIENT, namespace) == expected
+
+
+def test_namespace_scope_with_none_readable_is_unscoped(readable):
+    # The search is then unscoped, for the Platform's 403 to name the
+    # permission missing
+    readable([])
+    assert namespace_scope(CLIENT, "") == "in all namespaces"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [("pwt", " with 'pwt' in tag"), ("", ""), (None, "")],
+)
+def test_filter_phrase_is_empty_for_an_empty_filter(value, expected):
+    assert filter_phrase("with '{}' in tag", value) == expected
+
+
+@pytest.mark.parametrize(
+    "pattern, hint",
+    [
+        ("row-*", "row-"),
+        ("*-1", "-1"),
+        ("a*bcd?e", "bcd"),
+        ("row-[12]*", "row-"),
+        ("[ab]c", "c"),
+        ("first-1", "first-1"),
+        ("*", ""),
+        ("*?*", ""),
+    ],
+)
+def test_the_literal_hint_is_the_longest_literal_run(pattern, hint):
+    # A substring every name the glob matches contains, outside any '[...]'
+    assert glob_literal_hint(pattern) == hint

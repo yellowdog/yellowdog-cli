@@ -360,3 +360,7 @@ PROP_TRAITS = "traits"
 PROP_TYPE = "type"
 PROP_UNITS = "units"
 PROP_USERNAME = "username"
+
+# The properties a Task may take its Task Data from, at any level; a level
+# setting any of them sets its Task Data
+TASK_DATA_PROPERTIES = (TASK_DATA, TASK_DATA_FILE, TASK_DATA_FILES)

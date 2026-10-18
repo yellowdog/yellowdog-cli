@@ -7,6 +7,7 @@ command line deterministically. Needs neither the 'mcp' extra nor the SDK.
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -40,12 +41,46 @@ TOOLS = {t.name: t for t in build_tools()}
 class TestCatalogue:
     def test_one_tool_per_tool_command(self):
         expected = {
-            n.replace("-", "_")
-            for n, c in COMMANDS.items()
+            tools_module.tool_name(c)
+            for c in tools_module.tool_commands()
             if c.tool is not ToolKind.NONE
         }
         assert set(TOOLS) == expected
         assert "yd_help" not in TOOLS
+
+    def test_the_noun_verbs_replace_the_old_commands_tools(self):
+        # One tool per noun verb that replaces a command, named for it; the
+        # command it replaces has none, and a noun's list/show/follow/wait is left
+        # to the generic command's own tool
+        assert "yd_workrequirement_submit" in TOOLS
+        assert "yd_submit" not in TOOLS
+        assert {
+            "yd_computerequirement_terminate",
+            "yd_instance_terminate",
+            "yd_node_terminate",
+        } <= set(TOOLS)
+        assert "yd_terminate" not in TOOLS
+        assert "yd_workrequirement_list" not in TOOLS
+        assert {"yd_list", "yd_show", "yd_follow", "yd_wait"} <= set(TOOLS)
+
+    def test_a_noun_verbs_tool_runs_the_noun(self):
+        tool = TOOLS["yd_instance_terminate"]
+        assert tool.program == "yd instance terminate"
+        # Run as typed under 'yd', so its usage and errors name 'yd list'
+        assert TOOLS["yd_list"].program == "yd list"
+
+    def test_a_noun_verbs_hidden_options_are_no_arguments(self):
+        properties = TOOLS["yd_instance_terminate"].input_schema["properties"]
+        assert "namespace" not in properties and "interactive" not in properties
+        assert (
+            "compute_reqs_instances_or_nodes"
+            in (TOOLS["yd_instance_terminate"].input_schema["required"])
+        )
+        # A verb's fixed argument is no argument either
+        assert (
+            "cloud_info_type"
+            not in (TOOLS["yd_cloudinfo_prices"].input_schema["properties"])
+        )
 
     def test_names_follow_the_sdk_rule(self):
         import re
@@ -78,30 +113,33 @@ class TestCatalogue:
             "readOnlyHint": True,
             "openWorldHint": True,
         }
-        assert TOOLS["yd_submit"].annotations == {
+        assert TOOLS["yd_workrequirement_submit"].annotations == {
             "destructiveHint": False,
             "openWorldHint": True,
         }
-        assert TOOLS["yd_cancel"].annotations == {
+        assert TOOLS["yd_workrequirement_cancel"].annotations == {
             "destructiveHint": True,
             "openWorldHint": True,
         }
 
     def test_descriptions(self):
-        assert TOOLS["yd_submit"].description == COMMANDS["yd-submit"].tool_description
-        assert TOOLS["yd_abort"].description.startswith("Abort running Tasks")
-        assert "yd-abort" in TOOLS["yd_abort"].description
-        assert TOOLS["yd_abort"].title == "Abort running Tasks"
+        assert (
+            TOOLS["yd_workrequirement_submit"].description
+            == COMMANDS["yd-submit"].tool_description
+        )
+        assert TOOLS["yd_task_abort"].description.startswith("Abort running Tasks")
+        assert "yd task abort" in TOOLS["yd_task_abort"].description
+        assert TOOLS["yd_task_abort"].title == "Abort running Tasks"
 
     def test_the_download_description_names_the_prefix(self):
         # remote_paths are resolved under the prefix, which defaults to
         # '<namespace>/<tag>' (load_config_data_client()), and no_prefix (a
         # real property of the tool) drops it, leaving the bucket root
-        description = TOOLS["yd_download"].description
+        description = TOOLS["yd_data_download"].description
         assert "defaults to '<namespace>/<tag>'" in description
         assert "bucket root" in description
         assert "no_prefix" in description
-        assert "no_prefix" in TOOLS["yd_download"].input_schema["properties"]
+        assert "no_prefix" in TOOLS["yd_data_download"].input_schema["properties"]
         assert "'<tag>*'" not in description
 
     def test_every_schema_is_closed_and_has_a_timeout(self):
@@ -136,15 +174,19 @@ class TestSchemaMapping:
         return TOOLS[tool].input_schema["properties"][name]
 
     def test_store_true_is_a_boolean(self):
-        assert self._prop("yd_cancel", "abort") == {
+        assert self._prop("yd_workrequirement_cancel", "abort") == {
             "type": "boolean",
             "description": COMMANDS["yd-cancel"].option_named("--abort").kwargs["help"],
         }
-        assert "abort" not in TOOLS["yd_cancel"].input_schema.get("required", [])
+        assert "abort" not in TOOLS["yd_workrequirement_cancel"].input_schema.get(
+            "required", []
+        )
 
     def test_int_is_an_integer_and_positive_int_has_a_minimum(self):
         assert self._prop("yd_doctor", "timeout")["type"] == "integer"
-        assert self._prop("yd_resize", "worker_pool_size")["type"] == "integer"
+        assert (
+            self._prop("yd_workerpool_resize", "worker_pool_size")["type"] == "integer"
+        )
         positive = next(
             (t, o)
             for t in TOOLS.values()
@@ -156,28 +198,30 @@ class TestSchemaMapping:
 
     def test_non_negative_int_has_a_minimum_of_zero(self):
         # A Worker Pool or Compute Requirement can be resized to nothing
-        assert self._prop("yd_resize", "worker_pool_size")["minimum"] == 0
+        assert self._prop("yd_workerpool_resize", "worker_pool_size")["minimum"] == 0
 
     def test_strings_lists_and_appends(self):
-        assert self._prop("yd_cancel", "namespace")["type"] == "string"
-        assert self._prop("yd_cancel", "work_requirements") == {
+        assert self._prop("yd_workrequirement_cancel", "namespace")["type"] == "string"
+        assert self._prop("yd_workrequirement_cancel", "work_requirements") == {
             "type": "array",
             "items": {"type": "string"},
             "description": COMMANDS["yd-cancel"]
             .option_named("work_requirements")
             .kwargs["help"],
         }
-        assert self._prop("yd_cancel", "variable")["type"] == "array"  # action='append'
+        assert (
+            self._prop("yd_workrequirement_cancel", "variable")["type"] == "array"
+        )  # action='append'
 
     def test_choices_and_defaults(self):
-        sort = self._prop("yd_cancel", "sort")
+        sort = self._prop("yd_workrequirement_cancel", "sort")
         assert sort["type"] == "array"
         assert sort["items"]["enum"] == ["name", "created", "status", "namespace"]
         assert sort["default"] == ["name"]
         assert (sort["minItems"], sort["uniqueItems"]) == (1, True)
 
     def test_cloud_info_sort_offers_its_own_keys(self):
-        sort = self._prop("yd_cloud_info", "sort")
+        sort = self._prop("yd_cloudinfo_prices", "sort")
         assert "spot" in sort["items"]["enum"]
         assert "created" not in sort["items"]["enum"]
 
@@ -194,22 +238,26 @@ class TestSchemaMapping:
 
     def test_required_positionals(self):
         assert (
-            "remote_paths" in TOOLS["yd_download"].input_schema["required"]
+            "remote_paths" in TOOLS["yd_data_download"].input_schema["required"]
         )  # nargs='+'
         assert "entity_type" in TOOLS["yd_list"].input_schema["required"]  # nargs=None
         assert "yellowdog_ids" in TOOLS["yd_show"].input_schema["required"]  # '+'
         assert "yellowdog_ids" in TOOLS["yd_wait"].input_schema["required"]  # '+'
         # nargs='?' for --which-rclone alone, which no tool offers
-        assert "src_path" in TOOLS["yd_copy"].input_schema["required"]
-        assert "dst_path" in TOOLS["yd_copy"].input_schema["required"]
+        assert "src_path" in TOOLS["yd_data_copy"].input_schema["required"]
+        assert "dst_path" in TOOLS["yd_data_copy"].input_schema["required"]
 
     def test_exclusive_pair_is_refused_by_schema(self):
         assert {"not": {"required": ["destination", "into"]}} in TOOLS[
-            "yd_download"
+            "yd_data_download"
         ].input_schema["allOf"]
 
     def test_specification_arguments(self):
-        for name in ("yd_submit", "yd_provision", "yd_instantiate"):
+        for name in (
+            "yd_workrequirement_submit",
+            "yd_workerpool_provision",
+            "yd_computerequirement_instantiate",
+        ):
             prop = TOOLS[name].input_schema["properties"]["specification"]
             assert prop["oneOf"] == [{"type": "string"}, {"type": "object"}]
             assert TOOLS[name].specification_argument == "specification"
@@ -217,7 +265,7 @@ class TestSchemaMapping:
                 "work_requirement_file_positional"
                 not in TOOLS[name].input_schema["properties"]
             )
-        for name in ("yd_create", "yd_remove"):
+        for name in ("yd_resource_create", "yd_resource_remove"):
             prop = TOOLS[name].input_schema["properties"]["specifications"]
             assert prop["type"] == "array"
             assert prop["items"]["oneOf"] == [{"type": "string"}, {"type": "object"}]
@@ -285,7 +333,7 @@ class TestFixedArgs:
 class TestToArgv:
     def test_every_argument_kind(self, tmp_path):
         argv, files = to_argv(
-            TOOLS["yd_cancel"],
+            TOOLS["yd_workrequirement_cancel"],
             {
                 "abort": True,
                 "sort": ["status", "created"],
@@ -310,7 +358,9 @@ class TestToArgv:
 
     def test_a_false_boolean_and_an_absent_argument_add_nothing(self, tmp_path):
         argv, _ = to_argv(
-            TOOLS["yd_cancel"], {"abort": False, "all_in_scope": True}, str(tmp_path)
+            TOOLS["yd_workrequirement_cancel"],
+            {"abort": False, "all_in_scope": True},
+            str(tmp_path),
         )
         assert argv == []
 
@@ -327,13 +377,15 @@ class TestToArgv:
     def test_a_flag_as_a_value_stays_a_value(self, tmp_path):
         # A value is one argv entry joined to its long flag, so argparse
         # cannot take a value that looks like a flag as that flag: as two
-        # entries, '--tag --debug' on a nargs='?' option turned --debug on
+        # entries, '--tag --debug' on a nargs='?' option would turn --debug on
         argv, _ = to_argv(
-            TOOLS["yd_cancel"], {"tag": "--debug", "all_in_scope": True}, str(tmp_path)
+            TOOLS["yd_workrequirement_cancel"],
+            {"tag": "--debug", "all_in_scope": True},
+            str(tmp_path),
         )
         assert argv == ["--tag=--debug"]
         argv, _ = to_argv(
-            TOOLS["yd_cancel"],
+            TOOLS["yd_workrequirement_cancel"],
             {"variable": ["--yes"], "all_in_scope": True},
             str(tmp_path),
         )
@@ -341,7 +393,9 @@ class TestToArgv:
 
     def test_a_specification_path_is_passed_as_given(self, tmp_path):
         argv, files = to_argv(
-            TOOLS["yd_submit"], {"specification": "wr.json"}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"],
+            {"specification": "wr.json"},
+            str(tmp_path),
         )
         assert argv == ["--", "wr.json"] and files == []
 
@@ -350,7 +404,7 @@ class TestToArgv:
     ):
         spec = {"name": "wr", "taskGroups": []}
         argv, files = to_argv(
-            TOOLS["yd_submit"], {"specification": spec}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"], {"specification": spec}, str(tmp_path)
         )
         assert len(files) == 1 and files[0].parent == tmp_path
         assert files[0].name.startswith(".yd-mcp-") and files[0].suffix == ".json"
@@ -359,7 +413,7 @@ class TestToArgv:
 
     def test_several_specifications_mixed(self, tmp_path):
         argv, files = to_argv(
-            TOOLS["yd_create"],
+            TOOLS["yd_resource_create"],
             {"specifications": ["a.json", {"resource": "Keyring", "name": "k"}]},
             str(tmp_path),
         )
@@ -368,27 +422,33 @@ class TestToArgv:
 
     def test_an_unknown_argument_is_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError, match="nope"):
-            to_argv(TOOLS["yd_cancel"], {"nope": 1}, str(tmp_path))
+            to_argv(TOOLS["yd_workrequirement_cancel"], {"nope": 1}, str(tmp_path))
 
     def test_a_wrong_type_is_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError, match="abort"):
-            to_argv(TOOLS["yd_cancel"], {"abort": "yes"}, str(tmp_path))
+            to_argv(TOOLS["yd_workrequirement_cancel"], {"abort": "yes"}, str(tmp_path))
         with pytest.raises(ToolArgumentError, match="work_requirements"):
-            to_argv(TOOLS["yd_cancel"], {"work_requirements": "wr-1"}, str(tmp_path))
+            to_argv(
+                TOOLS["yd_workrequirement_cancel"],
+                {"work_requirements": "wr-1"},
+                str(tmp_path),
+            )
         for sort in ("created", ["size"], [], ["name", "name"]):
             with pytest.raises(ToolArgumentError, match="sort"):
-                to_argv(TOOLS["yd_cancel"], {"sort": sort}, str(tmp_path))
+                to_argv(
+                    TOOLS["yd_workrequirement_cancel"], {"sort": sort}, str(tmp_path)
+                )
 
     def test_a_missing_required_argument_is_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError, match="remote_paths"):
-            to_argv(TOOLS["yd_download"], {}, str(tmp_path))
+            to_argv(TOOLS["yd_data_download"], {}, str(tmp_path))
 
     def test_both_of_an_exclusive_pair_are_refused(self, tmp_path):
         with pytest.raises(
             ToolArgumentError, match=r"destination.*into|into.*destination"
         ):
             to_argv(
-                TOOLS["yd_download"],
+                TOOLS["yd_data_download"],
                 {"remote_paths": ["x"], "destination": "a", "into": "b"},
                 str(tmp_path),
             )
@@ -396,7 +456,7 @@ class TestToArgv:
     def test_nothing_is_written_when_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError):
             to_argv(
-                TOOLS["yd_create"],
+                TOOLS["yd_resource_create"],
                 {"specifications": [{"resource": "Keyring"}], "nope": 1},
                 str(tmp_path),
             )
@@ -447,13 +507,15 @@ class TestUnknownOptionKinds:
 class TestPositionalSeparator:
     def test_a_dash_led_positional_follows_the_separator(self, tmp_path):
         argv, _ = to_argv(
-            TOOLS["yd_download"], {"remote_paths": ["-weird"]}, str(tmp_path)
+            TOOLS["yd_data_download"], {"remote_paths": ["-weird"]}, str(tmp_path)
         )
         assert argv == ["--", "-weird"]
 
     def test_no_positionals_no_separator(self, tmp_path):
         argv, _ = to_argv(
-            TOOLS["yd_cancel"], {"abort": True, "all_in_scope": True}, str(tmp_path)
+            TOOLS["yd_workrequirement_cancel"],
+            {"abort": True, "all_in_scope": True},
+            str(tmp_path),
         )
         assert argv == ["-a"]
 
@@ -472,10 +534,14 @@ class TestEntityTypeDescription:
 class TestInlineSpecificationFiles:
     def test_two_calls_write_distinct_files(self, tmp_path):
         _, first = to_argv(
-            TOOLS["yd_submit"], {"specification": {"name": "a"}}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"],
+            {"specification": {"name": "a"}},
+            str(tmp_path),
         )
         _, second = to_argv(
-            TOOLS["yd_submit"], {"specification": {"name": "b"}}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"],
+            {"specification": {"name": "b"}},
+            str(tmp_path),
         )
         assert first[0] != second[0]
         assert json.loads(first[0].read_text()) == {"name": "a"}
@@ -483,7 +549,7 @@ class TestInlineSpecificationFiles:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks and modes")
     def test_a_pre_placed_symlink_is_not_followed(self, tmp_path):
-        # Symlinks at every name the old '<pid>-<n>' scheme could have chosen
+        # Symlinks at every name a predictable '<pid>-<n>' scheme could choose
         # in this run: an exclusive create at a random name follows none
         target = tmp_path / "target.txt"
         target.write_text("untouched")
@@ -491,7 +557,9 @@ class TestInlineSpecificationFiles:
             link = tmp_path / f".yd-mcp-{os.getpid()}-{index}.json"
             link.symlink_to(target)
         _, files = to_argv(
-            TOOLS["yd_submit"], {"specification": {"name": "a"}}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"],
+            {"specification": {"name": "a"}},
+            str(tmp_path),
         )
         assert not files[0].is_symlink()
         assert json.loads(files[0].read_text()) == {"name": "a"}
@@ -500,7 +568,9 @@ class TestInlineSpecificationFiles:
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
     def test_the_file_is_readable_by_the_owner_only(self, tmp_path):
         _, files = to_argv(
-            TOOLS["yd_submit"], {"specification": {"name": "a"}}, str(tmp_path)
+            TOOLS["yd_workrequirement_submit"],
+            {"specification": {"name": "a"}},
+            str(tmp_path),
         )
         assert stat.S_IMODE(files[0].stat().st_mode) & 0o077 == 0
 
@@ -519,7 +589,7 @@ class TestInlineSpecificationFiles:
         monkeypatch.setattr(tools_module, "_write_specification", failing)
         with pytest.raises(OSError, match="disk full"):
             to_argv(
-                TOOLS["yd_create"],
+                TOOLS["yd_resource_create"],
                 {"specifications": [{"resource": "Keyring"}, {"resource": "Keyring"}]},
                 str(tmp_path),
             )
@@ -576,14 +646,15 @@ def test_a_launch_value_beginning_with_a_dash_stays_a_value():
 class TestSpecificationFileExclusionsAreTheirCommandsOwn:
     """
     The specification-file options are excluded from the commands they are
-    files on: by name alone, yd_resize lost '--compute-requirement' (a flag
-    saying the name is a Compute Requirement's) and yd_nodeaction lost
-    '--worker-pool' (the target Worker Pool's name).
+    files on: excluded by name alone, yd_workerpool_resize would lose
+    '--compute-requirement' (a flag saying the name is a Compute Requirement's)
+    and yd_node_action would lose '--worker-pool' (the target Worker Pool's
+    name).
     """
 
     @pytest.mark.parametrize(
         "tool, name",
-        [("yd_resize", "compute_requirement"), ("yd_nodeaction", "worker_pool")],
+        [("yd_node_action", "worker_pool")],
     )
     def test_a_like_named_option_that_is_no_file_is_offered(self, tool, name):
         assert name in TOOLS[tool].input_schema["properties"]
@@ -591,36 +662,55 @@ class TestSpecificationFileExclusionsAreTheirCommandsOwn:
     @pytest.mark.parametrize(
         "tool, name",
         [
-            ("yd_submit", "work_requirement"),
-            ("yd_provision", "worker_pool"),
-            ("yd_instantiate", "worker_pool"),
-            ("yd_instantiate", "compute_requirement"),
+            ("yd_workrequirement_submit", "work_requirement"),
+            ("yd_workerpool_provision", "worker_pool"),
+            ("yd_computerequirement_instantiate", "worker_pool"),
+            ("yd_computerequirement_instantiate", "compute_requirement"),
         ],
     )
     def test_a_specification_file_option_is_not(self, tool, name):
         assert name not in TOOLS[tool].input_schema["properties"]
 
-    def test_the_resize_flag_reaches_the_command_line(self, tmp_path):
-        argv, _ = to_argv(
-            TOOLS["yd_resize"],
-            {"compute_requirement": True, "worker_pool": "cr", "worker_pool_size": 2},
-            str(tmp_path),
-        )
+    def test_a_compute_requirement_is_resized_by_name(self, tmp_path):
+        # The flag is yd computerequirement resize's own, which the noun
+        # supplies; yd_workerpool_resize has none
         from yellowdog_cli.utils.args import CLIParser
+        from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME
 
-        assert CLIParser("yd-resize", argv).compute_req_resize is True
+        tool = TOOLS["yd_computerequirement_resize"]
+        assert "compute_requirement" not in tool.input_schema["properties"]
+        argv, _ = to_argv(
+            tool, {"worker_pool": "cr", "worker_pool_size": 2}, str(tmp_path)
+        )
+        verb = NOUNS_BY_NAME["computerequirement"].verb("resize")
+        assert verb is not None
+        parser = CLIParser("yd computerequirement resize", [*verb.fixed, *argv])
+        assert parser.compute_req_resize is True
+        assert (
+            "compute_requirement"
+            not in (TOOLS["yd_workerpool_resize"].input_schema["properties"])
+        )
 
 
 class TestActingOnTheWholeScopeIsOptedInto:
     """
-    The server passes --yes, so an action tool given no targets acted on
-    everything matching the namespace and tag (yd_abort: every executing
-    Task), as an omission. It now needs 'all_in_scope': true to do that.
+    The server passes --yes, so an action tool given no targets would act on
+    everything matching the namespace and tag (yd_task_abort: every executing
+    Task) by omission; it needs 'all_in_scope': true to do that.
     """
 
-    SCOPE_TOOLS = sorted(
-        tools_module.tool_name(COMMANDS[name]) for name in tools_module.SCOPE_TARGETS
-    )
+    SCOPE_TOOLS = sorted(name for name, tool in TOOLS.items() if tool.scope_target)
+
+    def test_the_tools_with_a_scope(self):
+        # Every command in SCOPE_TARGETS has one, bar the noun verbs that
+        # take IDs alone and so need at least one
+        assert {
+            tools_module.SCOPE_TARGETS.get(TOOLS[name].command.internal_name)
+            for name in self.SCOPE_TOOLS
+        } >= set(tools_module.SCOPE_TARGETS.values())
+        assert "yd_computerequirement_terminate" in self.SCOPE_TOOLS
+        assert "yd_instance_terminate" not in self.SCOPE_TOOLS
+        assert "yd_node_shutdown" not in self.SCOPE_TOOLS
 
     def test_every_action_tool_with_optional_targets_is_held_to_it(self):
         # Placed on purpose: a new acting command whose targets may be left
@@ -637,7 +727,7 @@ class TestActingOnTheWholeScopeIsOptedInto:
                 and not option.tool_required
             ]
             if optional_lists:
-                assert tools_module.SCOPE_TARGETS.get(tool.command.name) in (
+                assert tools_module.SCOPE_TARGETS.get(tool.command.internal_name) in (
                     optional_lists
                 ), tool.name
 
@@ -656,7 +746,7 @@ class TestActingOnTheWholeScopeIsOptedInto:
     def test_targets_with_the_opt_in_are_refused(self, tool, tmp_path):
         target = tools_module.property_name(
             TOOLS[tool].command.option_named(
-                tools_module.SCOPE_TARGETS[TOOLS[tool].command.name]
+                tools_module.SCOPE_TARGETS[TOOLS[tool].command.internal_name]
             )
         )
         with pytest.raises(ToolArgumentError, match="not both"):
@@ -669,6 +759,34 @@ class TestActingOnTheWholeScopeIsOptedInto:
 
 def test_a_submit_never_waits_for_enter():
     # '-P 0' waits for Enter between batches, which no tool call can press:
-    # it failed on the prompt once the Work Requirement existed
-    schema = TOOLS["yd_submit"].input_schema["properties"]["pause_between_batches"]
+    # it would fail on the prompt once the Work Requirement existed
+    schema = TOOLS["yd_workrequirement_submit"].input_schema["properties"][
+        "pause_between_batches"
+    ]
     assert schema["minimum"] == 1
+
+
+def test_a_launch_namespace_is_not_given_to_a_verb_that_hides_it():
+    settings = tools_module.ServerSettings(
+        config_file=None, namespace="ns", tag="t", variables=()
+    )
+    instance = TOOLS["yd_instance_terminate"].command
+    assert not any(a.startswith("--namespace") for a in fixed_args(instance, settings))
+    cr = TOOLS["yd_computerequirement_terminate"].command
+    assert "--namespace=ns" in fixed_args(cr, settings)
+
+
+def test_tool_names_are_unchanged_by_the_yd_form():
+    assert {"yd_workrequirement_submit", "yd_instance_terminate", "yd_list"} <= set(
+        TOOLS
+    )
+
+
+def test_descriptions_name_commands_in_the_yd_form():
+    for name, tool in TOOLS.items():
+        texts = [tool.description] + [
+            str(p.get("description", ""))
+            for p in tool.input_schema["properties"].values()
+        ]
+        for text in texts:
+            assert not re.search(r"\byd-[a-z]", text), (name, text)

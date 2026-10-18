@@ -145,8 +145,9 @@ class TestJsonRawWorkRequirementRefused:
 
 class TestJsonRawBatchFails:
     """
-    A batch that failed used to print an error and count as zero Tasks, and
-    the command exited 0 with the Work Requirement left part-populated.
+    A batch that fails is raised, rather than printed as an error and counted
+    as zero Tasks, which would exit 0 with the Work Requirement left
+    part-populated.
     """
 
     @pytest.fixture

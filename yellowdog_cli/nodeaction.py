@@ -31,13 +31,16 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
+    ExitCode,
     NotFoundError,
     ReportedFailure,
     classify,
 )
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
@@ -68,7 +71,12 @@ from yellowdog_cli.utils.property_names import (
     NODE_TYPES,
     NODE_WORKERS,
 )
-from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
+from yellowdog_cli.utils.results import (
+    json_requested,
+    record,
+    record_failure_cause,
+    rows_as_objects,
+)
 from yellowdog_cli.utils.specs.loading import load_specification
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.tables import (
@@ -107,11 +115,14 @@ def _record_submission(
     actions: int,
     outcome: str,
     error: str | None = None,
+    cause: int = ExitCode.FAILURE,
 ) -> None:
     """
     Record a submission for '--json': one row per node in 'node_ids', or one
     for the whole Worker Pool when it is None. 'outcome' is 'submitted',
-    'skipped' (declined) or 'failed', with the error text in "error".
+    'skipped' (declined) or 'failed', with the error text in "error" and,
+    for each row, its cause, so that a run whose failures share one exits
+    with it (results.failure_exit_code()).
     """
     for node_id in node_ids if node_ids is not None else [None]:
         (row,) = rows_as_objects(
@@ -120,6 +131,8 @@ def _record_submission(
         if error is not None:
             row["error"] = error
         record(row)
+        if outcome == "failed":
+            record_failure_cause(cause)
 
 
 def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
@@ -225,7 +238,7 @@ def _resolve_worker_pool(ctx: RunContext) -> _Pool:
     ]
     if not summaries:
         raise ValueError(
-            f"No active Worker Pools found in namespace '{ctx.config.namespace}'"
+            f"No active Worker Pools found {namespace_scope(ctx.client, ctx.config.namespace)}"
         )
     selected = cast(
         list[WorkerPoolSummary],
@@ -729,7 +742,8 @@ def _submit_grouped(
     except Exception as e:
         error = _submission_error(e, specific_nodes=bool(node_ids))
         print_error(error)
-        _record_submission(*submission, "failed", error=error)
+        advise(e)
+        _record_submission(*submission, "failed", error=error, cause=classify(e))
         _after_failure(e, [], submission)
         return False
     print_info(
@@ -756,7 +770,8 @@ def _submit_to_all_nodes(
     except Exception as e:
         error = _submission_error(e)
         print_error(error)
-        _record_submission(*submission, "failed", error)
+        advise(e)
+        _record_submission(*submission, "failed", error, classify(e))
         _after_failure(e, [], submission)
         return False
     print_info(
@@ -787,8 +802,15 @@ def _submit_to_each_node(
         except Exception as e:
             error = _submission_error(e, node_id=node_id)
             print_error(error)
+            advise(e)
             _record_submission(
-                wp_id, [node_id], None, parsed.action_count, "failed", error
+                wp_id,
+                [node_id],
+                None,
+                parsed.action_count,
+                "failed",
+                error,
+                classify(e),
             )
             _after_failure(e, node_ids[index + 1 :], submission)
             continue

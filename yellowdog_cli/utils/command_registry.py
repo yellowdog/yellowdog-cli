@@ -14,6 +14,7 @@ import math
 import os
 import re
 from argparse import (
+    SUPPRESS,
     Action,
     ArgumentParser,
     ArgumentTypeError,
@@ -21,7 +22,7 @@ from argparse import (
     _ArgumentGroup,
 )
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from functools import cache
 from importlib.metadata import entry_points
@@ -55,18 +56,47 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
+    RN_GROUP,
+    RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
+    DEFAULT_LIST_LIMIT,
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     DOCTOR_DEFAULT_TIMEOUT,
 )
+from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
 from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
 Validator = Callable[[Namespace, ArgumentParser], None]
 
 DESCRIPTION_PREFIX = "YellowDog command-line utility for "
+
+
+class Completes(Enum):
+    """
+    What a value-taking option's value completes to in the shell
+    (utils/completion.py), beyond the choices and types the registry
+    already states. tests/test_completion.py holds it to the metavar.
+    """
+
+    NONE = auto()
+    FILE = auto()  # a local file (or a file or directory)
+    DIR = auto()  # a local directory
 
 
 @dataclass(frozen=True, eq=False)
@@ -83,6 +113,8 @@ class Option:
     # and --upgrade-rclone can run without it: required for every MCP tool,
     # which offers neither, and by the command's own check otherwise
     tool_required: bool = False
+    # What its value completes to in the shell
+    completes: Completes = Completes.NONE
 
     @property
     def positional(self) -> bool:
@@ -101,18 +133,25 @@ class Option:
     def aliases(self) -> tuple[str, ...]:
         return tuple(flag for flag in self.flags if flag != self.name)
 
-    def variant(self, **overrides: Any) -> Option:
+    def variant(
+        self, *, completes: Completes | None = None, **overrides: Any
+    ) -> Option:
         """
-        The same option with some keyword arguments replaced.
+        The same option with some keyword arguments replaced, and what its
+        value completes to, if given.
         """
-        return Option(self.flags, {**self.kwargs, **overrides}, self.tool_required)
+        return replace(
+            self,
+            kwargs={**self.kwargs, **overrides},
+            completes=self.completes if completes is None else completes,
+        )
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
         return target.add_argument(*self.flags, **self.kwargs)
 
 
-def option(*flags: str, **kwargs: Any) -> Option:
-    return Option(flags, kwargs)
+def option(*flags: str, completes: Completes = Completes.NONE, **kwargs: Any) -> Option:
+    return Option(flags, kwargs, completes=completes)
 
 
 @dataclass(frozen=True, eq=False)
@@ -164,6 +203,16 @@ class Command:
     # A hand-written description for a tool whose workflow needs explaining;
     # None means the summary and purpose are used
     tool_description: str | None = None
+    # The registry command a noun verb's derived command runs
+    # (noun_registry.py); None for a registry command itself
+    runs: str | None = None
+
+    @property
+    def internal_name(self) -> str:
+        """
+        The registry command this one runs: itself, or a noun verb's.
+        """
+        return self.runs or self.name
 
     def all_options(self) -> tuple[Option | Exclusive, ...]:
         return COMMON_OPTIONS[self.kind] + self.options
@@ -177,6 +226,15 @@ class Command:
     def has(self, option: Option) -> bool:
         return self.option_named(option.name) is not None
 
+    def offers(self, option: Option) -> bool:
+        """
+        Whether the command takes 'option' from its user: has it, and does
+        not hide it (a noun verb's option that does not apply to its object,
+        refused if given: noun_registry.py).
+        """
+        found = self.option_named(option.name)
+        return found is not None and found.kwargs.get("help") != SUPPRESS
+
     def option_named(self, name: str) -> Option | None:
         return next((o for o in self.flat_options() if o.name == name), None)
 
@@ -188,6 +246,18 @@ COMMON_OPTIONS: dict[CommandKind, tuple[Option, ...]] = {
     CommandKind.STANDALONE: (),
 }
 COMMANDS: dict[str, Command] = {}
+
+# The entry points that are not registry commands: they take none of the
+# CLI's options, so the registry has nothing to say about them, but a user
+# has them all the same (each prints the install hint for its extra when
+# that is missing). yd-help lists them, and shell completion registers them.
+# tests/test_command_registry.py holds this table to pyproject.toml's entry
+# points less the registry, so a new entry point is listed by one or the
+# other.
+OTHER_COMMANDS: dict[str, str] = {
+    "yd-commander": "Launch the Commander desktop GUI (needs the commander extra)",
+    "yd-mcp": "Run the MCP server over the yd-* commands (needs the mcp extra)",
+}
 
 _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
 
@@ -285,7 +355,10 @@ ENTITY_TYPES = [
 # is refused for any other (check_list_options), rather than ignored
 LIST_NAME_TYPES = frozenset(
     {
+        ET_NAMESPACES,
         ET_WORK_REQUIREMENTS,
+        ET_TASK_GROUPS,
+        ET_TASKS,
         ET_WORKER_POOLS,
         ET_COMPUTE_REQUIREMENTS,
         ET_COMPUTE_REQUIREMENT_TEMPLATES,
@@ -315,6 +388,34 @@ LIST_STATUS_TYPES = frozenset(
 # Those listed from active Work Requirements, Worker Pools or Compute
 # Requirements, or themselves active or not
 LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Those the Platform can say are deletable: a namespace never populated
+LIST_DELETABLE_TYPES = frozenset({ET_NAMESPACES})
+# Those the Platform says are healthy or not
+LIST_UNHEALTHY_TYPES = frozenset(
+    {ET_WORK_REQUIREMENTS, ET_WORKER_POOLS, ET_COMPUTE_REQUIREMENTS}
+)
+# Those with a cloud provider of their own
+LIST_PROVIDER_TYPES = frozenset({ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES})
+# '--provider''s values: the Platform's CloudProvider names, lower-case and
+# hyphenated
+LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
+# Those named by a description rather than a name
+LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
+# Those that record errors of their own
+LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
+# Those listed from within one parent, with the kinds of parent '--within'
+# takes for each (YDIDType values: ydid_utils.py is imported only to check)
+LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
+    ET_TASK_GROUPS: ("Work Requirement", "Task Group"),
+    ET_TASKS: ("Work Requirement", "Task Group"),
+    ET_INSTANCES: ("Compute Requirement",),
+    ET_NODES: ("Worker Pool",),
+    ET_WORKERS: ("Worker Pool", "Node"),
+}
+LIST_WITHIN_TYPES = frozenset(LIST_WITHIN_KINDS)
+# Those whose listing is limited, since they can number in the tens of
+# thousands (Instances, Nodes, Workers) or the millions (Tasks)
+LIST_LIMIT_TYPES = frozenset({ET_TASKS, ET_INSTANCES, ET_NODES, ET_WORKERS})
 # Those with YellowDog IDs: attribute definitions, namespace policies and
 # permissions have none
 LIST_ID_TYPES = frozenset(ENTITY_TYPES) - {
@@ -469,6 +570,7 @@ CONFIG = option(
         "configuration file in TOML format; "
         "the default to use is 'config.toml' in the current directory"
     ),
+    completes=Completes.FILE,
     metavar="<config_file.toml>",
 )
 KEY = option(
@@ -627,6 +729,10 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         "worker_pool_file_positional",
         "compute_requirement_file_positional",
         "resource_specifications",
+        # A resource given on the command line: the tools take the
+        # specification itself, which says the same
+        "--type",
+        "--set",
     }
 )
 
@@ -645,11 +751,15 @@ MCP_EXCLUDED_SPECIFICATION_FILES: dict[str, frozenset[str]] = {
 def mcp_excluded(command: Command, option: Option) -> bool:
     """
     Whether no MCP tool for 'command' exposes 'option': it is in
-    MCP_EXCLUDED_OPTIONS, or is one of the command's own specification-file
-    options.
+    MCP_EXCLUDED_OPTIONS, is one of the command's own specification-file
+    options, or is hidden (a noun verb's option that does not apply to its
+    object, or one its verb fixes: noun_registry.py).
     """
-    return option.name in MCP_EXCLUDED_OPTIONS or option.name in (
-        MCP_EXCLUDED_SPECIFICATION_FILES.get(command.name, frozenset())
+    return (
+        option.name in MCP_EXCLUDED_OPTIONS
+        or option.name
+        in MCP_EXCLUDED_SPECIFICATION_FILES.get(command.internal_name, frozenset())
+        or option.kwargs.get("help") == SUPPRESS
     )
 
 
@@ -753,6 +863,7 @@ WORKER_POOL = option(
         "worker pool definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<worker_pool.json>",
 )
 DRY_RUN = option(
@@ -862,17 +973,115 @@ WORK_REQUIREMENTS = option(
         " pattern (e.g. 'proj-*')"
     ),
 )
-RESOURCE_SPECIFICATIONS = option(
-    "resource_specifications",
-    nargs="+",
-    default=[],
-    metavar="<resource-specification>",
-    type=str,
+# Optional to argparse, for '--type' and '--set'; an MCP tool, which takes
+# the specification itself, needs one
+RESOURCE_SPECIFICATIONS = replace(
+    option(
+        "resource_specifications",
+        nargs="*",
+        default=[],
+        completes=Completes.FILE,
+        metavar="<resource-specification>",
+        type=str,
+        help=(
+            "the resource specifications to process, '-' reading one from"
+            " standard input as JSON (or resource IDs if used with"
+            " 'yd resource remove --ids')"
+        ),
+    ),
+    tool_required=True,
+)
+# The resource types '--type' takes: those yd-create creates, which
+# tests/test_resource_inline.py holds to load_resources.RESOURCE_CREATION_ORDER
+RESOURCE_TYPE_CHOICES = (
+    RN_ALLOWANCE,
+    RN_APPLICATION,
+    RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
+    RN_EXTERNAL_USER,
+    RN_GROUP,
+    RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
+    RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
+)
+
+
+def resolve_resource_type(value: str) -> str:
+    """
+    A resource type as '--type' takes it, whatever its case.
+    """
+    for resource_type in RESOURCE_TYPE_CHOICES:
+        if resource_type.lower() == value.lower():
+            return resource_type
+    raise ArgumentTypeError(
+        f"invalid resource type: '{value}' (choose from"
+        f" {', '.join(RESOURCE_TYPE_CHOICES)})"
+    )
+
+
+RESOURCE_TYPE = option(
+    "--type",
+    dest="resource_type",
+    metavar="<resource-type>",
+    type=resolve_resource_type,
+    choices=RESOURCE_TYPE_CHOICES,
+    required=False,
     help=(
-        "the resource specifications to process (or resource IDs if used"
-        " with 'yd-remove --ids')"
+        "the type of a resource specified on the command line with --set,"
+        " in place of a specification file, e.g. 'Keyring' (any case)"
     ),
 )
+RESOURCE_SET = option(
+    "--set",
+    dest="resource_properties",
+    action="append",
+    metavar="<property=value>",
+    required=False,
+    help=(
+        "a property of the resource --type specifies; the value is read as"
+        " JSON where it can be (a number, a list, an object, true, null),"
+        " else as text; can be supplied multiple times, e.g."
+        " --type Keyring --set name=team-keys --set description='Team keys'"
+    ),
+)
+
+
+def check_resource_inputs(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-create and yd-remove: something to act on (a specification, '-' for
+    standard input, or a resource given with --type and --set), '-' at most
+    once, and each --set a 'property=value' naming a property once, the
+    resource type given by --type alone.
+    """
+    specifications = args.resource_specifications or []
+    properties = args.resource_properties or []
+    if properties and not args.resource_type:
+        parser.error("--set needs --type, the type of the resource it specifies")
+    if not specifications and not args.resource_type:
+        parser.error(
+            "give a resource specification, '-' to read one from standard input,"
+            " or a resource's --type and --set"
+        )
+    if specifications.count("-") > 1:
+        parser.error("'-' (standard input) can be given once")
+    seen: set[str] = set()
+    for given in properties:
+        name, equals, _ = given.partition("=")
+        if not equals or not name.strip():
+            parser.error(f"--set '{given}' is not of the form 'property=value'")
+        if name == PROP_RESOURCE:
+            parser.error("give the resource type with --type, not --set resource=...")
+        if name in seen:
+            parser.error(f"--set {name} is given twice")
+        seen.add(name)
+
+
 YES_ALLOW_UPDATES = YES.variant(help="allow updates without user confirmation")
 MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     "--match-allowances-by-description",
@@ -881,7 +1090,7 @@ MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     required=False,
     help=(
         "match using the 'description' property when updating "
-        "(using yd-create) or removing allowances"
+        "(using yd resource create) or removing allowances"
     ),
 )
 YELLOWDOG_IDS = option(
@@ -910,6 +1119,7 @@ CONTENT_PATH = option(
         "the directory in which files for upload (or for user data "
         "or CSV data) are found"
     ),
+    completes=Completes.DIR,
     metavar="<directory>",
 )
 FOLLOW_PROVISIONING = FOLLOW.variant(help="follow progress after provisioning")
@@ -957,7 +1167,7 @@ STRIP_IDS = option(
     help=(
         "omit the YellowDog IDs of objects from their JSON "
         "representations, as well as other properties not "
-        "required when capturing JSON for use with yd-create and yd-remove "
+        "required when capturing JSON for use with yd resource create and remove "
         "(implies '--details')"
     ),
 )
@@ -975,6 +1185,7 @@ OUTPUT_FILE = option(
         "if specified, the detailed JSON resource listing will also be written "
         "to the nominated output file"
     ),
+    completes=Completes.FILE,
     metavar="<output-file>",
 )
 UPGRADE_RCLONE = option(
@@ -1446,6 +1657,7 @@ CLOUD_PROVIDER = option(
 CREDENTIALS_FILE = option(
     "--credentials-file",
     required=False,
+    completes=Completes.FILE,
     metavar="<file-containing-google-credentials>",
     type=str,
     help=(
@@ -1884,6 +2096,8 @@ COMMANDS["yd-create"] = Command(
         VALIDATE,
         CREATE_JSON,
         RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
         YES_ALLOW_UPDATES,
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         SHOW_KEYRING_PASSWORDS,
@@ -1891,7 +2105,7 @@ COMMANDS["yd-create"] = Command(
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
-    validators=(check_hide_user_data_requires_dry_run,),
+    validators=(check_resource_inputs, check_hide_user_data_requires_dry_run),
     tool=ToolKind.ACTING,
     tool_description=(
         "Create or update resources from specifications (each a file path,"
@@ -1909,6 +2123,36 @@ IDS = option(
 )
 
 
+def _check_removal_by_name(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-remove --type with arguments: each the name or the ID of a resource
+    of that type, which can be removed that way, and not with --set.
+    """
+    from yellowdog_cli.utils.resource_targets import ID_TYPES, name_problem
+    from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+    resource_type = args.resource_type
+    if not (resource_type and args.resource_specifications):
+        return
+    if args.resource_properties:
+        parser.error(
+            "give the names or IDs of the resources to remove, or one with --set,"
+            " not both"
+        )
+    for target in args.resource_specifications:
+        if target == "-":
+            parser.error(
+                f"'-' (standard input) is not a name: with --type the arguments are"
+                f" the names or IDs of the {resource_type} resources to remove"
+            )
+        ydid_type = get_ydid_type(target)
+        if ydid_type is not None:
+            if ID_TYPES.get(resource_type) != ydid_type:
+                parser.error(f"'{target}' is not the ID of a {resource_type}")
+        elif (problem := name_problem(resource_type, target)) is not None:
+            parser.error(problem)
+
+
 def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-remove --ids: each argument the ID of a resource it can remove,
@@ -1918,7 +2162,10 @@ def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
 
     if not args.ids:
+        _check_removal_by_name(args, parser)
         return
+    if args.resource_type or args.resource_properties:
+        parser.error("--type and --set specify a resource, not --ids")
     for option, given in (
         ("--match-allowances-by-description", args.match_allowances_by_description),
         ("--jsonnet-dry-run", args.jsonnet_dry_run),
@@ -1928,7 +2175,7 @@ def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     for resource_id in args.resource_specifications:
         if get_ydid_type(resource_id) not in REMOVABLE_YDID_TYPES:
             parser.error(
-                f"not the ID of a resource yd-remove can remove: '{resource_id}'"
+                f"not the ID of a resource that can be removed: '{resource_id}'"
             )
 
 
@@ -1944,11 +2191,13 @@ COMMANDS["yd-remove"] = Command(
         JSONNET_DRY_RUN,
         RESOURCES_JSON,
         RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
         YES.variant(help="remove without user confirmation"),
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
     ),
-    validators=(check_remove_ids,),
+    validators=(check_resource_inputs, check_remove_ids),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2017,6 +2266,7 @@ INTO = option(
         "own name; unlike --destination, which names the local path "
         "corresponding to a single remote item"
     ),
+    completes=Completes.DIR,
     metavar="<local-dir>",
 )
 
@@ -2044,6 +2294,7 @@ COMMANDS["yd-download"] = Command(
                 DESTINATION.variant(
                     default=None,
                     help="local directory or file path to write to (default: mirrors remote name)",
+                    completes=Completes.FILE,
                     metavar="<local-path>",
                 ),
                 INTO,
@@ -2251,24 +2502,67 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     Configured one is known only once it has been fetched, as whether it is
     a Provisioned one is for the other two.
     """
-    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+    from yellowdog_cli.utils.resource_targets import (
+        ID_TYPES,
+        SHOWN_BY_NAME,
+        SHOWN_WITHOUT_ID,
+        name_problem,
+    )
+    from yellowdog_cli.utils.ydid_utils import (
+        YDIDType,
+        get_ydid_type,
+        split_instance_specification,
+    )
+
+    # The kind of each argument: a YDID's type, or with --type the kind of
+    # ID the name stands for (None for a type that has no ID)
+    resource_type = getattr(args, "resource_type", None)
+    id_kind = (
+        SHOWN_BY_NAME.get(resource_type) or ID_TYPES.get(resource_type)
+        if resource_type is not None
+        else None
+    )
+    article = "an" if (resource_type or "x")[0] in "AEIOU" else "a"
+    kinds = []
+    for target in args.yellowdog_ids:
+        ydid_type = get_ydid_type(target)
+        if resource_type is None:
+            # A word that is plainly a name; a malformed ID is reported as
+            # the run reaches it
+            if (
+                not target.startswith("ydid:")
+                and split_instance_specification(target) is None
+            ):
+                parser.error(
+                    f"'{target}' is not a YellowDog ID; give --type to show a"
+                    " resource by name"
+                )
+        elif ydid_type is not None:
+            if id_kind is None:
+                parser.error(f"{article} {resource_type} has no ID; give its name")
+            if ydid_type != id_kind:
+                parser.error(f"'{target}' is not the ID of a {resource_type}")
+        elif resource_type in SHOWN_WITHOUT_ID:
+            if (problem := name_problem(resource_type, target)) is not None:
+                parser.error(problem)
+        elif resource_type in SHOWN_BY_NAME:
+            ydid_type = SHOWN_BY_NAME[resource_type]
+        else:
+            parser.error(f"{article} {resource_type} has no name; give its ID")
+        kinds.append(ydid_type)
 
     with_compute_requirement = (YDIDType.COMPUTE_REQUIREMENT, YDIDType.WORKER_POOL)
     for flag, given in (
         ("--show-source-report", args.show_source_report),
         ("--show-exhaustion", args.show_exhaustion),
     ):
-        if given and not any(
-            get_ydid_type(ydid) in with_compute_requirement
-            for ydid in args.yellowdog_ids
-        ):
+        if given and not any(kind in with_compute_requirement for kind in kinds):
             parser.error(
                 f"{flag} applies only to Compute Requirement and Worker Pool"
                 " IDs, and none was given"
             )
     if args.show_members and not any(
-        get_ydid_type(ydid) in (YDIDType.GROUP, YDIDType.ROLE)
-        for ydid in args.yellowdog_ids
+        kind in (YDIDType.GROUP, YDIDType.ROLE) for kind in kinds
     ):
         parser.error(
             "--show-members applies only to Group and Role IDs, and none was given"
@@ -2279,9 +2573,7 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
         YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
         YDIDType.ALLOWANCE,
     )
-    if args.substitute_ids and not any(
-        get_ydid_type(ydid) in substitutable for ydid in args.yellowdog_ids
-    ):
+    if args.substitute_ids and not any(kind in substitutable for kind in kinds):
         parser.error(
             "--substitute-ids applies only to Compute Source Template, Compute"
             " Requirement Template and Allowance IDs, and none was given"
@@ -2302,8 +2594,16 @@ COMMANDS["yd-show"] = Command(
             help=(
                 "the YellowDog ID(s) of the item(s) to show"
                 "; Instances have no ID of their own and are specified "
-                "in 'cr_id.instance_id' format"
+                "in 'cr_id.instance_id' format; with --type, the names or IDs"
+                " of resources of that type"
             ),
+        ),
+        RESOURCE_TYPE.variant(
+            help=(
+                "the type of the resources to show by name, e.g. 'Keyring'"
+                " (any case): 'namespace/name' for a namespaced type, the"
+                " configured namespace without one"
+            )
         ),
         SHOW_TOKEN,
         SHOW_SOURCE_REPORT,
@@ -2355,6 +2655,7 @@ COMPUTE_REQUIREMENT = option(
         "compute requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<compute_requirement.json>",
 )
 REPORT = option(
@@ -2368,6 +2669,7 @@ REPORT = option(
 )
 COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     "compute_requirement_file_positional",
+    completes=Completes.FILE,
     metavar="<compute-requirement-specification-file>",
     type=str,
     nargs="?",
@@ -2410,6 +2712,7 @@ COMMANDS["yd-instantiate"] = Command(
 
 WORKER_POOL_FILE_POSITIONAL = option(
     "worker_pool_file_positional",
+    completes=Completes.FILE,
     metavar="<worker-pool-specification-file>",
     type=str,
     nargs="?",
@@ -2452,7 +2755,7 @@ COMMANDS["yd-provision"] = Command(
         "Provision a Worker Pool from a specification (a file path, or the"
         " specification itself). Returns {id, name, namespace, type}. With"
         " dry_run, the processed specification. Shut it"
-        " down afterwards with yd_shutdown; yd_schema worker-pool gives the"
+        " down afterwards with yd_workerpool_shutdown; yd_schema worker-pool gives the"
         " schema to compose against."
     ),
 )
@@ -2462,11 +2765,11 @@ COMMANDS["yd-provision"] = Command(
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
 # Tag attribute is defaulted to "" when using 'yd-list'
 LIST_TAG = TAG.variant(
-    default="",
     help=(
-        "the tag to search when listing entities; unlike other commands,"
-        " the configured tag is not used, so without this the whole"
-        " namespace is listed"
+        "the tag to list by: Work Requirements, Worker Pools and Compute"
+        " Requirements are listed with the configured tag, as the commands"
+        " acting on them select them, unless this is given ('' for the whole"
+        " namespace); templates and Image Families only by a tag given here"
     ),
 )
 IDS_ONLY = option(
@@ -2513,7 +2816,8 @@ NAME = option(
     required=False,
     help=(
         "list only entities whose name matches the given glob "
-        "pattern (e.g. 'proj-*'); applies to work requirements, "
+        "pattern (e.g. 'proj-*'); applies to namespaces, work requirements, "
+        "task groups, tasks, "
         "worker pools, compute requirements, compute requirement/source "
         "templates, image families, users, applications, groups, "
         "roles, keyrings and permissions; not supported for other "
@@ -2529,9 +2833,82 @@ STATUS = option(
     required=False,
     help=(
         "include only entities whose status matches the given value "
-        "(case-insensitive); may be repeated to allow multiple statuses"
+        "(case-insensitive); several may be given separated by commas "
+        "('failed,aborted'), or by repeating the option"
     ),
-    metavar="<status>",
+    metavar="<status>[,...]",
+)
+DELETABLE = option(
+    "--deletable",
+    action="store_true",
+    required=False,
+    help=(
+        "when used with 'namespaces', lists only those that can be deleted"
+        " (never populated)"
+    ),
+)
+UNHEALTHY = option(
+    "--unhealthy",
+    action="store_true",
+    required=False,
+    help=(
+        "list only the entities the Platform marks unhealthy: work"
+        " requirements, worker pools and compute requirements"
+    ),
+)
+PROVIDER = option(
+    "--provider",
+    choices=LIST_PROVIDERS,
+    required=False,
+    help=(
+        "list only those of the given cloud provider: instances, nodes and"
+        " compute source templates"
+    ),
+)
+DESCRIPTION = option(
+    "--description",
+    dest="description_glob",
+    metavar="<glob>",
+    required=False,
+    help=(
+        "list only allowances whose description matches the given glob"
+        " pattern; a value without wildcards matches the description exactly"
+    ),
+)
+WITH_ERRORS = option(
+    "--with-errors",
+    action="store_true",
+    required=False,
+    help=(
+        "list only the tasks that recorded an error, whatever their status"
+        " (a task can complete after an error, on a retry)"
+    ),
+)
+WITHIN = option(
+    "--within",
+    dest="within_target",
+    metavar="<target>",
+    required=False,
+    help=(
+        "list the items of one parent without asking which: the task groups or"
+        " tasks of a work requirement or task group ('wr', 'wr/tg',"
+        " 'namespace/wr', 'namespace/wr/tg' or its ID), the instances of a"
+        " compute requirement, the nodes of a worker pool, or the workers of a"
+        " worker pool or node (its name, 'namespace/name' or its ID; a node by"
+        " its ID)"
+    ),
+)
+LIST_LIMIT = option(
+    "--limit",
+    dest="list_limit",
+    metavar="<n>",
+    type=non_negative_int,
+    required=False,
+    help=(
+        "list at most this many tasks, instances, nodes or workers, warning"
+        " when more match (default"
+        f" {DEFAULT_LIST_LIMIT}; 0 lists them all)"
+    ),
 )
 PUBLIC_IPS_ONLY = option(
     "--public-ips-only",
@@ -2561,11 +2938,31 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("ids_only", "--ids-only", LIST_ID_TYPES),
         ("substitute_ids", "--substitute-ids", LIST_SUBSTITUTE_TYPES),
         ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
+        ("deletable", "--deletable", LIST_DELETABLE_TYPES),
+        ("unhealthy", "--unhealthy", LIST_UNHEALTHY_TYPES),
+        ("provider", "--provider", LIST_PROVIDER_TYPES),
+        ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
+        ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
+        ("within_target", "--within", LIST_WITHIN_TYPES),
+        ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
         if getattr(args, dest, None) and entity_type not in types:
             parser.error(
                 f"{flag} does not apply to {entity_type}; it applies to "
                 + ", ".join(sorted(types))
+            )
+    # '--count' is exact, read from the Task Groups' own counts where it can
+    if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
+        parser.error("--limit cannot be used with --count, which is never limited")
+    within = getattr(args, "within_target", None)
+    if within and entity_type in LIST_WITHIN_KINDS:
+        from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+        kinds = LIST_WITHIN_KINDS[entity_type]
+        ydid_type = get_ydid_type(within)
+        if ydid_type is not None and ydid_type.value not in kinds:
+            parser.error(
+                f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
             )
     if args.public_ips_only:
         for dest, flag in (
@@ -2595,7 +2992,14 @@ COMMANDS["yd-list"] = Command(
         ACTIVE_ONLY,
         NAME,
         STATUS,
+        UNHEALTHY,
+        PROVIDER,
+        DESCRIPTION,
+        WITH_ERRORS,
+        WITHIN,
+        LIST_LIMIT,
         PUBLIC_IPS_ONLY,
+        DELETABLE,
         DETAILS,
         AUTO_SELECT_ALL,
         SUBSTITUTE_IDS,
@@ -2880,9 +3284,9 @@ COMMANDS["yd-cloud-info"] = Command(
     validators=(check_cloud_info_options,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
-        "List what the YellowDog Platform knows of the cloud providers."
-        " cloud_info_type is regions, sub-regions, instance-types or prices."
-        " Filters: providers (aws, azure, google, oci), region and sub_region"
+        "List what the YellowDog Platform knows of the cloud providers: its"
+        " regions, sub-regions, instance types or prices, as the tool's name"
+        " says. Filters: providers (aws, azure, google, oci), region and sub_region"
         " (exact names; sub_region needs region), name_glob (a glob; for"
         " prices, the instance type), and for instance-types vcpus and ram"
         " (GiB) as 'n', 'n-m', 'n-' or '-m', and arch; for prices usage"
@@ -2937,6 +3341,7 @@ ACTIONS = option(
     type=str,
     required=False,
     help="node action spec file in JSON or Jsonnet format",
+    completes=Completes.FILE,
     metavar="<node_actions.json>",
 )
 NODE = option(
@@ -3019,7 +3424,9 @@ COMMANDS["yd-nodeaction"] = Command(
         ACTIONS,
         VALIDATE,
         WORKER_POOL.variant(
-            help="name of the target worker pool", metavar="<worker-pool-name>"
+            help="name of the target worker pool",
+            metavar="<worker-pool-name>",
+            completes=Completes.NONE,
         ),
         Exclusive((NODE, ALL_NODES)),
         NODE_ACTION_STATUS,
@@ -3138,12 +3545,14 @@ SCHEMA_FAMILY = option(
 SCHEMA_WRITE = option(
     "--write",
     type=str,
+    completes=Completes.DIR,
     metavar="<dir>",
     help="write every family's schema to <dir>, and index.json naming the CLI and SDK versions",
 )
 SCHEMA_CHECK = option(
     "--check",
     type=str,
+    completes=Completes.DIR,
     metavar="<dir>",
     help="exit 0 if the schemas in <dir> were written by the installed CLI and SDK, else 1 saying which changed",
 )
@@ -3169,9 +3578,10 @@ COMMANDS["yd-schema"] = Command(
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Print the JSON Schema a specification family must follow —"
-        " work-requirement (yd_submit), worker-pool (yd_provision),"
-        " compute-requirement (yd_instantiate), resources (yd_create),"
-        " node-actions (yd_nodeaction), or config, the TOML configuration"
+        " work-requirement (yd_workrequirement_submit), worker-pool"
+        " (yd_workerpool_provision), compute-requirement"
+        " (yd_computerequirement_instantiate), resources (yd_resource_create),"
+        " node-actions (yd_node_action), or config, the TOML configuration"
         " file — generated from the installed CLI and SDK. Ask for it before"
         " composing an inline specification."
     ),
@@ -3231,6 +3641,7 @@ WORK_REQUIREMENT = option(
         "work requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
+    completes=Completes.FILE,
     metavar="<work_requirement.json>",
 )
 JSON_RAW = option(
@@ -3239,6 +3650,7 @@ JSON_RAW = option(
     type=str,
     required=False,
     help="submit a 'raw' JSON work requirement file",
+    completes=Completes.FILE,
     metavar="<raw_work_requirement.json>",
 )
 EXIT_ON_FAILURE = option(
@@ -3305,6 +3717,7 @@ CSV_FILE = option(
     required=False,
     action="append",
     help="the CSV file(s) from which to read Task data",
+    completes=Completes.FILE,
     metavar="<data.csv>",
 )
 PROCESS_CSV_ONLY = option(
@@ -3370,6 +3783,7 @@ ADD_TO = option(
 # Note: removes the need for the '-r' option
 WORK_REQUIREMENT_FILE_POSITIONAL = option(
     "work_requirement_file_positional",
+    completes=Completes.FILE,
     metavar="<work-requirement-specification-file>",
     type=str,
     nargs="?",
@@ -3465,7 +3879,7 @@ COMMANDS["yd-submit"] = Command(
         " type} of the created Work Requirement; with dry_run, the processed"
         " specification instead. Follow it afterwards with yd_follow, or"
         " poll with yd_list and yd_show, then fetch its outputs with"
-        " yd_download; yd_schema work-requirement gives the schema to"
+        " yd_data_download; yd_schema work-requirement gives the schema to"
         " compose against."
     ),
 )
@@ -3593,6 +4007,7 @@ LOCAL_PATHS = Option(
         "help": "local file(s) or directory(ies) to upload",
     },
     tool_required=True,
+    completes=Completes.FILE,
 )
 
 
@@ -3680,8 +4095,30 @@ COMMANDS["yd-variables"] = Command(
 
 # --- Standalone commands -------------------------------------------------
 # Each keeps a parser of its own (or none); only their purpose and summary
-# are held here.
+# are held here, bar yd-completion, whose parser is built from its options
+# here (build_parser()).
 
+COMPLETION_SHELLS = ("bash", "zsh", "fish", "powershell")
+COMPLETION_SHELL = option(
+    "shell",
+    choices=COMPLETION_SHELLS,
+    help=(
+        "the shell to print the completion script for: load it with"
+        " 'eval \"$(yd completion bash)\"' (or zsh) in the shell's start-up"
+        " file, 'yd completion fish | source' in fish's config.fish, or"
+        " 'yd completion powershell | Out-String | Invoke-Expression' in a"
+        " PowerShell profile"
+    ),
+)
+
+COMMANDS["yd-completion"] = Command(
+    name="yd-completion",
+    purpose="printing the shell completion script for the yd-* commands",
+    summary="Print the shell completion script for the yd-* commands",
+    kind=CommandKind.STANDALONE,
+    options=(COMPLETION_SHELL,),
+    tool=ToolKind.NONE,
+)
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
     purpose="formatting JSON files using a compact encoder",

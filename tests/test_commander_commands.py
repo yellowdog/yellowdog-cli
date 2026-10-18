@@ -85,13 +85,13 @@ def test_submit_default_follows_progress(window, captured):
     # "Follow Work Requirement Progress" is checked by default (set in __init__),
     # so a fresh submit follows progress.
     window._submit_work_requirement_action()
-    assert captured == [("yd-submit", ["-f"])]
+    assert captured == [("yd workrequirement submit", ["-f"])]
 
 
 def test_submit_no_follow_no_dry_run(window, captured):
     window.follow_progress.setChecked(False)
     window._submit_work_requirement_action()
-    assert captured == [("yd-submit", [])]
+    assert captured == [("yd workrequirement submit", [])]
 
 
 def test_submit_with_wr_file_dry_run_and_extra_options(window, captured):
@@ -99,7 +99,9 @@ def test_submit_with_wr_file_dry_run_and_extra_options(window, captured):
     window.dry_run.setChecked(True)
     window.wr_submit_options.setPlainText("--foo bar")
     window._submit_work_requirement_action()
-    assert captured == [("yd-submit", ["-r", "wr.json", "-D", "--foo", "bar"])]
+    assert captured == [
+        ("yd workrequirement submit", ["-r", "wr.json", "-D", "--foo", "bar"])
+    ]
 
 
 def test_extra_options_are_split_with_quoting(window, captured):
@@ -109,7 +111,10 @@ def test_extra_options_are_split_with_quoting(window, captured):
     )
     window._submit_work_requirement_action()
     assert captured == [
-        ("yd-submit", ["--property", 'workRequirement.workerTags=["a", "b"]'])
+        (
+            "yd workrequirement submit",
+            ["--property", 'workRequirement.workerTags=["a", "b"]'],
+        )
     ]
 
 
@@ -132,7 +137,9 @@ def test_provision_extra_options_are_split_with_quoting(window, captured):
     window.follow_worker_pool.setChecked(False)
     window.wp_provision_options.setPlainText("""--property 'workerPool.name=a b'""")
     window._create_worker_pool_action()
-    assert captured == [("yd-provision", ["--property", "workerPool.name=a b"])]
+    assert captured == [
+        ("yd workerpool provision", ["--property", "workerPool.name=a b"])
+    ]
 
 
 def test_submit_follow_only_when_not_dry_run(window, captured):
@@ -140,13 +147,13 @@ def test_submit_follow_only_when_not_dry_run(window, captured):
     window.dry_run.setChecked(True)
     window._submit_work_requirement_action()
     # Dry-run wins: -D present, -f suppressed.
-    assert captured == [("yd-submit", ["-D"])]
+    assert captured == [("yd workrequirement submit", ["-D"])]
 
 
 def test_submit_follow(window, captured):
     window.follow_progress.setChecked(True)
     window._submit_work_requirement_action()
-    assert captured == [("yd-submit", ["-f"])]
+    assert captured == [("yd workrequirement submit", ["-f"])]
 
 
 # --- Selected definition files and the command's working directory -----------
@@ -235,26 +242,26 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
 def test_provision_default_follows(window, captured):
     # "Follow Worker Pool Progress" is checked by default (set in __init__).
     window._create_worker_pool_action()
-    assert captured == [("yd-provision", ["-af"])]
+    assert captured == [("yd workerpool provision", ["-af"])]
 
 
 def test_provision_no_follow(window, captured):
     window.follow_worker_pool.setChecked(False)
     window._create_worker_pool_action()
-    assert captured == [("yd-provision", [])]
+    assert captured == [("yd workerpool provision", [])]
 
 
 def test_provision_with_wp_file_and_follow(window, captured):
     window._wp_file = "wp.json"
     window.follow_worker_pool.setChecked(True)
     window._create_worker_pool_action()
-    assert captured == [("yd-provision", ["-p", "wp.json", "-af"])]
+    assert captured == [("yd workerpool provision", ["-p", "wp.json", "-af"])]
 
 
 def test_provision_dry_run(window, captured):
     window.dry_run_worker_pool.setChecked(True)
     window._create_worker_pool_action()
-    assert captured == [("yd-provision", ["-D"])]
+    assert captured == [("yd workerpool provision", ["-D"])]
 
 
 # --- Destructive-action confirmations ----------------------------------------
@@ -271,16 +278,24 @@ def test_destructive_action_runs_when_confirmed(window, captured, monkeypatch):
         lambda *a, **k: Confirmation(proceed=True, handles=[entity.id]),
     )
     for method, command, args in [
-        ("_cancel_work_requirements_action", "yd-cancel", ["-y", "ydid:x:1"]),
+        (
+            "_cancel_work_requirements_action",
+            "yd workrequirement cancel",
+            ["-y", "ydid:x:1"],
+        ),
         (
             "_cancel_work_requirements_and_abort_action",
-            "yd-cancel",
+            "yd workrequirement cancel",
             ["-ay", "ydid:x:1"],
         ),
-        ("_shutdown_all_worker_pools_action", "yd-shutdown", ["-y", "ydid:x:1"]),
+        (
+            "_shutdown_all_worker_pools_action",
+            "yd workerpool shutdown",
+            ["-y", "ydid:x:1"],
+        ),
         (
             "_terminate_all_compute_requirements_action",
-            "yd-terminate",
+            "yd computerequirement terminate",
             ["-y", "ydid:x:1"],
         ),
     ]:
@@ -293,7 +308,7 @@ def test_name_glob_appended_on_confirmation_bypass(window, captured):
     window._skip_confirmations = {"terminate"}
     window.name_glob_override.setPlainText("cr-*")
     window._terminate_all_compute_requirements_action()
-    assert captured == [("yd-terminate", ["-y", "cr-*"])]
+    assert captured == [("yd computerequirement terminate", ["-y", "cr-*"])]
 
 
 def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
@@ -313,16 +328,16 @@ def test_empty_name_glob_adds_no_positional(window, captured, monkeypatch):
     window.name_glob_override.setPlainText("   ")
     window._cancel_work_requirements_action()
     assert seen == [[]]
-    assert captured == [("yd-cancel", ["-y", "ydid:x:1"])]
+    assert captured == [("yd workrequirement cancel", ["-y", "ydid:x:1"])]
 
 
 @pytest.mark.parametrize(
     "method, listed_with",
     [
         ("_cancel_work_requirements_action", []),
-        # Its listing asked 'yd-cancel -D' without '--abort', which leaves out
-        # a Work Requirement already CANCELLING, the very kind Cancel & Abort
-        # is for once Cancel has run: it found nothing to abort
+        # Listed by 'yd workrequirement cancel -D' without '--abort', it would
+        # leave out a Work Requirement already CANCELLING, the very kind Cancel
+        # & Abort is for once Cancel has run, and find nothing to abort
         ("_cancel_work_requirements_and_abort_action", ["--abort"]),
     ],
 )
@@ -438,17 +453,16 @@ def test_destructive_enumeration_failure_falls_back_to_scope(
         ),
     )
     window._terminate_all_compute_requirements_action()
-    assert captured == [("yd-terminate", ["-y"])]
+    assert captured == [("yd computerequirement terminate", ["-y"])]
     body, entities = calls[0]
     assert "Terminating Compute Requirements" in body
     assert entities is None  # scope-level fallback lists nothing
 
 
 def test_build_destructive_dialog_without_rows_has_no_listing(window):
-    # The read-only 'names' listing this used to also cover is gone: object
-    # deletion now uses the same selectable 'rows' listing as every other
+    # Object deletion uses the same selectable 'rows' listing as every other
     # destructive action, so 'rows=None' (nothing individually selectable) is
-    # the only no-listing case left. See test_commander_entity_selection.py /
+    # the only no-listing case. See test_commander_entity_selection.py /
     # test_commander_object_selection.py for the selectable-listing coverage.
     from PyQt6.QtWidgets import QListWidget, QPlainTextEdit
 
@@ -464,7 +478,7 @@ def test_bypass_skips_enumeration(window, captured, monkeypatch):
     monkeypatch.setattr(window, "_capture_dry_run_summaries", _fail)
     window._skip_confirmations = {"terminate"}
     window._terminate_all_compute_requirements_action()
-    assert captured == [("yd-terminate", ["-y"])]
+    assert captured == [("yd computerequirement terminate", ["-y"])]
 
 
 def test_delete_runs_when_confirmed(window, captured, monkeypatch):
@@ -482,7 +496,7 @@ def test_delete_runs_when_confirmed(window, captured, monkeypatch):
     )
     window._discovery.tag = "my-tag"
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "S3:b/pfx/obj"])]
+    assert captured == [("yd data delete", ["-Ry", "S3:b/pfx/obj"])]
 
 
 def test_delete_declined_does_not_run(window, captured, monkeypatch):
@@ -516,7 +530,7 @@ def test_delete_none_match_logs_and_skips(window, captured, monkeypatch):
 def test_delete_refuses_when_there_is_no_tag_and_no_path(window, captured):
     # With no configuration file selected nothing is discovered, so there is no
     # tag to build the default '<tag>*' path from — and with confirmations
-    # suppressed 'yd-delete -Ry None*' is what acting on a guess would mean.
+    # suppressed 'yd data delete -Ry None*' is what acting on a guess would mean.
     window._config_file = None
     window._discovery.tag = None
     window.log_output.setPlainText("")
@@ -552,7 +566,7 @@ def test_delete_enumeration_failure_falls_back(window, captured, monkeypatch):
     )
     window._discovery.tag = "my-tag"
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    assert captured == [("yd data delete", ["-Ry", "my-tag*"])]
     assert calls[0] is None
 
 
@@ -566,7 +580,7 @@ def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
     window._discovery.tag = "my-tag"
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "my-tag*", "-D"])]
+    assert captured == [("yd data delete", ["-Ry", "my-tag*", "-D"])]
 
 
 def test_delete_bypass_logs_the_suppression(window, captured, monkeypatch):
@@ -577,7 +591,7 @@ def test_delete_bypass_logs_the_suppression(window, captured, monkeypatch):
     window._discovery.tag = "my-tag"
     window.log_output.setPlainText("")
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "my-tag*"])]
+    assert captured == [("yd data delete", ["-Ry", "my-tag*"])]
     assert (
         "Confirmations suppressed for 'delete'; deleting all objects matching"
         " 'my-tag*'" in window.log_output.toPlainText()
@@ -589,7 +603,7 @@ def test_skip_confirmations_key_short_circuits(window, captured):
     # block offscreen) and the command runs directly.
     window._skip_confirmations = {"terminate"}
     window._terminate_all_compute_requirements_action()
-    assert captured == [("yd-terminate", ["-y"])]
+    assert captured == [("yd computerequirement terminate", ["-y"])]
 
 
 def test_yes_flag_disables_all_confirmations(qapp):
@@ -639,7 +653,7 @@ def test_scope_phrase_generic_when_unknown(window):
 
 def test_download(window, captured, monkeypatch):
     # Destination and path assembly, exercised through the enumeration-failure
-    # fallback (which downloads the whole pattern, as this action always did).
+    # fallback (which downloads the whole pattern).
     # The chooser path is covered in tests/test_commander_download_selection.py.
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: None
@@ -648,14 +662,14 @@ def test_download(window, captured, monkeypatch):
     window._discovery.tag = "my-tag"
     window._download_results_action()
     expected_dst = join(dirname(abspath("cfg/config.toml")), RESULTS_DIR)
-    assert captured == [("yd-download", ["--into", expected_dst, "my-tag*"])]
+    assert captured == [("yd data download", ["--into", expected_dst, "my-tag*"])]
 
 
 def test_delete_with_path_override_and_dry_run(window, captured):
     window.object_path_override.setPlainText("prefix/*")
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
-    assert captured == [("yd-delete", ["-Ry", "prefix/*", "-D"])]
+    assert captured == [("yd data delete", ["-Ry", "prefix/*", "-D"])]
 
 
 # --- Results / view actions work without a config file -----------------------
@@ -671,7 +685,7 @@ def test_download_results_no_config_uses_cwd(window, captured, monkeypatch):
     window._download_results_action()
     assert captured == [
         (
-            "yd-download",
+            "yd data download",
             ["--into", os.path.join(os.getcwd(), RESULTS_DIR), expected_path],
         )
     ]
@@ -716,7 +730,7 @@ def test_properties_reach_every_yd_command(window, captured):
     window.properties.setPlainText("workerPool.name=wp")
     window._create_worker_pool_action()
     command, args = captured[0]
-    assert command == "yd-provision"
+    assert command == "yd workerpool provision"
     assert window._build_command_args(command, args, yd_command=True) == [
         "--nc",
         "--nf",
@@ -763,18 +777,77 @@ def test_unbalanced_properties_refuse_every_action(
 
 def test_unbalanced_properties_refuse_a_typed_yd_command(window, captured):
     window.properties.setPlainText("common.tag='unclosed")
-    window._run_any_command_core("yd-list -w")
+    window._run_any_command_core("yd list -w")
     assert captured == []
     assert "Cannot use the Properties field" in window.log_output.toPlainText()
 
 
 def test_a_typed_yd_command_is_split_with_quoting(window, captured):
-    window._run_any_command_core("yd-submit --property 'workRequirement.name=a b'")
-    assert captured == [("yd-submit", ["--property", "workRequirement.name=a b"])]
+    window._run_any_command_core(
+        "yd workrequirement submit --property 'workRequirement.name=a b'"
+    )
+    assert captured == [
+        ("yd workrequirement submit", ["--property", "workRequirement.name=a b"])
+    ]
+
+
+def test_a_typed_noun_and_verb_are_one_command(window, captured):
+    # So that what Commander adds comes after the verb, where the noun's
+    # dispatcher expects it
+    window._run_any_command_core("yd wr submit -r wr.json")
+    assert captured == [("yd wr submit", ["-r", "wr.json"])]
+    args = window._build_command_args("yd wr submit", ["-r", "wr.json"], False)
+    assert args[-4:] == ["-r", "wr.json", "--nf", "--pp"]
+
+
+def test_a_noun_with_no_verb_is_run_as_typed(window, captured):
+    # The noun's own help, or its usage error, is the CLI's to give
+    window._run_any_command_core("yd wr --help")
+    assert captured == [("yd wr", ["--help"])]
+
+
+def test_a_command_is_one_word_with_yd(window, captured):
+    window._run_any_command_core("yd list work-requirements")
+    assert captured == [("yd list", ["work-requirements"])]
+    args = window._build_command_args("yd list", ["work-requirements"], False)
+    assert args[-3:] == ["work-requirements", "--nf", "--pp"]
+
+
+def test_a_noun_with_no_verb_is_given_nothing(window):
+    # Its help, or its usage error, is the dispatcher's: '--nc' added after
+    # 'yd wr' would be refused as an option before the verb
+    assert window._build_command_args("yd wr", ["--help"], False) == ["--help"]
+
+
+@pytest.mark.parametrize("command", ["yd submit", "yd frob", "yd commander"])
+def test_a_yd_command_the_registry_lacks_is_given_nothing(window, command):
+    # The dispatcher refuses 'yd submit' and 'yd frob' as typed; yd commander
+    # takes none of the options
+    window._config_file = None
+    window.namespace_override.setPlainText("ns")
+    assert window._build_command_args(command, ["x"], False) == ["x"]
+
+
+def test_an_old_yd_script_name_still_runs(window, captured):
+    window._run_any_command_core("yd-list work-requirements")
+    assert captured == [("yd-list", ["work-requirements"])]
+
+
+def test_an_unknown_yd_word_runs_the_cli_not_the_shell(window, captured):
+    # Handed to the shell, another 'yd' on the PATH would run; the CLI's
+    # dispatcher reports the word instead
+    window._run_any_command_core("yd frob x")
+    assert captured == [("yd frob", ["x"])]
+    assert cli_program("yd frob", ["x"]) == (
+        sys.executable,
+        ["-m", "yellowdog_cli.yd", "frob", "x"],
+    )
 
 
 def test_an_unbalanced_typed_yd_command_is_refused(window, captured):
-    window._run_any_command_core("yd-submit --property 'workRequirement.name=a")
+    window._run_any_command_core(
+        "yd workrequirement submit --property 'workRequirement.name=a"
+    )
     assert captured == []
     assert "Cannot use the command field" in window.log_output.toPlainText()
 
@@ -798,8 +871,8 @@ def test_object_path_uses_override(window):
 
 
 def test_object_path_is_unknown_without_a_tag_or_override(window):
-    # It used to interpolate the missing tag, producing the literal 'None*' and
-    # handing that to yd-download / yd-delete as the scope to act on.
+    # Interpolating the missing tag would produce the literal 'None*' and hand
+    # that to yd data download / yd data delete as the scope to act on.
     window._discovery.tag = None
     assert window._object_path() is None
 
@@ -830,7 +903,7 @@ def test_delete_refuses_when_no_object_path_can_be_worked_out(window, captured):
 
 def test_delete_refuses_even_with_confirmations_suppressed(window, captured):
     # The dangerous combination: '--yes' skips the confirmation, so 'None*' would
-    # have gone straight to 'yd-delete -Ry', deleting anything named 'None...'.
+    # go straight to 'yd data delete -Ry', deleting anything named 'None...'.
     window._discovery.tag = None
     window._confirmations_disabled = True
 
@@ -884,13 +957,17 @@ def test_follow_and_dry_run_are_mutually_exclusive_worker_pool(window):
 
 def test_build_args_yd_command_no_config(window):
     window._config_file = None
-    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    args = window._build_command_args(
+        "yd workrequirement submit", ["-r", "wr.json"], yd_command=True
+    )
     assert args == ["--nc", "--nf", "--pp", "-r", "wr.json"]
 
 
 def test_build_args_yd_command_with_config(window):
     window._config_file = "d/config.toml"
-    args = window._build_command_args("yd-submit", ["-r", "wr.json"], yd_command=True)
+    args = window._build_command_args(
+        "yd workrequirement submit", ["-r", "wr.json"], yd_command=True
+    )
     assert args == ["-c", "config.toml", "--nf", "--pp", "-r", "wr.json"]
 
 
@@ -915,8 +992,8 @@ def test_build_args_any_yd_command_respects_user_config_flag(window):
 
 def test_a_typed_standalone_yd_command_is_given_only_nf(window, captured):
     # yd-version takes none of the configuration options added to the others,
-    # and used to be handed to the shell for that reason, which failed where
-    # the shell did; it does take '--nf', and the output window has no colour
+    # but is not handed to the shell for that reason, which would fail where
+    # the shell does; it does take '--nf', and the output window has no colour
     window._config_file = "d/config.toml"
     window.namespace_override.setPlainText("ns")
     window.properties.setPlainText("common.tag='unclosed")  # not its concern
@@ -944,6 +1021,17 @@ def test_the_standalone_commands_given_nf_are_those_taking_it(command):
     assert result.returncode == 0, result.stderr
     takes_nf = "--nf" in result.stdout
     assert takes_nf == (command in NO_FORMAT_UNDECORATED_YD_COMMANDS)
+
+
+@pytest.mark.parametrize("command", ["yd help", "yd version", "yd schema"])
+def test_a_standalone_command_in_the_yd_form_is_given_nf_alone(window, command):
+    assert window._build_command_args(command, [], yd_command=False) == ["--nf"]
+
+
+def test_a_standalone_command_in_the_yd_form_without_nf_is_given_nothing(window):
+    assert window._build_command_args(
+        "yd format-json", ["a.json"], yd_command=False
+    ) == ["a.json"]
 
 
 def test_a_standalone_command_without_nf_is_given_nothing(window):
@@ -1020,7 +1108,7 @@ class TestConfigDataFile:
         path = window._get_config_data_file("workRequirementData")
         assert path == join(str(tmp_path), "real.json")
         [(command, args)] = started
-        assert command == "yd-variables"
+        assert command == "yd variables"
         assert args[:2] == ["-c", "config.toml"]
         assert "-q" in args and "wr_file" in args
 
@@ -1033,8 +1121,8 @@ class TestConfigDataFile:
     def test_the_child_is_given_commanders_environment(
         self, window, monkeypatch, tmp_path
     ):
-        # It was subprocess.run() with the inherited environment, decoding
-        # strictly in the locale's encoding
+        # Not subprocess.run() with the inherited environment, which would
+        # decode strictly in the locale's encoding
         window._config_file = self._config(tmp_path)
         self._children(
             monkeypatch,
@@ -1050,9 +1138,9 @@ class TestConfigDataFile:
     sorted(name for name in COMMANDS if name not in UNDECORATED_YD_COMMANDS),
 )
 def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
-    # The Namespace, Tag, User-Defined Variables and Properties fields were
-    # added to every typed command, so 'yd-show <id>' failed with
-    # "unrecognized arguments: -n", and 'yd-cloud-info instance-types' read
+    # Added to every typed command, the Namespace, Tag, User-Defined Variables
+    # and Properties fields would make 'yd-show <id>' fail with
+    # "unrecognized arguments: -n", and 'yd cloudinfo instance-types' read
     # the namespace as its type
     window._config_file = None
     window.namespace_override.setPlainText("ns")
@@ -1064,3 +1152,10 @@ def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
     for flag, option in (("-n", NAMESPACE), ("-t", TAG), ("-v", VARIABLE)):
         assert (flag in args) == registered.has(option), (command, flag)
     assert any(a.startswith("--property=") for a in args) == registered.has(PROPERTY)
+
+
+def test_a_noun_verb_is_not_given_an_option_it_hides(window):
+    # yd instance terminate takes Instance IDs alone, and refuses -n
+    window.namespace_override.setPlainText("ns")
+    assert window._namespace_tag_and_user_vars("yd instance terminate") == []
+    assert window._namespace_tag_and_user_vars("yd cr terminate")[:2] == ["-n", "ns"]

@@ -304,7 +304,7 @@ def _row(name: str, result: dc.Result) -> tuple[dc.Check, dc.Result]:
 class TestRenderingRegressions:
     @pytest.mark.parametrize("no_format", [True, False])
     def test_details_line_up_across_statuses(self, monkeypatch, capsys, no_format):
-        # with formatting on, the markup is what once pushed the columns apart
+        # with formatting on, the markup is what would push the columns apart
         _args(monkeypatch, no_format=no_format)
         doctor.render_table(
             [
@@ -565,7 +565,7 @@ class TestInstallation:
     def test_rclone_missing_warns(self, monkeypatch):
         monkeypatch.setattr(dc, "find_rclone", lambda: None)
         r = dc.check_rclone(_ctx())
-        assert r.status is dc.Status.WARN and "yd-upload" in (r.remedy or "")
+        assert r.status is dc.Status.WARN and "yd data" in (r.remedy or "")
 
     def test_rclone_found(self, monkeypatch):
         monkeypatch.setattr(
@@ -679,6 +679,8 @@ class TestInstallation:
             "Commander",
             "MCP Server",
             "rclone",
+            "yd on PATH",
+            "Shell completion",
             # Ahead of PyPI, which goes through the proxy PAC resolves
             "Proxy",
             "Certificates",
@@ -1560,14 +1562,14 @@ class TestEntryPoint:
         text = (Path(__file__).parent.parent / "docs" / "commands.md").read_text(
             encoding="utf-8"
         )
-        assert "\n### yd-doctor\n" in text
-        assert "--offline" in text.split("### yd-doctor")[1].split("### yd-help")[0]
+        assert "\n### yd doctor\n" in text
+        assert "--offline" in text.split("### yd doctor")[1].split("### yd help")[0]
 
 
 class TestLogging:
     def test_rclone_api_cannot_put_log_records_on_stdout(self):
         # rclone_api installs a stdout handler on the root logger at import
-        # unless one exists; urllib3's retry warnings then broke --json
+        # unless one exists; urllib3's retry warnings would then break --json
         script = (
             "import logging\n"
             "from yellowdog_cli import doctor\n"
@@ -1620,3 +1622,144 @@ class TestWithoutTheSdk:
         rows = {row["check"]: row for row in json.loads(result.stdout)}
         assert rows["SDK imports"]["status"] == "FAIL", result.stderr
         assert result.returncode == 1
+
+
+class TestYdOnPath:
+    """
+    The 'yd' first on the PATH is this installation's: another one, such as
+    YellowDog's internal CLI of the same name, runs in its place, and Tab
+    completion asks it.
+    """
+
+    @pytest.fixture
+    def own(self, tmp_path, monkeypatch):
+        script = tmp_path / "venv" / "bin" / "yd"
+        script.parent.mkdir(parents=True)
+        script.write_text("", encoding="utf-8")
+        monkeypatch.setattr(dc, "_own_yd", lambda: str(script))
+        return script
+
+    def test_this_installations_yd_first(self, own, monkeypatch):
+        monkeypatch.setattr(dc.shutil, "which", lambda name: str(own))
+        r = dc.check_yd_on_path(_ctx())
+        assert r.status is dc.Status.OK and r.detail == str(own)
+
+    def test_a_link_to_it_is_it(self, own, tmp_path, monkeypatch):
+        # pipx puts a symbolic link to the venv's script on the PATH
+        link = tmp_path / "bin" / "yd"
+        link.parent.mkdir()
+        link.symlink_to(own)
+        monkeypatch.setattr(dc.shutil, "which", lambda name: str(link))
+        assert dc.check_yd_on_path(_ctx()).status is dc.Status.OK
+
+    def test_another_yd_first_warns(self, own, tmp_path, monkeypatch):
+        other = tmp_path / "usr" / "yd"
+        other.parent.mkdir()
+        other.write_text("", encoding="utf-8")
+        monkeypatch.setattr(dc.shutil, "which", lambda name: str(other))
+        r = dc.check_yd_on_path(_ctx())
+        assert r.status is dc.Status.WARN
+        assert str(other) in r.detail and str(own) in r.detail
+        assert str(own.parent) in (r.remedy or "")
+
+    def test_no_yd_on_the_path_warns(self, own, monkeypatch):
+        monkeypatch.setattr(dc.shutil, "which", lambda name: None)
+        r = dc.check_yd_on_path(_ctx())
+        assert r.status is dc.Status.WARN and r.detail == "no yd on PATH"
+        assert str(own.parent) in (r.remedy or "")
+
+    def test_no_script_installed_is_skipped(self, tmp_path, monkeypatch):
+        # Run from a checkout that was never installed
+        monkeypatch.setattr(dc, "_own_yd", lambda: str(tmp_path / "missing" / "yd"))
+        assert dc.check_yd_on_path(_ctx()).status is dc.Status.SKIP
+
+
+class TestShellCompletion:
+    """
+    Whether the shell's start-up file loads 'yd completion': read, not run,
+    so a line it does not see (a sourced file, a framework) is reported as
+    not set up rather than as a failure.
+    """
+
+    @pytest.fixture
+    def home(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(dc, "_on_windows", lambda: False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv("ZDOTDIR", raising=False)
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        return tmp_path
+
+    def _check(self, monkeypatch, shell: str) -> dc.Result:
+        monkeypatch.setenv("SHELL", f"/bin/{shell}")
+        return dc.check_shell_completion(_ctx())
+
+    @pytest.mark.parametrize(
+        "shell, path, line",
+        [
+            ("zsh", ".zshrc", 'eval "$(yd completion zsh)"'),
+            ("bash", ".bashrc", 'eval "$(yd completion bash)"'),
+            ("bash", ".bash_profile", 'eval "$(yd completion bash)"'),
+            ("fish", ".config/fish/config.fish", "yd completion fish | source"),
+        ],
+    )
+    def test_set_up(self, home, monkeypatch, shell, path, line):
+        startup = home / path
+        startup.parent.mkdir(parents=True, exist_ok=True)
+        startup.write_text(f"# mine\n{line}\n", encoding="utf-8")
+        r = self._check(monkeypatch, shell)
+        assert r.status is dc.Status.OK and r.detail == f"set up in {startup}"
+
+    def test_the_guarded_form_counts(self, home, monkeypatch):
+        (home / ".zshrc").write_text(
+            "if (( $+commands[yd] )); then\n"
+            "  _yd_script=$(yd completion zsh 2>/dev/null)\n"
+            "fi\n",
+            encoding="utf-8",
+        )
+        assert self._check(monkeypatch, "zsh").status is dc.Status.OK
+
+    def test_zdotdir_is_where_zsh_reads(self, home, monkeypatch):
+        (home / "z").mkdir()
+        (home / "z" / ".zshrc").write_text(
+            'eval "$(yd completion zsh)"\n', encoding="utf-8"
+        )
+        monkeypatch.setenv("ZDOTDIR", str(home / "z"))
+        r = self._check(monkeypatch, "zsh")
+        assert r.detail == f"set up in {home / 'z' / '.zshrc'}"
+
+    @pytest.mark.parametrize("contents", [None, "", '# eval "$(yd completion zsh)"\n'])
+    def test_not_set_up_says_what_to_add(self, home, monkeypatch, contents):
+        # A missing file, an empty one, or the line commented out
+        if contents is not None:
+            (home / ".zshrc").write_text(contents, encoding="utf-8")
+        r = self._check(monkeypatch, "zsh")
+        assert r.status is dc.Status.OK
+        assert r.detail == (
+            f'not set up in {home / ".zshrc"}: add eval "$(yd completion zsh)"'
+        )
+
+    def test_the_pre_release_command_warns(self, home, monkeypatch):
+        (home / ".zshrc").write_text(
+            '(( $+commands[yd-completion] )) && eval "$(yd-completion zsh)"\n',
+            encoding="utf-8",
+        )
+        r = self._check(monkeypatch, "zsh")
+        assert r.status is dc.Status.WARN
+        assert "yd-completion" in r.detail and str(home / ".zshrc") in r.detail
+        assert 'eval "$(yd completion zsh)"' in (r.remedy or "")
+
+    @pytest.mark.parametrize("shell", ["tcsh", ""])
+    def test_another_shell_is_skipped(self, home, monkeypatch, shell):
+        monkeypatch.setenv("SHELL", f"/bin/{shell}" if shell else "")
+        assert dc.check_shell_completion(_ctx()).status is dc.Status.SKIP
+
+    def test_windows_is_skipped(self, home, monkeypatch):
+        monkeypatch.setattr(dc, "_on_windows", lambda: True)
+        r = dc.check_shell_completion(_ctx())
+        assert r.status is dc.Status.SKIP and "yd completion powershell" in r.detail
+
+    def test_both_rows_are_installation_checks(self):
+        rows = {check.name: check for check in dc.CHECKS}
+        for name in ("yd on PATH", "Shell completion"):
+            assert rows[name].group == "Installation"
+            assert rows[name].needs is dc.Need.NOTHING

@@ -445,6 +445,30 @@ class TestDownloadFlatten:
         expected = "dup" if later.endswith("sub/b.txt") else "abc"
         assert (remote / "flat" / "b.txt").read_text() == expected
 
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_collision_between_arguments_is_warned_of(
+        self, remote, run_download, dry_run
+    ):
+        # Each argument was checked alone, so one directory's file landing
+        # on another's in the shared destination went unwarned
+        (remote / "remote" / "other").mkdir()
+        (remote / "remote" / "other" / "b.txt").write_text("other")
+        out, err, code = run_download(
+            remote_paths=["loc:remote/mydir", "loc:remote/oth*"],
+            destination="flat",
+            flatten=True,
+            dry_run=dry_run,
+            quiet=False,
+        )
+        assert code == 0
+        text = " ".join((out + err).split())
+        assert (
+            "'loc:remote/other/b.txt' will overwrite 'loc:remote/mydir/b.txt'"
+            " locally (same filename, flattened download)"
+        ) in text
+        if not dry_run:
+            assert (remote / "flat" / "b.txt").read_text() == "other"
+
     def test_a_single_file_is_unaffected(self, remote, run_download):
         _, _, code = run_download(
             remote_paths=["loc:remote/a.txt"], destination="flat", flatten=True
@@ -798,3 +822,17 @@ class TestResolveRemotePathCurrentDirectorySegments:
     def test_a_dot_with_no_prefix_is_the_bucket(self):
         config = ConfigDataClient(remote="myremote", bucket="b")
         assert resolve_remote_path(config, relative_path=".") == "myremote:b"
+
+
+@pytest.mark.parametrize(
+    "remote_path, name",
+    [
+        ("loc:a.txt", "a.txt"),
+        ("S3:bucket/pfx/a.txt", "a.txt"),
+        ("S3:bucket/pfx/dir/", "dir"),
+        ("S3:bucket/a:b.txt", "a:b.txt"),
+        ("loc:a:b.txt", "a:b.txt"),
+    ],
+)
+def test_remote_basename_splits_off_the_remote_first(remote_path, name):
+    assert dcu_module.remote_basename(remote_path) == name

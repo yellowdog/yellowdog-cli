@@ -42,6 +42,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
 )
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.misc_utils import is_http_not_found, shown_expiry
 from yellowdog_cli.utils.printing import (
@@ -147,7 +148,7 @@ def _expand_globs(ctx: RunContext, targets: list[str]) -> list[str]:
             continue
         print_info(
             "Finding Configured Worker Pools"
-            f" {describe_glob_scope([target], ctx.config.namespace)}"
+            f" {describe_glob_scope(ctx.client, [target], ctx.config.namespace)}"
         )
         summaries: list[WorkerPoolSummary] = expand_name_globs(
             [target],
@@ -185,7 +186,9 @@ def _resolve(ctx: RunContext, target: str) -> Item:
             ctx.client, target, ctx.config.namespace
         )
         if worker_pool_id is None:
-            raise Unresolved(f"Cannot find Worker Pool '{target}'")
+            raise Unresolved(
+                f"Cannot find Worker Pool '{target}'", code=ExitCode.NOT_FOUND
+            )
     try:
         worker_pool: WorkerPool = get_worker_pool_by_id(
             ctx.client, cast(str, worker_pool_id)

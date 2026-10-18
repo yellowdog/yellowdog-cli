@@ -362,7 +362,7 @@ class TestParallelBatching:
 class TestNoTasks:
     """
     A Task Group with no Tasks has no batches. With parallel batches asked
-    for, it used to reach the parallel path and build a ThreadPoolExecutor of
+    for, it must not reach the parallel path and build a ThreadPoolExecutor of
     no workers, which raises.
     """
 
@@ -386,8 +386,8 @@ class TestNoTasks:
 class TestTaskCountExpansion:
     """
     With 'task_count' given (no specification file), every Task is generated
-    from the first, so copying it 'taskCount' times only built dicts to go
-    unread. From a specification, the copies are what is generated from.
+    from the first, so copying it 'taskCount' times would only build dicts to
+    go unread. From a specification, the copies are what is generated from.
     """
 
     def test_no_copies_are_made_when_task_count_is_given(self):
@@ -580,9 +580,9 @@ class TestBatchesStopAfterAFailure:
 class TestDryRunSnapshotOrder:
     """
     A dry run's snapshot shows a Task Group's Tasks in Task order, however
-    the batches carrying them finish: batches submitted in parallel used to
-    be added as they completed, so the printed Work Requirement's Tasks came
-    out in a different order from run to run.
+    the batches carrying them finish: batches submitted in parallel and added
+    as they completed would print the Work Requirement's Tasks in a different
+    order from run to run.
     """
 
     @staticmethod

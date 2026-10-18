@@ -336,3 +336,12 @@ class TestCommandLine:
         parsed: Any = CLIParser(command="yd-priority", argv=["-2.5", WR_A])
         assert parsed.priority == -2.5
         assert parsed.priority_targets == [WR_A]
+
+
+def test_a_named_target_that_names_nothing_is_not_found():
+    # 'yd wr priority no-such-wr 5' exits 6, as a missing ID does
+    from yellowdog_cli.utils.exit_codes import ExitCode, classify
+
+    missing = work_targets.TargetNotFound("Work Requirement 'x'", "work-requirements")
+    assert classify(missing) == ExitCode.NOT_FOUND
+    assert str(missing) == "Work Requirement 'x' not found"

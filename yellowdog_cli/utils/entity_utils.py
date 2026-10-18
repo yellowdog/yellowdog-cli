@@ -3,11 +3,13 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import cast
+from json import loads as json_loads
+from typing import Any, cast
 
+from requests import HTTPError, get
 from yellowdog_client import PlatformClient
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
@@ -48,6 +50,7 @@ from yellowdog_client.model import (
     Task,
     TaskGroup,
     TaskSearch,
+    TaskStatus,
     User,
     UserSearch,
     WorkerPool,
@@ -67,6 +70,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
@@ -230,12 +234,12 @@ def find_work_requirement_by_name(
     ]
     if not candidates:
         raise NotFoundError(
-            f"Cannot find Work Requirement '{name}' in namespace '{namespace}'"
+            f"Cannot find Work Requirement '{name}' {namespace_scope(client, namespace)}"
         )
     preferred = [summary for summary in candidates if summary.status in statuses]
     if len(preferred) > 1:
         raise AmbiguousNameError(
-            f"{len(preferred)} Work Requirements in namespace '{namespace}' are"
+            f"{len(preferred)} Work Requirements {namespace_scope(client, namespace)} are"
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
@@ -269,12 +273,12 @@ def find_compute_requirement_by_name(
     ]
     if not candidates:
         raise NotFoundError(
-            f"Cannot find Compute Requirement '{name}' in namespace '{namespace}'"
+            f"Cannot find Compute Requirement '{name}' {namespace_scope(client, namespace)}"
         )
     preferred = [summary for summary in candidates if summary.status in statuses]
     if len(preferred) > 1:
         raise AmbiguousNameError(
-            f"{len(preferred)} Compute Requirements in namespace '{namespace}' are"
+            f"{len(preferred)} Compute Requirements {namespace_scope(client, namespace)} are"
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
@@ -755,16 +759,30 @@ def remove_allowances_matching_description(
     return remove_allowances(client, allowances_to_remove(client, description))
 
 
-@lru_cache
-def get_all_tasks_in_task_group(
-    client: PlatformClient, task_group_id: str
-) -> list[Task]:
+def iterate_tasks_in_task_group(
+    client: PlatformClient,
+    task_group_id: str,
+    statuses: tuple[str, ...] | None = None,
+    has_errors: bool | None = None,
+    name_contains: str | None = None,
+) -> Iterator[Task]:
     """
-    Return all the tasks in a task group, with caching.
+    The tasks in a task group, fetched a page at a time as they are read, so
+    a caller reading only some fetches only those: where given, only those
+    with one of 'statuses' (TaskStatus values), with errors ('has_errors'),
+    and whose name contains 'name_contains' (a case-sensitive substring, as
+    the Platform matches it). The Platform filters, so a task group of
+    millions of tasks sends only what is asked for. Not cached, being read
+    lazily.
     """
     return client.work_client.get_tasks(
-        TaskSearch(taskGroupId=task_group_id)
-    ).list_all()
+        TaskSearch(
+            taskGroupId=task_group_id,
+            statuses=[TaskStatus(status) for status in statuses] if statuses else None,
+            hasErrors=True if has_errors else None,
+            name=name_contains or None,
+        )
+    ).iterate()
 
 
 def split_namespace_and_name(
@@ -806,20 +824,55 @@ def resolve_name_glob(
     return namespace, cast(str, name)
 
 
-def describe_glob_scope(patterns: list[str], default_namespace: str | None) -> str:
+def namespace_scope(client: PlatformClient, namespace: str | None) -> str:
+    """
+    The phrase for the namespaces a search is scoped to, as
+    search_namespaces() scopes it: "in namespace 'X'" for the one given; for
+    none, "in namespaces 'a', 'b'" naming those the Application can read when
+    it cannot read them all, else "in all namespaces". The Application's
+    details are cached, so the search reading them again costs nothing.
+    """
+    if namespace:
+        return f"in namespace '{namespace}'"
+    namespaces = search_namespaces(client, namespace)
+    if namespaces is None:
+        return "in all namespaces"
+    if len(namespaces) == 1:
+        return f"in namespace '{namespaces[0]}'"
+    return f"in namespaces {', '.join(repr(n) for n in namespaces)}"
+
+
+def filter_phrase(template: str, value: str | None) -> str:
+    """
+    A search filter's phrase, with a leading space: 'template' with 'value'
+    in place of '{}', as in filter_phrase("with '{}' in tag", tag). Empty for
+    an empty value, which filters nothing.
+    """
+    return f" {template.format(value)}" if value else ""
+
+
+def describe_glob_scope(
+    client: PlatformClient, patterns: list[str], default_namespace: str | None
+) -> str:
     """
     Human-readable scope phrase for a set of name-glob patterns, resolving each
-    pattern's namespace. Collapses to "in namespace 'X' matching 'a', 'b'" when
-    all patterns resolve to the same namespace; otherwise qualifies each pattern
-    with its namespace: "matching 'ns1/a', 'ns2/b'".
+    pattern's namespace. Collapses to "in namespace 'X' matching 'a', 'b'" (or
+    namespace_scope()'s phrase for no namespace) when all patterns resolve to
+    the same namespace; otherwise qualifies each pattern with its namespace:
+    "matching 'ns1/a', 'ns2/b'", or "'a' in all namespaces" for one with none.
     """
     resolved = [resolve_name_glob(pattern, default_namespace) for pattern in patterns]
     namespaces = {namespace for namespace, _ in resolved}
     if len(namespaces) == 1:
         namespace = resolved[0][0]
         names = ", ".join(repr(name) for _, name in resolved)
-        return f"in namespace '{namespace}' matching {names}"
-    qualified = ", ".join(repr(f"{namespace}/{name}") for namespace, name in resolved)
+        return f"{namespace_scope(client, namespace)} matching {names}"
+    qualified = ", ".join(
+        repr(f"{namespace}/{name}")
+        if namespace
+        else f"{name!r} {namespace_scope(client, namespace)}"
+        for namespace, name in resolved
+    )
     return f"matching {qualified}"
 
 
@@ -1423,3 +1476,26 @@ def get_task_group_by_id(client: PlatformClient, task_group_id: str) -> TaskGrou
             return task_group
 
     raise NotFoundError(f"Task Group ID '{task_group_id}' not found")
+
+
+def get_user_attribute_definitions(config: Any) -> list[dict]:
+    """
+    The user compute attribute definitions, by name, as the Platform's API
+    gives them (the SDK has no call for them): 'config' the [common]
+    configuration, for the URL and the key. A failure is an HTTPError
+    carrying the response, so that the exit code names its kind (a 401
+    exits 4).
+    """
+    response = get(
+        url=f"{config.url}/compute/attributes/user",
+        headers={"Authorization": f"yd-key {config.key}:{config.secret}"},
+        timeout=RAW_REQUEST_TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise HTTPError(
+            "Unable to list user attribute definitions: HTTP "
+            f"{response.status_code} ({response.text})",
+            response=response,
+        )
+    definitions: list[dict] = json_loads(response.text)
+    return sorted(definitions, key=lambda definition: definition["name"])

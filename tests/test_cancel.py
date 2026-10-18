@@ -189,6 +189,34 @@ class TestListing:
         assert platform.calls == []
         assert [s.id for s in report.call_args.args[1]] == [WR_A]
 
+    @pytest.mark.parametrize(
+        "namespace, tag, expected",
+        [
+            (
+                "ns",
+                "wr",
+                "Cancelling Work Requirements in namespace 'ns'"
+                " with tags including 'wr'",
+            ),
+            # An empty tag filters nothing, and no namespace searches them all
+            ("ns", "", "Cancelling Work Requirements in namespace 'ns'"),
+            ("", "", "Cancelling Work Requirements in all namespaces"),
+        ],
+    )
+    def test_the_tag_path_describes_what_it_searches(
+        self, platform, monkeypatch, namespace, tag, expected
+    ):
+        platform.config.namespace = namespace
+        platform.config.name_tag = tag
+        details = SimpleNamespace(allNamespacesReadable=True, readableNamespaces=[])
+        monkeypatch.setattr(
+            entity_utils, "get_application_details", lambda client: details
+        )
+        printed: list[str] = []
+        monkeypatch.setattr(yd_cancel, "print_info", printed.append)
+        _run(platform, [])
+        assert printed[0] == expected
+
     def test_declining_skips_everything(self, platform, monkeypatch):
         monkeypatch.setattr(action_runner, "confirmed", lambda message: False)
         _run(platform, [])

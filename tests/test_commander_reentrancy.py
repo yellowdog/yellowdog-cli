@@ -96,15 +96,15 @@ def test_a_second_destructive_action_during_an_enumeration_is_refused(
     window._cancel_work_requirements_action()
 
     assert inner_ran == ["returned"]  # the inner call returned, it did not raise
-    assert captured == [("yd-cancel", ["-y", "ydid:workreq:1"])]
+    assert captured == [("yd workrequirement cancel", ["-y", "ydid:workreq:1"])]
     assert "ignoring Terminate Compute Requirements" in window.log_output.toPlainText()
 
 
 def test_the_depth_is_a_counter_not_a_flag(window):
     # Nested loops really do nest. The config parse deferred at construction with
     # singleShot(0) runs in the first event loop to spin, which can be one an
-    # enumeration has already entered — driving the real _run_nested once was
-    # observed reaching depth 2. A flag cleared when the inner parse finished
+    # enumeration has already entered — driving the real _run_nested can reach
+    # depth 2. A flag cleared when the inner parse finished
     # would unlock the window while the outer loop was still blocking, so the
     # guard must stay closed until the depth is back to zero.
     window._nested_depth = 2
@@ -132,7 +132,10 @@ def test_submit_and_provision_are_not_blocked(window, captured, monkeypatch):
     window._nested_depth = 1
     window._submit_work_requirement_action()
     window._create_worker_pool_action()
-    assert [command for command, _args in captured] == ["yd-submit", "yd-provision"]
+    assert [command for command, _args in captured] == [
+        "yd workrequirement submit",
+        "yd workerpool provision",
+    ]
     assert window.submit_work_requirement not in window._action_buttons()
     assert window.create_worker_pool not in window._action_buttons()
 
@@ -151,7 +154,7 @@ def test_the_guard_precedes_the_dry_run_shortcut(window, captured, monkeypatch):
 
 
 def test_normal_operation_is_unaffected(window, captured, monkeypatch):
-    # With no nested loop in flight, every action proceeds as before.
+    # With no nested loop in flight, every action proceeds as normal.
     objects = [ObjectSummary(path="S3:b/pfx/o", name="o", is_dir=False)]
     monkeypatch.setattr(
         window, "_capture_dry_run_objects", lambda command, extra_args: objects
@@ -165,4 +168,4 @@ def test_normal_operation_is_unaffected(window, captured, monkeypatch):
 
     window._delete_objects_action()
 
-    assert captured == [("yd-delete", ["-Ry", "S3:b/pfx/o"])]
+    assert captured == [("yd data delete", ["-Ry", "S3:b/pfx/o"])]

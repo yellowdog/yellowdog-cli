@@ -1,17 +1,17 @@
 """
 A harness for testing Commander's dialogs as dialogs.
 
-Four bugs reached the user in the work this exists to guard: dialog buttons that
-did nothing, a default button silently stolen by another button, a list collapsed
-to a scrollbar on Windows, and a lost prefix hierarchy. Every one of them lived in
-a seam the tests stubbed or asserted around — they checked arguments and
-arithmetic, never outcomes.
+It guards against four kinds of bug that reach a user: dialog buttons that do
+nothing, a default button silently stolen by another button, a list collapsed to
+a scrollbar on Windows, and a lost prefix hierarchy. Each lives in a seam that a
+test stubbing or asserting around the dialog cannot see — such a test checks
+arguments and arithmetic, never outcomes.
 
 The central idea is therefore that a dialog under test runs its **real** exec().
 The interaction is queued with QTimer.singleShot(0, ...) beforehand, which cannot
 fire until some event loop runs, so it lands inside that real modal loop. A click
 must then travel the real button-box -> accepted -> accept() path for exec() to
-return at all, which is precisely what the stubbing approach could not see.
+return at all, which is precisely what stubbing exec() cannot see.
 
 Everything here works under QT_QPA_PLATFORM=offscreen with no display, so it runs
 on a headless CI node; nodes without a usable Qt skip via conftest's 'qapp'.
@@ -68,7 +68,7 @@ def check() -> None:
     after each test by conftest, so a failure inside a Qt callback cannot vanish.
     """
     # Cleared even when raising, so a failure a test has already inspected is not
-    # reported a second time at teardown. Found by this module's own self-tests.
+    # reported a second time at teardown.
     try:
         for record in _armed:
             if record["error"] is not None:
@@ -114,10 +114,10 @@ def _install(dialog: QDialog, interact, watchdog_ms: int) -> dict:
         # yd-show and blocks in a nested loop, it is queued before this callback, and
         # a zero-interval timer is only delivered once the queue is otherwise empty —
         # so it runs inside the dialog's exec() and ahead of the interaction. On a
-        # small CI node it consumed the whole budget, and four dialogs that closed
-        # correctly were convicted of hanging. Nothing is lost by waiting: the
-        # watchdog's only lever is rejecting the dialog, which would not have
-        # released a nested loop held open by something else anyway.
+        # small CI node it can consume the whole budget, convicting dialogs that
+        # close correctly of hanging. Nothing is lost by waiting: the watchdog's
+        # only lever is rejecting the dialog, which would not release a nested
+        # loop held open by something else anyway.
         watchdog.start(watchdog_ms)
         try:
             interact(dialog)
@@ -227,8 +227,8 @@ def default_button(dialog: QDialog) -> QPushButton | None:
     The dialog's default button — the one Return activates — or None.
 
     Worth asking about explicitly: an autoDefault QPushButton that gains focus
-    takes the role over from whichever button was given it, which is how a
-    confirmation dialog stopped defaulting to 'No'.
+    takes the role over from whichever button was given it, which would stop a
+    confirmation dialog defaulting to 'No'.
     """
     for button in dialog.findChildren(QPushButton):
         if button.isDefault():

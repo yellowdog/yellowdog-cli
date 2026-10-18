@@ -41,8 +41,10 @@ from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     find_work_requirement_by_name,
     get_filtered_work_requirement_summaries,
+    namespace_scope,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.follow_utils import Settled, follow_ids
@@ -160,7 +162,7 @@ def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction
     if globs:
         print_info(
             f"{action.gerund} Work Requirements "
-            f"{describe_glob_scope(globs, ctx.config.namespace)}"
+            f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
         summaries: list[WorkRequirementSummary] = expand_name_globs(
             globs,
@@ -174,9 +176,9 @@ def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction
         )
     else:
         print_info(
-            f"{action.gerund} Work Requirements in namespace "
-            f"'{ctx.config.namespace}' with "
-            f"'{ctx.config.name_tag}' in tag"
+            f"{action.gerund} Work Requirements "
+            f"{namespace_scope(ctx.client, ctx.config.namespace)}"
+            + filter_phrase("with '{}' in tag", ctx.config.name_tag)
         )
         summaries = get_filtered_work_requirement_summaries(
             client=ctx.client,

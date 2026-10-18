@@ -647,7 +647,7 @@ class TestSubmitWRCleanupOnFailure:
         ids=["failure", "interrupt"],
     )
     def test_cleanup_called_when_add_tasks_raises(self, error):
-        # An interrupt too: Ctrl-C part-way used to leave the Work
+        # An interrupt too: Ctrl-C part-way must not leave the Work
         # Requirement live with only some of its Tasks
         wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
         mock_wr = _make_mock_wr()
@@ -712,8 +712,8 @@ class TestSubmitWRCleanupOnFailure:
 
 class TestSubmitWRHoldFailure:
     def test_a_failed_hold_cancels_the_work_requirement(self):
-        # The Work Requirement is created, then held: a hold that fails used
-        # to leave it live without its Tasks, outside the clean-up
+        # The Work Requirement is created, then held: a hold that fails is
+        # inside the clean-up, rather than leaving it live without its Tasks
         wr_data = {TASK_GROUPS: [{TASKS: [{}], TASK_TYPES: ["bash"]}]}
         mock_wr = _make_mock_wr()
         cleanup_mock = MagicMock()
@@ -825,7 +825,7 @@ class TestCleanupOnFailure:
 class TestSubmitWRGeneratedMessage:
     """
     The Work Requirement is announced as it is generated, as each Task Group
-    already was — so a dry run names it without having to read the JSON.
+    is — so a dry run names it without having to read the JSON.
     """
 
     def test_the_work_requirement_is_announced(self, capsys):
@@ -869,8 +869,8 @@ class TestSubmitWRGeneratedMessage:
 class TestSubmitWRTaskGroupCountAsFloat:
     """
     The schema accepts 2.0 as an integer, as JSON Schema does; range() does
-    not, so it used to raise "'float' object cannot be interpreted as an
-    integer".
+    not, and given it unconverted would raise "'float' object cannot be
+    interpreted as an integer".
     """
 
     def test_a_whole_valued_float_expands(self):
@@ -924,10 +924,10 @@ def _generate_one_task(wr_data: dict) -> Task:
 
 class TestTaskPropertiesTaskGroupOverWorkRequirement:
     """
-    Task > Task Group > Work Requirement > TOML. 'arguments',
-    'argumentsPrefix', 'argumentsPostfix' and 'addEnvironment' used to look at
-    the Work Requirement before the Task Group, so a Task Group's own value
-    was lost whenever the Work Requirement set one too.
+    Task > Task Group > Work Requirement > TOML, for 'arguments',
+    'argumentsPrefix', 'argumentsPostfix' and 'addEnvironment' too: looking at
+    the Work Requirement before the Task Group would lose a Task Group's own
+    value whenever the Work Requirement set one too.
     """
 
     @pytest.mark.parametrize("prop", [ARGS, ARGS_PREFIX, ARGS_POSTFIX])
@@ -995,8 +995,9 @@ class TestInheritedPropertiesSubstitutedPerTask:
     '{{task_name}}' and '{{task_number}}' in a property a Task inherits from
     its Task Group or the Work Requirement are the Task's, as in its own
     properties and the configuration's. Those levels are substituted as the
-    Task Groups are built, before any Task exists, and the inherited values
-    were passed on with the references left in them.
+    Task Groups are built, before any Task exists, so the inherited values are
+    substituted for each Task rather than passed on with the references left
+    in them.
     """
 
     @staticmethod
@@ -1052,9 +1053,9 @@ class TestInheritedPropertiesSubstitutedPerTask:
 
 class TestCreateTaskGroupTaskTypeOrder:
     """
-    The types were gathered through a set, whose order varies from run to
-    run with string hashing, so a dry run's output did too. Declared types
-    come first, in order, then the Tasks' own, in order of first appearance.
+    Declared types come first, in order, then the Tasks' own, in order of
+    first appearance: gathered through a set, whose order varies from run to
+    run with string hashing, they would make a dry run's output vary too.
     """
 
     def test_declared_types_then_the_tasks_types_in_order(self):

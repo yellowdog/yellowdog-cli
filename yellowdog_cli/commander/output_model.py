@@ -10,7 +10,8 @@ from codecs import getincrementaldecoder
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from yellowdog_cli.utils.command_registry import COMMANDS, DRY_RUN, FOLLOW, PROGRESS
+from yellowdog_cli.utils.command_registry import DRY_RUN, FOLLOW, PROGRESS
+from yellowdog_cli.utils.noun_registry import command_named
 from yellowdog_cli.utils.ydid_utils import (
     YDID_HIGHLIGHT_RE,
     YDIDType,
@@ -28,7 +29,7 @@ BLOCK_SEPARATORS = re.compile(r"\r\n|[\r\n\u2029\ufdd0\ufdd1]")
 
 
 # The command that does nothing but follow the YDIDs it is given
-FOLLOWING_COMMAND = "yd-follow"
+FOLLOWING_COMMAND = "yd-follow"  # the registry command, by any name
 
 
 def block_count(text: str) -> int:
@@ -53,7 +54,9 @@ class OutputRun:
     """
 
     run_id: int
-    command: str  # the program run, e.g. 'yd-submit'; empty for Commander
+    command: (
+        str  # the program run, e.g. 'yd workrequirement submit'; empty for Commander
+    )
     command_line: str = ""  # as echoed on the 'Executing:' line
     # As the user would recognise it: without the config source, namespace, tag,
     # variables and '--nf --pp' that Commander adds to every 'yd-*' command
@@ -69,7 +72,8 @@ class OutputRun:
     printed_pid: int | None = None
     # The arguments it was run with, as given to the process
     arguments: tuple[str, ...] = ()
-    # The Work Requirement YDIDs it has printed: the one a 'yd-submit' created
+    # The Work Requirement YDIDs it has printed: the one a 'yd workrequirement
+    # submit' created
     work_requirements_printed: set[str] = field(default_factory=set)
 
     def note_output(self, text: str) -> None:
@@ -86,15 +90,16 @@ class OutputRun:
     def follows_events(self) -> bool:
         """
         Whether the command follows the event streams of the entities it is
-        about: 'yd-follow', or a command given '--follow' or '--progress'
-        that is not a dry run. Only separate flags count, not a cluster such
-        as '-fD', whose letters could be another option's value.
+        about: 'yd follow' (a noun's 'follow' verb, or 'yd follow'), or a
+        command given '--follow' or '--progress' that is not a dry run. Only
+        separate flags count, not a cluster such as '-fD', whose letters could
+        be another option's value.
         """
-        if self.command == FOLLOWING_COMMAND:
-            return True
-        command = COMMANDS.get(self.command)
+        command = command_named(self.command)
         if command is None:
             return False
+        if command.internal_name == FOLLOWING_COMMAND:
+            return True
         # A variant() keeps its base's flags, so the base's are the command's
         flags = {
             flag
@@ -110,7 +115,7 @@ class OutputRun:
         """
         Whether this run, still running, is following the Work Requirement:
         one it follows events for, and named on its command line or printed
-        by it (the one a 'yd-submit' created).
+        by it (the one a 'yd workrequirement submit' created).
         """
         return (
             self.running
@@ -148,12 +153,34 @@ class OutputRun:
         return self.run_id != COMMANDER_RUN and self.outcome is None
 
 
-def filter_description(runs: list[OutputRun]) -> str:
+def line_pattern(text: str) -> re.Pattern[str] | None:
+    """
+    The output window's text filter as a pattern to search each line for:
+    'text' found anywhere in the line, ignoring case, with '*' matching any
+    run of characters and '?' any one. Every other character is itself, '['
+    included, which fnmatch would read as a character class. None for a
+    filter with nothing in it but spaces, which shows every line.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    wildcards = {"*": ".*", "?": "."}
+    return re.compile(
+        "".join(wildcards.get(char, re.escape(char)) for char in text),
+        re.IGNORECASE,
+    )
+
+
+def filter_description(runs: list[OutputRun], text: str = "") -> str:
     """
     What the filter bar says is shown: 'Showing only' and the runs, commands
     in the order they started and Commander's own messages last, where the
-    sentence reads better than at its start.
+    sentence reads better than at its start, then the text the lines are
+    filtered by. Either can be absent, but not both.
     """
+    matching = f'lines matching "{text}"' if text else ""
+    if not runs:
+        return f"Showing only {matching}"
     ordered = sorted(runs, key=lambda run: (run.run_id == COMMANDER_RUN, run.run_id))
     subjects = [run.bar_subject for run in ordered]
     listed = (
@@ -162,8 +189,10 @@ def filter_description(runs: list[OutputRun]) -> str:
         else f"{', '.join(subjects[:-1])} and {subjects[-1]}"
     )
     if ordered[0].run_id == COMMANDER_RUN:  # Commander's alone
-        return f"Showing only {listed}"
-    return f"Showing only output from {listed}"
+        description = f"Showing only {listed}"
+    else:
+        description = f"Showing only output from {listed}"
+    return f"{description} · {matching}" if matching else description
 
 
 @dataclass
@@ -197,6 +226,23 @@ class OutputEntry:
         Whether a filter to 'run_ids' shows this entry; None shows everything.
         """
         return run_ids is None or any(run_id in run_ids for run_id in self.runs)
+
+    def lines_shown(
+        self, run_ids: frozenset[int] | None, pattern: re.Pattern[str] | None
+    ) -> list[tuple[int, str]]:
+        """
+        The lines of this entry a filter to 'run_ids' and 'pattern' shows, each
+        with its number in the entry: none if its run is filtered out, else
+        those 'pattern' is found in, or every line with no pattern. A line is
+        what Qt makes a block of, so the numbers count blocks.
+        """
+        if not self.shown_under(run_ids):
+            return []
+        return [
+            (number, line)
+            for number, line in enumerate(BLOCK_SEPARATORS.split(self.text))
+            if pattern is None or pattern.search(line)
+        ]
 
 
 class LineBuffer:

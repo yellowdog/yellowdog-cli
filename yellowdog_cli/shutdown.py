@@ -44,11 +44,14 @@ from yellowdog_cli.utils.entity_names import (
 from yellowdog_cli.utils.entity_utils import (
     describe_glob_scope,
     expand_name_globs,
+    filter_phrase,
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ExitCode, classify
+from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
@@ -59,7 +62,7 @@ from yellowdog_cli.utils.printing import (
     print_info,
     print_warning,
 )
-from yellowdog_cli.utils.results import record_action
+from yellowdog_cli.utils.results import record_action, record_failure_cause
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -68,6 +71,9 @@ _SHUTDOWN = "shutdown"
 _SHUT_DOWN = "shut down"
 _TERMINATE = "terminate"
 _TERMINATED = "terminated"
+
+# The finished Worker Pools named when nothing active matched
+_LISTED_FINISHED = 5
 
 # A Worker Pool to shut down: fetched, or listed
 _Pool: TypeAlias = WorkerPool | WorkerPoolSummary
@@ -127,10 +133,8 @@ def shut_down(ctx: RunContext, names: list[str]):
         return
 
     if globs:
-        print_info(
-            f"Shutting down Worker Pools "
-            f"{describe_glob_scope(globs, ctx.config.namespace)}"
-        )
+        scope = describe_glob_scope(ctx.client, globs, ctx.config.namespace)
+        print_info(f"Shutting down Worker Pools {scope}")
         worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
             globs,
             ctx.config.namespace,
@@ -139,11 +143,10 @@ def shut_down(ctx: RunContext, names: list[str]):
             ),
         )
     else:
-        print_info(
-            "Shutting down Worker Pools in "
-            f"namespace '{ctx.config.namespace}' with "
-            f"names including '{ctx.config.name_tag}'"
+        scope = namespace_scope(ctx.client, ctx.config.namespace) + filter_phrase(
+            "with names including '{}'", ctx.config.name_tag
         )
+        print_info(f"Shutting down Worker Pools {scope}")
         worker_pool_summaries = [
             worker_pool_summary
             for worker_pool_summary in get_worker_pool_summaries(
@@ -157,11 +160,13 @@ def shut_down(ctx: RunContext, names: list[str]):
             and ctx.config.name_tag in worker_pool_summary.name
         ]
 
+    finished = [summary for summary in worker_pool_summaries if _is_finished(summary)]
     worker_pool_summaries = [
-        worker_pool_summary
-        for worker_pool_summary in worker_pool_summaries
-        if not _is_finished(worker_pool_summary)
+        summary for summary in worker_pool_summaries if not _is_finished(summary)
     ]
+    if not worker_pool_summaries and not ctx.args.dry_run:
+        print_info(_nothing_to_shut_down(scope, finished))
+        return
 
     if ctx.args.dry_run:
         report_dry_run(
@@ -186,6 +191,32 @@ def shut_down(ctx: RunContext, names: list[str]):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _nothing_to_shut_down(scope: str, finished: list[WorkerPoolSummary]) -> str:
+    """
+    Why nothing was shut down when nothing active matched: nothing matched
+    at all, or what matched has finished, which is named, so that a pool
+    the user expected is accounted for.
+    """
+    if not finished:
+        return f"No Worker Pools to shut down {scope}"
+    listed = ", ".join(
+        f"'{summary.name}' ({summary.status})"
+        for summary in finished[:_LISTED_FINISHED]
+    )
+    more = len(finished) - _LISTED_FINISHED
+    if more > 0:
+        listed += f" and {more} more"
+    matching = (
+        "1 matching Worker Pool is"
+        if len(finished) == 1
+        else f"{len(finished)} matching Worker Pools are"
+    )
+    return (
+        f"No active Worker Pools to shut down {scope}; {matching} already"
+        f" finished: {listed}"
+    )
 
 
 def _is_finished(worker_pool: _Pool) -> bool:
@@ -299,7 +330,9 @@ def _resolve(ctx: RunContext, target: str) -> Item:
             ctx.client, target, ctx.config.namespace
         )
         if worker_pool_id is None:
-            raise Unresolved(f"Cannot find Worker Pool '{target}'")
+            raise Unresolved(
+                f"Cannot find Worker Pool '{target}'", code=ExitCode.NOT_FOUND
+            )
     try:
         worker_pool = get_worker_pool_by_id(ctx.client, cast(str, worker_pool_id))
     except Exception as e:
@@ -392,7 +425,9 @@ def _failed(target: object, entity_type: str, message: str, e: Exception):
     succeed.
     """
     print_error(f"{message}: {e}")
+    advise(e)
     _record(target, "failed", str(e), entity_type)
+    record_failure_cause(classify(e))
     if classify(e) in SESSION_FAILURES:
         raise SessionStop(e) from e
 
@@ -437,7 +472,9 @@ def _shut_down_pool(ctx: RunContext, pool: _Pool, shut_down_pool_ids: list[str])
                 "Unable to find the Compute Requirement of Worker Pool"
                 f" '{pool.name}': {e}"
             )
+            advise(e)
             _record_termination({"id": None, "name": None}, pool_id, "failed", str(e))
+            record_failure_cause(classify(e))
             if classify(e) in SESSION_FAILURES:
                 raise SessionStop(e) from e
         return
@@ -470,9 +507,11 @@ def _terminate_compute_requirement(ctx: RunContext, worker_pool: WorkerPool):
             f"Failed to terminate Compute Requirement {cr_id} of Worker Pool"
             f" '{worker_pool.name}': {e}"
         )
+        advise(e)
         _record_termination(
             {"id": cr_id, "name": None}, worker_pool.id, "failed", str(e)
         )
+        record_failure_cause(classify(e))
         if classify(e) in SESSION_FAILURES:
             raise SessionStop(e) from e
         return

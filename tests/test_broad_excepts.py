@@ -4,9 +4,8 @@ Every broad exception handler (a bare 'except:', 'except Exception' or
 exit code, or is listed in ALLOWED with the reason it may not.
 
 A broad handler is where an authentication or connection failure gets
-swallowed, or turned into the wrong exit code: a review of all of them found
-ten that did (a 401 shown as 'not found', a lost stream taken as finished, a
-failure recorded under exit 0). So a handler passes this scan only if it
+swallowed, or turned into the wrong exit code (a 401 shown as 'not found', a
+lost stream taken as finished, a failure recorded under exit 0). So a handler passes this scan only if it
 re-raises the failure (a bare 'raise', 'raise e', 'raise X from e', or
 'raise ReportedFailure(e)' at the top level of the handler), or routes it by
 its exit code: it uses classify(), SESSION_FAILURES or
@@ -90,6 +89,11 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/commander/config_discovery.py::ConfigDiscovery._parse_yd_config#0": (
         "Commander: a child's output that cannot be read is reported in the"
         " window, which stays up"
+    ),
+    "yellowdog_cli/completion.py::_answer#0": (
+        "A completion request run by the shell on Tab: a failure prints no"
+        " candidates rather than a traceback into the user's command line, and"
+        " makes no Platform call"
     ),
     "yellowdog_cli/delete.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/download.py::main#0": _DATA_CLIENT,

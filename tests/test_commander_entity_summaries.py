@@ -63,7 +63,7 @@ def test_capture_summaries_parses_enumeration(window, monkeypatch):
             {"id": "ydid:compreq:9", "name": "cr-1", "status": "RUNNING"}
         ],
     )
-    assert window._capture_dry_run_summaries("yd-terminate") == [
+    assert window._capture_dry_run_summaries("yd computerequirement terminate") == [
         EntitySummary(id="ydid:compreq:9", name="cr-1", status="RUNNING")
     ]
 
@@ -75,15 +75,15 @@ def test_capture_summaries_passes_extra_args(window, monkeypatch):
         "_capture_dry_run_json",
         lambda command, extra_args=None: seen.append((command, extra_args)) or [],
     )
-    window._capture_dry_run_summaries("yd-cancel", extra_args=["job-*"])
-    assert seen == [("yd-cancel", ["job-*"])]
+    window._capture_dry_run_summaries("yd workrequirement cancel", extra_args=["job-*"])
+    assert seen == [("yd workrequirement cancel", ["job-*"])]
 
 
 def test_capture_summaries_none_on_enumeration_failure(window, monkeypatch):
     monkeypatch.setattr(
         window, "_capture_dry_run_json", lambda command, extra_args=None: None
     )
-    assert window._capture_dry_run_summaries("yd-terminate") is None
+    assert window._capture_dry_run_summaries("yd computerequirement terminate") is None
 
 
 def test_capture_summaries_logs_when_ydids_missing(window, monkeypatch):
@@ -93,7 +93,7 @@ def test_capture_summaries_logs_when_ydids_missing(window, monkeypatch):
         lambda command, extra_args=None: [{"name": "cr-1"}],
     )
     window.log_output.setPlainText("")
-    assert window._capture_dry_run_summaries("yd-terminate") is None
+    assert window._capture_dry_run_summaries("yd computerequirement terminate") is None
     assert "did not include YDIDs" in window.log_output.toPlainText()
 
 

@@ -28,6 +28,7 @@ from yellowdog_cli.utils.dataclient.rclone_version import (
 from yellowdog_cli.utils.dataclient.rclone_version import (
     rclone_version as _rclone_version,
 )
+from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import JSON_INDENT
 from yellowdog_cli.utils.printing import (
@@ -36,6 +37,7 @@ from yellowdog_cli.utils.printing import (
     indent,
     print_json_text,
 )
+from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 from yellowdog_cli.utils.version_info import docs_url, sdk_version
 
 CLI_DISTRIBUTION = "yellowdog-cli"
@@ -92,7 +94,7 @@ def _mcp_version() -> str:
 
 def main():
     parser = ArgumentParser(
-        prog="yd-version",
+        prog=selected_prog("yd-version"),
         description="Report YellowDog CLI and related version numbers.",
     )
     group = parser.add_mutually_exclusive_group()
@@ -135,6 +137,7 @@ def main():
     args = parser.parse_args()
     # --no-format, for print_json_text()
     configure_output(args)
+    warn_if_deprecated_script("yd-version")
 
     single: dict[str, Callable[[], str]] = {
         "cli": lambda: __version__,

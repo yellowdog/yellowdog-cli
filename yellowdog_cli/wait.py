@@ -21,7 +21,7 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.follow_utils import (
     WR_FAILURE_STATUS_VALUES,
-    follow_exit_code,
+    follow_exit_code_of,
     follow_ids,
 )
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -67,9 +67,6 @@ def main(ctx: RunContext):
     # At least one ID is required, each a Work Requirement's, Worker Pool's or
     # Compute Requirement's, as the command line is parsed
     follow_ids(ctx, ctx.args.yellowdog_ids, timeout=ctx.args.timeout)
-    # Why an entity may still be live once following has ended: a stream
-    # that could not be followed (its cause), else the timeout
-    following_code = follow_exit_code() or ExitCode.FAILURE
 
     # Errors and failure warnings are always printed, including with
     # '--quiet': exiting non-zero silently is unhelpful. Recorded in the order
@@ -94,7 +91,9 @@ def main(ctx: RunContext):
                 f"{label} '{ydid}' is still {status}: following ended before it"
                 " finished"
             )
-            failures.append(following_code)
+            # Why it may still be live: its own stream could not be followed
+            # (that failure's cause, never another stream's), else the timeout
+            failures.append(follow_exit_code_of(ydid) or ExitCode.FAILURE)
         elif status in WR_FAILURE_STATUS_VALUES:
             print_warning(
                 f"{label} '{ydid}' ended with status '{status}'", override_quiet=True

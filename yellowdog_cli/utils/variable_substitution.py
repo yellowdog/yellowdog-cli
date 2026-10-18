@@ -1,6 +1,6 @@
 """
-Variable substitution: the variable table (the defaults, YD_VAR_* and -v at
-import, the configuration's variables, and each definition as written, for
+Variable substitution: the variable table (the defaults, YD_VAR_* and -v,
+the configuration's variables, and each definition as written, for
 explaining an unset variable), the engine that substitutes a value or a
 specification in place until it settles, the type tags, and the circular-
 reference check and undefined-variable warnings. Substitution in files --
@@ -302,8 +302,7 @@ def register_user_variables(
     'config_file', overriding the environment with 'env_override') and by
     the command line's '-v' ('variables'), which take precedence. Called
     once, by load_config before the configuration file is read, which
-    substitutes them; it was done at import, which therefore parsed the
-    command line and could exit. A name no variable may have, or a '-v'
+    substitutes them, never at import. A name no variable may have, or a '-v'
     without a value, is an error and exits. 'config_file_selected' (with
     '--config') is kept for add_substitutions_from_config_file().
     """

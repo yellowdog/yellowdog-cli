@@ -1,7 +1,8 @@
 """
-Flag/guard tests for the dry-run mode on yd-cancel / yd-shutdown / yd-terminate.
-These exercise argument parsing only (the by-name guard errors at parse time,
-before any platform contact), so they need no credentials.
+Flag/guard tests for the dry-run mode on yd workrequirement cancel,
+yd workerpool shutdown and yd computerequirement terminate. These exercise
+argument parsing only (a glob mixed with literal names is refused at parse
+time, before any platform contact), so they need no credentials.
 """
 
 from json import loads as json_loads
@@ -22,7 +23,14 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.results import reset_results
 
 
-@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "yd workrequirement cancel",
+        "yd workerpool shutdown",
+        "yd computerequirement terminate",
+    ],
+)
 def test_dry_run_flag_in_help(cmd):
     assert "--dry-run" in shell(f"{cmd} --help").stdout
 
@@ -30,15 +38,15 @@ def test_dry_run_flag_in_help(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel -D some-wr-name",
-        "yd-shutdown -D some-wp-name",
-        "yd-terminate -D some-cr-name",
+        "yd workrequirement cancel -D some-wr-name",
+        "yd workerpool shutdown -D some-wp-name",
+        "yd computerequirement terminate -D some-cr-name",
     ],
 )
 def test_dry_run_with_explicit_names_is_accepted(cmd):
-    # It was refused at parse time, leaving the most destructive commands the
-    # only ones unable to preview a named target; it now reports what it would
-    # do (tests/test_cancel.py, test_shutdown.py, test_compute_action_common.py)
+    # Refused at parse time, it would leave the most destructive commands the
+    # only ones unable to preview a named target; it reports what it would do
+    # (tests/test_cancel.py, test_shutdown.py, test_compute_action_common.py)
     result = shell(cmd)
     assert result.exit_code != 2
     assert "not supported with explicit names" not in (result.stderr + result.stdout)
@@ -47,19 +55,20 @@ def test_dry_run_with_explicit_names_is_accepted(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel",
-        "yd-shutdown",
-        "yd-terminate",
-        # yd-delete and yd-download need a path, so give them one: the point is
-        # that --json alone is accepted, not that the arguments are incomplete.
+        "yd workrequirement cancel",
+        "yd workerpool shutdown",
+        "yd computerequirement terminate",
+        # yd data delete and yd data download need a path, so give them one:
+        # the point is that --json alone is accepted, not that the arguments
+        # are incomplete.
         # '--nc', so that no configured remote is ever reached
-        "yd-delete --nc somepath",
-        "yd-download somepath",
+        "yd data delete --nc somepath",
+        "yd data download somepath",
     ],
 )
 def test_json_without_dry_run_is_accepted(cmd):
-    # '--json' no longer requires '--dry-run': it now also shapes the real,
-    # acting path (spec point 4). It must not fail at parse time; whatever it
+    # '--json' does not require '--dry-run': it also shapes the real, acting
+    # path. It must not fail at parse time; whatever it
     # fails on afterwards (missing credentials here) is a different error.
     result = shell(f"{cmd} --json")
     assert result.exit_code != 2
@@ -68,7 +77,11 @@ def test_json_without_dry_run_is_accepted(cmd):
 
 @pytest.mark.parametrize(
     "cmd",
-    ["yd-cancel 'proj-*' -D", "yd-shutdown 'wp-*' -D", "yd-terminate 'cr-*' -D"],
+    [
+        "yd workrequirement cancel 'proj-*' -D",
+        "yd workerpool shutdown 'wp-*' -D",
+        "yd computerequirement terminate 'cr-*' -D",
+    ],
 )
 def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
     # A glob + --dry-run must NOT fail at parse time (exit 2). It proceeds to
@@ -81,9 +94,9 @@ def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "yd-cancel 'proj-*' some-wr",
-        "yd-shutdown 'wp-*' some-wp",
-        "yd-terminate 'cr-*' some-cr",
+        "yd workrequirement cancel 'proj-*' some-wr",
+        "yd workerpool shutdown 'wp-*' some-wp",
+        "yd computerequirement terminate 'cr-*' some-cr",
     ],
 )
 def test_mixing_glob_and_literal_errors(cmd):
@@ -104,7 +117,7 @@ def test_mixing_glob_and_literal_errors(cmd):
     ],
 )
 def test_json_without_dry_run_parses(cmd, argv):
-    # The parser itself (not a subprocess) no longer refuses '--json' without
+    # The parser itself (not a subprocess) does not refuse '--json' without
     # '--dry-run' on any of the five destructive commands.
     parser = CLIParser(command=cmd, argv=argv)
     assert parser.json_output is True
@@ -112,10 +125,9 @@ def test_json_without_dry_run_parses(cmd, argv):
 
 class TestRealPathRecordsThroughARealParse:
     """
-    'command_registry.check_json_requires_dry_run' used to make this
-    combination a parse-time error; these drive main() through a real
-    CLIParser (not a MagicMock standing in for one) and the real wrapper, to
-    prove the lifted restriction reaches the acting path end to end.
+    '--json' without '--dry-run' is not a parse-time error; these drive main()
+    through a real CLIParser (not a MagicMock standing in for one) and the real
+    wrapper, to prove the combination reaches the acting path end to end.
     """
 
     def test_yd_cancel(self, monkeypatch, capsys):
@@ -154,9 +166,9 @@ class TestRealPathRecordsThroughARealParse:
                 "error": "Cannot find Work Requirement 'nonesuch-wr' in namespace 'ns'",
             }
         ]
-        # A recorded 'failed' outcome exits 1 even though main() itself
-        # raised nothing (the failed-record rule).
-        assert exit_info.value.code == ExitCode.FAILURE
+        # A recorded 'failed' outcome fails the run even though main() itself
+        # raised nothing (the failed-record rule), with its cause's code
+        assert exit_info.value.code == ExitCode.NOT_FOUND
         reset_results()
 
     def test_yd_delete(self, monkeypatch, capsys):

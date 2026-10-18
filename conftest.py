@@ -1,9 +1,9 @@
 import atexit
 import contextlib
 import io
-import secrets
+import os
 import sys
-import time
+from pathlib import Path
 
 import pytest
 from cli_test_helpers import shell
@@ -35,10 +35,10 @@ def pytest_addoption(parser):
         help="Run system tests against the live platform",
     )
     parser.addoption(
-        "--run-system-compute",
+        "--run-live",
         action="store_true",
         default=False,
-        help="Run system tests that provision real cloud compute (implies --run-system)",
+        help="Run the live system tests (tests/live/): real resources, real compute",
     )
     parser.addoption(
         "--run-crash-tests",
@@ -58,9 +58,6 @@ def pytest_collection_modifyitems(config, items):
     # By marker, not by "name" in item.keywords: keywords also hold every test,
     # class, module and parameter name, so a parametrize ID such as "system"
     # would silently gate an ordinary test behind --run-system.
-    run_system = config.getoption("--run-system") or config.getoption(
-        "--run-system-compute"
-    )
 
     if not config.getoption("--run-demos"):
         skipper = pytest.mark.skip(reason="Only run when '--run-demos' is given")
@@ -74,18 +71,16 @@ def pytest_collection_modifyitems(config, items):
             if item.get_closest_marker("dryruns"):
                 item.add_marker(skipper)
 
-    if not run_system:
+    if not config.getoption("--run-system"):
         skipper = pytest.mark.skip(reason="Only run when '--run-system' is given")
         for item in items:
             if item.get_closest_marker("system"):
                 item.add_marker(skipper)
 
-    if not config.getoption("--run-system-compute"):
-        skipper = pytest.mark.skip(
-            reason="Only run when '--run-system-compute' is given"
-        )
+    if not config.getoption("--run-live"):
+        skipper = pytest.mark.skip(reason="Only run when '--run-live' is given")
         for item in items:
-            if item.get_closest_marker("system_compute"):
+            if item.get_closest_marker("live"):
                 item.add_marker(skipper)
 
     # A deliberate crash puts up macOS's 'quit unexpectedly' dialog, since
@@ -130,6 +125,17 @@ def _fresh_json_results():
     """
     if "yellowdog_cli.utils.results" in sys.modules:
         sys.modules["yellowdog_cli.utils.results"].reset_results()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _fresh_failure_advice():
+    """
+    Start every test with no failure advice given (utils/failure_advice.py),
+    which is said once per run.
+    """
+    if "yellowdog_cli.utils.failure_advice" in sys.modules:
+        sys.modules["yellowdog_cli.utils.failure_advice"].reset_advice()
     yield
 
 
@@ -389,47 +395,13 @@ def qapp():
         pytest.skip(f"Qt platform unavailable: {exc}")
 
 
-def _session_tag() -> str:
-    """
-    A tag no other session's is, nor contains, nor is contained in (e.g.
-    'pytest-1741880400-3fa9c2'): under 'pytest -n' every worker is a
-    session, and the seconds alone were shared by workers starting together,
-    so one's yd-cancel or yd-finish, selecting by tag, acted on another's
-    Work Requirement. The tag filters match a tag containing the text
-    given, so the suffix is random and of fixed length, never a process ID.
-    """
-    return f"pytest-{int(time.time())}-{secrets.token_hex(3)}"
-
-
-@pytest.fixture(scope="session")
-def system_tag() -> str:
-    """
-    Session-unique tag for the live system tests (see _session_tag()). A test
-    whose commands select by tag (yd-cancel, yd-finish) narrows it to one of
-    its own, '<tag>-<name>', which the clean-up below still matches.
-
-    Belt-and-braces: registers an atexit handler that cancels any outstanding
-    Work Requirements and terminates any Worker Pools carrying the tag, so
-    cloud resources are cleaned up even if a test crashes without teardown.
-    """
-    tag = _session_tag()
-
-    def _cleanup() -> None:
-        shell(f"yd-cancel -y -t={tag} -n=pytest-system")
-        shell(f"yd-terminate -y -t={tag} -n=pytest-system")
-
-    atexit.register(_cleanup)
-    return tag
-
-
 @pytest.fixture(scope="session")
 def run_id() -> str:
     """
     The run-unique suffix every corpus resource name carries.
 
-    Also registers a belt-and-braces atexit sweep, mirroring system_tag's own
-    pattern above: a live test's in-process teardown (the 'cleanup' fixture, or a
-    try/finally) does not run at all if the process is killed rather than exiting
+    Also registers a belt-and-braces atexit sweep: a live test's in-process
+    teardown (the 'cleanup' fixture, or a try/finally) does not run at all if the process is killed rather than exiting
     normally, and this fixture backs tests against a production account. Sweeping
     every live corpus file with 'yd-remove' is safe to do speculatively --
     remove_resources() (remove.py) reports a resource it can't find and moves on
@@ -607,9 +579,12 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
     variable outranks both config.toml and .env, so a dummy set over a working
     credential would shadow it.
 
-    Never substituted for a run that talks to the platform: those need real
-    credentials, and 'auth failed' hours later is a worse answer than the CLI's own
-    'Missing configuration data' now.
+    Never substituted for a run that talks to the platform through the CLI's own
+    configuration: those need real credentials, and 'auth failed' hours later is a
+    worse answer than the CLI's own 'Missing configuration data' now. '--run-system'
+    has had its own set by _use_system_test_credentials() before this runs, and
+    '--run-live' is not one: the live suite gives 'yd' its credentials itself,
+    from its own configuration, so it may run where the CLI has none.
     """
     global _dummy_credentials_used
 
@@ -617,10 +592,7 @@ def _supply_dummy_credentials_if_unconfigured(config) -> None:
 
     from yellowdog_cli.utils.settings import YD_KEY, YD_SECRET
 
-    if any(
-        config.getoption(flag)
-        for flag in ("--run-system", "--run-system-compute", "--run-demos")
-    ):
+    if any(config.getoption(flag) for flag in ("--run-system", "--run-demos")):
         return
     if _configuration_loads_cleanly():
         return
@@ -666,6 +638,7 @@ def pytest_report_header(config):
 
 
 def pytest_configure(config):
+    _use_system_test_credentials(config)
     _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"
@@ -679,7 +652,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "system_compute: mark test to run only when '--run-system-compute' is specified",
+        "live: mark test to run only when '--run-live' is specified",
     )
     config.addinivalue_line(
         "markers",
@@ -691,3 +664,61 @@ def pytest_configure(config):
         "real_config_parse: keep Commander's real _parse_yd_config, which runs"
         " 'yd-variables' (see the '_no_config_discovery' fixture)",
     )
+    _register_live_session(config)
+
+
+def _use_system_test_credentials(config, environ=None) -> None:
+    """
+    Under '--run-system', the Platform's key, secret and URL from the live
+    system tests' configuration (tests/live/harness/config.py: [platform] in
+    YDST_CONFIG or ~/.config/yellowdog/system-tests.toml, or YDST_PLATFORM_*),
+    in place of whatever the shell had, so that every test talking to the
+    Platform, and every 'yd' it starts, does so as the one Application. Set
+    before the CLI's configuration is loaded, which reads them; a URL the
+    configuration does not give is unset, so the shell's cannot stand in for
+    it. A missing key or secret stops the session, naming the problems.
+    """
+    if not config.getoption("--run-system"):
+        return
+    environ = os.environ if environ is None else environ
+    _live_harness_importable()
+    from harness.config import (
+        PLATFORM_VARIABLES,
+        LiveConfigError,
+        platform_environment,
+    )
+
+    try:
+        credentials = platform_environment(environ)
+    except LiveConfigError as error:
+        raise pytest.UsageError(
+            f"--run-system needs its credentials: {error}"
+        ) from error
+    for variable in PLATFORM_VARIABLES.values():
+        environ.pop(variable, None)
+    environ.update(credentials)
+
+
+def _live_harness_importable() -> None:
+    """
+    tests/live on sys.path, for its harness and live_session.
+    """
+    live = str(Path(__file__).resolve().parent / "tests" / "live")
+    if live not in sys.path:
+        sys.path.insert(0, live)
+
+
+def _register_live_session(config) -> None:
+    """
+    Under '--run-live', the plugin that owns the live run (tests/live/
+    live_session.py). It is registered here, not in tests/live/conftest.py,
+    because an xdist controller never collects and so never loads that.
+    """
+    if not config.getoption("--run-live"):
+        return
+    _live_harness_importable()
+    from live_session import PLUGIN_NAME, LiveSession
+
+    session = LiveSession(config)
+    config.pluginmanager.register(session, PLUGIN_NAME)
+    session.configure()

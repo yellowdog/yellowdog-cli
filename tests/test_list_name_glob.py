@@ -57,6 +57,14 @@ def _args(**overrides):
         strip_ids=False,
         substitute_ids=False,
         output_file=None,
+        # The listing filters, unset as parsed: a MagicMock's would be truthy
+        unhealthy=False,
+        provider=None,
+        description_glob=None,
+        deletable=False,
+        with_errors=False,
+        within_target=None,
+        list_limit=0,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)
@@ -661,3 +669,177 @@ def test_name_glob_roles_warns_on_unnamed(capsys):
     assert capsys.readouterr().out.strip() == "1"
     mock_warning.assert_called_once()
     assert "no name" in mock_warning.call_args.args[0]
+
+
+@pytest.mark.parametrize(
+    "namespace, name_tag, expected",
+    [
+        (
+            "default",
+            "pwt",
+            "Displaying Worker Pools in namespace 'default' with 'pwt' in name",
+        ),
+        ("", "pwt", "Displaying Worker Pools in all namespaces with 'pwt' in name"),
+        ("", "", "Displaying Worker Pools in all namespaces"),
+    ],
+)
+def test_an_empty_namespace_or_tag_is_not_quoted(namespace, name_tag, expected):
+    """
+    '' searches every namespace and filters on no name, so the message says
+    so rather than "in namespace '' with '' in name".
+    """
+    import yellowdog_cli.list as yd_list
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace=namespace, name_tag=name_tag),
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == expected
+
+
+def test_an_empty_namespace_names_those_the_application_can_read():
+    """
+    An Application without global read access searches only the namespaces
+    it can read, so those are what the message names.
+    """
+    import yellowdog_cli.list as yd_list
+    import yellowdog_cli.utils.entity_utils as entity_utils
+
+    details = SimpleNamespace(
+        allNamespacesReadable=False, readableNamespaces=["a", "b"]
+    )
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="", name_tag="")
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(entity_utils, "get_application_details", return_value=details),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == (
+        "Displaying Worker Pools in namespaces 'a', 'b'"
+    )
+
+
+# The default scope: the entities the actions select by tag (Work Requirements,
+# Worker Pools, Compute Requirements) are listed with the configured tag, as
+# those actions select them, so a list previews them; the shared resources
+# (templates, Image Families) are listed whatever their names, unless '--tag'
+# is given.
+
+
+@pytest.mark.parametrize(
+    "command_name, entity_type",
+    [
+        ("yd-list", "work-requirements"),
+        ("yd workrequirement list", "work-requirements"),
+        ("yd workerpool list", "worker-pools"),
+        ("yd computerequirement list", "compute-requirements"),
+    ],
+)
+def test_the_tag_is_not_defaulted_away(command_name, entity_type):
+    # Left unset, the configured tag applies, as it does for every other
+    # command; '-t' with no value still means ''
+    from yellowdog_cli.utils.command_registry import build_parser
+    from yellowdog_cli.utils.noun_registry import command_named
+
+    command = command_named(command_name)
+    assert command is not None
+    parser = build_parser(command, prog="x")
+    # A noun's verb is given its entity type by the dispatcher, as here
+    arguments = [entity_type]
+    assert parser.parse_args(arguments).tag is None
+    assert parser.parse_args([*arguments, "-t"]).tag == ""
+
+
+def _template_fetch(function_name, ctx_tag, configured_tag="pwt"):
+    import yellowdog_cli.list as yd_list
+
+    captured = {}
+
+    def fake_fetch(client, namespace=None, name=None, *args, **kwargs):
+        captured["name"] = name
+        return []
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag=configured_tag),
+        ),
+        patch.object(wrapper_module, "ARGS_PARSER", _args(name_glob=None, tag=ctx_tag)),
+        patch.object(yd_list, function_name, side_effect=fake_fetch),
+        patch.object(yd_list, "print_info"),
+        patch.object(yd_list, "_print_empty"),
+    ):
+        lister = {
+            "get_compute_requirement_templates": yd_list.list_compute_requirement_templates,
+            "get_compute_source_templates": yd_list.list_compute_source_templates,
+        }[function_name]
+        lister(_ctx())
+    return captured["name"]
+
+
+@pytest.mark.parametrize(
+    "function_name",
+    ["get_compute_requirement_templates", "get_compute_source_templates"],
+)
+def test_templates_are_listed_whatever_the_configured_tag(function_name):
+    assert _template_fetch(function_name, ctx_tag=None) == ""
+
+
+@pytest.mark.parametrize(
+    "function_name",
+    ["get_compute_requirement_templates", "get_compute_source_templates"],
+)
+def test_a_tag_given_still_narrows_the_templates(function_name):
+    assert (
+        _template_fetch(function_name, ctx_tag="demo", configured_tag="demo") == "demo"
+    )
+
+
+def test_image_families_are_listed_whatever_the_configured_tag():
+    import yellowdog_cli.list as yd_list
+
+    client = MagicMock()
+    client.images_client.get_image_families.return_value.list_all.return_value = []
+    with (
+        patch.object(wrapper_module, "CLIENT", client),
+        patch.object(
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="default", name_tag="pwt"),
+        ),
+        patch.object(wrapper_module, "ARGS_PARSER", _args(name_glob=None, tag=None)),
+        patch.object(yd_list, "search_namespaces", return_value=["default"]),
+        patch.object(yd_list, "print_info"),
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_image_families(_ctx())
+
+    ((search,), _) = client.images_client.get_image_families.call_args
+    assert not search.familyName

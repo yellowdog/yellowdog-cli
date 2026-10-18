@@ -39,11 +39,9 @@ from yellowdog_cli.utils.property_names import (
     ENV,
     NAME,
     SET_TASK_NAMES,
-    TASK_DATA,
-    TASK_DATA_FILE,
-    TASK_DATA_FILES,
     TASK_DATA_INPUTS,
     TASK_DATA_OUTPUTS,
+    TASK_DATA_PROPERTIES,
     TASK_GROUPS,
     TASK_LEVEL_TIMEOUT,
     TASK_NAME,
@@ -80,9 +78,6 @@ from yellowdog_cli.utils.variable_syntax import (
 )
 
 T = TypeVar("T")
-
-# The properties a Task may take its Task Data from, at any level
-_TASK_DATA_PROPERTIES = (TASK_DATA, TASK_DATA_FILE, TASK_DATA_FILES)
 
 
 @dataclass(frozen=True)
@@ -273,7 +268,7 @@ def _task_data_for_task(data: dict) -> dict:
     file's contents are substituted as it is read, for each Task.)
     """
     return {
-        name: _for_task(data[name]) for name in _TASK_DATA_PROPERTIES if name in data
+        name: _for_task(data[name]) for name in TASK_DATA_PROPERTIES if name in data
     }
 
 
@@ -288,10 +283,12 @@ def _name_task(
     The Task's name, None if it is to have none, with its Task-level lazy
     substitutions defined from it and its number.
     """
-    set_task_names = (
-        levels.checked(SET_TASK_NAMES, check_bool, source.config_wr.set_task_names)
-        or False
+    set_task_names = levels.checked(
+        SET_TASK_NAMES, check_bool, source.config_wr.set_task_names
     )
+    # A level setting null has the default, as a level that sets nothing has
+    if set_task_names is None:
+        set_task_names = True
 
     # The run's configuration, not a per-Task copy: get_task_name() makes the
     # Task-level lazy substitutions in the name itself, and the per-Task
@@ -334,7 +331,8 @@ def _task_type_of(
     Group's template supplies one; anything else is an error here, rather
     than a Task the Platform refuses.
     """
-    if TASK_TYPE in task:
+    # A Task must have a type, so a null one is no type of its own
+    if task.get(TASK_TYPE) is not None:
         return task[TASK_TYPE]
     task_types = task_group.runSpecification.taskTypes
     if len(task_types) == 1:

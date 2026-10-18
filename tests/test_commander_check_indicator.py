@@ -6,10 +6,10 @@ style that places the indicator where it is told to and on one that does not.
 In a process whose main executable is linked against the macOS 26 SDK or later,
 Qt's macOS style draws an item view's check indicator as macOS 26's redesigned
 control at the painter's origin, ignoring the rect it computed. An item view
-clips each row's painting to that row, so every indicator but the top row's was
-clipped away: a ten-row confirmation showed one checkbox, and the nine rows below
-it looked unticked and untickable however they were clicked. See
-check_indicator_is_misplaced() for the mechanism and how it was established.
+clips each row's painting to that row, so every indicator but the top row's is
+clipped away: a ten-row confirmation shows one checkbox, and the nine rows below
+it look unticked and untickable however they are clicked. See
+check_indicator_is_misplaced() for the mechanism and the evidence for it.
 """
 
 import pytest
@@ -144,7 +144,7 @@ def test_every_row_shows_its_check_state_on_a_misplacing_style(
 def test_every_row_shows_its_check_state_on_a_sound_style(window):
     # The same assertion, and the one that holds the correction to styles that
     # need it: applied to a style that places the indicator correctly it would
-    # offset it twice — out of the row, and clipped away exactly as before.
+    # offset it twice — out of the row, and clipped away exactly as uncorrected.
     shown = rows_that_show_their_check_state(selection_list(window))
     assert all(shown), f"rows painted the same ticked as unticked: {shown}"
 

@@ -20,7 +20,7 @@ import yellowdog_cli.jsonnet2json as yd_jsonnet2json
 
 
 def _run(monkeypatch, capsys, *argv: str) -> tuple[str, str, int]:
-    monkeypatch.setattr(sys, "argv", ["yd-jsonnet2json", *argv])
+    monkeypatch.setattr(sys, "argv", ["yd", *argv])
     code = 0
     try:
         yd_jsonnet2json.main()

@@ -15,6 +15,7 @@ from sys import exit, stderr
 from rich.markup import escape
 
 from yellowdog_cli.utils.args import ARGS_PARSER
+from yellowdog_cli.utils.command_runner import warn_if_deprecated
 from yellowdog_cli.utils.doctor_checks import Check, Context, Result, Status, run_checks
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, print_json, print_simple
@@ -158,6 +159,7 @@ def main() -> None:
     timeout = ARGS_PARSER.timeout
     assert timeout is not None  # the option has a default; argparse refuses < 1
     configure_output(ARGS_PARSER)
+    warn_if_deprecated(ARGS_PARSER)
     ctx = Context(
         offline=bool(ARGS_PARSER.offline),
         timeout=timeout,

@@ -10,9 +10,8 @@ and the shared utilities -- therefore parses no command line, reads no
 configuration file and builds no client.
 
 The wrappers build what their command will use before running it
-(prepare()), in the order importing once did, so that an argument error or
-a broken configuration is still reported, and exits, before the command
-starts. A Lazy whose builder raises is not built, and is tried again on
+(prepare()), command line first, so that an argument error or a broken
+configuration is still reported, and exits, before the command starts. A Lazy whose builder raises is not built, and is tried again on
 next use.
 
 Only attribute access, truthiness, equality and repr pass through: nothing

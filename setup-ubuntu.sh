@@ -307,18 +307,17 @@ Then:
 
     pytest -v                 # unit tests, including the Commander GUI tests
     make pyright              # type checking
-    make tox                  # the unit tests on Python 3.10 - 3.14
+    make tox                  # the unit tests on Python 3.10 - 3.15
 
 uv is at $(command -v uv); if it was installed just now, open a new shell (or add
 ~/.local/bin to PATH) to pick it up outside this script.
 
 The test categories not covered above need more than this script installs:
 
-    --run-dryruns             # needs the python-examples-demos repo checked out
-                              # alongside this one, at $(dirname "$CHECKOUT")/python-examples-demos
-    --run-system              # needs real credentials (YD_KEY / YD_SECRET, or a
-    --run-system-compute      # config.toml) and will provision cloud compute
-    --run-demos               # as above, plus python-examples-demos
+    --run-system              # needs the live system tests' configuration, for
+                              # its [platform] credentials (see DEVELOPMENT.md)
+    --run-live                # needs its own configuration (see DEVELOPMENT.md),
+                              # and will provision cloud compute
 
 If the Commander tests ever report themselves skipped with 'Qt is unavailable', the
 skip message names the library that is missing; install it and run them again.

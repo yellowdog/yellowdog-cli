@@ -14,7 +14,7 @@
 #
 # Each command checks this file against a schema as it starts, and warns of
 # a value of the wrong type or a property in a section that does not read
-# it; 'yd-schema config' prints the schema.
+# it; 'yd schema config' prints the schema.
 #
 
 [common]  ######################################################################
@@ -70,7 +70,7 @@
 
 [workRequirement]  ############################################################
 #
-# Default settings for yd-submit.  All properties may also be set (or
+# Default settings for yd workrequirement submit.  All properties may also be set (or
 # overridden) in the JSON/TOML/Jsonnet work-requirement specification file.
 #
 
@@ -314,7 +314,7 @@
     # taskDataFiles = ["header.txt", "body.txt"]
 
     # Data client inputs: files the Agent fetches from 'source' to the local
-    # 'destination' before the task runs. Add 'localPath' to have yd-submit
+    # 'destination' before the task runs. Add 'localPath' to have yd workrequirement submit
     # upload a local file to 'source' first.
     # Optional
     # taskDataInputs = [
@@ -340,7 +340,7 @@
 [dataClient]  #################################################################
 #
 # Settings for the rclone-backed data client commands:
-# yd-upload, yd-download, yd-delete, yd-ls, yd-copy.
+# the yd data verbs (upload, download, delete, ls, copy).
 #
 # 'remote' can be a plain rclone remote name (looked up in rclone.conf),
 # an optional 'rclone:' prefix followed by a plain name, or a full inline
@@ -383,7 +383,7 @@
 
 [workerPool]  #################################################################
 #
-# Settings for yd-provision (and yd-instantiate).
+# Settings for yd workerpool provision (and yd computerequirement instantiate).
 # 'computeRequirement' is accepted as a synonym for this section.
 #
 
@@ -509,7 +509,7 @@
 
     # The platform limits each Compute Requirement / Worker Pool to 10,000
     # instances/nodes. When 'targetInstanceCount' or 'maxNodes' exceeds this,
-    # yd-provision and yd-instantiate automatically split the request across
+    # yd workerpool provision and yd computerequirement instantiate automatically split the request across
     # multiple Compute Requirements. 'computeRequirementBatchSize' sets the
     # maximum number of instances per batch and defaults to the platform
     # maximum (10,000). Reduce it to submit smaller batches. Values above
@@ -519,6 +519,6 @@
 
     # Replace instances to keep the target number RUNNING: the Compute Service
     # provisions new ones when fewer than targetInstanceCount are running.
-    # Optional — applies to yd-instantiate only (a Worker Pool's is always
+    # Optional — applies to yd computerequirement instantiate only (a Worker Pool's is always
     # false); default: false
     # maintainInstanceCount = false

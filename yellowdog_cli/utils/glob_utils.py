@@ -28,3 +28,28 @@ def glob_search_prefix(pattern: str) -> str:
             break
         prefix.append(char)
     return "".join(prefix)
+
+
+def glob_literal_hint(pattern: str) -> str:
+    """
+    Return the longest run of literal characters in 'pattern', outside any
+    '[...]' class and between the metacharacters: a substring every name the
+    glob matches contains, so a hint for a server-side substring search
+    before local fnmatch, which narrows even a pattern with no literal
+    prefix ('*-1'). Empty string if there is none.
+    """
+    runs: list[str] = []
+    current: list[str] = []
+    in_class = False
+    for char in pattern:
+        if in_class:
+            in_class = char != "]"
+            continue
+        if char in GLOB_CHARS:
+            runs.append("".join(current))
+            current = []
+            in_class = char == "["
+            continue
+        current.append(char)
+    runs.append("".join(current))
+    return max(runs, key=len)

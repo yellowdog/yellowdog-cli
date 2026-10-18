@@ -1,11 +1,11 @@
 """
 Tests for where 'yd-download' puts each item locally.
 
-This is the regression these guard: Commander used to pass one glob with
-'--destination', which the glob transfer expands per match under the destination
-by name. Passing several literal paths with '--destination' instead took the other
-branch, copying each item's *contents* into the destination and losing its own
-directory level. '--into' names that container behaviour explicitly.
+With '--destination', a glob is expanded per match under the destination by
+name, but several literal paths take the other branch, copying each item's
+*contents* into the destination and losing its own directory level. '--into'
+names the container behaviour explicitly, so each literal item, as Commander
+passes them, keeps its own directory.
 """
 
 from pathlib import Path
@@ -24,7 +24,7 @@ def test_into_places_a_literal_item_under_its_own_name():
 
 
 def test_into_uses_the_basename_of_a_resolved_absolute_path():
-    # Commander passes resolved paths, which is what made the regression visible.
+    # Commander passes resolved paths, so this is the case it depends on.
     assert local_destination_for("S3:bucket/pfx/pyex-logs", into_dir="results") == Path(
         "results/pyex-logs"
     )
@@ -44,7 +44,8 @@ def test_into_takes_the_directory_unchanged_for_a_pattern():
 
 
 def test_several_items_get_separate_directories():
-    # The actual bug: with --destination these all collapsed into 'results'.
+    # The point of '--into': with --destination these would all collapse into
+    # 'results'.
     names = ["pyex-001", "pyex-logs", "pyex-results"]
     assert [local_destination_for(n, into_dir="results") for n in names] == [
         Path("results/pyex-001"),
@@ -53,7 +54,7 @@ def test_several_items_get_separate_directories():
     ]
 
 
-# --- '--destination' and the default are unchanged ---------------------------
+# --- '--destination' and the default ------------------------------------------
 
 
 def test_destination_still_names_the_path_corresponding_to_the_item():
@@ -70,6 +71,24 @@ def test_destination_still_wins_for_a_pattern():
 
 def test_no_destination_mirrors_the_remote_name():
     assert local_destination_for("S3:bucket/pfx/mydir") == Path("mydir")
+
+
+def test_an_item_at_the_remotes_root_is_named_without_the_remote():
+    # 'loc:a.txt' has no '/' to split on: '--into' must not write
+    # 'results/loc:a.txt'
+    assert local_destination_for(
+        "loc:a.txt", into_dir="results", names_remote=True
+    ) == Path("results/a.txt")
+    assert local_destination_for("loc:a.txt", names_remote=True) == Path("a.txt")
+
+
+def test_a_colon_in_the_items_own_name_is_kept():
+    assert local_destination_for(
+        "S3:bucket/a:b.txt", into_dir="results", names_remote=True
+    ) == Path("results/a:b.txt")
+    assert local_destination_for("a:b.txt", into_dir="results") == Path(
+        "results/a:b.txt"
+    )
 
 
 def test_no_destination_expands_a_pattern_into_the_current_directory():
