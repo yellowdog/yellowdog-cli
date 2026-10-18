@@ -54,11 +54,11 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd computerequirement`** (`yd cr`)
 - **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
-- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — listing YellowDog items with **`yd list`**, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun also has `list` and `show` verbs for its own objects
+- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun also has `list` and `show` verbs for its own objects
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
@@ -353,6 +353,9 @@ WP_ID=$(yd workerpool provision --quiet)
 
 # Follow both until the Work Requirement finishes and the Worker Pool shuts down
 yd follow "$WR_ID" "$WP_ID"
+
+# List any of its Tasks that failed
+yd task list --within "$WR_ID" --status failed
 ```
 
 Alternatively, `yd workrequirement submit --follow` and `yd workerpool provision` can be run in parallel, letting the Worker Pool pick up Tasks as they are submitted:
