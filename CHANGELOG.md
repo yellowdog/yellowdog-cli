@@ -4,6 +4,19 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+Most of this release adds to what the CLI does. These changes alter what an existing script, configuration or habit will see:
+
+- **Use `yd`.** The `yd-*` commands still run, with a warning on stderr, but are deprecated and will be removed in a future release. `yd help --deprecated` names what replaces each: `yd-submit` is `yd workrequirement submit` (or `yd wr submit`), `yd-list` is `yd list`, and so on.
+- **Listing Work Requirements, Worker Pools and Compute Requirements applies the configured tag**, as acting on them does. Give `--tag ''` to list the whole namespace.
+- **`yd list tasks`, `instances`, `nodes` and `workers` stop at 1000 items**, with a warning on stderr when more match. Give `--limit 0` for them all.
+- **Exit codes name the cause of a failure** for the action commands, `yd show` and `yd wait`: 6 for not found, 5 for a missing permission, 7 for a Platform error, where many exited 1. A script that tests for exit code 1 should test for a non-zero one. See [Machine-readable Output and Exit Codes](docs/json-output.md).
+- **MCP clients:** the tools for the commands the nouns replace are renamed (`yd_submit` is `yd_workrequirement_submit`), so a client's saved permissions for them need granting again. An MCP client configured to run `yd-mcp` keeps working; `"command": "yd", "args": ["mcp", ...]` is the new form.
+- **`yd help --json`** names each command as it is typed after `yd` (`list`, not `yd-list`).
+
+### Changes
+
 - **Python 3.15 is supported.**
 - **The CLI is one command, `yd`.** Commands name the object they act on, then what to do to it: `yd workrequirement submit` instead of `yd-submit`, `yd instance terminate` instead of `yd-terminate`. The nouns are `workrequirement`, `taskgroup`, `task`, `workerpool`, `node`, `worker`, `computerequirement`, `instance`, `resource`, `allowance`, `data` and `cloudinfo`, and `wr`, `tg`, `wp` and `cr` are short for the four longest (`yd wr submit`). `yd <noun> --help` lists a noun's verbs. A verb offers only the options that apply to its object, refuses any other (exit 2), and refuses a target of the wrong kind: `yd instance terminate` takes Instances, and is refused a Compute Requirement. Every noun also has `list` and `show`, and the Work Requirement, Worker Pool and Compute Requirement nouns have `follow` and `wait`, restricted to that object. Every other command is `yd <command>`: `yd list`, `yd show`, `yd follow` and `yd wait`, for any type of object, and `yd application`, `yd cloudwizard`, `yd doctor`, `yd variables`, `yd schema`, `yd format-json`, `yd jsonnet2json`, `yd help`, `yd version`, `yd commander` and `yd mcp`. `yd` alone, or `yd help`, lists them all. See the [Command List](docs/commands.md).
 - **The `yd-*` commands are deprecated**, and will be removed in a future release. Until then they run as before, with a warning on stderr naming what to use instead (`--quiet` suppresses it where the command has it); `yd help --deprecated` lists each with what replaces it. An MCP client configured with `yd-mcp` keeps working; `"command": "yd", "args": ["mcp", ...]` is the new form.
