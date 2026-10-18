@@ -260,6 +260,7 @@ def _show(
         "--show-source-report",
         "--show-exhaustion",
         "--show-members",
+        "--type",
     )
     return Verb(
         "show",
@@ -791,9 +792,9 @@ NOUNS: tuple[Noun, ...] = (
             ),
             _show(
                 "resources",
-                frozenset(RESOURCE_YDID_TYPES),
-                "resource-ID",
-                keep=("--show-members",),
+                _named(*RESOURCE_YDID_TYPES),
+                "resource-ID-or-name",
+                keep=("--show-members", "--type"),
             ),
         ),
     ),

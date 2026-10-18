@@ -1061,7 +1061,7 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
 | `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
-| `show` | `yd show`, for resource IDs, with `--show-members` |  |
+| `show` | `yd show`, for resource IDs, or names with `--type`, with `--show-members` |  |
 
 ### yd resource create
 
@@ -1492,7 +1492,10 @@ The `yd show` command shows the details (in JSON) of any YellowDog entity that h
 
 ```shell
 yd show [options] <yellowdog-id> [<yellowdog-id> ...]
+yd show [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
+
+With `--type`, a resource can be given by its name instead: Keyrings, Groups and Applications by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools as `namespace/name`, or by name in the configured namespace; and Users by name or username. `yd resource show --type Keyring team-keys` shows the Keyring named `team-keys` as its ID would show it. A name that finds nothing is not found (exit 6); a resource type that has no ID to show (an Allowance, a Namespace, a Namespace Policy, an Attribute Definition, a Credential) is refused, as are another type's ID and, without `--type`, an argument that is not an ID.
 
 It supports IDs referring to:
 

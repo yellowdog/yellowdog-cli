@@ -1,5 +1,6 @@
 """
-How 'yd resource remove --type <type> <name-or-id>...' names a resource:
+How 'yd resource remove --type <type> <name-or-id>...' names a resource,
+and which types 'yd resource show --type' finds by name:
 the specification a name stands for, which removal reads as it reads a
 file's, and the kind of YellowDog ID that removes one. A type with no name
 (an Allowance, named by its description) is removed by ID; one with no ID
@@ -89,6 +90,15 @@ def _credential(target: str, _namespace: str | None) -> dict:
     keyring, _, credential = target.partition(NAMESPACE_PREFIX_SEPARATOR)
     return {PROP_KEYRING_NAME: keyring, PROP_CREDENTIAL: {PROP_NAME: credential}}
 
+
+# The types 'yd resource show --type' finds by name, and the kind of ID each
+# name stands for: those with a name and an ID (an Allowance has no name; a
+# Namespace, Namespace Policy, Attribute Definition or Credential no ID)
+SHOWN_BY_NAME: dict[str, YDIDType] = {
+    **{t: k for t, k in ID_TYPES.items() if t != RN_ALLOWANCE},
+    RN_INTERNAL_USER: YDIDType.USER,
+    RN_EXTERNAL_USER: YDIDType.USER,
+}
 
 # How a name, as typed, becomes the specification removal reads, per type
 _BY_NAME: dict[str, Callable[[str, str | None], dict]] = {

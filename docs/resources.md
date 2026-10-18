@@ -209,6 +209,8 @@ yd resource remove --type Credential team-keys/aws-creds
 
 A namespaced resource (a Compute Source or Requirement Template, an Image Family, a Configured Worker Pool) is named `namespace/name`, or by its name alone in the configured namespace; a Credential as `keyring/credential`; a Namespace Policy by its namespace. An Allowance has no name, so is removed by its ID (or with `--set description=...` and `--match-allowances-by-description`); a Namespace, Namespace Policy, Attribute Definition or Credential has no ID that removes it, so is removed by name; and Users are not removed by the CLI. An argument of the wrong kind, such as another type's ID, is refused before anything is removed. Names and IDs can be mixed, each is removed once, and one that fails does not stop the rest.
 
+`yd resource show` finds a resource by name in the same way, for the types with an ID to show (all those above but Namespaces, Namespace Policies, Attribute Definitions, Credentials and Allowances): `yd resource show --type Keyring team-keys`, or `--type ComputeSourceTemplate other-ns/my-cst`.
+
 A specification can also be read from standard input, as JSON, by giving `-` in place of a file name, for a script that writes one:
 
 ```shell

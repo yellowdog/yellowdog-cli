@@ -183,13 +183,15 @@ class Yd:
         timeout: float | None = None,
         expect_secret: bool = False,
         expected_failure: bool = False,
+        input: str | None = None,
     ) -> Result:
         """
         Run 'yd <args> --config <the run's configuration>'. With 'check', an
         exit code not in 'ok' raises YdError. 'expect_secret' skips the
         secret-in-output check for this call, whose output is known to hold
         one; 'expected_failure' records no coverage for an accepted exit
-        code other than 0.
+        code other than 0. 'input' is given on standard input, which is
+        otherwise empty.
         """
         argv = [*self._program, *args, "--config", str(self.run.cli_config)]
         shown = self.mask("yd " + " ".join(args))
@@ -203,6 +205,7 @@ class Yd:
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                input=input or "",
                 timeout=timeout or self._timeout,
                 check=False,
             )

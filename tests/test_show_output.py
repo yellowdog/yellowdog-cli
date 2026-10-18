@@ -86,6 +86,7 @@ def _args(**overrides) -> MagicMock:
     args.show_source_report = False
     args.show_exhaustion = False
     args.show_members = False
+    args.resource_type = None
     args.output_file = None
     args.quiet = True  # Keep the status messages out of the parsed output
     args.json_output = False
@@ -711,3 +712,124 @@ def test_hide_user_data_summarises_a_compute_source_template(tmp_path, capsys):
     assert loads(output)["source"]["userData"] == summary
     written = loads(output_file.read_text(encoding="utf-8"))
     assert written["source"]["userData"] == summary
+
+
+# ---------------------------------------------------------------------------
+# A resource shown by name: '--type <type> <name>'
+# ---------------------------------------------------------------------------
+
+
+class TestByName:
+    def test_a_name_is_shown_as_its_id_is(self, capsys):
+        client = MagicMock()
+        ydid, obj = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
+            SimpleNamespace(name="team-keys", id=ydid)
+        ]
+        code, out = _run(["team-keys"], client, _args(resource_type="Keyring"), capsys)
+        assert code == 0
+        assert _names(loads(out)) == [obj.payload["name"]]
+        client.keyring_client.get_keyring.assert_called_once()
+
+    def test_names_and_ids_are_shown_together(self, capsys):
+        client = MagicMock()
+        ydid, _ = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = [
+            SimpleNamespace(name="team-keys", id=ydid)
+        ]
+        code, out = _run(
+            ["team-keys", ydid], client, _args(resource_type="Keyring"), capsys
+        )
+        assert code == 0
+        assert _names(loads(out)) == ["keyring", "keyring"]
+
+    def test_a_name_that_names_nothing_is_not_found(self, capsys):
+        client = MagicMock()
+        ydid, _ = _keyring(client)
+        client.keyring_client.get_keyrings.return_value.list_all.return_value = []
+        code, out = _run(
+            ["nothing", ydid], client, _args(resource_type="Keyring"), capsys
+        )
+        assert code == ExitCode.NOT_FOUND
+        assert _names(loads(out)) == ["keyring"]
+
+    @pytest.mark.parametrize(
+        "resource_type, lookup, expected_call",
+        [
+            (
+                "ComputeSourceTemplate",
+                "get_compute_source_template_id_by_name",
+                ("other/t", "ns"),
+            ),
+            (
+                "ComputeRequirementTemplate",
+                "get_compute_requirement_template_id_by_name",
+                ("other/t", "ns"),
+            ),
+            ("ConfiguredWorkerPool", "get_worker_pool_id_by_name", ("other/t", "ns")),
+            ("Group", "get_group_id_by_name", ("other/t",)),
+            ("Application", "get_application_id_by_name", ("other/t",)),
+        ],
+    )
+    def test_each_type_is_found_by_its_lookup(
+        self, monkeypatch, resource_type, lookup, expected_call
+    ):
+        calls = []
+        monkeypatch.setattr(
+            show_module,
+            lookup,
+            lambda client, *args: calls.append(args) or "ydid:x:000000:" + UUID,
+        )
+        ctx = RunContext(
+            args=_args(resource_type=resource_type),
+            config=SimpleNamespace(namespace="ns"),
+            client=MagicMock(),
+        )
+        assert show_module._id_for_name(ctx, resource_type, "other/t") == (
+            "ydid:x:000000:" + UUID
+        )
+        assert calls == [expected_call]
+
+    def test_an_image_family_is_found_in_its_namespace(self):
+        client = MagicMock()
+        client.images_client.get_image_family_by_name.return_value = SimpleNamespace(
+            id="ydid:imgfam:000000:" + UUID
+        )
+        ctx = RunContext(
+            args=_args(), config=SimpleNamespace(namespace="ns"), client=client
+        )
+        assert show_module._id_for_name(ctx, "MachineImageFamily", "fam") == (
+            "ydid:imgfam:000000:" + UUID
+        )
+        client.images_client.get_image_family_by_name.assert_called_once_with(
+            namespace="ns", family_name="fam"
+        )
+
+    def test_a_user_is_found_by_name_or_username(self, monkeypatch):
+        monkeypatch.setattr(
+            show_module,
+            "get_user_by_name_or_id",
+            lambda client, name: SimpleNamespace(id="ydid:user:000000:" + UUID),
+        )
+        ctx = RunContext(
+            args=_args(), config=SimpleNamespace(namespace="ns"), client=None
+        )
+        assert show_module._id_for_name(ctx, "InternalUser", "someone") == (
+            "ydid:user:000000:" + UUID
+        )
+
+    def test_an_ambiguous_name_fails_that_name_alone(self, capsys, monkeypatch):
+        from yellowdog_cli.utils.entity_utils import AmbiguousNameError
+
+        def ambiguous(client, name, namespace):
+            raise AmbiguousNameError("two")
+
+        monkeypatch.setattr(
+            show_module, "get_compute_requirement_template_id_by_name", ambiguous
+        )
+        client = MagicMock()
+        code, out = _run(
+            ["t"], client, _args(resource_type="ComputeRequirementTemplate"), capsys
+        )
+        assert code == ExitCode.FAILURE
+        assert out.strip() == ""

@@ -2502,24 +2502,54 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     Configured one is known only once it has been fetched, as whether it is
     a Provisioned one is for the other two.
     """
-    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+    from yellowdog_cli.utils.resource_targets import SHOWN_BY_NAME
+    from yellowdog_cli.utils.ydid_utils import (
+        YDIDType,
+        get_ydid_type,
+        split_instance_specification,
+    )
+
+    # The kind of each argument: a YDID's type, or with --type the kind of
+    # ID the name stands for
+    resource_type = getattr(args, "resource_type", None)
+    kinds = []
+    for target in args.yellowdog_ids:
+        ydid_type = get_ydid_type(target)
+        if resource_type is None:
+            # A word that is plainly a name; a malformed ID is reported as
+            # the run reaches it
+            if (
+                not target.startswith("ydid:")
+                and split_instance_specification(target) is None
+            ):
+                parser.error(
+                    f"'{target}' is not a YellowDog ID; give --type to show a"
+                    " resource by name"
+                )
+        elif resource_type not in SHOWN_BY_NAME:
+            article = "an" if resource_type[0] in "AEIOU" else "a"
+            parser.error(
+                f"{article} {resource_type} cannot be shown by name; list it with"
+                " 'yd resource list <type> --name <name> --details'"
+            )
+        elif ydid_type is None:
+            ydid_type = SHOWN_BY_NAME[resource_type]
+        elif ydid_type != SHOWN_BY_NAME[resource_type]:
+            parser.error(f"'{target}' is not the ID of a {resource_type}")
+        kinds.append(ydid_type)
 
     with_compute_requirement = (YDIDType.COMPUTE_REQUIREMENT, YDIDType.WORKER_POOL)
     for flag, given in (
         ("--show-source-report", args.show_source_report),
         ("--show-exhaustion", args.show_exhaustion),
     ):
-        if given and not any(
-            get_ydid_type(ydid) in with_compute_requirement
-            for ydid in args.yellowdog_ids
-        ):
+        if given and not any(kind in with_compute_requirement for kind in kinds):
             parser.error(
                 f"{flag} applies only to Compute Requirement and Worker Pool"
                 " IDs, and none was given"
             )
     if args.show_members and not any(
-        get_ydid_type(ydid) in (YDIDType.GROUP, YDIDType.ROLE)
-        for ydid in args.yellowdog_ids
+        kind in (YDIDType.GROUP, YDIDType.ROLE) for kind in kinds
     ):
         parser.error(
             "--show-members applies only to Group and Role IDs, and none was given"
@@ -2530,9 +2560,7 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
         YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
         YDIDType.ALLOWANCE,
     )
-    if args.substitute_ids and not any(
-        get_ydid_type(ydid) in substitutable for ydid in args.yellowdog_ids
-    ):
+    if args.substitute_ids and not any(kind in substitutable for kind in kinds):
         parser.error(
             "--substitute-ids applies only to Compute Source Template, Compute"
             " Requirement Template and Allowance IDs, and none was given"
@@ -2553,8 +2581,16 @@ COMMANDS["yd-show"] = Command(
             help=(
                 "the YellowDog ID(s) of the item(s) to show"
                 "; Instances have no ID of their own and are specified "
-                "in 'cr_id.instance_id' format"
+                "in 'cr_id.instance_id' format; with --type, the names or IDs"
+                " of resources of that type"
             ),
+        ),
+        RESOURCE_TYPE.variant(
+            help=(
+                "the type of the resources to show by name, e.g. 'Keyring'"
+                " (any case): 'namespace/name' for a namespaced type, the"
+                " configured namespace without one"
+            )
         ),
         SHOW_TOKEN,
         SHOW_SOURCE_REPORT,

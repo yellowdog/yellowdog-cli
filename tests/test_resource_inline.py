@@ -324,3 +324,40 @@ def test_every_type_is_removed_by_name_or_id_or_refused():
     assert not (NAMED_TYPES | set(ID_TYPES)) & USER_TYPES
     # Each ID is one '--ids' removes
     assert set(ID_TYPES.values()) <= REMOVABLE_YDID_TYPES
+
+
+# Shown by name or ID: 'yd resource show --type <type> <name-or-id>...'
+
+
+@pytest.mark.parametrize(
+    "argv, shown",
+    [
+        (["--type", "Keyring", "team-keys", KEYRING_ID], ["team-keys", KEYRING_ID]),
+        (["--type", "computerequirementtemplate", "ns/template"], ["ns/template"]),
+        (["--type", "Group", "admins", "--show-members"], ["admins"]),
+        (["--type", "ComputeSourceTemplate", "t", "--substitute-ids"], ["t"]),
+        (["--type", "InternalUser", "someone"], ["someone"]),
+        ([KEYRING_ID], [KEYRING_ID]),
+    ],
+)
+def test_names_and_ids_are_shown(argv, shown):
+    assert _parse("yd-show", *argv).yellowdog_ids == shown
+
+
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        (["team-keys"], "'team-keys' is not a YellowDog ID; give --type"),
+        (
+            ["--type", "Namespace", "dev"],
+            "a Namespace cannot be shown by name",
+        ),
+        (["--type", "Keyring", POOL_ID], f"'{POOL_ID}' is not the ID of a Keyring"),
+        (
+            ["--type", "Allowance", "gpu-hours"],
+            "an Allowance cannot be shown by name",
+        ),
+    ],
+)
+def test_what_is_refused_for_showing_by_name(argv, message, capsys):
+    _refused("yd-show", argv, message, capsys)

@@ -21,8 +21,10 @@ from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
+    RN_EXTERNAL_USER,
     RN_GROUP,
     RN_IMAGE_FAMILY,
+    RN_INTERNAL_USER,
     RN_KEYRING,
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
@@ -30,11 +32,19 @@ from yellowdog_cli.utils.entity_names import (
 )
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
+    get_application_id_by_name,
+    get_compute_requirement_template_id_by_name,
+    get_compute_source_template_id_by_name,
     get_group_applications,
+    get_group_id_by_name,
     get_group_users,
     get_instance_by_id,
+    get_keyring_summary_by_name,
     get_role_groups,
+    get_user_by_name_or_id,
     get_user_groups,
+    get_worker_pool_id_by_name,
+    split_namespace_and_name,
     substitute_id_for_name_in_allowance,
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
@@ -129,8 +139,16 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     # Pool with '--show-token', or a Compute Requirement or Provisioned Worker
     # Pool with '--show-source-report' or '--show-exhaustion'.
     as_json_array = len(ydids) > 1
+    resource_type = ctx.args.resource_type
     for index, ydid in enumerate(ydids):
         try:
+            if resource_type is not None and get_ydid_type(ydid) is None:
+                # A name, with '--type': shown as its ID is
+                found = _named_id(ctx, resource_type, ydid)
+                if found is None:  # The reason has already been reported
+                    failures += 1
+                    continue
+                ydid = found
             resolved = resolve_details(ctx, ydid)
         except Exception as e:  # Re-raised by the resolvers only if SESSION_FAILURES
             print_error(f"Unable to show details for '{ydid}': {e}")
@@ -156,6 +174,66 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     if len(_TALLY.codes) == failures and len(codes) == 1:
         return codes.pop()
     return ExitCode.FAILURE
+
+
+def _named_id(ctx: RunContext, resource_type: str, name: str) -> str | None:
+    """
+    The ID a name of the type stands for, or None having reported why there
+    is none: nothing has the name (not found), or the lookup failed for this
+    name alone (an ambiguous name, a refused search). A session failure is
+    raised, as it is for an ID, to stop the run.
+    """
+    try:
+        found = _id_for_name(ctx, resource_type, name)
+    except Exception as e:
+        code = classify(e)
+        if code in SESSION_FAILURES:
+            raise
+        _report_failure(f"Unable to find {resource_type} '{name}': {e}", code)
+        advise(e)
+        return None
+    if found is None:
+        _report_not_found(f"Cannot find {resource_type} '{name}'")
+    return found
+
+
+def _id_for_name(ctx: RunContext, resource_type: str, name: str) -> str | None:
+    """
+    The ID of the resource of the type with the name, found as the commands
+    acting on one find it, or None: 'namespace/name' for a namespaced type,
+    the configured namespace without one; a User by its name or username.
+    The types are resource_targets.SHOWN_BY_NAME's.
+    """
+    client, namespace = ctx.client, ctx.config.namespace
+    match resource_type:
+        case _ if resource_type == RN_KEYRING:
+            summary = get_keyring_summary_by_name(client, name)
+            return None if summary is None else summary.id
+        case _ if resource_type == RN_SOURCE_TEMPLATE:
+            return get_compute_source_template_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_REQUIREMENT_TEMPLATE:
+            return get_compute_requirement_template_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_CONFIGURED_POOL:
+            return get_worker_pool_id_by_name(client, name, namespace)
+        case _ if resource_type == RN_GROUP:
+            return get_group_id_by_name(client, name)
+        case _ if resource_type == RN_APPLICATION:
+            return get_application_id_by_name(client, name)
+        case _ if resource_type == RN_IMAGE_FAMILY:
+            family_namespace, family_name = split_namespace_and_name(name)
+            try:
+                return client.images_client.get_image_family_by_name(
+                    namespace=family_namespace or namespace,
+                    family_name=family_name or name,
+                ).id
+            except Exception as e:
+                if is_http_not_found(e):
+                    return None
+                raise
+        case _ if resource_type in (RN_INTERNAL_USER, RN_EXTERNAL_USER):
+            user = get_user_by_name_or_id(client, name)
+            return None if user is None else user.id
+    raise ValueError(f"a {resource_type} cannot be shown by name")
 
 
 def _print_items(ctx: RunContext, items: list[ShowItem], as_json_array: bool):

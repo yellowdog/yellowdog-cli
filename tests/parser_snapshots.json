@@ -989,6 +989,35 @@
       "type": "str"
     },
     {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
       "choices": null,
       "const": true,
       "default": false,
@@ -4716,6 +4745,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -8966,6 +9024,35 @@
       "type": "str"
     },
     {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
       "choices": null,
       "const": true,
       "default": false,
@@ -11670,6 +11757,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -14583,6 +14699,35 @@
       "type": "str"
     },
     {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
       "choices": null,
       "const": true,
       "default": false,
@@ -15719,6 +15864,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -17071,6 +17245,35 @@
       "type": "str"
     },
     {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
+    },
+    {
       "choices": null,
       "const": true,
       "default": false,
@@ -17922,6 +18125,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -19755,6 +19987,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -23188,6 +23449,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,
@@ -33727,6 +34017,35 @@
       "option_strings": [],
       "required": null,
       "type": "str"
+    },
+    {
+      "choices": [
+        "Allowance",
+        "Application",
+        "ConfiguredWorkerPool",
+        "Credential",
+        "ExternalUser",
+        "Group",
+        "MachineImageFamily",
+        "InternalUser",
+        "Keyring",
+        "Namespace",
+        "NamespacePolicy",
+        "NumericAttributeDefinition",
+        "ComputeRequirementTemplate",
+        "ComputeSourceTemplate",
+        "StringAttributeDefinition"
+      ],
+      "const": null,
+      "default": null,
+      "dest": "resource_type",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--type"
+      ],
+      "required": false,
+      "type": "resolve_resource_type"
     },
     {
       "choices": null,

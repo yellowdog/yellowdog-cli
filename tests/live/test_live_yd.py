@@ -38,6 +38,9 @@ if args[0] == "sleep":
     time.sleep(10)
 if "--exit-with" in args:
     sys.exit(int(args[args.index("--exit-with") + 1]))
+if "--echo-stdin" in args:
+    print(json.dumps({"stdin": sys.stdin.read()}))
+    sys.exit(0)
 if "--print-env" in args:
     print(os.environ.get(args[args.index("--print-env") + 1], ""))
     sys.exit(0)
@@ -235,3 +238,11 @@ def test_an_expected_failure_that_succeeds_still_earns_coverage(
     monkeypatch.setattr(coverage, "_DIRECTORY", tmp_path)
     yd("wr", "show", ok=(0, 6), expected_failure=True)
     assert coverage.recorded(tmp_path) == {"yd workrequirement show"}
+
+
+def test_input_is_given_on_standard_input(yd):
+    assert yd("--echo-stdin", input='{"a": 1}').document == {"stdin": '{"a": 1}'}
+
+
+def test_without_input_standard_input_is_empty(yd):
+    assert yd("--echo-stdin").document == {"stdin": ""}
