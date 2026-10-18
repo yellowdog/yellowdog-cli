@@ -37,6 +37,7 @@ from yellowdog_cli.utils.command_registry import (
     Option,
     resolve_cloud_info_type,
     resolve_entity_type,
+    resolve_resource_type,
 )
 from yellowdog_cli.utils.invocation import invoked_name
 from yellowdog_cli.utils.noun_registry import (
@@ -234,6 +235,11 @@ def _positional_at(positionals: list[Option], filled: int) -> Option | None:
     return None
 
 
+# The option types read in any case ('--type keyring' is 'Keyring'), whose
+# values are completed in any case too
+_ANY_CASE_TYPES = frozenset({resolve_resource_type})
+
+
 def _values(command: Command, option: Option, current: str) -> Completions:
     """
     The values of an option (or positional) that complete 'current'.
@@ -255,7 +261,26 @@ def _values(command: Command, option: Option, current: str) -> Completions:
         values = _TYPE_VALUES.get(kind)
     if values is None:
         return _NOTHING
+    if kind in _ANY_CASE_TYPES:
+        return _matching_any_case(values, current)
     return _matching(((value, "") for value in values), current)
+
+
+def _matching_any_case(values: Iterable[str], current: str) -> Completions:
+    """
+    The values that start with 'current' in any case, for an option the
+    command reads in any case: offered in lower case when 'current' is, as
+    typed, so that a shell matching case keeps them, and as written
+    otherwise.
+    """
+    lower = bool(current) and current == current.lower()
+    return Completions(
+        candidates=tuple(
+            Candidate(value.lower() if lower else value)
+            for value in values
+            if value.lower().startswith(current.lower())
+        )
+    )
 
 
 def _sort_keys(keys: tuple[str, ...], current: str) -> Completions:

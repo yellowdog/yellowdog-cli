@@ -139,6 +139,33 @@ class TestValues:
         words = ["yd", "cloudinfo", "prices"]
         assert _values(words, "--provider=a") == ["--provider=aws", "--provider=azure"]
 
+    @pytest.mark.parametrize(
+        "current, offered",
+        [
+            # Matched in any case, as the CLI reads the type, and offered in
+            # the case typed, so that a shell matching case keeps them
+            ("k", ["keyring"]),
+            ("K", ["Keyring"]),
+            ("KEY", ["Keyring"]),
+            ("namespacep", ["namespacepolicy"]),
+            ("Name", ["Namespace", "NamespacePolicy"]),
+        ],
+    )
+    def test_a_resource_type_in_any_case(self, current, offered):
+        assert _values(["yd", "resource", "remove", "--type"], current) == offered
+
+    def test_a_resource_type_with_nothing_typed_is_offered_as_written(self):
+        offered = _values(["yd", "resource", "create", "--type"])
+        assert "ComputeSourceTemplate" in offered and len(offered) == 15
+
+    def test_a_resource_type_after_an_equals(self):
+        assert _values(["yd", "resource", "create"], "--type=keyr") == [
+            "--type=keyring"
+        ]
+
+    def test_other_choices_still_match_their_case(self):
+        assert _values(["yd", "cloudinfo", "prices", "--provider"], "A") == []
+
     def test_an_unknown_option_after_an_equals_offers_nothing(self):
         assert _values(["yd", "wr", "cancel"], "--nonesuch=") == []
 

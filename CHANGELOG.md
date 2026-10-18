@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Tab completes `--type`'s resource types in any case**, as `yd resource create`, `remove` and `show` read them: `--type k` completes to `keyring`, and `--type Name` offers `Namespace` and `NamespacePolicy`.
+
 ## 14.0.0 — 2026-10-18
 
 ### Upgrading
