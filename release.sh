@@ -9,7 +9,8 @@
 # with a clean working tree, and with this release's notes under
 # '## Unreleased' in CHANGELOG.md, which the version bump stamps with the
 # version and date; they are the release tag's message, and are printed at
-# the end for the release ticket. It asks whether to run the tests, and
+# the end for the release ticket. It asks whether 'make tox' has passed and
+# whether to run the tests, carrying on without either if told to, and
 # refuses to release unsigned commits, which 'main' requires to be signed.
 
 set -euo pipefail
@@ -132,13 +133,15 @@ echo "--- Release notes (## Unreleased in $CHANGELOG) ---"
 _changelog_section Unreleased
 
 # The tests below run in this venv alone, with every extra installed, which
-# can hide a failure: 'make tox' runs them on every supported Python version,
-# with only the dev, commander and mcp extras
+# can hide a failure: 'make tox' runs them on every supported Python version.
+# Asked, not required: a release may go without it, said so
 echo
-echo "REMINDER: run 'make tox' on this commit before releasing. The tests this"
-echo "script runs use this venv only, which can hide failures on other Python"
-echo "versions or without the optional extras."
-_confirm "Has 'make tox' passed on this commit?"
+echo "REMINDER: 'make tox' on this commit is the fullest check before releasing."
+echo "The tests this script can run use this venv only, which can hide failures"
+echo "on other Python versions or without the optional extras."
+if ! _ask "Has 'make tox' passed on this commit?"; then
+    echo "--- Releasing without a 'make tox' run ---"
+fi
 
 # ---------------------------------------------------------------------------
 # Determine new version

@@ -29,7 +29,7 @@ Run `release.sh` from the `next-version` branch with a clean working tree:
 ./release.sh --release  # execute the release for real
 ```
 
-The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it checks that every commit to be released is signed (`main` requires it; see [Pre-push Hook](DEVELOPMENT.md#pre-push-hook)), stopping if one is not, shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, stopping if it has not. It then asks whether to run the tests itself, which it does unless told not to: that run uses the current venv alone, which can hide a failure on another Python version or without the optional extras, so it adds little once `make tox` has passed. At the end it prints the release notes, for the release ticket.
+The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it checks that every commit to be released is signed (`main` requires it; see [Pre-push Hook](DEVELOPMENT.md#pre-push-hook)), stopping if one is not, shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, carrying on without it if told so. It then asks whether to run the tests itself, which it does unless told not to: that run uses the current venv alone, which can hide a failure on another Python version or without the optional extras, so it adds little once `make tox` has passed. At the end it prints the release notes, for the release ticket.
 
 ## Manual Release Steps
 
