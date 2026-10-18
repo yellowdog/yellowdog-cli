@@ -10,14 +10,19 @@ the search. The Instance, Node and Worker listings are the provider chain's
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 
 import pytest
 from harness import work
 
-pytestmark = [pytest.mark.live]
+# On one worker: its Work Requirement is the module's, named for the run, and
+# a second worker's would be refused as a duplicate name
+pytestmark = [pytest.mark.live, pytest.mark.xdist_group("ydst-listing")]
 
 _JSON = ("--json", "--quiet")
+# Seconds: how long the Platform may take to count Tasks just added
+_COUNTS_SETTLE = 30
 _MORE = "more match"
 
 
@@ -54,7 +59,12 @@ def test_the_limit_and_its_warning(live_run, listing_wr):
     one = yd(*within, "--limit", "1", "--ids-only", "--quiet")
     assert len(one.stdout.split()) == 1
     assert "Listed the first Task; more match" in one.stderr
-    assert yd(*within, "--count", "--quiet").stdout.strip() == "6"
+    # '--count' reads the Task Groups' counts, which the Platform brings up to
+    # date a few seconds after the Tasks are added
+    deadline = time.monotonic() + _COUNTS_SETTLE
+    while (count := yd(*within, "--count", "--quiet").stdout.strip()) != "6":
+        assert time.monotonic() < deadline, f"--count is {count}, not 6"
+        time.sleep(3)
 
 
 def test_a_limit_across_task_groups(live_run, listing_wr):

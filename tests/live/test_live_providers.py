@@ -15,6 +15,8 @@ cleanly instead, and one recorded as a known fault must show its symptom
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from harness import compute
 from harness.capabilities import PROVIDERS, known_fault, perform, unsupported
@@ -148,6 +150,19 @@ def _limited_to_one(yd, noun: str, target: str, total: int, singular: str) -> No
     assert warned == (total > 1), result.stderr
 
 
+def _agree(expected, listed, attempts: int = 12, pause: float = 10) -> None:
+    """
+    Hold what 'listed' reads to what 'expected' reads, reading both again
+    until they agree: a Node can still be registering just after a resize,
+    and appear between the two reads.
+    """
+    for _ in range(attempts - 1):
+        if expected() == listed():
+            return
+        time.sleep(pause)
+    assert listed() == expected()
+
+
 def test_listing(chain, live_run):
     """
     The pool's Instances, Nodes and Workers listed '--within' their parent,
@@ -155,18 +170,28 @@ def test_listing(chain, live_run):
     and its warning; '--status' and '--provider' sent with the search.
     """
     run, yd = live_run.run, live_run.yd
+    provider = _CLI_PROVIDER[chain.provider]
     with chain.step("listing"):
+
+        def instances() -> dict[str, str]:
+            return compute.instances(yd, run.namespace, run.run_id, chain.cr_id)
+
+        def nodes() -> list[dict]:
+            return compute.nodes(yd, run.namespace, run.run_id, chain.pool_id)
+
         cr_name = compute.compute_requirement(yd, chain.cr_id)["name"]
-        expected = compute.instances(yd, run.namespace, run.run_id, chain.cr_id)
-        expected_ids = sorted(name.split(".", 1)[1] for name in expected)
         for target in (chain.cr_id, cr_name, f"{run.namespace}/{cr_name}"):
-            listed = _within(yd, "instance", target, "--limit", "0").records
-            assert sorted(i["id"]["instanceId"] for i in listed) == expected_ids
-        _limited_to_one(yd, "instance", chain.cr_id, len(expected), "Instance")
-        running = sum(status == "RUNNING" for status in expected.values())
-        provider = _CLI_PROVIDER[chain.provider]
-        assert (
-            len(
+            _agree(
+                lambda: sorted(name.split(".", 1)[1] for name in instances()),
+                lambda target=target: sorted(
+                    i["id"]["instanceId"]
+                    for i in _within(yd, "instance", target, "--limit", "0").records
+                ),
+            )
+        _limited_to_one(yd, "instance", chain.cr_id, len(instances()), "Instance")
+        _agree(
+            lambda: sum(status == "RUNNING" for status in instances().values()),
+            lambda: len(
                 _within(
                     yd,
                     "instance",
@@ -176,23 +201,25 @@ def test_listing(chain, live_run):
                     "--provider",
                     provider,
                 ).records
-            )
-            == running
+            ),
         )
         assert (
             _within(yd, "instance", chain.cr_id, "--provider", "on-premise").records
             == []
         )
 
-        pool_nodes = compute.nodes(yd, run.namespace, run.run_id, chain.pool_id)
-        expected_nodes = sorted(node["id"] for node in pool_nodes)
         for target in (chain.pool_id, run.pool_name(chain.provider)):
-            listed = _within(yd, "node", target, "--limit", "0").records
-            assert sorted(node["id"] for node in listed) == expected_nodes
-        _limited_to_one(yd, "node", chain.pool_id, len(expected_nodes), "Node")
-        running_nodes = sum(node.get("status") == "RUNNING" for node in pool_nodes)
-        assert (
-            len(
+            _agree(
+                lambda: sorted(node["id"] for node in nodes()),
+                lambda target=target: sorted(
+                    node["id"]
+                    for node in _within(yd, "node", target, "--limit", "0").records
+                ),
+            )
+        _limited_to_one(yd, "node", chain.pool_id, len(nodes()), "Node")
+        _agree(
+            lambda: sum(node.get("status") == "RUNNING" for node in nodes()),
+            lambda: len(
                 _within(
                     yd,
                     "node",
@@ -202,17 +229,19 @@ def test_listing(chain, live_run):
                     "--provider",
                     provider,
                 ).records
-            )
-            == running_nodes
+            ),
         )
 
         workers = _within(yd, "worker", chain.pool_id, "--limit", "0").records
         assert workers, "the pool has no Workers"
         _limited_to_one(yd, "worker", chain.pool_id, len(workers), "Worker")
-        node = next(node for node in pool_nodes if node.get("workers"))
-        on_node = _within(yd, "worker", node["id"], "--limit", "0").records
-        assert sorted(w["id"] for w in on_node) == sorted(
-            w["id"] for w in node["workers"]
+        node = next(node for node in nodes() if node.get("workers"))
+        _agree(
+            lambda: sorted(w["id"] for w in node["workers"]),
+            lambda: sorted(
+                w["id"]
+                for w in _within(yd, "worker", node["id"], "--limit", "0").records
+            ),
         )
 
 
