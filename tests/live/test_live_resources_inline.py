@@ -93,6 +93,14 @@ def test_shown_by_name_and_by_id(live_run, names):
     assert [keyring["name"] for keyring in shown.records] == [first, second]
 
 
+def test_a_type_with_no_id_is_shown_by_name(live_run):
+    namespace = live_run.run.namespace
+    shown = live_run.yd("resource", "show", "--type", "Namespace", namespace, "--quiet")
+    assert [(r["resource"], r["namespace"]) for r in shown.records] == [
+        ("Namespace", namespace)
+    ]
+
+
 def test_a_name_that_names_nothing_is_not_found(live_run):
     missing = live_run.run.name("inline-missing")
     result = live_run.yd(
@@ -120,7 +128,7 @@ def test_a_name_that_names_nothing_is_not_found(live_run):
             ["remove", "--type", "Keyring", "k", "--set", "name=x", *_ACT],
             "not both",
         ),
-        (["show", "--type", "Namespace", "dev", "--quiet"], "cannot be shown by name"),
+        (["show", "--type", "Allowance", "gpu-hours", "--quiet"], "has no name"),
         (["show", "a-name", "--quiet"], "give --type"),
     ],
 )

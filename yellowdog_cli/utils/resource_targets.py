@@ -100,6 +100,20 @@ SHOWN_BY_NAME: dict[str, YDIDType] = {
     RN_EXTERNAL_USER: YDIDType.USER,
 }
 
+# The types 'yd resource show --type' shows by name though they have no ID,
+# fetched as 'yd resource list --details' fetches them (show.py's
+# _shown_without_id()): a Credential as 'keyring/credential', a Namespace
+# Policy by its namespace
+SHOWN_WITHOUT_ID = frozenset(
+    {
+        RN_NAMESPACE,
+        RN_NAMESPACE_POLICY,
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+        RN_CREDENTIAL,
+    }
+)
+
 # How a name, as typed, becomes the specification removal reads, per type
 _BY_NAME: dict[str, Callable[[str, str | None], dict]] = {
     RN_KEYRING: _named,

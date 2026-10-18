@@ -338,6 +338,11 @@ def test_every_type_is_removed_by_name_or_id_or_refused():
         (["--type", "ComputeSourceTemplate", "t", "--substitute-ids"], ["t"]),
         (["--type", "InternalUser", "someone"], ["someone"]),
         ([KEYRING_ID], [KEYRING_ID]),
+        (["--type", "Namespace", "dev"], ["dev"]),
+        (["--type", "NamespacePolicy", "dev"], ["dev"]),
+        (["--type", "StringAttributeDefinition", "gpu"], ["gpu"]),
+        (["--type", "Credential", "kr/aws"], ["kr/aws"]),
+        (["--type", "Allowance", ALLOWANCE_ID], [ALLOWANCE_ID]),
     ],
 )
 def test_names_and_ids_are_shown(argv, shown):
@@ -349,14 +354,15 @@ def test_names_and_ids_are_shown(argv, shown):
     [
         (["team-keys"], "'team-keys' is not a YellowDog ID; give --type"),
         (
-            ["--type", "Namespace", "dev"],
-            "a Namespace cannot be shown by name",
+            ["--type", "Namespace", KEYRING_ID],
+            "a Namespace has no ID; give its name",
         ),
         (["--type", "Keyring", POOL_ID], f"'{POOL_ID}' is not the ID of a Keyring"),
         (
             ["--type", "Allowance", "gpu-hours"],
-            "an Allowance cannot be shown by name",
+            "an Allowance has no name; give its ID",
         ),
+        (["--type", "Credential", "aws"], "'keyring/credential'"),
     ],
 )
 def test_what_is_refused_for_showing_by_name(argv, message, capsys):

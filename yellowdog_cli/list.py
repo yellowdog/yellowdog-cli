@@ -7,7 +7,6 @@ Command to list YellowDog entities.
 import fnmatch
 from collections.abc import Callable, Iterable, Iterator
 from itertools import chain, islice
-from json import loads as json_loads
 from os.path import exists
 from typing import Any, TypeVar, cast
 
@@ -100,6 +99,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_compute_source_templates,
     get_filtered_work_requirement_summaries,
     get_task_groups_from_wr_by_id,
+    get_user_attribute_definitions,
     get_user_groups,
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
@@ -1699,23 +1699,7 @@ def list_attribute_definitions(ctx: RunContext):
     """
     List user compute attribute definitions using the API.
     """
-    response = get(
-        url=f"{ctx.config.url}/compute/attributes/user",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        timeout=RAW_REQUEST_TIMEOUT,
-    )
-
-    if response.status_code != 200:
-        # An HTTPError carrying the response, so that the exit code names
-        # the kind of failure (a 401 exits 4)
-        raise HTTPError(
-            "Unable to list user attribute definitions: HTTP "
-            f"{response.status_code} ({response.text})",
-            response=response,
-        )
-
-    attribute_definition_list = json_loads(response.text)
-    attribute_definition_list.sort(key=lambda x: x["name"])
+    attribute_definition_list = get_user_attribute_definitions(ctx.config)
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, attribute_definition_list)

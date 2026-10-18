@@ -12,6 +12,7 @@ from typing import Any, cast
 from yellowdog_client.model import (
     ComputeRequirement,
     ConfiguredWorkerPool,
+    NamespaceSearch,
     ProvisionedWorkerPool,
 )
 
@@ -21,14 +22,19 @@ from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
+    RN_CREDENTIAL,
     RN_EXTERNAL_USER,
     RN_GROUP,
     RN_IMAGE_FAMILY,
     RN_INTERNAL_USER,
     RN_KEYRING,
+    RN_NAMESPACE,
+    RN_NAMESPACE_POLICY,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION,
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
+    RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.entity_utils import (
     get_application_group_summaries,
@@ -41,6 +47,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_instance_by_id,
     get_keyring_summary_by_name,
     get_role_groups,
+    get_user_attribute_definitions,
     get_user_by_name_or_id,
     get_user_groups,
     get_worker_pool_id_by_name,
@@ -65,7 +72,8 @@ from yellowdog_cli.utils.printing import (
     print_warning,
     print_yd_object,
 )
-from yellowdog_cli.utils.property_names import PROP_GROUPS
+from yellowdog_cli.utils.property_names import PROP_GROUPS, PROP_KEYRING_NAME
+from yellowdog_cli.utils.resource_targets import SHOWN_WITHOUT_ID
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_COMPREQ,
@@ -142,6 +150,14 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     resource_type = ctx.args.resource_type
     for index, ydid in enumerate(ydids):
         try:
+            if resource_type in SHOWN_WITHOUT_ID:
+                # A name of a type with no ID: fetched by it
+                shown = _without_id(ctx, cast(str, resource_type), ydid)
+                if shown is None:  # The reason has already been reported
+                    failures += 1
+                else:
+                    items += shown
+                continue
             if resource_type is not None and get_ydid_type(ydid) is None:
                 # A name, with '--type': shown as its ID is
                 found = _named_id(ctx, resource_type, ydid)
@@ -195,6 +211,86 @@ def _named_id(ctx: RunContext, resource_type: str, name: str) -> str | None:
     if found is None:
         _report_not_found(f"Cannot find {resource_type} '{name}'")
     return found
+
+
+def _without_id(
+    ctx: RunContext, resource_type: str, name: str
+) -> list[ShowItem] | None:
+    """
+    A resource of a type with no ID, found by its name, or None having
+    reported why not, as _named_id() reports it.
+    """
+    try:
+        found = _shown_without_id(ctx, resource_type, name)
+    except Exception as e:
+        code = classify(e)
+        if code in SESSION_FAILURES:
+            raise
+        _report_failure(f"Unable to find {resource_type} '{name}': {e}", code)
+        advise(e)
+        return None
+    if found is None:
+        _report_not_found(f"Cannot find {resource_type} '{name}'")
+        return None
+    return [found]
+
+
+def _shown_without_id(
+    ctx: RunContext, resource_type: str, name: str
+) -> ShowItem | None:
+    """
+    The resource of a type with no ID that has the name, as 'yd resource
+    list --details' shows it, with 'resource' added, or None: a Namespace by
+    its name, a Namespace Policy by its namespace, an Attribute Definition of
+    the type by its name, a Credential as 'keyring/credential' (shown as its
+    Keyring holds it, with 'keyringName' added). The types are
+    resource_targets.SHOWN_WITHOUT_ID's.
+    """
+    client = ctx.client
+    added = {RESOURCE_PROPERTY_NAME: resource_type}
+    if resource_type == RN_NAMESPACE:
+        namespaces = client.namespaces_client.get_namespaces(
+            NamespaceSearch(namespaceContains=name)
+        ).list_all()
+        found = next((ns for ns in namespaces if ns.namespace == name), None)
+        return None if found is None else (found, added)
+    if resource_type == RN_NAMESPACE_POLICY:
+        try:
+            return (
+                client.namespaces_client.get_namespace_policy(namespace=name),
+                added,
+            )
+        except Exception as e:
+            if is_http_not_found(e):
+                return None
+            raise
+    if resource_type in (
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    ):
+        for definition in get_user_attribute_definitions(ctx.config):
+            numeric = "Numeric" in str(definition.get("type", ""))
+            definition_type = (
+                RN_NUMERIC_ATTRIBUTE_DEFINITION
+                if numeric
+                else RN_STRING_ATTRIBUTE_DEFINITION
+            )
+            if definition.get("name") == name and definition_type == resource_type:
+                return (definition, added)
+        return None
+    if resource_type == RN_CREDENTIAL:
+        keyring_name, _, credential_name = name.partition("/")
+        summary = get_keyring_summary_by_name(client, keyring_name)
+        if summary is None:
+            return None
+        keyring = client.keyring_client.get_keyring(cast(str, summary.id))
+        credential = next(
+            (c for c in keyring.credentials or [] if c.name == credential_name), None
+        )
+        if credential is None:
+            return None
+        return (credential, {**added, PROP_KEYRING_NAME: keyring_name})
+    raise ValueError(f"a {resource_type} cannot be shown without an ID")
 
 
 def _id_for_name(ctx: RunContext, resource_type: str, name: str) -> str | None:

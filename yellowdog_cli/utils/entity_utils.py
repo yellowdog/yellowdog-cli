@@ -6,8 +6,10 @@ import fnmatch
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import cast
+from json import loads as json_loads
+from typing import Any, cast
 
+from requests import HTTPError, get
 from yellowdog_client import PlatformClient
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
@@ -68,6 +70,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
@@ -1473,3 +1476,26 @@ def get_task_group_by_id(client: PlatformClient, task_group_id: str) -> TaskGrou
             return task_group
 
     raise NotFoundError(f"Task Group ID '{task_group_id}' not found")
+
+
+def get_user_attribute_definitions(config: Any) -> list[dict]:
+    """
+    The user compute attribute definitions, by name, as the Platform's API
+    gives them (the SDK has no call for them): 'config' the [common]
+    configuration, for the URL and the key. A failure is an HTTPError
+    carrying the response, so that the exit code names its kind (a 401
+    exits 4).
+    """
+    response = get(
+        url=f"{config.url}/compute/attributes/user",
+        headers={"Authorization": f"yd-key {config.key}:{config.secret}"},
+        timeout=RAW_REQUEST_TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise HTTPError(
+            "Unable to list user attribute definitions: HTTP "
+            f"{response.status_code} ({response.text})",
+            response=response,
+        )
+    definitions: list[dict] = json_loads(response.text)
+    return sorted(definitions, key=lambda definition: definition["name"])

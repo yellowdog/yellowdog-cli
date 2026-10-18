@@ -833,3 +833,107 @@ class TestByName:
         )
         assert code == ExitCode.FAILURE
         assert out.strip() == ""
+
+
+class TestWithoutId:
+    """
+    The resource types with no ID to show, found by name: a Namespace, a
+    Namespace Policy (by its namespace), an Attribute Definition, and a
+    Credential as 'keyring/credential'; shown as 'yd resource list --details'
+    shows them, with 'resource' added.
+    """
+
+    def test_a_namespace(self, capsys):
+        client = MagicMock()
+        dev, other = _Obj("dev"), _Obj("dev-team")
+        dev.namespace, other.namespace = "dev", "dev-team"
+        client.namespaces_client.get_namespaces.return_value.list_all.return_value = [
+            other,
+            dev,
+        ]
+        code, out = _run(["dev"], client, _args(resource_type="Namespace"), capsys)
+        assert code == 0
+        assert loads(out) == {"name": "dev", "resource": "Namespace"}
+
+    def test_a_namespace_policy(self, capsys):
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.return_value = _Obj("policy")
+        code, out = _run(
+            ["dev"], client, _args(resource_type="NamespacePolicy"), capsys
+        )
+        assert code == 0
+        assert loads(out) == {"name": "policy", "resource": "NamespacePolicy"}
+        client.namespaces_client.get_namespace_policy.assert_called_once_with(
+            namespace="dev"
+        )
+
+    def test_a_namespace_policy_not_there_is_not_found(self, capsys):
+        response = Response()
+        response.status_code = 404
+        client = MagicMock()
+        client.namespaces_client.get_namespace_policy.side_effect = HTTPError(
+            response=response
+        )
+        code, _ = _run(["dev"], client, _args(resource_type="NamespacePolicy"), capsys)
+        assert code == ExitCode.NOT_FOUND
+
+    @pytest.mark.parametrize(
+        "resource_type, found",
+        [("StringAttributeDefinition", True), ("NumericAttributeDefinition", False)],
+    )
+    def test_an_attribute_definition_of_its_type(
+        self, monkeypatch, capsys, resource_type, found
+    ):
+        monkeypatch.setattr(
+            show_module,
+            "get_user_attribute_definitions",
+            lambda config: [
+                {"name": "gpu", "type": "co.yellowdog.StringAttributeDefinition"},
+                {"name": "other", "type": "co.yellowdog.StringAttributeDefinition"},
+            ],
+        )
+        code, out = _run(
+            ["gpu"], MagicMock(), _args(resource_type=resource_type), capsys
+        )
+        if found:
+            assert code == 0
+            assert loads(out) == {
+                "name": "gpu",
+                "type": "co.yellowdog.StringAttributeDefinition",
+                "resource": "StringAttributeDefinition",
+            }
+        else:
+            assert code == ExitCode.NOT_FOUND
+
+    @pytest.mark.parametrize(
+        "target, keyring_found, shown",
+        [("kr/aws", True, True), ("kr/gcp", True, False), ("nokr/aws", False, False)],
+    )
+    def test_a_credential_in_its_keyring(
+        self, monkeypatch, capsys, target, keyring_found, shown
+    ):
+        credential = _Obj("aws")
+        credential.name = "aws"
+        client = MagicMock()
+        client.keyring_client.get_keyring.return_value = SimpleNamespace(
+            credentials=[credential]
+        )
+        monkeypatch.setattr(
+            show_module,
+            "get_keyring_summary_by_name",
+            lambda client, name: (
+                SimpleNamespace(id="ydid:keyring:000000:" + UUID)
+                if keyring_found and name == "kr"
+                else None
+            ),
+        )
+        code, out = _run([target], client, _args(resource_type="Credential"), capsys)
+        if shown:
+            assert code == 0
+            assert loads(out) == {
+                "name": "aws",
+                "resource": "Credential",
+                "keyringName": "kr",
+            }
+        else:
+            assert code == ExitCode.NOT_FOUND

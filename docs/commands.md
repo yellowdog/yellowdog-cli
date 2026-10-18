@@ -1495,7 +1495,7 @@ yd show [options] <yellowdog-id> [<yellowdog-id> ...]
 yd show [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
 
-With `--type`, a resource can be given by its name instead: Keyrings, Groups and Applications by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools as `namespace/name`, or by name in the configured namespace; and Users by name or username. `yd resource show --type Keyring team-keys` shows the Keyring named `team-keys` as its ID would show it. A name that finds nothing is not found (exit 6); a resource type that has no ID to show (an Allowance, a Namespace, a Namespace Policy, an Attribute Definition, a Credential) is refused, as are another type's ID and, without `--type`, an argument that is not an ID.
+With `--type`, a resource can be given by its name instead: Keyrings, Groups and Applications by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools as `namespace/name`, or by name in the configured namespace; and Users by name or username. `yd resource show --type Keyring team-keys` shows the Keyring named `team-keys` as its ID would show it. The types with no ID are shown by name too, as `yd resource list <type> --details` shows them: a Namespace by its name, a Namespace Policy by its namespace, a String or Numeric Attribute Definition by its name, and a Credential as `keyring/credential` (its name, description and type, as its Keyring holds it). A name that finds nothing is not found (exit 6); an Allowance, which has no name, is shown by its ID; and another type's ID, an ID for a type that has none, and, without `--type`, an argument that is not an ID are refused.
 
 It supports IDs referring to:
 

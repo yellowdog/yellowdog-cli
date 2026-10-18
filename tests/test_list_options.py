@@ -281,7 +281,9 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(
     response.status_code = 401
     response._content = b"no"
     get = MagicMock(return_value=response)
-    monkeypatch.setattr(yd_list, "get", get)
+    from yellowdog_cli.utils import entity_utils
+
+    monkeypatch.setattr(entity_utils, "get", get)
     with pytest.raises(HTTPError) as raised:
         yd_list.list_attribute_definitions(_ctx())
     assert get.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT

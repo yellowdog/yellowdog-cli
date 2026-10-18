@@ -2502,7 +2502,12 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     Configured one is known only once it has been fetched, as whether it is
     a Provisioned one is for the other two.
     """
-    from yellowdog_cli.utils.resource_targets import SHOWN_BY_NAME
+    from yellowdog_cli.utils.resource_targets import (
+        ID_TYPES,
+        SHOWN_BY_NAME,
+        SHOWN_WITHOUT_ID,
+        name_problem,
+    )
     from yellowdog_cli.utils.ydid_utils import (
         YDIDType,
         get_ydid_type,
@@ -2510,8 +2515,14 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     )
 
     # The kind of each argument: a YDID's type, or with --type the kind of
-    # ID the name stands for
+    # ID the name stands for (None for a type that has no ID)
     resource_type = getattr(args, "resource_type", None)
+    id_kind = (
+        SHOWN_BY_NAME.get(resource_type) or ID_TYPES.get(resource_type)
+        if resource_type is not None
+        else None
+    )
+    article = "an" if (resource_type or "x")[0] in "AEIOU" else "a"
     kinds = []
     for target in args.yellowdog_ids:
         ydid_type = get_ydid_type(target)
@@ -2526,16 +2537,18 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
                     f"'{target}' is not a YellowDog ID; give --type to show a"
                     " resource by name"
                 )
-        elif resource_type not in SHOWN_BY_NAME:
-            article = "an" if resource_type[0] in "AEIOU" else "a"
-            parser.error(
-                f"{article} {resource_type} cannot be shown by name; list it with"
-                " 'yd resource list <type> --name <name> --details'"
-            )
-        elif ydid_type is None:
+        elif ydid_type is not None:
+            if id_kind is None:
+                parser.error(f"{article} {resource_type} has no ID; give its name")
+            if ydid_type != id_kind:
+                parser.error(f"'{target}' is not the ID of a {resource_type}")
+        elif resource_type in SHOWN_WITHOUT_ID:
+            if (problem := name_problem(resource_type, target)) is not None:
+                parser.error(problem)
+        elif resource_type in SHOWN_BY_NAME:
             ydid_type = SHOWN_BY_NAME[resource_type]
-        elif ydid_type != SHOWN_BY_NAME[resource_type]:
-            parser.error(f"'{target}' is not the ID of a {resource_type}")
+        else:
+            parser.error(f"{article} {resource_type} has no name; give its ID")
         kinds.append(ydid_type)
 
     with_compute_requirement = (YDIDType.COMPUTE_REQUIREMENT, YDIDType.WORKER_POOL)
