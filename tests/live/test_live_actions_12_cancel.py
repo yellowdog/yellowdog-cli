@@ -14,8 +14,7 @@ _ACT = ("--yes", "--json", "--quiet")
 def test_a_waiting_work_requirement_is_cancelled(live_run):
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(
             yd,
             "work-wr.jsonnet",
@@ -27,8 +26,6 @@ def test_a_waiting_work_requirement_is_cancelled(live_run):
         records = yd("wr", "cancel", wr["id"], *_ACT).records
         assert records and all(r.get("outcome") != "failed" for r in records), records
         assert work.wait_for_status(yd, wr["id"], work.TERMINAL, minutes) == "CANCELLED"
-    finally:
-        work.cancel_all(yd, made)
 
 
 def test_a_running_work_requirement_is_cancelled_with_its_tasks_aborted(
@@ -36,8 +33,7 @@ def test_a_running_work_requirement_is_cancelled_with_its_tasks_aborted(
 ):
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(
             yd,
             "work-wr.jsonnet",
@@ -55,5 +51,3 @@ def test_a_running_work_requirement_is_cancelled_with_its_tasks_aborted(
             t["status"] for t in work.tasks_of(yd, run.namespace, run.run_id, wr["id"])
         }
         assert "ABORTED" in statuses, statuses
-    finally:
-        work.cancel_all(yd, made)

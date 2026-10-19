@@ -36,8 +36,7 @@ def test_a_task_reads_its_input_and_writes_its_output_through_s3(
         "--json",
         "--quiet",
     )
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(yd, "task-io-wr.jsonnet", worker_tag=actions_pool.worker_tag)
         made.append(wr["id"])
         assert work.wait_for_status(yd, wr["id"], work.TERMINAL, minutes) == "COMPLETED"
@@ -54,5 +53,3 @@ def test_a_task_reads_its_input_and_writes_its_output_through_s3(
         )
         written = (into / "output.txt").read_text(encoding="utf-8")
         assert hashlib.sha256(payload).hexdigest() in written
-    finally:
-        work.cancel_all(yd, made)

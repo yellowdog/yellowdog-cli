@@ -15,6 +15,7 @@ from harness.yd import MASK, Result, SecretInOutput, Yd, YdError, mask_variants
 from live_samples import (
     AWS,
     PLATFORM,
+    PRIVATE_KEY_PEM,
     SERVICE_ACCOUNT_KEY,
     gcp,
     oci,
@@ -125,6 +126,24 @@ def test_a_service_accounts_private_key_lines_are_masked_but_not_its_email():
     variants = mask_variants([SERVICE_ACCOUNT_KEY])
     assert "MIIEdummyDummyDummyDummyDummy" in variants
     assert "x@yd-dummy.iam.gserviceaccount.com" not in variants
+
+
+def test_a_pems_armour_lines_are_not_secrets():
+    variants = mask_variants([PRIVATE_KEY_PEM])
+    assert "MIIEociDummyDummyDummyDummyDummy" in variants
+    assert "-----BEGIN PRIVATE KEY-----" not in variants
+    assert "-----END PRIVATE KEY-----" not in variants
+
+
+def test_a_pretty_printed_key_files_public_lines_are_not_secrets():
+    key_file = json.dumps(json.loads(SERVICE_ACCOUNT_KEY), indent=2)
+    variants = mask_variants([key_file])
+    assert key_file in variants
+    assert "MIIEdummyDummyDummyDummyDummy" in variants
+    assert "0123456789abcdef0123456789abcdef" in variants
+    whole = {key_file, json.dumps(key_file)[1:-1]}
+    parts = [v for v in variants if v not in whole]
+    assert not any("client_email" in v or "project_id" in v for v in parts), parts
 
 
 def test_a_results_repr_holds_none_of_its_output():

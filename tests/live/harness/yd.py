@@ -34,6 +34,7 @@ MASK = "<redacted>"
 _MIN_SECRET = 6  # Shorter is too likely to be ordinary text
 _MIN_LINE = 16  # A line of a multi-line secret, masked on its own
 _SERVICE_ACCOUNT_SECRETS = ("private_key", "private_key_id")
+_PEM_ARMOUR = "-----"  # A PEM's BEGIN and END lines, the same in every key
 _TAIL_LINES = 40
 
 LOG = logging.getLogger("ydst")
@@ -42,30 +43,39 @@ LOG = logging.getLogger("ydst")
 def mask_variants(secrets: Iterable[str]) -> list[str]:
     """
     Every form of the secrets to mask, longest first, so that a secret is
-    masked whole before any line of it is.
+    masked whole before any line of it is. A line is a form of its own only
+    where it is secret: never a PEM armour line ('-----BEGIN ...'), and
+    never a line of a service account's key file, whose secrets are its
+    private key and key ID, the rest (its type, project, email) public.
     """
     variants: set[str] = set()
 
-    def add(text: str) -> None:
+    def add(text: str, lines: bool = True) -> None:
         text = text.strip()
         if len(text) < _MIN_SECRET:
             return
         variants.add(text)
         variants.add(json.dumps(text)[1:-1])
-        variants.update(
-            line.strip() for line in text.splitlines() if len(line.strip()) >= _MIN_LINE
-        )
+        if lines:
+            variants.update(
+                line.strip()
+                for line in text.splitlines()
+                if len(line.strip()) >= _MIN_LINE
+                and not line.strip().startswith(_PEM_ARMOUR)
+            )
 
     for secret in secrets:
-        add(secret)
         try:
             document = json.loads(secret)
         except ValueError:
+            document = None
+        if not isinstance(document, dict):
+            add(secret)
             continue
-        if isinstance(document, dict):
-            for key in _SERVICE_ACCOUNT_SECRETS:
-                if isinstance(document.get(key), str):
-                    add(document[key])
+        add(secret, lines=False)
+        for key in _SERVICE_ACCOUNT_SECRETS:
+            if isinstance(document.get(key), str):
+                add(document[key])
     return sorted(variants, key=len, reverse=True)
 
 

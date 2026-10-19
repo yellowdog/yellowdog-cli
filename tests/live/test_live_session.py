@@ -252,6 +252,18 @@ def test_a_whole_suite_session_fails_on_the_gate_before_teardown(tmp_path):
     assert len(calls.teardowns) == 1  # teardown still ran
 
 
+def test_after_a_failed_test_the_gate_names_what_was_missed_but_fails_nothing(
+    tmp_path, capsys
+):
+    session = _session(tmp_path, Calls())
+    session.configure()
+    finished = _finish(session, exitstatus=pytest.ExitCode.TESTS_FAILED)
+    assert finished.exitstatus == pytest.ExitCode.TESTS_FAILED  # the tests' own
+    out = capsys.readouterr().out
+    assert "coverage gate: not enforced, since tests failed" in out
+    assert "not exercised: yd doctor" in out
+
+
 def test_a_narrowed_session_does_not_run_the_gate(tmp_path):
     calls = Calls()
     session = _session(tmp_path, calls, args=("tests/live/test_live_setup.py",))

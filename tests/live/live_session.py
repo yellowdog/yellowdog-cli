@@ -239,7 +239,7 @@ class LiveSession:
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session, exitstatus) -> None:
-        gate_problems = self._gate()
+        gate_problems = self._gate(tests_failed=exitstatus != pytest.ExitCode.OK)
         self._remove_coverage_dir()
         problems = self._finish(keep_if_asked=exitstatus != pytest.ExitCode.OK)
         if problems or gate_problems:
@@ -253,10 +253,12 @@ class LiveSession:
             shutil.rmtree(self._coverage_dir, ignore_errors=True)
             coverage.configure(None)
 
-    def _gate(self) -> list[str]:
+    def _gate(self, *, tests_failed: bool) -> list[str]:
         """
         The coverage gate, for a whole-suite session that set a run up; it
-        leaves out the data verbs, saying why, when they cannot run.
+        leaves out the data verbs, saying why, when they cannot run. After a
+        failed test it names what was not exercised but fails nothing, since
+        a scenario that stopped part-way leaves its later verbs unrun.
         """
         if not self._owned or self._live_run is None or self._coverage_dir is None:
             return []
@@ -270,6 +272,12 @@ class LiveSession:
         for command in sorted(excluded):
             self._write_line(f"coverage gate: left out {command}: {reason}")
         problems = coverage.gate(self._coverage_dir, excluded)
+        if problems and tests_failed:
+            self._write_line(
+                "coverage gate: not enforced, since tests failed:\n"
+                + "\n".join(problems)
+            )
+            return []
         if problems:
             self._write_line("coverage gate failed:\n" + "\n".join(problems))
         else:

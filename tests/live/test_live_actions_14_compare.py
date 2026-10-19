@@ -16,8 +16,7 @@ def test_compare_and_read(live_run, actions_pool):
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]
     selection = ("--namespace", run.namespace, "--tag", run.run_id)
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(
             yd,
             "work-wr.jsonnet",
@@ -45,5 +44,3 @@ def test_compare_and_read(live_run, actions_pool):
             yd("task", "show", tasks[0]["id"], "--quiet").document["id"]
             == tasks[0]["id"]
         )
-    finally:
-        work.cancel_all(yd, made)

@@ -8,6 +8,7 @@ run's Keyring and Credentials can provision (Open Question 1 of the design).
 import time
 
 import pytest
+from harness import work
 from harness.lifecycle import REMOVAL_ORDER, owned, setup, teardown
 from harness.run import Run
 from harness.yd import Yd
@@ -83,7 +84,8 @@ def test_the_primary_provisions_with_the_runs_credential(live_run):
         "--quiet",
     ).document
     requirement = created["id"]
-    try:
+    terminate = ("cr", "terminate", requirement, "--yes", "--json", "--quiet")
+    with work.cleaned_up(lambda: yd(*terminate, ok=(0, 6))):
         status = _settled(yd, requirement, run.config.run["provision_timeout_minutes"])
         if status != "RUNNING":
             report = yd(
@@ -99,8 +101,6 @@ def test_the_primary_provisions_with_the_runs_credential(live_run):
                 + yd.mask(report.stdout),
                 pytrace=False,
             )
-    finally:
-        yd("cr", "terminate", requirement, "--yes", "--json", "--quiet", ok=(0, 6))
 
 
 def _settled(yd: Yd, requirement: str, timeout_minutes: int) -> str:
