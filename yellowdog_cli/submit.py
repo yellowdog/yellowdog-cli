@@ -920,6 +920,7 @@ def submit_batch_of_tasks_to_task_group(
         report_success,
         batch=f"batch {batch_number_str} of {num_task_batches}",
         batch_in_full=f"batch {batch_number_str} {task_range_str}of {num_task_batches}",
+        all_named=all(task.name for task in tasks_list),
     )
     return len(tasks_list)
 

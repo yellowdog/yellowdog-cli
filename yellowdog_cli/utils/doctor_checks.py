@@ -126,8 +126,9 @@ def with_timeout(fn: Callable[[], T], seconds: float) -> T | Result:
     """
     Run fn on a daemon thread and wait 'seconds' for it. Returns fn's value,
     or a FAIL Result naming the timeout, which the caller tells apart with
-    isinstance(); re-raises fn's exception. The SDK's own HTTP calls carry
-    no timeout, so this is the only budget they have.
+    isinstance(); re-raises fn's exception. The SDK's read timeout bounds
+    each wait for a response, but not a call's DNS lookups, connections and
+    retries together, which this does.
     """
     box: dict[str, Any] = {}
 
@@ -890,12 +891,18 @@ def _platform_reachable(ctx: Context) -> Result:
     return Result(Status.OK, answered)
 
 
-def _build_client(cfg: Any) -> Any:
+def _build_client(cfg: Any, read_timeout: float) -> Any:
+    """
+    A Platform client waiting for a response no longer than a check may take.
+    """
+    from datetime import timedelta
+
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
     return PlatformClient.create(
-        ServicesSchema(defaultUrl=cfg.url), ApiKey(cfg.key, cfg.secret)
+        ServicesSchema(defaultUrl=cfg.url, readTimeout=timedelta(seconds=read_timeout)),
+        ApiKey(cfg.key, cfg.secret),
     )
 
 
@@ -906,7 +913,7 @@ def check_authenticated(ctx: Context) -> Result:
         return Result(Status.SKIP, "platform not reachable")
     if ctx.sdk_error is not None:
         return Result(Status.SKIP, "SDK did not import")
-    client = _build_client(ctx.config_common)
+    client = _build_client(ctx.config_common, ctx.timeout)
     try:
         outcome = with_timeout(
             client.application_client.get_application_details, ctx.timeout

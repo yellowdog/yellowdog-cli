@@ -1074,7 +1074,7 @@ class TestLive:
         def refused(url, timeout):
             raise dc.requests.ConnectionError("Connection refused")
 
-        def never(cfg):
+        def never(cfg, timeout):
             raise AssertionError("_build_client called")
 
         monkeypatch.setattr(dc.requests, "get", refused)
@@ -1100,7 +1100,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=lambda: details)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (
@@ -1116,7 +1116,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=boom)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         r = dc.check_authenticated(_ctx(config_loaded=True, config_common=self._cfg()))
         assert r.status is dc.Status.FAIL and "not recognised" in r.detail
 
@@ -1127,7 +1127,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=boom)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (dc.Status.FAIL, "Service Unavailable")
@@ -1141,7 +1141,7 @@ class TestLive:
                 get_application_details=lambda: time.sleep(2)
             )
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         r = dc.check_authenticated(
             _ctx(config_loaded=True, config_common=self._cfg(), timeout=0.1)
         )
@@ -1312,7 +1312,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=refuse)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (dc.Status.FAIL, detail)

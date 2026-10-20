@@ -80,7 +80,7 @@ yellowdog_cli/
     ├── load_config.py           # Config loading on first use via ensure_config_loaded(args); importing it reads nothing
     ├── output_settings.py       # OUTPUT: how output looks and asks; libraries read it, never ARGS_PARSER
     ├── settings.py              # Config/environment constants and anything without a better home
-    ├── limits.py                # Sizes, retries, timeouts, concurrency; imports nothing
+    ├── limits.py                # Sizes, retries, timeouts, concurrency; imports nothing. PLATFORM_READ_TIMEOUT, the default of [common] readTimeout (ConfigCommon.read_timeout, None for 0: no limit), which sets the SDK client's ServicesSchema.readTimeout and, through ConfigCommon.request_timeout, the direct requests' read; yd-doctor's and the Tab lookups' clients take their own shorter ones
     ├── variable_syntax.py       # The substitution syntax constants
     ├── output_style.py          # Widths, markers, styles, REDACTED_VALUE, theme
     ├── entity_names.py          # RN_* resource and ET_* entity type names
@@ -97,7 +97,7 @@ yellowdog_cli/
     ├── property_cascade.py      # Cascade: an inherited WR property from the lowest level setting it; every inherited read goes through it (test-enforced)
     ├── submit_utils.py          # WR construction helpers; task data resolution; RcloneUploadedFiles (never shows an inline remote's parameters)
     ├── json_raw.py              # yd-submit --json-raw; cancels a part-populated WR; imports nothing from submit.py
-    ├── task_batches.py          # run_batches(), submit_with_retries(): Task batching for both submit paths
+    ├── task_batches.py          # run_batches(), submit_with_retries(): Task batching for both submit paths; a batch whose response timed out resent only when all its Tasks have names
     ├── task_group_position.py   # TaskGroupPosition: a Task Group's specification index, number and count in the WR, Tasks already held; substitute()
     ├── task_groups.py           # yd-submit's Task Groups: check_task_groups(), promote_task_type(), expand_task_groups(), create_task_group() in named steps; given config_wr and a legacy-retry callback, never _Submission
     ├── task_generation.py       # yd-submit's Tasks: TaskSource (one per Task Group), generate_batch_of_tasks(); inherited properties substituted per Task (_TaskLevels); uploads each Task's data client inputs as it is built

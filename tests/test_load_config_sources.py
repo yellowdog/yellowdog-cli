@@ -26,7 +26,7 @@ def _args(**values) -> MagicMock:
 def isolated(monkeypatch):
     monkeypatch.setattr(load_config, "CONFIG_TOML", {"common": {}})
     monkeypatch.setattr(load_config, "CONFIG_SOURCES", {})
-    for var in (YD_KEY, YD_SECRET, YD_NAMESPACE, "YD_TAG", "YD_URL"):
+    for var in (YD_KEY, YD_SECRET, YD_NAMESPACE, "YD_TAG", "YD_URL", "YD_READ_TIMEOUT"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(load_config, "config_file_explicitly_selected", lambda: False)
     # As test_load_config_helpers does: keep the test's key, secret and
@@ -117,3 +117,68 @@ class TestStrict:
         assert cfg.key is None and cfg.secret is None
         assert cfg.namespace == "default"
         assert load_config.CONFIG_SOURCES["key"] == "not set"
+
+
+class TestReadTimeout:
+    """
+    [common] readTimeout: seconds to wait for a Platform response, from the
+    environment (YD_READ_TIMEOUT) or the file in the usual order; 90 if
+    unset, and 0 for no limit.
+    """
+
+    def _load(self, monkeypatch, common: dict, explicit: bool = False):
+        monkeypatch.setattr(
+            load_config,
+            "CONFIG_TOML",
+            {"common": {"key": "k", "secret": "s", **common}},
+        )
+        monkeypatch.setattr(load_config, "CONFIG_FILE", "my.toml")
+        monkeypatch.setattr(
+            load_config, "config_file_explicitly_selected", lambda: explicit
+        )
+        monkeypatch.setattr(load_config, "_ARGS", _args())
+        return load_config.load_config_common()
+
+    def test_unset_is_the_default(self, isolated, monkeypatch):
+        assert self._load(monkeypatch, {}).read_timeout == 90.0
+        assert load_config.CONFIG_SOURCES["readTimeout"] == "default"
+
+    def test_the_file_sets_it(self, isolated, monkeypatch):
+        assert self._load(monkeypatch, {"readTimeout": 120}).read_timeout == 120.0
+        assert load_config.CONFIG_SOURCES["readTimeout"] == "config file (my.toml)"
+
+    def test_the_environment_beats_the_file(self, isolated, monkeypatch):
+        monkeypatch.setenv("YD_READ_TIMEOUT", "45.5")
+        assert self._load(monkeypatch, {"readTimeout": 120}).read_timeout == 45.5
+
+    def test_an_explicit_file_beats_the_environment(self, isolated, monkeypatch):
+        monkeypatch.setenv("YD_READ_TIMEOUT", "45")
+        cfg = self._load(monkeypatch, {"readTimeout": 120}, explicit=True)
+        assert cfg.read_timeout == 120.0
+
+    def test_zero_is_no_limit(self, isolated, monkeypatch):
+        assert self._load(monkeypatch, {"readTimeout": 0}).read_timeout is None
+
+    def test_the_request_timeout_pairs_it_with_the_connect_timeout(
+        self, isolated, monkeypatch
+    ):
+        cfg = self._load(monkeypatch, {"readTimeout": 30})
+        assert cfg.request_timeout == (10.0, 30.0)
+        assert self._load(monkeypatch, {"readTimeout": 0}).request_timeout == (
+            10.0,
+            None,
+        )
+
+    @pytest.mark.parametrize("value", [-1, "soon", True, float("inf")])
+    def test_anything_else_is_a_configuration_error(self, isolated, monkeypatch, value):
+        with pytest.raises(SystemExit) as exited:
+            self._load(monkeypatch, {"readTimeout": value})
+        assert exited.value.code == 3
+
+    def test_a_bad_environment_value_is_a_configuration_error(
+        self, isolated, monkeypatch
+    ):
+        monkeypatch.setenv("YD_READ_TIMEOUT", "ninety")
+        with pytest.raises(SystemExit) as exited:
+            self._load(monkeypatch, {})
+        assert exited.value.code == 3

@@ -4,6 +4,7 @@ Common utility functions, mostly related to loading configuration data.
 
 import copy
 import json
+import math
 import os
 from collections.abc import Callable
 from os.path import abspath, dirname, join
@@ -24,7 +25,11 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.file_substitution import (
     load_toml_file_with_variable_substitutions,
 )
-from yellowdog_cli.utils.limits import CR_MAX_INSTANCES, TASK_BATCH_SIZE_DEFAULT
+from yellowdog_cli.utils.limits import (
+    CR_MAX_INSTANCES,
+    PLATFORM_READ_TIMEOUT,
+    TASK_BATCH_SIZE_DEFAULT,
+)
 from yellowdog_cli.utils.misc_utils import (
     config_file_explicitly_selected as _config_file_explicitly_selected,
 )
@@ -51,6 +56,7 @@ from yellowdog_cli.utils.settings import (
     YD_KEY,
     YD_KEY_ALT,
     YD_NAMESPACE,
+    YD_READ_TIMEOUT,
     YD_SECRET,
     YD_SECRET_ALT,
     YD_TAG,
@@ -563,11 +569,38 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             # Optional
             url=url,
             use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
+            read_timeout=_read_timeout(common_section.get(READ_TIMEOUT)),
         )
 
     except KeyError as e:
         print_error(_missing_config_data(e.args[0] if e.args else None))
         exit(ExitCode.CONFIGURATION)
+
+
+def _read_timeout(value: Any) -> float | None:
+    """
+    [common] readTimeout as seconds: PLATFORM_READ_TIMEOUT when unset, and
+    None (no limit) for 0. Anything but a finite number of seconds, 0 or
+    more, is a configuration error and exits; from the environment it is
+    text, so a number written as text is taken.
+    """
+    if value is None:
+        return PLATFORM_READ_TIMEOUT
+    seconds: float | None = None
+    if isinstance(value, str):
+        try:
+            seconds = float(value)
+        except ValueError:
+            pass
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value)
+    if seconds is None or not math.isfinite(seconds) or seconds < 0:
+        print_error(
+            f"'{READ_TIMEOUT}' must be a number of seconds, 0 or more (0 for no"
+            f" limit), not {value!r}"
+        )
+        exit(ExitCode.CONFIGURATION)
+    return seconds or None
 
 
 def _missing_config_data(name: str | None) -> str:
@@ -628,6 +661,8 @@ def _apply_common_overrides(
         (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
         (NAME_TAG, _ARGS.tag, YD_TAG),
         (URL, _ARGS.url, YD_URL),
+        # No command-line option: '--property common.readTimeout=...' sets it
+        (READ_TIMEOUT, None, YD_READ_TIMEOUT),
     ]:
         if args_parser_value is not None:
             common_section[key_name] = args_parser_value
@@ -672,6 +707,8 @@ def _apply_common_defaults(common_section: dict) -> None:
             )
     if common_section.get(URL) is None:
         CONFIG_SOURCES[URL] = "default"
+    if common_section.get(READ_TIMEOUT) is None:
+        CONFIG_SOURCES[READ_TIMEOUT] = "default"
 
 
 def _resolved_url(common_section: dict, strict: bool = True) -> str:

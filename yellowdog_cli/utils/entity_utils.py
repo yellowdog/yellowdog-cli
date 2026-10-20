@@ -70,7 +70,6 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
@@ -1489,7 +1488,7 @@ def get_user_attribute_definitions(config: Any) -> list[dict]:
     response = get(
         url=f"{config.url}/compute/attributes/user",
         headers={"Authorization": f"yd-key {config.key}:{config.secret}"},
-        timeout=RAW_REQUEST_TIMEOUT,
+        timeout=config.request_timeout,
     )
     if response.status_code != 200:
         raise HTTPError(

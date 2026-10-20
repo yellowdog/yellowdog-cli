@@ -30,7 +30,6 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORKERS,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 
 def _ctx() -> RunContext:
@@ -80,7 +79,12 @@ def listing(monkeypatch):
         wrapper_module,
         "CONFIG_COMMON",
         SimpleNamespace(
-            namespace="ns", name_tag="tag", url="https://api.x", key="k", secret="s"
+            namespace="ns",
+            name_tag="tag",
+            url="https://api.x",
+            key="k",
+            secret="s",
+            request_timeout=(10.0, 90.0),
         ),
     )
     monkeypatch.setattr(yd_list, "sorted_objects", lambda objects: list(objects))
@@ -286,7 +290,7 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(
     monkeypatch.setattr(entity_utils, "get", get)
     with pytest.raises(HTTPError) as raised:
         yd_list.list_attribute_definitions(_ctx())
-    assert get.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
+    assert get.call_args.kwargs["timeout"] == _ctx().config.request_timeout
     assert classify(raised.value) == ExitCode.AUTHENTICATION
 
 
@@ -323,7 +327,12 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
     monkeypatch.setattr(
         wrapper_module,
         "CONFIG_COMMON",
-        SimpleNamespace(namespace="dev", name_tag="tag", url="https://api.x"),
+        SimpleNamespace(
+            namespace="dev",
+            name_tag="tag",
+            url="https://api.x",
+            request_timeout=(10.0, 90.0),
+        ),
     )
     pools = [
         SimpleNamespace(id="a", name="a", namespace="dev", status=None),

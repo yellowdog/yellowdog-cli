@@ -9,7 +9,9 @@ and how it is sent are the caller's: 'make_batch' builds the Tasks of a
 range, 'send_batch' submits them, through submit_with_retries(), which
 retries a failure a retry could cure (is_permanent_failure() says which
 cannot) and raises the last one as it was raised, so that the exit code
-names it.
+names it. A batch whose response timed out is resent only when all its Tasks
+have names: the Platform may have added it, and only names let the retry
+tell (the Platform refuses a Task Group's duplicate names).
 """
 
 from __future__ import annotations
@@ -181,11 +183,15 @@ def submit_with_retries(
     report_success: Callable[[], None],
     batch: str,
     batch_in_full: str,
+    *,
+    all_named: bool,
 ) -> None:
     """
     Make one batch submission, retrying it with a growing delay while it
     fails in a way a retry could cure. Returns once it succeeds; raises its
-    last failure, as it was raised, once it cannot.
+    last failure, as it was raised, once it cannot. 'all_named' says whether
+    every Task in the batch has a name, without which a batch whose response
+    timed out is not resent.
     """
     for attempt_number in range(MAX_BATCH_SUBMIT_ATTEMPTS):
         try:
@@ -202,6 +208,18 @@ def submit_with_retries(
             if duplicate_names and attempt_number > 0:
                 report_success()
                 return
+
+            # The Platform may still be adding the batch, and without names
+            # a second copy would be added rather than refused
+            if isinstance(e, requests.exceptions.ReadTimeout) and not all_named:
+                print_error(
+                    f"Failed to submit {batch_in_full}: no response in time, and"
+                    " its Tasks may have been added; not resubmitted, since a"
+                    " Task without a name would be added twice. Check the Work"
+                    " Requirement's Tasks ('yd task list --within') before"
+                    " submitting them again"
+                )
+                raise
 
             # Raised as it is, not wrapped, so that the wrapper's classify()
             # still sees its type and the exit code names the kind of failure

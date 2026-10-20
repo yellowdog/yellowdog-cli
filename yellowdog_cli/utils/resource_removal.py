@@ -59,7 +59,6 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import (
@@ -714,7 +713,7 @@ def remove_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
 
     url = f"{ctx.config.url}/compute/attributes/user/{name}"
     headers = {"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"}
-    response = delete(url=url, headers=headers, timeout=RAW_REQUEST_TIMEOUT)
+    response = delete(url=url, headers=headers, timeout=ctx.config.request_timeout)
 
     if response.ok:
         print_info(f"Removed Attribute Definition '{name}'")

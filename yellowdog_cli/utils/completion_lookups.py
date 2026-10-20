@@ -52,7 +52,7 @@ from yellowdog_cli.utils.entity_names import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
-from yellowdog_cli.utils.limits import LOOKUP_MAX_ITEMS
+from yellowdog_cli.utils.limits import LOOKUP_MAX_ITEMS, LOOKUP_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
@@ -100,8 +100,10 @@ def _load_common(settings: dict[str, object]) -> ConfigCommon | None:
 def _client(common: ConfigCommon) -> PlatformClient:
     """
     A Platform client for the configuration, as the command wrapper builds
-    one.
+    one, but waiting for a response no longer than a Tab's lookup may take.
     """
+    from datetime import timedelta
+
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
@@ -110,7 +112,11 @@ def _client(common: ConfigCommon) -> PlatformClient:
     set_user_agent()
     assert common.key is not None and common.secret is not None
     return PlatformClient.create(
-        ServicesSchema(defaultUrl=common.url), ApiKey(common.key, common.secret)
+        ServicesSchema(
+            defaultUrl=common.url,
+            readTimeout=timedelta(seconds=LOOKUP_TIMEOUT_SECONDS),
+        ),
+        ApiKey(common.key, common.secret),
     )
 
 

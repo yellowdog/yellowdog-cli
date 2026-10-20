@@ -44,6 +44,11 @@
     # Optional — default: false
     # usePAC = false
 
+    # Seconds to wait for a response from the Platform before a request fails;
+    # 0 waits indefinitely. Can be set via YD_READ_TIMEOUT.
+    # Optional — default: 90
+    # readTimeout = 90
+
     # Path to a custom CA certificates bundle (sets REQUESTS_CA_BUNDLE).
     # Optional
     # certificates = "/path/to/ca-bundle.crt"

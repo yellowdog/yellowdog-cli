@@ -67,6 +67,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
+| `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |
 
@@ -134,6 +135,7 @@ The **environment variables** are as follows:
 - `YD_URL` (or `YD_API_URL`)
 - `YD_NAMESPACE`
 - `YD_TAG`
+- `YD_READ_TIMEOUT` (`readTimeout`; there is no command-line option, but `--property common.readTimeout=<seconds>` sets it)
 
 When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
 

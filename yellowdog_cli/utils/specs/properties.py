@@ -539,6 +539,14 @@ CONFIG_COMMON: tuple[Property, ...] = (
     Property("url", STR, description="the YellowDog API endpoint"),
     Property("usePAC", BOOL, description="use Proxy Auto-Configuration for HTTPS"),
     Property(
+        "readTimeout",
+        {**NUM, "minimum": 0},
+        description=(
+            "seconds to wait for a Platform response before failing;"
+            " 0 for no limit; 90 if unset"
+        ),
+    ),
+    Property(
         "certificates",
         STR,
         description="a CA certificates bundle, set as REQUESTS_CA_BUNDLE",

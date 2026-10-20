@@ -484,6 +484,7 @@ def _run_submit_wr(
     mock_config_common.namespace = "test-ns"
     mock_config_common.name_tag = "test-tag"
     mock_config_common.url = "https://test.yellowdog.co"
+    mock_config_common.read_timeout = None
 
     with (
         patch.object(submit_module, "CONFIG_WR", config_wr),
@@ -658,7 +659,12 @@ class TestSubmitWRCleanupOnFailure:
             patch.object(
                 wrapper_module,
                 "CONFIG_COMMON",
-                MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
+                MagicMock(
+                    namespace="test-ns",
+                    name_tag="test-tag",
+                    url="https://test",
+                    read_timeout=None,
+                ),
             ),
             patch.object(submit_module, "RcloneUploadedFiles"),
             patch.object(
@@ -725,7 +731,12 @@ class TestSubmitWRHoldFailure:
             patch.object(
                 wrapper_module,
                 "CONFIG_COMMON",
-                MagicMock(namespace="test-ns", name_tag="test-tag", url="https://test"),
+                MagicMock(
+                    namespace="test-ns",
+                    name_tag="test-tag",
+                    url="https://test",
+                    read_timeout=None,
+                ),
             ),
             patch.object(submit_module, "RcloneUploadedFiles"),
             patch.object(
