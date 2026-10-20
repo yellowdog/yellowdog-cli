@@ -1165,6 +1165,24 @@ class TestLive:
         r = dc.check_groups_and_roles(ctx)
         assert r.detail == "groups: administrators; roles: admin (GLOBAL)"
 
+    def test_a_group_without_a_name_is_shown_by_its_id(self, monkeypatch):
+        import yellowdog_cli.utils.entity_utils as entity_utils
+
+        monkeypatch.setattr(
+            entity_utils,
+            "get_application_group_summaries",
+            lambda c, a: [SimpleNamespace(name=None, id="ydid:group:1")],
+        )
+        monkeypatch.setattr(
+            entity_utils,
+            "get_all_roles_and_namespaces_for_application",
+            lambda c, a: {"admin": ["GLOBAL"]},
+        )
+        ctx = _ctx(config_loaded=True, config_common=self._cfg(), client=object())
+        ctx.application = SimpleNamespace(id="ydid:app:1")
+        r = dc.check_groups_and_roles(ctx)
+        assert r.detail == "groups: ydid:group:1; roles: admin (GLOBAL)"
+
     def test_no_roles_warns(self, monkeypatch):
         import yellowdog_cli.utils.entity_utils as entity_utils
 

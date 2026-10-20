@@ -26,7 +26,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import Any, TypeVar
 
 import requests
 from pypac import pac_context_for_url
@@ -118,11 +118,16 @@ class Context:
     profile_errors: dict[str, str] = field(default_factory=dict)  # why one did not load
 
 
-def with_timeout(fn: Callable[[], Any], seconds: float) -> Any:
+# What with_timeout()'s function returns
+T = TypeVar("T")
+
+
+def with_timeout(fn: Callable[[], T], seconds: float) -> T | Result:
     """
     Run fn on a daemon thread and wait 'seconds' for it. Returns fn's value,
-    or a FAIL Result naming the timeout; re-raises fn's exception. The SDK's
-    own HTTP calls carry no timeout, so this is the only budget they have.
+    or a FAIL Result naming the timeout, which the caller tells apart with
+    isinstance(); re-raises fn's exception. The SDK's own HTTP calls carry
+    no timeout, so this is the only budget they have.
     """
     box: dict[str, Any] = {}
 
@@ -944,7 +949,11 @@ def check_groups_and_roles(ctx: Context) -> Result:
     app_id = ctx.application.id
     outcome = with_timeout(
         lambda: (
-            [g.name for g in get_application_group_summaries(ctx.client, app_id)],
+            # A Group the Platform returns without a name is shown by its ID
+            [
+                str(g.name or g.id)
+                for g in get_application_group_summaries(ctx.client, app_id)
+            ],
             get_all_roles_and_namespaces_for_application(ctx.client, app_id),
         ),
         ctx.timeout,
