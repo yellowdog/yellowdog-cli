@@ -7,6 +7,8 @@ entity_names.py and property_names.py (the PROP_* names).
 """
 
 DEFAULT_URL = "https://api.yellowdog.ai"
+# The data client's prefix where none is set, and so {{dataClient.prefix}}'s
+DEFAULT_DATA_CLIENT_PREFIX = "{{namespace}}/{{tag}}"
 
 # Reported when a required configuration property is absent from every
 # source, by each of load_config.py's section loaders.

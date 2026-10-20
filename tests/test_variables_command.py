@@ -349,6 +349,16 @@ class TestCommandOutput:
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"instances": "5"}
 
+    def test_the_data_clients_prefix_is_its_default_with_no_dataclient_section(
+        self, tmp_path
+    ):
+        # As 'yd data upload' would use it, so a specification naming
+        # '{{dataClient.prefix}}' finds what was uploaded
+        result = _run("-q", "dataClient.prefix", cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"dataClient.prefix": "my-namespace/my-tag"}
+
     def test_an_inline_remote_keeps_its_secrets_out_of_the_full_report(self, tmp_path):
         # The real command, end to end: the planted parameters never reach
         # stdout unless asked for with --show-secrets

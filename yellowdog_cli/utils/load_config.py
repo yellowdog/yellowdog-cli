@@ -41,6 +41,7 @@ from yellowdog_cli.utils.printing import (
 )
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.settings import (
+    DEFAULT_DATA_CLIENT_PREFIX,
     DEFAULT_URL,
     MISSING_CONFIG_DATA,
     YD_DATA_CLIENT,
@@ -803,8 +804,13 @@ def _build_dc_substitutions(base: dict) -> dict:
     - {{dataClient.remote/bucket/prefix}} from the base scalar fields
     - {{dataClient.<name>.remote/bucket/prefix}} for each named profile sub-table,
       with unset profile fields inherited from the base
+
+    A prefix set nowhere is the data client's default,
+    DEFAULT_DATA_CLIENT_PREFIX, so that a specification naming
+    '{{dataClient.prefix}}' finds what 'yd data upload' put there.
     """
     scalars = {k: v for k, v in base.items() if not isinstance(v, dict)}
+    scalars.setdefault(DATA_CLIENT_PREFIX, DEFAULT_DATA_CLIENT_PREFIX)
     subs: dict = {}
 
     for field in (DATA_CLIENT_REMOTE, DATA_CLIENT_BUCKET, DATA_CLIENT_PREFIX):
@@ -836,10 +842,7 @@ def register_dc_substitutions() -> None:
     load_config_data_client() for data client commands (which bypass main_wrapper).
     """
     ensure_config_loaded()
-    base = CONFIG_TOML.get(DATA_CLIENT_SECTION, {})
-    if not base:
-        return
-    subs = _build_dc_substitutions(base)
+    subs = _build_dc_substitutions(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
     if subs:
         try:
             # A profile's name is part of its variables' names
@@ -941,7 +944,7 @@ def load_config_data_client() -> ConfigDataClient:
             DATA_CLIENT_PREFIX,
         )
         if prefix is None:
-            prefix = cast(str | None, _resolve_value("{{namespace}}/{{tag}}"))
+            prefix = cast(str | None, _resolve_value(DEFAULT_DATA_CLIENT_PREFIX))
 
     # Register legacy {{remote/bucket/prefix}} names (backward compat).
     add_substitutions_without_overwriting(
@@ -1025,7 +1028,7 @@ def load_config_data_client_for_profile(
     else:
         prefix = _resolve(YD_DATA_CLIENT_PREFIX, DATA_CLIENT_PREFIX)
         if prefix is None:
-            prefix = cast(str | None, _resolve_value("{{namespace}}/{{tag}}"))
+            prefix = cast(str | None, _resolve_value(DEFAULT_DATA_CLIENT_PREFIX))
 
     return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
 

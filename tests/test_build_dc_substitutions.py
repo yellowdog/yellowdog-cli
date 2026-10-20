@@ -3,11 +3,15 @@ Unit tests for load_config._build_dc_substitutions
 """
 
 from yellowdog_cli.utils.load_config import _build_dc_substitutions
+from yellowdog_cli.utils.settings import DEFAULT_DATA_CLIENT_PREFIX
 
 
 class TestBuildDcSubstitutions:
-    def test_empty_base(self):
-        assert _build_dc_substitutions({}) == {}
+    def test_empty_base_has_the_default_prefix(self):
+        # As the data client's, so a specification finds what it uploaded
+        assert _build_dc_substitutions({}) == {
+            "dataClient.prefix": DEFAULT_DATA_CLIENT_PREFIX
+        }
 
     def test_base_scalars_only(self):
         base = {"remote": "r", "bucket": "b", "prefix": "p"}
@@ -21,9 +25,19 @@ class TestBuildDcSubstitutions:
     def test_base_partial_scalars(self):
         base = {"remote": "r"}
         result = _build_dc_substitutions(base)
-        assert result == {"dataClient.remote": "r"}
+        assert result == {
+            "dataClient.remote": "r",
+            "dataClient.prefix": DEFAULT_DATA_CLIENT_PREFIX,
+        }
         assert "dataClient.bucket" not in result
-        assert "dataClient.prefix" not in result
+
+    def test_a_profile_without_a_prefix_has_the_default(self):
+        result = _build_dc_substitutions({"prod": {"remote": "r"}})
+        assert result["dataClient.prod.prefix"] == DEFAULT_DATA_CLIENT_PREFIX
+
+    def test_an_empty_prefix_is_kept(self):
+        # '' is no prefix, as the data client takes it; not the default
+        assert _build_dc_substitutions({"prefix": ""})["dataClient.prefix"] == ""
 
     def test_named_profile_inherits_base(self):
         base = {"prefix": "ns/tag", "prod": {"remote": "prod-r", "bucket": "prod-b"}}
@@ -76,6 +90,8 @@ class TestBuildDcSubstitutions:
         base = {"prod": {"remote": "r", "bucket": "b", "unknown_field": "x"}}
         result = _build_dc_substitutions(base)
         assert set(result.keys()) == {
+            "dataClient.prefix",
             "dataClient.prod.remote",
             "dataClient.prod.bucket",
+            "dataClient.prod.prefix",
         }

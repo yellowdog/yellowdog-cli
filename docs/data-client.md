@@ -75,12 +75,12 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 |---|---|
 | `{{dataClient.remote}}` | Active profile's remote (or base `[dataClient].remote`) |
 | `{{dataClient.bucket}}` | Active profile's bucket |
-| `{{dataClient.prefix}}` | Active profile's prefix |
+| `{{dataClient.prefix}}` | Active profile's prefix (`{{namespace}}/{{tag}}` when none is set) |
 | `{{dataClient.<name>.remote}}` | Named profile's remote, regardless of active selection |
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
-| `{{dataClient.<name>.prefix}}` | Named profile's prefix |
+| `{{dataClient.<name>.prefix}}` | Named profile's prefix (`{{namespace}}/{{tag}}` when none is set) |
 
-For `yd data upload`/`yd data download`/`yd data delete`/`yd data ls`/`yd data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section.
+For `yd data upload`/`yd data download`/`yd data delete`/`yd data ls`/`yd data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section. Either way a prefix set nowhere is the default, `{{namespace}}/{{tag}}`, with or without a `[dataClient]` section, so a specification naming `{{dataClient.prefix}}` finds what `yd data upload` put under it; `prefix = ""` is no prefix.
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 

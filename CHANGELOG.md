@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`{{dataClient.prefix}}` is the data client's default prefix, `{{namespace}}/{{tag}}`, when none is set**, as `yd data upload` uses it, with or without a `[dataClient]` section; likewise `{{dataClient.<name>.prefix}}` for a profile setting none. A specification naming it was given the expression unsubstituted, with a warning, so a Task looked for its input somewhere other than where it was uploaded.
 - **Tab completes `--type`'s resource types in any case**, as `yd resource create`, `remove` and `show` read them: `--type k` completes to `keyring`, and `--type Name` offers `Namespace` and `NamespacePolicy`.
 
 ## 14.0.0 — 2026-10-18
