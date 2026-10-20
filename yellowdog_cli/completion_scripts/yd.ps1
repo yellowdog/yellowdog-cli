@@ -3,7 +3,12 @@
 #
 #   yd completion powershell | Out-String | Invoke-Expression
 #
-# Each Tab asks 'yd completion --complete' what completes the current word.
+# or, to complete the names and IDs of what is on the Platform too:
+#
+#   yd completion powershell --names | Out-String | Invoke-Expression
+#
+# Each Tab asks 'yd completion --complete' what completes the current word
+# ('--complete --names' when the script was printed with '--names').
 
 Register-ArgumentCompleter -Native -CommandName @('yd', 'yd.exe') -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)

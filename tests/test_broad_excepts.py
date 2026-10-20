@@ -90,10 +90,15 @@ ALLOWED: dict[str, str] = {
         "Commander: a child's output that cannot be read is reported in the"
         " window, which stays up"
     ),
+    "yellowdog_cli/utils/completion_lookups.py::candidates#0": (
+        "A Platform lookup for Tab completion: any failure, an authentication or"
+        " connection one included, offers nothing, since a message would land in"
+        " the user's command line; the command itself reports it when run"
+    ),
     "yellowdog_cli/completion.py::_answer#0": (
         "A completion request run by the shell on Tab: a failure prints no"
-        " candidates rather than a traceback into the user's command line, and"
-        " makes no Platform call"
+        " candidates rather than a traceback into the user's command line; a"
+        " Platform lookup's own failures are completion_lookups.candidates()'s"
     ),
     "yellowdog_cli/delete.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/download.py::main#0": _DATA_CLIENT,

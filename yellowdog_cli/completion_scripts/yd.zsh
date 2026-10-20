@@ -3,7 +3,12 @@
 #
 #   eval "$(yd completion zsh)"
 #
-# Each Tab asks 'yd completion --complete' what completes the current word.
+# or, to complete the names and IDs of what is on the Platform too:
+#
+#   eval "$(yd completion zsh --names)"
+#
+# Each Tab asks 'yd completion --complete' what completes the current word
+# ('--complete --names' when the script was printed with '--names').
 
 _yd_completion() {
     local reply mode line

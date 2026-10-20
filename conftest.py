@@ -639,6 +639,9 @@ def pytest_report_header(config):
 
 def pytest_configure(config):
     _use_system_test_credentials(config)
+    # No test's Tab completion may reach the Platform: a test of the lookups
+    # stands its own in and clears this, and every child process inherits it
+    os.environ["YD_COMPLETION_LOOKUPS"] = "off"
     _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"

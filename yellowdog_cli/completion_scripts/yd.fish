@@ -3,7 +3,12 @@
 #
 #   yd completion fish | source
 #
-# Each Tab asks 'yd completion --complete' what completes the current word.
+# or, to complete the names and IDs of what is on the Platform too:
+#
+#   yd completion fish --names | source
+#
+# Each Tab asks 'yd completion --complete' what completes the current word
+# ('--complete --names' when the script was printed with '--names').
 
 function __yd_completion
     # '-x' (fish 3.8 and later) or '-o' (earlier): the words before the

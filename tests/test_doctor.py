@@ -1725,7 +1725,19 @@ class TestShellCompletion:
         startup.parent.mkdir(parents=True, exist_ok=True)
         startup.write_text(f"# mine\n{line}\n", encoding="utf-8")
         r = self._check(monkeypatch, shell)
-        assert r.status is dc.Status.OK and r.detail == f"set up in {startup}"
+        assert r.status is dc.Status.OK
+        assert r.detail == (
+            f"set up in {startup}, without names from the Platform"
+            " (add --names to that line for them)"
+        )
+
+    def test_set_up_with_names(self, home, monkeypatch):
+        (home / ".zshrc").write_text(
+            'eval "$(yd completion zsh --names)"\n', encoding="utf-8"
+        )
+        r = self._check(monkeypatch, "zsh")
+        assert r.status is dc.Status.OK
+        assert r.detail == f"set up in {home / '.zshrc'}, with names from the Platform"
 
     def test_the_guarded_form_counts(self, home, monkeypatch):
         (home / ".zshrc").write_text(
@@ -1743,7 +1755,7 @@ class TestShellCompletion:
         )
         monkeypatch.setenv("ZDOTDIR", str(home / "z"))
         r = self._check(monkeypatch, "zsh")
-        assert r.detail == f"set up in {home / 'z' / '.zshrc'}"
+        assert r.detail.startswith(f"set up in {home / 'z' / '.zshrc'},")
 
     @pytest.mark.parametrize("contents", [None, "", '# eval "$(yd completion zsh)"\n'])
     def test_not_set_up_says_what_to_add(self, home, monkeypatch, contents):

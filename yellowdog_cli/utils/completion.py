@@ -8,8 +8,13 @@ runs 'yd completion --complete' on every Tab.
 It offers a noun's verbs, the options a command or verb offers (never one
 it hides), and the values the registry states: choices, '--sort' keys, the
 entity and Cloud Info types, and local files or directories for an option
-marked Completes.FILE or Completes.DIR. A value it knows nothing of (a
-name, a YDID) offers nothing; Platform names would be another Completes.
+marked Completes.FILE or Completes.DIR. A value it knows nothing of
+offers nothing.
+An entity argument (utils/completion_targets.LOOKUPS) is completed from
+the Platform, but not here: complete() returns a LookupRequest naming the
+lookup and the configuration options typed on the line, and the
+yd completion command makes it (utils/completion_lookups.py), so this
+module stays local and SDK-free.
 A command whose arguments the registry does not describe (yd commander,
 yd mcp, and the standalone commands that parse their own) is left to the
 shell's own completion of files, which is what it had before the stubs
@@ -21,16 +26,28 @@ completed.
 
 from __future__ import annotations
 
-from argparse import SUPPRESS
+from argparse import SUPPRESS, ArgumentTypeError
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import cast
 
 from yellowdog_cli.utils.command_registry import (
     CLOUD_INFO_TYPES,
     COMMANDS,
+    CONFIG,
     ENTITY_TYPES,
+    ENV_OVERRIDE,
+    KEY,
+    NAMESPACE,
+    NO_CONFIG,
+    PAC,
+    PROPERTY,
+    SECRET,
     SORT_KEY_TYPES,
+    TAG,
+    URL,
+    VARIABLE,
     Command,
     Completes,
     Exclusive,
@@ -38,6 +55,13 @@ from yellowdog_cli.utils.command_registry import (
     resolve_cloud_info_type,
     resolve_entity_type,
     resolve_resource_type,
+)
+from yellowdog_cli.utils.completion_targets import (
+    LOOKUPS,
+    RESOURCE_LOOKUPS,
+    RESOURCE_TARGETS,
+    WITHIN_LOOKUPS,
+    Lookup,
 )
 from yellowdog_cli.utils.invocation import invoked_name
 from yellowdog_cli.utils.noun_registry import (
@@ -69,6 +93,24 @@ _VERB_VALUES: dict[tuple[str, str], tuple[str, ...]] = {
 
 _HELP_FLAGS = (("--help", "show the help message and exit"),)
 
+# The options a lookup's configuration is loaded under, by option identity:
+# the setting each gives (the CLIParser property load_config reads), and
+# whether it is a value, a repeated value or a flag
+_STORED, _APPENDED, _FLAG = "stored", "appended", "flag"
+_LOOKUP_SETTINGS: dict[str, tuple[str, str]] = {
+    CONFIG.name: ("config_file", _STORED),
+    KEY.name: ("key", _STORED),
+    SECRET.name: ("secret", _STORED),
+    URL.name: ("url", _STORED),
+    NAMESPACE.name: ("namespace", _STORED),
+    TAG.name: ("tag", _STORED),
+    VARIABLE.name: ("variables", _APPENDED),
+    PROPERTY.name: ("property_overrides", _APPENDED),
+    ENV_OVERRIDE.name: ("env_override", _FLAG),
+    NO_CONFIG.name: ("no_config", _FLAG),
+    PAC.name: ("use_pac", _FLAG),
+}
+
 # The characters bash splits a word at that a yd-* argument may hold
 _BASH_BREAKS = ("=", ":")
 
@@ -86,9 +128,26 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class LookupRequest:
+    """
+    A lookup for the command to make: what to look up, the word it
+    completes, the configuration options typed on the line, as the
+    CLIParser properties load_config reads (None, or False, when not typed),
+    and the names or IDs typed already, which are not offered again.
+    """
+
+    lookup: Lookup
+    current: str
+    settings: dict[str, object]
+    given: tuple[str, ...] = ()  # the names or IDs typed already
+
+
+@dataclass(frozen=True)
 class Completions:
     mode: Mode = Mode.VALUES
+    # With a lookup, the candidates are what to offer if it finds nothing
     candidates: tuple[Candidate, ...] = ()
+    lookup: LookupRequest | None = None
 
 
 _NOTHING = Completions()
@@ -168,34 +227,49 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
     positionals = [o for o in offered if o.positional]
 
     given: set[str] = set()
+    settings = _unset_settings()
+    typed_values: dict[str, str] = {}  # each option's value as typed, by name
     filled = 0
+    typed: list[str] = []  # the positional words, for a lookup to leave out
     awaiting: Option | None = None  # an option whose value comes next
     optional_value = False  # the value may be left out (nargs='?')
     options_ended = False
     for word in words:
         if awaiting is not None:
-            awaiting = None
+            value_of, awaiting = awaiting, None
             if not (optional_value and word.startswith("-")):
+                _set(settings, value_of, word)
+                typed_values[value_of.name] = word
                 continue
+            # Given no value: its 'const', as argparse sets it ('-n' is '')
+            _set(settings, value_of, value_of.kwargs.get("const"))
         if not options_ended and word == "--":
             options_ended = True
             continue
         if not options_ended and word.startswith("-") and word != "-":
-            flag, equals, _ = word.partition("=")
-            found = by_flag.get(flag)
+            found, equals, value = _option_in(word, by_flag)
             if found is not None:
                 given.add(found.name)
-                if _takes_value(found) and not equals:
+                if not _takes_value(found):
+                    _set(settings, found, True)
+                elif equals:
+                    _set(settings, found, value)
+                    typed_values[found.name] = value
+                else:
                     awaiting = found
                     optional_value = found.kwargs.get("nargs") == "?"
             continue
         filled += 1
+        typed.append(word)
 
     if awaiting is not None and not (optional_value and current.startswith("-")):
+        lookup = _option_lookup(command, awaiting, typed)
+        if lookup is not None:
+            return Completions(lookup=LookupRequest(lookup, current, settings))
         return _values(command, awaiting, current)
     if not options_ended and _is_long(current) and "=" in current:
         flag, _, value = current.partition("=")
-        found = by_flag.get(flag)
+        found = _option_named(flag, by_flag)
         if found is None or not _takes_value(found):
             return _NOTHING
         values = _values(command, found, value)
@@ -209,12 +283,111 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
         return _option_names(command, offered, given, current)
     positional = _positional_at(positionals, filled)
     if positional is not None:
+        lookup = LOOKUPS.get((command.name, positional.name)) or _resource_lookup(
+            command, positional, typed_values
+        )
+        if lookup is not None:
+            request = LookupRequest(lookup, current, settings, tuple(typed))
+            if current or options_ended:
+                return Completions(lookup=request)
+            fallback = _option_names(command, offered, given, current)
+            return Completions(candidates=fallback.candidates, lookup=request)
         values = _values(command, positional, current)
         if values.mode is not Mode.VALUES or values.candidates or current:
             return values
     if current or options_ended:
         return _NOTHING
     return _option_names(command, offered, given, current)
+
+
+def _resource_lookup(
+    command: Command, positional: Option, values: dict[str, str]
+) -> Lookup | None:
+    """
+    For a remove's or a show's targets given '--type', the lookup of that
+    resource type's names: the type typed as the command reads it, in any
+    case; none for a type it does not take.
+    """
+    typed = values.get("--type")
+    if typed is None or (command.name, positional.name) not in RESOURCE_TARGETS:
+        return None
+    try:
+        return RESOURCE_LOOKUPS.get(resolve_resource_type(typed))
+    except ArgumentTypeError:
+        return None
+
+
+def _option_lookup(command: Command, option: Option, typed: list[str]) -> Lookup | None:
+    """
+    The lookup an option's value is completed by, if any: a verb's own, or
+    for 'yd list <type> --within' the one for the entity type typed (a full
+    name, a prefix or a synonym, as the command resolves it).
+    """
+    lookup = LOOKUPS.get((command.name, option.name))
+    if lookup is not None or option.name != "--within" or not typed:
+        return lookup
+    try:
+        entity_type = resolve_entity_type(typed[0])
+    except ArgumentTypeError:
+        return None
+    return WITHIN_LOOKUPS.get(entity_type)
+
+
+def _option_in(word: str, by_flag: dict[str, Option]) -> tuple[Option | None, str, str]:
+    """
+    The option a word names, as argparse reads it, with its value when the
+    word holds one: '--flag=value', an unambiguous abbreviation of a long
+    flag ('--names' for '--namespace'), or a short flag with its value
+    attached ('-nprod'). Returns the option (or None), and '=' and the value
+    when the word holds one, else two empty strings.
+    """
+    flag, equals, value = word.partition("=")
+    found = _option_named(flag, by_flag)
+    if found is not None:
+        return found, equals, value
+    attached = by_flag.get(word[:2])
+    if not word.startswith("--") and attached is not None and _takes_value(attached):
+        return attached, "=", word[2:]
+    return None, "", ""
+
+
+def _option_named(flag: str, by_flag: dict[str, Option]) -> Option | None:
+    """
+    The option a flag names: exactly, or as the one long flag it begins.
+    """
+    found = by_flag.get(flag)
+    if found is not None or not _is_long(flag):
+        return found
+    matches = {
+        option.name: option
+        for candidate, option in by_flag.items()
+        if candidate.startswith("--") and candidate.startswith(flag)
+    }
+    return next(iter(matches.values())) if len(matches) == 1 else None
+
+
+def _unset_settings() -> dict[str, object]:
+    """
+    The lookup settings as they are with nothing typed.
+    """
+    return {
+        setting: False if kind == _FLAG else None
+        for setting, kind in _LOOKUP_SETTINGS.values()
+    }
+
+
+def _set(settings: dict[str, object], option: Option, value: object) -> None:
+    """
+    Record an option's value in the lookup settings, if it is one of theirs.
+    """
+    entry = _LOOKUP_SETTINGS.get(option.name)
+    if entry is None:
+        return
+    setting, kind = entry
+    if kind == _APPENDED:
+        settings[setting] = [*cast(list, settings[setting] or []), value]
+    else:
+        settings[setting] = value
 
 
 def _takes_value(option: Option) -> bool:

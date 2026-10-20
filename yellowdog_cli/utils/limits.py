@@ -49,6 +49,13 @@ NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
 CAPACITY_POLL_INTERVAL = 5.0  # Seconds
 DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
 
+# Tab completion's Platform lookups (yd-completion): how long a Tab may wait
+# for one, how many entities it reads at most, and how long the answer is
+# kept on disk for the Tabs that follow
+LOOKUP_TIMEOUT_SECONDS = 2.0
+LOOKUP_MAX_ITEMS = 200
+COMPLETION_CACHE_SECONDS = 30
+
 # The most in-situ substitution passes a specification is given to settle; a
 # pass that changes nothing ends them. Real chains of references settle in two
 # or three, so reaching this means a circular one.

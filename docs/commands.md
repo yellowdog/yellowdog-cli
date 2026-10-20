@@ -74,6 +74,7 @@
       * [yd jsonnet2json](#yd-jsonnet2json)
       * [yd schema](#yd-schema)
       * [yd completion](#yd-completion)
+         * [Names and IDs from the Platform](#names-and-ids-from-the-platform)
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
@@ -1714,7 +1715,7 @@ It checks, in order:
 - each optional extra (Jsonnet, Cloud Wizard, Commander, the MCP Server), distinguishing "not installed" from "installed but will not load"
 - the rclone version
 - whether the `yd` first on your `PATH` is this installation's: another `yd`, such as a different tool of the same name, would run in its place, and Tab completion would ask it
-- whether your shell's start-up file (`~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, or fish's `config.fish`) loads [`yd completion`](#yd-completion), or runs `yd-completion` instead, which is not a command. The file is read, not run, so a line in a file it sources is reported as not set up
+- whether your shell's start-up file (`~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, or fish's `config.fish`) loads [`yd completion`](#yd-completion), and with `--names` (names and IDs from the Platform) or without, or runs `yd-completion` instead, which is not a command. The file is read, not run, so a line in a file it sources is reported as not set up
 - the proxy and certificate settings (the proxy row reports `HTTPS_PROXY` and, when PAC is on, the proxy PAC resolves for the API URL, or a `WARN` when it resolves none; the live checks, the PyPI one included, then use that proxy)
 - whether a newer CLI is on PyPI
 - whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](configuration.md)), and where each of the key, secret, namespace, tag and URL came from
@@ -1841,10 +1842,10 @@ A family printed with `yd schema <family>` is exactly what `--write` writes for 
 
 ### yd completion
 
-The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes the word after `yd` (`yd w` → `wait`, `worker`, `workerpool`, `workrequirement`, `wp`, `wr`), a noun's verbs (`yd wr s` → `submit`, `start`, `show`), the options a command or verb takes (never one it does not), and the values the CLI knows: an option's fixed choices (a resource type after `--type` in any case, offered in lower case when that is what is being typed, so `--type k` completes to `keyring`), the keys `--sort` takes (each after a comma, too), the entity types `yd list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help. Names and IDs on the YellowDog Platform are not completed. The deprecated `yd-*` commands, such as `yd-submit`, are not completed either; `yd commander`, `yd mcp`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
+The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes the word after `yd` (`yd w` → `wait`, `worker`, `workerpool`, `workrequirement`, `wp`, `wr`), a noun's verbs (`yd wr s` → `submit`, `start`, `show`), the options a command or verb takes (never one it does not), and the values the CLI knows: an option's fixed choices (a resource type after `--type` in any case, offered in lower case when that is what is being typed, so `--type k` completes to `keyring`), the keys `--sort` takes (each after a comma, too), the entity types `yd list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help. With `--names`, Work Requirements, Worker Pools and Compute Requirements are completed from the YellowDog Platform too, as [described below](#names-and-ids-from-the-platform). The deprecated `yd-*` commands, such as `yd-submit`, are not completed either; `yd commander`, `yd mcp`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
 
 ```shell
-yd completion bash | zsh | fish | powershell
+yd completion bash | zsh | fish | powershell [--names]
 ```
 
 Load the script in the shell's start-up file, so that every new shell has it:
@@ -1859,7 +1860,41 @@ yd completion fish | source      # in ~/.config/fish/config.fish
 yd completion powershell | Out-String | Invoke-Expression    # in $PROFILE
 ```
 
-The script asks `yd completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. It needs no configuration file and no credentials, and contacts nothing.
+The script asks `yd completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. Completing anything but a name or an ID on the Platform needs no configuration file and no credentials, and contacts nothing.
+
+#### Names and IDs from the Platform
+
+Tab offers the names and IDs of what is on the Platform when the script is printed with `--names`; without it, which is the default, completion is local only and contacts nothing. Load that script in place of the one without:
+
+```shell
+eval "$(yd completion bash --names)"     # in ~/.bashrc
+eval "$(yd completion zsh --names)"      # in ~/.zshrc
+yd completion fish --names | source      # in ~/.config/fish/config.fish
+```
+
+```powershell
+yd completion powershell --names | Out-String | Invoke-Expression    # in $PROFILE
+```
+
+[`yd doctor`](#yd-doctor) says whether the start-up file's line has `--names`.
+
+Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. A verb that acts on them by name offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, and `yd computerequirement resize`, `stop`, `start`, `reprovision` and `terminate`. A verb that takes only IDs offers their IDs, each shown with its name and status where the shell shows descriptions: `show`, `follow` and `wait` on each of the three, and `yd workrequirement compare`.
+
+What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. Only the statuses the verb applies to are offered (for example, running Work Requirements for `hold` and held ones for `start`), except by `show`, which offers every status. At most the 200 newest are offered, in whatever order the shell lists them. A verb that takes no `--namespace` or `--tag`, such as `show`, uses the configuration's.
+
+A Tab waits at most two seconds for the Platform; past that, or if there is no configuration, no credentials or no connection, nothing is offered and nothing is printed. Where nothing is found after a verb with nothing yet typed, its options are offered instead. What is found is kept for 30 seconds, so the Tabs that follow answer at once (finding nothing is not kept, so a Work Requirement just submitted is offered on the next Tab); an entity that changed in that time may still be offered, and the command reports it when run. The cache is a file per lookup in a directory of your own (readable only by you) under the system's temporary directory, holding names, IDs and statuses but no credentials, and each new lookup removes those older than 30 seconds, so there is nothing to clear.
+
+To switch the lookups off for a while without editing the start-up file, for example on a slow connection, set `YD_COMPLETION_LOOKUPS` to `off` (or `0`, `false` or `no`); it cannot switch them on for a script printed without `--names`:
+
+```shell
+export YD_COMPLETION_LOOKUPS=off
+```
+
+Proxy auto-configuration (`--pac`, `usePAC`) is not used for a Tab, since fetching the proxy configuration on every Tab would be too slow; a proxy set in `HTTPS_PROXY` is used. Tasks, Instances, Nodes and Workers are not completed from the Platform, nor are option values naming an entity other than `--within`'s, nor the IDs given to the generic `yd show`, `yd follow` and `yd wait`.
+
+The value of [`yd list`](#yd-list)'s `--within` is completed too, with the names of what it lists within: Work Requirements for `yd task list` and `yd taskgroup list` (or `yd list tasks` and `yd list task-groups`), then, once `wr/` is typed, that Work Requirement's Task Groups as `wr/tg`; Compute Requirements for `yd instance list`; and Worker Pools for `yd node list` and `yd worker list`. Since `--within` finds a name in the namespace whatever its tag, these are offered in any status and whatever the tag, at most the 200 newest. A value given as `--within=...` is not completed.
+
+After `--type`, the names or IDs [`yd resource remove`](#yd-resource-remove), `yd resource show` and `yd show` take are completed too, for that resource type: Keyrings, Groups, Applications, Namespaces, Namespace Policies (by namespace), Attribute Definitions and Users (by username) by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools by name in the configured namespace; a Credential's Keyring, then, once `keyring/` is typed, its Credentials as `keyring/credential`; and Allowances, which have no name, by ID, each shown with its description. At most the first 200 are offered.
 
 ## Deprecated Commands
 

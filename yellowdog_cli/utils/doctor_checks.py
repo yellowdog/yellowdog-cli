@@ -452,7 +452,8 @@ def _active_lines(path: str) -> list[str]:
 
 def check_shell_completion(ctx: Context) -> Result:
     """
-    Whether the shell's start-up file loads 'yd completion'. The file is read,
+    Whether the shell's start-up file loads 'yd completion', and with
+    '--names' or not. The file is read,
     not run, so a line it does not hold (a file it sources, a framework) is
     reported as not set up, never as a failure; a line loading the
     pre-release 'yd-completion', which does not exist, is a warning.
@@ -478,8 +479,15 @@ def check_shell_completion(ctx: Context) -> Result:
                 f"{path} runs yd-completion, which 'yd completion' replaced",
                 f"replace that line with: {setup}",
             )
-        if any(re.search(r"\byd completion\b", line) for line in lines):
-            return Result(Status.OK, f"set up in {path}")
+        loading = [line for line in lines if re.search(r"\byd completion\b", line)]
+        if any("--names" in line for line in loading):
+            return Result(Status.OK, f"set up in {path}, with names from the Platform")
+        if loading:
+            return Result(
+                Status.OK,
+                f"set up in {path}, without names from the Platform"
+                " (add --names to that line for them)",
+            )
     return Result(Status.OK, f"not set up in {files[0]}: add {setup}")
 
 
