@@ -30,7 +30,6 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 
 
 def _ctx() -> RunContext:
@@ -72,7 +71,13 @@ def env(monkeypatch):
     monkeypatch.setattr(
         wrapper_module,
         "CONFIG_COMMON",
-        SimpleNamespace(namespace="ns", url="https://api.x/api", key="k", secret="s"),
+        SimpleNamespace(
+            namespace="ns",
+            url="https://api.x/api",
+            key="k",
+            secret="s",
+            request_timeout=(10.0, 90.0),
+        ),
     )
     monkeypatch.setattr(yd_create, "confirmed", lambda _: True)
     records: list[dict] = []
@@ -579,7 +584,7 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(env, monke
         yd_create.create_attribute_definition(
             _ctx(), {"name": "a", "title": "A"}, "StringAttributeDefinition"
         )
-    assert post.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
+    assert post.call_args.kwargs["timeout"] == _ctx().config.request_timeout
     assert classify(raised.value) == ExitCode.AUTHENTICATION
 
 
@@ -594,7 +599,7 @@ def test_an_existing_attribute_definition_is_updated(env, monkeypatch):
     yd_create.create_attribute_definition(
         _ctx(), {"name": "a", "title": "A"}, "StringAttributeDefinition"
     )
-    assert put.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
+    assert put.call_args.kwargs["timeout"] == _ctx().config.request_timeout
     assert env.records[0]["action"] == "updated"
 
 

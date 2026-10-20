@@ -18,7 +18,13 @@ import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
-from yellowdog_cli.utils.limits import MAX_BATCH_SUBMIT_ATTEMPTS, RAW_REQUEST_TIMEOUT
+from yellowdog_cli.utils.limits import (
+    MAX_BATCH_SUBMIT_ATTEMPTS,
+    PLATFORM_READ_TIMEOUT,
+    RAW_CONNECT_TIMEOUT,
+)
+
+REQUEST_TIMEOUT = (RAW_CONNECT_TIMEOUT, PLATFORM_READ_TIMEOUT)
 
 
 def _ctx() -> RunContext:
@@ -75,7 +81,11 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
     remaining = list(responses)
 
     def answer(*args, **kwargs):
-        return remaining.pop(0) if len(remaining) > 1 else remaining[0]
+        # An exception in the list is raised, as requests raises a timeout
+        item = remaining.pop(0) if len(remaining) > 1 else remaining[0]
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
     post = MagicMock(side_effect=answer)
     client = MagicMock()
@@ -91,7 +101,11 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
         for patcher in (
             patch.object(json_raw_module.requests, "post", post),
             patch.object(wrapper_module, "CLIENT", client),
-            patch.object(wrapper_module, "CONFIG_COMMON", MagicMock(url="https://x")),
+            patch.object(
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(url="https://x", request_timeout=REQUEST_TIMEOUT),
+            ),
             patch.object(task_batches_module, "sleep", sleep),
             patch.object(
                 spec_loading_module,
@@ -196,10 +210,18 @@ class TestJsonRawBatchRetries:
         assert "raised" not in outcome
         assert outcome["sleep"].call_count == 1
 
+    def test_a_timed_out_batch_of_unnamed_tasks_is_not_resent(self):
+        # Raw Tasks here have no names: a resent batch could be added twice
+        timeout = requests.exceptions.ReadTimeout("timed out")
+        outcome = _submit([_created(), timeout, _response(200)])
+        assert outcome["raised"] is timeout
+        assert outcome["post"].call_count == 1 + 1
+        outcome["sleep"].assert_not_called()
+
     def test_requests_carry_a_timeout(self):
         outcome = _submit([_created()] + [_response(200)] * 4)
         for call in outcome["post"].call_args_list:
-            assert call.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
+            assert call.kwargs["timeout"] == REQUEST_TIMEOUT
 
 
 class TestJsonRawFollow:

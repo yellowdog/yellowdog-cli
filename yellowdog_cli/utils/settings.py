@@ -7,6 +7,8 @@ entity_names.py and property_names.py (the PROP_* names).
 """
 
 DEFAULT_URL = "https://api.yellowdog.ai"
+# The data client's prefix where none is set, and so {{dataClient.prefix}}'s
+DEFAULT_DATA_CLIENT_PREFIX = "{{namespace}}/{{tag}}"
 
 # Reported when a required configuration property is absent from every
 # source, by each of load_config.py's section loaders.
@@ -18,11 +20,16 @@ YD_SECRET = "YD_SECRET"
 YD_NAMESPACE = "YD_NAMESPACE"
 YD_TAG = "YD_TAG"
 YD_URL = "YD_URL"
+YD_READ_TIMEOUT = "YD_READ_TIMEOUT"
 YD_DATA_CLIENT = "YD_DATA_CLIENT"
 YD_DATA_CLIENT_BUCKET = "YD_DATA_CLIENT_BUCKET"
 YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
 YD_ENV_VAR_PREFIX = "YD_VAR_"
+# Tab completion's Platform lookups (yd-completion) are on unless this is set
+# to one of the COMPLETION_LOOKUPS_OFF values, in any case
+YD_COMPLETION_LOOKUPS = "YD_COMPLETION_LOOKUPS"
+COMPLETION_LOOKUPS_OFF = frozenset({"0", "false", "no", "off"})
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 # Alternative env.var names
 YD_KEY_ALT = "YD_API_KEY_ID"

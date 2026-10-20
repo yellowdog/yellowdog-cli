@@ -22,7 +22,6 @@ from yellowdog_cli.utils import resource_processing
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure, classify
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, YDIDType
 
 
@@ -65,7 +64,9 @@ def env(monkeypatch):
     monkeypatch.setattr(
         wrapper_module,
         "CONFIG_COMMON",
-        SimpleNamespace(url="https://api.x/api", key="k", secret="s"),
+        SimpleNamespace(
+            url="https://api.x/api", key="k", secret="s", request_timeout=(10.0, 90.0)
+        ),
     )
     asked: list[str] = []
     monkeypatch.setattr(
@@ -266,7 +267,7 @@ def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(env, monke
         yd_remove.remove_attribute_definition(
             _ctx(), {"name": "a"}, "StringAttributeDefinition"
         )
-    assert delete.call_args.kwargs["timeout"] == RAW_REQUEST_TIMEOUT
+    assert delete.call_args.kwargs["timeout"] == _ctx().config.request_timeout
     assert classify(raised.value) == ExitCode.AUTHENTICATION
 
 

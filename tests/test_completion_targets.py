@@ -1,0 +1,133 @@
+"""
+Tests for the table of entity arguments Tab completion looks up on the
+Platform (utils/completion_targets.py): every entry names a real verb and
+argument, and offers the statuses the command itself acts on.
+"""
+
+from argparse import SUPPRESS
+
+import pytest
+from yellowdog_client.model import (
+    ComputeRequirementStatus,
+    WorkerPoolStatus,
+    WorkRequirementStatus,
+)
+
+from yellowdog_cli import cancel
+from yellowdog_cli.utils import compute_action_common, start_hold_common
+from yellowdog_cli.utils.command_registry import LIST_WITHIN_TYPES, Completes
+from yellowdog_cli.utils.completion_targets import (
+    LOOKUPS,
+    RESOURCE_LOOKUPS,
+    WITHIN_LOOKUPS,
+)
+from yellowdog_cli.utils.entity_names import (
+    ET_COMPUTE_REQUIREMENTS,
+    ET_WORK_REQUIREMENTS,
+    ET_WORKER_POOLS,
+)
+from yellowdog_cli.utils.noun_registry import NOUN_COMMANDS
+
+_STATUSES = {
+    ET_WORK_REQUIREMENTS: WorkRequirementStatus,
+    ET_COMPUTE_REQUIREMENTS: ComputeRequirementStatus,
+    ET_WORKER_POOLS: WorkerPoolStatus,
+}
+
+
+def _names(statuses) -> frozenset[str]:
+    return frozenset(status.name for status in statuses)
+
+
+@pytest.mark.parametrize("key", sorted(LOOKUPS))
+def test_every_entry_is_a_visible_argument_of_a_verb(key):
+    # A positional by name, or an option ('--within') by its long flag
+    command_name, argument = key
+    command = NOUN_COMMANDS[command_name]
+    arguments = {
+        option.name: option
+        for option in command.flat_options()
+        if option.kwargs.get("help") != SUPPRESS
+    }
+    assert argument in arguments
+    assert arguments[argument].completes is Completes.NONE, "not a local file"
+
+
+def test_within_is_looked_up_for_every_type_it_applies_to():
+    assert set(WITHIN_LOOKUPS) == set(LIST_WITHIN_TYPES)
+    for verb, entity_type in (
+        ("yd task list", "tasks"),
+        ("yd taskgroup list", "task-groups"),
+        ("yd instance list", "instances"),
+        ("yd node list", "nodes"),
+        ("yd worker list", "workers"),
+    ):
+        assert LOOKUPS[(verb, "--within")] is WITHIN_LOOKUPS[entity_type]
+
+
+def test_within_offers_any_status_untagged_as_the_option_resolves_names():
+    for lookup in WITHIN_LOOKUPS.values():
+        assert lookup.statuses is None and lookup.tagged is False
+
+
+@pytest.mark.parametrize("key", sorted(LOOKUPS))
+def test_the_statuses_are_the_entitys(key):
+    lookup = LOOKUPS[key]
+    assert lookup.entity in _STATUSES
+    if lookup.statuses is not None:
+        assert lookup.statuses <= _names(_STATUSES[lookup.entity])
+
+
+@pytest.mark.parametrize(
+    "verb, statuses",
+    [
+        ("yd workrequirement cancel", cancel._CANCELLABLE_STATUSES),
+        ("yd workrequirement hold", start_hold_common.HOLD.statuses),
+        ("yd workrequirement start", start_hold_common.START.statuses),
+        ("yd workrequirement finish", start_hold_common.FINISH.statuses),
+        (
+            "yd computerequirement stop",
+            compute_action_common.COMPUTE_STOP.valid_cr_statuses,
+        ),
+        (
+            "yd computerequirement start",
+            compute_action_common.COMPUTE_START.valid_cr_statuses,
+        ),
+        (
+            "yd computerequirement terminate",
+            compute_action_common.COMPUTE_TERMINATE.valid_cr_statuses,
+        ),
+        (
+            "yd computerequirement reprovision",
+            compute_action_common.COMPUTE_REPROVISION.valid_cr_statuses,
+        ),
+    ],
+)
+def test_an_action_offers_what_the_command_acts_on(verb, statuses):
+    (lookup,) = [lookup for (name, _), lookup in LOOKUPS.items() if name == verb]
+    assert lookup.statuses == _names(statuses)
+
+
+def test_the_id_only_verbs_offer_ids_and_the_others_names():
+    for (verb, _), lookup in LOOKUPS.items():
+        # The listings' '--within' takes names (or an ID)
+        id_only = verb.split()[-1] in {"show", "follow", "wait", "compare"}
+        assert lookup.ids is id_only, verb
+
+
+def test_only_token_is_for_configured_worker_pools():
+    configured = {
+        verb for (verb, _), lookup in LOOKUPS.items() if lookup.configured_only
+    }
+    assert configured == {"yd workerpool token"}
+
+
+def test_every_resource_type_has_a_lookup():
+    from yellowdog_cli.utils.command_registry import RESOURCE_TYPE_CHOICES
+
+    assert set(RESOURCE_LOOKUPS) == set(RESOURCE_TYPE_CHOICES)
+    for resource_type, lookup in RESOURCE_LOOKUPS.items():
+        assert lookup.resource == resource_type
+        assert lookup.statuses is None and lookup.tagged is False
+        # An Allowance has no name: its ID is offered
+        assert lookup.ids is (resource_type == "Allowance")

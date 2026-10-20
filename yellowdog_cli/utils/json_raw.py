@@ -17,7 +17,6 @@ import requests
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import format_yd_name
 from yellowdog_cli.utils.printing import (
     print_dry_run,
@@ -110,7 +109,7 @@ def submit_json_raw(
         url=f"{ctx.config.url}/work/requirements",
         headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=wr_data,
-        timeout=RAW_REQUEST_TIMEOUT,
+        timeout=ctx.config.request_timeout,
     )
 
     if response.status_code != 200:
@@ -215,7 +214,7 @@ def submit_json_task_batch(
                 "Content-Type": "application/json",
             },
             data=task_batch_compressed,
-            timeout=RAW_REQUEST_TIMEOUT,
+            timeout=ctx.config.request_timeout,
         )
         if response.status_code != 200:
             raise_for_response(response)
@@ -229,5 +228,11 @@ def submit_json_task_batch(
     batch = (
         f"batch {batch_number_str} of {num_batches} to Task Group '{task_group_name}'"
     )
-    submit_with_retries(attempt, report_success, batch=batch, batch_in_full=batch)
+    submit_with_retries(
+        attempt,
+        report_success,
+        batch=batch,
+        batch_in_full=batch,
+        all_named=all(isinstance(t, dict) and t.get("name") for t in task_batch),
+    )
     return len(task_batch)

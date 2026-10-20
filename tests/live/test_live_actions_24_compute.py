@@ -30,7 +30,7 @@ def test_a_requirement_is_stopped_started_followed_and_waited_for(live_run):
         "--quiet",
     ).document
     cr_id = created["id"]
-    try:
+    with work.cleaned_up(lambda: yd("cr", "terminate", cr_id, *_ACT, ok=(0, 6))):
         states = compute.wait_until_settled(
             yd, run.namespace, run.run_id, cr_id, minutes
         )
@@ -72,8 +72,6 @@ def test_a_requirement_is_stopped_started_followed_and_waited_for(live_run):
             lambda: yd("cr", "terminate", cr_id, *_ACT),
             run.config.run["teardown_timeout_minutes"] * 60,
         )
-        work.follow_events(followed.stdout)
+        work.ended_with(work.follow_events(followed.stdout), {"TERMINATED"})
         (record,) = yd("cr", "wait", cr_id, "--json", "--quiet", ok=(0, 1)).records
         assert record["status"] == "TERMINATED", record
-    finally:
-        yd("cr", "terminate", cr_id, *_ACT, ok=(0, 6))

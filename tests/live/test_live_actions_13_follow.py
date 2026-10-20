@@ -13,8 +13,7 @@ pytestmark = [pytest.mark.live, pytest.mark.xdist_group("ydst-actions")]
 def test_following_and_waiting_for_a_completed_work_requirement(live_run, actions_pool):
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(
             yd,
             "work-wr.jsonnet",
@@ -26,8 +25,7 @@ def test_following_and_waiting_for_a_completed_work_requirement(live_run, action
         followed = yd(
             "wr", "follow", wr["id"], "--json", "--quiet", timeout=minutes * 60
         )
-        events = work.follow_events(followed.stdout)
-        assert events, "no events"
+        work.ended_with(work.follow_events(followed.stdout), {"COMPLETED"})
         assert work.work_requirement(yd, wr["id"])["status"] == "COMPLETED"
         again = yd("follow", wr["id"], "--json", "--quiet", timeout=minutes * 60)
         work.follow_events(again.stdout)  # parses, whatever it holds for a finished one
@@ -36,14 +34,11 @@ def test_following_and_waiting_for_a_completed_work_requirement(live_run, action
             assert record["succeeded"] is True and record["status"] == "COMPLETED", (
                 record
             )
-    finally:
-        work.cancel_all(yd, made)
 
 
 def test_a_failing_work_requirement_exits_1_and_waits_as_failed(live_run, actions_pool):
     run, yd = live_run.run, live_run.yd
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         submitted = yd(
             "wr",
             "submit",
@@ -69,5 +64,3 @@ def test_a_failing_work_requirement_exits_1_and_waits_as_failed(live_run, action
         waited = yd("wr", "wait", made[0], "--json", "--quiet", ok=(1,))
         (record,) = waited.records
         assert record["succeeded"] is False and record["status"] == "FAILED", record
-    finally:
-        work.cancel_all(yd, made)

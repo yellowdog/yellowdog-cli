@@ -21,12 +21,13 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from functools import cache
 from importlib.metadata import entry_points
 from importlib.util import find_spec
+from types import MappingProxyType
 from typing import Any
 
 from yellowdog_cli.utils.entity_names import (
@@ -105,16 +106,22 @@ class Option:
     One argparse argument: its flags (or a positional's name) and the
     keyword arguments handed to add_argument() verbatim. Identity, for
     'is this the same option on another command', is the first long flag.
+    The keyword arguments are a read-only copy: options are shared module
+    constants, so a change to one would reach every command taking it;
+    variant() makes a changed one.
     """
 
     flags: tuple[str, ...]
-    kwargs: dict[str, Any]
+    kwargs: Mapping[str, Any]
     # A positional argparse takes as optional only so that --which-rclone
     # and --upgrade-rclone can run without it: required for every MCP tool,
     # which offers neither, and by the command's own check otherwise
     tool_required: bool = False
     # What its value completes to in the shell
     completes: Completes = Completes.NONE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kwargs", MappingProxyType(dict(self.kwargs)))
 
     @property
     def positional(self) -> bool:
@@ -4111,12 +4118,24 @@ COMPLETION_SHELL = option(
     ),
 )
 
+COMPLETION_NAMES = option(
+    "--names",
+    action="store_true",
+    help=(
+        "a script that completes the names and IDs of what is on the Platform"
+        " too (Work Requirements, Worker Pools, ...), looking them up as the"
+        " command would, within 2 seconds; load it in place of the script"
+        " without, e.g. 'eval \"$(yd completion zsh --names)\"'. Setting"
+        " YD_COMPLETION_LOOKUPS=off switches the lookups off again"
+    ),
+)
+
 COMMANDS["yd-completion"] = Command(
     name="yd-completion",
     purpose="printing the shell completion script for the yd-* commands",
     summary="Print the shell completion script for the yd-* commands",
     kind=CommandKind.STANDALONE,
-    options=(COMPLETION_SHELL,),
+    options=(COMPLETION_SHELL, COMPLETION_NAMES),
     tool=ToolKind.NONE,
 )
 COMMANDS["yd-format-json"] = Command(

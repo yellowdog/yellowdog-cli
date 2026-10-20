@@ -62,6 +62,8 @@ def _create_client() -> PlatformClient:
     """
     Build the Platform client, as CLIENT's first use does.
     """
+    from datetime import timedelta
+
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
@@ -75,7 +77,15 @@ def _create_client() -> PlatformClient:
     # returns None for either
     assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
     client = PlatformClient.create(
-        ServicesSchema(defaultUrl=CONFIG_COMMON.url),
+        ServicesSchema(
+            defaultUrl=CONFIG_COMMON.url,
+            # None, from readTimeout = 0, is no limit, as for the SDK
+            readTimeout=(
+                None
+                if CONFIG_COMMON.read_timeout is None
+                else timedelta(seconds=CONFIG_COMMON.read_timeout)
+            ),
+        ),
         ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),
     )
     return client

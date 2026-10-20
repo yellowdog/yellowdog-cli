@@ -115,7 +115,6 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
@@ -2049,7 +2048,7 @@ def get_autoscaling_capacity(ctx: RunContext, namespace: str) -> dict:
     response = get(
         url=f"{ctx.config.url}/workerPools/namespaces/{namespace}/autoscalingCapacity",
         headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        timeout=RAW_REQUEST_TIMEOUT,
+        timeout=ctx.config.request_timeout,
     )
     if response.status_code == 200:
         return response.json()

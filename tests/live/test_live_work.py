@@ -117,6 +117,65 @@ def test_follow_alongside_returns_the_follow_and_fails_when_it_overruns():
         work.follow_alongside(yd, ("cr", "follow", "slow"), lambda: None, 0.2)
 
 
+def test_follow_alongside_raises_a_failing_action_without_waiting_for_the_follow():
+    import time
+
+    def respond(args):
+        time.sleep(3)
+        return result(args, document={"status": "TERMINATED"})
+
+    def action():
+        raise RuntimeError("the shutdown failed")
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="the shutdown failed"):
+        work.follow_alongside(FakeYd(respond), ("wp", "follow", "x"), action, 60)
+    assert time.monotonic() - started < 2
+
+
+def test_a_follow_that_ended_at_a_terminal_status_passes():
+    work.ended_with([{"status": "RUNNING"}, {"status": "COMPLETED"}], {"COMPLETED"})
+
+
+@pytest.mark.parametrize(
+    ("events", "message"),
+    [
+        ([], "no events"),
+        ([{"status": "RUNNING"}, {}], "no status"),
+        ([{"status": "COMPLETED"}, {"status": "RUNNING"}], "ended at RUNNING"),
+    ],
+)
+def test_a_follow_that_did_not_reach_the_end_fails(events, message):
+    with pytest.raises(AssertionError, match=message):
+        work.ended_with(events, {"COMPLETED"})
+
+
+def test_cancelled_after_cancels_what_was_made_when_the_scenario_passes():
+    yd = FakeYd(lambda args: result(args, document=[]))
+    with work.cancelled_after(yd) as made:
+        made.append("a")
+    assert yd.calls and yd.calls[0][-1] == "a"
+
+
+def test_a_failing_clean_up_fails_a_scenario_that_passed():
+    def cleanup():
+        raise RuntimeError("cancel failed")
+
+    with pytest.raises(RuntimeError, match="cancel failed"):
+        with work.cleaned_up(cleanup):
+            pass
+
+
+def test_a_failing_clean_up_never_hides_the_scenarios_failure():
+    def cleanup():
+        raise RuntimeError("cancel failed")
+
+    with pytest.warns(work.CleanupFailedWarning, match="cancel failed"):
+        with pytest.raises(AssertionError, match="the scenario's own"):
+            with work.cleaned_up(cleanup):
+                raise AssertionError("the scenario's own")
+
+
 def test_every_node_verb_is_called_with_json_and_its_outcome_checked():
     yd = FakeYd(lambda args: result(args, document=[{"outcome": "terminated"}]))
     for verb in ("restart", "deprovision", "terminate", "shutdown"):

@@ -26,7 +26,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import Any, TypeVar
 
 import requests
 from pypac import pac_context_for_url
@@ -118,11 +118,17 @@ class Context:
     profile_errors: dict[str, str] = field(default_factory=dict)  # why one did not load
 
 
-def with_timeout(fn: Callable[[], Any], seconds: float) -> Any:
+# What with_timeout()'s function returns
+T = TypeVar("T")
+
+
+def with_timeout(fn: Callable[[], T], seconds: float) -> T | Result:
     """
     Run fn on a daemon thread and wait 'seconds' for it. Returns fn's value,
-    or a FAIL Result naming the timeout; re-raises fn's exception. The SDK's
-    own HTTP calls carry no timeout, so this is the only budget they have.
+    or a FAIL Result naming the timeout, which the caller tells apart with
+    isinstance(); re-raises fn's exception. The SDK's read timeout bounds
+    each wait for a response, but not a call's DNS lookups, connections and
+    retries together, which this does.
     """
     box: dict[str, Any] = {}
 
@@ -447,7 +453,8 @@ def _active_lines(path: str) -> list[str]:
 
 def check_shell_completion(ctx: Context) -> Result:
     """
-    Whether the shell's start-up file loads 'yd completion'. The file is read,
+    Whether the shell's start-up file loads 'yd completion', and with
+    '--names' or not. The file is read,
     not run, so a line it does not hold (a file it sources, a framework) is
     reported as not set up, never as a failure; a line loading the
     pre-release 'yd-completion', which does not exist, is a warning.
@@ -473,8 +480,15 @@ def check_shell_completion(ctx: Context) -> Result:
                 f"{path} runs yd-completion, which 'yd completion' replaced",
                 f"replace that line with: {setup}",
             )
-        if any(re.search(r"\byd completion\b", line) for line in lines):
-            return Result(Status.OK, f"set up in {path}")
+        loading = [line for line in lines if re.search(r"\byd completion\b", line)]
+        if any("--names" in line for line in loading):
+            return Result(Status.OK, f"set up in {path}, with names from the Platform")
+        if loading:
+            return Result(
+                Status.OK,
+                f"set up in {path}, without names from the Platform"
+                " (add --names to that line for them)",
+            )
     return Result(Status.OK, f"not set up in {files[0]}: add {setup}")
 
 
@@ -877,12 +891,18 @@ def _platform_reachable(ctx: Context) -> Result:
     return Result(Status.OK, answered)
 
 
-def _build_client(cfg: Any) -> Any:
+def _build_client(cfg: Any, read_timeout: float) -> Any:
+    """
+    A Platform client waiting for a response no longer than a check may take.
+    """
+    from datetime import timedelta
+
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
     return PlatformClient.create(
-        ServicesSchema(defaultUrl=cfg.url), ApiKey(cfg.key, cfg.secret)
+        ServicesSchema(defaultUrl=cfg.url, readTimeout=timedelta(seconds=read_timeout)),
+        ApiKey(cfg.key, cfg.secret),
     )
 
 
@@ -893,7 +913,7 @@ def check_authenticated(ctx: Context) -> Result:
         return Result(Status.SKIP, "platform not reachable")
     if ctx.sdk_error is not None:
         return Result(Status.SKIP, "SDK did not import")
-    client = _build_client(ctx.config_common)
+    client = _build_client(ctx.config_common, ctx.timeout)
     try:
         outcome = with_timeout(
             client.application_client.get_application_details, ctx.timeout
@@ -944,7 +964,11 @@ def check_groups_and_roles(ctx: Context) -> Result:
     app_id = ctx.application.id
     outcome = with_timeout(
         lambda: (
-            [g.name for g in get_application_group_summaries(ctx.client, app_id)],
+            # A Group the Platform returns without a name is shown by its ID
+            [
+                str(g.name or g.id)
+                for g in get_application_group_summaries(ctx.client, app_id)
+            ],
             get_all_roles_and_namespaces_for_application(ctx.client, app_id),
         ),
         ctx.timeout,

@@ -23,10 +23,15 @@ DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS = 1
 MAX_BATCH_SUBMIT_ATTEMPTS = 4  # Initial attempt plus retries
 BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for each
 
-# (connect, read) for the CLI's direct Platform requests ('--json-raw', and
-# yd-provision's and yd-instantiate's raw paths): the read allows for a large
-# Task batch, while a silently dropped connection does not hang forever
-RAW_REQUEST_TIMEOUT = (10.0, 300.0)  # Seconds
+# How long a Platform request waits for its response before failing, unless
+# [common] readTimeout says otherwise (ConfigCommon.read_timeout): the SDK
+# client's (ServicesSchema.readTimeout), and the CLI's direct requests'
+# (ConfigCommon.request_timeout). A POST that times out is not resent (the
+# Platform may still be processing it), but for a Task batch whose Tasks all
+# have names (submit_with_retries())
+PLATFORM_READ_TIMEOUT = 90.0  # Seconds
+# How long the CLI's direct Platform requests wait to connect
+RAW_CONNECT_TIMEOUT = 10.0  # Seconds
 
 CR_MAX_INSTANCES = (
     10_000  # This is enforced by the platform (MAX_WORKER_POOL_NODE_COUNT)
@@ -48,6 +53,13 @@ NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
 # '--wait' on yd-resize and yd-compute-reprovision
 CAPACITY_POLL_INTERVAL = 5.0  # Seconds
 DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
+
+# Tab completion's Platform lookups (yd-completion): how long a Tab may wait
+# for one, how many entities it reads at most, and how long the answer is
+# kept on disk for the Tabs that follow
+LOOKUP_TIMEOUT_SECONDS = 2.0
+LOOKUP_MAX_ITEMS = 200
+COMPLETION_CACHE_SECONDS = 30
 
 # The most in-situ substitution passes a specification is given to settle; a
 # pass that changes nothing ends them. Real chains of references settle in two

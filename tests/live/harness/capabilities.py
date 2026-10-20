@@ -5,7 +5,9 @@ non-zero exit and a 'failed' record whose error contains the recorded
 reason), so that a change in the Platform or the CLI shows up rather than
 being skipped. A known fault, an action the Platform accepts but gets wrong
 on that provider, is held to its symptom and reported as a warning naming
-the bug raised, until it stops occurring. An action absent from a
+the bug raised, until it stops occurring. Either outcome, being the one
+expected, counts for the coverage gate (harness/coverage.py) as a success
+does. An action absent from a
 provider's entries is supported; entries are added from real runs, with
 the Platform's own wording.
 """
@@ -15,6 +17,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass
 
+from harness import coverage
 from harness.yd import Yd
 
 PROVIDERS = ("aws", "azure", "gcp", "oci")
@@ -114,6 +117,7 @@ def perform(yd: Yd, provider: str, action: str, *args: str) -> bool:
         f"'{action}' on {provider} was refused, but not as recorded"
         f" ('{refusal.reason}'): {errors}"
     )
+    coverage.record(args)
     return False
 
 
@@ -133,6 +137,7 @@ def _shows_fault(
             ),
             stacklevel=3,
         )
+        coverage.record(args)
         return False
     undone = [r for r in done.records if r.get("outcome") in ("failed", "skipped")]
     assert done.exit_code != 0 or undone or not done.records, (

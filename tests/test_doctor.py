@@ -1074,7 +1074,7 @@ class TestLive:
         def refused(url, timeout):
             raise dc.requests.ConnectionError("Connection refused")
 
-        def never(cfg):
+        def never(cfg, timeout):
             raise AssertionError("_build_client called")
 
         monkeypatch.setattr(dc.requests, "get", refused)
@@ -1100,7 +1100,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=lambda: details)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (
@@ -1116,7 +1116,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=boom)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         r = dc.check_authenticated(_ctx(config_loaded=True, config_common=self._cfg()))
         assert r.status is dc.Status.FAIL and "not recognised" in r.detail
 
@@ -1127,7 +1127,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=boom)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (dc.Status.FAIL, "Service Unavailable")
@@ -1141,7 +1141,7 @@ class TestLive:
                 get_application_details=lambda: time.sleep(2)
             )
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         r = dc.check_authenticated(
             _ctx(config_loaded=True, config_common=self._cfg(), timeout=0.1)
         )
@@ -1164,6 +1164,24 @@ class TestLive:
         ctx.application = SimpleNamespace(id="ydid:app:1")
         r = dc.check_groups_and_roles(ctx)
         assert r.detail == "groups: administrators; roles: admin (GLOBAL)"
+
+    def test_a_group_without_a_name_is_shown_by_its_id(self, monkeypatch):
+        import yellowdog_cli.utils.entity_utils as entity_utils
+
+        monkeypatch.setattr(
+            entity_utils,
+            "get_application_group_summaries",
+            lambda c, a: [SimpleNamespace(name=None, id="ydid:group:1")],
+        )
+        monkeypatch.setattr(
+            entity_utils,
+            "get_all_roles_and_namespaces_for_application",
+            lambda c, a: {"admin": ["GLOBAL"]},
+        )
+        ctx = _ctx(config_loaded=True, config_common=self._cfg(), client=object())
+        ctx.application = SimpleNamespace(id="ydid:app:1")
+        r = dc.check_groups_and_roles(ctx)
+        assert r.detail == "groups: ydid:group:1; roles: admin (GLOBAL)"
 
     def test_no_roles_warns(self, monkeypatch):
         import yellowdog_cli.utils.entity_utils as entity_utils
@@ -1294,7 +1312,7 @@ class TestLive:
         client = SimpleNamespace(
             application_client=SimpleNamespace(get_application_details=refuse)
         )
-        monkeypatch.setattr(dc, "_build_client", lambda cfg: client)
+        monkeypatch.setattr(dc, "_build_client", lambda cfg, timeout: client)
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_authenticated(ctx)
         assert (r.status, r.detail) == (dc.Status.FAIL, detail)
@@ -1707,7 +1725,19 @@ class TestShellCompletion:
         startup.parent.mkdir(parents=True, exist_ok=True)
         startup.write_text(f"# mine\n{line}\n", encoding="utf-8")
         r = self._check(monkeypatch, shell)
-        assert r.status is dc.Status.OK and r.detail == f"set up in {startup}"
+        assert r.status is dc.Status.OK
+        assert r.detail == (
+            f"set up in {startup}, without names from the Platform"
+            " (add --names to that line for them)"
+        )
+
+    def test_set_up_with_names(self, home, monkeypatch):
+        (home / ".zshrc").write_text(
+            'eval "$(yd completion zsh --names)"\n', encoding="utf-8"
+        )
+        r = self._check(monkeypatch, "zsh")
+        assert r.status is dc.Status.OK
+        assert r.detail == f"set up in {home / '.zshrc'}, with names from the Platform"
 
     def test_the_guarded_form_counts(self, home, monkeypatch):
         (home / ".zshrc").write_text(
@@ -1725,7 +1755,7 @@ class TestShellCompletion:
         )
         monkeypatch.setenv("ZDOTDIR", str(home / "z"))
         r = self._check(monkeypatch, "zsh")
-        assert r.detail == f"set up in {home / 'z' / '.zshrc'}"
+        assert r.detail.startswith(f"set up in {home / 'z' / '.zshrc'},")
 
     @pytest.mark.parametrize("contents", [None, "", '# eval "$(yd completion zsh)"\n'])
     def test_not_set_up_says_what_to_add(self, home, monkeypatch, contents):

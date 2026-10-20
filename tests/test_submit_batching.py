@@ -6,6 +6,7 @@ fails in submit_batch_of_tasks_to_task_group.
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -455,7 +456,7 @@ class TestBatchSubmitRetries:
     submit_batch_of_tasks_to_task_group() against a stubbed Platform call.
     """
 
-    def _submit(self, side_effect) -> dict:
+    def _submit(self, side_effect, tasks: list | None = None) -> dict:
         add_tasks = MagicMock(side_effect=side_effect)
         sleep_mock = MagicMock()
         outcome: dict = {"add_tasks": add_tasks, "sleep": sleep_mock}
@@ -473,7 +474,7 @@ class TestBatchSubmitRetries:
             try:
                 outcome["result"] = submit_module.submit_batch_of_tasks_to_task_group(
                     _submission(),
-                    [MagicMock(), MagicMock()],
+                    [MagicMock(), MagicMock()] if tasks is None else tasks,
                     _make_wr(),
                     _make_tg(),
                     num_task_batches=1,
@@ -505,6 +506,31 @@ class TestBatchSubmitRetries:
             [Exception("502 Bad Gateway"), InvalidRequestException(_DUPLICATE_NAMES)]
         )
         assert outcome["result"] == 2
+
+    def test_a_timed_out_batch_of_named_tasks_is_retried(self):
+        # Had the first attempt been added, the retry's duplicate names say so
+        named = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]
+        outcome = self._submit(
+            [requests.exceptions.ReadTimeout("timed out"), Exception(_DUPLICATE_NAMES)],
+            tasks=named,
+        )
+        assert "raised" not in outcome
+        assert outcome["add_tasks"].call_count == 2
+
+    def test_a_timed_out_batch_with_an_unnamed_task_is_not_resent(self):
+        # The Platform may have added it, and nothing would tell a duplicate
+        timeout = requests.exceptions.ReadTimeout("timed out")
+        unnamed = [SimpleNamespace(name="a"), SimpleNamespace(name=None)]
+        outcome = self._submit([timeout, None], tasks=unnamed)
+        assert outcome["raised"] is timeout
+        assert outcome["add_tasks"].call_count == 1
+        outcome["sleep"].assert_not_called()
+
+    def test_another_failure_of_unnamed_tasks_is_still_retried(self):
+        unnamed = [SimpleNamespace(name=None)]
+        outcome = self._submit([Exception("502 Bad Gateway"), None], tasks=unnamed)
+        assert "raised" not in outcome
+        assert outcome["add_tasks"].call_count == 2
 
     def test_refused_credentials_are_not_retried(self):
         error = NotAuthorisedException("Unauthorized")

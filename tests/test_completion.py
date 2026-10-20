@@ -5,30 +5,37 @@ Shell completion: utils/completion.py's complete() over the registries, the
 where it is), and the registry's Completes markings held to the metavars.
 """
 
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
 
 from yellowdog_cli import completion as yd_completion
+from yellowdog_cli.utils import completion_lookups
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
     Completes,
 )
 from yellowdog_cli.utils.completion import (
+    Candidate,
     Mode,
     complete,
     join_bash_words,
 )
+from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
+from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS
 from yellowdog_cli.utils.noun_registry import (
     NOUN_COMMANDS,
     NOUNS,
     REPLACED_BY_VERBS,
     RESOURCE_LIST_TYPES,
 )
+from yellowdog_cli.utils.settings import YD_COMPLETION_LOOKUPS
 from yellowdog_cli.utils.top_level import TOP_LEVEL
 
 
@@ -139,6 +146,33 @@ class TestValues:
         words = ["yd", "cloudinfo", "prices"]
         assert _values(words, "--provider=a") == ["--provider=aws", "--provider=azure"]
 
+    @pytest.mark.parametrize(
+        "current, offered",
+        [
+            # Matched in any case, as the CLI reads the type, and offered in
+            # the case typed, so that a shell matching case keeps them
+            ("k", ["keyring"]),
+            ("K", ["Keyring"]),
+            ("KEY", ["Keyring"]),
+            ("namespacep", ["namespacepolicy"]),
+            ("Name", ["Namespace", "NamespacePolicy"]),
+        ],
+    )
+    def test_a_resource_type_in_any_case(self, current, offered):
+        assert _values(["yd", "resource", "remove", "--type"], current) == offered
+
+    def test_a_resource_type_with_nothing_typed_is_offered_as_written(self):
+        offered = _values(["yd", "resource", "create", "--type"])
+        assert "ComputeSourceTemplate" in offered and len(offered) == 15
+
+    def test_a_resource_type_after_an_equals(self):
+        assert _values(["yd", "resource", "create"], "--type=keyr") == [
+            "--type=keyring"
+        ]
+
+    def test_other_choices_still_match_their_case(self):
+        assert _values(["yd", "cloudinfo", "prices", "--provider"], "A") == []
+
     def test_an_unknown_option_after_an_equals_offers_nothing(self):
         assert _values(["yd", "wr", "cancel"], "--nonesuch=") == []
 
@@ -186,6 +220,227 @@ class TestValues:
         # yd workerpool resize <pool> <size>: both given, so options
         words = ["yd", "workerpool", "resize", "pool", "3"]
         assert "--yes" in _values(words)
+
+
+class TestLookups:
+    """
+    An entity argument is completed from the Platform: complete() names the
+    lookup and the configuration options typed, and the command makes it.
+    """
+
+    @pytest.mark.parametrize(
+        "words, entity, task_groups",
+        [
+            (["yd", "task", "list", "--within"], ET_WORK_REQUIREMENTS, True),
+            (["yd", "tg", "list", "--within"], ET_WORK_REQUIREMENTS, True),
+            (["yd", "instance", "list", "--within"], "compute-requirements", False),
+            (["yd", "node", "list", "--within"], "worker-pools", False),
+            (["yd", "worker", "list", "--within"], "worker-pools", False),
+            (["yd", "list", "tasks", "--within"], ET_WORK_REQUIREMENTS, True),
+            (["yd", "list", "inst", "--within"], "compute-requirements", False),
+            (["yd", "list", "W", "--sort", "name", "--within"], None, False),
+        ],
+    )
+    def test_within_looks_up_its_parent(self, words, entity, task_groups):
+        result = complete(words, "my")
+        if entity is None:
+            # Work Requirements have no parent to list within
+            assert result.lookup is None
+            return
+        assert result.lookup is not None
+        assert result.lookup.lookup.entity == entity
+        assert result.lookup.lookup.ids is False
+        assert result.lookup.lookup.tagged is False
+        assert result.lookup.lookup.task_groups is task_groups
+        assert result.lookup.current == "my"
+
+    @pytest.mark.parametrize(
+        "words, resource",
+        [
+            (["yd", "resource", "remove", "--type", "Keyring"], "Keyring"),
+            (["yd", "resource", "remove", "--type", "keyring"], "Keyring"),
+            (["yd", "resource", "remove", "--type=Group"], "Group"),
+            (["yd", "resource", "show", "--type", "Namespace", "dev"], "Namespace"),
+            (["yd", "show", "--type", "Credential"], "Credential"),
+        ],
+    )
+    def test_a_resource_type_looks_up_its_names(self, words, resource):
+        result = complete(words, "te")
+        assert result.lookup is not None
+        assert result.lookup.lookup.resource == resource
+        assert result.lookup.current == "te"
+
+    @pytest.mark.parametrize(
+        "words",
+        [
+            ["yd", "resource", "remove"],  # files, with no --type
+            ["yd", "resource", "remove", "--type", "Keyrings"],  # no such type
+            ["yd", "resource", "create", "--type", "Keyring"],  # files to create
+        ],
+    )
+    def test_no_resource_lookup_without_a_type_to_remove_or_show(self, words):
+        assert complete(words, "x").lookup is None
+
+    def test_an_ambiguous_type_looks_nothing_up_for_within(self):
+        assert complete(["yd", "list", "t", "--within"], "").lookup is None
+
+    def test_an_action_verb_looks_up_names(self):
+        result = complete(["yd", "wr", "cancel"], "")
+        assert result.lookup is not None
+        assert result.lookup.lookup.entity == ET_WORK_REQUIREMENTS
+        assert result.lookup.lookup.ids is False
+
+    def test_with_nothing_typed_the_options_are_the_fallback(self):
+        result = complete(["yd", "wr", "cancel"], "")
+        assert "--yes" in [candidate.value for candidate in result.candidates]
+
+    def test_with_a_word_begun_only_the_lookup_answers(self):
+        result = complete(["yd", "wr", "cancel"], "my")
+        assert result.lookup is not None
+        assert result.lookup.current == "my"
+        assert result.candidates == ()
+
+    def test_an_id_only_verb_looks_up_ids(self):
+        result = complete(["yd", "wr", "show"], "ydid:")
+        assert result.lookup is not None
+        assert result.lookup.lookup.ids is True
+
+    def test_token_looks_up_configured_worker_pools(self):
+        result = complete(["yd", "wp", "token"], "")
+        assert result.lookup is not None
+        assert result.lookup.lookup.configured_only is True
+
+    def test_a_later_target_is_looked_up_too(self):
+        result = complete(["yd", "cr", "terminate", "first"], "")
+        assert result.lookup is not None
+
+    def test_the_configuration_options_typed_are_carried(self):
+        words = ["yd", "wr", "cancel", "-n", "prod", "-t", "x", "-c", "cfg.toml"]
+        result = complete(words, "a")
+        assert result.lookup is not None
+        settings = result.lookup.settings
+        assert settings["namespace"] == "prod"
+        assert settings["tag"] == "x"
+        assert settings["config_file"] == "cfg.toml"
+
+    def test_the_equals_form_is_carried(self):
+        result = complete(["yd", "wr", "cancel", "--namespace=prod", "--tag="], "")
+        assert result.lookup is not None
+        assert result.lookup.settings["namespace"] == "prod"
+        assert result.lookup.settings["tag"] == ""
+
+    def test_repeated_options_and_flags_are_carried(self):
+        words = [
+            "yd",
+            "wr",
+            "cancel",
+            "-v",
+            "a=1",
+            "-v",
+            "b=2",
+            "--property",
+            "common.tag=t",
+            "--env-override",
+            "--no-config",
+            "--pac",
+        ]
+        result = complete(words, "")
+        assert result.lookup is not None
+        settings = result.lookup.settings
+        assert settings["variables"] == ["a=1", "b=2"]
+        assert settings["property_overrides"] == ["common.tag=t"]
+        assert settings["env_override"] is True
+        assert settings["no_config"] is True
+        assert settings["use_pac"] is True
+
+    @pytest.mark.parametrize(
+        "words",
+        [
+            ["yd", "wp", "shutdown", "-n", "-t", "--yes"],
+            ["yd", "wp", "shutdown", "-n", "--yes", "-t", "--dry-run"],
+            ["yd", "wp", "shutdown", "--namespace", "--tag", "-y"],
+        ],
+    )
+    def test_an_option_given_no_value_is_its_empty_default(self, words):
+        # '-n' and '-t' without a value mean '', as they do to the command
+        result = complete(words, "")
+        assert result.lookup is not None
+        assert result.lookup.settings["namespace"] == ""
+        assert result.lookup.settings["tag"] == ""
+
+    def test_after_an_option_taking_an_optional_value_its_value_is_completed(self):
+        # The command would take the word as the tag, not as a Worker Pool
+        assert complete(["yd", "wp", "shutdown", "-n", "-t"], "").lookup is None
+
+    @pytest.mark.parametrize(
+        "words",
+        [
+            ["yd", "wr", "cancel", "-nprod", "-tdev", "-ccfg.toml"],
+            [
+                "yd",
+                "wr",
+                "cancel",
+                "--names",
+                "prod",
+                "--ta",
+                "dev",
+                "--conf",
+                "cfg.toml",
+            ],
+            ["yd", "wr", "cancel", "--names=prod", "--ta=dev", "--conf=cfg.toml"],
+        ],
+    )
+    def test_attached_and_abbreviated_options_are_read_as_argparse_reads_them(
+        self, words
+    ):
+        result = complete(words, "")
+        assert result.lookup is not None
+        settings = result.lookup.settings
+        assert (settings["namespace"], settings["tag"], settings["config_file"]) == (
+            "prod",
+            "dev",
+            "cfg.toml",
+        )
+
+    def test_an_ambiguous_abbreviation_is_not_read(self):
+        # '--n' could be '--namespace' or '--no-config' (or '--no-format')
+        result = complete(["yd", "wr", "cancel", "--n", "x"], "")
+        assert result.lookup is not None
+        assert result.lookup.settings["namespace"] is None
+
+    def test_an_abbreviated_option_is_not_offered_again(self):
+        assert "--namespace" not in _values(
+            ["yd", "wr", "cancel", "--names", "p"], "--"
+        )
+
+    def test_the_names_typed_already_are_carried(self):
+        result = complete(["yd", "wr", "cancel", "one", "-n", "ns", "two"], "")
+        assert result.lookup is not None
+        assert result.lookup.given == ("one", "two")
+
+    def test_nothing_typed_leaves_the_settings_unset(self):
+        result = complete(["yd", "wr", "cancel"], "")
+        assert result.lookup is not None
+        settings = result.lookup.settings
+        assert settings["namespace"] is None
+        assert settings["variables"] is None
+        assert settings["use_pac"] is False
+
+    def test_an_option_value_is_not_looked_up(self):
+        assert complete(["yd", "wr", "cancel", "--namespace"], "").lookup is None
+
+    def test_an_option_name_is_not_looked_up(self):
+        assert complete(["yd", "wr", "cancel"], "-").lookup is None
+
+    def test_a_specification_file_is_not_looked_up(self):
+        assert complete(["yd", "wr", "submit"], "").lookup is None
+
+    def test_a_generic_command_is_not_looked_up(self):
+        # Its type is not known until an ID is typed
+        assert complete(["yd", "show"], "").lookup is None
+
+    def test_a_deprecated_command_is_not_looked_up(self):
+        assert complete(["yd-cancel"], "").lookup is None
 
 
 class TestEveryCommand:
@@ -280,19 +535,187 @@ class TestReply:
             "files"
         ]
 
-    def test_a_failure_prints_nothing(self, monkeypatch, capsys):
+    def test_a_failure_prints_nothing(self, monkeypatch, capfd):
         monkeypatch.setattr(sys, "argv", ["yd-completion", "--complete", "zsh", "x"])
         yd_completion.main()
-        assert capsys.readouterr() == ("", "")
+        assert capfd.readouterr() == ("", "")
 
-    def test_the_request_is_answered_on_stdout(self, monkeypatch, capsys):
+    def test_the_request_is_answered_on_stdout(self, monkeypatch, capfd):
         argv = ["yd-completion", "--complete", "bash", "2", "yd", "wr", "sub"]
         monkeypatch.setattr(sys, "argv", argv)
         yd_completion.main()
-        assert capsys.readouterr().out == "values\nsubmit\n"
+        assert capfd.readouterr().out == "values\nsubmit\n"
+
+
+FOUND = (
+    Candidate("ydid:wrkreq:000000:a", "first (RUNNING)"),
+    Candidate("ydid:wrkreq:000000:b", "second (HELD)"),
+)
+
+
+class TestLookupReply:
+    """
+    The command makes the lookup complete() asks for, within its time limit,
+    and nothing it or the configuration prints reaches the answer.
+    """
+
+    @pytest.fixture
+    def found(self, monkeypatch):
+        """
+        The lookup's answer, recording the requests made.
+        """
+        requests = []
+
+        def candidates(request):
+            requests.append(request)
+            return FOUND
+
+        monkeypatch.delenv(YD_COMPLETION_LOOKUPS, raising=False)
+        monkeypatch.setattr(completion_lookups, "candidates", candidates)
+        return requests
+
+    def test_zsh_gets_the_ids_described(self, found):
+        lines = yd_completion.completion_reply(
+            "zsh", 3, ["yd", "wr", "show", "ydid:"], names=True
+        )
+        assert lines == [
+            "values",
+            "ydid:wrkreq:000000:a\tfirst (RUNNING)",
+            "ydid:wrkreq:000000:b\tsecond (HELD)",
+        ]
+        assert found[0].current == "ydid:"
+
+    def test_bash_gets_an_id_without_the_part_before_its_last_colon(self, found):
+        # bash split 'ydid:wrkreq:' at its colons, and keeps what precedes the
+        # last one, so it is taken off each candidate
+        words = ["yd", "wr", "show", "ydid", ":", "wrkreq", ":"]
+        lines = yd_completion.completion_reply("bash", 6, words, names=True)
+        assert lines == ["values", "000000:a", "000000:b"]
+        assert found[0].current == "ydid:wrkreq:"
+
+    def test_what_is_found_replaces_the_options(self, found):
+        lines = yd_completion.completion_reply(
+            "zsh", 3, ["yd", "wr", "cancel"], names=True
+        )
+        assert lines[1:] == [f"{c.value}\t{c.description}" for c in FOUND]
+
+    def test_with_nothing_found_the_options_are_offered(self, monkeypatch):
+        monkeypatch.delenv(YD_COMPLETION_LOOKUPS, raising=False)
+        monkeypatch.setattr(completion_lookups, "candidates", lambda request: ())
+        lines = yd_completion.completion_reply(
+            "bash", 3, ["yd", "wr", "cancel"], names=True
+        )
+        assert "--yes" in lines
+
+    @pytest.mark.parametrize("value", ["on", "1", ""])
+    def test_without_names_no_lookup_is_made(self, found, monkeypatch, value):
+        # The default: the variable cannot turn lookups on
+        monkeypatch.setenv(YD_COMPLETION_LOOKUPS, value)
+        lines = yd_completion.completion_reply("bash", 3, ["yd", "wr", "cancel"])
+        assert found == []
+        assert "--yes" in lines
+
+    @pytest.mark.parametrize("value", ["off", "0", "false", "NO", "Off"])
+    def test_the_variable_switches_names_off(self, found, monkeypatch, value):
+        monkeypatch.setenv(YD_COMPLETION_LOOKUPS, value)
+        lines = yd_completion.completion_reply(
+            "bash", 3, ["yd", "wr", "cancel"], names=True
+        )
+        assert found == []
+        assert "--yes" in lines
+
+    @pytest.mark.parametrize("value", ["on", "1", ""])
+    def test_any_other_value_leaves_names_on(self, found, monkeypatch, value):
+        monkeypatch.setenv(YD_COMPLETION_LOOKUPS, value)
+        yd_completion.completion_reply("bash", 3, ["yd", "wr", "cancel"], names=True)
+        assert len(found) == 1
+
+    def test_names_reach_the_answer_from_the_command_line(
+        self, found, monkeypatch, capfd
+    ):
+        argv = ["yd-completion", "--complete", "--names", "bash", "3"]
+        monkeypatch.setattr(sys, "argv", [*argv, "yd", "wr", "cancel", "x"])
+        yd_completion.main()
+        assert capfd.readouterr().out.splitlines()[1:] == [c.value for c in FOUND]
+        assert len(found) == 1
+
+    def test_a_local_answer_makes_no_lookup(self, found):
+        yd_completion.completion_reply("zsh", 2, ["yd", "wr", "sub"], names=True)
+        assert found == []
+
+    def test_what_a_lookup_prints_is_not_in_the_answer(self, monkeypatch, capfd):
+        def noisy(request):
+            print("noise on stdout")
+            sys.stderr.write("noise on stderr\n")
+            os.write(1, b"noise on fd 1\n")
+            return FOUND
+
+        monkeypatch.delenv(YD_COMPLETION_LOOKUPS, raising=False)
+        monkeypatch.setattr(completion_lookups, "candidates", noisy)
+        argv = ["yd-completion", "--complete", "--names", "bash", "3"]
+        monkeypatch.setattr(sys, "argv", [*argv, "yd", "wr", "cancel", "x"])
+
+        yd_completion.main()
+
+        out, err = capfd.readouterr()
+        assert out == "values\n" + "".join(f"{c.value}\n" for c in FOUND)
+        assert err == ""
+        print("after")  # the descriptors are back
+        assert capfd.readouterr().out == "after\n"
+
+    def test_a_lookup_that_hangs_is_abandoned_in_time(self, tmp_path):
+        # In a process of its own, since an abandoned lookup ends the process
+        script = tmp_path / "hang.py"
+        script.write_text(
+            "import sys, time\n"
+            "from yellowdog_cli import completion\n"
+            "from yellowdog_cli.utils import completion_lookups\n"
+            "def hang(request):\n"
+            "    print('noise')\n"
+            "    time.sleep(60)\n"
+            "completion_lookups.candidates = hang\n"
+            "sys.argv = ['yd-completion', '--complete', '--names', 'zsh', '3',"
+            " 'yd', 'wr', 'cancel', 'x']\n"
+            "completion.main()\n"
+            "print('not reached')\n",
+            encoding="utf-8",
+        )
+        env = {k: v for k, v in os.environ.items() if k != YD_COMPLETION_LOOKUPS}
+        started = time.monotonic()
+
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+
+        assert time.monotonic() - started < LOOKUP_TIMEOUT_SECONDS + 8
+        assert result.returncode == 0
+        assert result.stdout == "values\n"
+        assert result.stderr == ""
 
 
 class TestScripts:
+    @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
+    def test_names_are_asked_for_by_the_script_given_names(self, shell):
+        plain = yd_completion.completion_script(shell)
+        named = yd_completion.completion_script(shell, names=True)
+        assert f"yd completion --complete {shell}" in plain
+        assert f"yd completion --complete --names {shell}" not in plain
+        assert f"yd completion --complete --names {shell}" in named
+        assert f"yd completion --complete {shell}" not in named
+        # Each says how to load it with names
+        assert "--names" in plain.split("\n\n")[0]
+
+    def test_the_command_prints_the_script_with_names(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["yd-completion", "zsh", "--names"])
+        yd_completion.main()
+        assert capsys.readouterr().out == yd_completion.completion_script(
+            "zsh", names=True
+        )
+
     @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
     def test_a_script_is_registered_for_yd_alone(self, shell):
         script = yd_completion.completion_script(shell)
@@ -333,18 +756,22 @@ def _run_shell(shell: str, script: str, tmp_path) -> str:
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 class TestBashScript:
-    def test_the_script_parses(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_parses(self, tmp_path, names):
         stub = tmp_path / "yd.bash"
-        stub.write_text(yd_completion.completion_script("bash"), encoding="utf-8")
+        stub.write_text(
+            yd_completion.completion_script("bash", names=names), encoding="utf-8"
+        )
         assert subprocess.run(["bash", "-n", str(stub)]).returncode == 0
 
-    def test_the_script_completes(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_completes(self, tmp_path, names):
         (tmp_path / "specs").mkdir()
         (tmp_path / "specs" / "wr.json").write_text("{}", encoding="utf-8")
         script = "\n".join(
             [
                 _COMPLETER,
-                yd_completion.completion_script("bash"),
+                yd_completion.completion_script("bash", names=names),
                 't() { COMP_WORDS=("$@"); COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ));'
                 ' _yd_completion; echo "${COMPREPLY[*]}"; }',
                 "t yd wr s",
@@ -365,12 +792,16 @@ class TestBashScript:
 
 @pytest.mark.skipif(shutil.which("zsh") is None, reason="needs zsh")
 class TestZshScript:
-    def test_the_script_parses(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_parses(self, tmp_path, names):
         stub = tmp_path / "yd.zsh"
-        stub.write_text(yd_completion.completion_script("zsh"), encoding="utf-8")
+        stub.write_text(
+            yd_completion.completion_script("zsh", names=names), encoding="utf-8"
+        )
         assert subprocess.run(["zsh", "-n", str(stub)]).returncode == 0
 
-    def test_the_script_completes(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_completes(self, tmp_path, names):
         # zsh's completion functions stood in for, printing what they are given
         script = "\n".join(
             [
@@ -378,7 +809,7 @@ class TestZshScript:
                 "compdef() { print -r -- compdef $1 $2 }",
                 '_describe() { print -rl -- "${(@P)4}" }',
                 "_files() { print -r -- files $* }",
-                yd_completion.completion_script("zsh"),
+                yd_completion.completion_script("zsh", names=names),
                 't() { words=("$@"); CURRENT=${#words}; _yd_completion }',
                 "t yd wr su",
                 "t yd wr cancel --sort=cr",
@@ -397,12 +828,16 @@ class TestZshScript:
 
 @pytest.mark.skipif(shutil.which("fish") is None, reason="needs fish")
 class TestFishScript:
-    def test_the_script_parses(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_parses(self, tmp_path, names):
         stub = tmp_path / "yd.fish"
-        stub.write_text(yd_completion.completion_script("fish"), encoding="utf-8")
+        stub.write_text(
+            yd_completion.completion_script("fish", names=names), encoding="utf-8"
+        )
         assert subprocess.run(["fish", "-n", str(stub)]).returncode == 0
 
-    def test_the_script_completes(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_completes(self, tmp_path, names):
         # fish's own completion of a command line ('complete -C'), so its
         # tokenising and path completion are the real ones
         (tmp_path / "specs").mkdir()
@@ -417,7 +852,7 @@ class TestFishScript:
         script = "\n".join(
             [
                 f'function yd; "{sys.executable}" -m yellowdog_cli.yd $argv; end',
-                yd_completion.completion_script("fish"),
+                yd_completion.completion_script("fish", names=names),
                 *(f"echo '[{line}]'; complete -C '{line}'" for line in lines),
                 "echo '[yd wr ]'; complete -C 'yd wr ' | count",
             ]
@@ -442,9 +877,12 @@ class TestFishScript:
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="needs PowerShell (pwsh)")
 class TestPowerShellScript:
-    def test_the_script_parses(self, tmp_path):
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_parses(self, tmp_path, names):
         stub = tmp_path / "yd.ps1"
-        stub.write_text(yd_completion.completion_script("powershell"), encoding="utf-8")
+        stub.write_text(
+            yd_completion.completion_script("powershell", names=names), encoding="utf-8"
+        )
         check = (
             "$errors = $null; [System.Management.Automation.Language.Parser]::"
             f"ParseFile('{stub}', [ref]$null, [ref]$errors) | Out-Null;"

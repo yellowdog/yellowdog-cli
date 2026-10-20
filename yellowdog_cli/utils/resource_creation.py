@@ -90,7 +90,6 @@ from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
 )
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.limits import RAW_REQUEST_TIMEOUT
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
 )
@@ -975,7 +974,9 @@ def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
 
     # Attempt attribute creation
     print_info(f"Attempting to create or update Attribute Definition '{name}'")
-    response = post(url=url, headers=headers, json=payload, timeout=RAW_REQUEST_TIMEOUT)
+    response = post(
+        url=url, headers=headers, json=payload, timeout=ctx.config.request_timeout
+    )
 
     if response.ok:
         print_info(f"Created new Attribute Definition '{name}'")
@@ -989,7 +990,9 @@ def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
         record_resource(resource_type, name, None, "skipped")
         return
 
-    response = put(url=url, headers=headers, json=payload, timeout=RAW_REQUEST_TIMEOUT)
+    response = put(
+        url=url, headers=headers, json=payload, timeout=ctx.config.request_timeout
+    )
     if not response.ok:
         _raise_for_response(response)
     print_info(f"Updated existing Attribute Definition '{name}'")

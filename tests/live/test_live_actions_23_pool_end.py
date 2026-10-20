@@ -20,7 +20,7 @@ def test_the_pool_is_followed_to_its_end_and_waited_for(live_run, actions_pool):
         lambda: yd("wp", "shutdown", "--terminate", actions_pool.pool_id, *_ACT),
         seconds,
     )
-    work.follow_events(followed.stdout)
+    work.ended_with(work.follow_events(followed.stdout), {"SHUTDOWN", "TERMINATED"})
     (record,) = yd(
         "wp",
         "wait",

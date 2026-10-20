@@ -2,16 +2,20 @@
 Running work for the live suite: submitting a specification from
 tests/live/specs with variables, reading a Work Requirement and its Tasks,
 waiting for their states, reading 'wr follow --json' (an indented JSON
-document per event), following an entity while another call ends it, a
-Node verb with its outcome checked, and cancelling what a scenario made.
+document per event) and holding them to the entity's end, following an
+entity while another call ends it, a Node verb with its outcome checked,
+and cleaning up after a scenario (cancelling what it made) without hiding
+the scenario's own failure.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable
+import warnings
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
 
 from harness.compute import NOT_FOUND, ComputeTimeout, wait_for
 from harness.run import SPECS
@@ -114,6 +118,56 @@ def follow_events(stdout: str) -> list[dict]:
         events.append(event)
 
 
+def ended_with(events: list[dict], statuses: Iterable[str]) -> None:
+    """
+    Hold a follow's events to the entity's end: at least one, each naming a
+    status, the last in 'statuses'.
+    """
+    assert events, "no events"
+    shown = [event.get("status") for event in events]
+    assert all(shown), f"an event with no status: {shown}"
+    assert shown[-1] in set(statuses), f"the follow ended at {shown[-1]}: {shown}"
+
+
+class CleanupFailedWarning(UserWarning):
+    """
+    A clean-up failed after the scenario it followed had failed.
+    """
+
+
+@contextmanager
+def cleaned_up(cleanup: Callable[[], object]) -> Iterator[None]:
+    """
+    Run 'cleanup' after the block, however it ends. When the block failed,
+    a failing clean-up is a warning, so the scenario's own failure is the
+    one reported; after a block that passed, it fails the test.
+    """
+    try:
+        yield
+    except BaseException:
+        try:
+            cleanup()
+        except Exception as error:
+            warnings.warn(
+                CleanupFailedWarning(f"clean-up after a failed scenario: {error}"),
+                stacklevel=3,
+            )
+        raise
+    cleanup()
+
+
+@contextmanager
+def cancelled_after(yd: Yd) -> Iterator[list[str]]:
+    """
+    The IDs of the Work Requirements a scenario makes, each added as it is
+    submitted, all cancelled (cancel_all()) after the block, as cleaned_up()
+    does.
+    """
+    made: list[str] = []
+    with cleaned_up(lambda: cancel_all(yd, made)):
+        yield made
+
+
 def cancel_all(yd: Yd, wr_ids: Iterable[str]) -> None:
     """
     Cancel each Work Requirement, aborting its Tasks; one already finished
@@ -152,8 +206,11 @@ def follow_alongside(
     """
     Follow an entity in a thread while 'action' ends it; the follow's result,
     or ComputeTimeout if it has not ended 'timeout_seconds' after the action.
+    A failing action, or a follow that overruns, is raised at once, without
+    waiting for the follow, which its own timeout ends.
     """
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
         future = pool.submit(
             yd, *follow_args, "--json", "--quiet", timeout=timeout_seconds + 60
         )
@@ -165,3 +222,5 @@ def follow_alongside(
                 f"{' '.join(follow_args)}: still following {timeout_seconds:g}s after"
                 " the entity was ended"
             ) from None
+    finally:
+        pool.shutdown(wait=False)

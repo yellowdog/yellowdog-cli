@@ -6,7 +6,7 @@ action to success and an unsupported one to a clean refusal.
 from pathlib import Path
 
 import pytest
-from harness import capabilities
+from harness import capabilities, coverage
 from harness.capabilities import (
     ACTIONS,
     CAPABILITIES,
@@ -85,6 +85,28 @@ def test_an_unsupported_action_must_be_refused_cleanly(stop_unsupported):
     assert capabilities.unsupported("aws", "stop").reason == "cannot stop this instance"
 
 
+@pytest.fixture
+def covered(tmp_path):
+    coverage.configure(tmp_path)
+    yield lambda: coverage.recorded(tmp_path)
+    coverage.configure(None)
+
+
+def test_a_clean_refusal_counts_for_the_coverage_gate(stop_unsupported, covered):
+    refused = [{"outcome": "failed", "error": "cannot stop this instance type"}]
+    yd = FakeYd(lambda args: result(args, exit_code=1, document=refused))
+    perform(yd, "aws", "stop", "instance", "stop", "x", "--json")
+    assert covered() == {"yd instance stop"}
+
+
+def test_a_refusal_for_another_reason_does_not_count(stop_unsupported, covered):
+    refused = [{"outcome": "failed", "error": "quota exceeded"}]
+    yd = FakeYd(lambda args: result(args, exit_code=1, document=refused))
+    with pytest.raises(AssertionError):
+        perform(yd, "aws", "stop", "instance", "stop", "x", "--json")
+    assert covered() == set()
+
+
 def test_an_unsupported_action_that_succeeds_fails(stop_unsupported):
     yd = FakeYd(lambda args: result(args, document=[{"outcome": "stopped"}]))
     with pytest.raises(AssertionError, match="update the capability table"):
@@ -129,6 +151,13 @@ def test_a_known_fault_showing_its_symptom_warns_naming_the_issue(stop_faulty):
     yd = FakeYd(_failing("ERROR : Timed out: 'x' 1 of 0 running"))
     with pytest.warns(KnownFaultWarning, match="BUG-1"):
         assert perform(yd, "aws", "stop", "instance", "stop", "x", "--json") is False
+
+
+def test_a_known_fault_counts_for_the_coverage_gate(stop_faulty, covered):
+    yd = FakeYd(_failing("ERROR : Timed out: 'x' 1 of 0 running"))
+    with pytest.warns(KnownFaultWarning):
+        perform(yd, "aws", "stop", "instance", "stop", "x", "--json")
+    assert covered() == {"yd instance stop"}
 
 
 def test_a_known_fault_that_no_longer_occurs_fails(stop_faulty):

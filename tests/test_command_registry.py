@@ -58,6 +58,16 @@ class TestOption:
         assert v.kwargs == {"action": "store_true", "help": "other help"}
         assert base.kwargs["help"] == "base help"  # the original is untouched
 
+    def test_kwargs_are_a_read_only_copy(self):
+        # Options are shared constants: a change to one would reach every
+        # command taking it
+        given = {"action": "store_true", "help": "base help"}
+        o = option("--follow", **given)
+        given["help"] = "changed"
+        assert o.kwargs["help"] == "base help"
+        with pytest.raises(TypeError):
+            o.kwargs["help"] = "changed"  # type: ignore[index]
+
     def test_name_of_short_flag_only_option_raises_value_error(self):
         with pytest.raises(ValueError):
             option("-y", action="store_true").name

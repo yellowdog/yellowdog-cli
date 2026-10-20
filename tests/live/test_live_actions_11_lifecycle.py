@@ -15,8 +15,7 @@ _ACT = ("--yes", "--json", "--quiet")
 def test_the_lifecycle(live_run, actions_pool):
     run, yd = live_run.run, live_run.yd
     minutes = run.config.run["provision_timeout_minutes"]
-    made: list[str] = []
-    try:
+    with work.cancelled_after(yd) as made:
         wr = work.submit(
             yd,
             "work-wr.jsonnet",
@@ -77,5 +76,3 @@ def test_the_lifecycle(live_run, actions_pool):
         assert set(groups) == {"first", "second", "third"}
         assert groups["third"]["status"] == "COMPLETED", groups["third"]
         assert status == "COMPLETED", shown
-    finally:
-        work.cancel_all(yd, made)

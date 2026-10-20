@@ -40,11 +40,13 @@ COMMON = '[common]\nnamespace = "ns"\ntag = "tag"\n'
 SDK_BACKED_SECTIONS = "[workRequirement]\ntaskCount = 1\n[workerPool]\nmaxNodes = 2\n"
 
 
-def _loaded(tmp_path, module: str, argv: list[str], config: str) -> dict:
+def _loaded(
+    tmp_path, module: str, argv: list[str], config: str, env_extra: dict | None = None
+) -> dict:
     (tmp_path / "config.toml").write_text(config)
     record = tmp_path / "loaded.json"
     env = {k: v for k, v in os.environ.items() if not k.startswith("YD_")}
-    env.update({"YD_KEY": "a-key", "YD_SECRET": "a-secret"})
+    env.update({"YD_KEY": "a-key", "YD_SECRET": "a-secret", **(env_extra or {})})
     result = subprocess.run(
         [sys.executable, "-c", PROBE, str(record), module, *argv],
         capture_output=True,
@@ -153,6 +155,20 @@ class TestCompletion:
     )
     def test_completion_loads_no_sdk(self, tmp_path, argv):
         loaded = _loaded(tmp_path, "yellowdog_cli.yd", argv, COMMON)
+        assert loaded["returncode"] == 0
+        assert loaded["sdk"] is False
+        assert loaded["requests"] is False
+
+    def test_a_target_with_lookups_off_loads_no_sdk(self, tmp_path):
+        # With lookups on, completing a target is the one Tab that loads it
+        argv = ["yd-completion", "--complete", "zsh", "3", "yd", "wr", "cancel", ""]
+        loaded = _loaded(
+            tmp_path,
+            "yellowdog_cli.completion",
+            argv,
+            COMMON,
+            {"YD_COMPLETION_LOOKUPS": "off"},
+        )
         assert loaded["returncode"] == 0
         assert loaded["sdk"] is False
         assert loaded["requests"] is False

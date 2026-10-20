@@ -26688,6 +26688,19 @@
       "option_strings": [],
       "required": null,
       "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "names",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--names"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd-compute-deprovision": [

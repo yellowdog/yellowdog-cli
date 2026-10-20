@@ -29,7 +29,7 @@ def _outcome(yd, verb: str, wr_id: str) -> str:
 def test_a_pending_work_requirement_is_held_started_and_cancelled(live_run):
     yd = live_run.yd
     wr_id = _submitted(live_run, "control-hold")
-    try:
+    with work.cleaned_up(lambda: work.cancel_all(yd, [wr_id])):
         assert _outcome(yd, "hold", wr_id) == "held"
         assert work.wait_for_status(yd, wr_id, frozenset({"HELD"}), _MINUTES) == "HELD"
 
@@ -40,18 +40,14 @@ def test_a_pending_work_requirement_is_held_started_and_cancelled(live_run):
         work.wait_for_status(
             yd, wr_id, frozenset({"CANCELLING", "CANCELLED"}), _MINUTES
         )
-    finally:
-        work.cancel_all(yd, [wr_id])
 
 
 def test_a_pending_work_requirement_is_finished(live_run):
     yd = live_run.yd
     wr_id = _submitted(live_run, "control-finish")
-    try:
+    with work.cleaned_up(lambda: work.cancel_all(yd, [wr_id])):
         assert _outcome(yd, "finish", wr_id) == "finished"
         # With no Task ever run, it leaves the active states at once
         work.wait_for_status(
             yd, wr_id, frozenset({"FINISHING", "COMPLETING", "COMPLETED"}), _MINUTES
         )
-    finally:
-        work.cancel_all(yd, [wr_id])
