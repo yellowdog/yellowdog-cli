@@ -594,6 +594,30 @@ class TestSubmitWRNamePriority:
 # ---------------------------------------------------------------------------
 
 
+class TestTaskGroupCountFromTheCommandLine:
+    """
+    '--task-group-count' overrides the specification's 'taskGroupCount';
+    without it, the specification's applies over the TOML file's.
+    """
+
+    def test_the_command_line_beats_the_specification(self):
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+        from yellowdog_cli.utils.task_groups import task_group_count_for
+
+        config_wr = ConfigWorkRequirement(
+            task_group_count=4, task_group_count_from_command_line=True
+        )
+        assert task_group_count_for(config_wr, {TASK_GROUP_COUNT: 2}) == 4
+
+    def test_without_it_the_specification_beats_the_toml_file(self):
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+        from yellowdog_cli.utils.task_groups import task_group_count_for
+
+        config_wr = ConfigWorkRequirement(task_group_count=3)
+        assert task_group_count_for(config_wr, {TASK_GROUP_COUNT: 2}) == 2
+        assert task_group_count_for(config_wr, {}) == 3
+
+
 class TestSubmitWRTaskGroupCountExpansion:
     def test_single_tg_expanded_to_task_group_count(self):
         wr_data = {

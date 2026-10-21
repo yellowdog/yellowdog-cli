@@ -756,6 +756,21 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
     )
 
 
+def task_count_for(
+    config_wr: ConfigWorkRequirement, wr_data: dict, task_group_data: dict
+) -> int | None:
+    """
+    A Task Group's 'taskCount': '--task-count' where it was given, which
+    overrides the specification; else the lowest level of the specification
+    setting it, else the TOML file's.
+    """
+    if config_wr.task_count_from_command_line:
+        return config_wr.task_count
+    return Cascade(wr_data, task_group_data).checked(
+        TASK_COUNT, check_int, config_wr.task_count
+    )
+
+
 def add_tasks_to_task_group(
     run: _Submission,
     position: TaskGroupPosition,
@@ -776,9 +791,7 @@ def add_tasks_to_task_group(
 
     # If the 'taskCount' property is set, and there is only one Task
     # in the Task Group, create 'taskCount' duplicates of the Task.
-    task_group_task_count = Cascade(wr_data, task_group_data).checked(
-        TASK_COUNT, check_int, run.config_wr.task_count
-    )
+    task_group_task_count = task_count_for(run.config_wr, wr_data, task_group_data)
     if task_group_task_count is not None:
         if num_tasks == 1 and task_group_task_count > 1:
             # Expand the number of Tasks to match the specified Task count

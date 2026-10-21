@@ -68,12 +68,16 @@ class ConfigWorkRequirement:
     set_task_names: bool = True
     task_batch_size: int = TASK_BATCH_SIZE_DEFAULT
     task_count: int = 1
+    # '--task-count' given: it overrides a 'taskCount' set in the specification
+    task_count_from_command_line: bool = False
     task_data: str | None = None
     task_data_file: str | None = None
     task_data_files: list[str] | None = None
     task_data_inputs: list[dict] | None = None
     task_data_outputs: list[dict] | None = None
     task_group_count: int = 1
+    # '--task-group-count' given: it overrides the specification's
+    task_group_count_from_command_line: bool = False
     task_group_name: str | None = None
     task_level_timeout: float | None = None
     task_name: str | None = None

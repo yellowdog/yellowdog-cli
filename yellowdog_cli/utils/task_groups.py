@@ -130,6 +130,21 @@ def promote_task_type(data: dict) -> None:
         data[TASK_TYPES] = [data[TASK_TYPE]]
 
 
+def task_group_count_for(
+    config_wr: ConfigWorkRequirement, wr_data: dict
+) -> int | float | None:
+    """
+    The Work Requirement's 'taskGroupCount': '--task-group-count' where it
+    was given, which overrides the specification; else the specification's,
+    else the TOML file's.
+    """
+    if config_wr.task_group_count_from_command_line:
+        return config_wr.task_group_count
+    return Cascade(wr_data).checked(
+        TASK_GROUP_COUNT, check_float_or_int, config_wr.task_group_count
+    )
+
+
 def expand_task_groups(config_wr: ConfigWorkRequirement, wr_data: dict) -> None:
     """
     Expand a single Task Group into 'taskGroupCount' copies of itself, in
@@ -137,9 +152,7 @@ def expand_task_groups(config_wr: ConfigWorkRequirement, wr_data: dict) -> None:
     accepts as an integer) is taken as that integer; any other non-integer
     is an error.
     """
-    task_group_count = Cascade(wr_data).checked(
-        TASK_GROUP_COUNT, check_float_or_int, config_wr.task_group_count
-    )
+    task_group_count = task_group_count_for(config_wr, wr_data)
     if task_group_count is None:
         return
     if isinstance(task_group_count, float):

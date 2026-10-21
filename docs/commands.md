@@ -203,7 +203,7 @@ Key options:
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
-- `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group
+- `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group, overriding `taskCount` or `taskGroupCount` in the specification
 - `--csv-file`/`-V <data.csv>` — read Task data from one or more CSV files; `--process-csv-only`/`-p` outputs the intermediate JSON specification without submitting
 - `--task-batch-size`/`-b <n>` — the batch size for Task submission, between 1 and 10,000
 - `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential); once a batch fails, those not yet started are not submitted

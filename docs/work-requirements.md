@@ -458,9 +458,9 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. This property can also be set on the command line using the `--task-count`/`-C` option of `yd workrequirement submit` followed by the required number of Tasks.
+The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
 
-Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
+Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
 ## Examples
 
