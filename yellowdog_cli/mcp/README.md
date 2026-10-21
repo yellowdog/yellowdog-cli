@@ -77,7 +77,7 @@ A desktop client launches the server with a minimal `PATH`, so give the full pat
 
 A client configured with `yd-mcp`, the command's deprecated name, also works; the server then warns on stderr that the name is deprecated.
 
-Every command the server runs is launched under the same Python interpreter as the server itself (`python -m yellowdog_cli.yd <command>`, or `python -m yellowdog_cli.yd <noun> <verb>`), not through the `yd` console script, because a client's `PATH` cannot be relied on to hold them.
+Every command the server runs is launched under the same Python interpreter as the server itself (`python -m yellowdog_cli.yd <command>`, or `python -m yellowdog_cli.yd <noun> <verb>`), not through the `yd` command on the `PATH`, because a client's `PATH` cannot be relied on to hold it.
 
 A one-shot script that pipes requests to `yd mcp` and then closes stdin gets no reply for a call still running when stdin closes: the SDK's stdio loop ends at end of input, so a call that outlives the script is abandoned rather than answered. A real client — Claude Code, Claude Desktop — holds stdin open for as long as the connection is alive, so this only bites a hand-rolled test harness, not normal use.
 

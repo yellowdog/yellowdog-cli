@@ -1095,7 +1095,7 @@ G,     H,     I,     E-3
 
 Note that the (optional) leading spaces after each comma are ignored, but trailing spaces are not and will form part of the imported data.
 
-If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` script:
+If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` command:
 
 ```json
 {
