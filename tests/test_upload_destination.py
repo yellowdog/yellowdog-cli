@@ -33,7 +33,7 @@ def _args(local_paths: list[str], destination: str | None) -> MagicMock:
 def _run_upload(tmp_path, filenames: list[str], destination: str | None) -> list[str]:
     """
     Run yd-upload main() with mocked transfer; return the remote paths
-    passed to upload_file, in order.
+    passed to upload_files, in order.
     """
     local_paths = []
     for name in filenames:
@@ -46,13 +46,13 @@ def _run_upload(tmp_path, filenames: list[str], destination: str | None) -> list
             dataclient_wrapper_module, "ARGS_PARSER", _args(local_paths, destination)
         ),
         patch.object(upload_module, "CONFIG_DATA_CLIENT", CONFIG),
-        patch.object(upload_module, "upload_file") as mock_upload,
+        patch.object(upload_module, "upload_files", return_value=0) as mock_upload,
     ):
         with pytest.raises(SystemExit) as exc_info:
             upload_module.main()
         assert exc_info.value.code == 0
 
-    return [call.args[2] for call in mock_upload.call_args_list]
+    return [remote for _, remote in mock_upload.call_args.args[1]]
 
 
 class TestUploadDestination:
@@ -125,7 +125,7 @@ def test_a_dry_run_does_not_say_it_uploaded(tmp_path, dry_run, said):
     with (
         patch.object(dataclient_wrapper_module, "ARGS_PARSER", args),
         patch.object(upload_module, "CONFIG_DATA_CLIENT", CONFIG),
-        patch.object(upload_module, "upload_file", return_value=True),
+        patch.object(upload_module, "upload_files", return_value=0),
         patch.object(upload_module, "print_info", side_effect=infos.append),
         pytest.raises(SystemExit),
     ):

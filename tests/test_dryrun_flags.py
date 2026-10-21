@@ -195,7 +195,10 @@ class TestRealPathRecordsThroughARealParse:
             results_module.record({"path": path, "action": "deleted"})
             return True
 
-        monkeypatch.setattr(yd_delete, "delete_item", fake_delete_item)
+        import yellowdog_cli.utils.dataclient.operations as operations
+
+        # A single path is deleted as delete_items() deletes one alone
+        monkeypatch.setattr(operations, "delete_item", fake_delete_item)
         monkeypatch.setattr(yd_delete, "confirmed", lambda msg: True)
 
         with pytest.raises(SystemExit) as exit_info:

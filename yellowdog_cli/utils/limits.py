@@ -7,6 +7,11 @@ concurrency. Imports nothing.
 # download lists each matched directory's files to record them under '--json'
 # or to flatten them, and these run concurrently
 DATA_CLIENT_LISTING_WORKERS = 8
+# Files a data client command copies one by one, because each is renamed on
+# the way (a flattened download or upload), are copied this many at a time
+DATA_CLIENT_TRANSFER_WORKERS = 16
+# How many names a wildcard's summary line shows before 'and N more'
+DATA_CLIENT_NAMES_SHOWN = 10
 
 # The MCP server's default bound on a tool call, since a client gives up on one
 # after a fixed time; yd_follow's is shorter, its result being the events

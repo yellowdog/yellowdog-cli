@@ -12,13 +12,14 @@ the rest still attempted, and a path already gone is skipped.
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.context import DataClientContext
 from yellowdog_cli.utils.dataclient.operations import (
-    delete_item,
+    delete_items,
     deletion_targets,
     describe_deletion,
     is_glob,
     record_deletion,
     resolve_remote_path,
     split_glob_remote_path,
+    summarise_names,
 )
 from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.dataclient.wrapper import dataclient_wrapper
@@ -118,11 +119,15 @@ def _delete(remote_path: str, recursive: bool, dry_run: bool) -> int:
         return failed
 
     if is_glob(remote_path):
-        names = ", ".join(
-            f"'{path.rsplit('/', 1)[-1]}{'/' if is_dir else ''}'"
-            for path, is_dir in targets
+        names = summarise_names(
+            [
+                f"{path.rsplit('/', 1)[-1]}{'/' if is_dir else ''}"
+                for path, is_dir in targets
+            ]
         )
-        print_info(f"Wildcard '{remote_path}' matches: {names}")
+        print_info(
+            f"Wildcard '{remote_path}' matches {len(targets):,d} item(s): {names}"
+        )
         question = f"{action} {len(targets)} matched item(s)?"
     else:
         question = f"{action} '{remote_path}'?"
@@ -131,9 +136,8 @@ def _delete(remote_path: str, recursive: bool, dry_run: bool) -> int:
             record_deletion(path, is_dir, "skipped")
         return failed
 
-    for path, is_dir in targets:
-        failed += 0 if delete_item(CONFIG_DATA_CLIENT, path, is_dir) else 1
-    return failed
+    # A wildcard's files are deleted a directory at a time, in one rclone run
+    return failed + delete_items(CONFIG_DATA_CLIENT, targets)
 
 
 if __name__ == "__main__":
