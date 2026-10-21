@@ -2,8 +2,9 @@
 utils/entity_utils.py's get_image_name_or_id(): an Images ID given as a name,
 in any of its forms, resolved to its YDID (always, for a PUBLIC family) or to
 its 'yd/' name; an ambiguous name refused; a name matching nothing passed on
-unchanged, being a provider's own image ID; and the replacement reported only
-when it changes what was given.
+unchanged, being a provider's own image ID, silently when it has the shape
+of one (an AMI ID, say) and otherwise said, in case it is a misspelt name;
+and the replacement reported only when it changes what was given.
 """
 
 from types import SimpleNamespace
@@ -187,8 +188,36 @@ class TestNamespaceFamilyAndGroup:
         assert resolve(images, "ns/fam/grp")[0] == GROUP_ID
 
 
-@pytest.mark.parametrize("value", ["ami-0123456789", "a/b", "ns/fam/grp/extra"])
-def test_a_name_matching_nothing_is_passed_on_unchanged(resolve, value):
+@pytest.mark.parametrize("value", ["ubuntu-2404-lst", "a/b", "ns/fam/grp/extra"])
+def test_a_name_matching_nothing_is_passed_on_unchanged_and_said(resolve, value):
+    # Perhaps a misspelt Image Family: the provider would fail with it later
     result, messages = resolve(WITH_GROUP, value)
     assert result == value
-    assert messages == [f"No Images ID substitution possible for '{value}'"]
+    assert messages == [
+        f"'{value}' is not the name of an Image Family or Group; it is passed"
+        " on as the provider's image ID"
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "ami-0123456789abcdef0",  # AWS
+        "ami-01234567",
+        "market:canonical:ubuntu-24_04-lts:server:latest",  # Azure
+        "gallery:my-gallery:my-image:1.0.0",
+        "/subscriptions/0000/resourceGroups/rg/providers/Microsoft.Compute/images/i",
+        "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",  # GCP
+        "projects/my-project/global/images/my-image",
+        "ocid1.image.oc1.uk-london-1.aaaaaaaa",  # OCI
+    ],
+)
+def test_a_providers_own_image_id_is_passed_on_silently(resolve, value):
+    result, messages = resolve(WITH_GROUP, value)
+    assert result == value
+    assert messages == []
+
+
+def test_an_image_family_named_like_a_provider_id_is_still_found(resolve):
+    images = _Images([_family(FAMILY_ID, "ns", "ami-01234567")])
+    assert resolve(images, "ami-01234567")[0] == FAMILY_ID
