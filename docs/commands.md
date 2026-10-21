@@ -107,7 +107,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 
 `yd <noun> --help` lists a noun's verbs, and `yd <noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd instance terminate`.
 
-The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs alone. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
+The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs. Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished. Every name is looked up before anything else is done, and a name that finds nothing is reported and exits 6. `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
 The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
@@ -181,9 +181,9 @@ Work Requirements: `yd workrequirement`, or `yd wr` for short.
 | [`priority`](#yd-workrequirement-priority) | Change the priority of Work Requirements and Task Groups | `yd-priority` |
 | [`compare`](#yd-workrequirement-compare) | Compare a Work Requirement against Worker Pools | `yd-compare` |
 | `list` | `yd list work-requirements` |  |
-| `show` | `yd show`, for Work Requirement IDs |  |
-| `follow` | `yd follow`, for Work Requirement IDs |  |
-| `wait` | `yd wait`, for Work Requirement IDs |  |
+| `show` | `yd show`, for Work Requirement names or IDs |  |
+| `follow` | `yd follow`, for Work Requirement names or IDs |  |
+| `wait` | `yd wait`, for Work Requirement names or IDs |  |
 
 ### yd workrequirement submit
 
@@ -346,10 +346,10 @@ yd workrequirement priority -1 ydid:workreq:000000:...
 
 ### yd workrequirement compare
 
-The `yd workrequirement compare` command takes a Work Requirement ID and one or more Worker Pool IDs, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd taskgroup compare`](#yd-taskgroup-compare).
+The `yd workrequirement compare` command takes a Work Requirement and one or more Worker Pools, each by name or ID, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd taskgroup compare`](#yd-taskgroup-compare).
 
 ```shell
-yd workrequirement compare [options] <work-requirement-ID> <provisioned-worker-pool-ID> ...
+yd workrequirement compare [options] <work-requirement-name-or-ID> <provisioned-worker-pool-name-or-ID> ...
 ```
 
 The command checks if the **Run Specification** of a Task Group matches the properties of the Worker Pools and their registered Nodes and Workers, meaning there are Workers in the Worker Pool that could be claimed by the Task Group and that the Worker Pool would be a candidate for scaling up to meet the demands of the Task Group.
@@ -361,11 +361,13 @@ A Worker Pool that cannot be compared — its Compute Requirement or its Nodes c
 By default every Node registered to a Worker Pool is included in the comparison, whatever its state. The `--running-nodes-only` option restricts the comparison to Nodes in the `RUNNING` state, which gives a more accurate picture of current capacity when a pool contains Nodes that are still provisioning or have been terminated.
 
 Key options:
+- `--namespace` — the namespace the names are looked up in; the configured one if not given
 - `--running-nodes-only` — compare against Nodes in the `RUNNING` state only
 - `--json` — emit the comparison as a JSON array, one object per Worker Pool compared with each Task Group (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd workrequirement compare ydid:workreq:000000:83587010-5e26-4174-92a7-c7cc2612638d ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+yd workrequirement compare nightly-run gpu-pool
 ```
 
 The properties are compared as follows. A property the Task Group leaves unset, or sets to an empty list, places no constraint on the Worker Pool.
@@ -401,7 +403,7 @@ Task Groups: `yd taskgroup`, or `yd tg` for short.
 | [`priority`](#yd-taskgroup-priority) | Change the priority of Task Groups and Work Requirements | `yd-priority` |
 | [`compare`](#yd-taskgroup-compare) | Compare a Task Group against Worker Pools | `yd-compare` |
 | `list` | `yd list task-groups` |  |
-| `show` | `yd show`, for Task Group IDs |  |
+| `show` | `yd show`, for Task Group IDs, or names as `wr/tg` |  |
 
 ### yd taskgroup priority
 
@@ -420,7 +422,7 @@ yd taskgroup priority 5 my-analysis-run/render
 The `yd taskgroup compare` command compares one Task Group against one or more Worker Pools, as [`yd workrequirement compare`](#yd-workrequirement-compare) compares each of a Work Requirement's Task Groups, and reports in the same way.
 
 ```shell
-yd taskgroup compare [options] <task-group-ID> <provisioned-worker-pool-ID> ...
+yd taskgroup compare [options] <wr/task-group-name-or-ID> <provisioned-worker-pool-name-or-ID> ...
 ```
 
 Key options:
@@ -439,7 +441,7 @@ Tasks.
 |---|---|---|
 | [`abort`](#yd-task-abort) | Abort running Tasks | `yd-abort` |
 | `list` | `yd list tasks` |  |
-| `show` | `yd show`, for Task IDs |  |
+| `show` | `yd show`, for Task IDs, or names as `wr/tg/task` |  |
 
 ### yd task abort
 
@@ -485,9 +487,9 @@ Worker Pools: `yd workerpool`, or `yd wp` for short.
 | [`shutdown`](#yd-workerpool-shutdown) | Shut down Worker Pools | `yd-shutdown` |
 | [`token`](#yd-workerpool-token) | Refresh or regenerate the tokens of Configured Worker Pools | `yd-token` |
 | `list` | `yd list worker-pools` |  |
-| `show` | `yd show`, for Worker Pool IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd follow`, for Worker Pool IDs |  |
-| `wait` | `yd wait`, for Worker Pool IDs |  |
+| `show` | `yd show`, for Worker Pool names or IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Worker Pool names or IDs |  |
+| `wait` | `yd wait`, for Worker Pool names or IDs |  |
 
 ### yd workerpool provision
 
@@ -602,9 +604,9 @@ Compute Requirements: `yd computerequirement`, or `yd cr` for short.
 | [`reprovision`](#yd-computerequirement-reprovision) | Restore Compute Requirements to their target instance counts | `yd-compute-reprovision` |
 | [`terminate`](#yd-computerequirement-terminate) | Terminate Compute Requirements | `yd-terminate` |
 | `list` | `yd list compute-requirements` |  |
-| `show` | `yd show`, for Compute Requirement and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd follow`, for Compute Requirement IDs |  |
-| `wait` | `yd wait`, for Compute Requirement IDs |  |
+| `show` | `yd show`, for Compute Requirement names or IDs and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Compute Requirement names or IDs |  |
+| `wait` | `yd wait`, for Compute Requirement names or IDs |  |
 
 ### yd computerequirement instantiate
 
@@ -1522,6 +1524,7 @@ It supports IDs referring to:
 Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format the `yd instance` verbs take. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
 
 Key options:
+- `--namespace` — the namespace a name is looked up in, with `--type` or by a noun's `show` verb (`yd workrequirement show my-wr`); the configured one if not given
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
 - `--show-source-report` — follow a Compute Requirement with the Platform's report of how its sources were chosen: the Compute Source Templates considered, selected and rejected, each source's rank and score, and the constraints and preferences applied. Only a Compute Requirement provisioned from a dynamic template has one, and it is kept after the Compute Requirement has been terminated; for any other, a warning says so and the Compute Requirement is still shown
 - `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))

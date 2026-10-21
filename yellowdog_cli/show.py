@@ -65,6 +65,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.named_targets import resolve_targets
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
@@ -99,7 +100,9 @@ ShowItem = tuple[Any, dict | None]
 def main(ctx: RunContext):
     # At least one ID is required, and '--substitute-ids' refused where no ID
     # can use it, as the command line is parsed
-    if exit_code := show_ydids(ctx, ctx.args.yellowdog_ids):
+    # A noun verb's names are looked up first, every one before any is shown
+    targets = resolve_targets(ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type)
+    if exit_code := show_ydids(ctx, targets):
         sys_exit(exit_code)
 
 

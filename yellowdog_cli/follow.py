@@ -8,6 +8,7 @@ import sys
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.follow_utils import follow_exit_code, follow_ids
+from yellowdog_cli.utils.named_targets import resolve_targets
 from yellowdog_cli.utils.results import results_are_streamed
 from yellowdog_cli.utils.wrapper import main_wrapper
 
@@ -20,7 +21,9 @@ def main(ctx: RunContext):
 
     # At least one ID is required, and each must be a Work Requirement's,
     # Worker Pool's or Compute Requirement's, as the command line is parsed
-    follow_ids(ctx, ctx.args.yellowdog_ids, ctx.args.auto_cr)
+    # A noun verb's names are looked up first
+    targets = resolve_targets(ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type)
+    follow_ids(ctx, targets, ctx.args.auto_cr)
 
     # If any stream could not be followed (entity not found, credentials
     # refused, connection lost for good), exit with the code its failure has,

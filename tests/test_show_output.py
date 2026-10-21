@@ -680,11 +680,18 @@ class TestCommandLine:
         CLIParser(command="yd-show", argv=["--show-members", ROLE_ID])
         CLIParser(command="yd-show", argv=["--show-members", _ydid("group")])
 
-    def test_namespace_and_tag_are_not_options(self, capsys):
+    def test_tag_is_not_an_option(self, capsys):
         from yellowdog_cli.utils.args import CLIParser
 
         with pytest.raises(SystemExit):
-            CLIParser(command="yd-show", argv=["-n", "ns", _ydid("task")])
+            CLIParser(command="yd-show", argv=["-t", "tag", _ydid("task")])
+
+    def test_namespace_is_where_a_name_is_looked_up(self):
+        # Of no use with IDs alone, but accepted: a noun verb's names, and
+        # --type's, are looked up in it
+        from yellowdog_cli.utils.args import CLIParser
+
+        CLIParser(command="yd-show", argv=["-n", "ns", _ydid("task")])
 
 
 # ---------------------------------------------------------------------------

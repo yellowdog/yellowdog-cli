@@ -820,6 +820,29 @@ NAMESPACE = option(
     ),
     metavar="<namespace>",
 )
+# The namespace a target given by name is looked up in (yd-show, yd-follow,
+# yd-wait, yd-compare); 'namespace/name' names another
+NAME_NAMESPACE = NAMESPACE.variant(
+    help=(
+        "the namespace a target given by name is looked up in ('namespace/name'"
+        " names another); the configured namespace if not given"
+    )
+)
+
+# Where a noun verb's target check records the YDID type a name among its
+# targets stands for (noun_registry.Targets.named), for the registry
+# command's own checks and utils/named_targets.py: None for a verb, or a
+# command, that takes IDs alone
+NAMED_TARGET_TYPE_DEST = "named_target_type"
+
+
+def named_target_type(args: Namespace) -> Any:
+    """
+    The YDID type a name among the targets stands for, or None.
+    """
+    return getattr(args, NAMED_TARGET_TYPE_DEST, None)
+
+
 TAG = option(
     "--tag",
     "-t",
@@ -1754,16 +1777,19 @@ COMMANDS["yd-cloudwizard"] = Command(
 
 WR_OR_TG_ID = option(
     "wr_or_tg_id",
-    metavar="<work-requirement-or-task-group-ID>",
+    metavar="<work-requirement-or-task-group-name-or-ID>",
     type=str,
-    help=("the YellowDog ID of the work requirement or task group to be compared"),
+    help=(
+        "the name ('wr', or 'wr/tg' for a task group) or YellowDog ID of the"
+        " work requirement or task group to be compared"
+    ),
 )
 WORKER_POOL_IDS = option(
     "worker_pool_ids",
-    metavar="<provisioned-worker-pool-ID>",
+    metavar="<provisioned-worker-pool-name-or-ID>",
     type=str,
     nargs="+",
-    help="the YellowDog ID(s) of the provisioned worker pool(s) to compare",
+    help="the name(s) or YellowDog ID(s) of the provisioned worker pool(s) to compare",
 )
 RUNNING_NODES_ONLY = option(
     "--running-nodes-only",
@@ -1775,23 +1801,38 @@ RUNNING_NODES_ONLY = option(
 
 def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-compare's positional IDs, by type, before anything is fetched: a Work
-    Requirement or Task Group ID, then Worker Pool IDs. The YDID parser is
+    yd-compare's positional targets, by type, before anything is fetched: a
+    Work Requirement or Task Group ID or name ('wr', 'wr/tg'), then Worker
+    Pool IDs or names. The YDID parser is
     imported here, so this module still imports nothing at load beyond
     the constants modules and glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-    if get_ydid_type(args.wr_or_tg_id) not in (
+    def kind(target: str) -> YDIDType | str | None:
+        # Anything not shaped as a YellowDog ID is a name, looked up as it
+        # runs; one shaped as an ID that does not parse is neither
+        ydid_type = get_ydid_type(target)
+        return (
+            "malformed"
+            if ydid_type is None and target.startswith("ydid:")
+            else ydid_type
+        )
+
+    if kind(args.wr_or_tg_id) not in (
+        None,
         YDIDType.WORK_REQUIREMENT,
         YDIDType.TASK_GROUP,
     ):
         parser.error(
-            f"not a YellowDog Work Requirement or Task Group ID: '{args.wr_or_tg_id}'"
+            "not a YellowDog Work Requirement or Task Group ID, or a name:"
+            f" '{args.wr_or_tg_id}'"
         )
     for worker_pool_id in args.worker_pool_ids:
-        if get_ydid_type(worker_pool_id) != YDIDType.WORKER_POOL:
-            parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool_id}'")
+        if kind(worker_pool_id) not in (None, YDIDType.WORKER_POOL):
+            parser.error(
+                f"not a YellowDog Worker Pool ID, or a name: '{worker_pool_id}'"
+            )
 
 
 COMMANDS["yd-compare"] = Command(
@@ -1803,6 +1844,7 @@ COMMANDS["yd-compare"] = Command(
     summary="Compare a Work Requirement or Task Group against Worker Pool(s)",
     kind=CommandKind.API,
     options=(
+        NAME_NAMESPACE,
         WR_OR_TG_ID,
         WORKER_POOL_IDS,
         RUNNING_NODES_ONLY,
@@ -2450,8 +2492,12 @@ def check_follow_ids(args: Namespace, parser: ArgumentParser) -> None:
         YDIDType.WORKER_POOL,
         YDIDType.COMPUTE_REQUIREMENT,
     )
+    named = named_target_type(args)
     for ydid in args.yellowdog_ids:
-        if get_ydid_type(ydid) not in followable:
+        ydid_type = get_ydid_type(ydid)
+        if ydid_type is None and named is not None:
+            continue  # A name of the noun verb's type, looked up as it runs
+        if ydid_type not in followable:
             parser.error(
                 f"not a Work Requirement, Worker Pool or Compute Requirement ID:"
                 f" '{ydid}'"
@@ -2465,6 +2511,7 @@ COMMANDS["yd-follow"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(nargs="+"),
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
@@ -2556,9 +2603,13 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     )
     article = "an" if (resource_type or "x")[0] in "AEIOU" else "a"
     kinds = []
+    named = named_target_type(args)
     for target in args.yellowdog_ids:
         ydid_type = get_ydid_type(target)
-        if resource_type is None:
+        if resource_type is None and ydid_type is None and named is not None:
+            # A name of the noun verb's type, looked up as it runs
+            ydid_type = named
+        elif resource_type is None:
             # A word that is plainly a name; a malformed ID is reported as
             # the run reaches it
             if (
@@ -2617,10 +2668,11 @@ COMMANDS["yd-show"] = Command(
     purpose="showing the JSON details of entities referenced by their YDIDs",
     summary="Show the JSON details of entities referenced by their YDIDs",
     kind=CommandKind.API,
-    # A YDID names its entity in whatever namespace it is in: no namespace
-    # or tag is used
+    # A YDID names its entity in whatever namespace it is in; the namespace
+    # is where a name is looked up (a noun verb's, or with --type)
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(
             nargs="+",
             help=(
@@ -2660,6 +2712,7 @@ COMMANDS["yd-wait"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(
             nargs="+", help="the YellowDog ID(s) of the item(s) to wait for"
         ),
@@ -2795,6 +2848,7 @@ COMMANDS["yd-provision"] = Command(
 # --- yd-list -------------------------------------------------------------
 
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
+
 # Tag attribute is defaulted to "" when using 'yd-list'
 LIST_TAG = TAG.variant(
     help=(

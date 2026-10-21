@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`show`, `follow`, `wait` and `compare` take names on the nouns that have them**, since the noun says what a name stands for: `yd wr show nightly-run`, `yd tg show nightly-run/render`, `yd task show nightly-run/render/frame-1`, `yd wp follow gpu-pool`, `yd cr wait my-cr`, `yd wr compare nightly-run gpu-pool`. A name is looked up in `--namespace` (new on these commands) or the configured namespace, or in one given ahead of it (`namespace/name`), whether the object is live or finished; a name that finds nothing exits 6. `yd show`, `yd follow` and `yd wait` themselves still take IDs alone.
 - **`yd resource remove` recognises YellowDog IDs without `--ids`**, so specification files and IDs can be given together: `yd resource remove keyring.json ydid:crt:...` removes both in one run, a resource before those it refers to, with one exit code and, under `--json`, one array. `--ids` still works, saying every argument is an ID, and notes that it is optional.
 ## 14.1.0 — 2026-10-20
 

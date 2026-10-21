@@ -24,6 +24,7 @@ from yellowdog_cli.utils.follow_utils import (
     follow_exit_code_of,
     follow_ids,
 )
+from yellowdog_cli.utils.named_targets import resolve_targets
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record
 from yellowdog_cli.utils.wrapper import main_wrapper
@@ -66,14 +67,16 @@ def _fetch(ctx: RunContext, ydid: str, ydid_type: YDIDType | None) -> Any:
 def main(ctx: RunContext):
     # At least one ID is required, each a Work Requirement's, Worker Pool's or
     # Compute Requirement's, as the command line is parsed
-    follow_ids(ctx, ctx.args.yellowdog_ids, timeout=ctx.args.timeout)
+    # A noun verb's names are looked up first
+    targets = resolve_targets(ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type)
+    follow_ids(ctx, targets, timeout=ctx.args.timeout)
 
     # Errors and failure warnings are always printed, including with
     # '--quiet': exiting non-zero silently is unhelpful. Recorded in the order
     # given, once each.
     failures: list[ExitCode] = []
     work_requirement_failed = False
-    for ydid in dict.fromkeys(ctx.args.yellowdog_ids):
+    for ydid in dict.fromkeys(targets):
         ydid_type = get_ydid_type(ydid)
         label = ydid_type.value if ydid_type is not None else "Entity"
         try:

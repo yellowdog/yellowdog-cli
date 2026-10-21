@@ -4,6 +4,7 @@ themselves come from utils/command_registry.py.
 """
 
 import sys
+from typing import Any
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.command_registry import (
@@ -11,6 +12,7 @@ from yellowdog_cli.utils.command_registry import (
     build_parser,
     check_namespace_and_tag_are_no_files,
     command_from_argv0,
+    named_target_type,
     parse_range,
     resize_targets_compute_requirement,
 )
@@ -559,6 +561,18 @@ class CLIParser:
     @allow_missing_attribute
     def report(self) -> bool | None:
         return self.args.report
+
+    # -----------------------------------------------------------------------
+    # yd-show / yd-follow / yd-wait / yd-compare, as noun verbs
+    # -----------------------------------------------------------------------
+
+    @property
+    def named_target_type(self) -> Any:
+        """
+        The YDID type a target given by name stands for (a noun verb's), or
+        None where every target must be a YellowDog ID.
+        """
+        return named_target_type(self.args)
 
     # -----------------------------------------------------------------------
     # yd-submit / yd-provision / yd-instantiate / yd-create / yd-remove

@@ -530,9 +530,18 @@ class TestCompareIds:
         self._check(self.WR, self.WP)
         self._check(self.TG, self.WP, self.WP)
 
+    def test_names_pass_to_be_looked_up_as_it_runs(self):
+        self._check("my-wr", "my-pool")
+        self._check("my-wr/my-tg", self.WP, "other-pool")
+
     @pytest.mark.parametrize(
         "ids",
-        [("nonsense", WP), (WP, WP), (WR, WR), (TG, WP, "ydid:wrkrpool:bad")],
+        [
+            ("ydid:workreq:bad", WP),
+            (WP, WP),
+            (WR, WR),
+            (TG, WP, "ydid:wrkrpool:bad"),
+        ],
     )
     def test_anything_else_is_a_usage_error(self, ids, capsys):
         with pytest.raises(SystemExit) as raised:
